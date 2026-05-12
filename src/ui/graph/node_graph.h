@@ -865,6 +865,9 @@ private:
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
     struct ClipCellRect { float x, y, w, h; std::string sm_node_id; int state_idx; };
     std::vector<ClipCellRect> clip_cell_rects_;
+    struct Rect2 { float x = 0, y = 0, w = 0, h = 0; };
+    Rect2 add_track_btn_ {};
+    int   next_clip_track_idx_ = 1;
 
     // Active UI style
     UIStyle style_;

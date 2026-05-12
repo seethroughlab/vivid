@@ -907,6 +907,15 @@ std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.clear_state_presets(root["sm_node"].get<std::string>()));
         }
+    } else if (method == "ensure_state_mapping") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                result = json_err("missing 'sm_node'");
+            else
+                result = command_result_to_json(
+                    api.ensure_state_mapping(root["sm_node"].get<std::string>()));
+        }
     } else if (method == "inspect_state_presets") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {

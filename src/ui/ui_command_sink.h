@@ -110,6 +110,7 @@ public:
                                   const std::string& preset_name) {}
     virtual void remove_state_preset(const std::string& sm_node, int state_idx,
                                      const std::string& target_node) {}
+    virtual void ensure_state_mapping(const std::string& sm_node) {}
 
     // Sticky note operations (defaults are no-ops for headless/test sinks)
     virtual void add_sticky_note(const std::string& id, const std::string& text,

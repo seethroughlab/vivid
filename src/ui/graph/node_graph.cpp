@@ -259,7 +259,7 @@ float NodeGraphUI::graph_bottom() const {
 }
 
 float NodeGraphUI::session_strip_height() const {
-    return kSessionStripH + (snap_.clip_machines.empty() ? 0.0f : kClipSectionH);
+    return kSessionStripH + (session_grid_open_ ? kClipSectionH : 0.0f);
 }
 
 float NodeGraphUI::session_strip_top() const {

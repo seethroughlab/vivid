@@ -723,6 +723,13 @@ CommandResult RuntimeAPI::clear_state_presets(const std::string& sm_node) {
     return {true, "cleared all state-preset mappings for " + sm_node};
 }
 
+CommandResult RuntimeAPI::ensure_state_mapping(const std::string& sm_node) {
+    if (!core_.compiled_graph()) return {false, "no graph"};
+    graph_.ensure_state_mapping(sm_node);
+    mark_graph_dirty();
+    return {true, "ok"};
+}
+
 CommandResult RuntimeAPI::inspect_state_presets(const std::string& sm_node) {
     const auto* spm = graph_.find_state_mapping(sm_node);
     if (!spm) return {true, "(no state-preset mappings for " + sm_node + ")"};

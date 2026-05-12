@@ -117,6 +117,21 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         auto seq = vivid::midi_file::parse_file(pending_import_path_);
         if (seq.ok() && !seq.events.empty()) {
+            // Auto-size the pattern to fit the imported file
+            const double total_beats = seq.duration_seconds / spb;
+            static const int kImportBars[] = {1, 2, 4, 8, 16, 32, 64};
+            int new_lb_idx = 6;  // default to max if file exceeds 64 bars
+            for (int i = 0; i < 7; ++i) {
+                if (static_cast<double>(kImportBars[i] * bpb) >= total_beats) {
+                    new_lb_idx = i;
+                    break;
+                }
+            }
+            if (new_lb_idx != lb_idx && ctx->commands.set_param)
+                ctx->commands.set_param(ctx->commands.opaque, "length_bars",
+                                        static_cast<float>(new_lb_idx));
+            const double import_pat_len = static_cast<double>(kImportBars[new_lb_idx] * bpb);
+
             editor_notes_.clear();
             struct Active { double on_time; float velocity; };
             std::map<uint8_t, std::vector<Active>> active;
@@ -131,10 +146,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     auto& a = active[p].front();
                     double s = a.on_time / spb;
                     double d = (ev.time_seconds - a.on_time) / spb;
-                    if (s < pat_len && d > 0.0) {
+                    if (s < import_pat_len && d > 0.0) {
                         midi_clip::ParsedNote n{};
                         n.pitch = p; n.start_beat = s;
-                        n.duration_beats = std::min(d, pat_len - s);
+                        n.duration_beats = std::min(d, import_pat_len - s);
                         n.velocity = std::clamp(a.velocity, 0.01f, 1.0f);
                         editor_notes_.push_back(n);
                     }
@@ -144,10 +159,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             for (auto& [p, stack] : active) {
                 for (auto& a : stack) {
                     double s = a.on_time / spb;
-                    if (s < pat_len) {
+                    if (s < import_pat_len) {
                         midi_clip::ParsedNote n{};
                         n.pitch = p; n.start_beat = s;
-                        n.duration_beats = std::min(1.0, pat_len - s);
+                        n.duration_beats = std::min(1.0, import_pat_len - s);
                         n.velocity = std::clamp(a.velocity, 0.01f, 1.0f);
                         editor_notes_.push_back(n);
                     }

@@ -152,6 +152,7 @@ public:
     CommandResult remove_state_preset(const std::string& sm_node, int state_idx,
                                       const std::string& target_node);
     CommandResult clear_state_presets(const std::string& sm_node);
+    CommandResult ensure_state_mapping(const std::string& sm_node);
     CommandResult inspect_state_presets(const std::string& sm_node);
 
     // Per-frame: check for state machine transitions and recall mapped presets

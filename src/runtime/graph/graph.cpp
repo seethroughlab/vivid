@@ -921,6 +921,12 @@ void Graph::clear_state_presets(const std::string& sm_node) {
         state_preset_mappings_.end());
 }
 
+void Graph::ensure_state_mapping(const std::string& sm_node) {
+    for (const auto& m : state_preset_mappings_)
+        if (m.state_machine_node == sm_node) return;
+    state_preset_mappings_.push_back({sm_node, {}});
+}
+
 const StatePresetMapping* Graph::find_state_mapping(const std::string& sm_node) const {
     for (const auto& m : state_preset_mappings_) {
         if (m.state_machine_node == sm_node) return &m;

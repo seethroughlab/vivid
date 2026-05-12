@@ -314,6 +314,33 @@ void NodeGraphUI::handle_left_click() {
                 return;
             }
         }
+        // "Add Track" button
+        {
+            const auto& b = add_track_btn_;
+            if (mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+                mouse_.y >= b.y && mouse_.y < b.y + b.h) {
+                const int n = next_clip_track_idx_++;
+                const std::string sm_id = "sm_track_" + std::to_string(n);
+                const std::string mc_id = "midi_clip_track_" + std::to_string(n);
+                const float gx = sx_to_gx(win_w_ * 0.5f);
+                const float gy = sy_to_gy((win_h_ - session_strip_height()) * 0.5f);
+                std::string err;
+                if (!commands_.try_add_node("StateMachine", sm_id, &err)) {
+                    mouse_.left_clicked = false;
+                    return;
+                }
+                if (!commands_.try_add_node("MidiClip", mc_id, &err)) {
+                    mouse_.left_clicked = false;
+                    return;
+                }
+                commands_.connect(mc_id + "/phase", sm_id + "/beat_phase");
+                commands_.ensure_state_mapping(sm_id);
+                commands_.set_node_layout(sm_id, gx, gy);
+                commands_.set_node_layout(mc_id, gx + 280.0f, gy);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
         // Clicked in session strip but not on a cell/button — deselect
         session_selected_idx_ = -1;
         mouse_.left_clicked = false;

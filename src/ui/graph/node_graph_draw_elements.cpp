@@ -1140,12 +1140,11 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
     }
 
-    // --- Clip launcher grid ---
-    if (!snap_.clip_machines.empty()) {
-        const float clips_y   = strip_y + kSessionStripH;
-        const float sep_y     = clips_y - 1.0f;
+    // --- Clip launcher grid (always shown when session grid is open) ---
+    {
+        const float clips_y = strip_y + kSessionStripH;
         // Separator
-        tr.draw_rect(0, sep_y, strip_w, 1,
+        tr.draw_rect(0, clips_y - 1.0f, strip_w, 1,
                      style_.accent[0], style_.accent[1], style_.accent[2], 0.25f);
         // "CLIPS" label
         tr.draw_text(kSessionPadX, clips_y + 4,
@@ -1180,7 +1179,6 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                     draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
                                      style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
                 } else if (queued) {
-                    // Pulsing border: use time-based alpha
                     const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(
                         std::fmod(snap_.metronome_beat_phase * 6.28318f, 6.28318f)));
                     draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
@@ -1200,6 +1198,24 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
             }
             cx += kClipCellW + 8.0f;
         }
+
+        // "Add Track" / "+" button — always present at end of track columns
+        const bool  no_tracks = snap_.clip_machines.empty();
+        const float btn_w     = no_tracks ? 82.0f : 22.0f;
+        const float btn_h     = kClipCellH;
+        const float btn_x     = cx;
+        const float btn_y     = clips_y + 4.0f;
+        const bool  btn_hov   = (mouse_.x >= btn_x && mouse_.x < btn_x + btn_w &&
+                                 mouse_.y >= btn_y && mouse_.y < btn_y + btn_h);
+        tr.draw_rect(btn_x, btn_y, btn_w, btn_h,
+                     btn_hov ? 0.28f : 0.16f, btn_hov ? 0.28f : 0.16f,
+                     btn_hov ? 0.28f : 0.16f, 0.9f);
+        draw_rect_border(tr, btn_x, btn_y, btn_w, btn_h,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.35f);
+        tr.draw_text(btn_x + 5, btn_y + 4,
+                     no_tracks ? T("add_track", "+ Add Track") : "+",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        add_track_btn_ = {btn_x, btn_y, btn_w, btn_h};
     }
 
     // --- Context menu ---

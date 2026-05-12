@@ -306,6 +306,7 @@ public:
     bool remove_state_preset(const std::string& sm_node, int state_idx,
                              const std::string& target_node);
     void clear_state_presets(const std::string& sm_node);
+    void ensure_state_mapping(const std::string& sm_node);
     const StatePresetMapping* find_state_mapping(const std::string& sm_node) const;
     const std::vector<StatePresetMapping>& state_preset_mappings() const { return state_preset_mappings_; }
 

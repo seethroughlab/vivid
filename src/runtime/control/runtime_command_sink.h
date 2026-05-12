@@ -203,6 +203,10 @@ public:
         auto r = api_.remove_state_preset(sm_node, state_idx, target_node);
         if (r.ok) capture_undo_snapshot();
     }
+    void ensure_state_mapping(const std::string& sm_node) override {
+        auto r = api_.ensure_state_mapping(sm_node);
+        if (r.ok) capture_undo_snapshot();
+    }
 
     void open_shader(const std::string& type_name) override;
     void open_module_source(const std::string& type_name) override;

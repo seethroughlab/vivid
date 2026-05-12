@@ -5113,6 +5113,53 @@ async def clear_state_presets(sm_node: str) -> str:
 
 
 @mcp.tool()
+async def ensure_state_mapping(sm_node: str) -> str:
+    """Register a StateMachine node in the Session view clip launcher grid.
+
+    Creates an empty state-preset mapping entry so the SM appears as a column
+    in the clip grid even before any presets are bound to it. Safe to call if
+    the mapping already exists (no-op).
+
+    Args:
+        sm_node: ID of the StateMachine node
+    """
+    return await _post("ensure_state_mapping", {"sm_node": sm_node})
+
+
+@mcp.tool()
+async def add_clip_track(sm_node: str = "", midi_clip_node: str = "",
+                         num_states: int = 4, x: float = 0.0, y: float = -200.0) -> str:
+    """Create a StateMachine + MidiClip pair and register it in the clip launcher.
+
+    Creates both nodes, connects MidiClip phase → StateMachine beat_phase for
+    timing sync, and calls ensure_state_mapping so the track appears in the
+    Session view clip grid immediately.
+
+    Args:
+        sm_node: ID for the StateMachine node (auto-generated if empty)
+        midi_clip_node: ID for the MidiClip node (auto-generated if empty)
+        num_states: number of states (clips) for the StateMachine (1-8)
+        x: graph-space X position for the StateMachine node
+        y: graph-space Y position for the StateMachine node
+    """
+    import time
+    if not sm_node:
+        sm_node = f"sm_track_{int(time.time()) % 10000}"
+    if not midi_clip_node:
+        midi_clip_node = f"midi_clip_{sm_node}"
+
+    await _post("add_node", {"type": "StateMachine", "node_id": sm_node})
+    await _post("set_param", {"node_id": sm_node, "param": "states", "value": num_states})
+    await _post("add_node", {"type": "MidiClip", "node_id": midi_clip_node})
+    await _post("connect", {"from_addr": f"{midi_clip_node}/phase",
+                            "to_addr":   f"{sm_node}/beat_phase"})
+    await _post("ensure_state_mapping", {"sm_node": sm_node})
+    await _post("set_node_layout", {"node_id": sm_node,        "x": x,         "y": y})
+    await _post("set_node_layout", {"node_id": midi_clip_node, "x": x + 280.0, "y": y})
+    return f"Created clip track: SM={sm_node}, MidiClip={midi_clip_node}"
+
+
+@mcp.tool()
 async def inspect_state_presets(sm_node: str) -> str:
     """Show all preset bindings for a state machine, organized by state index.
 
