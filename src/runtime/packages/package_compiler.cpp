@@ -340,8 +340,10 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
     std::string generated_reg_path;
     if (std::filesystem::exists(codegen_tool)) {
         generated_reg_path = build_dir + "/" + name + "_generated_registration.cpp";
+        std::string generated_uni_path = build_dir + "/" + name + "_generated_uniforms.h";
         ProcessRunOptions gen_opts;
-        gen_opts.argv = {codegen_tool, "--input", source_path, "--output", generated_reg_path};
+        gen_opts.argv = {codegen_tool, "--input", source_path, "--output", generated_reg_path,
+                         "--uniform-output", generated_uni_path};
         ProcessRunResult gen_result = run_process(gen_opts);
         if (!gen_result.launched || gen_result.exit_code != 0) {
             result.success = false;
@@ -352,6 +354,12 @@ CompileResult PackageCompiler::compile_operator(const std::string& package_dir,
             }
             return result;
         }
+    }
+
+    // The build dir holds the generated uniforms header; add it to the include path.
+    if (!generated_reg_path.empty()) {
+        argv.push_back("-I");
+        argv.push_back(build_dir);
     }
 
     argv.push_back("-o");

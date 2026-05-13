@@ -676,6 +676,236 @@ extern "C" void vivid_prepare_instance_assets(                                \
     inst->op.prepare_instance_assets();                                       \
 }
 
+// ---------------------------------------------------------------------------
+// VIVID_REGISTER(ClassName) — standalone registration for package operators
+//
+// Self-contained alternative to operator_codegen. Suitable for packages
+// that don't run the codegen tool. Uses VIVID_INTERNAL_EXPORTS_WITH_DESCRIPTOR
+// is not available outside this macro.
+//
+// Usage: place at file scope after the operator struct definition.
+//   VIVID_REGISTER(MyOp)
+//
+// No-op when VIVID_CODEGEN_ACTIVE is defined (i.e., when the source is
+// included from a codegen-generated registration file — in that case the
+// generated file itself provides all extern "C" entry points).
+// ---------------------------------------------------------------------------
+
+#ifdef VIVID_CODEGEN_ACTIVE
+#define VIVID_REGISTER(ClassName)
+#else
+#define VIVID_REGISTER(ClassName)                                             \
+                                                                              \
+static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
+    static VividOperatorDescriptor desc{};                                    \
+    static std::vector<VividParamDescriptor> s_params;                        \
+    static std::vector<VividPortDescriptor>  s_ports;                         \
+    static std::vector<std::vector<std::string>> s_label_storage;             \
+    static std::vector<std::vector<const char*>> s_label_ptrs;                \
+    static std::vector<std::string> s_file_defaults;                          \
+    static std::vector<std::vector<int32_t>> s_visibility_values;             \
+    static bool inited = false;                                               \
+    if (!inited) {                                                            \
+        inited = true;                                                        \
+        static ClassName tmp;                                                  \
+        std::vector<vivid::ParamBase*> pbases;                                \
+        tmp.collect_params(pbases);                                           \
+        s_params.resize(pbases.size());                                       \
+        s_label_storage.resize(pbases.size());                                \
+        s_label_ptrs.resize(pbases.size());                                   \
+        s_file_defaults.resize(pbases.size());                                 \
+        s_visibility_values.resize(pbases.size());                            \
+        for (size_t i = 0; i < pbases.size(); ++i) {                          \
+            s_params[i].name          = pbases[i]->name;                      \
+            s_params[i].type          = pbases[i]->type;                      \
+            s_params[i].default_value = pbases[i]->default_value;             \
+            s_params[i].min_value     = pbases[i]->min_value;                 \
+            s_params[i].max_value     = pbases[i]->max_value;                 \
+            s_params[i].group               = pbases[i]->group;                \
+            s_params[i].display_hint        = pbases[i]->display_hint;         \
+            s_params[i].layout_columns      = pbases[i]->layout_columns;       \
+            s_params[i].layout_column_index = pbases[i]->layout_column_index;  \
+            s_params[i].widget_id           = pbases[i]->widget_id;            \
+            s_params[i].widget_span         = pbases[i]->widget_span;          \
+            s_params[i].semantic_tag        = pbases[i]->semantic_tag;         \
+            s_params[i].semantic_shape      = pbases[i]->semantic_shape;       \
+            s_params[i].semantic_unit       = pbases[i]->semantic_unit;        \
+            s_params[i].semantic_intent     = pbases[i]->semantic_intent;      \
+            s_params[i].description         = pbases[i]->description;          \
+            s_params[i].asset_kind          = pbases[i]->asset_kind;           \
+            s_params[i].repeat_group        = pbases[i]->repeat_group;          \
+            s_params[i].repeat_group_idx    = pbases[i]->repeat_group_idx;     \
+            s_params[i].visible_when_param  = pbases[i]->visible_when_param;   \
+            s_params[i].visible_when_op     = pbases[i]->visible_when_op;      \
+            s_visibility_values[i]          = pbases[i]->visible_when_values;  \
+            s_params[i].visible_when_values = s_visibility_values[i].empty()   \
+                ? nullptr : s_visibility_values[i].data();                    \
+            s_params[i].visible_when_value_count =                            \
+                static_cast<uint32_t>(s_visibility_values[i].size());         \
+            if (pbases[i]->choice_count > 0) {                                \
+                s_label_storage[i].clear();                                   \
+                s_label_ptrs[i].clear();                                      \
+                s_label_storage[i].reserve(pbases[i]->choice_count);          \
+                s_label_ptrs[i].reserve(pbases[i]->choice_count);             \
+                for (uint32_t li = 0; li < pbases[i]->choice_count; ++li) {   \
+                    const char* src = pbases[i]->choice_labels[li];           \
+                    s_label_storage[i].emplace_back(src ? src : "");          \
+                }                                                              \
+                for (const auto& lbl : s_label_storage[i])                    \
+                    s_label_ptrs[i].push_back(lbl.c_str());                   \
+                s_params[i].choice_labels = s_label_ptrs[i].data();           \
+                s_params[i].choice_count  = pbases[i]->choice_count;          \
+            } else {                                                          \
+                s_params[i].choice_labels = nullptr;                          \
+                s_params[i].choice_count  = 0;                                \
+            }                                                                 \
+            if (pbases[i]->type == VIVID_PARAM_FILE ||                         \
+                pbases[i]->type == VIVID_PARAM_TEXT) {                         \
+                const std::string* strp = nullptr;                             \
+                if (pbases[i]->type == VIVID_PARAM_FILE) {                     \
+                    auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(    \
+                        pbases[i]);                                            \
+                    strp = &fp->str_value;                                     \
+                } else {                                                       \
+                    auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(   \
+                        pbases[i]);                                            \
+                    strp = &tp->str_value;                                     \
+                }                                                              \
+                s_file_defaults[i] = *strp;                                    \
+                s_params[i].default_string = s_file_defaults[i].c_str();      \
+            } else {                                                          \
+                s_params[i].default_string = nullptr;                         \
+            }                                                                 \
+        }                                                                     \
+        tmp.collect_ports(s_ports);                                           \
+        desc.name           = ClassName::kName;                               \
+        desc.has_process_audio =                                              \
+            std::is_base_of_v<vivid::AudioProcessable, ClassName> ? 1 : 0;    \
+        desc.has_process_gpu =                                                \
+            std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
+        desc.has_process_frame =                                              \
+            std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
+        desc.lane_behavior = vivid::detail::get_lane_behavior<ClassName>();   \
+        desc.strategy_independent =                                           \
+            vivid::detail::get_strategy_independent<ClassName>() ? 1 : 0;     \
+        desc.param_count    = static_cast<uint32_t>(s_params.size());         \
+        desc.params         = s_params.data();                                \
+        desc.port_count     = static_cast<uint32_t>(s_ports.size());          \
+        desc.ports          = s_ports.data();                                 \
+        desc.time_dependent =                                                 \
+            vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;           \
+    }                                                                         \
+    return &desc;                                                             \
+}                                                                             \
+                                                                              \
+struct _VividInstance {                                                        \
+    ClassName op;                                                              \
+    std::vector<vivid::ParamBase*> param_ptrs;                                \
+};                                                                            \
+                                                                              \
+static void _vivid_sync_params(_VividInstance* inst, float* param_values,      \
+                               const char** file_param_values,                 \
+                               uint32_t file_param_count) {                    \
+    auto& param_ptrs = inst->param_ptrs;                                      \
+    uint32_t file_idx = 0;                                                    \
+    for (size_t i = 0; i < param_ptrs.size(); ++i) {                          \
+        if (param_ptrs[i]->type == VIVID_PARAM_FILE ||                        \
+            param_ptrs[i]->type == VIVID_PARAM_TEXT) {                        \
+            if (file_param_values && file_idx < file_param_count) {           \
+                if (file_param_values[file_idx]) {                            \
+                    if (param_ptrs[i]->type == VIVID_PARAM_FILE) {            \
+                        auto* fp = static_cast<vivid::Param<vivid::FilePath>*>(\
+                            param_ptrs[i]);                                   \
+                        fp->str_value = file_param_values[file_idx];          \
+                    } else {                                                   \
+                        auto* tp = static_cast<vivid::Param<vivid::TextValue>*>(\
+                            param_ptrs[i]);                                   \
+                        tp->str_value = file_param_values[file_idx];          \
+                    }                                                          \
+                }                                                              \
+            }                                                                 \
+            file_idx++;                                                       \
+        } else if (param_values) {                                            \
+            param_ptrs[i]->value = param_values[i];                           \
+        }                                                                     \
+    }                                                                         \
+}                                                                             \
+                                                                              \
+extern "C" uint32_t vivid_abi_version() {                                     \
+    return VIVID_OPERATOR_ABI_VERSION;                                        \
+}                                                                             \
+extern "C" const VividOperatorDescriptor* vivid_descriptor() {                \
+    return _vivid_get_descriptor();                                           \
+}                                                                             \
+extern "C" void* vivid_create() {                                             \
+    auto* inst = new _VividInstance();                                        \
+    inst->op.collect_params(inst->param_ptrs);                                \
+    return inst;                                                              \
+}                                                                             \
+extern "C" void vivid_destroy(void* instance) {                               \
+    delete static_cast<_VividInstance*>(instance);                            \
+}                                                                             \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_control(void* instance,                           \
+                                    VividFrameContext* ctx) {                 \
+    if constexpr (std::is_base_of_v<vivid::FrameProcessable, _Op>) {          \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_frame(ctx);                       \
+    }                                                                         \
+}                                                                             \
+template<typename _Op>                                                        \
+static void _vivid_dispatch_audio(void* instance,                             \
+                                  VividAudioContext* ctx) {                   \
+    if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_audio(ctx);                       \
+    }                                                                         \
+}                                                                             \
+template<typename _Op, typename _Ctx>                                         \
+static void _vivid_dispatch_gpu(void* instance, _Ctx* ctx) {                  \
+    if constexpr (std::is_base_of_v<vivid::GpuProcessable, _Op>) {            \
+        auto* inst = static_cast<_VividInstance*>(instance);                  \
+        _vivid_sync_params(inst, ctx->param_values,                           \
+                           ctx->file_param_values, ctx->file_param_count);    \
+        static_cast<_Op&>(inst->op).process_gpu(ctx);                         \
+    }                                                                         \
+}                                                                             \
+extern "C" void vivid_process_frame(void* instance,                           \
+                                    VividFrameContext* ctx) {                 \
+    _vivid_dispatch_control<ClassName>(instance, ctx);                        \
+}                                                                             \
+extern "C" void vivid_process_audio(void* instance,                           \
+                                    VividAudioContext* ctx) {                 \
+    _vivid_dispatch_audio<ClassName>(instance, ctx);                          \
+}                                                                             \
+extern "C" void vivid_process_gpu(void* instance,                             \
+                                  VividGpuContext* ctx) {                     \
+    _vivid_dispatch_gpu<ClassName>(instance, ctx);                            \
+}                                                                             \
+extern "C" void vivid_main_thread_update(void* instance, double time,         \
+                                         const char** file_param_values,      \
+                                         uint32_t file_param_count) {         \
+    auto* inst = static_cast<_VividInstance*>(instance);                      \
+    _vivid_sync_params(inst, nullptr,                                         \
+                       file_param_values, file_param_count);                  \
+    inst->op.main_thread_update(time);                                        \
+}                                                                             \
+extern "C" void vivid_prepare_instance_assets(                                \
+    void* instance,                                                           \
+    const float* param_values,                                                \
+    const char** file_param_values,                                           \
+    uint32_t file_param_count) {                                              \
+    auto* inst = static_cast<_VividInstance*>(instance);                      \
+    _vivid_sync_params(inst, const_cast<float*>(param_values),                \
+                       file_param_values, file_param_count);                  \
+    inst->op.prepare_instance_assets();                                       \
+}
+#endif // VIVID_CODEGEN_ACTIVE
+
 // Metadata block consumed by operator_codegen. The body intentionally compiles
 // as a no-op function while preserving the ergonomic syntax:
 //
