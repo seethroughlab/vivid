@@ -18,8 +18,75 @@ A secondary goal: do something other ISF hosts can't, by routing ISF's `audio` a
 1. **Translation via naga, exposed to C++ via a small Rust wrapper crate.** Naga's GLSL frontend + WGSL backend in one pass gives better error messages than the glslang→SPIR-V→Tint path. We accept the Rust build dependency. Integration via [Corrosion](https://github.com/corrosion-rs/corrosion) (CMake↔Cargo bridge).
 2. **A preprocessor step runs before naga.** ISF shaders use C-preprocessor directives, embedded JSON manifests, and ISF-specific built-ins (`RENDERSIZE`, `TIME`, `IMG_PIXEL`, etc.) that naga won't accept as-is. We need a real cpp pass plus our own ISF-specific macro injection.
 3. **A WGSL post-processing step patches naga output for WebGPU bind-group conventions.** ISF assumes implicit samplers; WebGPU wants explicit ones. Easier to patch the WGSL output than to massage the GLSL input.
-4. **ISF support lives as an operator type, not as an extension to the existing WGSL filter framework.** Filters are authored against our native contract; ISF operators are imported foreign content. Conflating them muddies the model.
+4. **ISF support lives as an operator type (`GpuProcessable`), not as an extension to `WgslFilterBase`.** `WgslFilterBase` generates the WGSL preamble and bakes in a specific uniform struct and bind group layout — both fundamentally incompatible with ISF's model (naga generates its own preamble, ISF has a different uniform contract). The shared machinery worth reusing (mtime polling, pipeline RAII swap) is trivial to duplicate. `WgslFilterBase` stays clean for native-authored filters; `IsfFilter` is a fresh `GpuProcessable` start with no shared assumptions.
 5. **Audio routing reuses existing analysis outputs** (FFT, RMS, peak) — ISF `audioFFT` becomes a 1D texture sourced from a Vivid audio operator. No new audio plumbing.
+
+## Architecture Overview
+
+```
+.fs file on disk
+    │
+    ▼
+IsfPreprocessor::preprocess()
+    ├── Strip + parse /*{ ... }*/ manifest → IsfManifest  (nlohmann/json)
+    ├── C preprocessor expansion            (mcpp static lib via FetchContent)
+    ├── Inject GLSL built-in preamble       (RENDERSIZE, TIME, etc.)
+    └── Rewrite IMG_* macros                (GLSL helper functions)
+    │
+    ▼ (preprocessed GLSL)
+isf_translate_glsl()                        (Rust crate: naga GLSL→WGSL)
+    │
+    ▼ (raw naga WGSL)
+wgsl_patch()
+    ├── Inject paired sampler declarations
+    ├── Replace naga uniform block with Vivid's IsfUniforms layout
+    └── Apply Y-flip on isf_FragNormCoord
+    │
+    ▼ (Vivid-compatible WGSL)
+wgpuDeviceCreateShaderModule()              (Dawn/WebGPU)
+    │
+    ▼
+IsfFilter::process_gpu()                   (GpuProcessable, per-frame)
+```
+
+## Existing Patterns to Reuse
+
+| Pattern | Where |
+|---------|-------|
+| `Param<FilePath>` + reload-on-change | `operators/gpu/texture_loader/texture_loader.cpp` |
+| `VIVID_FILE_DROP` macro | `operators/gpu/texture_loader/texture_loader.cpp` |
+| `gpu::ShaderHandle`, `PipelineHandle`, etc. (RAII) | `src/operator_api/gpu_operator.h` |
+| `vivid::gpu::run_pass()`, `create_shader_checked()` | `src/operator_api/gpu_common.h` |
+| mtime hot-reload (stat every 30 frames) | `src/operator_api/wgsl_filter.h` |
+| nlohmann/json manifest parsing | `src/runtime/gpu/wgsl_header_parser.cpp` |
+| `add_vivid_operator()` CMake macro | `cmake/operators.cmake` |
+| Test partition registration | `cmake/tests.cmake` |
+
+## Files to Create / Modify
+
+| File | Action |
+|------|--------|
+| `cmake/rust.cmake` | **Create** — Corrosion + `vivid-shader-xlate` import |
+| `CMakeLists.txt` | **Edit** — add `include(cmake/rust.cmake)` after dependencies |
+| `cmake/dependencies.cmake` | **Edit** — add mcpp FetchContent |
+| `cmake/operators.cmake` | **Edit** — add `isf_filter` operator registration |
+| `deps/vivid-shader-xlate/` | **Create** — Rust crate (Cargo.toml, src/lib.rs) |
+| `operators/gpu/isf_filter/isf_manifest.h` | **Create** |
+| `operators/gpu/isf_filter/shader_xlate.h` | **Create** — C++ FFI wrapper around Rust crate |
+| `operators/gpu/isf_filter/isf_preprocessor.h/.cpp` | **Create** |
+| `operators/gpu/isf_filter/wgsl_patch.h/.cpp` | **Create** |
+| `operators/gpu/isf_filter/isf_filter.h/.cpp` | **Create** |
+| `operators/gpu/isf_filter/factory_presets.json` | **Create** |
+| `tests/isf/translate_smoke.cpp` | **Create** |
+| `tests/isf/preprocessor_test.cpp` | **Create** |
+| `tests/isf/corpus/` | **Create** — ~25 MIT/CC0 licensed shaders |
+| `tests/isf/corpus_test.cpp` | **Create** |
+| `tests/CMakeLists.txt` | **Edit** — register new test targets (new partition 35) |
+| `docs/ISF-SUPPORT.md` | **Create** |
+| `docs/GETTING-STARTED.md` | **Edit** — add ISF section |
+| `src/cli/mcp_server.cpp` | **Edit** — add `isf_check` / `isf_import` MCP tool handlers |
+
+---
 
 ## Stages
 
@@ -34,9 +101,10 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 **Work items:**
 - Read the ISF v2 spec end to end.
 - Survey the top ~50 shaders on isf.video and categorize them by which ISF features they use (input types, pass count, persistent buffers, custom functions, GLSL features).
+- **Critical spike:** throw 20 representative shaders directly at `naga::front::glsl::Frontend` with no preprocessing (via a standalone Rust binary in `deps/vivid-shader-xlate/` before wiring into CMake) to measure raw coverage. If <50% parse, the preprocessor scope must expand significantly, or we evaluate the glslang→SPIR-V→Tint path as a fallback before committing to Stage 2.
 - Write `docs/ISF-SUPPORT.md` listing supported INPUT types, supported PASS configurations, supported GLSL features, and an explicit unsupported list with rationale per item.
 
-**Deliverable:** `docs/ISF-SUPPORT.md` checked in.
+**Deliverable:** `docs/ISF-SUPPORT.md` checked in, naga coverage number in hand.
 
 **Validation:** A human reads it and can answer "will my shader work?" without running anything.
 
@@ -46,15 +114,51 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 **Objective:** Have a callable C function `vivid_isf_translate(const char* glsl, char** wgsl_out, char** error_out)` that uses naga internally.
 
+**New Cargo crate:** `deps/vivid-shader-xlate/`
+```
+deps/vivid-shader-xlate/
+  Cargo.toml       (naga = "22", crate-type = ["staticlib"])
+  src/lib.rs
+```
+
+**C API surface (in `lib.rs`):**
+```rust
+#[no_mangle] pub extern "C"
+fn vivid_isf_translate(glsl: *const c_char, wgsl_out: *mut *mut c_char, error_out: *mut *mut c_char) -> c_int;
+
+#[no_mangle] pub extern "C"
+fn vivid_isf_free_string(s: *mut c_char);
+```
+
+**CMake integration:**
+
+New file `cmake/rust.cmake`:
+```cmake
+FetchContent_Declare(Corrosion
+    GIT_REPOSITORY https://github.com/corrosion-rs/corrosion.git
+    GIT_TAG v0.5.1 GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(Corrosion)
+corrosion_import_crate(MANIFEST_PATH deps/vivid-shader-xlate/Cargo.toml CRATES vivid_shader_xlate)
+```
+
+In top-level `CMakeLists.txt`: add `include(cmake/rust.cmake)` after `include(cmake/dependencies.cmake)`.
+
+**C++ wrapper header:** `operators/gpu/isf_filter/shader_xlate.h`
+```cpp
+// Thin RAII wrapper around the C FFI
+std::string isf_translate_glsl(const std::string& glsl, std::string& error_out);
+```
+
 **Work items:**
-- Create `deps/vivid-shader-xlate/` as a new Cargo crate.
-- Implement `lib.rs` wrapping `naga::front::glsl::Frontend` → `naga::valid::Validator` → `naga::back::wgsl::write_string`. Expose a `#[no_mangle] extern "C"` entry point that takes a GLSL string and returns either a heap-allocated WGSL string or a heap-allocated error string. Provide a `vivid_isf_free_string(char*)` for the caller.
-- Add Corrosion to the top-level `CMakeLists.txt` and pull the crate in as a static library.
-- Write a minimal C++ test harness in `tests/isf/translate_smoke.cpp` that hard-codes three trivial GLSL fragments and confirms translation succeeds.
+- Create `deps/vivid-shader-xlate/` as above.
+- Add Corrosion to `cmake/rust.cmake`; include from top-level CMakeLists.
+- Write `tests/isf/translate_smoke.cpp` — three trivial GLSL fragments, assert translation succeeds.
 
-**Deliverable:** Static library linked into the main vivid binary; smoke test passes in CI.
+**Deliverable:** Static library linked into isf_filter.dylib; smoke test passes in CI.
 
-**Validation:** `cmake --build build` succeeds on macOS. Smoke test compiles and runs.
+**Validation:** `cmake --build build --target isf_filter` succeeds. Smoke test compiles and runs.
+
+> **CI note:** Cache `~/.cargo` and `target/` in GitHub Actions. Corrosion + naga compile is ~60s uncached, ~5s cached.
 
 ---
 
@@ -62,14 +166,51 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 **Objective:** Transform a raw ISF `.fs` file into GLSL that naga will accept, plus a parsed manifest struct.
 
-**Work items:**
-- Parse the manifest. ISF embeds JSON as a `/*{ ... }*/` comment at the top of the file. Strip it, parse with nlohmann/json, populate an `IsfManifest` struct (already a dependency).
-- Run a C preprocessor pass on the remaining source. Pull in `mcpp` or equivalent — many ISF shaders use `#ifdef`/`#define`/`#include` that naga won't expand.
-- Inject a preamble containing GLSL declarations for ISF built-ins (`uniform vec2 RENDERSIZE; uniform float TIME; uniform float TIMEDELTA; uniform vec4 DATE; uniform int FRAMEINDEX; uniform int PASSINDEX;` plus `in vec2 isf_FragNormCoord;`).
-- Rewrite ISF texture macros. `IMG_PIXEL(img, p)`, `IMG_NORM_PIXEL(img, p)`, `IMG_THIS_PIXEL(img)`, `IMG_THIS_NORM_PIXEL(img)`, `IMG_SIZE(img)` need to become legal GLSL that lowers to texture sampling. Either implement as GLSL functions in the preamble (preferred) or as a textual substitution pass.
-- Handle Y-flip. ISF inherits GL's bottom-left origin in some places. Decide once whether to flip on input or output and document the decision.
+**Data structures** (`operators/gpu/isf_filter/isf_manifest.h`):
+```cpp
+struct IsfInput {
+    std::string name, label;
+    enum class Type { Float, Bool, Long, Point2D, Color, Image, Audio, AudioFFT, Event } type;
+    float default_val = 0, min = 0, max = 1;
+    std::vector<std::string> values;  // for Long (enum labels)
+};
 
-**Deliverable:** A `IsfPreprocessor` C++ class with `preprocess(const std::string& isf_source) -> std::pair<IsfManifest, std::string>`. Companion unit tests covering the manifest parser and each macro rewrite.
+struct IsfPass {
+    std::string target;
+    bool persistent = false, is_float = false;
+    int width = 0, height = 0;  // 0 = inherit output size
+};
+
+struct IsfManifest {
+    std::string name, description, credit, vsn;
+    std::vector<IsfInput> inputs;
+    std::vector<IsfPass>  passes;   // empty = single pass
+    std::vector<std::string> categories;
+};
+```
+
+**`IsfPreprocessor::preprocess()` steps (in order):**
+1. Extract and strip `/*{ ... }*/` from source → parse with `nlohmann::json` → populate `IsfManifest`.
+2. Run C preprocessor expansion via `mcpp` (FetchContent static lib, added to `cmake/dependencies.cmake`). Handles `#ifdef`/`#define`/`#include` that naga won't expand.
+3. Inject GLSL built-in preamble (prepended before user source):
+   ```glsl
+   uniform vec2  RENDERSIZE;
+   uniform float TIME, TIMEDELTA;
+   uniform vec4  DATE;
+   uniform int   FRAMEINDEX, PASSINDEX;
+   in vec2 isf_FragNormCoord;
+   ```
+4. Inject `IMG_*` macro rewrites as GLSL helper functions:
+   ```glsl
+   #define IMG_SIZE(img)             vec2(textureSize(img, 0))
+   #define IMG_PIXEL(img, p)         texelFetch(img, ivec2(p), 0)
+   #define IMG_NORM_PIXEL(img, p)    texture(img, p)
+   #define IMG_THIS_PIXEL(img)       texelFetch(img, ivec2(gl_FragCoord.xy), 0)
+   #define IMG_THIS_NORM_PIXEL(img)  texture(img, isf_FragNormCoord)
+   ```
+5. **Y-flip decision:** flip on output — the WGSL post-processor (Stage 4) inverts Y on `isf_FragNormCoord` rather than touching GLSL semantics.
+
+**Deliverable:** `IsfPreprocessor` C++ class with `preprocess(const std::string& isf_source) -> std::pair<IsfManifest, std::string>`. Companion unit tests in `tests/isf/preprocessor_test.cpp` covering manifest parser and each macro rewrite.
 
 **Validation:** Twenty representative ISF shaders (chosen during Stage 1) preprocess without error and the output is syntactically valid GLSL (verified by running them through naga even if translation later fails). Manifest fields round-trip.
 
@@ -79,14 +220,29 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 **Objective:** Naga output is valid WGSL but won't have the sampler declarations and bind group layouts that Vivid's pipeline expects. Patch it.
 
-**Work items:**
-- Inspect naga's emitted bind groups for textures. Inject corresponding `sampler` declarations bound to the matching group/binding indices.
-- Inject Vivid's standard uniform block layout for `RENDERSIZE`, `TIME`, etc. — these need to match the layout our Dawn pipeline binds.
-- Add a `// generated from ISF — do not edit` header for traceability.
+**C++ uniform struct** (must match what gets uploaded each frame):
+```cpp
+struct IsfUniforms {
+    float resolution[2];
+    float time;
+    float timedelta;
+    uint32_t frameindex;
+    uint32_t passindex;
+    float _pad[2];
+};
+```
 
-**Deliverable:** A `wgsl_post_process(const std::string& wgsl, const IsfManifest& manifest) -> std::string` function.
+**`wgsl_patch(wgsl, manifest)` steps** (`operators/gpu/isf_filter/wgsl_patch.h/.cpp`):
+1. Scan naga-emitted bind groups for texture bindings → inject paired `var<..> sampler_N: sampler;` declarations at matching group/binding indices.
+2. Replace naga's generated uniform block for ISF built-ins with Vivid's `IsfUniforms` layout at `@group(0) @binding(0)`.
+3. Apply Y-flip: wrap the `isf_FragNormCoord` computation to invert Y.
+4. Prepend `// generated from ISF — do not edit` header.
+
+**Deliverable:** `wgsl_patch(const std::string& wgsl, const IsfManifest& manifest) -> std::string`.
 
 **Validation:** Translated + patched WGSL compiles cleanly when handed to Dawn's `wgpuDeviceCreateShaderModule`. Verified for the same twenty-shader corpus from Stage 3.
+
+> **Risk:** If bind-group patching proves too brittle against naga's output, add a second pass that rewrites texture declarations on the GLSL *before* naga (more predictable surface to patch).
 
 ---
 
@@ -94,13 +250,74 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 **Objective:** A new operator type that loads `.fs` files, runs the translation pipeline, and renders.
 
-**Work items:**
-- Add `IsfOperator` to `operators/`. Constructor takes a path to a `.fs` file.
-- On load: read file → preprocess → translate → post-process → compile WGSL → cache compiled module.
-- Map manifest INPUTS to Vivid Control input ports. `float`/`bool`/`long`/`point2D`/`color`/`event` → Control. `image` → GPU texture input port.
-- Map `audio` and `audioFFT` input types to texture inputs that expect a 1D texture from an audio analysis operator. Document the expected format in `docs/ISF-SUPPORT.md`.
-- Per-frame execution: bind uniforms (RENDERSIZE from current render target, TIME from clock, etc.), bind input textures, bind sampler, dispatch.
-- Hook into the existing filter hot-reload watcher so editing the source file re-runs the pipeline.
+**Class skeleton** (`operators/gpu/isf_filter/isf_filter.h/.cpp`):
+```cpp
+struct IsfFilter : vivid::OperatorBase, vivid::GpuProcessable {
+    static constexpr const char* kName = "IsfFilter";
+    static constexpr bool kTimeDependent = true;
+
+    vivid::Param<vivid::FilePath> file{"file"};
+
+    void collect_params(std::vector<vivid::ParamBase*>& out) override;
+    void collect_ports(std::vector<VividPortDescriptor>& out) override;
+    void process_gpu(const VividGpuContext* ctx) override;
+
+private:
+    std::string  loaded_path_;
+    IsfManifest  manifest_;
+    std::string  error_msg_;
+
+    struct PassResources {
+        gpu::PipelineHandle   pipeline;
+        gpu::ShaderHandle     shader;
+        gpu::TextureHandle    target;       // null for final pass
+        gpu::TextureViewHandle target_view;
+    };
+    std::vector<PassResources> passes_;
+    gpu::BufferHandle          uniform_buf_;
+    gpu::BindGroupHandle       bind_group_;
+
+    // Hot-reload (mtime poll every 30 frames — same pattern as WgslFilterBase)
+    time_t last_mtime_ = 0;
+    int    reload_counter_ = 0;
+
+    bool load_isf(const VividGpuContext* ctx, const std::string& path);
+    void check_hot_reload(const VividGpuContext* ctx);
+};
+```
+
+**`collect_ports()` — dynamic port layout from manifest:**
+- Each `IsfInput` of type `Image`: add `VIVID_PORT_TEXTURE` input named after `input.name`.
+- Each `IsfInput` of type `Audio`/`AudioFFT`: add `VIVID_PORT_TEXTURE` input (1D texture from audio analysis operator — canonical format: 512-sample mono `r16float`).
+- Each remaining `IsfInput` (Float/Bool/Long/Point2D/Color/Event): expose as a `Param<float>` (or typed param) and `VIVID_PORT_SCALAR` Control input.
+- Always: one `VIVID_PORT_TEXTURE` output.
+
+**`process_gpu()` logic:**
+1. If `file.str_value != loaded_path_`: call `load_isf()`.
+2. Hot-reload check (every 30 frames: `stat()` the `.fs` for mtime change → re-run full pipeline if changed; keep old pipeline on failure).
+3. Fill and upload `IsfUniforms` via `wgpuQueueWriteBuffer`.
+4. For each pass: bind inputs, call `vivid::gpu::run_pass()`.
+5. On error: set `error_msg_`, skip render.
+
+**CMake registration** (in `cmake/operators.cmake`):
+```cmake
+add_vivid_operator(isf_filter
+    operators/gpu/isf_filter/isf_filter.cpp
+    operators/gpu/isf_filter/isf_preprocessor.cpp
+    operators/gpu/isf_filter/wgsl_patch.cpp
+    CODEGEN
+    EXTRA_LIBS webgpu vivid_shader_xlate nlohmann_json::nlohmann_json
+    FACTORY_PRESETS operators/gpu/isf_filter/factory_presets.json)
+```
+
+**File-drop registration:**
+```cpp
+static const char* kIsfExts[] = {".fs", ".frag"};
+static const VividFileDropHandlerDescriptor kFileDrops[] = {{
+    "Load ISF Shader", kIsfExts, 2, "file", 100, "Import ISF .fs shader"
+}};
+VIVID_FILE_DROP(kFileDrops)
+```
 
 **Deliverable:** The `ISF` operator appears in the operator menu. Loading any of the twenty test shaders produces visible, correct output.
 
@@ -113,14 +330,14 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 **Objective:** ISF shaders with `PASSES` declared in their manifest render correctly.
 
 **Work items:**
-- Parse `PASSES` from the manifest, including per-pass `TARGET`, `PERSISTENT`, and `FLOAT` flags.
-- Allocate intermediate render targets. `PERSISTENT` means the texture survives between frames (maps onto Vivid's existing feedback machinery). `FLOAT` means use a float texture format.
-- Adjust the per-frame execution to run each pass in order, binding the previous pass's output as input where the shader references it by `TARGET` name.
-- Update `PASSINDEX` uniform per pass.
+- Parse `PASSES` from the manifest (already in `IsfManifest::passes`).
+- Allocate intermediate render targets in `load_isf()`: one `WGPUTexture` per pass with a non-empty `target` name. `PERSISTENT` textures survive between frames (only release/reallocate on resolution change). `FLOAT` → use a float texture format.
+- Per-frame: iterate `passes_` in order; for pass N, bind pass N-1's output (or the initial input texture) as the `vInput` sampler.
+- Update `IsfUniforms::passindex` before each `run_pass()` call.
 
 **Deliverable:** Multi-pass ISF shaders (e.g., bloom, feedback effects) render correctly.
 
-**Validation:** A curated set of ~5 known multi-pass shaders from isf.video render correctly. Visual diff against reference.
+**Validation:** ~5 known multi-pass shaders from isf.video render correctly. Visual diff against reference.
 
 ---
 
@@ -129,11 +346,12 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 **Objective:** Two commands that make ISF authoring and vetting workflow-friendly.
 
 **Work items:**
-- `vivid isf-check <path>` — runs preprocess + translate + post-process, reports success or human-readable error. Exit code reflects status. Don't actually render.
-- `vivid isf-import <path> [--name <name>]` — runs the full pipeline and writes the resulting WGSL + a small Vivid-flavored JSON manifest into the user's local ISF library directory (TBD location, suggest `~/Library/Application Support/Vivid/isf/` on macOS).
-- Add MCP tool wrappers for both so they're scriptable from agents.
+- `vivid isf-check <path>` — runs preprocess + translate + post-process, reports success or human-readable error. Exit code reflects status. Doesn't render.
+- `vivid isf-import <path> [--name <name>]` — runs full pipeline, writes resulting WGSL + Vivid-flavored JSON manifest to `~/Library/Application Support/Vivid/isf/` on macOS.
+- Add MCP tool wrappers for both (`isf_check`, `isf_import`) in `src/cli/mcp_server.cpp` following the existing handler pattern.
+- Add ISF section to `docs/GETTING-STARTED.md`.
 
-**Deliverable:** Both commands work; both are documented in `docs/GETTING-STARTED.md` under a new ISF section.
+**Deliverable:** Both commands work and are documented.
 
 **Validation:** Run `vivid isf-check` against the full twenty-shader corpus and confirm output matches expectations (passes pass, fails fail with informative messages).
 
@@ -145,9 +363,11 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 **Work items:**
 - Vendor ~25 ISF shaders into `tests/isf/corpus/` (check licenses; isf.video shaders are mostly MIT/CC0 but verify per-shader).
-- Build a test harness that for each shader: preprocesses, translates, post-processes, compiles, renders one frame at fixed inputs, compares against a reference PNG snapshot.
+- Build a test harness (`tests/isf/corpus_test.cpp`) that for each shader: preprocesses, translates, post-processes, compiles, renders one frame at fixed inputs, compares against a reference PNG snapshot in `tests/isf/references/`.
+- Register as **test partition 35** in `cmake/tests.cmake` (slots between the existing 30 and 40 partitions).
 - Add to GitHub Actions smoke workflow.
-- Document how to add a new shader to the corpus and how to regenerate reference renders.
+- Add a `vivid isf-regen-refs` CLI subcommand to regenerate reference renders.
+- Document how to add a new shader to the corpus (two-command process).
 
 **Deliverable:** CI runs the corpus on every PR. Adding a new test shader is a documented two-command process.
 
@@ -163,7 +383,7 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 - Curate a pack of ~100-200 high-quality ISF shaders that translate cleanly.
 - Pre-translate them all offline. The shipped artifact is WGSL + Vivid JSON manifests, no `.fs` files.
 - Publish as `vivid-isf` package using the existing package template.
-- README explains: "Install this pack and you get N shaders. To import your own `.fs` files at runtime, you also need the Rust toolchain installed (we call out to it via `vivid isf-import`)."
+- README explains: "Install this pack and you get N shaders. To import your own `.fs` files at runtime, you also need the Rust toolchain installed."
 
 **Deliverable:** `vivid-isf` package published, installable via `vivid link`.
 
@@ -173,11 +393,14 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 
 ## Risks & Open Questions
 
-- **Naga GLSL frontend coverage.** Before committing to naga, throw the twenty Stage-1 shaders directly at `naga::front::glsl::Frontend` with no preprocessing and see how many parse. If fewer than half do, the pre-processor will need to be much more aggressive, or we should evaluate the glslang→SPIR-V→Tint path as a fallback. **Action: spike this in Stage 1, before Stage 2.**
-- **Texture binding model mismatch.** WebGPU's explicit sampler binding versus ISF/GL's implicit one is the biggest source of fiddliness. Stage 4 is where this gets resolved; if it turns out to be more complex than expected, may need a redesign of how we emit bind groups.
-- **Color space.** ISF doesn't specify a color space; most shaders assume sRGB-ish. Vivid's pipeline color space needs to be confirmed and documented. May need a `vivid-isf` standard preamble that does sRGB↔linear conversion if there's a mismatch.
-- **`audio` and `audioFFT` semantics.** ISF's spec for these is loose. Need to pick a canonical sample count, sample rate, and texture format for audio buffers and document it. This becomes part of the Vivid–ISF contract.
-- **Performance.** Some isf.video shaders are written without performance in mind (lots of branching, expensive loops). Not our problem in v1 but worth flagging in the import process — `vivid isf-check` could warn on obvious perf antipatterns.
+| Risk | Mitigation |
+|------|-----------|
+| Naga GLSL coverage <50% | Spike this in Stage 1 before Stage 2 locks. If coverage is low, evaluate glslang→SPIR-V→Tint as fallback. |
+| Sampler binding model mismatch | Stage 4 is the firewall. If bind-group patching is too brittle, add a pre-naga texture declaration rewriter on the GLSL side (more predictable surface). |
+| Color space drift | Decide once in Stage 3: ISF assumes sRGB-ish. Insert `pow(color, vec4(2.2))` in preamble if there's a mismatch with Vivid's linear pipeline. Document in `docs/ISF-SUPPORT.md`. |
+| `audio`/`audioFFT` semantics | Define canonical format (512-sample mono `r16float` 1D texture) in Stage 5; document in `docs/ISF-SUPPORT.md`. Vivid's audio analysis operators must emit this format. |
+| Rust build time in CI | Cache `~/.cargo` and `target/` in CI. ~60s uncached, ~5s cached. |
+| Performance antipatterns | Flag in `vivid isf-check` output; not our problem to fix in v1. |
 
 ## References
 
@@ -185,8 +408,11 @@ Each stage has an objective, work items, deliverable, and validation criteria. D
 - Shader library: <https://editor.isf.video/shaders>
 - naga: <https://github.com/gfx-rs/wgpu/tree/trunk/naga>
 - Corrosion (CMake↔Cargo): <https://github.com/corrosion-rs/corrosion>
-- Existing Vivid filter framework: see `filters/` in the vivid repo
-- Existing operator contract: see `docs/ARCHITECTURE.md` in the vivid repo
+- Existing Vivid filter framework: `filters/` + `src/operator_api/wgsl_filter.h`
+- Existing operator contract: `docs/ARCHITECTURE.md`
+- File-based operator reference: `operators/gpu/texture_loader/texture_loader.cpp`
+- GPU RAII handles: `src/operator_api/gpu_operator.h`
+- GPU helpers: `src/operator_api/gpu_common.h`
 - Package template (for Stage 9): <https://github.com/seethroughlab/vivid-package-template>
 
 ## Estimated Effort
