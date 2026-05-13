@@ -1,0 +1,100 @@
+{
+    "schema_version": 1,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "Glitch1": {
+            "type": "Glitch",
+            "pkg": {
+                "name": "vivid-glitch",
+                "version": "2.0.0"
+            },
+            "params": {
+                "tape_chance": 0.052575152,
+                "stutter_chance": 0.0,
+                "mix": 0.7296408,
+                "scratch_chance": 0.14100714,
+                "shift_chance": 0.0,
+                "reverse_chance": 0.42173702,
+                "repeat_chance": 0.19648013
+            },
+            "layout": {
+                "x": 736.16016,
+                "y": 240.89844
+            }
+        },
+        "audio_out": {
+            "type": "audio_out",
+            "layout": {
+                "x": 979.8047,
+                "y": 286.64062
+            }
+        },
+        "clock": {
+            "type": "Clock",
+            "params": {
+                "sync_division": 1.0,
+                "rate_mode": 1.0
+            },
+            "layout": {
+                "x": 416.0078,
+                "y": 559.6133
+            }
+        },
+        "midi": {
+            "type": "MidiFilePlayer",
+            "params": {
+                "playing": 1.0,
+                "loop": 1.0,
+                "file": "/Users/jeff/Developer/vivid/assets/sweelinck.mid"
+            },
+            "layout": {
+                "x": 141.33984,
+                "y": 319.4922
+            }
+        },
+        "synth": {
+            "type": "Vst3Instrument",
+            "pkg": {
+                "name": "vivid-vst3",
+                "version": "1.0.0"
+            },
+            "params": {
+                "plugin_name": "Serum2"
+            },
+            "layout": {
+                "x": 429.5625,
+                "y": 284.6211
+            }
+        },
+        "video_out": {
+            "type": "video_out",
+            "layout": {
+                "x": 728.4531,
+                "y": 579.3594
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "midi/notes_out",
+            "to": "synth/notes_in"
+        },
+        {
+            "from": "synth/output",
+            "to": "Glitch1/input"
+        },
+        {
+            "from": "Glitch1/output",
+            "to": "audio_out/input"
+        },
+        {
+            "from": "clock/beat_phase",
+            "to": "Glitch1/phase"
+        }
+    ],
+    "viewport": {
+        "pan_x": -115.328125,
+        "pan_y": -4.6132812,
+        "zoom": 1.0
+    }
+}

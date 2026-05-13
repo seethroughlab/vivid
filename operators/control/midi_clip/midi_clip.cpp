@@ -19,10 +19,18 @@ VIVID_EDITOR(MidiClip)
 
 static const char* kMidiClipDropExts[] = {".mid", ".midi"};
 static const VividFileDropHandlerDescriptor kMidiClipFileDrops[] = {{
-    "Import into MIDI Clip",
+    "Play/Edit MIDI Clip",
     kMidiClipDropExts, 2,
-    "midi_import",
-    50,  // secondary to MidiFilePlayer (priority 100)
-    "Create a MidiClip node and import notes from the dropped MIDI file.",
+    "file",
+    150,
+    "Create a MidiClip node from a dropped MIDI file.",
 }};
 VIVID_FILE_DROP(kMidiClipFileDrops)
+
+extern "C" void vivid_op_inject_midi(void* instance, const uint8_t* bytes,
+                                      uint32_t count) {
+    if (!instance || !bytes || count == 0) return;
+    auto* op = reinterpret_cast<MidiClip*>(instance);
+    std::vector<unsigned char> msg(bytes, bytes + count);
+    op->inject_events({std::move(msg)});
+}

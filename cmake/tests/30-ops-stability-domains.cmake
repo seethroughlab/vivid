@@ -512,7 +512,7 @@ add_executable(test_file_drop_registry
 )
 target_include_directories(test_file_drop_registry PRIVATE src tests)
 target_link_libraries(test_file_drop_registry PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_file_player)
+add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_file_player midi_clip)
 add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_file_parser
@@ -531,6 +531,17 @@ add_executable(test_midi_file_player
 target_include_directories(test_midi_file_player PRIVATE src tests operators operators/shared/sequencer)
 target_link_libraries(test_midi_file_player PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
 add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+add_executable(test_midi_clip
+    tests/audio/test_midi_clip.cpp
+    operators/control/midi_clip/midi_clip_editor.cpp
+    operators/control/midi_clip/midi_clip_editor_shared.cpp
+    src/common/midi_file.cpp
+)
+target_include_directories(test_midi_clip PRIVATE src tests operators operators/shared/sequencer)
+target_compile_definitions(test_midi_clip PRIVATE "VIVID_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
+target_link_libraries(test_midi_clip PRIVATE vivid_runtime_testlib vivid_operator_api midifile nlohmann_json::nlohmann_json)
+add_test(NAME test_midi_clip COMMAND test_midi_clip WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_runtime_stress
     tests/integration/test_runtime_stress.cpp

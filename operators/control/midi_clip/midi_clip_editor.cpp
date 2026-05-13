@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <map>
+#include <filesystem>
 #include <set>
 
 // ---------------------------------------------------------------------------
@@ -85,14 +85,52 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     const char* pat_str = (ctx->string_param_count > 0 && ctx->string_param_values)
         ? ctx->string_param_values[0] : "[]";
     if (!pat_str) pat_str = "[]";
-    if (std::string(pat_str) != editor_submitted_str_) {
+    const std::string pat_value = pat_str;
+    const bool file_backed = !file.str_value.empty() && (pat_value.empty() || pat_value == "[]");
+    if (!file_backed && pat_value != editor_submitted_str_) {
         editor_submitted_str_ = pat_str;
         midi_clip::parse_pattern(editor_submitted_str_, editor_notes_);
         note_selected_.assign(editor_notes_.size(), false);
     }
 
+    if (file_backed) {
+        const uint64_t generation = sequence_generation_.load(std::memory_order_acquire);
+        const float file_bpm = std::max(1.0f, audio_bpm_.load(std::memory_order_relaxed));
+        if (generation != editor_file_generation_ ||
+            std::fabs(file_bpm - editor_file_bpm_) > 0.001f) {
+            editor_file_generation_ = generation;
+            editor_file_bpm_ = file_bpm;
+            editor_notes_.clear();
+            note_selected_.clear();
+            SequenceData* seq = sequence_.load(std::memory_order_acquire);
+            const double spb = 60.0 / static_cast<double>(file_bpm);
+            if (seq && spb > 0.0) {
+                editor_notes_.reserve(seq->sequence.note_spans.size());
+                for (const auto& span : seq->sequence.note_spans) {
+                    midi_clip::ParsedNote n{};
+                    n.pitch = span.pitch;
+                    n.start_beat = span.start_seconds / spb;
+                    n.duration_beats = std::max(0.01, span.duration_seconds / spb);
+                    n.velocity = std::clamp(static_cast<float>(span.velocity) / 127.0f,
+                                            0.01f, 1.0f);
+                    editor_notes_.push_back(n);
+                }
+                note_selected_.assign(editor_notes_.size(), false);
+                if (seq->sequence.duration_seconds > 0.0) {
+                    const double total_beats = seq->sequence.duration_seconds / spb;
+                    const double bars = std::max(0.25, std::ceil(total_beats / 4.0));
+                    length_bars.value = static_cast<float>(std::min(1024.0, bars));
+                    if (editor_zoom_beats_ <= 0.0f && total_beats > 64.0)
+                        editor_zoom_beats_ = 64.0f;
+                }
+            }
+        }
+    }
+
     const float phase    = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
-    const float lb_val   = (ctx->param_count > 0) ? ctx->param_values[0] : 2.0f;
+    const float lb_val   = file_backed
+        ? std::max(length_bars.value, 0.25f)
+        : ((ctx->param_count > 0) ? ctx->param_values[0] : 2.0f);
     const int   grid_idx = (ctx->param_count > 1) ? static_cast<int>(ctx->param_values[1]) : 1;
     // Read loop region from struct members (already synced before draw_editor is called).
     const float loop_start_v = loop_start_beat.value;
@@ -109,76 +147,18 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     const double editor_loop_origin = has_loop_region ? ls_param : 0.0;
     const double editor_loop_len    = has_loop_region ? (le_param - ls_param) : pat_len;
 
-    // --- Consume pending MIDI import ---
+    // --- Promote legacy midi_import into file-backed playback. This is the
+    // only work kept in draw_editor for old graphs: no parsing or serialization.
     if (has_pending_import_) {
         has_pending_import_ = false;
-        float bpm = audio_bpm_.load(std::memory_order_relaxed);
-        if (bpm < 1.0f) bpm = 120.0f;
-        const double spb = 60.0 / bpm;
-
-        auto seq = vivid::midi_file::parse_file(pending_import_path_);
-        if (seq.ok() && !seq.events.empty()) {
-            // Auto-size the pattern to fit the imported file (round up to whole bars)
-            const double total_beats  = seq.duration_seconds / spb;
-            const double import_bars  = std::ceil(total_beats / static_cast<double>(bpb));
-            const double import_pat_len = import_bars * static_cast<double>(bpb);
-            if (ctx->commands.set_param)
-                ctx->commands.set_param(ctx->commands.opaque, "length_bars",
-                                        static_cast<float>(import_bars));
-
-            editor_notes_.clear();
-            note_selected_.clear();
-            struct Active { double on_time; float velocity; };
-            std::map<uint8_t, std::vector<Active>> active;
-            for (const auto& ev : seq.events) {
-                uint8_t kind   = ev.status & 0xF0u;
-                uint8_t p      = ev.data1;
-                bool    is_on  = (kind == 0x90u && ev.data2 > 0);
-                bool    is_off = (kind == 0x80u || (kind == 0x90u && ev.data2 == 0));
-                if (is_on) {
-                    active[p].push_back({ev.time_seconds, ev.data2 / 127.0f});
-                } else if (is_off && !active[p].empty()) {
-                    auto& a = active[p].front();
-                    double s = a.on_time / spb;
-                    double d = (ev.time_seconds - a.on_time) / spb;
-                    if (s < import_pat_len && d > 0.0) {
-                        midi_clip::ParsedNote n{};
-                        n.pitch = p; n.start_beat = s;
-                        n.duration_beats = std::min(d, import_pat_len - s);
-                        n.velocity = std::clamp(a.velocity, 0.01f, 1.0f);
-                        editor_notes_.push_back(n);
-                    }
-                    active[p].erase(active[p].begin());
-                }
-            }
-            for (auto& [p, stack] : active) {
-                for (auto& a : stack) {
-                    double s = a.on_time / spb;
-                    if (s < import_pat_len) {
-                        midi_clip::ParsedNote n{};
-                        n.pitch = p; n.start_beat = s;
-                        n.duration_beats = std::min(1.0, import_pat_len - s);
-                        n.velocity = std::clamp(a.velocity, 0.01f, 1.0f);
-                        editor_notes_.push_back(n);
-                    }
-                }
-            }
-            std::sort(editor_notes_.begin(), editor_notes_.end(),
-                [](const auto& a, const auto& b) { return a.start_beat < b.start_beat; });
-            note_selected_.assign(editor_notes_.size(), false);
-            commit_editor_notes(ctx);
-            char msg[64];
-            std::snprintf(msg, sizeof(msg), "Imported %zu notes",
-                static_cast<size_t>(editor_notes_.size()));
-            import_status_       = msg;
-            import_status_until_ = ctx->time + 4.0;
-        } else {
-            import_status_       = seq.error.empty() ? "No notes found" : seq.error;
-            import_status_until_ = ctx->time + 4.0;
-        }
-        if (ctx->commands.set_string_param)
+        if (ctx->commands.set_string_param) {
+            ctx->commands.set_string_param(ctx->commands.opaque, "file",
+                                           pending_import_path_.c_str());
             ctx->commands.set_string_param(ctx->commands.opaque, "midi_import", "");
-        last_import_path_ = "";
+        }
+        file.str_value = pending_import_path_;
+        import_status_ = "Queued MIDI file";
+        import_status_until_ = ctx->time + 2.0;
     }
 
     // --- Layout ---
@@ -927,7 +907,26 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         // Status / hint (right-aligned)
         float hint_x = sw - 8.0f;
-        if (ctx->time < import_status_until_ && !import_status_.empty()) {
+        if (file_backed) {
+            std::string label;
+            if (!file_error_.empty()) {
+                label = file_error_;
+            } else if (!file.str_value.empty()) {
+                std::string name = std::filesystem::path(file.str_value).filename().string();
+                char meta[96];
+                std::snprintf(meta, sizeof(meta), "%s  %.1fs  %zu notes",
+                              name.c_str(), file_duration_seconds_, file_note_count_);
+                label = meta;
+            }
+            if (!label.empty()) {
+                hint_x -= d.text_width(o, label.c_str(), 0.85f);
+                d.draw_text(o, hint_x, 11.0f, label.c_str(),
+                    file_error_.empty()
+                        ? VividColor{0.5f, 0.8f, 1.0f, 0.9f}
+                        : VividColor{1.0f, 0.45f, 0.35f, 0.9f},
+                    0.85f);
+            }
+        } else if (ctx->time < import_status_until_ && !import_status_.empty()) {
             float fade = static_cast<float>(
                 std::min(1.0, (import_status_until_ - ctx->time) / 0.5));
             hint_x -= d.text_width(o, import_status_.c_str(), 0.85f);
