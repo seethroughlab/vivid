@@ -11,6 +11,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -34,6 +35,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<bool> loop {"loop", false};
     vivid::Param<int> transpose {"transpose", 0, -48, 48};
     vivid::Param<float> velocity_scale {"velocity_scale", 1.0f, 0.0f, 4.0f};
+    vivid::Param<vivid::TextValue> playback_pos_ {"_playback_pos"};
 
     MidiFilePlayer() {
         vivid::semantic_shape(file, "path");
@@ -42,6 +44,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(loop, "Loop the MIDI file when it reaches the end");
         vivid::description(transpose, "Shift all notes up or down in semitones (-48 to +48)");
         vivid::description(velocity_scale, "Scale note velocities (1 = original, 0 = silent)");
+        vivid::display_hint(playback_pos_, VIVID_DISPLAY_HIDDEN);
     }
 
     ~MidiFilePlayer() override {
@@ -55,6 +58,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&loop);
         out.push_back(&transpose);
         out.push_back(&velocity_scale);
+        out.push_back(&playback_pos_);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -68,6 +72,15 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
 
     void main_thread_update(double /*time*/) override {
         refresh_sequence();
+        // Only update after the audio thread has started (audio_generation_atomic_ > 0).
+        // If we updated immediately, we'd overwrite the restored position with 0 before
+        // the audio thread's first block gets to read it.
+        if (audio_generation_atomic_.load(std::memory_order_relaxed) > 0) {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%.6f",
+                          double(transport_seconds_atomic_.load(std::memory_order_relaxed)));
+            playback_pos_.str_value = buf;
+        }
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -78,9 +91,27 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
         SequenceData* seq = sequence_.load(std::memory_order_acquire);
         const uint64_t generation = sequence_generation_.load(std::memory_order_acquire);
         if (generation != audio_generation_) {
+            // audio_generation_ == 0 means this is a brand-new instance.
+            // Restore the persisted position so graph recompiles don't restart playback.
+            bool is_new_instance = (audio_generation_ == 0);
             audio_generation_ = generation;
-            transport_seconds_ = 0.0;
-            next_event_index_ = 0;
+            // Signal to main_thread_update that the audio thread is now running,
+            // so it can safely start updating the persisted position param.
+            audio_generation_atomic_.store(audio_generation_, std::memory_order_relaxed);
+            if (is_new_instance && !playback_pos_.str_value.empty()) {
+                char* end = nullptr;
+                double pos = std::strtod(playback_pos_.str_value.c_str(), &end);
+                if (end != playback_pos_.str_value.c_str() && pos > 0.0) {
+                    transport_seconds_ = pos;
+                    seek_events_to(transport_seconds_, seq);
+                } else {
+                    transport_seconds_ = 0.0;
+                    next_event_index_ = 0;
+                }
+            } else {
+                transport_seconds_ = 0.0;
+                next_event_index_ = 0;
+            }
             stop_all_notes(0);
         }
 
@@ -143,6 +174,7 @@ struct MidiFilePlayer : vivid::OperatorBase, vivid::AudioProcessable {
                 break;
             }
         }
+        transport_seconds_atomic_.store(float(transport_seconds_), std::memory_order_relaxed);
     }
 
     // Test/debug seam — pushed via the optional vivid_op_inject_midi symbol
@@ -181,6 +213,8 @@ private:
     std::atomic<SequenceData*> sequence_{nullptr};
     SequenceData* deferred_delete_ = nullptr;
     std::atomic<uint64_t> sequence_generation_{1};
+    std::atomic<float> transport_seconds_atomic_{0.f};
+    std::atomic<uint64_t> audio_generation_atomic_{0};
     uint64_t audio_generation_ = 0;
     std::string last_path_;
 
@@ -194,6 +228,15 @@ private:
     int active_count_ = 0;
     double transport_seconds_ = 0.0;
     size_t next_event_index_ = 0;
+
+    void seek_events_to(double t, SequenceData* seq) {
+        next_event_index_ = 0;
+        if (!seq) return;
+        while (next_event_index_ < seq->sequence.events.size() &&
+               seq->sequence.events[next_event_index_].time_seconds < t) {
+            ++next_event_index_;
+        }
+    }
 
     void refresh_sequence() {
         delete deferred_delete_;
