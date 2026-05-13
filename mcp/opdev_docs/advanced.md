@@ -96,8 +96,9 @@ Type safety: `VIVID_DECLARE_CUSTOM_*_TYPE(...)` gives the type a stable namespac
 
 Inside the graph every note stream uses `VividNoteBuffer` — a buffer of
 timestamped per-note events keyed by stable `note_id`. External MIDI 1.0 and
-MPE live at the I/O boundary (`MidiInput`, `MidiFilePlayer`); inside the
-graph everything speaks this native protocol.
+MPE live at the I/O boundary (`MidiInput`, `MidiClip`, and legacy
+`MidiFilePlayer`); inside the graph everything speaks this native protocol.
+Prefer `MidiClip` for MIDI file playback.
 
 ```cpp
 #include "operator_api/note_types.h"
@@ -305,7 +306,7 @@ Reference operators for advanced patterns — study these when implementing spec
 | ChildOp\<T\> composites | `control/modulated_gain` |
 | Custom value ports | `control/step_counter`, `control/sample_hold` (use `VIVID_CUSTOM_VALUE_PORT`) |
 | Custom ref ports | `control/drum_kit`, `audio/sampler` (use `VIVID_CUSTOM_REF_PORT`) |
-| MIDI input | `control/midi_input`, `audio/midi_file_player` |
+| MIDI input | `control/midi_input`, `control/midi_clip` |
 | File drop params | `gpu/texture_loader`, `gpu/lut_apply`, `gpu/svg_render` |
 | Input events (mouse/keyboard) | `control/mouse`, `control/keyboard` |
 | Cross-cadence AV sync | `gpu/movie_file_in`, `audio/movie_file_audio` |
