@@ -160,7 +160,7 @@ if(APPLE)
 endif()
 
 target_include_directories(vivid PRIVATE src)
-target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl vst3_iids)
+target_link_libraries(vivid PRIVATE vivid_ui webgpu glfw glfw3webgpu vivid_operator_api vivid_source_syntax nlohmann_json::nlohmann_json dragonbox::dragonbox_to_chars miniaudio stb_truetype ixwebsocket rtmidi CLI11::CLI11 efsw tinyxml2 CURL::libcurl)
 if(VIVID_ENABLE_HIGHWAY)
     target_link_libraries(vivid PRIVATE hwy)
     target_compile_definitions(vivid PRIVATE

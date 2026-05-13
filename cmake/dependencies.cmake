@@ -323,32 +323,6 @@ FetchContent_MakeAvailable(clap)
 add_library(clap_headers INTERFACE)
 target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
 
-# --- VST3 SDK (pluginterfaces — header-only C++ interface definitions) ---
-# Using FetchContent_Populate to avoid running the SDK's own CMakeLists.txt
-# which would add hundreds of build targets we don't need.
-FetchContent_Declare(
-    vst3sdk
-    GIT_REPOSITORY https://github.com/steinbergmedia/vst3sdk.git
-    GIT_TAG        v3.7.14_build_55
-    GIT_SHALLOW    TRUE
-    GIT_SUBMODULES "base pluginterfaces"
-)
-FetchContent_GetProperties(vst3sdk)
-if(NOT vst3sdk_POPULATED)
-    FetchContent_Populate(vst3sdk)
-endif()
-add_library(vst3_headers INTERFACE)
-target_include_directories(vst3_headers INTERFACE ${vst3sdk_SOURCE_DIR})
-
-# Compile VST3 interface IID definitions into a static library.
-# These are required by any code that links against VST3 interfaces.
-add_library(vst3_iids STATIC
-    ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
-    ${vst3sdk_SOURCE_DIR}/base/source/baseiids.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/operators/shared/vst3_host/vst3_vstiids.cpp
-)
-target_link_libraries(vst3_iids PUBLIC vst3_headers)
-
 # --- tree-sitter-cpp grammar (C/C++/ObjC/ObjC++ parser) ---
 # Provides a pre-generated parser.c for C-family languages.
 FetchContent_Declare(

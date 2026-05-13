@@ -631,13 +631,6 @@ if(APPLE)
         "-framework CoreAudio"
         "-framework CoreFoundation")
 endif()
-add_vivid_operator(vst3_instrument operators/audio/vst3_instrument/vst3_instrument.cpp CODEGEN
-                   EXTRA_LIBS vst3_iids)
-if(APPLE)
-    target_sources(vst3_instrument PRIVATE operators/shared/vst3_host/vst3_plugin_window.mm)
-    target_link_libraries(vst3_instrument PRIVATE "-framework AppKit")
-endif()
-
 add_vivid_operator(midi_out       operators/audio/midi_out/midi_out.cpp       CODEGEN EXTRA_LIBS rtmidi)
 add_vivid_operator(midi_clock_out operators/audio/midi_clock_out/midi_clock_out.cpp CODEGEN EXTRA_LIBS rtmidi)
 
