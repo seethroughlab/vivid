@@ -97,6 +97,7 @@ int main() {
             if (seq.events.size() == 2) {
                 check(seq.events[0].status == 0x90, "format-0 first event is note-on");
                 check(seq.events[1].status == 0x80, "format-0 second event is note-off");
+                check(seq.note_spans.size() == 1, "format-0 yields one paired note span");
                 check_near(seq.events[1].time_seconds, 0.5, 1e-6,
                            "format-0 note-off time honors PPQ + tempo");
             }
@@ -211,6 +212,7 @@ int main() {
             check(seq.ok(), "sweelinck.mid parses successfully");
             if (seq.ok()) {
                 check(seq.events.size() > 100, "sweelinck.mid has substantial event count");
+                check(seq.note_spans.size() > 100, "sweelinck.mid has substantial note span count");
                 check(seq.duration_seconds > 1.0, "sweelinck.mid has nonzero duration");
                 // All events should be channel messages (0x80-0xEF).
                 bool all_channel = true;

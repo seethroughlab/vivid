@@ -93,6 +93,61 @@ Sequence parse_file(const std::string& path) {
     for (const auto& e : collected)
         seq.events.push_back({e.time_seconds, e.status, e.data1, e.data2});
 
+    struct ActiveNote {
+        double start_seconds = 0.0;
+        uint8_t velocity = 0;
+        uint32_t order = 0;
+    };
+    std::vector<ActiveNote> active[16][128];
+    uint32_t note_order = 0;
+    for (const auto& e : seq.events) {
+        const uint8_t kind = e.status & 0xF0u;
+        const uint8_t ch = e.status & 0x0Fu;
+        const uint8_t pitch = e.data1;
+        const bool is_on = (kind == 0x90u && e.data2 > 0);
+        const bool is_off = (kind == 0x80u || (kind == 0x90u && e.data2 == 0));
+        if (is_on) {
+            active[ch][pitch].push_back({e.time_seconds, e.data2, note_order++});
+        } else if (is_off && !active[ch][pitch].empty()) {
+            auto a = active[ch][pitch].front();
+            active[ch][pitch].erase(active[ch][pitch].begin());
+            const double duration = e.time_seconds - a.start_seconds;
+            if (duration > 0.0) {
+                seq.note_spans.push_back({
+                    a.start_seconds,
+                    duration,
+                    ch,
+                    pitch,
+                    a.velocity,
+                    a.order,
+                });
+            }
+        }
+    }
+
+    for (uint8_t ch = 0; ch < 16; ++ch) {
+        for (uint8_t pitch = 0; pitch < 128; ++pitch) {
+            for (const auto& a : active[ch][pitch]) {
+                const double duration = std::max(0.0, last_event_time - a.start_seconds);
+                if (duration > 0.0) {
+                    seq.note_spans.push_back({
+                        a.start_seconds,
+                        duration,
+                        ch,
+                        pitch,
+                        a.velocity,
+                        a.order,
+                    });
+                }
+            }
+        }
+    }
+    std::sort(seq.note_spans.begin(), seq.note_spans.end(),
+        [](const NoteSpan& a, const NoteSpan& b) {
+            if (a.start_seconds != b.start_seconds) return a.start_seconds < b.start_seconds;
+            return a.order < b.order;
+        });
+
     // Duration spans the full file including trailing meta events, matching the
     // old parser which tracked current_time across all events.
     seq.duration_seconds = last_event_time;
