@@ -15,7 +15,6 @@
 #include "pluginterfaces/vst/ivsthostapplication.h"
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
-#include "pluginterfaces/vst/ivstmidimapping2.h"
 
 #include <dlfcn.h>
 #include <cstring>
@@ -513,7 +512,6 @@ struct Vst3Handle {
     bool               controller_is_owned   = false; // created separately; we must terminate+release
     bool               processing            = false;  // setProcessing(true) called
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
-    IMidiMapping2*     midi_mapping2         = nullptr; // VST 3.8+; nullptr if plugin doesn't support it
 
     // Param info cache for macro mapping (normalized values; VST3 params are [0,1] natively)
     struct ParamEntry {
@@ -528,7 +526,6 @@ struct Vst3Handle {
     void destroy() {
         if (component) component->setActive(false);
 
-        if (midi_mapping2) { midi_mapping2->release(); midi_mapping2 = nullptr; }
         if (controller_is_owned && controller) controller->terminate();
         if (controller)  { controller->release();  controller  = nullptr; }
         if (processor)   { processor->release();   processor   = nullptr; }
@@ -987,11 +984,6 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     }
 
     vst3_cache_params(h);
-
-    // Query IMidiMapping2 (VST 3.8+). Stored for CC routing; nullptr if unsupported.
-    if (h->controller)
-        h->controller->queryInterface(IMidiMapping2::iid, (void**)&h->midi_mapping2);
-
     vst3_load_state(h, saved_state);
 
 #undef VST3_RELEASE_BUNDLE

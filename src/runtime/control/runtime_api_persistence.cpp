@@ -470,6 +470,24 @@ RuntimeAPI::capture_preserved_runtime_state_for_path(const std::string& path) co
     return state;
 }
 
+RuntimeAPI::PreservedRuntimeState RuntimeAPI::capture_current_runtime_state() const {
+    PreservedRuntimeState state;
+    if (!core_.compiled_graph()) return state;
+    state.active = true;
+    for (const auto& cn : core_.compiled_graph()->nodes) {
+        auto& saved_params = state.params[cn.node_id];
+        for (const auto& [name, idx] : cn.param_indices) {
+            saved_params[name] = cn.param_values[idx];
+            if (cn.param_lock_flags[idx] != PARAM_LOCK_NONE)
+                state.lock_flags[cn.node_id][name] = cn.param_lock_flags[idx];
+        }
+        auto& saved_strings = state.string_params[cn.node_id];
+        for (const auto& [name, idx] : cn.file_param_indices)
+            saved_strings[name] = cn.file_param_storage[idx];
+    }
+    return state;
+}
+
 void RuntimeAPI::apply_preserved_runtime_state(const PreservedRuntimeState& state) {
     if (!state.active || !core_.compiled_graph()) return;
     for (auto& cn : core_.compiled_graph()->nodes) {

@@ -887,12 +887,45 @@ extern "C" void vivid_process_gpu(void* instance,                             \
     _vivid_dispatch_gpu<ClassName>(instance, ctx);                            \
 }                                                                             \
 extern "C" void vivid_main_thread_update(void* instance, double time,         \
-                                         const char** file_param_values,      \
+                                         std::string** file_param_strings,    \
                                          uint32_t file_param_count) {         \
     auto* inst = static_cast<_VividInstance*>(instance);                      \
-    _vivid_sync_params(inst, nullptr,                                         \
-                       file_param_values, file_param_count);                  \
+    {                                                                          \
+        uint32_t file_idx = 0;                                                \
+        for (size_t i = 0; i < inst->param_ptrs.size(); ++i) {                \
+            auto* pb = inst->param_ptrs[i];                                   \
+            if (pb->type == VIVID_PARAM_FILE || pb->type == VIVID_PARAM_TEXT) { \
+                if (file_param_strings && file_idx < file_param_count &&      \
+                    file_param_strings[file_idx]) {                           \
+                    if (pb->type == VIVID_PARAM_FILE) {                       \
+                        static_cast<vivid::Param<vivid::FilePath>*>(pb)       \
+                            ->str_value = *file_param_strings[file_idx];      \
+                    } else {                                                   \
+                        static_cast<vivid::Param<vivid::TextValue>*>(pb)      \
+                            ->str_value = *file_param_strings[file_idx];      \
+                    }                                                          \
+                }                                                             \
+                ++file_idx;                                                   \
+            }                                                                 \
+        }                                                                     \
+    }                                                                         \
     inst->op.main_thread_update(time);                                        \
+    {                                                                          \
+        uint32_t file_idx = 0;                                                \
+        for (size_t i = 0; i < inst->param_ptrs.size(); ++i) {                \
+            auto* pb = inst->param_ptrs[i];                                   \
+            if (pb->type == VIVID_PARAM_FILE || pb->type == VIVID_PARAM_TEXT) { \
+                if (pb->type == VIVID_PARAM_TEXT &&                           \
+                    file_param_strings && file_idx < file_param_count &&      \
+                    file_param_strings[file_idx]) {                           \
+                    *file_param_strings[file_idx] =                           \
+                        static_cast<vivid::Param<vivid::TextValue>*>(pb)      \
+                            ->str_value;                                      \
+                }                                                             \
+                ++file_idx;                                                   \
+            }                                                                 \
+        }                                                                     \
+    }                                                                         \
 }                                                                             \
 extern "C" void vivid_prepare_instance_assets(                                \
     void* instance,                                                           \

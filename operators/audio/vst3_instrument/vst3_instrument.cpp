@@ -103,6 +103,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     // --- State ---
     std::string   last_name_;
+    std::string   last_applied_state_;   // plugin_state.str_value at last vst3_load_plugin call
     uint64_t      steady_sample_  = 0;
     uint32_t      sample_rate_    = 48000;
     bool          state_dirty_    = false;
@@ -180,6 +181,21 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         destroy_handle(dead,  false);
         destroy_handle(dead2, false);
 
+        // Apply state changes to the already-active handle without a full reload.
+        // Loading the plugin with saved state during vst3_load_plugin causes some plugins
+        // (e.g. Pigments) to crash: setState triggers a CFRunLoop source0 that fires
+        // before the plugin's DSP is initialized (before setProcessing(true)). Applying
+        // state here — after the first audio buffer — avoids that ordering hazard.
+        {
+            auto* act = active_.load(std::memory_order_acquire);
+            if (act && act->component &&
+                !plugin_state.str_value.empty() &&
+                plugin_state.str_value != last_applied_state_) {
+                vst3_load_state(act, plugin_state.str_value);
+                last_applied_state_ = plugin_state.str_value;
+            }
+        }
+
         reload_if_changed();
         update_macro_map();
         refresh_vst3_params_json();
@@ -216,16 +232,16 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             return;
         }
 
-        std::fprintf(stderr, "[Vst3Instrument] reload_if_changed: loading '%s' state_len=%zu\n",
-                     last_name_.c_str(), plugin_state.str_value.size());
-
+        // Load with empty state; saved state is applied to the active handle
+        // in main_thread_update after setProcessing(true) runs on the audio thread.
         Vst3Handle* h = vst3_load_plugin(
             pi->path.c_str(), pi->uid_hex.c_str(),
-            sample_rate_, plugin_state.str_value, &host_app_);
+            sample_rate_, "", &host_app_);
         if (!h) return;
 
         auto* old = pending_.exchange(h, std::memory_order_acq_rel);
         destroy_handle(old, false);
+        last_applied_state_ = "";  // will be set once state is applied via main_thread_update
         state_dirty_ = true;
     }
 
@@ -269,12 +285,9 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         if (!act || !act->component) return;
         std::string s = vst3_save_state(act);
         if (!s.empty()) {
-            bool changed = (s != plugin_state.str_value);
             plugin_state.str_value = std::move(s);
+            last_applied_state_ = plugin_state.str_value;
             state_dirty_ = false;
-            if (changed)
-                std::fprintf(stderr, "[Vst3Instrument] save_state: new len=%zu plugin=%s\n",
-                             plugin_state.str_value.size(), last_name_.c_str());
         }
     }
 

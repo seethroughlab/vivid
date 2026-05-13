@@ -430,8 +430,10 @@ bool adopt_prepared_graph(MainAppContext& ctx,
 
 bool adopt_prepared_runtime_build(MainAppContext& ctx,
                                   AsyncAddPreparedResult prepared) {
+    auto state = ctx.runtime_api.capture_current_runtime_state();
     if (!adopt_prepared_graph(ctx, std::move(prepared.graph), std::move(prepared.prepared), false))
         return false;
+    ctx.runtime_api.apply_preserved_runtime_state(state);
     ctx.runtime_api.notify_external_graph_mutation();
     return true;
 }

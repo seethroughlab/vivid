@@ -619,28 +619,8 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
                     saved_locks[cn.node_id][name] = cn.param_lock_flags[idx];
             }
             auto& ssp = saved_string_params[cn.node_id];
-            for (const auto& [name, idx] : cn.file_param_indices) {
+            for (const auto& [name, idx] : cn.file_param_indices)
                 ssp[name] = cn.file_param_storage[idx];
-                if (name == "plugin_state" && !cn.file_param_storage[idx].empty())
-                    std::fprintf(stderr, "[apply_pending] saving %s/plugin_state len=%zu\n",
-                                 cn.node_id.c_str(), cn.file_param_storage[idx].size());
-            }
-        }
-    }
-
-    // Propagate operator TEXT-writeback values back into the Graph model before
-    // core_.build() so that warm_up_instance_assets() / prepare_instance_assets()
-    // gets the full set of string params (including operator-internal ones like
-    // plugin_state that are never set via set_string_param but are written back
-    // each frame via vivid_main_thread_update). Without this, a plugin like
-    // Vst3Instrument loads with defaults because plugin_state isn't in
-    // ndef.string_params even though it was captured in saved_string_params above.
-    for (const auto& [node_id, str_map] : saved_string_params) {
-        NodeDef* ndef = graph_.find_node(node_id);
-        if (!ndef) continue;
-        for (const auto& [pname, pval] : str_map) {
-            if (!pval.empty())
-                ndef->string_params[pname] = pval;
         }
     }
 
@@ -682,9 +662,6 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
                 if (fi != cn.file_param_indices.end()) {
                     cn.file_param_storage[fi->second] = pval;
                     cn.file_param_ptrs[fi->second] = cn.file_param_storage[fi->second].c_str();
-                    if (pname == "plugin_state" && !pval.empty())
-                        std::fprintf(stderr, "[apply_pending] restored %s/plugin_state len=%zu\n",
-                                     cn.node_id.c_str(), pval.size());
                 }
             }
         }

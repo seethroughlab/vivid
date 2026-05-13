@@ -228,6 +228,7 @@ public:
     void notify_external_graph_mutation();
     void finalize_external_graph_load();
     PreservedRuntimeState capture_preserved_runtime_state_for_path(const std::string& path) const;
+    PreservedRuntimeState capture_current_runtime_state() const;
     void apply_preserved_runtime_state(const PreservedRuntimeState& state);
     bool consume_preserve_undo_history_reload() {
         bool preserve = preserve_undo_history_on_reload_;
