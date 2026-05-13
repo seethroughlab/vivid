@@ -472,11 +472,12 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     ctx.string_param_values = string_ptrs.empty() ? nullptr : string_ptrs.data();
     ctx.string_param_count = static_cast<uint32_t>(string_ptrs.size());
 
-    // Mouse input — translate to inspector-relative coordinates
-    ctx.mouse.x = mouse_.x - px;
-    ctx.mouse.y = mouse_.y - py;
-    ctx.mouse.prev_x = mouse_.prev_x - px;
-    ctx.mouse.prev_y = mouse_.prev_y - py;
+    // Mouse input — absolute screen coordinates (operators draw at absolute positions,
+    // so hit tests must use the same coordinate space)
+    ctx.mouse.x = mouse_.x;
+    ctx.mouse.y = mouse_.y;
+    ctx.mouse.prev_x = mouse_.prev_x;
+    ctx.mouse.prev_y = mouse_.prev_y;
     ctx.mouse.left_down = mouse_.left_down ? 1 : 0;
     ctx.mouse.left_clicked = inspector_.insp_mouse_left_clicked ? 1 : 0;
     ctx.mouse.left_released = inspector_.insp_mouse_left_released ? 1 : 0;

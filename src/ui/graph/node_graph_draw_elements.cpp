@@ -237,11 +237,13 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
     // Top accent bar
     tr.draw_rect(px, py, panel_w, 2, style_.accent[0], style_.accent[1], style_.accent[2]);
 
-    // Filter text
+    // Filter text (only in Operators mode — FileDrop has no filter)
     float tx = px + 8;
     float ty = py + 6;
-    std::string display_filter = chooser_filter_ + "_";
-    tr.draw_text(tx, ty, display_filter.c_str(), 1.0f, 1.0f, 1.0f);
+    if (chooser_mode_ != ChooserMode::FileDrop) {
+        std::string display_filter = chooser_filter_ + "_";
+        tr.draw_text(tx, ty, display_filter.c_str(), 1.0f, 1.0f, 1.0f);
+    }
 
     // Tab bar
     if (show_tabs) {
@@ -319,10 +321,12 @@ void NodeGraphUI::draw_chooser(Renderer2D& tr) {
             tr.draw_text(px + 10, item_y + 3, name.c_str(),
                          style_.accent[0], style_.accent[1], style_.accent[2]);
         } else if (chooser_mode_ == ChooserMode::FileDrop) {
-            tr.draw_text(px + 10, item_y + 2, name.c_str(), 1.0f, 1.0f, 1.0f);
+            float label_y = item_y + (kChooserItemH - 14.0f) * 0.5f;
+            tr.draw_text(px + 10, label_y, name.c_str(), 1.0f, 1.0f, 1.0f);
             if (!subtitle.empty()) {
-                tr.draw_text(px + 10, item_y + 16, subtitle.c_str(),
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                float label_w = tr.text_width(name.c_str());
+                tr.draw_text(px + 10 + label_w + 8, label_y + 1, subtitle.c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
             }
         } else {
             // Environment color dot
