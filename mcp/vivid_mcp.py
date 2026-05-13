@@ -5854,6 +5854,54 @@ async def compare_audio_to_intent(reference_path: str = "",
     )
 
 
+def _load_package_tools() -> None:
+    """Load MCP tools contributed by installed packages via their mcp_tools manifest field."""
+    import importlib.util
+    import subprocess as _sp
+    import sys
+
+    vivid_bin = _resolve_vivid_bin()
+    if not vivid_bin.exists():
+        return
+    try:
+        result = _sp.run(
+            [str(vivid_bin), "list-packages", "--json"],
+            capture_output=True, text=True, timeout=5,
+            env=_runtime_subprocess_env(),
+        )
+        data = json.loads(result.stdout)
+    except Exception:
+        return
+
+    for pkg in data.get("packages", []):
+        pkg_path = pkg.get("path", "")
+        pkg_name = pkg.get("name", "")
+        if not pkg_path or not pkg_name:
+            continue
+        try:
+            manifest_path = pathlib.Path(pkg_path) / "vivid-package.json"
+            manifest = json.loads(manifest_path.read_text())
+            mcp_tools_rel = manifest.get("mcp_tools", "")
+            if not mcp_tools_rel:
+                continue
+            tools_path = pathlib.Path(pkg_path) / mcp_tools_rel
+            if not tools_path.exists():
+                continue
+            spec = importlib.util.spec_from_file_location(
+                f"_vivid_pkg_{pkg_name}_tools", tools_path
+            )
+            mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            if hasattr(mod, "register"):
+                mod.register(mcp, vivid_url=VIVID_URL)
+        except Exception as e:
+            print(f"[vivid_mcp] Warning: failed to load tools from package '{pkg_name}': {e}",
+                  file=sys.stderr)
+
+
+_load_package_tools()
+
+
 if __name__ == "__main__":
     _start_heartbeat()
     mcp.run()

@@ -631,6 +631,37 @@ if(APPLE)
         "-framework CoreAudio"
         "-framework CoreFoundation")
 endif()
+
+# --- VST3 Instrument (macOS only) ---
+if(APPLE)
+    add_library(vst3_iids STATIC
+        ${vst3sdk_SOURCE_DIR}/pluginterfaces/base/coreiids.cpp
+        ${vst3sdk_SOURCE_DIR}/base/source/baseiids.cpp
+        operators/shared/vst3_host/vst3_vstiids.cpp
+    )
+    target_link_libraries(vst3_iids PUBLIC vst3_headers)
+
+    vivid_codegen_for(vst3_instrument operators/audio/vst3_instrument/vst3_instrument.cpp)
+    add_library(vst3_instrument MODULE
+        ${VIVID_CODEGEN_OUTPUT_vst3_instrument}
+        operators/shared/vst3_host/vst3_plugin_window.mm
+    )
+    set_target_properties(vst3_instrument PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
+    target_include_directories(vst3_instrument PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+    target_link_libraries(vst3_instrument PRIVATE vivid_operator_api vst3_iids "-framework AppKit")
+    add_custom_command(TARGET vst3_instrument POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:vst3_instrument>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating vst3_instrument in Vivid.app bundle"
+    )
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS vst3_instrument)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"vst3_instrument\": { \"sources\": [\"operators/audio/vst3_instrument/vst3_instrument.cpp\", \"operators/shared/vst3_host/vst3_plugin_window.mm\"], \"extra_libs\": [\"vst3_iids\"], \"frameworks\": [\"AppKit\"] }")
+endif()
+
 add_vivid_operator(midi_out       operators/audio/midi_out/midi_out.cpp       CODEGEN EXTRA_LIBS rtmidi)
 add_vivid_operator(midi_clock_out operators/audio/midi_clock_out/midi_clock_out.cpp CODEGEN EXTRA_LIBS rtmidi)
 

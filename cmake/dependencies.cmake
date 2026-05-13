@@ -323,6 +323,24 @@ FetchContent_MakeAvailable(clap)
 add_library(clap_headers INTERFACE)
 target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
 
+# --- VST3 SDK (pluginterfaces + base — header-only + IID sources) ---
+# MIT license as of v3.8.0. Using FetchContent_Populate to skip the SDK's
+# own CMakeLists.txt, which would add hundreds of unwanted build targets.
+FetchContent_Declare(
+    vst3sdk
+    GIT_REPOSITORY https://github.com/steinbergmedia/vst3sdk.git
+    GIT_TAG        v3.8.0_build_66
+    GIT_SHALLOW    TRUE
+    GIT_SUBMODULES "base pluginterfaces"
+)
+FetchContent_GetProperties(vst3sdk)
+if(NOT vst3sdk_POPULATED)
+    FetchContent_Populate(vst3sdk)
+endif()
+
+add_library(vst3_headers INTERFACE)
+target_include_directories(vst3_headers INTERFACE ${vst3sdk_SOURCE_DIR})
+
 # --- tree-sitter-cpp grammar (C/C++/ObjC/ObjC++ parser) ---
 # Provides a pre-generated parser.c for C-family languages.
 FetchContent_Declare(
