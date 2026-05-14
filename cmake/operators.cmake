@@ -262,7 +262,7 @@ target_sources(pattern_seq PRIVATE
     operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
 add_vivid_operator(note_pattern      operators/control/note_pattern/note_pattern.cpp CODEGEN    EXTRA_LIBS webgpu)
 add_vivid_operator(midi_clip         operators/control/midi_clip/midi_clip.cpp CODEGEN
-                   EXTRA_LIBS nlohmann_json::nlohmann_json midifile)
+                   EXTRA_LIBS webgpu nlohmann_json::nlohmann_json midifile)
 target_sources(midi_clip PRIVATE
     operators/control/midi_clip/midi_clip_editor_shared.cpp
     operators/control/midi_clip/midi_clip_editor.cpp

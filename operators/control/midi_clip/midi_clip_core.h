@@ -3,6 +3,7 @@
 #include "operator_api/note_types.h"
 #include "operator_api/metronome_sync.h"
 #include "operator_api/editor_ui.h"
+#include "operator_api/thumbnail.h"
 #include "note_helpers.h"
 #include "note_id_counter.h"
 #include "midi_clip_editor_shared.h"
@@ -208,6 +209,8 @@ struct MidiClipCore : vivid::OperatorBase {
     double              import_status_until_ = 0.0;
 
     // --- Operator API -------------------------------------------------
+
+    void draw_thumbnail(const VividThumbnailContext* ctx) override;
 
     static VividEditorMetadata editor_metadata() {
         VividEditorMetadata m{};

@@ -11,7 +11,7 @@
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
-static constexpr float kHeaderH      = 38.0f;
+static constexpr float kHeaderH      = 64.0f;
 static constexpr float kLoopBraceH   = 14.0f;  // strip between header and roll
 static constexpr float kPianoW       = 52.0f;
 static constexpr float kScrollW      = 12.0f;
@@ -65,6 +65,130 @@ static float y_from_pitch(int pitch, float scroll_y, float row_h) {
 
 static double beat_from_x(float gx, float scroll_x, float beats_per_px) {
     return static_cast<double>(gx * beats_per_px + scroll_x);
+}
+
+// ---------------------------------------------------------------------------
+// draw_thumbnail  — miniature piano-roll preview
+// ---------------------------------------------------------------------------
+void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
+    if (!ctx || !ctx->draw.opaque) return;
+    const auto& d = ctx->draw;
+    void* o = d.opaque;
+
+    const float W = ctx->thumbnail_logical_width  ? (float)ctx->thumbnail_logical_width
+                                                  : (float)ctx->thumbnail_width;
+    const float H = ctx->thumbnail_logical_height ? (float)ctx->thumbnail_logical_height
+                                                  : (float)ctx->thumbnail_height;
+
+    d.draw_rect(o, 0.f, 0.f, W, H, {0.07f, 0.08f, 0.09f, 0.9f});
+
+    std::vector<midi_clip::ParsedNote> notes;
+    if (ctx->string_param_count > 0 && ctx->string_param_values && ctx->string_param_values[0])
+        midi_clip::parse_pattern(ctx->string_param_values[0], notes);
+
+    if (notes.empty()) {
+        if (d.draw_text)
+            d.draw_text(o, 4.f, H * 0.5f - 4.f, "empty", {0.28f, 0.32f, 0.38f, 0.8f}, 0.8f);
+        return;
+    }
+
+    // param_values layout (all 19 params in declaration order, TEXT/FILE slots = 0.0):
+    //   [0]=length_bars  [11]=loop_start_beat  [12]=loop_end_beat
+    const float length_bars    = (ctx->param_count > 0)  ? ctx->param_values[0]  : 2.f;
+    const float loop_start_b   = (ctx->param_count > 11) ? ctx->param_values[11] : 0.f;
+    const float loop_end_b     = (ctx->param_count > 12) ? ctx->param_values[12] : 0.f;
+    const float total_beats    = length_bars * 4.f;
+
+    // output_values[0] = phase (0..1 playhead position through the clip)
+    const float phase          = (ctx->output_count > 0) ? ctx->output_values[0] : -1.f;
+    const float ph_beat        = (phase >= 0.f) ? phase * total_beats : -1.f;
+
+    // Compute pitch range from notes, add margin, enforce minimum 12-semitone span
+    int pitch_min = 127, pitch_max = 0;
+    for (const auto& n : notes) {
+        pitch_min = std::min(pitch_min, (int)n.pitch);
+        pitch_max = std::max(pitch_max, (int)n.pitch);
+    }
+    pitch_min = std::max(0,   pitch_min - 2);
+    pitch_max = std::min(127, pitch_max + 2);
+    if (pitch_max - pitch_min < 11) {
+        const int center = (pitch_min + pitch_max) / 2;
+        pitch_min = std::max(0,   center - 6);
+        pitch_max = std::min(127, center + 5);
+    }
+    const int   pitch_range = pitch_max - pitch_min + 1;
+
+    constexpr float kMargin = 2.f;
+    const float gx = kMargin, gy = kMargin;
+    const float gw = W - 2.f * kMargin;
+    const float gh = H - 2.f * kMargin;
+
+    const float px_per_beat = (total_beats > 0.f) ? gw / total_beats : gw;
+    const float row_h       = std::max(1.f, gh / (float)pitch_range);
+
+    // Bar gridlines
+    if (d.draw_line) {
+        const int bars = (int)std::ceil(length_bars);
+        for (int b = 0; b <= bars; ++b) {
+            const float bx = gx + b * 4.f * px_per_beat;
+            if (bx < gx - 0.5f || bx > gx + gw + 0.5f) continue;
+            const VividColor lc = (b % 4 == 0)
+                ? VividColor{0.22f, 0.24f, 0.29f, 0.9f}
+                : VividColor{0.14f, 0.16f, 0.19f, 0.6f};
+            d.draw_line(o, bx, gy, bx, gy + gh, 0.5f, lc);
+        }
+    }
+
+    // Loop region overlay
+    const bool has_loop = (loop_end_b > loop_start_b + 0.01f);
+    if (has_loop) {
+        constexpr VividColor kDim = {0.f, 0.f, 0.f, 0.35f};
+        const float ls_x = gx + loop_start_b * px_per_beat;
+        const float le_x = gx + loop_end_b   * px_per_beat;
+        if (ls_x > gx)
+            d.draw_rect(o, gx, gy, ls_x - gx, gh, kDim);
+        if (le_x < gx + gw)
+            d.draw_rect(o, le_x, gy, gx + gw - le_x, gh, kDim);
+    }
+
+    // Notes
+    constexpr int kNoteDrawCap = 512;
+    int drawn = 0;
+    for (const auto& n : notes) {
+        if (drawn >= kNoteDrawCap) break;
+
+        const int pitch = (int)n.pitch;
+        if (pitch < pitch_min || pitch > pitch_max) continue;
+
+        const float nx = gx + (float)n.start_beat * px_per_beat;
+        const float nw = std::max(1.f, (float)n.duration_beats * px_per_beat - 0.5f);
+        const float ny = gy + (pitch_max - pitch) * row_h;
+        const float nh = std::max(1.f, row_h - 0.5f);
+
+        if (nx + nw < gx || nx > gx + gw) continue;
+
+        const bool is_playing = (ph_beat >= 0.f &&
+                                 ph_beat >= n.start_beat &&
+                                 ph_beat <  n.start_beat + n.duration_beats);
+
+        VividColor c = is_playing
+            ? VividColor{0.94f, 0.72f, 0.22f, 1.0f}
+            : VividColor{0.31f, 0.55f, 0.92f, 0.85f};
+        c.a *= 0.4f + n.velocity * 0.6f;
+
+        if (nh >= 2.5f && d.draw_rounded_rect)
+            d.draw_rounded_rect(o, nx, ny, nw, nh, 1.f, c);
+        else
+            d.draw_rect(o, nx, ny, nw, nh, c);
+        ++drawn;
+    }
+
+    // Playhead
+    if (ph_beat >= 0.f && d.draw_line) {
+        const float phx = gx + ph_beat * px_per_beat;
+        if (phx >= gx && phx <= gx + gw)
+            d.draw_line(o, phx, gy, phx, gy + gh, 1.5f, {1.f, 0.78f, 0.31f, 0.7f});
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -849,34 +973,21 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
     {
         using namespace vivid::ui;
-        float hx = 8.0f;
-        constexpr float kHeaderY = 5.0f;
-        constexpr float kHeaderWidgetH = 28.0f;
-        constexpr float kSectionGap = 6.0f;
+        constexpr float kPad = 8.0f;
+        constexpr float kTopY = 5.0f;
+        constexpr float kBottomY = 35.0f;
+        constexpr float kRowH = 24.0f;
+        constexpr float kSectionGap = 8.0f;
 
-        auto draw_section = [&](float x, float w, const char* label) {
-            if (w <= 0.0f) return;
-            d.draw_rounded_rect(o, x, 4.0f, w, 30.0f, 4.0f,
-                {0.10f, 0.105f, 0.12f, 0.78f});
-            if (label && label[0]) {
-                d.draw_text(o, x + 6.0f, 7.0f, label,
-                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.56f}, 0.68f);
-            }
-        };
+        ToolbarRow top_row = toolbar_row(Rect{0.0f, kTopY, sw, kRowH}, kPad, kSectionGap);
+        const Rect actions_bounds = toolbar_reserve_right(
+            top_row, toolbar_actions_open_ ? 244.0f : 136.0f);
 
-        auto draw_value_pill = [&](Rect r, const char* text, bool active = false) {
-            d.draw_rounded_rect(o, r.x, r.y, r.w, r.h, 4.0f,
-                active ? VividColor{0.22f, 0.34f, 0.45f, 0.95f}
-                       : VividColor{0.16f, 0.16f, 0.18f, 0.9f});
-            const float tw = d.text_width(o, text, 0.82f);
-            d.draw_text(o, r.x + std::max(5.0f, (r.w - tw) * 0.5f), r.y + 8.0f, text,
-                {0.86f, 0.88f, 0.92f, 0.95f}, 0.82f);
-        };
-
-        // Clip section: source, length, notes, parse/import status.
+        // Top row: clip identity and safe actions.
         {
-            const float section_w = std::clamp(sw * 0.19f, 170.0f, 210.0f);
-            draw_section(hx, section_w, "CLIP");
+            ToolbarSection clip = toolbar_section(*ctx, top_row, "CLIP",
+                                                  top_row.end_x - top_row.cursor_x,
+                                                  160.0f, 44.0f);
             std::string source = "Authored";
             if (!file.str_value.empty())
                 source = std::filesystem::path(file.str_value).filename().string();
@@ -884,7 +995,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                 source = std::filesystem::path(clip_data_source_file_).filename().string();
             else if (!clip_data_ref_.str_value.empty())
                 source = "Edited clip";
-            if (source.size() > 22) source = source.substr(0, 20) + "..";
+            if (source.size() > 34) source = source.substr(0, 32) + "..";
 
             char meta[96];
             const size_t note_count = file_backed
@@ -897,155 +1008,28 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             } else {
                 std::snprintf(meta, sizeof(meta), "%.0f bars  %zu notes", lb_val, note_count);
             }
-            d.draw_text(o, hx + 8.0f, 17.0f, source.c_str(),
-                {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.95f}, 0.82f);
-            d.draw_text(o, hx + 96.0f, 17.0f, meta,
-                file_error_.empty() ? VividColor{0.52f, 0.68f, 0.82f, 0.88f}
-                                    : VividColor{1.0f, 0.45f, 0.35f, 0.95f},
-                0.76f);
-            hx += section_w + kSectionGap;
+
+            toolbar_text(*ctx, toolbar_item(clip, std::min(220.0f, clip.content.w * 0.48f)),
+                         source.c_str(),
+                         {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.95f},
+                         0.82f);
+            toolbar_text(*ctx, toolbar_remaining(clip), meta,
+                         file_error_.empty() ? VividColor{0.52f, 0.68f, 0.82f, 0.88f}
+                                             : VividColor{1.0f, 0.45f, 0.35f, 0.95f},
+                         0.76f);
         }
 
-        // Timing section: file-backed length is authoritative/read-only;
-        // authored/edited clips keep the existing editable length field.
         {
-            const float section_w = file_backed ? 252.0f : 292.0f;
-            draw_section(hx, section_w, "TIME");
-            float tx = hx + 44.0f;
-            d.draw_text(o, tx, 16.0f, "Len",
-                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
-            tx += 28.0f;
-
-            if (!length_field_state_.focused)
-                std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
-
-            if (file_backed) {
-                char len_label[32];
-                std::snprintf(len_label, sizeof(len_label), "%.0f bars", lb_val);
-                draw_value_pill(Rect{tx, kHeaderY, 72.0f, kHeaderWidgetH}, len_label, true);
-                tx += 82.0f;
-            } else {
-                Rect lf{tx, kHeaderY, 58.0f, kHeaderWidgetH};
-                auto lf_r = ui_text_field(*ctx, lf, length_field_buf_,
-                                          sizeof(length_field_buf_), &length_field_state_, "bars");
-                if (lf_r.committed) {
-                    float v = static_cast<float>(std::atof(length_field_buf_));
-                    v = std::clamp(v, 0.25f, 8192.0f);
-                    if (ctx->commands.set_param)
-                        ctx->commands.set_param(ctx->commands.opaque, "length_bars", v);
-                }
-                if (lf_r.cancelled)
-                    std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
-                tx += 64.0f;
-                d.draw_text(o, tx, 16.0f, "bars",
-                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.60f}, 0.76f);
-                tx += 34.0f;
-            }
-
-            d.draw_text(o, tx, 16.0f, "Snap",
-                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
-            tx += 36.0f;
-            static const char* kGridLabels[] = {"1/32","1/16","1/8","1/4"};
-            Rect gr{tx, kHeaderY + 1.0f, 128.0f, 26.0f};
-            auto gr_result = ui_radio(*ctx, gr, kGridLabels, 4, grid_idx);
-            if (gr_result.clicked && ctx->commands.set_param)
-                ctx->commands.set_param(ctx->commands.opaque, "quantize_grid",
-                    static_cast<float>(gr_result.value));
-            hx += section_w + kSectionGap;
-        }
-
-        // Musical view section: fold plus explicit root/type controls.
-        {
-            const float section_w = 210.0f;
-            draw_section(hx, section_w, "MUSICAL VIEW");
-            float mx0 = hx + 58.0f;
-            static const char* kRootNames[] = {
-                "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
-            static const char* kTypeNames[] = {"Maj","Min","Hrm","PM","Pm"};
-
-            auto fold_result = ui_toggle(*ctx, Rect{mx0, kHeaderY + 1.0f, 44.0f, 26.0f},
-                                         "Fold", fold_rows_);
-            if (fold_result.clicked) {
-                fold_rows_ = fold_result.value;
-                scroll_y_  = 0.0f;
-            }
-            mx0 += 50.0f;
-
-            char root_label[16];
-            if (scale_root_ < 0) std::snprintf(root_label, sizeof(root_label), "Root -");
-            else std::snprintf(root_label, sizeof(root_label), "Root %s", kRootNames[scale_root_]);
-            if (ui_button(*ctx, Rect{mx0, kHeaderY + 1.0f, 58.0f, 26.0f},
-                          root_label, scale_root_ >= 0).clicked) {
-                scale_root_ = (scale_root_ < 11) ? scale_root_ + 1 : -1;
-            }
-            mx0 += 64.0f;
-
-            char type_label[16];
-            std::snprintf(type_label, sizeof(type_label), "%s", kTypeNames[scale_type_]);
-            if (ui_button(*ctx, Rect{mx0, kHeaderY + 1.0f, 42.0f, 26.0f},
-                          type_label, scale_root_ >= 0).clicked) {
-                scale_type_ = (scale_type_ + 1) % 5;
-                if (scale_root_ < 0) scale_root_ = 0;
-            }
-            hx += section_w + kSectionGap;
-        }
-
-        // Navigation section: clearer zoom controls plus visible bar range.
-        {
-            const float section_w = 220.0f;
-            draw_section(hx, section_w, "NAV");
-            float nx0 = hx + 30.0f;
-            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 42.0f, 26.0f}, "Out").clicked) {
-                float new_zoom = std::min(full_beats, zoom_beats * 1.5f);
-                editor_zoom_beats_ = (new_zoom >= full_beats) ? 0.0f : new_zoom;
-                editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
-                                        std::max(0.0f, full_beats - new_zoom));
-                zoom_beats = new_zoom;
-            }
-            nx0 += 46.0f;
-
-            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 34.0f, 26.0f}, "In").clicked) {
-                float new_zoom = std::max(static_cast<float>(bpb), zoom_beats / 1.5f);
-                editor_zoom_beats_ = new_zoom;
-                editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
-                                        std::max(0.0f, full_beats - new_zoom));
-                zoom_beats = new_zoom;
-            }
-            nx0 += 38.0f;
-
-            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 34.0f, 26.0f}, "Fit",
-                          editor_zoom_beats_ <= 0.0f).clicked) {
-                editor_zoom_beats_ = 0.0f;
-                editor_scroll_x_ = 0.0f;
-                zoom_beats = full_beats;
-            }
-            nx0 += 42.0f;
-
-            const int total_bars = std::max(1, static_cast<int>(std::ceil(full_beats / bpb)));
-            const int start_bar = std::clamp(static_cast<int>(std::floor(editor_scroll_x_ / bpb)) + 1,
-                                             1, total_bars);
-            const int end_bar = std::clamp(static_cast<int>(
-                std::ceil((editor_scroll_x_ + zoom_beats) / bpb)), start_bar, total_bars);
-            char range_label[48];
-            std::snprintf(range_label, sizeof(range_label), "Bars %d-%d / %d",
-                          start_bar, end_bar, total_bars);
-            d.draw_text(o, nx0, 16.0f, range_label,
-                {0.58f, 0.62f, 0.68f, 0.90f}, 0.76f);
-            hx += section_w + kSectionGap;
-        }
-
-        // Actions section: destructive commands are behind an explicit action.
-        {
-            const float section_w = std::max(84.0f, sw - hx - 8.0f);
-            draw_section(hx, section_w, "ACTIONS");
-            const bool show_clear = toolbar_actions_open_ && section_w >= 178.0f;
-            float ax = hx + 56.0f;
+            ToolbarRow actions_row = toolbar_row(actions_bounds, 0.0f, 6.0f);
+            ToolbarSection actions_section = toolbar_section(*ctx, actions_row, "ACTIONS",
+                                                             actions_bounds.w, 118.0f, 58.0f);
+            const bool show_clear = toolbar_actions_open_ && actions_section.content.w >= 184.0f;
             if (show_clear) {
                 const bool long_or_imported = file_backed || clip_ref_backed ||
                     editor_notes_.size() > 64 || lb_val > 16.0f;
                 const char* clear_label = (long_or_imported && !toolbar_clear_confirm_)
                     ? "Clear Clip..." : "Clear Clip";
-                auto clear_result = ui_button(*ctx, Rect{ax, kHeaderY + 1.0f, 82.0f, 26.0f},
+                auto clear_result = ui_button(*ctx, toolbar_item(actions_section, 92.0f),
                     clear_label, toolbar_clear_confirm_,
                     {0.22f, 0.14f, 0.14f, 0.95f},
                     {0.55f, 0.18f, 0.15f, 1.0f});
@@ -1062,19 +1046,130 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                         commit_editor_notes(ctx);
                     }
                 }
-                ax += 88.0f;
             }
 
-            const float action_w = std::min(66.0f, std::max(54.0f, section_w - 64.0f));
-            const float action_x = show_clear ? ax : hx + section_w - action_w - 6.0f;
             auto actions = ui_button(*ctx,
-                Rect{action_x, kHeaderY + 1.0f, action_w, 26.0f},
+                show_clear ? toolbar_item(actions_section, 84.0f)
+                           : toolbar_remaining(actions_section),
                 toolbar_actions_open_ ? "Close" : "Actions",
                 toolbar_actions_open_);
             if (actions.clicked) {
                 toolbar_actions_open_ = !toolbar_actions_open_;
                 toolbar_clear_confirm_ = false;
             }
+        }
+
+        // Bottom row: timing, musical view, and navigation controls.
+        ToolbarRow bottom_row = toolbar_row(Rect{0.0f, kBottomY, sw, kRowH}, kPad, kSectionGap);
+        {
+            ToolbarSection time = toolbar_section(*ctx, bottom_row, "TIME",
+                                                  file_backed ? 318.0f : 360.0f,
+                                                  file_backed ? 280.0f : 320.0f,
+                                                  42.0f);
+            toolbar_text(*ctx, toolbar_item(time, 28.0f), "Len",
+                         {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
+
+            if (!length_field_state_.focused)
+                std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
+
+            if (file_backed) {
+                char len_label[32];
+                std::snprintf(len_label, sizeof(len_label), "%.0f bars", lb_val);
+                toolbar_value_pill(*ctx, toolbar_item(time, 82.0f), len_label, true);
+            } else {
+                Rect lf = toolbar_item(time, 58.0f);
+                auto lf_r = ui_text_field(*ctx, lf, length_field_buf_,
+                                          sizeof(length_field_buf_), &length_field_state_, "bars");
+                if (lf_r.committed) {
+                    float v = static_cast<float>(std::atof(length_field_buf_));
+                    v = std::clamp(v, 0.25f, 8192.0f);
+                    if (ctx->commands.set_param)
+                        ctx->commands.set_param(ctx->commands.opaque, "length_bars", v);
+                }
+                if (lf_r.cancelled)
+                    std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
+                toolbar_text(*ctx, toolbar_item(time, 34.0f), "bars",
+                             {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.60f}, 0.76f);
+            }
+
+            toolbar_text(*ctx, toolbar_item(time, 36.0f), "Grid",
+                         {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
+            static const char* kGridLabels[] = {"1/32","1/16","1/8","1/4"};
+            Rect gr = toolbar_item(time, 128.0f);
+            auto gr_result = ui_radio(*ctx, gr, kGridLabels, 4, grid_idx);
+            if (gr_result.clicked && ctx->commands.set_param)
+                ctx->commands.set_param(ctx->commands.opaque, "quantize_grid",
+                    static_cast<float>(gr_result.value));
+        }
+
+        {
+            ToolbarSection music = toolbar_section(*ctx, bottom_row, "MUSIC",
+                                                   286.0f, 244.0f, 56.0f);
+            static const char* kRootNames[] = {
+                "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+            static const char* kTypeNames[] = {"Maj","Min","Hrm","PM","Pm"};
+
+            auto fold_result = ui_toggle(*ctx, toolbar_item(music, 48.0f),
+                                         "Fold", fold_rows_);
+            if (fold_result.clicked) {
+                fold_rows_ = fold_result.value;
+                scroll_y_  = 0.0f;
+            }
+
+            char root_label[16];
+            if (scale_root_ < 0) std::snprintf(root_label, sizeof(root_label), "Root -");
+            else std::snprintf(root_label, sizeof(root_label), "Root %s", kRootNames[scale_root_]);
+            if (ui_button(*ctx, toolbar_item(music, 72.0f),
+                          root_label, scale_root_ >= 0).clicked) {
+                scale_root_ = (scale_root_ < 11) ? scale_root_ + 1 : -1;
+            }
+
+            char type_label[16];
+            std::snprintf(type_label, sizeof(type_label), "%s", kTypeNames[scale_type_]);
+            if (ui_button(*ctx, toolbar_item(music, 54.0f),
+                          type_label, scale_root_ >= 0).clicked) {
+                scale_type_ = (scale_type_ + 1) % 5;
+                if (scale_root_ < 0) scale_root_ = 0;
+            }
+        }
+
+        {
+            ToolbarSection nav = toolbar_section(*ctx, bottom_row, "NAV",
+                                                 bottom_row.end_x - bottom_row.cursor_x,
+                                                 236.0f, 36.0f);
+            if (ui_button(*ctx, toolbar_item(nav, 46.0f), "Out").clicked) {
+                float new_zoom = std::min(full_beats, zoom_beats * 1.5f);
+                editor_zoom_beats_ = (new_zoom >= full_beats) ? 0.0f : new_zoom;
+                editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
+                                        std::max(0.0f, full_beats - new_zoom));
+                zoom_beats = new_zoom;
+            }
+
+            if (ui_button(*ctx, toolbar_item(nav, 38.0f), "In").clicked) {
+                float new_zoom = std::max(static_cast<float>(bpb), zoom_beats / 1.5f);
+                editor_zoom_beats_ = new_zoom;
+                editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
+                                        std::max(0.0f, full_beats - new_zoom));
+                zoom_beats = new_zoom;
+            }
+
+            if (ui_button(*ctx, toolbar_item(nav, 38.0f), "Fit",
+                          editor_zoom_beats_ <= 0.0f).clicked) {
+                editor_zoom_beats_ = 0.0f;
+                editor_scroll_x_ = 0.0f;
+                zoom_beats = full_beats;
+            }
+
+            const int total_bars = std::max(1, static_cast<int>(std::ceil(full_beats / bpb)));
+            const int start_bar = std::clamp(static_cast<int>(std::floor(editor_scroll_x_ / bpb)) + 1,
+                                             1, total_bars);
+            const int end_bar = std::clamp(static_cast<int>(
+                std::ceil((editor_scroll_x_ + zoom_beats) / bpb)), start_bar, total_bars);
+            char range_label[48];
+            std::snprintf(range_label, sizeof(range_label), "Bars %d-%d / %d",
+                          start_bar, end_bar, total_bars);
+            toolbar_text(*ctx, toolbar_remaining(nav), range_label,
+                         {0.58f, 0.62f, 0.68f, 0.90f}, 0.76f);
         }
     }
 
