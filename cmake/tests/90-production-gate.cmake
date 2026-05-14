@@ -165,3 +165,11 @@ add_test(NAME test_production_gate_report
 set_tests_properties(test_production_gate_report PROPERTIES
     LABELS "HEADLESS_SMOKE"
     TIMEOUT 60)
+
+add_test(NAME test_mcp_operator_coverage_unit
+    COMMAND uv run --with pytest python -m pytest
+            ${CMAKE_SOURCE_DIR}/tests/cli/test_mcp_operator_coverage.py -q
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_mcp_operator_coverage_unit PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 60)

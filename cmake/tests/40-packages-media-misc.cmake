@@ -666,3 +666,14 @@ add_test(NAME test_i18n COMMAND test_i18n WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 add_test(NAME test_semantic_tags
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/validate_semantic_tags.sh
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+# MCP operator coverage audit (script-only; fails only for core/seed strict gaps)
+add_test(NAME test_mcp_operator_coverage
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/audit_mcp_operator_coverage.py
+            --vivid ${CMAKE_BINARY_DIR}/vivid
+            --strict core
+            --format markdown
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_mcp_operator_coverage PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 90)

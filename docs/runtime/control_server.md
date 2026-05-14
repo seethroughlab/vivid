@@ -354,7 +354,7 @@ or suspected lane-state leaks.
 
 `list_types` returns the registered operator catalog with descriptor metadata for:
 
-- params: type/default/range plus semantic metadata, optional `asset_kind`, conditional `visible_when`, and descriptions when present
+- params: type/default/range plus semantic metadata, optional non-default `display_hint` such as `hidden`, optional `asset_kind`, conditional `visible_when`, and descriptions when present
 - ports: type/transport plus semantic metadata, defaults/channels, and custom-type registry info when present
 
 When the runtime can resolve operator docs from source comments in the core source tree or an installed
