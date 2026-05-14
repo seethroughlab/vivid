@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -117,6 +118,11 @@ static void noop_pop(void*) {}
 struct EditorCapture {
     bool pattern_data_written = false;
     size_t pattern_data_len = 0;
+    std::string pattern_data;
+    bool clip_data_ref_written = false;
+    std::string clip_data_ref;
+    bool file_cleared = false;
+    int set_param_count = 0;
 };
 
 static void capture_set_string(void* opaque, const char* name, const char* value) {
@@ -124,7 +130,18 @@ static void capture_set_string(void* opaque, const char* name, const char* value
     if (std::strcmp(name, "pattern_data") == 0) {
         cap->pattern_data_written = true;
         cap->pattern_data_len = value ? std::strlen(value) : 0;
+        cap->pattern_data = value ? value : "";
+    } else if (std::strcmp(name, "clip_data_ref") == 0) {
+        cap->clip_data_ref_written = true;
+        cap->clip_data_ref = value ? value : "";
+    } else if (std::strcmp(name, "file") == 0) {
+        cap->file_cleared = !value || value[0] == '\0';
     }
+}
+
+static void capture_set_param(void* opaque, const char*, float) {
+    auto* cap = static_cast<EditorCapture*>(opaque);
+    ++cap->set_param_count;
 }
 
 static VividEditorContext make_editor_ctx(EditorCapture& cap,
@@ -144,13 +161,53 @@ static VividEditorContext make_editor_ctx(EditorCapture& cap,
     ctx.draw.pop_clip_rect = noop_pop;
     ctx.commands.opaque = &cap;
     ctx.commands.set_string_param = capture_set_string;
+    ctx.commands.set_param = capture_set_param;
     ctx.param_values = params;
-    ctx.param_count = 11;
+    ctx.param_count = 14;
     ctx.output_values = nullptr;
     ctx.output_count = 0;
     ctx.string_param_values = strings;
-    ctx.string_param_count = 4;
+    ctx.string_param_count = 5;
     return ctx;
+}
+
+static std::array<float, 14> make_editor_params(float length_bars = 2.0f) {
+    return {
+        length_bars, // length_bars
+        1.0f,        // quantize_grid: 1/16
+        1.0f,        // playing
+        0.0f,        // loop
+        0.0f,        // transpose
+        1.0f,        // velocity_scale
+        0.0f,        // loop_start_beat
+        0.0f,        // loop_end_beat
+        0.0f,        // _editor_fold
+        -1.0f,       // _editor_scale_root
+        0.0f,        // _editor_scale_type
+        0.0f,        // _editor_zoom_beats
+        0.0f,        // _editor_scroll_beat
+        14.0f        // _editor_row_height
+    };
+}
+
+static std::vector<midi_clip::ParsedNote> parse_notes(const std::string& s) {
+    std::vector<midi_clip::ParsedNote> notes;
+    midi_clip::parse_pattern(s, notes);
+    return notes;
+}
+
+static void set_mouse(VividEditorContext& ctx, float x, float y,
+                      bool down, bool clicked = false,
+                      bool right_clicked = false,
+                      bool shift = false) {
+    ctx.mouse.x = x;
+    ctx.mouse.y = y;
+    ctx.mouse.prev_x = x;
+    ctx.mouse.prev_y = y;
+    ctx.mouse.left_down = down ? 1 : 0;
+    ctx.mouse.left_clicked = clicked ? 1 : 0;
+    ctx.mouse.right_clicked = right_clicked ? 1 : 0;
+    ctx.mouse.shift_down = shift ? 1 : 0;
 }
 
 int main() {
@@ -160,7 +217,25 @@ int main() {
     fs::create_directories(sandbox);
     const auto midi_path = write_test_midi(sandbox / "clip.mid", 8, 10);
     const auto held_midi_path = write_test_midi(sandbox / "held.mid", 32, 40);
+    const auto one_beat_midi_path = write_test_midi(sandbox / "one_beat.mid", 100, 120);
     const auto overlap_midi_path = write_overlap_test_midi(sandbox / "overlap.mid");
+
+    {
+        MidiClipCore op;
+        auto fixture = fs::path(VIVID_SOURCE_DIR) / "assets" / "sweelinck.mid";
+        if (fs::exists(fixture)) {
+            op.file.str_value = fixture.string();
+            op.main_thread_update(0.0);
+            check(op.file_note_count_ == 2658,
+                  "MidiClip parses expected Sweelinck note count");
+            check_float(static_cast<float>(op.clip_length_beats_), 788.0f, 1e-4f,
+                        "MidiClip computes Sweelinck beat length");
+            check_float(static_cast<float>(op.clip_length_bars_), 197.0f, 1e-4f,
+                        "MidiClip computes Sweelinck bar length");
+        } else {
+            std::fprintf(stderr, "SKIP: sweelinck.mid fixture missing\n");
+        }
+    }
 
     {
         MidiClipCore op;
@@ -170,7 +245,7 @@ int main() {
         op.main_thread_update(0.0);
 
         void* custom_outputs[1] = {nullptr};
-        auto ctx = make_ctx(16, 1000, custom_outputs);
+        auto ctx = make_ctx(64, 1000, custom_outputs);
         op.process_audio(&ctx);
 
         check(custom_outputs[0] != nullptr, "MidiClip publishes notes_out for file-backed playback");
@@ -189,11 +264,51 @@ int main() {
 
     {
         MidiClipCore op;
+        op.file.str_value = one_beat_midi_path.string();
+        op.main_thread_update(0.0);
+
+        void* custom_outputs[1] = {nullptr};
+        auto ctx = make_ctx(64, 1000, custom_outputs);
+        ctx.metronome_beats_elapsed = 10000.0;
+        op.process_audio(&ctx);
+
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        bool note_on_seen = false;
+        for (uint32_t i = 0; notes && i < notes->count; ++i)
+            if (notes->events[i].type == VIVID_NOTE_ON) note_on_seen = true;
+        check(note_on_seen,
+              "MidiClip file playback starts at clip beat 0, independent of global graph beat");
+    }
+
+    {
+        MidiClipCore op;
+        op.file.str_value = one_beat_midi_path.string();
+        op.main_thread_update(0.0);
+
+        void* custom_outputs[1] = {nullptr};
+        auto ctx = make_ctx(64, 1000, custom_outputs);
+        op.process_audio(&ctx);
+        op.playing.value = 0.0f;
+        op.process_audio(&ctx);
+        op.playing.value = 1.0f;
+        ctx.metronome_beats_elapsed = 512.0;
+        op.process_audio(&ctx);
+
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        bool restarted = false;
+        for (uint32_t i = 0; notes && i < notes->count; ++i)
+            if (notes->events[i].type == VIVID_NOTE_ON) restarted = true;
+        check(restarted, "MidiClip playing off/on restarts file clips at beat 0");
+    }
+
+    {
+        MidiClipCore op;
         op.file.str_value = midi_path.string();
         op.loop.value = 1.0f;
+        op.loop_end_beat.value = 0.1f;
         op.main_thread_update(0.0);
         void* custom_outputs[1] = {nullptr};
-        auto ctx = make_ctx(16, 1000, custom_outputs);
+        auto ctx = make_ctx(128, 1000, custom_outputs);
         op.process_audio(&ctx);
         auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
         int note_on_seen = 0;
@@ -203,11 +318,40 @@ int main() {
     }
 
     {
+        MidiClipCore slow;
+        slow.file.str_value = one_beat_midi_path.string();
+        slow.main_thread_update(0.0);
+        void* slow_outputs[1] = {nullptr};
+        auto slow_ctx = make_ctx(500, 1000, slow_outputs);
+        slow_ctx.metronome_bpm = 60.0f;
+        slow.process_audio(&slow_ctx);
+        auto* slow_notes = static_cast<VividNoteBuffer*>(slow_outputs[0]);
+
+        MidiClipCore fast;
+        fast.file.str_value = one_beat_midi_path.string();
+        fast.main_thread_update(0.0);
+        void* fast_outputs[1] = {nullptr};
+        auto fast_ctx = make_ctx(500, 1000, fast_outputs);
+        fast_ctx.metronome_bpm = 240.0f;
+        fast.process_audio(&fast_ctx);
+        auto* fast_notes = static_cast<VividNoteBuffer*>(fast_outputs[0]);
+
+        bool slow_off = false;
+        for (uint32_t i = 0; slow_notes && i < slow_notes->count; ++i)
+            if (slow_notes->events[i].type == VIVID_NOTE_OFF) slow_off = true;
+        bool fast_off = false;
+        for (uint32_t i = 0; fast_notes && i < fast_notes->count; ++i)
+            if (fast_notes->events[i].type == VIVID_NOTE_OFF) fast_off = true;
+        check(!slow_off && fast_off,
+              "MidiClip imported MIDI follows graph tempo after beat conversion");
+    }
+
+    {
         MidiClipCore op;
         op.file.str_value = held_midi_path.string();
         op.main_thread_update(0.0);
         void* custom_outputs[1] = {nullptr};
-        auto ctx = make_ctx(16, 1000, custom_outputs);
+        auto ctx = make_ctx(64, 1000, custom_outputs);
         op.process_audio(&ctx);
         op.playing.value = 0.0f;
         op.process_audio(&ctx);
@@ -223,7 +367,7 @@ int main() {
         op.file.str_value = overlap_midi_path.string();
         op.main_thread_update(0.0);
         void* custom_outputs[1] = {nullptr};
-        auto ctx = make_ctx(16, 1000, custom_outputs);
+        auto ctx = make_ctx(64, 1000, custom_outputs);
         op.process_audio(&ctx);
         auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
         uint64_t first_on = 0, second_on = 0, first_off = 0, second_off = 0;
@@ -260,20 +404,153 @@ int main() {
 
     {
         MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+                  true, true);
+        op.draw_editor(&ectx);
+        auto notes = parse_notes(cap.pattern_data);
+        check(cap.pattern_data_written, "MidiClip empty left-click writes pattern_data immediately");
+        check(notes.size() == 1, "MidiClip empty left-click adds one note");
+        if (!notes.empty()) {
+            check(notes[0].pitch == 96, "MidiClip empty left-click chooses clicked pitch");
+            check_float(static_cast<float>(notes[0].start_beat), 0.5f, 1e-4f,
+                        "MidiClip empty left-click snaps beat");
+        }
+        check(op.drag_mode_ == MidiClipCore::DragMode::AddingNote,
+              "MidiClip empty left-click starts add/resize gesture, not box select");
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+        op.editor_zoom_beats_ = 4.0f;
+        op.editor_scroll_x_ = 3.0f;
+        op.draw_editor(&ectx);
+        check_float(op.editor_scroll_x_, 3.0f, 1e-4f,
+                    "MidiClip editor keeps horizontal scroll after initial param sync");
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.25f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+                  true, true, false, true);
+        op.draw_editor(&ectx);
+        check(!cap.pattern_data_written, "MidiClip shift empty drag does not add note immediately");
+        check(op.drag_mode_ == MidiClipCore::DragMode::BoxSelect,
+              "MidiClip shift empty drag starts box select");
+    }
+
+    {
+        MidiClipCore op;
+        std::string pattern =
+            R"([{"p":96,"s":0.5,"d":0.25,"v":0.8},{"p":97,"s":1.0,"d":0.25,"v":0.8}])";
+        auto params = make_editor_params();
+        const char* strings[5] = {pattern.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+                  true, true);
+        op.draw_editor(&ectx);
+        check(op.note_selected_.size() == 2 && op.note_selected_[0] && !op.note_selected_[1],
+              "MidiClip note left-click exclusively selects clicked note");
+    }
+
+    {
+        MidiClipCore op;
+        std::string pattern = R"([{"p":96,"s":0.5,"d":0.25,"v":0.8}])";
+        auto params = make_editor_params();
+        const char* strings[5] = {pattern.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+                  false, false, true);
+        op.draw_editor(&ectx);
+        auto notes = parse_notes(cap.pattern_data);
+        check(cap.pattern_data_written && notes.empty(),
+              "MidiClip right-click on note deletes it");
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        const float y = 52.0f + 31.0f * 14.0f + 7.0f;
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, y, true, true);
+        op.draw_editor(&ectx);
+        op.pattern_data.str_value = cap.pattern_data;
+        strings[0] = op.pattern_data.str_value.c_str();
+        cap.pattern_data_written = false;
+        ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 1.5f * 129.5f, y, true, false);
+        op.draw_editor(&ectx);
+        auto notes = parse_notes(cap.pattern_data);
+        check(!notes.empty() && notes[0].duration_beats > 0.25,
+              "MidiClip drag-created note extends duration");
+    }
+
+    {
+        MidiClipCore op;
         auto fixture = fs::path(VIVID_SOURCE_DIR) / "assets" / "sweelinck.mid";
         if (fs::exists(fixture)) {
             op.file.str_value = fixture.string();
             op.main_thread_update(0.0);
-            float params[11] = {op.length_bars.value, 1.0f, 0, 1, 0, 0, 1, 0, 0, 0, 0};
-            const char* strings[4] = {"[]", op.file.str_value.c_str(), "", ""};
+            auto params = make_editor_params(op.length_bars.value);
+            const char* strings[5] = {"[]", op.file.str_value.c_str(), "", "", ""};
             EditorCapture cap;
-            auto ectx = make_editor_ctx(cap, strings, params);
+            auto ectx = make_editor_ctx(cap, strings, params.data());
             op.draw_editor(&ectx);
             check(!cap.pattern_data_written,
                   "Opening Sweelinck in MidiClip editor does not serialize pattern_data");
         } else {
             std::fprintf(stderr, "SKIP: sweelinck.mid fixture missing\n");
         }
+    }
+
+    {
+        MidiClipCore op;
+        op.file.str_value = one_beat_midi_path.string();
+        op.clip_data_ref_.str_value = (sandbox / "edited_long_clip.mclip.json").string();
+        op.main_thread_update(0.0);
+        auto params = make_editor_params(op.length_bars.value);
+        const char* strings[5] = {"[]", op.file.str_value.c_str(), "", "",
+                                  op.clip_data_ref_.str_value.c_str()};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+
+        set_mouse(ectx, 52.0f + 1.5f * 129.5f, 38.0f + 14.0f + (127 - 100) * 14.0f + 2.0f,
+                  true, true);
+        op.draw_editor(&ectx);
+
+        check(cap.clip_data_ref_written && fs::exists(cap.clip_data_ref),
+              "Editing file-backed MidiClip writes editable clip sidecar");
+        check(cap.pattern_data == "[]",
+              "Editing file-backed MidiClip keeps pattern_data compact");
+        check(cap.file_cleared,
+              "Editing file-backed MidiClip clears authoritative file param");
+
+        MidiClipCore loaded;
+        loaded.clip_data_ref_.str_value = cap.clip_data_ref;
+        loaded.main_thread_update(0.0);
+        void* custom_outputs[1] = {nullptr};
+        auto actx = make_ctx(64, 1000, custom_outputs);
+        loaded.process_audio(&actx);
+        auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
+        check(notes && notes->count > 0,
+              "MidiClip reloads clip_data_ref sidecar for playback");
     }
 
     fs::remove_all(sandbox);

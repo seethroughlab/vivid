@@ -98,6 +98,12 @@ int main() {
                 check(seq.events[0].status == 0x90, "format-0 first event is note-on");
                 check(seq.events[1].status == 0x80, "format-0 second event is note-off");
                 check(seq.note_spans.size() == 1, "format-0 yields one paired note span");
+                if (!seq.note_spans.empty()) {
+                    check_near(seq.note_spans[0].start_beats, 0.0, 1e-6,
+                               "format-0 note span start beat");
+                    check_near(seq.note_spans[0].duration_beats, 1.0, 1e-6,
+                               "format-0 note span duration beats");
+                }
                 check_near(seq.events[1].time_seconds, 0.5, 1e-6,
                            "format-0 note-off time honors PPQ + tempo");
             }

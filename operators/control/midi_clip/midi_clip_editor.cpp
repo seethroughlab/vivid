@@ -64,7 +64,7 @@ static float y_from_pitch(int pitch, float scroll_y, float row_h) {
 }
 
 static double beat_from_x(float gx, float scroll_x, float beats_per_px) {
-    return static_cast<double>(gx / beats_per_px + scroll_x);
+    return static_cast<double>(gx * beats_per_px + scroll_x);
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +80,15 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
     const float sw = ctx->surface_width;
     const float sh = ctx->surface_height;
+    if (!editor_view_params_initialized_) {
+        fold_rows_ = editor_fold_.bool_value();
+        scale_root_ = editor_scale_root_.int_value();
+        scale_type_ = editor_scale_type_.int_value();
+        if (editor_zoom_beat_.value > 0.0f) editor_zoom_beats_ = editor_zoom_beat_.value;
+        editor_scroll_x_ = std::max(0.0f, editor_scroll_beat_.value);
+        row_h_ = std::clamp(editor_row_height_.value, 6.0f, 40.0f);
+        editor_view_params_initialized_ = true;
+    }
 
     // --- Sync editor notes from string params ---
     const char* pat_str = (ctx->string_param_count > 0 && ctx->string_param_values)
@@ -87,10 +96,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     if (!pat_str) pat_str = "[]";
     const std::string pat_value = pat_str;
     const bool file_backed = !file.str_value.empty() && (pat_value.empty() || pat_value == "[]");
-    if (!file_backed && pat_value != editor_submitted_str_) {
+    const bool clip_ref_backed = file.str_value.empty() &&
+        !clip_data_ref_.str_value.empty() && (pat_value.empty() || pat_value == "[]");
+    if (!file_backed && !clip_ref_backed && pat_value != editor_submitted_str_) {
         editor_submitted_str_ = pat_str;
         midi_clip::parse_pattern(editor_submitted_str_, editor_notes_);
         note_selected_.assign(editor_notes_.size(), false);
+        mark_editor_note_order_dirty();
     }
 
     if (file_backed) {
@@ -103,34 +115,46 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             editor_notes_.clear();
             note_selected_.clear();
             SequenceData* seq = sequence_.load(std::memory_order_acquire);
-            const double spb = 60.0 / static_cast<double>(file_bpm);
-            if (seq && spb > 0.0) {
-                editor_notes_.reserve(seq->sequence.note_spans.size());
-                for (const auto& span : seq->sequence.note_spans) {
-                    midi_clip::ParsedNote n{};
-                    n.pitch = span.pitch;
-                    n.start_beat = span.start_seconds / spb;
-                    n.duration_beats = std::max(0.01, span.duration_seconds / spb);
-                    n.velocity = std::clamp(static_cast<float>(span.velocity) / 127.0f,
-                                            0.01f, 1.0f);
-                    editor_notes_.push_back(n);
-                }
+            {
+                std::lock_guard<std::mutex> lock(pattern_mutex_);
+                editor_notes_ = imported_audio_notes_;
+            }
+            mark_editor_note_order_dirty();
+            if (seq) {
                 note_selected_.assign(editor_notes_.size(), false);
-                if (seq->sequence.duration_seconds > 0.0) {
-                    const double total_beats = seq->sequence.duration_seconds / spb;
-                    const double bars = std::max(0.25, std::ceil(total_beats / 4.0));
-                    length_bars.value = static_cast<float>(std::min(1024.0, bars));
+                if (clip_length_beats_ > 0.0) {
+                    const double total_beats = clip_length_beats_;
+                    length_bars.value = static_cast<float>(std::min(8192.0, clip_length_bars_));
                     if (editor_zoom_beats_ <= 0.0f && total_beats > 64.0)
                         editor_zoom_beats_ = 64.0f;
                 }
             }
         }
     }
+    if (clip_ref_backed && clip_data_ref_.str_value != editor_loaded_clip_data_ref_) {
+        editor_loaded_clip_data_ref_ = clip_data_ref_.str_value;
+        {
+            std::lock_guard<std::mutex> lock(pattern_mutex_);
+            editor_notes_ = audio_notes_;
+        }
+        note_selected_.assign(editor_notes_.size(), false);
+        mark_editor_note_order_dirty();
+        if (clip_data_beat_length_ > 0.0) {
+            length_bars.value = static_cast<float>(std::min(8192.0, clip_length_bars_));
+            if (editor_zoom_beats_ <= 0.0f && clip_data_beat_length_ > 64.0)
+                editor_zoom_beats_ = 64.0f;
+        }
+    }
 
     const float phase    = (ctx->output_count > 0) ? ctx->output_values[0] : 0.0f;
-    const float lb_val   = file_backed
-        ? std::max(length_bars.value, 0.25f)
+    const float lb_val   = (file_backed || clip_ref_backed)
+        ? static_cast<float>(std::max(clip_length_bars_, 0.25))
         : ((ctx->param_count > 0) ? ctx->param_values[0] : 2.0f);
+    if ((file_backed || clip_ref_backed) && ctx->commands.set_param &&
+        ctx->param_count > 0 && ctx->param_values &&
+        std::fabs(ctx->param_values[0] - lb_val) > 0.001f) {
+        ctx->commands.set_param(ctx->commands.opaque, "length_bars", lb_val);
+    }
     const int   grid_idx = (ctx->param_count > 1) ? static_cast<int>(ctx->param_values[1]) : 1;
     // Read loop region from struct members (already synced before draw_editor is called).
     const float loop_start_v = loop_start_beat.value;
@@ -231,8 +255,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     const bool mouse_in_pr    = (ctx->mouse.x >= grid_x && ctx->mouse.x < grid_x + grid_w &&
                                   ctx->mouse.y >= pr_y    && ctx->mouse.y < pr_y    + kModStripH);
 
-    // Zoom/scroll state — reset when pattern length changes
-    if (std::fabs(lb_val - last_lb_val_) > 0.01f) {
+    // Zoom/scroll state — reset when pattern length changes.
+    // last_lb_val_ starts at -1 as a sentinel: on the first frame we seed it
+    // without resetting zoom/scroll so params restored by the init block above
+    // (editor_zoom_beats_, editor_scroll_x_) are not immediately discarded.
+    if (last_lb_val_ < 0.0f) {
+        last_lb_val_ = lb_val;
+    } else if (std::fabs(lb_val - last_lb_val_) > 0.01f) {
         last_lb_val_       = lb_val;
         editor_zoom_beats_ = 0.0f;
         editor_scroll_x_   = 0.0f;
@@ -245,6 +274,29 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     const double beat_w  = (zoom_beats > 0.0f)
                            ? static_cast<double>(grid_w) / zoom_beats : 1.0;
     const double inv_bw  = (beat_w > 0.0) ? 1.0 / beat_w : 0.0;
+    const double visible_start_beat = editor_scroll_x_;
+    const double visible_end_beat = editor_scroll_x_ + zoom_beats;
+    rebuild_editor_note_order_if_needed();
+    std::vector<int> visible_note_indices;
+    visible_note_indices.reserve(std::min<size_t>(editor_notes_.size(), 1024));
+    const double candidate_start = visible_start_beat - editor_max_note_duration_;
+    auto first_visible = std::lower_bound(
+        editor_note_order_by_start_.begin(), editor_note_order_by_start_.end(), candidate_start,
+        [&](int idx, double beat) {
+            return editor_notes_[static_cast<size_t>(idx)].start_beat < beat;
+        });
+    editor_last_visible_scan_count_ = 0;
+    for (auto it = first_visible; it != editor_note_order_by_start_.end(); ++it) {
+        const int i = *it;
+        const auto& n = editor_notes_[i];
+        if (n.start_beat > visible_end_beat)
+            break;
+        ++editor_last_visible_scan_count_;
+        if (n.start_beat + n.duration_beats < visible_start_beat) {
+            continue;
+        }
+        visible_note_indices.push_back(i);
+    }
 
     // Loop brace pixel positions (for both rendering and interaction)
     float loop_lx = grid_x + static_cast<float>((ls_param - editor_scroll_x_) * beat_w);
@@ -257,7 +309,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     auto find_nearest_note = [&](bool in_strip) -> int {
         if (!in_strip || drag_mode_ != DragMode::None) return -1;
         int best = -1; float best_dist = 10.0f;
-        for (int i = 0; i < static_cast<int>(editor_notes_.size()); ++i) {
+        for (int i : visible_note_indices) {
             float bx   = grid_x + static_cast<float>((editor_notes_[i].start_beat - editor_scroll_x_) * beat_w);
             float dist = std::fabs(ctx->mouse.x - bx);
             if (dist < best_dist) { best_dist = dist; best = i; }
@@ -387,6 +439,12 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         }
     }
 
+    auto snap = [&](double beat) -> double {
+        double cell = midi_clip::grid_cell_beats(grid_idx);
+        if (cell <= 0.0) return beat;
+        return std::round(beat / cell) * cell;
+    };
+
     // -----------------------------------------------------------------------
     // Keyboard shortcuts (when length field is not focused)
     // -----------------------------------------------------------------------
@@ -434,6 +492,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             else if (cmd && e.key == ek::kA) {
                 note_selected_.assign(editor_notes_.size(), true);
             }
+            else if (cmd && e.key == ek::kC) {
+                editor_clipboard_.clear();
+                for (int j = 0; j < (int)editor_notes_.size(); ++j) {
+                    if (j < (int)note_selected_.size() && note_selected_[j])
+                        editor_clipboard_.push_back(editor_notes_[j]);
+                }
+            }
             else if (cmd && e.key == ek::kD) {
                 double min_start = pat_len, max_end = 0.0;
                 for (int j = 0; j < (int)editor_notes_.size(); ++j) {
@@ -458,6 +523,42 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     }
                     commit_editor_notes(ctx);
                 }
+            }
+            else if (cmd && e.key == ek::kV) {
+                if (!editor_clipboard_.empty()) {
+                    double min_start = editor_clipboard_[0].start_beat;
+                    for (const auto& n : editor_clipboard_)
+                        min_start = std::min(min_start, n.start_beat);
+                    double paste_at = snap(editor_scroll_x_);
+                    std::fill(note_selected_.begin(), note_selected_.end(), false);
+                    for (auto n : editor_clipboard_) {
+                        n.start_beat = std::clamp(paste_at + (n.start_beat - min_start),
+                                                  0.0, pat_len - n.duration_beats);
+                        editor_notes_.push_back(n);
+                        note_selected_.push_back(true);
+                    }
+                    commit_editor_notes(ctx);
+                }
+            }
+            else if (cmd && e.key == ek::kU) {
+                bool any_selected = false;
+                for (uint8_t selected : note_selected_) {
+                    if (selected) { any_selected = true; break; }
+                }
+                bool changed = false;
+                for (int j = 0; j < (int)editor_notes_.size(); ++j) {
+                    if (any_selected && (j >= (int)note_selected_.size() || !note_selected_[j]))
+                        continue;
+                    auto& n = editor_notes_[j];
+                    const double old_start = n.start_beat;
+                    const double old_dur = n.duration_beats;
+                    const double end = n.start_beat + n.duration_beats;
+                    n.start_beat = std::clamp(snap(n.start_beat), 0.0, pat_len - cell_beats);
+                    const double snapped_end = std::clamp(snap(end), n.start_beat + cell_beats, pat_len);
+                    n.duration_beats = std::max(cell_beats, snapped_end - n.start_beat);
+                    changed = changed || old_start != n.start_beat || old_dur != n.duration_beats;
+                }
+                if (changed) commit_editor_notes(ctx);
             }
         }
     }
@@ -550,8 +651,11 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
     // --- Beat / bar grid lines ---
     {
-        int total_cells = static_cast<int>(std::round(pat_len / cell_beats));
-        for (int c = 0; c <= total_cells; ++c) {
+        const int first_cell = std::max(0, static_cast<int>(
+            std::floor(visible_start_beat / cell_beats)) - 1);
+        const int last_cell = std::max(first_cell, static_cast<int>(
+            std::ceil(visible_end_beat / cell_beats)) + 1);
+        for (int c = first_cell; c <= last_cell; ++c) {
             double beat = c * cell_beats;
             float  lx   = grid_x + static_cast<float>((beat - editor_scroll_x_) * beat_w);
             if (lx < grid_x - 1.0f || lx > grid_x + grid_w + 1.0f) continue;
@@ -575,12 +679,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
     // --- Render notes ---
     {
-        for (int idx = 0; idx < static_cast<int>(editor_notes_.size()); ++idx) {
+        for (int idx : visible_note_indices) {
             const auto& n = editor_notes_[idx];
             float ny  = y_fn(static_cast<int>(n.pitch)) + grid_y;
             float nx  = grid_x + static_cast<float>((n.start_beat - editor_scroll_x_) * beat_w);
             float nw  = std::max(4.0f, static_cast<float>(n.duration_beats * beat_w) - 1.0f);
 
+            if (!std::isfinite(nx) || !std::isfinite(ny) || !std::isfinite(nw)) continue;
             if (ny + row_h_ < grid_y || ny > grid_y + roll_h) continue;
             if (nx + nw < grid_x || nx > grid_x + grid_w) continue;
 
@@ -653,9 +758,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         // Velocity
         draw_strip_bg(vel_y, "vel");
         d.push_clip_rect(o, grid_x, vel_y, grid_w, kModStripH);
-        for (int i = 0; i < static_cast<int>(editor_notes_.size()); ++i) {
+        for (int i : visible_note_indices) {
             const auto& n = editor_notes_[i];
             float bx  = grid_x + static_cast<float>((n.start_beat - editor_scroll_x_) * beat_w);
+            if (!std::isfinite(bx)) continue;
             float bh  = std::max(2.0f, n.velocity * inner_h);
             float by  = vel_y + kModStripH - bh;
             bool  hot = (i == hov_vel) ||
@@ -674,10 +780,11 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             const float center = pb_y + kModStripH * 0.5f;
             d.draw_rect(o, grid_x, center, grid_w, 1.0f, {0.25f, 0.25f, 0.30f, 1.0f});
         }
-        for (int i = 0; i < static_cast<int>(editor_notes_.size()); ++i) {
+        for (int i : visible_note_indices) {
             const auto& n = editor_notes_[i];
             if (n.pitch_bend == 0.0f) continue;
             float bx     = grid_x + static_cast<float>((n.start_beat - editor_scroll_x_) * beat_w);
+            if (!std::isfinite(bx)) continue;
             float center = pb_y + kModStripH * 0.5f;
             float frac   = n.pitch_bend / kPitchBendMax;
             float bh     = std::max(2.0f, std::fabs(frac) * (kModStripH * 0.5f - 2.0f));
@@ -694,10 +801,11 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         // Pressure
         draw_strip_bg(pr_y, "pres");
         d.push_clip_rect(o, grid_x, pr_y, grid_w, kModStripH);
-        for (int i = 0; i < static_cast<int>(editor_notes_.size()); ++i) {
+        for (int i : visible_note_indices) {
             const auto& n = editor_notes_[i];
             if (n.pressure == 0.0f) continue;
             float bx  = grid_x + static_cast<float>((n.start_beat - editor_scroll_x_) * beat_w);
+            if (!std::isfinite(bx)) continue;
             float bh  = std::max(2.0f, n.pressure * inner_h);
             float by  = pr_y + kModStripH - bh;
             bool  hot = (i == hov_pr) ||
@@ -914,8 +1022,11 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             } else if (!file.str_value.empty()) {
                 std::string name = std::filesystem::path(file.str_value).filename().string();
                 char meta[96];
-                std::snprintf(meta, sizeof(meta), "%s  %.1fs  %zu notes",
-                              name.c_str(), file_duration_seconds_, file_note_count_);
+                SequenceData* seq = sequence_.load(std::memory_order_acquire);
+                std::snprintf(meta, sizeof(meta), "%s  %.1fs  %.1f beats  %zu notes",
+                              name.c_str(), file_duration_seconds_,
+                              seq ? seq->sequence.duration_beats : 0.0,
+                              file_note_count_);
                 label = meta;
             }
             if (!label.empty()) {
@@ -944,12 +1055,6 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     // Mouse interaction
     // -----------------------------------------------------------------------
     {
-        auto snap = [&](double beat) -> double {
-            double cell = midi_clip::grid_cell_beats(grid_idx);
-            if (cell <= 0.0) return beat;
-            return std::round(beat / cell) * cell;
-        };
-
         enum class HitZone { None, Body, ResizeRight };
         struct NoteHit { int idx = -1; HitZone zone = HitZone::None; };
 
@@ -959,13 +1064,14 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             const int    hover_pitch = p_fn(py - grid_y);
             const double hover_beat  = beat_from_x(px - grid_x, editor_scroll_x_,
                                                     static_cast<float>(inv_bw));
-            for (int i = 0; i < static_cast<int>(editor_notes_.size()); ++i) {
+            for (int i : visible_note_indices) {
                 const auto& n = editor_notes_[i];
                 if (static_cast<int>(n.pitch) != hover_pitch) continue;
                 if (hover_beat < n.start_beat ||
                     hover_beat >= n.start_beat + n.duration_beats) continue;
                 float note_right_px = grid_x +
                     static_cast<float>((n.start_beat + n.duration_beats - editor_scroll_x_) * beat_w);
+                if (!std::isfinite(note_right_px)) continue;
                 HitZone zone = (px >= note_right_px - 8.0f)
                     ? HitZone::ResizeRight : HitZone::Body;
                 return {i, zone};
@@ -1063,24 +1169,50 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     drag_orig_start_ = n.start_beat;
                     drag_orig_dur_   = n.duration_beats;
                     drag_orig_pitch_ = n.pitch;
+                    drag_orig_notes_ = editor_notes_;
+                    drag_selected_indices_.clear();
+                    for (int j = 0; j < (int)note_selected_.size(); ++j) {
+                        if (note_selected_[j])
+                            drag_selected_indices_.push_back(j);
+                    }
                     drag_mode_ = (hit.zone == HitZone::ResizeRight)
                         ? DragMode::ResizingNote : DragMode::MovingNote;
                     if (ctx->host.capture_pointer)
                         ctx->host.capture_pointer(ctx->host.opaque);
                 }
             } else {
-                // Drag on empty: always start box-select
-                // (plain click with no movement will add a note on release)
-                if (!shift)
-                    note_selected_.assign(editor_notes_.size(), 0);
                 int pitch = p_fn(my);
                 if (pitch >= 0 && pitch <= 127) {
-                    box_sel_start_beat_  = beat_from_x(mx, editor_scroll_x_,
-                                                       static_cast<float>(inv_bw));
-                    box_sel_start_pitch_ = pitch;
-                    drag_mode_           = DragMode::BoxSelect;
                     drag_start_mx_       = ctx->mouse.x;
                     drag_start_my_       = ctx->mouse.y;
+                    if (shift) {
+                        box_sel_start_beat_  = beat_from_x(mx, editor_scroll_x_,
+                                                           static_cast<float>(inv_bw));
+                        box_sel_start_pitch_ = pitch;
+                        box_sel_additive_    = true;
+                        drag_mode_           = DragMode::BoxSelect;
+                    } else {
+                        note_selected_.assign(editor_notes_.size(), 0);
+                        double start = midi_clip::quantize_to_grid(
+                            beat_from_x(mx, editor_scroll_x_, static_cast<float>(inv_bw)),
+                            grid_idx);
+                        start = std::clamp(start, 0.0, pat_len - cell_beats);
+                        midi_clip::ParsedNote n{};
+                        n.pitch = static_cast<uint8_t>(pitch);
+                        n.start_beat = start;
+                        n.duration_beats = cell_beats;
+                        n.velocity = 0.8f;
+                        editor_notes_.push_back(n);
+                        note_selected_.push_back(true);
+                        drag_note_idx_ = static_cast<int>(editor_notes_.size()) - 1;
+                        drag_orig_start_ = start;
+                        drag_orig_dur_ = cell_beats;
+                        drag_orig_pitch_ = n.pitch;
+                        drag_orig_notes_ = editor_notes_;
+                        drag_selected_indices_ = {drag_note_idx_};
+                        drag_mode_ = DragMode::AddingNote;
+                        commit_editor_notes(ctx);
+                    }
                     if (ctx->host.capture_pointer)
                         ctx->host.capture_pointer(ctx->host.opaque);
                 }
@@ -1157,7 +1289,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     bool in_box = (n.start_beat >= min_beat && n.start_beat <= max_beat &&
                                    (int)n.pitch >= min_pitch && (int)n.pitch <= max_pitch);
                     // Additive when shift was held at drag start
-                    if (!ctx->mouse.shift_down)
+                    if (!box_sel_additive_)
                         note_selected_[j] = in_box;
                     else if (in_box)
                         note_selected_[j] = true;
@@ -1170,23 +1302,41 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                 auto& n = editor_notes_[drag_note_idx_];
 
                 if (drag_mode_ == DragMode::MovingNote) {
-                    double raw_start = drag_orig_start_ + dmx * inv_bw;
-                    double new_start = std::clamp(snap(raw_start), 0.0, pat_len - drag_orig_dur_);
-                    int drow = static_cast<int>(std::round(dmy / row_h_));
-                    int new_pitch = std::clamp(
-                        static_cast<int>(drag_orig_pitch_) - drow, 0, 127);
-                    if (n.start_beat != new_start || static_cast<int>(n.pitch) != new_pitch) {
-                        n.start_beat = new_start;
-                        n.pitch      = static_cast<uint8_t>(new_pitch);
-                        commit_editor_notes(ctx);
+                    const double snapped_delta = snap(drag_orig_start_ + dmx * inv_bw) - drag_orig_start_;
+                    const int drow = static_cast<int>(std::round(dmy / row_h_));
+                    bool changed = false;
+                    for (int idx : drag_selected_indices_) {
+                        if (idx < 0 || idx >= (int)editor_notes_.size() ||
+                            idx >= (int)drag_orig_notes_.size()) {
+                            continue;
+                        }
+                        const auto& orig = drag_orig_notes_[idx];
+                        auto& dst_note = editor_notes_[idx];
+                        double new_start = std::clamp(orig.start_beat + snapped_delta,
+                                                      0.0, pat_len - orig.duration_beats);
+                        int new_pitch = std::clamp(static_cast<int>(orig.pitch) - drow, 0, 127);
+                        changed = changed || dst_note.start_beat != new_start ||
+                                  static_cast<int>(dst_note.pitch) != new_pitch;
+                        dst_note.start_beat = new_start;
+                        dst_note.pitch = static_cast<uint8_t>(new_pitch);
                     }
+                    if (changed) commit_editor_notes(ctx);
                 } else if (drag_mode_ == DragMode::ResizingNote) {
-                    double raw_right = drag_orig_start_ + drag_orig_dur_ + dmx * inv_bw;
-                    double new_dur   = std::max(cell_beats, snap(raw_right) - drag_orig_start_);
-                    new_dur = std::min(new_dur, pat_len - drag_orig_start_);
-                    if (n.duration_beats != new_dur) {
-                        n.duration_beats = new_dur; commit_editor_notes(ctx);
+                    bool changed = false;
+                    for (int idx : drag_selected_indices_) {
+                        if (idx < 0 || idx >= (int)editor_notes_.size() ||
+                            idx >= (int)drag_orig_notes_.size()) {
+                            continue;
+                        }
+                        const auto& orig = drag_orig_notes_[idx];
+                        auto& dst_note = editor_notes_[idx];
+                        double raw_right = orig.start_beat + orig.duration_beats + dmx * inv_bw;
+                        double new_dur = std::max(cell_beats, snap(raw_right) - orig.start_beat);
+                        new_dur = std::min(new_dur, pat_len - orig.start_beat);
+                        changed = changed || dst_note.duration_beats != new_dur;
+                        dst_note.duration_beats = new_dur;
                     }
+                    if (changed) commit_editor_notes(ctx);
                 } else if (drag_mode_ == DragMode::AddingNote) {
                     double raw_right = drag_orig_start_ + drag_orig_dur_ + dmx * inv_bw;
                     double new_right = std::max(drag_orig_start_ + cell_beats, snap(raw_right));
@@ -1215,35 +1365,28 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         // --- Release ---
         if (!ctx->mouse.left_down && drag_mode_ != DragMode::None) {
-            // BoxSelect with minimal movement → treat as a click: add a note
-            if (drag_mode_ == DragMode::BoxSelect) {
-                const float ddx = ctx->mouse.x - drag_start_mx_;
-                const float ddy = ctx->mouse.y - drag_start_my_;
-                if (ddx * ddx + ddy * ddy < 25.0f) {  // < 5 px radius
-                    note_selected_.assign(editor_notes_.size(), 0);
-                    const float cmx = drag_start_mx_ - grid_x;
-                    const float cmy = drag_start_my_ - grid_y;
-                    int pitch = p_fn(cmy);
-                    if (pitch >= 0 && pitch <= 127) {
-                        double start = midi_clip::quantize_to_grid(
-                            beat_from_x(cmx, editor_scroll_x_, static_cast<float>(inv_bw)),
-                            grid_idx);
-                        start = std::clamp(start, 0.0, pat_len - cell_beats);
-                        midi_clip::ParsedNote n{};
-                        n.pitch          = static_cast<uint8_t>(pitch);
-                        n.start_beat     = start;
-                        n.duration_beats = cell_beats;
-                        n.velocity       = 0.8f;
-                        editor_notes_.push_back(n);
-                        note_selected_.push_back(0);
-                        commit_editor_notes(ctx);
-                    }
-                }
-            }
             if (ctx->host.release_pointer)
                 ctx->host.release_pointer(ctx->host.opaque);
             drag_mode_     = DragMode::None;
             drag_note_idx_ = -1;
+            drag_orig_notes_.clear();
+            drag_selected_indices_.clear();
         }
+    }
+
+    if (ctx->commands.set_param) {
+        auto set_if_changed = [&](const char* name, float current, float next) {
+            if (std::fabs(current - next) > 1e-4f)
+                ctx->commands.set_param(ctx->commands.opaque, name, next);
+        };
+        set_if_changed("_editor_fold", editor_fold_.bool_value() ? 1.0f : 0.0f,
+                       fold_rows_ ? 1.0f : 0.0f);
+        set_if_changed("_editor_scale_root", static_cast<float>(editor_scale_root_.int_value()),
+                       static_cast<float>(scale_root_));
+        set_if_changed("_editor_scale_type", static_cast<float>(editor_scale_type_.int_value()),
+                       static_cast<float>(scale_type_));
+        set_if_changed("_editor_zoom_beats", editor_zoom_beat_.value, editor_zoom_beats_);
+        set_if_changed("_editor_scroll_beat", editor_scroll_beat_.value, editor_scroll_x_);
+        set_if_changed("_editor_row_height", editor_row_height_.value, row_h_);
     }
 }
