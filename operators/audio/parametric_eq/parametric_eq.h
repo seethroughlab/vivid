@@ -51,7 +51,8 @@ struct ParametricEQ : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> q_4   {"q_4",    1.0f, 0.1f, 20.0f};
     vivid::Param<int>   type_4{"type_4", 0, {"Peak", "Low Shelf", "High Shelf", "Low Pass", "High Pass"}};
 
-    BiquadState bands_[kMaxBands];
+    static constexpr uint32_t kMaxChannels = 2;
+    BiquadState bands_[kMaxBands][kMaxChannels];
 
     // Editor UI state. Public so tests can arrange; matches the pattern
     // used by the other Tier-3 adopters.

@@ -66,16 +66,17 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> feedback{"feedback",  0.5f, -0.95f,  0.95f};
     vivid::Param<float> mix     {"mix",       0.5f,  0.0f,   1.0f};
 
-    FractionalDelayLine delay_;
+    static constexpr uint32_t kMaxChannels = 2;
+    FractionalDelayLine delay_[kMaxChannels];
     double   phase_       = 0.0;
     float    prev_external_phase_ = 0.0f;
     int      external_beat_count_ = 0;
     bool     initialized_ = false;
     uint32_t init_rate_   = 0;
 
-    // DC blocker state
-    float dc_x1_ = 0.0f;
-    float dc_y1_ = 0.0f;
+    // DC blocker state (per channel)
+    float dc_x1_[kMaxChannels] = {};
+    float dc_y1_[kMaxChannels] = {};
 
     Flanger() {
         vivid::semantic_tag(rate, "frequency_hz");
@@ -113,8 +114,8 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"rate_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
@@ -123,28 +124,23 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     void lazy_init(uint32_t sr) {
         if (initialized_ && init_rate_ == sr) return;
         int max_samples = static_cast<int>(kMaxDelay * sr) + 2;
-        delay_.init(max_samples);
+        for (uint32_t c = 0; c < kMaxChannels; c++) {
+            delay_[c].init(max_samples);
+            dc_x1_[c] = 0.0f;
+            dc_y1_[c] = 0.0f;
+        }
         phase_  = 0.0;
         prev_external_phase_ = 0.0f;
         external_beat_count_ = 0;
-        dc_x1_  = 0.0f;
-        dc_y1_  = 0.0f;
         initialized_ = true;
         init_rate_   = sr;
-    }
-
-    float dc_block(float x) {
-        float y = x - dc_x1_ + 0.995f * dc_y1_;
-        dc_x1_ = x;
-        dc_y1_ = y;
-        return y;
     }
 
     void process_audio(const VividAudioContext* ctx) override {
         lazy_init(ctx->sample_rate);
 
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
         float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
@@ -180,22 +176,28 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
                 phase = vivid::cycle_phase_from_total_beats(total_beats, sync_division.int_value());
             }
 
-            // Sine LFO [0,1] range
+            // Sine LFO [0,1] range — shared across channels
             float lfo = static_cast<float>(audio_dsp::waveform(phase, 0)) * 0.5f + 0.5f;
             if (mode == vivid::kRateModeFree) {
                 phase_ += mod_rate * inv_sr;
                 if (phase_ >= 1.0) phase_ -= 1.0;
             }
 
-            float delay_samples = center_samples + depth_samples * lfo;
-            if (delay_samples < 1.0f) delay_samples = 1.0f;
-            if (delay_samples >= static_cast<float>(delay_.size - 1))
-                delay_samples = static_cast<float>(delay_.size - 2);
+            float delay_samp = center_samples + depth_samples * lfo;
+            if (delay_samp < 1.0f) delay_samp = 1.0f;
+            if (delay_samp >= static_cast<float>(delay_[0].size - 1))
+                delay_samp = static_cast<float>(delay_[0].size - 2);
 
-            float delayed = delay_.read(delay_samples);
-            float fb_signal = dc_block(delayed);
-            delay_.push(in[i] + fb_signal * fb);
-            out[i] = in[i] * dry + delayed * wet;
+            for (uint32_t c = 0; c < nch; c++) {
+                const float* in_c  = ctx->input_buffers[0]  + c * frames;
+                float*       out_c = ctx->output_buffers[0] + c * frames;
+                float delayed = delay_[c].read(delay_samp);
+                float dc_y = delayed - dc_x1_[c] + 0.995f * dc_y1_[c];
+                dc_x1_[c] = delayed;
+                dc_y1_[c] = dc_y;
+                delay_[c].push(in_c[i] + dc_y * fb);
+                out_c[i] = in_c[i] * dry + delayed * wet;
+            }
         }
     }
 };

@@ -49,11 +49,12 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> feedback{"feedback", 0.3f, 0.0f,   0.95f};
     vivid::Param<float> mix     {"mix",      0.5f, 0.0f,   1.0f};
 
-    AllPass1 allpasses_[kMaxStages];
+    static constexpr uint32_t kMaxChannels = 2;
+    AllPass1 allpasses_[kMaxStages][kMaxChannels];
     double   phase_       = 0.0;
     float    prev_external_phase_ = 0.0f;
     int      external_beat_count_ = 0;
-    float    fb_state_    = 0.0f;
+    float    fb_state_[kMaxChannels] = {};
     bool     initialized_ = false;
     uint32_t init_rate_   = 0;
 
@@ -98,8 +99,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"rate_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
@@ -108,11 +109,12 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     void lazy_init(uint32_t sr) {
         if (initialized_ && init_rate_ == sr) return;
         for (int i = 0; i < kMaxStages; i++)
-            allpasses_[i].reset();
+            for (uint32_t c = 0; c < kMaxChannels; c++)
+                allpasses_[i][c].reset();
         phase_    = 0.0;
         prev_external_phase_ = 0.0f;
         external_beat_count_ = 0;
-        fb_state_ = 0.0f;
+        for (uint32_t c = 0; c < kMaxChannels; c++) fb_state_[c] = 0.0f;
         initialized_ = true;
         init_rate_   = sr;
     }
@@ -120,8 +122,8 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         lazy_init(ctx->sample_rate);
 
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
         float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
@@ -155,30 +157,28 @@ struct Phaser : vivid::OperatorBase, vivid::AudioProcessable {
                 phase = vivid::cycle_phase_from_total_beats(total_beats, sync_division.int_value());
             }
 
-            // Sine LFO mapped to [0,1]
+            // Sine LFO mapped to [0,1] — shared across channels
             float lfo = static_cast<float>(audio_dsp::waveform(phase, 0)) * 0.5f + 0.5f;
             if (mode == vivid::kRateModeFree) {
                 phase_ += mod_rate * inv_sr;
                 if (phase_ >= 1.0) phase_ -= 1.0;
             }
 
-            // Map LFO to sweep frequency range scaled by depth
+            // Allpass coefficient — shared
             float sweep_freq = kMinFreq + (kMaxFreq - kMinFreq) * lfo * d;
-
-            // Compute allpass coefficient
             float tan_val = std::tan(static_cast<float>(M_PI) * sweep_freq / sr);
             float g = (tan_val - 1.0f) / (tan_val + 1.0f);
 
-            // Feed input with feedback
-            float x = in[i] + fb_state_ * fb;
-
-            // Run through allpass cascade
-            float ap_out = x;
-            for (int s = 0; s < stage_count; s++)
-                ap_out = allpasses_[s].process(ap_out, g);
-
-            fb_state_ = ap_out;
-            out[i] = in[i] * dry + ap_out * wet;
+            for (uint32_t c = 0; c < nch; c++) {
+                const float* in_c  = ctx->input_buffers[0]  + c * frames;
+                float*       out_c = ctx->output_buffers[0] + c * frames;
+                float x = in_c[i] + fb_state_[c] * fb;
+                float ap_out = x;
+                for (int s = 0; s < stage_count; s++)
+                    ap_out = allpasses_[s][c].process(ap_out, g);
+                fb_state_[c] = ap_out;
+                out_c[i] = in_c[i] * dry + ap_out * wet;
+            }
         }
     }
 };

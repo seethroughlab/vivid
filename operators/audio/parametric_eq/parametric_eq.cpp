@@ -59,8 +59,8 @@ void ParametricEQ::collect_params(std::vector<vivid::ParamBase*>& out) {
 }
 
 void ParametricEQ::collect_ports(std::vector<VividPortDescriptor>& out) {
-    out.push_back({"input",     VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-    out.push_back({"output",    VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+    out.push_back({"input",     VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+    out.push_back({"output",    VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
     out.push_back({"freq_1_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
     vivid::append_analysis_ports(out);
 }
@@ -78,12 +78,10 @@ static void apply_biquad(BiquadState& s, const pe::BiquadCoeffs& c,
 }
 
 void ParametricEQ::process_audio(const VividAudioContext* ctx) {
-    float* in  = ctx->input_buffers[0];
-    float* out = ctx->output_buffers[0];
+    uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+    if (nch > kMaxChannels) nch = kMaxChannels;
     uint32_t frames = ctx->buffer_size;
     float sr = static_cast<float>(ctx->sample_rate);
-
-    for (uint32_t i = 0; i < frames; i++) out[i] = in[i];
 
     float freq_1_cv = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
     int bc = band_count.int_value();
@@ -97,9 +95,17 @@ void ParametricEQ::process_audio(const VividAudioContext* ctx) {
     freqs[0] *= std::pow(2.0f, freq_1_cv / 12.0f);
     freqs[0] = std::clamp(freqs[0], pe::kMinFreqHz, pe::kMaxFreqHz);
 
-    for (int b = 0; b < bc; b++) {
-        auto c = pe::compute_coeffs(types[b], freqs[b], gains[b], qs[b], sr);
-        apply_biquad(bands_[b], c, out, frames);
+    // Precompute band coefficients once
+    pe::BiquadCoeffs coeffs[kMaxBands];
+    for (int b = 0; b < bc; b++)
+        coeffs[b] = pe::compute_coeffs(types[b], freqs[b], gains[b], qs[b], sr);
+
+    for (uint32_t ch = 0; ch < nch; ch++) {
+        const float* in_ch  = ctx->input_buffers[0]  + ch * frames;
+        float*       out_ch = ctx->output_buffers[0] + ch * frames;
+        for (uint32_t i = 0; i < frames; i++) out_ch[i] = in_ch[i];
+        for (int b = 0; b < bc; b++)
+            apply_biquad(bands_[b][ch], coeffs[b], out_ch, frames);
     }
 }
 

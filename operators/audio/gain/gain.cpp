@@ -41,8 +41,8 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",     "Audio input signal to scale."});
-        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",    "Scaled audio output."});
+        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",     "Audio input signal to scale."});
+        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",    "Scaled audio output."});
         out.push_back({"amplitude_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 1.0f, nullptr, "amplitude_linear","scalar",        "global_gain_mod", "Scalar gain modulation input, often driven by an envelope or macro."});
         vivid::append_analysis_ports(out);
     }
@@ -89,12 +89,18 @@ struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > 2u) nch = 2u;
+        uint32_t frames = ctx->buffer_size;
+
         float amp_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 1.0f;
         float g = gain.value * amp_cv_val;
 
-        vivid::audio_kernels::scale(in, out, ctx->buffer_size, g);
+        for (uint32_t c = 0; c < nch; c++) {
+            const float* in  = ctx->input_buffers[0]  + c * frames;
+            float*       out = ctx->output_buffers[0] + c * frames;
+            vivid::audio_kernels::scale(in, out, frames, g);
+        }
     }
 };
 

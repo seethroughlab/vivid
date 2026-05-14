@@ -22,7 +22,8 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> release  {"release",   100.0f,  10.0f, 1000.0f};
     vivid::Param<float> lookahead{"lookahead",   5.0f,   1.0f,    5.0f};
 
-    std::vector<float> delay_buf_;
+    static constexpr uint32_t kMaxChannels = 2;
+    std::vector<float> delay_buf_[kMaxChannels];
     int    delay_size_    = 0;
     int    delay_write_   = 0;
     float  env_           = 0.0f;
@@ -56,18 +57,18 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
     void lazy_init(uint32_t sr) {
         if (initialized_ && init_rate_ == sr) return;
-        // Max lookahead is 5ms
         int max_samples = static_cast<int>(0.005f * sr) + 1;
         delay_size_  = max_samples;
         delay_write_ = 0;
-        delay_buf_.assign(max_samples, 0.0f);
+        for (uint32_t c = 0; c < kMaxChannels; c++)
+            delay_buf_[c].assign(max_samples, 0.0f);
         env_ = 0.0f;
         initialized_ = true;
         init_rate_   = sr;
@@ -76,8 +77,8 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         lazy_init(ctx->sample_rate);
 
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
         float sr = static_cast<float>(ctx->sample_rate);
@@ -91,37 +92,35 @@ struct Limiter : vivid::OperatorBase, vivid::AudioProcessable {
         float env = env_;
 
         for (uint32_t i = 0; i < frames; i++) {
-            // Read delayed sample
             int rd = delay_write_ - delay_samples;
             if (rd < 0) rd += delay_size_;
-            float delayed = delay_buf_[rd];
 
-            // Write current sample into delay line
-            delay_buf_[delay_write_] = in[i];
-            if (++delay_write_ >= delay_size_) delay_write_ = 0;
+            // Peak detect from max(|L|, |R|) on the pre-delay signal
+            float peak = 0.0f;
+            for (uint32_t c = 0; c < nch; c++) {
+                float a = std::fabs(ctx->input_buffers[0][c * frames + i]);
+                if (a > peak) peak = a;
+            }
 
-            // Peak detection on the incoming (non-delayed) signal
-            float peak = std::fabs(in[i]);
-
-            // Compute desired gain reduction
-            float desired_gain = (peak > ceiling_linear)
-                ? ceiling_linear / peak
-                : 1.0f;
-
-            // Envelope: instant attack, smooth release
+            float desired_gain = (peak > ceiling_linear) ? ceiling_linear / peak : 1.0f;
             if (desired_gain < env)
-                env = desired_gain;  // Instant attack
+                env = desired_gain;
             else
                 env = rel_coeff * env + (1.0f - rel_coeff) * desired_gain;
 
-            // Apply gain to the delayed signal
-            float result = delayed * env;
+            // Apply same gain to all channels from their respective delay buffers
+            for (uint32_t c = 0; c < nch; c++) {
+                const float* in_c  = ctx->input_buffers[0]  + c * frames;
+                float*       out_c = ctx->output_buffers[0] + c * frames;
+                float delayed = delay_buf_[c][rd];
+                delay_buf_[c][delay_write_] = in_c[i];
+                float result = delayed * env;
+                if (result >  ceiling_linear) result =  ceiling_linear;
+                if (result < -ceiling_linear) result = -ceiling_linear;
+                out_c[i] = result;
+            }
 
-            // Brickwall safety clamp
-            if (result >  ceiling_linear) result =  ceiling_linear;
-            if (result < -ceiling_linear) result = -ceiling_linear;
-
-            out[i] = result;
+            if (++delay_write_ >= delay_size_) delay_write_ = 0;
         }
 
         env_ = env;

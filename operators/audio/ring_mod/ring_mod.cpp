@@ -51,15 +51,15 @@ struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"freq_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > 2u) nch = 2u;
         uint32_t frames = ctx->buffer_size;
 
         float freq_cv = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
@@ -74,8 +74,12 @@ struct RingMod : vivid::OperatorBase, vivid::AudioProcessable {
 
         for (uint32_t i = 0; i < frames; i++) {
             float carrier = static_cast<float>(audio_dsp::waveform(phase_, wf));
-            float wet_sig = in[i] * carrier;
-            out[i] = in[i] * dry + wet_sig * wet;
+
+            for (uint32_t c = 0; c < nch; c++) {
+                const float* in_c  = ctx->input_buffers[0]  + c * frames;
+                float*       out_c = ctx->output_buffers[0] + c * frames;
+                out_c[i] = in_c[i] * dry + in_c[i] * carrier * wet;
+            }
 
             phase_ += static_cast<double>(freq) * inv_sr;
             if (phase_ >= 1.0) phase_ -= 1.0;

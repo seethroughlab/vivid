@@ -95,8 +95,8 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",   "audio_buffer", "audio_input",          "Audio input to be filtered."});
-        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",   "audio_buffer", "audio_output",         "Filtered audio output."});
+        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",   "audio_buffer", "audio_input",          "Audio input to be filtered."});
+        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",   "audio_buffer", "audio_output",         "Filtered audio output."});
         out.push_back({"cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod", "scalar",        "global_cutoff_mod",   "Global cutoff modulation shared by all voices."});
         out.push_back({"resonance_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "resonance",      "scalar",        "global_resonance_mod","Global resonance modulation shared by all voices."});
         out.push_back({"cutoff_mod",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "cutoff_mod",     "lane_array",    "per_note_cutoff_mod", "Per-lane cutoff modulation for polyphonic envelopes and note shaping."});
@@ -105,10 +105,9 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        auto& ls = *vivid_lane_state(ctx, ctx->lane_id, LaneState);
-
-        const float* in  = ctx->input_buffers[0];
-        float*       out = ctx->output_buffers[0];
+        static constexpr uint32_t kMaxChannels = 2;
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames  = ctx->buffer_size;
         float sr = static_cast<float>(ctx->sample_rate);
 
@@ -116,52 +115,49 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float cutoff_cv_val    = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
         float resonance_cv_val = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
 
-        // Spread inputs via lane_index (for lane-lifted poly chains)
+        // Lane-array inputs (computed once, shared across channels)
         float cutoff_mod_val = 0.0f;
         float voice_freq = 0.0f;
         if (ctx->input_lanes) {
             uint32_t ci = ctx->lane_index;
-            auto& cutoff_mod_sp = ctx->input_lanes[0];  // cutoff_mod lane
+            auto& cutoff_mod_sp = ctx->input_lanes[0];
             if (cutoff_mod_sp.data && ci < cutoff_mod_sp.length)
                 cutoff_mod_val = cutoff_mod_sp.data[ci];
-            auto& freq_sp = ctx->input_lanes[1];  // frequencies lane
+            auto& freq_sp = ctx->input_lanes[1];
             if (freq_sp.data && ci < freq_sp.length)
                 voice_freq = freq_sp.data[ci];
         }
 
-        // Base cutoff with CV modulation
         float mod_cutoff = cutoff.value;
         if (cutoff_cv_val != 0.0f)
             mod_cutoff *= std::pow(2.0f, cutoff_cv_val / 12.0f);
-
-        // Per-voice cutoff modulation from lane input (±4 octaves)
         if (cutoff_mod_val != 0.0f)
             mod_cutoff *= std::pow(2.0f, cutoff_mod_val * 4.0f);
 
-        // Keytracking: shift cutoff based on voice frequency relative to C4
         float kt = keytrack.value;
         if (kt > 0.0f && voice_freq > 0.0f) {
             float oct_from_c4 = std::log2(voice_freq / 261.63f);
             mod_cutoff *= std::pow(2.0f, oct_from_c4 * kt);
         }
-
         mod_cutoff = std::clamp(mod_cutoff, 20.0f, 20000.0f);
 
-        // Resonance with CV
-        float mod_reso = resonance.value + resonance_cv_val;
-        mod_reso = std::clamp(mod_reso, 0.0f, 1.0f);
-
-        float drv = drive.value;
-        int ftype = mode.int_value();
+        float mod_reso = std::clamp(resonance.value + resonance_cv_val, 0.0f, 1.0f);
 
         audio_dsp::FilterParams filter_params{};
-        filter_params.type = ftype;
+        filter_params.type = mode.int_value();
         filter_params.cutoff_hz = mod_cutoff;
         filter_params.resonance = mod_reso;
-        filter_params.drive = drv;
+        filter_params.drive = drive.value;
         filter_params.sample_rate = sr;
         const auto plan = audio_dsp::prepare_filter_plan(filter_params);
-        audio_dsp::process_filter_block(ls.filter_state, plan, in, out, frames);
+
+        for (uint32_t c = 0; c < nch; c++) {
+            uint64_t key = static_cast<uint64_t>(ctx->lane_id) * kMaxChannels + c;
+            auto& ls = *vivid_lane_state(ctx, key, LaneState);
+            const float* in_c  = ctx->input_buffers[0]  + c * frames;
+            float*       out_c = ctx->output_buffers[0] + c * frames;
+            audio_dsp::process_filter_block(ls.filter_state, plan, in_c, out_c, frames);
+        }
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

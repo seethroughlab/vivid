@@ -74,35 +74,34 @@ struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",        VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"sidechain",    VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"threshold_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > 2u) nch = 2u;
         uint32_t frames = ctx->buffer_size;
 
-        // Sidechain: use second audio input if present, otherwise follow main input
-        float* sc = ctx->input_buffers[1];
+        // Sidechain: use second audio input if present, otherwise detect from main
+        const float* sc = ctx->input_buffers[1];
         bool has_sidechain = false;
         if (sc) {
             for (uint32_t i = 0; i < frames; i++) {
                 if (sc[i] != 0.0f) { has_sidechain = true; break; }
             }
         }
-        float* detect = has_sidechain ? sc : in;
 
         float thresh_cv = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
         float thresh = threshold.value + thresh_cv;
         if (thresh < -60.0f) thresh = -60.0f;
         if (thresh > 0.0f)   thresh = 0.0f;
 
-        float r       = ratio.value;
-        float knee_w  = knee.value;
+        float r        = ratio.value;
+        float knee_w   = knee.value;
         float makeup_g = std::pow(10.0f, makeup.value / 20.0f);
 
         float sr = static_cast<float>(ctx->sample_rate);
@@ -113,35 +112,43 @@ struct Compressor : vivid::OperatorBase, vivid::AudioProcessable {
         float env = env_;
 
         for (uint32_t i = 0; i < frames; i++) {
-            // Envelope follower (peak mode)
-            float abs_sample = std::fabs(detect[i]);
-            float input_db = (abs_sample > 0.0f)
-                ? 20.0f * std::log10(abs_sample)
-                : kFloorDB;
+            // Detect: sidechain (mono) or max(|L|, |R|) from main input
+            float abs_sample;
+            if (has_sidechain) {
+                abs_sample = std::fabs(sc[i]);
+            } else {
+                abs_sample = std::fabs(ctx->input_buffers[0][i]);
+                for (uint32_t c = 1; c < nch; c++) {
+                    float a = std::fabs(ctx->input_buffers[0][c * frames + i]);
+                    if (a > abs_sample) abs_sample = a;
+                }
+            }
+
+            float input_db = (abs_sample > 0.0f) ? 20.0f * std::log10(abs_sample) : kFloorDB;
             if (input_db < kFloorDB) input_db = kFloorDB;
 
-            // Smooth envelope in dB domain
             if (input_db > env)
                 env = att_coeff * env + (1.0f - att_coeff) * input_db;
             else
                 env = rel_coeff * env + (1.0f - rel_coeff) * input_db;
 
-            // Gain computer with soft knee
             float gain_db = 0.0f;
             float over = env - thresh;
-
             if (knee_w > 0.0f && over > -half_knee && over < half_knee) {
-                // Soft knee region: quadratic interpolation
                 float x = over + half_knee;
                 gain_db = ((1.0f / r - 1.0f) * x * x) / (2.0f * knee_w);
             } else if (over >= half_knee) {
-                // Above knee: full compression
                 gain_db = (1.0f / r - 1.0f) * over;
             }
-            // Below knee: gain_db stays 0 (no compression)
 
             float gain_linear = std::pow(10.0f, gain_db / 20.0f) * makeup_g;
-            out[i] = in[i] * gain_linear;
+
+            // Apply same gain reduction to all channels
+            for (uint32_t c = 0; c < nch; c++) {
+                const float* in_c  = ctx->input_buffers[0]  + c * frames;
+                float*       out_c = ctx->output_buffers[0] + c * frames;
+                out_c[i] = in_c[i] * gain_linear;
+            }
         }
 
         env_ = env;

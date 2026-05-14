@@ -198,9 +198,9 @@ struct Tape : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,
-                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
-                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+                       VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
@@ -238,105 +238,92 @@ struct Tape : vivid::OperatorBase, vivid::AudioProcessable {
         }
     };
 
-    LaneState scalar_state_;
+    static constexpr uint32_t kMaxChannels = 2;
+    LaneState scalar_state_[kMaxChannels];
 
     void process_audio(const VividAudioContext* ctx) override {
-        LaneState& s = ctx->lane_state_fn
-            ? *vivid_lane_state(ctx, ctx->lane_id, LaneState)
-            : scalar_state_;
-        s.ensure_init(ctx->sample_rate, ctx->lane_id);
-
-        const float* in  = ctx->input_buffers[0];
-        float*       out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         const uint32_t frames = ctx->buffer_size;
         const float    sr     = static_cast<float>(ctx->sample_rate);
 
-        // --- Param-driven coefficients (recomputed once per block) ---
-        // drive 0..1 → tanh pre-gain 1..6×, log-shaped so low values feel
-        // gentler.
+        // Param-driven coefficients computed once, shared across channels
         const float drive_amt = drive.value;
         const float pre_gain  = 1.0f + drive_amt * drive_amt * 5.0f;
-        const float post_gain = 1.0f / (1.0f + drive_amt * 0.4f); // makeup
-        const float bias_v    = bias.value * 0.7f;                // ~±0.7 max
+        const float post_gain = 1.0f / (1.0f + drive_amt * 0.4f);
+        const float bias_v    = bias.value * 0.7f;
         const float bias_offset = std::tanh(bias_v * pre_gain);
 
-        // tone 0..1 → cutoff 1.5 kHz .. 18 kHz, exponential.
         const float tone_cut = 1500.0f * std::pow(12.0f, tone.value);
-        s.tone_lp.set_cutoff(tone_cut, sr);
-
-        // rate_reduction 0..1 → target sample rate 48 kHz .. 6 kHz.
         const float target_sr = sr - rate_reduction.value * (sr - 6000.0f);
         const int   rate_step = std::max(1,
             static_cast<int>(std::round(sr / std::max(1.0f, target_sr))));
-
-        // hiss 0..1 → linear amplitude up to ~0.025 (≈ -32 dB).
         const float hiss_amp = hiss.value * hiss.value * 0.025f;
-
-        // wow / flutter depths in samples.
         const float wow_depth_samp     = wow.value     * 6.0f * (sr / 48000.0f);
         const float flutter_depth_samp = flutter.value * 1.5f * (sr / 48000.0f);
         const float center_delay_samp  = (kCenterDelayMs / 1000.0f) * sr;
-
         const double wow_inc     = kWowHz     * 2.0 * M_PI / static_cast<double>(sr);
         const double flutter_inc = kFlutterHz * 2.0 * M_PI / static_cast<double>(sr);
-
         const float wet = mix.value;
         const float dry = 1.0f - wet;
 
-        for (uint32_t i = 0; i < frames; ++i) {
-            const float x = in[i];
+        for (uint32_t c = 0; c < nch; c++) {
+            uint64_t key = static_cast<uint64_t>(ctx->lane_id) * kMaxChannels + c;
+            LaneState& s = ctx->lane_state_fn
+                ? *vivid_lane_state(ctx, key, LaneState)
+                : scalar_state_[c];
+            s.ensure_init(ctx->sample_rate, static_cast<uint32_t>(key));
+            s.tone_lp.set_cutoff(tone_cut, sr);
 
-            // --- Wow + flutter delay read ---
-            s.delay.push(x);
-            const float lfo_off =
-                wow_depth_samp     * static_cast<float>(std::sin(s.wow_phase)) +
-                flutter_depth_samp * static_cast<float>(std::sin(s.flutter_phase));
-            s.wow_phase     += wow_inc;
-            s.flutter_phase += flutter_inc;
-            if (s.wow_phase     > kTwoPi) s.wow_phase     -= kTwoPi;
-            if (s.flutter_phase > kTwoPi) s.flutter_phase -= kTwoPi;
-            float read_delay = center_delay_samp + lfo_off;
-            // Clamp to safe range inside the buffer.
-            if (read_delay < 1.0f) read_delay = 1.0f;
-            if (read_delay > static_cast<float>(s.delay.size - 2))
-                read_delay = static_cast<float>(s.delay.size - 2);
-            float y = s.delay.read(read_delay);
+            const float* in_c  = ctx->input_buffers[0]  + c * frames;
+            float*       out_c = ctx->output_buffers[0] + c * frames;
 
-            // --- Pre-emphasis → tanh (with bias) → de-emphasis ---
-            y = s.pre_emph.process(y);
-            float driven = y * pre_gain + bias_v * pre_gain;
-            float saturated = std::tanh(driven) - bias_offset;
-            y = saturated * post_gain;
-            y = s.de_emph.process(y);
+            for (uint32_t i = 0; i < frames; ++i) {
+                const float x = in_c[i];
 
-            // --- Tone-controlled head-bump LP ---
-            y = s.tone_lp.process(y);
+                s.delay.push(x);
+                const float lfo_off =
+                    wow_depth_samp     * static_cast<float>(std::sin(s.wow_phase)) +
+                    flutter_depth_samp * static_cast<float>(std::sin(s.flutter_phase));
+                s.wow_phase     += wow_inc;
+                s.flutter_phase += flutter_inc;
+                if (s.wow_phase     > kTwoPi) s.wow_phase     -= kTwoPi;
+                if (s.flutter_phase > kTwoPi) s.flutter_phase -= kTwoPi;
+                float read_delay = center_delay_samp + lfo_off;
+                if (read_delay < 1.0f) read_delay = 1.0f;
+                if (read_delay > static_cast<float>(s.delay.size - 2))
+                    read_delay = static_cast<float>(s.delay.size - 2);
+                float y = s.delay.read(read_delay);
 
-            // --- Sample-rate decimation (sample-and-hold) ---
-            if (rate_step > 1) {
-                if (s.rate_counter == 0) s.rate_held_sample = y;
-                ++s.rate_counter;
-                if (s.rate_counter >= rate_step) s.rate_counter = 0;
-                y = s.rate_held_sample;
-            } else {
-                s.rate_counter = 0;
+                y = s.pre_emph.process(y);
+                float driven = y * pre_gain + bias_v * pre_gain;
+                float saturated = std::tanh(driven) - bias_offset;
+                y = saturated * post_gain;
+                y = s.de_emph.process(y);
+                y = s.tone_lp.process(y);
+
+                if (rate_step > 1) {
+                    if (s.rate_counter == 0) s.rate_held_sample = y;
+                    ++s.rate_counter;
+                    if (s.rate_counter >= rate_step) s.rate_counter = 0;
+                    y = s.rate_held_sample;
+                } else {
+                    s.rate_counter = 0;
+                }
+
+                if (hiss_amp > 0.0f) {
+                    float n = s.hiss_gen.next() - 0.5f;
+                    y += n * 2.0f * hiss_amp;
+                }
+
+                constexpr float dc_R = 0.999f;
+                float dc_y = y - s.dc_x1 + dc_R * s.dc_y1;
+                s.dc_x1 = y;
+                s.dc_y1 = dc_y;
+                y = dc_y;
+
+                out_c[i] = x * dry + y * wet;
             }
-
-            // --- Hiss ---
-            if (hiss_amp > 0.0f) {
-                // WhiteNoise::next() returns 0..1; recenter to ±0.5 then scale.
-                float n = s.hiss_gen.next() - 0.5f;
-                y += n * 2.0f * hiss_amp;
-            }
-
-            // --- DC blocker (one-pole high-pass at ~5 Hz, R = 0.999) ---
-            constexpr float dc_R = 0.999f;
-            float dc_y = y - s.dc_x1 + dc_R * s.dc_y1;
-            s.dc_x1 = y;
-            s.dc_y1 = dc_y;
-            y = dc_y;
-
-            out[i] = x * dry + y * wet;
         }
     }
 };

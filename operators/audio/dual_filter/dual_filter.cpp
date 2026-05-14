@@ -194,8 +194,8 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",          VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",           "Audio input to be filtered."});
-        out.push_back({"output",         VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",          "Filtered audio output."});
+        out.push_back({"input",          VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_input",           "Audio input to be filtered."});
+        out.push_back({"output",         VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",    "audio_buffer", "audio_output",          "Filtered audio output."});
         out.push_back({"a_cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod",  "scalar",        "global_cutoff_mod",    "Global cutoff modulation for stage A shared by all voices."});
         out.push_back({"b_cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod",  "scalar",        "global_cutoff_mod",    "Global cutoff modulation for stage B shared by all voices."});
         out.push_back({"a_resonance_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "resonance",       "scalar",        "global_resonance_mod", "Global resonance modulation for stage A shared by all voices."});
@@ -207,10 +207,9 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        auto& ls = *vivid_lane_state(ctx, ctx->lane_id, LaneState);
-
-        const float* in  = ctx->input_buffers[0];
-        float*       out = ctx->output_buffers[0];
+        static constexpr uint32_t kMaxChannels = 2;
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames  = ctx->buffer_size;
         float sr = static_cast<float>(ctx->sample_rate);
 
@@ -300,80 +299,84 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
         params_b.sample_rate = sr;
         const auto plan_b = audio_dsp::prepare_filter_plan(params_b);
 
-        switch (route) {
-            case SERIAL_AB: {
-                if (en_a) {
-                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
-                    if (en_b)
-                        audio_dsp::process_filter_block(ls.filter_b, plan_b, out, out, frames);
-                } else if (en_b) {
-                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
-                } else if (out != in) {
-                    std::memcpy(out, in, sizeof(float) * frames);
-                }
-                for (uint32_t i = 0; i < frames; ++i)
-                    out[i] = flush_audio_denormal(out[i] * gain);
-                break;
-            }
-            case SERIAL_BA: {
-                if (en_b) {
-                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
-                    if (en_a)
-                        audio_dsp::process_filter_block(ls.filter_a, plan_a, out, out, frames);
-                } else if (en_a) {
-                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
-                } else if (out != in) {
-                    std::memcpy(out, in, sizeof(float) * frames);
-                }
-                for (uint32_t i = 0; i < frames; ++i)
-                    out[i] = flush_audio_denormal(out[i] * gain);
-                break;
-            }
-            case PARALLEL: {
-                const float ga = 1.0f - bal;
-                const float gb = bal;
-                if (en_a && en_b) {
-                    if (scratch_.size() < frames) scratch_.resize(frames);
-                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
-                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, scratch_.data(), frames);
-                    for (uint32_t i = 0; i < frames; ++i)
-                        out[i] = flush_audio_denormal((out[i] * ga + scratch_[i] * gb) * gain);
-                } else if (en_a) {
-                    audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
-                    for (uint32_t i = 0; i < frames; ++i)
-                        out[i] = flush_audio_denormal(out[i] * ga * gain);
-                } else if (en_b) {
-                    audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
-                    for (uint32_t i = 0; i < frames; ++i)
-                        out[i] = flush_audio_denormal(out[i] * gb * gain);
-                } else {
-                    std::memset(out, 0, sizeof(float) * frames);
-                }
-                break;
-            }
-            case SPLIT: {
-                for (uint32_t i = 0; i < frames; i++) {
-                    float s = in[i];
-                    float lp1 = ls.xover_z1 + xover_g * (s - ls.xover_z1);
-                    ls.xover_z1 = flush_audio_denormal(lp1);
-                    float lp2 = ls.xover_z2 + xover_g * (lp1 - ls.xover_z2);
-                    ls.xover_z2 = flush_audio_denormal(lp2);
+        for (uint32_t ch = 0; ch < nch; ch++) {
+            uint64_t key = static_cast<uint64_t>(ctx->lane_id) * kMaxChannels + ch;
+            auto& ls = *vivid_lane_state(ctx, key, LaneState);
+            const float* in  = ctx->input_buffers[0]  + ch * frames;
+            float*       out = ctx->output_buffers[0] + ch * frames;
 
-                    float low = flush_audio_denormal(lp2);
-                    float high = flush_audio_denormal(s - lp2);
-
-                    float out_a = en_a ? ls.filter_a.process_prepared(low, plan_a) : 0.0f;
-                    float out_b = en_b ? ls.filter_b.process_prepared(high, plan_b) : 0.0f;
-                    out[i] = flush_audio_denormal((out_a + out_b) * gain);
+            switch (route) {
+                case SERIAL_AB: {
+                    if (en_a) {
+                        audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                        if (en_b)
+                            audio_dsp::process_filter_block(ls.filter_b, plan_b, out, out, frames);
+                    } else if (en_b) {
+                        audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                    } else {
+                        std::memcpy(out, in, sizeof(float) * frames);
+                    }
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal(out[i] * gain);
+                    break;
                 }
-                break;
-            }
-            default: {
-                if (out != in)
+                case SERIAL_BA: {
+                    if (en_b) {
+                        audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                        if (en_a)
+                            audio_dsp::process_filter_block(ls.filter_a, plan_a, out, out, frames);
+                    } else if (en_a) {
+                        audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                    } else {
+                        std::memcpy(out, in, sizeof(float) * frames);
+                    }
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal(out[i] * gain);
+                    break;
+                }
+                case PARALLEL: {
+                    const float ga = 1.0f - bal;
+                    const float gb = bal;
+                    if (en_a && en_b) {
+                        if (scratch_.size() < frames) scratch_.resize(frames);
+                        audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                        audio_dsp::process_filter_block(ls.filter_b, plan_b, in, scratch_.data(), frames);
+                        for (uint32_t i = 0; i < frames; ++i)
+                            out[i] = flush_audio_denormal((out[i] * ga + scratch_[i] * gb) * gain);
+                    } else if (en_a) {
+                        audio_dsp::process_filter_block(ls.filter_a, plan_a, in, out, frames);
+                        for (uint32_t i = 0; i < frames; ++i)
+                            out[i] = flush_audio_denormal(out[i] * ga * gain);
+                    } else if (en_b) {
+                        audio_dsp::process_filter_block(ls.filter_b, plan_b, in, out, frames);
+                        for (uint32_t i = 0; i < frames; ++i)
+                            out[i] = flush_audio_denormal(out[i] * gb * gain);
+                    } else {
+                        std::memset(out, 0, sizeof(float) * frames);
+                    }
+                    break;
+                }
+                case SPLIT: {
+                    for (uint32_t i = 0; i < frames; i++) {
+                        float s = in[i];
+                        float lp1 = ls.xover_z1 + xover_g * (s - ls.xover_z1);
+                        ls.xover_z1 = flush_audio_denormal(lp1);
+                        float lp2 = ls.xover_z2 + xover_g * (lp1 - ls.xover_z2);
+                        ls.xover_z2 = flush_audio_denormal(lp2);
+                        float low  = flush_audio_denormal(lp2);
+                        float high = flush_audio_denormal(s - lp2);
+                        float out_a = en_a ? ls.filter_a.process_prepared(low,  plan_a) : 0.0f;
+                        float out_b = en_b ? ls.filter_b.process_prepared(high, plan_b) : 0.0f;
+                        out[i] = flush_audio_denormal((out_a + out_b) * gain);
+                    }
+                    break;
+                }
+                default: {
                     std::memcpy(out, in, sizeof(float) * frames);
-                for (uint32_t i = 0; i < frames; ++i)
-                    out[i] = flush_audio_denormal(out[i] * gain);
-                break;
+                    for (uint32_t i = 0; i < frames; ++i)
+                        out[i] = flush_audio_denormal(out[i] * gain);
+                    break;
+                }
             }
         }
     }

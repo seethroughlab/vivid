@@ -22,7 +22,8 @@ struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> damping  {"damping",   0.5f, 0.0f, 1.0f};
     vivid::Param<float> mix      {"mix",       0.3f, 0.0f, 1.0f};
 
-    vivid::reverb_dsp::Engine engine_;
+    static constexpr uint32_t kMaxChannels = 2;
+    vivid::reverb_dsp::Engine engine_[kMaxChannels];
 
     Reverb() {
         vivid::semantic_tag(room_size, "probability_01");
@@ -46,20 +47,26 @@ struct Reverb : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        const float* in = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
+        uint32_t frames = ctx->buffer_size;
 
         vivid::reverb_dsp::ProcessParams params{};
         params.room_size = room_size.value;
         params.damping = damping.value;
         params.mix = mix.value;
-        engine_.process(in, out, ctx->buffer_size, ctx->sample_rate, params);
+
+        for (uint32_t c = 0; c < nch; c++) {
+            const float* in_c  = ctx->input_buffers[0]  + c * frames;
+            float*       out_c = ctx->output_buffers[0] + c * frames;
+            engine_[c].process(in_c, out_c, frames, ctx->sample_rate, params);
+        }
     }
 };
 

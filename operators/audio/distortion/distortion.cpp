@@ -42,7 +42,8 @@ struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> level{"level", 0.8f, 0.0f,  2.0f};
     vivid::Param<float> mix  {"mix",   1.0f, 0.0f,  1.0f};
 
-    OnePole tone_filter_;
+    static constexpr uint32_t kMaxChannels = 2;
+    OnePole tone_filter_[kMaxChannels];
 
     Distortion() {
         vivid::semantic_tag(drive, "amplitude_linear");
@@ -73,14 +74,14 @@ struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
-        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 1, 0.0f});
+        out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
+        out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         vivid::append_analysis_ports(out);
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        float* in  = ctx->input_buffers[0];
-        float* out = ctx->output_buffers[0];
+        uint32_t nch = ctx->input_channel_counts ? ctx->input_channel_counts[0] : 1u;
+        if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
         float d   = drive.value;
@@ -89,15 +90,17 @@ struct Distortion : vivid::OperatorBase, vivid::AudioProcessable {
         float dry = 1.0f - wet;
 
         float cutoff = 1000.0f + tone.value * 9000.0f;
-        tone_filter_.set_cutoff(cutoff, static_cast<float>(ctx->sample_rate));
-
         float norm = 1.0f / std::tanh(d);
 
-        for (uint32_t i = 0; i < frames; i++) {
-            float saturated = std::tanh(in[i] * d) * norm;
-            float filtered  = tone_filter_.process(saturated);
-            float processed = filtered * lev;
-            out[i] = in[i] * dry + processed * wet;
+        for (uint32_t c = 0; c < nch; c++) {
+            const float* in_c  = ctx->input_buffers[0]  + c * frames;
+            float*       out_c = ctx->output_buffers[0] + c * frames;
+            tone_filter_[c].set_cutoff(cutoff, static_cast<float>(ctx->sample_rate));
+            for (uint32_t i = 0; i < frames; i++) {
+                float saturated = std::tanh(in_c[i] * d) * norm;
+                float filtered  = tone_filter_[c].process(saturated);
+                out_c[i] = in_c[i] * dry + filtered * lev * wet;
+            }
         }
     }
 };
