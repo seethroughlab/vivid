@@ -40,6 +40,13 @@ operator::draw_editor(ctx)
   render themselves through `draw_ui_helpers.h`, so visual style stays
   consistent.
 
+`editor_ui.h` is the umbrella include. The implementation is split into
+focused public headers under `src/operator_api/editor_ui/`:
+`geometry.h`, `selection.h`, `drawing.h`, `viewport.h`, `timeline.h`,
+and `introspection.h`. Include the umbrella when writing an operator
+editor; include a focused header in tests or shared helper code when you
+only need that slice.
+
 Rule of thumb: **reach for a widget first**; drop down to
 `draw_ui_helpers` for a stateless panel that isn't a known widget; drop
 all the way to `ctx.draw.*` only for custom visuals that a widget
@@ -75,9 +82,25 @@ All widget state structs are caller-owned — operators typically keep one per w
 | Shrink a rect by inset | `ui_pad(rect, inset)` → `Rect` |
 | Per-cell rect inside a grid | `grid_cell_rect(bounds, rows, cols, row, col)` → `Rect` |
 
-### Selection (`vivid::editor_ui::` in `operators/shared/editor_ui/selection.h`)
+### Viewports / timelines (`vivid::ui::`)
 
-Shared rectangular-selection geometry reused across grid editors.
+| You need… | Call |
+|---|---|
+| World↔screen math for one axis | `Viewport1D::world_to_screen`, `screen_to_world` |
+| Clamp scroll/zoom to content bounds | `clamp_viewport(&view, min_size)` |
+| Zoom around the cursor | `zoom_viewport_at(&view, mouse_x, factor, min_size)` |
+| Pan in world units | `pan_viewport(&view, delta_units)` |
+| Horizontal/vertical scrollbar | `ui_scrollbar(ctx, rect, Orientation::Horizontal, &view, &state)` |
+| Beat/grid ticks over the visible range | `for_each_timeline_tick(view.visible_range(), step, major_every, fn)` |
+| Draw a ruler/grid directly | `draw_timeline_grid(draw, opaque, rect, view, step, major_every, color)` |
+| Loop/range drag math | `hit_test_range`, `begin_range_drag`, `update_range_drag` |
+| Box selection extents | `begin_box_select`, `update_box_select`, `end_box_select` |
+
+### Selection (`vivid::ui::`)
+
+Shared rectangular-selection geometry reused across grid editors. Include
+`operator_api/editor_ui/selection.h` directly in helper-only code, or use
+the `operator_api/editor_ui.h` umbrella from full editor implementations.
 
 | You need… | Call |
 |---|---|
@@ -238,7 +261,7 @@ Inside `draw_editor(*ctx)`, a typical operator does:
   (waveform, envelope, playhead line, scope meters).
 - `src/operator_api/editor_keys.h` — GLFW key + modifier constants
   (mirrored values) and the `is_cmd_or_ctrl` / `is_digit_key` helpers.
-- `operators/shared/editor_ui/selection.h` — shared `Selection` rect,
+- `operator_api/editor_ui/selection.h` — shared `Selection` rect,
   `cursor_move`, `clamp_editor_state` for grid editors.
 - `src/operator_api/types.h` — `VividEditorContext`,
   `VividEditorHostAPI`, `VividCursorKind`.

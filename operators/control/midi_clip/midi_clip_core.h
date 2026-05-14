@@ -139,8 +139,9 @@ struct MidiClipCore : vivid::OperatorBase {
     float  row_h_                = 14.0f; // row height in px; Option+scroll to adjust (6–40)
     float  last_lb_val_          = -1.0f; // detect length_bars changes to reset zoom
     bool   editor_view_params_initialized_ = false;
-    bool   hscroll_dragging_           = false;
-    float  hscroll_drag_start_scroll_  = 0.0f;
+    bool   toolbar_actions_open_ = false;
+    bool   toolbar_clear_confirm_ = false;
+    vivid::ui::ScrollbarState hscroll_state_{};
 
     // Fold / scale state (editor display only, not persisted as params)
     bool   fold_rows_    = false;

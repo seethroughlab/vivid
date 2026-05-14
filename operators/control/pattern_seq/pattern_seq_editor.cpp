@@ -5,7 +5,7 @@
 //
 // Smaller than Sequencer (no gate lane) and simpler than DrumSequencer
 // (no pattern banks, no probability per step). Written around the
-// shared editor_ui::Selection + ui_step_grid + editor_keys vocabulary.
+// shared vivid::ui::Selection + ui_step_grid + editor_keys vocabulary.
 
 #include "pattern_seq_core.h"
 #include "pattern_seq_editor_shared.h"
@@ -47,7 +47,7 @@ void PatternSeqCore::draw_editor(VividEditorContext* ctx) {
     namespace ek  = ::vivid::editor_keys;
     namespace ps  = ::vivid::pattern_seq_editor;
     namespace ui  = ::vivid::ui;
-    namespace sel = ::vivid::editor_ui;
+    namespace sel = ::vivid::ui;
 
     auto& d = ctx->draw;
     void* o = d.opaque;

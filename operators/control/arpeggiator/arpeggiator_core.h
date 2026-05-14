@@ -9,7 +9,7 @@
 #include "note_helpers.h"
 #include "note_id_counter.h"
 #include "arpeggiator_patterns.h"
-#include "shared/editor_ui/selection.h"
+#include "operator_api/editor_ui/selection.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -557,7 +557,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     int  editor_cursor_step_  = 0;       // 0..15
     int  editor_cursor_row_   = 0;       // 0=note_override, 1=vel, 2=tr, 3=gate
     vivid::ui::GridState grid_state_{};
-    vivid::editor_ui::Selection editor_selection_{};
+    vivid::ui::Selection editor_selection_{};
     // Rectangular clipboard: 4 lanes × 16 steps of floats.
     struct EditorClipboard {
         bool  has_content = false;

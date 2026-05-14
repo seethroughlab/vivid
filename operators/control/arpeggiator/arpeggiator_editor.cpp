@@ -54,7 +54,7 @@ void ArpeggiatorCore::draw_editor(VividEditorContext* ctx) {
     namespace ek  = ::vivid::editor_keys;
     namespace ae  = ::vivid::arpeggiator_editor;
     namespace ui  = ::vivid::ui;           // widgets (Rect, ui_step_grid, GridState)
-    namespace sel = ::vivid::editor_ui;    // shared selection helpers
+    namespace sel = ::vivid::ui;           // shared selection helpers
 
     auto& d = ctx->draw;
     void* o = d.opaque;
@@ -614,4 +614,3 @@ void ArpeggiatorCore::draw_editor(VividEditorContext* ctx) {
         }
     }
 }
-

@@ -8,7 +8,7 @@
 #include "note_helpers.h"
 #include "note_id_counter.h"
 #include "pattern_seq_editor_shared.h"
-#include "shared/editor_ui/selection.h"
+#include "operator_api/editor_ui/selection.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -101,7 +101,7 @@ struct PatternSeqCore : vivid::OperatorBase {
     // Editor state (persisted across frames, public for tests).
     int  editor_cursor_step_ = 0;
     vivid::ui::GridState grid_state_{};
-    vivid::editor_ui::Selection editor_selection_{};
+    vivid::ui::Selection editor_selection_{};
     // Clipboard: 1 lane × up to kMaxSteps floats.
     struct EditorClipboard {
         bool  has_content = false;

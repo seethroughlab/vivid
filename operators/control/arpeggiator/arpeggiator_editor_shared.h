@@ -69,7 +69,7 @@ inline int clamp_note_override(int v) {
 //
 // Given a current mod_steps value (potentially shrunk between frames),
 // clamp a cursor + anchor + selection rect into the new bounds. Thin
-// wrapper around `editor_ui::clamp_editor_state` that also clamps the
+// wrapper around `vivid::ui::clamp_editor_state` that also clamps the
 // step-column (cols) to num_steps-1 and rows to kRowCount-1.
 struct SelectionLike {
     int row_lo = 0, row_hi = 0, col_lo = 0, col_hi = 0;

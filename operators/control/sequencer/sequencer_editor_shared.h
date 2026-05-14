@@ -1,12 +1,12 @@
 #pragma once
 // Sequencer-specific editor helpers: param-name encoding, descriptor-
 // order indices, and the clipboard's per-cell payload. The rectangular
-// Selection struct and its geometric helpers live in the shared module
-// at operators/shared/editor_ui/selection.h — this header just re-exports
+// Selection struct and its geometric helpers live in the public editor UI API.
+// This header just re-exports
 // the Selection type so call sites can use one name.
 
 #include "operator_api/types.h"
-#include "shared/editor_ui/selection.h"
+#include "operator_api/editor_ui/selection.h"
 
 #include <cstdint>
 #include <string>
@@ -39,13 +39,13 @@ std::string param_name_for(RowKind row, int step);
 
 // Re-export the shared geometry so Sequencer call sites can use a
 // single `se::` namespace without caring where these live.
-using ::vivid::editor_ui::Selection;
-using ::vivid::editor_ui::selection_from_point;
-using ::vivid::editor_ui::selection_from_anchor_tip;
-using ::vivid::editor_ui::selection_contains;
-using ::vivid::editor_ui::selection_cell_count;
-using ::vivid::editor_ui::cursor_move;
-using ::vivid::editor_ui::clamp_editor_state;
+using ::vivid::ui::Selection;
+using ::vivid::ui::selection_from_point;
+using ::vivid::ui::selection_from_anchor_tip;
+using ::vivid::ui::selection_contains;
+using ::vivid::ui::selection_cell_count;
+using ::vivid::ui::cursor_move;
+using ::vivid::ui::clamp_editor_state;
 
 // Row-major clipboard. `values[r * cols + c]` stores the param value at
 // (row_lo + r, col_lo + c). Sized to the max grid so copy/paste never

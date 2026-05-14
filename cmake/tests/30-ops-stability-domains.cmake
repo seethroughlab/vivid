@@ -366,6 +366,16 @@ add_test(NAME test_editor_ui_selection
          COMMAND test_editor_ui_selection
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Shared editor_ui timeline / viewport helpers extracted from MidiClip.
+add_executable(test_editor_ui_timeline
+    tests/operators/test_editor_ui_timeline.cpp
+)
+target_include_directories(test_editor_ui_timeline PRIVATE src tests)
+target_link_libraries(test_editor_ui_timeline PRIVATE vivid_runtime_testlib)
+add_test(NAME test_editor_ui_timeline
+         COMMAND test_editor_ui_timeline
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # DrumSequencer editor helpers — pure-logic (param-name encoding, cell hit
 # math, cursor clamp, clear-step command sequence). Compiles the shared
 # translation unit directly; no operator dylib, no GLFW/GPU.

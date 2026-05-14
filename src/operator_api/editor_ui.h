@@ -22,6 +22,12 @@
 #include "operator_api/types.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/editor_keys.h"
+#include "operator_api/editor_ui/geometry.h"
+#include "operator_api/editor_ui/introspection.h"
+#include "operator_api/editor_ui/selection.h"
+#include "operator_api/editor_ui/drawing.h"
+#include "operator_api/editor_ui/viewport.h"
+#include "operator_api/editor_ui/timeline.h"
 
 #include <algorithm>
 #include <cmath>
@@ -36,14 +42,6 @@ namespace vivid::ui {
 // ---------------------------------------------------------------------------
 // Basic types
 // ---------------------------------------------------------------------------
-
-// Half-open axis-aligned rectangle in editor-window pixel space.
-struct Rect {
-    float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f;
-    bool contains(float px, float py) const {
-        return px >= x && px < x + w && py >= y && py < y + h;
-    }
-};
 
 // Per-slider cross-frame state — caller owns one per slider instance.
 struct SliderState {
@@ -86,93 +84,6 @@ struct SelectableRowResult {
     bool clicked = false;
     bool hovered = false;
 };
-
-// ---------------------------------------------------------------------------
-// Layout cursor
-// ---------------------------------------------------------------------------
-//
-// Operators typically call ui_layout(...) once per frame to get a cursor
-// seeded from the editor's surface_width × surface_height (or a sub-rect
-// like the side panel bounds), then walk it with ui_row / ui_column to
-// carve successive widget slots.
-
-struct LayoutCursor {
-    Rect bounds;                  // the outer region being consumed
-    float pad = 0.0f;             // inner padding (subtracted on construction)
-    float gap = 4.0f;             // default spacing between rows / columns
-
-    float cursor_x = 0.0f;        // top-left X of the next row / column
-    float cursor_y = 0.0f;        // top-left Y of the next row / column
-    float remaining_w = 0.0f;     // width still available for rows
-    float remaining_h = 0.0f;     // height still available for columns
-};
-
-inline LayoutCursor ui_layout(Rect outer, float pad = 0.0f, float gap = 4.0f) {
-    LayoutCursor c{};
-    c.bounds    = outer;
-    c.pad       = pad;
-    c.gap       = gap;
-    c.cursor_x  = outer.x + pad;
-    c.cursor_y  = outer.y + pad;
-    c.remaining_w = std::max(0.0f, outer.w - 2.0f * pad);
-    c.remaining_h = std::max(0.0f, outer.h - 2.0f * pad);
-    return c;
-}
-
-// Consume a full-width horizontal row of the given height; advance cursor_y.
-inline Rect ui_row(LayoutCursor& c, float height, float override_gap = -1.0f) {
-    const float gap = (override_gap >= 0.0f) ? override_gap : c.gap;
-    const float actual_h = std::min(height, c.remaining_h);
-    Rect r{c.cursor_x, c.cursor_y, c.remaining_w, actual_h};
-    const float consumed = actual_h + gap;
-    c.cursor_y   += consumed;
-    c.remaining_h = std::max(0.0f, c.remaining_h - consumed);
-    return r;
-}
-
-// Consume a full-height vertical column of the given width; advance cursor_x.
-inline Rect ui_column(LayoutCursor& c, float width, float override_gap = -1.0f) {
-    const float gap = (override_gap >= 0.0f) ? override_gap : c.gap;
-    const float actual_w = std::min(width, c.remaining_w);
-    Rect r{c.cursor_x, c.cursor_y, actual_w, c.remaining_h};
-    const float consumed = actual_w + gap;
-    c.cursor_x   += consumed;
-    c.remaining_w = std::max(0.0f, c.remaining_w - consumed);
-    return r;
-}
-
-inline Rect ui_pad(Rect r, float inset) {
-    return Rect{
-        r.x + inset, r.y + inset,
-        std::max(0.0f, r.w - 2.0f * inset),
-        std::max(0.0f, r.h - 2.0f * inset)
-    };
-}
-
-// Split a rect into {left, right} at `fraction` (0..1) of its width,
-// optionally leaving `gap` pixels of dead space between halves.
-inline std::pair<Rect, Rect> ui_split_h(Rect r, float fraction, float gap = 0.0f) {
-    fraction = std::clamp(fraction, 0.0f, 1.0f);
-    const float available = std::max(0.0f, r.w - gap);
-    const float lw = available * fraction;
-    const float rw = available - lw;
-    return {
-        Rect{r.x, r.y, lw, r.h},
-        Rect{r.x + lw + gap, r.y, rw, r.h}
-    };
-}
-
-// Split a rect into {top, bottom}.
-inline std::pair<Rect, Rect> ui_split_v(Rect r, float fraction, float gap = 0.0f) {
-    fraction = std::clamp(fraction, 0.0f, 1.0f);
-    const float available = std::max(0.0f, r.h - gap);
-    const float th = available * fraction;
-    const float bh = available - th;
-    return {
-        Rect{r.x, r.y, r.w, th},
-        Rect{r.x, r.y + th + gap, r.w, bh}
-    };
-}
 
 // ---------------------------------------------------------------------------
 // Widgets
@@ -227,11 +138,6 @@ inline float labeled_slider_frac(Rect r, float mx) {
 // LLM / test tooling can read the editor's structure without OCR'ing pixels.
 // When the sink is null (the common case), every widget's emit is a
 // cheap null check.
-inline void introspect_emit(const VividEditorContext& ctx,
-                            const VividIntrospectWidget& w) {
-    if (ctx.introspect_fn) ctx.introspect_fn(ctx.introspect_sink, &w);
-}
-
 // A labeled push button. Reports hover/press/click; the caller decides what
 // happens. `active` controls the render-as-pressed visual state only —
 // callers typically pass the logical state of the feature the button

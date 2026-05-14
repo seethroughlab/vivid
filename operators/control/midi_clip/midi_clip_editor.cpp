@@ -271,11 +271,19 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     zoom_beats       = std::clamp(zoom_beats, 4.0f, full_beats);
     editor_scroll_x_ = std::clamp(editor_scroll_x_, 0.0f,
                                    std::max(0.0f, full_beats - zoom_beats));
-    const double beat_w  = (zoom_beats > 0.0f)
-                           ? static_cast<double>(grid_w) / zoom_beats : 1.0;
-    const double inv_bw  = (beat_w > 0.0) ? 1.0 / beat_w : 0.0;
-    const double visible_start_beat = editor_scroll_x_;
-    const double visible_end_beat = editor_scroll_x_ + zoom_beats;
+    vivid::ui::Viewport1D beat_view{
+        0.0, static_cast<double>(full_beats),
+        grid_x, grid_w,
+        static_cast<double>(editor_scroll_x_),
+        static_cast<double>(zoom_beats)
+    };
+    vivid::ui::clamp_viewport(&beat_view, static_cast<double>(bpb));
+    editor_scroll_x_ = static_cast<float>(beat_view.view_start);
+    zoom_beats = static_cast<float>(beat_view.view_size);
+    const double beat_w  = beat_view.pixels_per_unit();
+    const double inv_bw  = beat_view.units_per_pixel();
+    const double visible_start_beat = beat_view.visible_range().start;
+    const double visible_end_beat = beat_view.visible_range().end;
     rebuild_editor_note_order_if_needed();
     std::vector<int> visible_note_indices;
     visible_note_indices.reserve(std::min<size_t>(editor_notes_.size(), 1024));
@@ -299,8 +307,8 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     }
 
     // Loop brace pixel positions (for both rendering and interaction)
-    float loop_lx = grid_x + static_cast<float>((ls_param - editor_scroll_x_) * beat_w);
-    float loop_rx = grid_x + static_cast<float>((le_param - editor_scroll_x_) * beat_w);
+    float loop_lx = beat_view.world_to_screen(ls_param);
+    float loop_rx = beat_view.world_to_screen(le_param);
     // Clamped for rendering (actual positions used for interaction hit-test)
     const float loop_lx_draw = std::clamp(loop_lx, grid_x, grid_x + grid_w);
     const float loop_rx_draw = std::clamp(loop_rx, grid_x, grid_x + grid_w);
@@ -409,33 +417,12 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     // -----------------------------------------------------------------------
     {
         const float hsc_y = grid_y + roll_h + kHScrollSep;
-        d.draw_rect(o, grid_x, hsc_y, grid_w, kHScrollH, {0.10f, 0.10f, 0.12f, 1.0f});
-        if (zoom_beats < full_beats && full_beats > 0.0f) {
-            const float vis_frac       = zoom_beats / full_beats;
-            const float thumb_w        = std::max(20.0f, grid_w * vis_frac);
-            const float travel         = grid_w - thumb_w;
-            const float scroll_range_x = full_beats - zoom_beats;
-            const float thumb_x        = grid_x + (scroll_range_x > 0.0f
-                ? (editor_scroll_x_ / scroll_range_x) * travel : 0.0f);
-
-            const vivid::ui::Rect thumb{thumb_x, hsc_y + 1.0f, thumb_w, kHScrollH - 2.0f};
-            const bool thumb_hov = thumb.contains(ctx->mouse.x, ctx->mouse.y);
-            d.draw_rounded_rect(o, thumb.x, thumb.y, thumb.w, thumb.h, 3.0f,
-                {0.4f, 0.4f, 0.45f, thumb_hov ? 1.0f : 0.7f});
-
-            if (thumb_hov && ctx->mouse.left_clicked) {
-                hscroll_dragging_          = true;
-                hscroll_drag_start_scroll_ = editor_scroll_x_;
-                drag_start_mx_             = ctx->mouse.x;
-            }
-            if (hscroll_dragging_ && ctx->mouse.left_down) {
-                const float total_dx = ctx->mouse.x - drag_start_mx_;
-                editor_scroll_x_ = std::clamp(
-                    hscroll_drag_start_scroll_ + total_dx * (scroll_range_x / travel),
-                    0.0f, scroll_range_x);
-            } else {
-                hscroll_dragging_ = false;
-            }
+        auto sb_res = vivid::ui::ui_scrollbar(
+            *ctx, vivid::ui::Rect{grid_x, hsc_y, grid_w, kHScrollH},
+            vivid::ui::Orientation::Horizontal,
+            &beat_view, &hscroll_state_);
+        if (sb_res.changed) {
+            editor_scroll_x_ = static_cast<float>(beat_view.view_start);
         }
     }
 
@@ -575,15 +562,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         d.draw_rect(o, grid_x, brace_y, grid_w, brace_h, {0.08f, 0.08f, 0.10f, 1.0f});
 
         if (has_loop_region) {
-            // Colored band
-            if (loop_rx_draw > loop_lx_draw)
-                d.draw_rect(o, loop_lx_draw, brace_y, loop_rx_draw - loop_lx_draw, brace_h,
-                    {0.25f, 0.55f, 0.90f, 0.25f});
-            // Left handle
-            d.draw_rect(o, loop_lx_draw - 2.0f, brace_y, 4.0f, brace_h,
-                {0.40f, 0.75f, 1.0f, 0.85f});
-            // Right handle
-            d.draw_rect(o, loop_rx_draw - 2.0f, brace_y, 4.0f, brace_h,
+            vivid::ui::draw_range_brace(d, o,
+                vivid::ui::Rect{grid_x, brace_y, grid_w, brace_h},
+                loop_lx, loop_rx,
+                {0.25f, 0.55f, 0.90f, 0.25f},
                 {0.40f, 0.75f, 1.0f, 0.85f});
             // Start label
             char lbl[32];
@@ -597,9 +579,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         // Playhead marker in brace
         const float pb_beat = static_cast<float>(editor_loop_origin + phase * editor_loop_len);
-        const float pb_x    = grid_x + static_cast<float>((pb_beat - editor_scroll_x_) * beat_w);
+        const float pb_x    = beat_view.world_to_screen(pb_beat);
         if (pb_x >= grid_x && pb_x <= grid_x + grid_w)
-            d.draw_rect(o, pb_x, brace_y, 2.0f, brace_h, {1.0f, 0.8f, 0.2f, 0.7f});
+            vivid::ui::draw_playhead_line(d, o, pb_x, brace_y, brace_h,
+                {1.0f, 0.8f, 0.2f, 0.7f});
     }
 
     // -----------------------------------------------------------------------
@@ -651,18 +634,10 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
     // --- Beat / bar grid lines ---
     {
-        const int first_cell = std::max(0, static_cast<int>(
-            std::floor(visible_start_beat / cell_beats)) - 1);
-        const int last_cell = std::max(first_cell, static_cast<int>(
-            std::ceil(visible_end_beat / cell_beats)) + 1);
-        for (int c = first_cell; c <= last_cell; ++c) {
-            double beat = c * cell_beats;
-            float  lx   = grid_x + static_cast<float>((beat - editor_scroll_x_) * beat_w);
-            if (lx < grid_x - 1.0f || lx > grid_x + grid_w + 1.0f) continue;
-            bool   is_bar = (std::fmod(beat, 4.0) < 1e-6);
-            d.draw_rect(o, lx, grid_y, 1.0f, roll_h,
-                {th.separator.r, th.separator.g, th.separator.b, is_bar ? 0.4f : 0.15f});
-        }
+        vivid::ui::draw_timeline_grid(d, o,
+            vivid::ui::Rect{grid_x, grid_y, grid_w, roll_h},
+            beat_view, cell_beats, 4.0,
+            {th.separator.r, th.separator.g, th.separator.b, 1.0f});
     }
 
     // --- Loop region shading in roll ---
@@ -719,21 +694,18 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         const float ry = std::min(by1, by2);
         const float rw = std::fabs(bx2 - bx1);
         const float rh = std::fabs(by2 - by1);
-        d.draw_rect(o, rx, ry, rw, rh, {0.40f, 0.70f, 1.0f, 0.12f});
-        // top/bottom edges
-        d.draw_rect(o, rx, ry,       rw, 1.0f, {0.50f, 0.75f, 1.0f, 0.55f});
-        d.draw_rect(o, rx, ry + rh,  rw, 1.0f, {0.50f, 0.75f, 1.0f, 0.55f});
-        // left/right edges
-        d.draw_rect(o, rx,      ry, 1.0f, rh, {0.50f, 0.75f, 1.0f, 0.55f});
-        d.draw_rect(o, rx + rw, ry, 1.0f, rh, {0.50f, 0.75f, 1.0f, 0.55f});
+        vivid::ui::draw_selection_rect(d, o,
+            vivid::ui::Rect{rx, ry, rw, rh},
+            {0.50f, 0.75f, 1.0f, 1.0f});
     }
 
     // --- Playhead (roll) ---
     {
         const float phase_beat = static_cast<float>(editor_loop_origin + phase * editor_loop_len);
-        const float phx = grid_x + static_cast<float>((phase_beat - editor_scroll_x_) * beat_w);
+        const float phx = beat_view.world_to_screen(phase_beat);
         if (phx >= grid_x && phx <= grid_x + grid_w)
-            d.draw_rect(o, phx, grid_y, 2.0f, roll_h, {1.0f, 0.8f, 0.2f, 0.85f});
+            vivid::ui::draw_playhead_line(d, o, phx, grid_y, roll_h,
+                {1.0f, 0.8f, 0.2f, 0.85f});
     }
 
     d.pop_clip_rect(o);
@@ -748,11 +720,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         const float ph_alpha = 0.55f;
 
         auto draw_strip_bg = [&](float sy, const char* label) {
-            d.draw_rect(o, grid_x, sy - kModSepH, grid_w, kModSepH,
-                {th.separator.r, th.separator.g, th.separator.b, 0.5f});
-            d.draw_rect(o, grid_x, sy, grid_w, kModStripH, {0.08f, 0.08f, 0.10f, 1.0f});
-            d.draw_text(o, grid_x + 4.0f, sy + 2.0f, label,
-                {0.40f, 0.40f, 0.45f, 0.8f}, 0.75f);
+            vivid::ui::draw_compact_strip_background(d, o,
+                vivid::ui::Rect{grid_x, sy, grid_w, kModStripH},
+                label,
+                {th.separator.r, th.separator.g, th.separator.b, 0.5f},
+                {0.08f, 0.08f, 0.10f, 1.0f},
+                {0.40f, 0.40f, 0.45f, 0.8f},
+                kModSepH);
         };
 
         // Velocity
@@ -876,178 +850,231 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     {
         using namespace vivid::ui;
         float hx = 8.0f;
+        constexpr float kHeaderY = 5.0f;
+        constexpr float kHeaderWidgetH = 28.0f;
+        constexpr float kSectionGap = 6.0f;
 
-        // Length — numerical text field
+        auto draw_section = [&](float x, float w, const char* label) {
+            if (w <= 0.0f) return;
+            d.draw_rounded_rect(o, x, 4.0f, w, 30.0f, 4.0f,
+                {0.10f, 0.105f, 0.12f, 0.78f});
+            if (label && label[0]) {
+                d.draw_text(o, x + 6.0f, 7.0f, label,
+                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.56f}, 0.68f);
+            }
+        };
+
+        auto draw_value_pill = [&](Rect r, const char* text, bool active = false) {
+            d.draw_rounded_rect(o, r.x, r.y, r.w, r.h, 4.0f,
+                active ? VividColor{0.22f, 0.34f, 0.45f, 0.95f}
+                       : VividColor{0.16f, 0.16f, 0.18f, 0.9f});
+            const float tw = d.text_width(o, text, 0.82f);
+            d.draw_text(o, r.x + std::max(5.0f, (r.w - tw) * 0.5f), r.y + 8.0f, text,
+                {0.86f, 0.88f, 0.92f, 0.95f}, 0.82f);
+        };
+
+        // Clip section: source, length, notes, parse/import status.
         {
-            float lw = d.text_width(o, "Length:", 1.0f);
-            d.draw_text(o, hx, 10.0f, "Length:",
-                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 1.0f);
-            hx += lw + 6.0f;
+            const float section_w = std::clamp(sw * 0.19f, 170.0f, 210.0f);
+            draw_section(hx, section_w, "CLIP");
+            std::string source = "Authored";
+            if (!file.str_value.empty())
+                source = std::filesystem::path(file.str_value).filename().string();
+            else if (!clip_data_source_file_.empty())
+                source = std::filesystem::path(clip_data_source_file_).filename().string();
+            else if (!clip_data_ref_.str_value.empty())
+                source = "Edited clip";
+            if (source.size() > 22) source = source.substr(0, 20) + "..";
+
+            char meta[96];
+            const size_t note_count = file_backed
+                ? file_note_count_
+                : (clip_ref_backed ? clip_data_note_count_ : editor_notes_.size());
+            if (file_backed && !file_error_.empty()) {
+                std::snprintf(meta, sizeof(meta), "%s", file_error_.c_str());
+            } else if (ctx->time < import_status_until_ && !import_status_.empty()) {
+                std::snprintf(meta, sizeof(meta), "%s", import_status_.c_str());
+            } else {
+                std::snprintf(meta, sizeof(meta), "%.0f bars  %zu notes", lb_val, note_count);
+            }
+            d.draw_text(o, hx + 8.0f, 17.0f, source.c_str(),
+                {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.95f}, 0.82f);
+            d.draw_text(o, hx + 96.0f, 17.0f, meta,
+                file_error_.empty() ? VividColor{0.52f, 0.68f, 0.82f, 0.88f}
+                                    : VividColor{1.0f, 0.45f, 0.35f, 0.95f},
+                0.76f);
+            hx += section_w + kSectionGap;
+        }
+
+        // Timing section: file-backed length is authoritative/read-only;
+        // authored/edited clips keep the existing editable length field.
+        {
+            const float section_w = file_backed ? 252.0f : 292.0f;
+            draw_section(hx, section_w, "TIME");
+            float tx = hx + 44.0f;
+            d.draw_text(o, tx, 16.0f, "Len",
+                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
+            tx += 28.0f;
 
             if (!length_field_state_.focused)
                 std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
 
-            Rect lf{hx, 5.0f, 64.0f, 28.0f};
-            auto lf_r = ui_text_field(*ctx, lf, length_field_buf_,
-                                      sizeof(length_field_buf_), &length_field_state_, "bars");
-            if (lf_r.committed) {
-                float v = static_cast<float>(std::atof(length_field_buf_));
-                v = std::clamp(v, 0.25f, 1024.0f);
-                if (ctx->commands.set_param)
-                    ctx->commands.set_param(ctx->commands.opaque, "length_bars", v);
+            if (file_backed) {
+                char len_label[32];
+                std::snprintf(len_label, sizeof(len_label), "%.0f bars", lb_val);
+                draw_value_pill(Rect{tx, kHeaderY, 72.0f, kHeaderWidgetH}, len_label, true);
+                tx += 82.0f;
+            } else {
+                Rect lf{tx, kHeaderY, 58.0f, kHeaderWidgetH};
+                auto lf_r = ui_text_field(*ctx, lf, length_field_buf_,
+                                          sizeof(length_field_buf_), &length_field_state_, "bars");
+                if (lf_r.committed) {
+                    float v = static_cast<float>(std::atof(length_field_buf_));
+                    v = std::clamp(v, 0.25f, 8192.0f);
+                    if (ctx->commands.set_param)
+                        ctx->commands.set_param(ctx->commands.opaque, "length_bars", v);
+                }
+                if (lf_r.cancelled)
+                    std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
+                tx += 64.0f;
+                d.draw_text(o, tx, 16.0f, "bars",
+                    {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.60f}, 0.76f);
+                tx += 34.0f;
             }
-            if (lf_r.cancelled)
-                std::snprintf(length_field_buf_, sizeof(length_field_buf_), "%.4g", lb_val);
 
-            hx += 68.0f;
-            float bw = d.text_width(o, "bars", 1.0f);
-            d.draw_text(o, hx, 10.0f, "bars",
-                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.6f}, 1.0f);
-            hx += bw + 14.0f;
+            d.draw_text(o, tx, 16.0f, "Snap",
+                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.72f}, 0.76f);
+            tx += 36.0f;
+            static const char* kGridLabels[] = {"1/32","1/16","1/8","1/4"};
+            Rect gr{tx, kHeaderY + 1.0f, 128.0f, 26.0f};
+            auto gr_result = ui_radio(*ctx, gr, kGridLabels, 4, grid_idx);
+            if (gr_result.clicked && ctx->commands.set_param)
+                ctx->commands.set_param(ctx->commands.opaque, "quantize_grid",
+                    static_cast<float>(gr_result.value));
+            hx += section_w + kSectionGap;
         }
 
-        // Grid selector
-        float gw = d.text_width(o, "Grid:", 1.0f);
-        d.draw_text(o, hx, 10.0f, "Grid:",
-            {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.9f}, 1.0f);
-        hx += gw + 4.0f;
-
-        static const char* kGridLabels[] = {"1/32","1/16","1/8","1/4"};
-        Rect gr{hx, 6.0f, 160.0f, 26.0f};
-        auto gr_result = ui_radio(*ctx, gr, kGridLabels, 4, grid_idx);
-        if (gr_result.clicked && ctx->commands.set_param)
-            ctx->commands.set_param(ctx->commands.opaque, "quantize_grid",
-                static_cast<float>(gr_result.value));
-        hx += 168.0f;
-
-        // Fold button
+        // Musical view section: fold plus explicit root/type controls.
         {
-            Rect fr{hx, 6.0f, 42.0f, 26.0f};
-            bool fold_hov = fr.contains(ctx->mouse.x, ctx->mouse.y);
-            d.draw_rounded_rect(o, fr.x, fr.y, fr.w, fr.h, 4.0f,
-                fold_rows_  ? VividColor{0.30f, 0.55f, 0.85f, 0.85f}
-                : fold_hov  ? VividColor{0.25f, 0.25f, 0.28f, 0.8f}
-                            : VividColor{0.18f, 0.18f, 0.20f, 0.8f});
-            d.draw_text(o, fr.x + fr.w * 0.5f - d.text_width(o, "Fold", 0.85f) * 0.5f,
-                fr.y + 7.0f, "Fold", {0.85f, 0.85f, 0.90f, 1.0f}, 0.85f);
-            if (fold_hov && ctx->mouse.left_clicked) {
-                fold_rows_ = !fold_rows_;
-                scroll_y_  = 0.0f;
-            }
-            hx += 48.0f;
-        }
-
-        // Scale selector (compact cycling button)
-        {
+            const float section_w = 210.0f;
+            draw_section(hx, section_w, "MUSICAL VIEW");
+            float mx0 = hx + 58.0f;
             static const char* kRootNames[] = {
                 "C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
             static const char* kTypeNames[] = {"Maj","Min","Hrm","PM","Pm"};
 
-            char scale_label[24];
-            if (scale_root_ < 0)
-                std::snprintf(scale_label, sizeof(scale_label), "Scale");
-            else
-                std::snprintf(scale_label, sizeof(scale_label), "%s %s",
-                    kRootNames[scale_root_], kTypeNames[scale_type_]);
-
-            float slw = std::max(52.0f, d.text_width(o, scale_label, 0.85f) + 16.0f);
-            Rect  slr{hx, 6.0f, slw, 26.0f};
-            bool  sl_hov = slr.contains(ctx->mouse.x, ctx->mouse.y);
-            d.draw_rounded_rect(o, slr.x, slr.y, slr.w, slr.h, 4.0f,
-                (scale_root_ >= 0) ? VividColor{0.25f, 0.48f, 0.25f, 0.85f}
-                : sl_hov           ? VividColor{0.25f, 0.25f, 0.28f, 0.8f}
-                                   : VividColor{0.18f, 0.18f, 0.20f, 0.8f});
-            d.draw_text(o, slr.x + slr.w * 0.5f - d.text_width(o, scale_label, 0.85f) * 0.5f,
-                slr.y + 7.0f, scale_label, {0.85f, 0.85f, 0.90f, 1.0f}, 0.85f);
-            if (sl_hov && ctx->mouse.left_clicked)  // cycle root
-                scale_root_ = (scale_root_ < 11) ? scale_root_ + 1 : -1;
-            if (sl_hov && ctx->mouse.right_clicked && scale_root_ >= 0) // cycle type
-                scale_type_ = (scale_type_ + 1) % 5;
-            hx += slw + 6.0f;
-        }
-
-        // Clear button (further right, after scale)
-        {
-            Rect clr{hx, 6.0f, 50.0f, 26.0f};
-            auto clr_result = ui_button(*ctx, clr, "Clear");
-            if (clr_result.clicked) {
-                editor_notes_.clear();
-                note_selected_.clear();
-                commit_editor_notes(ctx);
+            auto fold_result = ui_toggle(*ctx, Rect{mx0, kHeaderY + 1.0f, 44.0f, 26.0f},
+                                         "Fold", fold_rows_);
+            if (fold_result.clicked) {
+                fold_rows_ = fold_result.value;
+                scroll_y_  = 0.0f;
             }
-            hx += 56.0f;
+            mx0 += 50.0f;
+
+            char root_label[16];
+            if (scale_root_ < 0) std::snprintf(root_label, sizeof(root_label), "Root -");
+            else std::snprintf(root_label, sizeof(root_label), "Root %s", kRootNames[scale_root_]);
+            if (ui_button(*ctx, Rect{mx0, kHeaderY + 1.0f, 58.0f, 26.0f},
+                          root_label, scale_root_ >= 0).clicked) {
+                scale_root_ = (scale_root_ < 11) ? scale_root_ + 1 : -1;
+            }
+            mx0 += 64.0f;
+
+            char type_label[16];
+            std::snprintf(type_label, sizeof(type_label), "%s", kTypeNames[scale_type_]);
+            if (ui_button(*ctx, Rect{mx0, kHeaderY + 1.0f, 42.0f, 26.0f},
+                          type_label, scale_root_ >= 0).clicked) {
+                scale_type_ = (scale_type_ + 1) % 5;
+                if (scale_root_ < 0) scale_root_ = 0;
+            }
+            hx += section_w + kSectionGap;
         }
 
-        // Horizontal zoom controls: [−] N bars [+]
+        // Navigation section: clearer zoom controls plus visible bar range.
         {
-            Rect zor{hx, 6.0f, 22.0f, 26.0f};
-            if (ui_button(*ctx, zor, "-").clicked) {
+            const float section_w = 220.0f;
+            draw_section(hx, section_w, "NAV");
+            float nx0 = hx + 30.0f;
+            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 42.0f, 26.0f}, "Out").clicked) {
                 float new_zoom = std::min(full_beats, zoom_beats * 1.5f);
                 editor_zoom_beats_ = (new_zoom >= full_beats) ? 0.0f : new_zoom;
                 editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
                                         std::max(0.0f, full_beats - new_zoom));
                 zoom_beats = new_zoom;
             }
-            hx += 24.0f;
+            nx0 += 46.0f;
 
-            char zoom_lbl[32];
-            const int visible_beats = std::max(1, static_cast<int>(std::round(zoom_beats)));
-            const int visible_bars  = std::max(1, visible_beats / bpb);
-            if (visible_bars * bpb == visible_beats && visible_bars >= 1)
-                std::snprintf(zoom_lbl, sizeof(zoom_lbl), "%d bar%s",
-                    visible_bars, visible_bars != 1 ? "s" : "");
-            else
-                std::snprintf(zoom_lbl, sizeof(zoom_lbl), "%d beats", visible_beats);
-            const float zl_w = d.text_width(o, zoom_lbl, 0.8f);
-            d.draw_text(o, hx, 11.0f, zoom_lbl,
-                {0.50f, 0.50f, 0.55f, 0.80f}, 0.8f);
-            hx += zl_w + 4.0f;
-
-            Rect zir{hx, 6.0f, 22.0f, 26.0f};
-            if (ui_button(*ctx, zir, "+").clicked) {
+            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 34.0f, 26.0f}, "In").clicked) {
                 float new_zoom = std::max(static_cast<float>(bpb), zoom_beats / 1.5f);
                 editor_zoom_beats_ = new_zoom;
                 editor_scroll_x_   = std::clamp(editor_scroll_x_, 0.0f,
                                         std::max(0.0f, full_beats - new_zoom));
                 zoom_beats = new_zoom;
             }
+            nx0 += 38.0f;
+
+            if (ui_button(*ctx, Rect{nx0, kHeaderY + 1.0f, 34.0f, 26.0f}, "Fit",
+                          editor_zoom_beats_ <= 0.0f).clicked) {
+                editor_zoom_beats_ = 0.0f;
+                editor_scroll_x_ = 0.0f;
+                zoom_beats = full_beats;
+            }
+            nx0 += 42.0f;
+
+            const int total_bars = std::max(1, static_cast<int>(std::ceil(full_beats / bpb)));
+            const int start_bar = std::clamp(static_cast<int>(std::floor(editor_scroll_x_ / bpb)) + 1,
+                                             1, total_bars);
+            const int end_bar = std::clamp(static_cast<int>(
+                std::ceil((editor_scroll_x_ + zoom_beats) / bpb)), start_bar, total_bars);
+            char range_label[48];
+            std::snprintf(range_label, sizeof(range_label), "Bars %d-%d / %d",
+                          start_bar, end_bar, total_bars);
+            d.draw_text(o, nx0, 16.0f, range_label,
+                {0.58f, 0.62f, 0.68f, 0.90f}, 0.76f);
+            hx += section_w + kSectionGap;
         }
 
-        // Status / hint (right-aligned)
-        float hint_x = sw - 8.0f;
-        if (file_backed) {
-            std::string label;
-            if (!file_error_.empty()) {
-                label = file_error_;
-            } else if (!file.str_value.empty()) {
-                std::string name = std::filesystem::path(file.str_value).filename().string();
-                char meta[96];
-                SequenceData* seq = sequence_.load(std::memory_order_acquire);
-                std::snprintf(meta, sizeof(meta), "%s  %.1fs  %.1f beats  %zu notes",
-                              name.c_str(), file_duration_seconds_,
-                              seq ? seq->sequence.duration_beats : 0.0,
-                              file_note_count_);
-                label = meta;
+        // Actions section: destructive commands are behind an explicit action.
+        {
+            const float section_w = std::max(84.0f, sw - hx - 8.0f);
+            draw_section(hx, section_w, "ACTIONS");
+            const bool show_clear = toolbar_actions_open_ && section_w >= 178.0f;
+            float ax = hx + 56.0f;
+            if (show_clear) {
+                const bool long_or_imported = file_backed || clip_ref_backed ||
+                    editor_notes_.size() > 64 || lb_val > 16.0f;
+                const char* clear_label = (long_or_imported && !toolbar_clear_confirm_)
+                    ? "Clear Clip..." : "Clear Clip";
+                auto clear_result = ui_button(*ctx, Rect{ax, kHeaderY + 1.0f, 82.0f, 26.0f},
+                    clear_label, toolbar_clear_confirm_,
+                    {0.22f, 0.14f, 0.14f, 0.95f},
+                    {0.55f, 0.18f, 0.15f, 1.0f});
+                if (clear_result.clicked) {
+                    if (long_or_imported && !toolbar_clear_confirm_) {
+                        toolbar_clear_confirm_ = true;
+                        import_status_ = "Click Clear Clip again";
+                        import_status_until_ = ctx->time + 3.0;
+                    } else {
+                        editor_notes_.clear();
+                        note_selected_.clear();
+                        toolbar_clear_confirm_ = false;
+                        toolbar_actions_open_ = false;
+                        commit_editor_notes(ctx);
+                    }
+                }
+                ax += 88.0f;
             }
-            if (!label.empty()) {
-                hint_x -= d.text_width(o, label.c_str(), 0.85f);
-                d.draw_text(o, hint_x, 11.0f, label.c_str(),
-                    file_error_.empty()
-                        ? VividColor{0.5f, 0.8f, 1.0f, 0.9f}
-                        : VividColor{1.0f, 0.45f, 0.35f, 0.9f},
-                    0.85f);
+
+            const float action_w = std::min(66.0f, std::max(54.0f, section_w - 64.0f));
+            const float action_x = show_clear ? ax : hx + section_w - action_w - 6.0f;
+            auto actions = ui_button(*ctx,
+                Rect{action_x, kHeaderY + 1.0f, action_w, 26.0f},
+                toolbar_actions_open_ ? "Close" : "Actions",
+                toolbar_actions_open_);
+            if (actions.clicked) {
+                toolbar_actions_open_ = !toolbar_actions_open_;
+                toolbar_clear_confirm_ = false;
             }
-        } else if (ctx->time < import_status_until_ && !import_status_.empty()) {
-            float fade = static_cast<float>(
-                std::min(1.0, (import_status_until_ - ctx->time) / 0.5));
-            hint_x -= d.text_width(o, import_status_.c_str(), 0.85f);
-            d.draw_text(o, hint_x, 11.0f, import_status_.c_str(),
-                {0.5f, 0.9f, 0.5f, fade * 0.95f}, 0.85f);
-        } else {
-            const char* hint = "LMB: add  Shift+LMB: select  Del: delete  ↑↓: transpose  ←→: nudge  Cmd+A/D: all/dup";
-            hint_x -= d.text_width(o, hint, 0.75f);
-            d.draw_text(o, hint_x, 11.0f, hint,
-                {th.dim_text.r, th.dim_text.g, th.dim_text.b, 0.40f}, 0.75f);
         }
     }
 
@@ -1062,15 +1089,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             if (!vivid::ui::Rect{grid_x, grid_y, grid_w, roll_h}.contains(px, py))
                 return {};
             const int    hover_pitch = p_fn(py - grid_y);
-            const double hover_beat  = beat_from_x(px - grid_x, editor_scroll_x_,
-                                                    static_cast<float>(inv_bw));
+            const double hover_beat  = beat_view.screen_to_world(px);
             for (int i : visible_note_indices) {
                 const auto& n = editor_notes_[i];
                 if (static_cast<int>(n.pitch) != hover_pitch) continue;
                 if (hover_beat < n.start_beat ||
                     hover_beat >= n.start_beat + n.duration_beats) continue;
-                float note_right_px = grid_x +
-                    static_cast<float>((n.start_beat + n.duration_beats - editor_scroll_x_) * beat_w);
+                float note_right_px = beat_view.world_to_screen(n.start_beat + n.duration_beats);
                 if (!std::isfinite(note_right_px)) continue;
                 HitZone zone = (px >= note_right_px - 8.0f)
                     ? HitZone::ResizeRight : HitZone::Body;
@@ -1096,20 +1121,23 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         // --- Loop brace interaction ---
         if (mouse_in_brace && ctx->mouse.left_clicked && drag_mode_ == DragMode::None) {
             drag_start_mx_ = ctx->mouse.x;
-            if (has_loop_region && std::fabs(ctx->mouse.x - loop_lx) < 8.0f) {
+            const auto range_hit = vivid::ui::hit_test_range(
+                vivid::ui::Rect{grid_x, brace_y, grid_w, brace_h},
+                beat_view, ls_param, le_param, 8.0f,
+                ctx->mouse.x, ctx->mouse.y);
+            if (has_loop_region && range_hit.zone == vivid::ui::RangeDragMode::Left) {
                 drag_mode_           = DragMode::LoopBraceLeft;
                 drag_orig_loop_end_  = le_param;
-            } else if (has_loop_region && std::fabs(ctx->mouse.x - loop_rx) < 8.0f) {
+            } else if (has_loop_region && range_hit.zone == vivid::ui::RangeDragMode::Right) {
                 drag_mode_            = DragMode::LoopBraceRight;
                 drag_orig_loop_start_ = ls_param;
-            } else if (has_loop_region && ctx->mouse.x > loop_lx && ctx->mouse.x < loop_rx) {
+            } else if (has_loop_region && range_hit.zone == vivid::ui::RangeDragMode::Body) {
                 drag_mode_            = DragMode::LoopBraceBody;
                 drag_orig_loop_start_ = ls_param;
                 drag_orig_loop_end_   = le_param;
             } else {
                 drag_mode_            = DragMode::LoopBraceSweep;
-                drag_orig_loop_start_ = beat_from_x(mx, editor_scroll_x_,
-                                                    static_cast<float>(inv_bw));
+                drag_orig_loop_start_ = beat_view.screen_to_world(ctx->mouse.x);
             }
             if (ctx->host.capture_pointer)
                 ctx->host.capture_pointer(ctx->host.opaque);

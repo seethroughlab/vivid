@@ -39,6 +39,12 @@ operator::draw_editor(ctx)                   ← operator-owned
   etc.). Cross-frame state lives in caller-owned structs (`SliderState`,
   `GridState`, `DragHandleState`, `ScrollState`) that operators store
   on their own core type.
+- **Focused editor-authoring helpers** — the umbrella
+  `src/operator_api/editor_ui.h` re-exports smaller headers under
+  `src/operator_api/editor_ui/`: geometry/layout, selection,
+  draw-only chrome, viewport math, timeline/range/scrollbar helpers,
+  and introspection emission. This keeps existing operators source
+  compatible while giving new editor authors a clearer map.
 
 Additions to any layer are **additive**: operators built against an
 older header ignore new trailing struct fields, and the host
@@ -116,6 +122,7 @@ cursors via `#ifdef GLFW_RESIZE_NESW_CURSOR`.
 |------|------|
 | `src/operator_api/types.h` | `VividEditorContext`, `VividEditorHostAPI`, `VividDrawAPI`, `VividCursorKind`. |
 | `src/operator_api/editor_ui.h` | Widget + layout toolkit. |
+| `src/operator_api/editor_ui/*.h` | Focused geometry, selection, viewport, timeline, drawing, and introspection helpers. |
 | `src/operator_api/draw_ui_helpers.h` | Stateless render helpers. |
 | `src/runtime/core/editor_window_manager.{h,cpp}` | Secondary-window lifecycle + per-frame tick. |
 | `src/runtime/core/editor_window_host_api.{h,cpp}` | `HostCtx` + thunks bound into `ctx.host`. |
@@ -127,6 +134,7 @@ cursors via `#ifdef GLFW_RESIZE_NESW_CURSOR`.
 |------|-------|
 | `tests/ui/test_editor_ui_widgets.cpp` | `ui_button` / `ui_toggle` / `ui_radio` / `ui_slider_h` / `ui_slider_v` + `LayoutCursor` helpers. |
 | `tests/ui/test_editor_ui_grid.cpp` | `ui_step_grid` click / shift-click / drag-paint / shift-extend; `ui_drag_handle`; `ui_scroll_region`. |
+| `tests/operators/test_editor_ui_timeline.cpp` | `Viewport1D`, scrollbar interaction, timeline tick generation, range drags, box selection, selection-rect drawing. |
 | `tests/ops/test_editor_window_manager.cpp` | `EditorWindowBookkeeping` + `make_editor_string_param_view` + `make_editor_window_surface_metrics`. |
 | `tests/ops/test_editor_window_host_api.cpp` | `HostCtx` thunks: cursor / status / tooltip / pointer-capture / focus / clipboard degrade-without-GLFW. |
 

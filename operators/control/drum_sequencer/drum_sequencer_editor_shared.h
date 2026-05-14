@@ -5,7 +5,7 @@
 
 #include "drum_sequencer_layout.h"
 #include "operator_api/types.h"
-#include "shared/editor_ui/selection.h"
+#include "operator_api/editor_ui/selection.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -18,14 +18,14 @@ namespace vivid_sequencers::drum_editor {
 // drum/step coordinates map to (row = drum, col = step) inside the
 // shared Selection struct — member access changes from drum_lo/hi and
 // step_lo/hi to row_lo/hi and col_lo/hi.
-using ::vivid::editor_ui::Selection;
-using ::vivid::editor_ui::selection_from_point;
-using ::vivid::editor_ui::selection_from_anchor_tip;
-using ::vivid::editor_ui::selection_extend;
-using ::vivid::editor_ui::selection_contains;
-using ::vivid::editor_ui::selection_cell_count;
-using ::vivid::editor_ui::cursor_move;
-using ::vivid::editor_ui::clamp_editor_state;
+using ::vivid::ui::Selection;
+using ::vivid::ui::selection_from_point;
+using ::vivid::ui::selection_from_anchor_tip;
+using ::vivid::ui::selection_extend;
+using ::vivid::ui::selection_contains;
+using ::vivid::ui::selection_cell_count;
+using ::vivid::ui::cursor_move;
+using ::vivid::ui::clamp_editor_state;
 
 enum class LaneKind : std::uint8_t {
     Pattern     = 0,   // pattern A triggers (kick_0 .. tom_15)

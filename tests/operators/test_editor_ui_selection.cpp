@@ -1,18 +1,18 @@
-// Focused unit tests for the shared editor_ui::Selection geometry +
+// Focused unit tests for the shared vivid::ui::Selection geometry +
 // cursor-movement helpers. These primitives are used by both
 // DrumSequencer and Sequencer grid editors; operator-specific tests
 // cover higher-level behaviour, this file locks down the arithmetic.
 
-#include "shared/editor_ui/selection.h"
+#include "operator_api/editor_ui/selection.h"
 
 #include <cstdio>
 
 #include "test_helpers.h"
 
-namespace ui = ::vivid::editor_ui;
+namespace ui = ::vivid::ui;
 
 int main() {
-    std::fprintf(stderr, "=== Test: editor_ui::Selection helpers ===\n\n");
+    std::fprintf(stderr, "=== Test: vivid::ui::Selection helpers ===\n\n");
 
     // --- selection_from_point ---
     {
