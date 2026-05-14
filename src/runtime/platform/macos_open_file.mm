@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <mutex>
+#include <objc/runtime.h>
 #include <string>
 #include <vector>
 
@@ -53,7 +54,63 @@ void enqueue_path(const char* utf8) {
 
 @end
 
+// IMP for the injected application:openFile: method. NSDocumentController calls
+// this before attempting to open the file itself; returning YES short-circuits it.
+static BOOL vivid_app_open_file(id self, SEL cmd, NSApplication* app, NSString* filename) {
+    (void)self; (void)cmd; (void)app;
+    enqueue_path([filename UTF8String]);
+    std::fprintf(stderr, "[vivid] application:openFile: queued %s\n",
+                 [filename UTF8String]);
+    return YES;
+}
+
 namespace vivid::platform {
+
+void inject_open_file_delegate() {
+    id delegate = [NSApp delegate];
+    if (!delegate) {
+        std::fprintf(stderr, "[vivid] inject_open_file_delegate: no delegate yet\n");
+        return;
+    }
+
+    Class original = object_getClass(delegate);
+    NSString* subName =
+        [NSStringFromClass(original) stringByAppendingString:@"_VividFileOpen"];
+    Class sub = NSClassFromString(subName);
+
+    if (!sub) {
+        sub = objc_allocateClassPair(original, [subName UTF8String], 0);
+        if (sub) {
+            class_addMethod(sub,
+                            @selector(application:openFile:),
+                            (IMP)vivid_app_open_file,
+                            "c@:@@");
+            objc_registerClassPair(sub);
+        }
+    }
+    if (sub) {
+        object_setClass(delegate, sub);
+        std::fprintf(stderr, "[vivid] inject_open_file_delegate: injected into %s\n",
+                     [NSStringFromClass(original) UTF8String]);
+    }
+}
+
+void schedule_open_file_injection() {
+    // Register for NSApplicationWillFinishLaunchingNotification, which fires
+    // during glfwInit()'s brief [NSApp run] — AFTER GLFW sets its app delegate
+    // but BEFORE applicationDidFinishLaunching where NSDocumentController
+    // processes kAEOpenDocuments events. Injecting application:openFile: here
+    // ensures NSDocumentController calls our handler (returning YES) instead of
+    // falling back to its own document-opening logic (which shows the error).
+    [[NSNotificationCenter defaultCenter]
+        addObserverForName:NSApplicationWillFinishLaunchingNotification
+                   object:nil
+                    queue:nil
+               usingBlock:^(NSNotification* note) {
+        (void)note;
+        inject_open_file_delegate();
+    }];
+}
 
 void install_open_file_handler() {
     static VividOpenFileHandler* handler = nil;

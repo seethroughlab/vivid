@@ -1124,6 +1124,17 @@ int main(int argc, char* argv[]) {
         }
     }
 
+#ifdef __APPLE__
+    // schedule_open_file_injection() registers a NSApplicationWillFinishLaunchingNotification
+    // observer that fires INSIDE glfwInit()'s [NSApp run], after GLFW sets its delegate
+    // but before applicationDidFinishLaunching where NSDocumentController processes any
+    // queued kAEOpenDocuments events. This is the correct window to inject
+    // application:openFile: so NSDocumentController calls our handler (returns YES)
+    // instead of falling back to its own document-opening logic ("cannot open" dialog).
+    // Must be called before glfwInit().
+    vivid::platform::schedule_open_file_injection();
+#endif
+
     // --- GLFW ---
     if (!glfwInit()) {
         std::fprintf(stderr, "[vivid] Failed to init GLFW\n");
@@ -1131,14 +1142,11 @@ int main(int argc, char* argv[]) {
     }
 
 #ifdef __APPLE__
-    // Install our kAEOpenDocuments handler after glfwInit(): glfwInit brings
-    // up NSApp, which registers a default handler that falls through to
-    // NSDocumentController. Our setEventHandler call here replaces it so
-    // launch-with-file / Dock drops / Finder "Open With" are routed to
-    // drain_pending_open_files() instead of the "cannot open" dialog. We
-    // register before the first glfwPollEvents so a queued launch-with-file
-    // AppleEvent finds our handler when the event queue first drains.
+    // Belt-and-suspenders: install the Apple Event handler (overrides NSDocumentController
+    // for events that arrive after glfwInit), and re-inject the delegate method in case
+    // the willFinishLaunching path didn't fire (e.g. NSApp already existed).
     vivid::platform::install_open_file_handler();
+    vivid::platform::inject_open_file_delegate();
 #endif
     glfwSetMonitorCallback(monitor_callback);
 
