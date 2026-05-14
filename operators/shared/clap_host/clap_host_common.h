@@ -165,7 +165,14 @@ struct PluginHandle {
     uint32_t                   tail_samples    = 0;      // from CLAP_EXT_TAIL (0 = unknown/none)
 
     // Param info cache for macro mapping (populated after plugin init)
-    struct ParamEntry { clap_id id; double min_val; double max_val; char name[CLAP_NAME_SIZE]; };
+    struct ParamEntry {
+        clap_id id;
+        double  min_val;
+        double  max_val;
+        double  default_val;
+        int     step_count;  // 0=continuous, >0=discrete
+        char    name[CLAP_NAME_SIZE];
+    };
     std::vector<ParamEntry> params;
 
     ~PluginHandle() {
@@ -185,6 +192,32 @@ struct PluginHandle {
         }
     }
 };
+
+// ---------------------------------------------------------------------------
+// Cache CLAP param info from the params extension into PluginHandle::params.
+// Must be called on the main thread, after plugin init.
+// ---------------------------------------------------------------------------
+
+static void clap_cache_params(PluginHandle* h) {
+    auto* params_ext = reinterpret_cast<const clap_plugin_params_t*>(
+        h->plugin->get_extension(h->plugin, CLAP_EXT_PARAMS));
+    if (!params_ext) return;
+    uint32_t n = params_ext->count(h->plugin);
+    h->params.resize(n);
+    for (uint32_t i = 0; i < n; ++i) {
+        clap_param_info_t info{};
+        params_ext->get_info(h->plugin, i, &info);
+        auto& e       = h->params[i];
+        e.id          = info.id;
+        e.min_val     = info.min_value;
+        e.max_val     = info.max_value;
+        e.default_val = info.default_value;
+        e.step_count  = (info.flags & CLAP_PARAM_IS_STEPPED)
+                        ? static_cast<int>(info.max_value - info.min_value) : 0;
+        std::strncpy(e.name, info.name, CLAP_NAME_SIZE - 1);
+        e.name[CLAP_NAME_SIZE - 1] = '\0';
+    }
+}
 
 // ---------------------------------------------------------------------------
 // CLAP param list serializer — builds JSON array from a PluginHandle's cached
@@ -211,6 +244,10 @@ static std::string clap_params_to_json(const PluginHandle* h,
         json += std::to_string(p.min_val);
         json += ",\"max\":";
         json += std::to_string(p.max_val);
+        json += ",\"default\":";
+        json += std::to_string(p.default_val);
+        json += ",\"step_count\":";
+        json += std::to_string(p.step_count);
         if (params_ext && h->plugin) {
             double val = 0.0;
             if (params_ext->get_value(h->plugin, p.id, &val)) {

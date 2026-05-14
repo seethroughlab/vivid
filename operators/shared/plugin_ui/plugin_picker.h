@@ -110,6 +110,116 @@ inline int draw_plugin_picker(
     return changed_to;
 }
 
+// Compact inline dropdown: single-row header + optional expanded list below.
+// Explicit x/w allow placement in a sub-column (e.g. beside a value slider).
+// Returns: -2 = user chose "(none)" (clear), -1 = no change, >= 0 = selected index.
+inline int draw_compact_picker(
+    VividInspectorContext*           ctx,
+    float&                           y,
+    float                            x,
+    float                            w,
+    const std::vector<std::string>&  names,
+    int                              current_idx,
+    PluginPickerState&               state,
+    const char*                      override_label = nullptr)
+{
+    auto& d        = ctx->draw;
+    void* o        = d.opaque;
+    const auto& th = ctx->theme;
+    const auto& m  = ctx->mouse;
+
+    static constexpr float kH   = 20.f;  // compact header height
+    static constexpr float kIH  = 18.f;  // item height
+    static constexpr float kPad =  6.f;
+
+    int changed_to = -1;
+
+    // ---- Header row ----
+    bool hdr_hit = m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + kH;
+    VividColor hdr_bg = hdr_hit
+        ? VividColor{th.dark_bg.r + 0.06f, th.dark_bg.g + 0.06f, th.dark_bg.b + 0.06f, 1.f}
+        : th.dark_bg;
+    if (d.draw_rounded_rect)
+        d.draw_rounded_rect(o, x, y, w, kH, th.corner_radius, hdr_bg);
+
+    const char* arrow = state.open ? "v" : ">";
+    float lh = vivid::draw_ui::line_height_or(d, o, 12.f);
+    float ty  = y + (kH - lh) * 0.5f;
+    if (d.draw_text) d.draw_text(o, x + kPad, ty, arrow, th.dim_text, 0.85f);
+
+    const char* label;
+    VividColor label_col;
+    if (override_label) {
+        label     = override_label;
+        label_col = th.dim_text;
+    } else {
+        label     = (current_idx >= 0 && current_idx < (int)names.size())
+                    ? names[current_idx].c_str() : "(none)";
+        label_col = (current_idx >= 0) ? th.bright_text : th.dim_text;
+    }
+    if (d.push_clip_rect) d.push_clip_rect(o, x, y, w, kH);
+    if (d.draw_text) d.draw_text(o, x + kPad + 14.f, ty, label, label_col, 0.85f);
+    if (d.pop_clip_rect) d.pop_clip_rect(o);
+
+    if (m.left_clicked && hdr_hit)
+        state.open = !state.open;
+
+    y += kH + 1.f;
+
+    // ---- Expanded list (includes "(none)" clear option at top) ----
+    if (state.open) {
+        // "(none)" clear row
+        {
+            bool is_none = (current_idx < 0);
+            bool is_hov  = m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + kIH;
+            if (is_none) {
+                VividColor sel_bg = {th.accent.r, th.accent.g, th.accent.b, 0.20f};
+                if (d.draw_rect) d.draw_rect(o, x, y, w, kIH, sel_bg);
+            } else if (is_hov) {
+                VividColor hov_bg = {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.07f};
+                if (d.draw_rect) d.draw_rect(o, x, y, w, kIH, hov_bg);
+            }
+            VividColor tc = is_none ? th.bright_text : th.dim_text;
+            if (d.draw_text) d.draw_text(o, x + kPad + 8.f, y + 2.f, "(none)", tc, 0.85f);
+            if (m.left_clicked && is_hov) { changed_to = -2; state.open = false; }
+            y += kIH;
+        }
+
+        if (names.empty()) {
+            if (d.draw_text)
+                d.draw_text(o, x + kPad + 8.f, y + 2.f, "(no params)", th.dim_text, 0.85f);
+            y += kIH;
+        } else {
+            for (int i = 0; i < (int)names.size(); ++i) {
+                bool is_sel = (i == current_idx);
+                bool is_hov = m.x >= x && m.x <= x + w && m.y >= y && m.y <= y + kIH;
+                if (is_sel) {
+                    VividColor sel_bg = {th.accent.r, th.accent.g, th.accent.b, 0.20f};
+                    if (d.draw_rect) d.draw_rect(o, x, y, w, kIH, sel_bg);
+                } else if (is_hov) {
+                    VividColor hov_bg = {th.bright_text.r, th.bright_text.g, th.bright_text.b, 0.07f};
+                    if (d.draw_rect) d.draw_rect(o, x, y, w, kIH, hov_bg);
+                }
+                if (is_sel && d.draw_text)
+                    d.draw_text(o, x + kPad, y + 2.f, "*", th.accent, 0.85f);
+                VividColor tc = is_sel ? th.bright_text : th.dim_text;
+                if (d.push_clip_rect) d.push_clip_rect(o, x, y, w, kIH);
+                if (d.draw_text)
+                    d.draw_text(o, x + kPad + 8.f, y + 2.f, names[i].c_str(), tc, 0.85f);
+                if (d.pop_clip_rect) d.pop_clip_rect(o);
+                if (m.left_clicked && is_hov && !is_sel) {
+                    changed_to = i;
+                    state.open = false;
+                }
+                y += kIH;
+            }
+        }
+        y += 3.f;  // bottom gap
+    }
+
+    return changed_to;
+}
+
 // Draw an "Open Plugin UI" button. Returns true if clicked this frame.
 // Only drawn when `enabled` is true (i.e. a plugin with GUI is loaded).
 inline bool draw_open_gui_button(

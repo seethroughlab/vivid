@@ -513,18 +513,21 @@ struct Vst3Handle {
     bool               processing            = false;  // setProcessing(true) called
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
 
-    // Param info cache for macro mapping (normalized values; VST3 params are [0,1] natively)
+    // Param info cache for macro mapping
     struct ParamEntry {
         ParamID     id;
-        float       default_normalized;  // [0,1]
+        double      default_plain;       // plain value default
         double      min_plain;           // plain value at normalized=0
         double      max_plain;           // plain value at normalized=1
+        int32       step_count;          // 0=continuous, >0=discrete steps
         std::string name;                // UTF-8 display name
+        std::string units;               // UTF-8 units string (may be empty)
     };
     std::vector<ParamEntry> params;
 
     void destroy() {
-        if (component) component->setActive(false);
+        if (component && component->setActive(false) != kResultOk)
+            fprintf(stderr, "[Vst3] setActive(false) failed during teardown\n");
 
         if (controller_is_owned && controller) controller->terminate();
         if (controller)  { controller->release();  controller  = nullptr; }
@@ -579,11 +582,13 @@ static void vst3_cache_params(Vst3Handle* h) {
         if (info.flags & ParameterInfo::kIsHidden) continue;
 
         Vst3Handle::ParamEntry e;
-        e.id                = info.id;
-        e.default_normalized = static_cast<float>(info.defaultNormalizedValue);
-        e.min_plain         = h->controller->normalizedParamToPlain(info.id, 0.0);
-        e.max_plain         = h->controller->normalizedParamToPlain(info.id, 1.0);
-        e.name              = vst3_tchar_to_utf8(info.title);
+        e.id          = info.id;
+        e.min_plain   = h->controller->normalizedParamToPlain(info.id, 0.0);
+        e.max_plain   = h->controller->normalizedParamToPlain(info.id, 1.0);
+        e.default_plain = h->controller->normalizedParamToPlain(info.id, info.defaultNormalizedValue);
+        e.step_count  = info.stepCount;
+        e.name        = vst3_tchar_to_utf8(info.title);
+        e.units       = vst3_tchar_to_utf8(info.units);
         h->params.push_back(std::move(e));
     }
 }
@@ -612,7 +617,24 @@ static std::string vst3_params_to_json(const Vst3Handle* h) {
         json += ",\"max\":";
         json += std::to_string(p.max_plain);
         json += ",\"default\":";
-        json += std::to_string(p.default_normalized);
+        json += std::to_string(p.default_plain);
+        json += ",\"step_count\":";
+        json += std::to_string(p.step_count);
+        if (!p.units.empty()) {
+            json += ",\"units\":\"";
+            for (char c : p.units) {
+                if (c == '"')       json += "\\\"";
+                else if (c == '\\') json += "\\\\";
+                else                json += c;
+            }
+            json += "\"";
+        }
+        if (h->controller) {
+            double val = h->controller->normalizedParamToPlain(
+                p.id, h->controller->getParamNormalized(p.id));
+            json += ",\"value\":";
+            json += std::to_string(val);
+        }
         json += "}";
     }
     json += "]";
@@ -637,7 +659,8 @@ static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
     if (raw.empty()) return;
     MemIBStream stream;
     stream.buf = std::move(raw);
-    h->component->setState(&stream);
+    if (h->component->setState(&stream) != kResultOk)
+        fprintf(stderr, "[Vst3] setState failed (state may not have been applied)\n");
     // Sync controller state from component if they're separate objects
     if (h->controller_is_owned && h->controller) {
         stream.pos = 0;
@@ -851,7 +874,10 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     }
 
     PClassInfo target_info{};
-    factory->getClassInfo(target_idx, &target_info);
+    if (factory->getClassInfo(target_idx, &target_info) != kResultOk) {
+        fprintf(stderr, "[Vst3] getClassInfo(%d) failed\n", target_idx);
+        factory->release(); VST3_RELEASE_BUNDLE; return nullptr;
+    }
 
     IComponent* component = nullptr;
     if (factory->createInstance(target_info.cid, IComponent::iid,
@@ -866,7 +892,8 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     }
 
     // Activate the audio output bus
-    component->activateBus(kAudio, kOutput, 0, true);
+    if (component->activateBus(kAudio, kOutput, 0, true) != kResultOk)
+        fprintf(stderr, "[Vst3] activateBus(kAudio, kOutput, 0) failed\n");
 
     IAudioProcessor* processor = nullptr;
     if (component->queryInterface(IAudioProcessor::iid, (void**)&processor) != kResultOk
@@ -955,7 +982,8 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
 
     if (controller) {
         // setComponentHandler: required before any UI operation (Serum2 crashes without it).
-        controller->setComponentHandler(&h->component_handler);
+        if (controller->setComponentHandler(&h->component_handler) != kResultOk)
+            fprintf(stderr, "[Vst3] setComponentHandler failed\n");
 
         // Connect component ↔ controller via IConnectionPoint (bidirectional).
         // Only for separate-object plugins: single-object plugins (comp == ctrl) must

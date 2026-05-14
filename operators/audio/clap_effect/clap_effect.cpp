@@ -1,5 +1,6 @@
 #include "operator_api/operator.h"
 #include "operator_api/type_id.h"
+#include "shared/plugin_common/direct_param_queue.h"
 #include "shared/clap_host/clap_host_common.h"
 #include "shared/clap_host/clap_scanner.h"
 #include "shared/plugin_ui/plugin_picker.h"
@@ -56,7 +57,8 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
 
     // JSON array of CLAP parameters from the loaded plugin (auto-populated).
     // Consumed by list_clap_params MCP tool; not shown in the inspector.
-    vivid::Param<vivid::TextValue> clap_params_ {"_clap_params"};
+    vivid::Param<vivid::TextValue> clap_params_  {"_clap_params"};
+    vivid::Param<vivid::TextValue> direct_params_ {"_clap_direct_params"};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_path);
@@ -71,6 +73,7 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&macro_7); out.push_back(&macro_7_id);
         out.push_back(&plugin_state);
         out.push_back(&clap_params_);
+        out.push_back(&direct_params_);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -91,6 +94,13 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
     ClapPluginWindow* gui_win_ = nullptr;
 #endif
     vivid::plugin_ui::PluginPickerState picker_state_;
+    vivid::plugin_ui::PluginPickerState add_picker_state_;
+    int drag_macro_ = -1;
+    std::vector<std::string> param_names_cache_;
+
+    // --- Direct param queue (main thread → audio thread, unlimited params) ---
+    DirectParamQueue direct_q_;
+    std::string      last_direct_params_;
 
     // --- State ---
     std::string       last_path_;
@@ -163,8 +173,17 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(macro_6_id, "CLAP parameter name for macro 6");
         vivid::description(macro_7, "Macro 7 value (0-1)");
         vivid::description(macro_7_id, "CLAP parameter name for macro 7");
-        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(clap_params_,   VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_0, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_1, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_2, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_3, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_4, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_5, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_6, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_7, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,    VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(clap_params_,    VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(direct_params_,  VIVID_DISPLAY_HIDDEN);
     }
 
     ~CLAPEffect() {
@@ -205,6 +224,7 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
         reload_if_changed();
         update_macro_map();
         refresh_clap_params_json();
+        process_direct_params();
 
         if (state_dirty_) save_state();
 
@@ -240,6 +260,8 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
 #endif
 
         for (auto& m : macro_map_) { m.id = CLAP_INVALID_ID; m.last_sent = -1.f; }
+        direct_params_.str_value.clear();
+        last_direct_params_.clear();
 
         if (last_path_.empty()) {
             auto* old_pend = pending_.exchange(nullptr, std::memory_order_acq_rel);
@@ -326,19 +348,7 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
         return h;
     }
 
-    void cache_params(PluginHandle* h) {
-        auto* params_ext = reinterpret_cast<const clap_plugin_params_t*>(
-            h->plugin->get_extension(h->plugin, CLAP_EXT_PARAMS));
-        if (!params_ext) return;
-        uint32_t n = params_ext->count(h->plugin);
-        h->params.resize(n);
-        for (uint32_t i = 0; i < n; ++i) {
-            clap_param_info_t info{};
-            params_ext->get_info(h->plugin, i, &info);
-            h->params[i] = { info.id, info.min_value, info.max_value, {} };
-            std::strncpy(h->params[i].name, info.name, CLAP_NAME_SIZE - 1);
-        }
-    }
+    void cache_params(PluginHandle* h) { clap_cache_params(h); }
 
     void update_macro_map() {
         auto* act = active_.load(std::memory_order_acquire);
@@ -356,6 +366,12 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
                 }
             }
         }
+    }
+
+    void process_direct_params() {
+        if (direct_params_.str_value == last_direct_params_) return;
+        last_direct_params_ = direct_params_.str_value;
+        direct_param_queue_parse_and_push(direct_q_, direct_params_.str_value);
     }
 
     void refresh_clap_params_json() {
@@ -473,6 +489,29 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
             e.value    = scaled;
             in_events_.push(e);
         }
+
+        // Drain direct-param queue (MCP-sourced, normalized → native)
+        {
+            auto* act = active_.load(std::memory_order_acquire);
+            DirectParamQueue::Entry entry;
+            while (direct_q_.pop(entry)) {
+                double native = entry.val;
+                if (act) {
+                    for (const auto& p : act->params)
+                        if (p.id == entry.id) {
+                            native = p.min_val + entry.val * (p.max_val - p.min_val);
+                            break;
+                        }
+                }
+                clap_event_param_value_t e{};
+                e.header   = { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+                e.param_id = entry.id;
+                e.cookie   = nullptr;
+                e.note_id  = -1; e.port_index = -1; e.channel = -1; e.key = -1;
+                e.value    = native;
+                in_events_.push(e);
+            }
+        }
     }
 
     static void passthrough(const VividAudioContext* ctx) {
@@ -559,8 +598,21 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
 
     void draw_inspector(VividInspectorContext* ctx) override {
         using namespace vivid::plugin_ui;
+        using namespace vivid::draw_ui;
 
         const auto& plugins = clap_get_plugins();
+
+        // Build param name list from active handle (fallback to pending)
+        {
+            auto* h = active_.load(std::memory_order_acquire);
+            if (!h || h->params.empty()) h = pending_.load(std::memory_order_acquire);
+            param_names_cache_.clear();
+            if (h) {
+                param_names_cache_.reserve(h->params.size());
+                for (const auto& p : h->params)
+                    param_names_cache_.emplace_back(p.name);
+            }
+        }
 
         std::vector<std::string> names;
         names.reserve(plugins.size());
@@ -576,9 +628,18 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
                 { cur = i; break; }
         }
 
+        const float x  = ctx->content_x;
+        const float w  = ctx->content_width;
+        const auto& m  = ctx->mouse;
+        auto& d        = ctx->draw;
+        void* o        = d.opaque;
+        const auto& th = ctx->theme;
+
         float y = ctx->content_y + 4.f;
 
+        bool was_picker_open = picker_state_.open;
         int sel = draw_plugin_picker(ctx, y, names, cur, picker_state_);
+        if (!was_picker_open && picker_state_.open) add_picker_state_.open = false;
         if (sel >= 0) {
             ctx->commands.set_string_param(ctx->commands.opaque,
                                            "plugin_path", plugins[sel].path.c_str());
@@ -617,6 +678,92 @@ struct CLAPEffect : vivid::OperatorBase, vivid::AudioProcessable {
         }
 #endif
 
+        // --- Mapped param rows (only non-empty slots) + "+ Add param…" ---
+        static constexpr float kRowH = 20.f;
+        static constexpr float kGap  =  4.f;
+        static constexpr float kXW   = 16.f;
+        static constexpr float kValW = 74.f;
+
+        const float sli_w = w * 0.27f;
+        const float x_btn = x + w - kXW;
+        const float val_x = x_btn - kValW - kGap;
+        const float sli_x = val_x - sli_w - kGap;
+        const float nam_w = sli_x - x - kGap;
+        const float lh    = line_height_or(d, o, 12.f);
+
+        if (m.left_released) drag_macro_ = -1;
+
+        bool any_empty = false;
+        for (int i = 0; i < 8; ++i) {
+            if (macro_id_[i]->str_value.empty()) { any_empty = true; continue; }
+
+            const float row_y = y;
+            float val = macro_float_[i]->value;
+
+            // Native value (CLAP: linear rescale; no units)
+            double native = static_cast<double>(val);
+            if (macro_map_[i].id != CLAP_INVALID_ID)
+                native = macro_map_[i].min_val + val * (macro_map_[i].max_val - macro_map_[i].min_val);
+            char val_buf[32];
+            std::snprintf(val_buf, sizeof(val_buf), "%.3g", native);
+
+            // Param name — clipped
+            if (d.push_clip_rect) d.push_clip_rect(o, x, row_y, nam_w, kRowH);
+            if (d.draw_text)      d.draw_text(o, x, row_y + (kRowH - lh) * 0.5f,
+                                              macro_id_[i]->str_value.c_str(), th.bright_text, 0.85f);
+            if (d.pop_clip_rect)  d.pop_clip_rect(o);
+
+            // Slider
+            bool over_sli = m.x >= sli_x && m.x <= sli_x + sli_w
+                         && m.y >= row_y  && m.y <= row_y + kRowH;
+            if (m.left_clicked && over_sli) drag_macro_ = i;
+            if (drag_macro_ == i && m.left_down) {
+                val = std::clamp((m.x - sli_x) / sli_w, 0.f, 1.f);
+                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, val);
+            }
+            draw_meter(d, o, sli_x, row_y + (kRowH - 8.f) * 0.5f, sli_w, 8.f,
+                       val, th.slider_fill, th.slider_track, MeterOrientation::Horizontal, 2.f);
+
+            // Native value label
+            if (d.push_clip_rect) d.push_clip_rect(o, val_x, row_y, kValW, kRowH);
+            if (d.draw_text)      d.draw_text(o, val_x, row_y + (kRowH - lh) * 0.5f,
+                                              val_buf, th.dim_text, 0.75f);
+            if (d.pop_clip_rect)  d.pop_clip_rect(o);
+
+            // × clear button
+            bool over_x = m.x >= x_btn && m.x <= x_btn + kXW
+                       && m.y >= row_y  && m.y <= row_y + kRowH;
+            VividColor xcol = over_x ? th.bright_text : th.dim_text;
+            if (d.draw_text)
+                d.draw_text(o, x_btn + (kXW - lh) * 0.5f, row_y + (kRowH - lh) * 0.5f,
+                            "x", xcol, 0.85f);
+            if (m.left_clicked && over_x) {
+                ctx->commands.set_string_param(ctx->commands.opaque, macro_id_[i]->name, "");
+                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, 0.f);
+            }
+
+            y += kRowH + 2.f;
+        }
+
+        // "+ Add param…" — only when at least one slot is available
+        if (any_empty) {
+            bool was_add_open = add_picker_state_.open;
+            int picked = draw_compact_picker(ctx, y, x, w, param_names_cache_, -1,
+                                             add_picker_state_, "+ Add param\xe2\x80\xa6");
+            if (!was_add_open && add_picker_state_.open)
+                picker_state_.open = false;
+            if (picked >= 0) {
+                for (int j = 0; j < 8; ++j) {
+                    if (macro_id_[j]->str_value.empty()) {
+                        ctx->commands.set_string_param(ctx->commands.opaque,
+                                                       macro_id_[j]->name,
+                                                       param_names_cache_[picked].c_str());
+                        break;
+                    }
+                }
+            }
+        }
+
         ctx->consumed_height = y - ctx->content_y;
     }
 };
@@ -627,4 +774,4 @@ VIVID_DEFINE_OP(CLAPEffect) {
     summary      = "Hosts a CLAP audio effect plugin; processes stereo audio in-place.";
 }
 
-VIVID_INSPECTOR(CLAPEffect)
+VIVID_INSPECTOR_FULL_MODE(CLAPEffect)

@@ -138,7 +138,9 @@ struct AUHandle {
         float                min_val     = 0.f;
         float                max_val     = 1.f;
         float                default_val = 0.f;
+        int                  step_count  = 0;    // 0=continuous, >0=discrete
         char                 name[64]    = {};
+        char                 units[32]   = {};
     };
     std::vector<ParamEntry> params;
 
@@ -150,6 +152,38 @@ struct AUHandle {
         }
     }
 };
+
+// ---------------------------------------------------------------------------
+// Map AudioUnitParameterUnit enum to a short display string.
+// Returns "" for generic/unknown units (caller should omit the field).
+// ---------------------------------------------------------------------------
+
+static const char* au_unit_to_string(AudioUnitParameterUnit u) {
+    switch (u) {
+        case kAudioUnitParameterUnit_Percent:             return "%";
+        case kAudioUnitParameterUnit_Seconds:             return "s";
+        case kAudioUnitParameterUnit_Milliseconds:        return "ms";
+        case kAudioUnitParameterUnit_SampleFrames:        return "frames";
+        case kAudioUnitParameterUnit_Phase:               return "deg";
+        case kAudioUnitParameterUnit_Rate:                return "x";
+        case kAudioUnitParameterUnit_Hertz:               return "Hz";
+        case kAudioUnitParameterUnit_Cents:               return "cents";
+        case kAudioUnitParameterUnit_RelativeSemiTones:   return "semitones";
+        case kAudioUnitParameterUnit_MIDINoteNumber:      return "MIDI note";
+        case kAudioUnitParameterUnit_MIDIController:      return "MIDI CC";
+        case kAudioUnitParameterUnit_Decibels:            return "dB";
+        case kAudioUnitParameterUnit_LinearGain:          return "gain";
+        case kAudioUnitParameterUnit_Degrees:             return "deg";
+        case kAudioUnitParameterUnit_Pan:                 return "pan";
+        case kAudioUnitParameterUnit_Meters:              return "m";
+        case kAudioUnitParameterUnit_AbsoluteCents:       return "cents";
+        case kAudioUnitParameterUnit_Octaves:             return "oct";
+        case kAudioUnitParameterUnit_BPM:                 return "BPM";
+        case kAudioUnitParameterUnit_Beats:               return "beats";
+        case kAudioUnitParameterUnit_Ratio:               return "ratio";
+        default:                                          return "";
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Cache AU parameters into handle (main thread, after AudioUnitInitialize)
@@ -187,6 +221,23 @@ static void au_cache_params(AUHandle* h) {
         } else {
             std::strncpy(e.name, info.name, sizeof(e.name) - 1);
         }
+
+        // Units
+        if (info.unit == kAudioUnitParameterUnit_CustomUnit && info.unitName) {
+            CFStringGetCString(info.unitName, e.units, sizeof(e.units), kCFStringEncodingUTF8);
+            CFRelease(info.unitName);
+        } else {
+            const char* u = au_unit_to_string(info.unit);
+            std::strncpy(e.units, u, sizeof(e.units) - 1);
+        }
+
+        // Stepped detection
+        if (info.unit == kAudioUnitParameterUnit_Boolean) {
+            e.step_count = 1;
+        } else if (info.unit == kAudioUnitParameterUnit_Indexed) {
+            e.step_count = static_cast<int>(info.maxValue - info.minValue);
+        }
+
         h->params.push_back(e);
     }
 }
@@ -255,6 +306,24 @@ static std::string au_params_to_json(const AUHandle* h) {
         json += std::to_string(p.max_val);
         json += ",\"default\":";
         json += std::to_string(p.default_val);
+        json += ",\"step_count\":";
+        json += std::to_string(p.step_count);
+        if (p.units[0] != '\0') {
+            json += ",\"units\":\"";
+            for (const char* c = p.units; *c; ++c) {
+                if (*c == '"')       json += "\\\"";
+                else if (*c == '\\') json += "\\\\";
+                else                 json += *c;
+            }
+            json += "\"";
+        }
+        if (h->au) {
+            Float32 val = 0.f;
+            if (AudioUnitGetParameter(h->au, p.id, kAudioUnitScope_Global, 0, &val) == noErr) {
+                json += ",\"value\":";
+                json += std::to_string(val);
+            }
+        }
         json += "}";
     }
     json += "]";

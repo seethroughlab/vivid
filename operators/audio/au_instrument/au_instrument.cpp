@@ -6,6 +6,7 @@
 #ifdef __APPLE__
 #include "shared/au_host/au_host_common.h"
 #include "shared/au_host/au_scanner.h"
+#include "shared/plugin_common/direct_param_queue.h"
 #include <atomic>
 #include <cmath>
 
@@ -53,7 +54,8 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<vivid::TextValue> plugin_state {"plugin_state"};
 
     // JSON array of AU parameters from the loaded plugin; hidden, consumed by list_au_params.
-    vivid::Param<vivid::TextValue> au_params_ {"_au_params"};
+    vivid::Param<vivid::TextValue> au_params_     {"_au_params"};
+    vivid::Param<vivid::TextValue> direct_params_ {"_au_direct_params"};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_name);
@@ -67,6 +69,7 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&macro_7); out.push_back(&macro_7_id);
         out.push_back(&plugin_state);
         out.push_back(&au_params_);
+        out.push_back(&direct_params_);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -86,6 +89,13 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     // --- Inspector state (main thread only) ---
     vivid::plugin_ui::PluginPickerState picker_state_;
+    vivid::plugin_ui::PluginPickerState add_picker_state_;
+    int drag_macro_ = -1;
+    std::vector<std::string> param_names_cache_;
+
+    // --- Direct param queue (main thread → audio thread, unlimited params) ---
+    DirectParamQueue direct_q_;
+    std::string      last_direct_params_;
 
     // --- State ---
     std::string last_name_;
@@ -99,6 +109,7 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         float                min_val   = 0.f;
         float                max_val   = 1.f;
         float                last_sent = -1.f;
+        char                 units[32] = {};
     };
     MacroEntry macro_map_[8];
 
@@ -134,8 +145,17 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(macro_6_id, "AU parameter name for macro 6");
         vivid::description(macro_7, "Macro 7 value (0-1)");
         vivid::description(macro_7_id, "AU parameter name for macro 7");
-        vivid::display_hint(plugin_state, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(au_params_,   VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_0, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_1, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_2, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_3, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_4, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_5, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_6, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(macro_7, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(au_params_,     VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(direct_params_, VIVID_DISPLAY_HIDDEN);
 
         for (auto& m : macro_map_) { m.id = kAUInvalidParamID; m.last_sent = -1.f; }
     }
@@ -168,6 +188,7 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         reload_if_changed();
         update_macro_map();
         refresh_au_params_json();
+        process_direct_params();
 
         if (state_dirty_) save_state();
     }
@@ -178,6 +199,8 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
         // Reset macro map — will be resolved after new plugin loads
         for (auto& m : macro_map_) { m.id = kAUInvalidParamID; m.last_sent = -1.f; }
+        direct_params_.str_value.clear();
+        last_direct_params_.clear();
 
         if (last_name_.empty()) {
             auto* old = pending_.exchange(nullptr, std::memory_order_acq_rel);
@@ -206,11 +229,22 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
             for (const auto& p : act->params) {
                 if (name == p.name) {
-                    macro_map_[i] = { p.id, p.min_val, p.max_val, -1.f };
+                    macro_map_[i].id        = p.id;
+                    macro_map_[i].min_val   = p.min_val;
+                    macro_map_[i].max_val   = p.max_val;
+                    macro_map_[i].last_sent = -1.f;
+                    std::strncpy(macro_map_[i].units, p.units, 31);
+                    macro_map_[i].units[31] = '\0';
                     break;
                 }
             }
         }
+    }
+
+    void process_direct_params() {
+        if (direct_params_.str_value == last_direct_params_) return;
+        last_direct_params_ = direct_params_.str_value;
+        direct_param_queue_parse_and_push(direct_q_, direct_params_.str_value);
     }
 
     void refresh_au_params_json() {
@@ -354,6 +388,21 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             AudioUnitSetParameter(act->au, macro_map_[i].id,
                                    kAudioUnitScope_Global, 0, scaled, 0);
         }
+
+        // Drain direct-param queue (MCP-sourced, normalized → native)
+        {
+            DirectParamQueue::Entry entry;
+            while (direct_q_.pop(entry)) {
+                float native = static_cast<float>(entry.val);
+                for (const auto& p : act->params)
+                    if (p.id == entry.id) {
+                        native = p.min_val + static_cast<float>(entry.val) * (p.max_val - p.min_val);
+                        break;
+                    }
+                AudioUnitSetParameter(act->au, entry.id,
+                                       kAudioUnitScope_Global, 0, native, 0);
+            }
+        }
     }
 
     static void zero_outputs(const VividAudioContext* ctx) {
@@ -367,8 +416,21 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void draw_inspector(VividInspectorContext* ctx) override {
         using namespace vivid::plugin_ui;
+        using namespace vivid::draw_ui;
 
         const auto& plugins = au_get_plugins();
+
+        // Build param name list from active handle (fallback to pending)
+        {
+            auto* h = active_.load(std::memory_order_acquire);
+            if (!h || !h->au || h->params.empty()) h = pending_.load(std::memory_order_acquire);
+            param_names_cache_.clear();
+            if (h && h->au) {
+                param_names_cache_.reserve(h->params.size());
+                for (const auto& p : h->params)
+                    param_names_cache_.emplace_back(p.name);
+            }
+        }
 
         std::vector<std::string> names;
         names.reserve(plugins.size());
@@ -379,12 +441,110 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (plugins[i].name == last_name_) { cur = i; break; }
         }
 
+        const float x  = ctx->content_x;
+        const float w  = ctx->content_width;
+        const auto& m  = ctx->mouse;
+        auto& d        = ctx->draw;
+        void* o        = d.opaque;
+        const auto& th = ctx->theme;
+
         float y = ctx->content_y + 4.f;
 
+        bool was_picker_open = picker_state_.open;
         int sel = draw_plugin_picker(ctx, y, names, cur, picker_state_);
+        if (!was_picker_open && picker_state_.open) add_picker_state_.open = false;
         if (sel >= 0)
             ctx->commands.set_string_param(ctx->commands.opaque,
                                            "plugin_name", plugins[sel].name.c_str());
+
+        // --- Mapped param rows (only non-empty slots) + "+ Add param…" ---
+        static constexpr float kRowH = 20.f;
+        static constexpr float kGap  =  4.f;
+        static constexpr float kXW   = 16.f;
+        static constexpr float kValW = 74.f;
+
+        const float sli_w = w * 0.27f;
+        const float x_btn = x + w - kXW;
+        const float val_x = x_btn - kValW - kGap;
+        const float sli_x = val_x - sli_w - kGap;
+        const float nam_w = sli_x - x - kGap;
+        const float lh    = line_height_or(d, o, 12.f);
+
+        if (m.left_released) drag_macro_ = -1;
+
+        bool any_empty = false;
+        for (int i = 0; i < 8; ++i) {
+            if (macro_id_[i]->str_value.empty()) { any_empty = true; continue; }
+
+            const float row_y = y;
+            float val = macro_float_[i]->value;
+
+            // Native value + units (AU: linear rescale; units from cached MacroEntry)
+            float native = val;
+            if (macro_map_[i].id != kAUInvalidParamID)
+                native = macro_map_[i].min_val + val * (macro_map_[i].max_val - macro_map_[i].min_val);
+            char val_buf[40];
+            if (macro_map_[i].units[0])
+                std::snprintf(val_buf, sizeof(val_buf), "%.3g %s", native, macro_map_[i].units);
+            else
+                std::snprintf(val_buf, sizeof(val_buf), "%.3g", native);
+
+            // Param name — clipped
+            if (d.push_clip_rect) d.push_clip_rect(o, x, row_y, nam_w, kRowH);
+            if (d.draw_text)      d.draw_text(o, x, row_y + (kRowH - lh) * 0.5f,
+                                              macro_id_[i]->str_value.c_str(), th.bright_text, 0.85f);
+            if (d.pop_clip_rect)  d.pop_clip_rect(o);
+
+            // Slider
+            bool over_sli = m.x >= sli_x && m.x <= sli_x + sli_w
+                         && m.y >= row_y  && m.y <= row_y + kRowH;
+            if (m.left_clicked && over_sli) drag_macro_ = i;
+            if (drag_macro_ == i && m.left_down) {
+                val = std::clamp((m.x - sli_x) / sli_w, 0.f, 1.f);
+                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, val);
+            }
+            draw_meter(d, o, sli_x, row_y + (kRowH - 8.f) * 0.5f, sli_w, 8.f,
+                       val, th.slider_fill, th.slider_track, MeterOrientation::Horizontal, 2.f);
+
+            // Native value label
+            if (d.push_clip_rect) d.push_clip_rect(o, val_x, row_y, kValW, kRowH);
+            if (d.draw_text)      d.draw_text(o, val_x, row_y + (kRowH - lh) * 0.5f,
+                                              val_buf, th.dim_text, 0.75f);
+            if (d.pop_clip_rect)  d.pop_clip_rect(o);
+
+            // × clear button
+            bool over_x = m.x >= x_btn && m.x <= x_btn + kXW
+                       && m.y >= row_y  && m.y <= row_y + kRowH;
+            VividColor xcol = over_x ? th.bright_text : th.dim_text;
+            if (d.draw_text)
+                d.draw_text(o, x_btn + (kXW - lh) * 0.5f, row_y + (kRowH - lh) * 0.5f,
+                            "x", xcol, 0.85f);
+            if (m.left_clicked && over_x) {
+                ctx->commands.set_string_param(ctx->commands.opaque, macro_id_[i]->name, "");
+                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, 0.f);
+            }
+
+            y += kRowH + 2.f;
+        }
+
+        // "+ Add param…" — only when at least one slot is available
+        if (any_empty) {
+            bool was_add_open = add_picker_state_.open;
+            int picked = draw_compact_picker(ctx, y, x, w, param_names_cache_, -1,
+                                             add_picker_state_, "+ Add param\xe2\x80\xa6");
+            if (!was_add_open && add_picker_state_.open)
+                picker_state_.open = false;
+            if (picked >= 0) {
+                for (int j = 0; j < 8; ++j) {
+                    if (macro_id_[j]->str_value.empty()) {
+                        ctx->commands.set_string_param(ctx->commands.opaque,
+                                                       macro_id_[j]->name,
+                                                       param_names_cache_[picked].c_str());
+                        break;
+                    }
+                }
+            }
+        }
 
         ctx->consumed_height = y + 4.f - ctx->content_y;
     }
@@ -396,6 +556,6 @@ VIVID_DEFINE_OP(AUInstrument) {
     summary      = "Hosts an AU (Audio Units) instrument plugin; receives MIDI notes, outputs audio.";
 }
 
-VIVID_INSPECTOR(AUInstrument)
+VIVID_INSPECTOR_FULL_MODE(AUInstrument)
 
 #endif // __APPLE__
