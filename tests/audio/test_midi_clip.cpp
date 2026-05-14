@@ -6,6 +6,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 #include "test_helpers.h"
@@ -106,7 +107,6 @@ static VividAudioContext make_ctx(uint32_t buffer_size,
 
 static void noop_rect(void*, float, float, float, float, VividColor) {}
 static void noop_round(void*, float, float, float, float, float, VividColor) {}
-static void noop_text(void*, float, float, const char*, VividColor, float) {}
 static void noop_line(void*, float, float, float, float, float, VividColor) {}
 static float text_width(void*, const char* s, float scale) {
     return s ? static_cast<float>(std::strlen(s)) * 8.0f * scale : 0.0f;
@@ -116,6 +116,23 @@ static void noop_clip(void*, float, float, float, float) {}
 static void noop_pop(void*) {}
 
 struct EditorCapture {
+    struct TextDraw {
+        std::string text;
+        float x = 0.0f;
+        float y = 0.0f;
+        float scale = 1.0f;
+    };
+    struct Widget {
+        std::string kind;
+        std::string label;
+        float x = 0.0f;
+        float y = 0.0f;
+        float w = 0.0f;
+        float h = 0.0f;
+        int cols = 0;
+        int int_value = 0;
+        unsigned flags = 0;
+    };
     bool pattern_data_written = false;
     size_t pattern_data_len = 0;
     std::string pattern_data;
@@ -123,7 +140,18 @@ struct EditorCapture {
     std::string clip_data_ref;
     bool file_cleared = false;
     int set_param_count = 0;
+    std::vector<std::string> param_names;
+    std::vector<float> param_values;
+    std::vector<TextDraw> texts;
+    std::vector<Widget> widgets;
 };
+
+static void capture_text(void* opaque, float x, float y, const char* text,
+                         VividColor, float scale) {
+    auto* cap = static_cast<EditorCapture*>(opaque);
+    if (!cap || !text) return;
+    cap->texts.push_back({text, x, y, scale});
+}
 
 static void capture_set_string(void* opaque, const char* name, const char* value) {
     auto* cap = static_cast<EditorCapture*>(opaque);
@@ -139,9 +167,27 @@ static void capture_set_string(void* opaque, const char* name, const char* value
     }
 }
 
-static void capture_set_param(void* opaque, const char*, float) {
+static void capture_set_param(void* opaque, const char* name, float value) {
     auto* cap = static_cast<EditorCapture*>(opaque);
     ++cap->set_param_count;
+    cap->param_names.push_back(name ? name : "");
+    cap->param_values.push_back(value);
+}
+
+static void capture_widget(void* opaque, const VividIntrospectWidget* w) {
+    auto* cap = static_cast<EditorCapture*>(opaque);
+    if (!cap || !w) return;
+    EditorCapture::Widget out;
+    out.kind = w->kind ? w->kind : "";
+    out.label = w->label ? w->label : "";
+    out.x = w->x;
+    out.y = w->y;
+    out.w = w->w;
+    out.h = w->h;
+    out.cols = w->cols;
+    out.int_value = w->int_value;
+    out.flags = w->flags;
+    cap->widgets.push_back(out);
 }
 
 static VividEditorContext make_editor_ctx(EditorCapture& cap,
@@ -151,9 +197,10 @@ static VividEditorContext make_editor_ctx(EditorCapture& cap,
     ctx.surface_width = 1100.0f;
     ctx.surface_height = 640.0f;
     ctx.dpi_scale = 1.0f;
+    ctx.draw.opaque = &cap;
     ctx.draw.draw_rect = noop_rect;
     ctx.draw.draw_rounded_rect = noop_round;
-    ctx.draw.draw_text = noop_text;
+    ctx.draw.draw_text = capture_text;
     ctx.draw.draw_line = noop_line;
     ctx.draw.text_width = text_width;
     ctx.draw.line_height = line_height;
@@ -168,7 +215,51 @@ static VividEditorContext make_editor_ctx(EditorCapture& cap,
     ctx.output_count = 0;
     ctx.string_param_values = strings;
     ctx.string_param_count = 5;
+    ctx.introspect_sink = &cap;
+    ctx.introspect_fn = capture_widget;
     return ctx;
+}
+
+static bool drew_text_containing(const EditorCapture& cap, const std::string& needle) {
+    for (const auto& t : cap.texts) {
+        if (t.text.find(needle) != std::string::npos)
+            return true;
+    }
+    return false;
+}
+
+static std::optional<EditorCapture::Widget> find_widget(
+        const EditorCapture& cap,
+        const std::string& kind,
+        const std::string& label) {
+    for (const auto& w : cap.widgets) {
+        if (w.kind == kind && w.label == label)
+            return w;
+    }
+    return std::nullopt;
+}
+
+static std::optional<EditorCapture::Widget> find_radio(
+        const EditorCapture& cap, int cols) {
+    for (const auto& w : cap.widgets) {
+        if (w.kind == "radio" && w.cols == cols)
+            return w;
+    }
+    return std::nullopt;
+}
+
+static bool param_written(const EditorCapture& cap, const std::string& name) {
+    for (const auto& n : cap.param_names) {
+        if (n == name) return true;
+    }
+    return false;
+}
+
+static bool has_widget_kind(const EditorCapture& cap, const std::string& kind) {
+    for (const auto& w : cap.widgets) {
+        if (w.kind == kind) return true;
+    }
+    return false;
 }
 
 static std::array<float, 14> make_editor_params(float length_bars = 2.0f) {
@@ -514,8 +605,158 @@ int main() {
             op.draw_editor(&ectx);
             check(!cap.pattern_data_written,
                   "Opening Sweelinck in MidiClip editor does not serialize pattern_data");
+            check(drew_text_containing(cap, "sweelinck.mid"),
+                  "MidiClip toolbar shows file-backed source name");
+            check(drew_text_containing(cap, "197 bars"),
+                  "MidiClip toolbar shows read-only parsed Sweelinck length");
+            check(drew_text_containing(cap, "2658 notes"),
+                  "MidiClip toolbar shows Sweelinck note count");
+            check(!has_widget_kind(cap, "text_field"),
+                  "MidiClip toolbar does not expose editable length field for file-backed clips");
         } else {
             std::fprintf(stderr, "SKIP: sweelinck.mid fixture missing\n");
+        }
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+        check(has_widget_kind(cap, "text_field"),
+              "MidiClip toolbar keeps authored clip length editable");
+        check(drew_text_containing(cap, "Authored"),
+              "MidiClip toolbar labels authored clips");
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+        auto radio = find_radio(cap, 4);
+        check(radio.has_value(), "MidiClip toolbar exposes snap grid segmented control");
+        if (radio) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, radio->x + radio->w * 0.625f, radio->y + radio->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(param_written(cap, "quantize_grid"),
+                  "MidiClip toolbar grid selection writes quantize_grid");
+        }
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+
+        auto fold = find_widget(cap, "toggle", "Fold");
+        check(fold.has_value(), "MidiClip toolbar exposes Fold as a toggle");
+        if (fold) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, fold->x + fold->w * 0.5f, fold->y + fold->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(param_written(cap, "_editor_fold"),
+                  "MidiClip toolbar Fold toggle persists to hidden editor param");
+        }
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+
+        auto root = find_widget(cap, "button", "Root -");
+        auto type = find_widget(cap, "button", "Maj");
+        check(root.has_value() && type.has_value(),
+              "MidiClip toolbar exposes explicit scale root and type controls");
+        if (root) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, root->x + root->w * 0.5f, root->y + root->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(op.scale_root_ == 0,
+                  "MidiClip toolbar root button enables C without right-click behavior");
+        }
+        if (type) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, type->x + type->w * 0.5f, type->y + type->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(op.scale_type_ == 1,
+                  "MidiClip toolbar type button cycles scale type directly");
+        }
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params(8.0f);
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+
+        auto zoom_in = find_widget(cap, "button", "In");
+        auto fit = find_widget(cap, "button", "Fit");
+        check(zoom_in.has_value() && fit.has_value() && drew_text_containing(cap, "Bars 1-8 / 8"),
+              "MidiClip toolbar exposes zoom controls and visible bar range");
+        if (zoom_in) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, zoom_in->x + zoom_in->w * 0.5f, zoom_in->y + zoom_in->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(param_written(cap, "_editor_zoom_beats"),
+                  "MidiClip toolbar zoom in persists changed zoom");
+            params[11] = op.editor_zoom_beats_;
+            op.editor_zoom_beat_.value = op.editor_zoom_beats_;
+        }
+        if (fit) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, fit->x + fit->w * 0.5f, fit->y + fit->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(param_written(cap, "_editor_zoom_beats"),
+                  "MidiClip toolbar Fit persists zoom reset");
+        }
+    }
+
+    {
+        MidiClipCore op;
+        std::string pattern = R"([{"p":96,"s":0.5,"d":0.25,"v":0.8}])";
+        auto params = make_editor_params();
+        const char* strings[5] = {pattern.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        op.draw_editor(&ectx);
+
+        auto actions = find_widget(cap, "button", "Actions");
+        check(actions.has_value(), "MidiClip toolbar hides destructive commands behind Actions");
+        if (actions) {
+            cap = EditorCapture{};
+            ectx = make_editor_ctx(cap, strings, params.data());
+            set_mouse(ectx, actions->x + actions->w * 0.5f, actions->y + actions->h * 0.5f,
+                      false, true);
+            op.draw_editor(&ectx);
+            check(!cap.pattern_data_written,
+                  "MidiClip toolbar Actions click does not clear clip data");
         }
     }
 
