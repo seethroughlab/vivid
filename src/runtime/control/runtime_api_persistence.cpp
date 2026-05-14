@@ -27,6 +27,22 @@ CommandResult RuntimeAPI::save() {
 }
 
 CommandResult RuntimeAPI::save_as(const std::string& path) {
+    // Flush write-back string params (e.g. plugin_state written by main_thread_update)
+    // from compiled node storage into the Graph model before serializing.
+    // set_file_param_internal only syncs on explicit set_param calls; operators that
+    // write str_value directly (like save_state) update file_param_storage but not ndef.
+    if (core_.compiled_graph()) {
+        for (const auto& cn : core_.compiled_graph()->nodes) {
+            NodeDef* ndef = graph_.find_node(cn.node_id);
+            if (!ndef) continue;
+            for (const auto& [name, idx] : cn.file_param_indices) {
+                if (idx < cn.file_param_storage.size()) {
+                    ndef->string_params[name] =
+                        to_persisted_string_value(cn, name, cn.file_param_storage[idx]);
+                }
+            }
+        }
+    }
     if (graph_.save(path.c_str())) {
         const std::string normalized = normalized_graph_identity_path(path);
         graph_.set_source_path(path);

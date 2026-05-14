@@ -127,6 +127,14 @@ public:
         auto r = api_.set_string_param(node_id, param, value);
         if (r.ok) capture_undo_snapshot();
     }
+    bool get_string_param_for_copy(const std::string& node_id,
+                                   const std::string& param,
+                                   std::string& value) override {
+        auto r = api_.get_string_param(node_id, param);
+        if (!r.ok) return false;
+        value = r.message;
+        return true;
+    }
 
     void save_variation(const std::string& name) override {
         auto r = api_.save_variation(name);

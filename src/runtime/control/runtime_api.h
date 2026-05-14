@@ -49,6 +49,7 @@ public:
     CommandResult set_param(const std::string& node_id, const std::string& param, float value);
     CommandResult set_string_param(const std::string& node_id, const std::string& param,
                                    const std::string& value);
+    CommandResult get_string_param(const std::string& node_id, const std::string& param);
 
     // Layout: persist node position for the graph UI
     CommandResult set_node_layout(const std::string& node_id, float x, float y);

@@ -1554,7 +1554,8 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
         if (result.port_advanced_flags[i]) advanced_port_indices.push_back(i);
     }
     const bool has_advanced_ports = !advanced_port_indices.empty();
-    const bool needs_runtime_init = has_dynamic_choices || has_advanced_ports;
+    const bool needs_runtime_init = has_dynamic_choices || has_advanced_ports ||
+                                    !result.params.empty();
 
     out << "\nstatic const VividOperatorDescriptor* vivid_codegen_descriptor_" << class_name
         << "() {\n";
@@ -1585,6 +1586,19 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
         for (std::size_t idx : advanced_port_indices) {
             out << "        vivid_codegen_" << class_name << "_ports[" << idx
                 << "].display_hint = VIVID_PORT_DISPLAY_ADVANCED;\n";
+        }
+        if (!result.params.empty()) {
+            out << "        " << class_name << " vivid_codegen_param_source;\n";
+            out << "        std::vector<vivid::ParamBase*> vivid_codegen_param_ptrs;\n";
+            out << "        vivid_codegen_param_source.collect_params(vivid_codegen_param_ptrs);\n";
+            out << "        size_t vivid_codegen_param_count = vivid_codegen_param_ptrs.size();\n";
+            out << "        if (vivid_codegen_param_count > " << result.params.size()
+                << ") vivid_codegen_param_count = " << result.params.size() << ";\n";
+            out << "        for (size_t i = 0; i < vivid_codegen_param_count; ++i) {\n";
+            out << "            if (vivid_codegen_param_ptrs[i])\n";
+            out << "                vivid_codegen_" << class_name
+                << "_params[i].display_hint = vivid_codegen_param_ptrs[i]->display_hint;\n";
+            out << "        }\n";
         }
         out << "    }\n";
     }
@@ -1629,7 +1643,12 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
             << "; }\n"
             << "extern \"C\" void vivid_draw_inspector(\n"
             << "    void* instance, VividInspectorContext* ctx) {\n"
-            << "    static_cast<_VividInstance*>(instance)->op.draw_inspector(ctx);\n"
+            << "    auto* inst = static_cast<_VividInstance*>(instance);\n"
+            << "    _vivid_sync_params(inst,\n"
+            << "        const_cast<float*>(ctx ? ctx->param_values : nullptr),\n"
+            << "        const_cast<const char**>(ctx ? ctx->string_param_values : nullptr),\n"
+            << "        ctx ? ctx->string_param_count : 0);\n"
+            << "    inst->op.draw_inspector(ctx);\n"
             << "}\n";
     }
     if (result.has_draw_editor) {
@@ -1638,7 +1657,12 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
             << "}\n"
             << "extern \"C\" void vivid_draw_editor(\n"
             << "    void* instance, VividEditorContext* ctx) {\n"
-            << "    static_cast<_VividInstance*>(instance)->op.draw_editor(ctx);\n"
+            << "    auto* inst = static_cast<_VividInstance*>(instance);\n"
+            << "    _vivid_sync_params(inst,\n"
+            << "        const_cast<float*>(ctx ? ctx->param_values : nullptr),\n"
+            << "        const_cast<const char**>(ctx ? ctx->string_param_values : nullptr),\n"
+            << "        ctx ? ctx->string_param_count : 0);\n"
+            << "    inst->op.draw_editor(ctx);\n"
             << "}\n";
     }
 

@@ -210,10 +210,15 @@ void NodeGraphUI::paste_copied_nodes() {
         if (copied.node.op_info) {
             for (const auto& pd : copied.node.op_info->params) {
                 auto pi_it = copied.node.param_indices.find(pd.name);
-                if (pd.type == VIVID_PARAM_TEXT) {
+                if (pd.type == VIVID_PARAM_TEXT || pd.type == VIVID_PARAM_FILE) {
                     auto text_it = copied.node.file_param_values.find(pd.name);
-                    if (text_it != copied.node.file_param_values.end())
+                    if (text_it != copied.node.file_param_values.end()) {
                         commands_.set_string_param(new_id, pd.name, text_it->second);
+                    } else {
+                        std::string full_value;
+                        if (commands_.get_string_param_for_copy(copied.node.node_id, pd.name, full_value))
+                            commands_.set_string_param(new_id, pd.name, full_value);
+                    }
                     continue;
                 }
                 if (pi_it != copied.node.param_indices.end() &&

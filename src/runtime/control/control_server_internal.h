@@ -132,6 +132,20 @@ inline const char* param_visibility_op_str(VividParamVisibilityOp op) {
     }
 }
 
+inline const char* display_hint_str(VividDisplayHint hint) {
+    switch (hint) {
+        case VIVID_DISPLAY_DEFAULT:  return "default";
+        case VIVID_DISPLAY_KNOB:     return "knob";
+        case VIVID_DISPLAY_XY_PAD:   return "xy_pad";
+        case VIVID_DISPLAY_COLOR:    return "color";
+        case VIVID_DISPLAY_ADSR:     return "adsr";
+        case VIVID_DISPLAY_LFO:      return "lfo";
+        case VIVID_DISPLAY_STEP_SEQ: return "step_seq";
+        case VIVID_DISPLAY_HIDDEN:   return "hidden";
+        default: return "unknown";
+    }
+}
+
 inline const char* port_type_str(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SCALAR:         return "float";
@@ -233,6 +247,8 @@ inline nlohmann::json build_param_descriptor_json(const VividParamDescriptor& pd
     p["default"] = static_cast<double>(pd.default_value);
     p["min"] = static_cast<double>(pd.min_value);
     p["max"] = static_cast<double>(pd.max_value);
+    if (pd.display_hint != VIVID_DISPLAY_DEFAULT)
+        p["display_hint"] = display_hint_str(pd.display_hint);
     if (pd.semantic_tag && *pd.semantic_tag)
         p["semantic_tag"] = pd.semantic_tag;
     if (pd.semantic_shape && *pd.semantic_shape)
@@ -416,6 +432,8 @@ inline nlohmann::json build_module_docs_response(const SubgraphModuleDef& mod,
         p["default"] = static_cast<double>(pi.default_value);
         p["min"] = static_cast<double>(pi.min_value);
         p["max"] = static_cast<double>(pi.max_value);
+        if (pi.display_hint != VIVID_DISPLAY_DEFAULT)
+            p["display_hint"] = display_hint_str(pi.display_hint);
         if (!pi.group.empty()) p["group"] = pi.group;
         if (!pi.description.empty()) p["description"] = pi.description;
         if (!pi.semantic_tag.empty()) p["semantic_tag"] = pi.semantic_tag;

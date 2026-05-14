@@ -20,6 +20,17 @@ namespace vivid {
 
 using vivid::format_float;
 
+static bool should_copy_string_param_to_snapshot(
+        const vivid::ui::OperatorInfo* info,
+        const std::string& param_name) {
+    if (!info) return true;
+    for (const auto& pd : info->params) {
+        if (pd.name == param_name)
+            return pd.display_hint != VIVID_DISPLAY_HIDDEN;
+    }
+    return true;
+}
+
 vivid::ui::GraphSnapshot build_graph_snapshot(
         const vivid::Graph& graph,
         const vivid::RuntimeCore& runtime,
@@ -77,6 +88,10 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.param_values = cn.param_values;
         sn.param_lock_flags = cn.param_lock_flags;
         sn.output_values = cn.output_values;
+        // Operator info is needed before string/file params so hidden text
+        // payloads (large clip JSON, caches, legacy internals) stay off the
+        // hot per-frame UI snapshot path.
+        sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
         sn.output_lanes.resize(cn.output_port_count);
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p])
@@ -88,8 +103,10 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.output_string_values = cn.output_string_values;
         sn.output_string_lanes = cn.output_string_lanes;
         for (const auto& [name, idx] : cn.file_param_indices) {
-            if (idx < cn.file_param_storage.size())
+            if (idx < cn.file_param_storage.size() &&
+                should_copy_string_param_to_snapshot(sn.op_info.get(), name)) {
                 sn.file_param_values[name] = cn.file_param_storage[idx];
+            }
         }
         sn.gpu_tex_width = cn.gpu ? cn.gpu->tex_width : 0;
         sn.gpu_tex_height = cn.gpu ? cn.gpu->tex_height : 0;
@@ -161,9 +178,6 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             sn.layout_y = ndef->layout_y;
             sn.has_layout = true;
         }
-
-        // Operator info (cached)
-        sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
 
         // Per-operator presets
         sn.preset_names = graph.list_presets(cn.node_id);

@@ -72,6 +72,14 @@ public:
     }
     virtual void set_string_param(const std::string& node_id, const std::string& param,
                                   const std::string& value) = 0;
+    virtual bool get_string_param_for_copy(const std::string& node_id,
+                                           const std::string& param,
+                                           std::string& value) {
+        (void)node_id;
+        (void)param;
+        (void)value;
+        return false;
+    }
 
     // Variation operations (defaults are no-ops for headless/test sinks)
     virtual void save_variation(const std::string& name) {}

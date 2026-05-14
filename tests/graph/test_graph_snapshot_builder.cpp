@@ -119,6 +119,49 @@ int main(int argc, char* argv[]) {
         disabled_runtime.shutdown();
     }
 
+    // --- Test: hidden MidiClip text params are not copied into hot UI snapshots ---
+    std::fprintf(stderr, "\n--- hidden string params omitted from snapshot ---\n");
+    {
+        const std::string midi_clip_src = build_dir + "/midi_clip" + suffix;
+        const std::string midi_clip_dst = staging + "/midi_clip" + suffix;
+        if (std::filesystem::exists(midi_clip_src)) {
+            std::filesystem::copy_file(midi_clip_src, midi_clip_dst,
+                std::filesystem::copy_options::overwrite_existing);
+            vivid::OperatorRegistry midi_registry;
+            midi_registry.scan(staging.c_str());
+
+            vivid::Graph midi_graph;
+            midi_graph.add_node("clip", "MidiClip", {},
+                {{"pattern_data", "[{\"p\":60,\"s\":0,\"d\":1,\"v\":1}]"},
+                 {"clip_data_ref", "/tmp/large_clip.mclip.json"},
+                 {"file", "assets/sweelinck.mid"}});
+
+            vivid::RuntimeCore midi_runtime;
+            if (midi_runtime.build(midi_graph, midi_registry)) {
+                OperatorInfoCache midi_cache;
+                auto midi_snap = vivid::build_graph_snapshot(
+                    midi_graph, midi_runtime, nullptr, midi_registry, midi_cache);
+                const vivid::ui::NodeSnapshot* clip = nullptr;
+                for (const auto& n : midi_snap.nodes)
+                    if (n.node_id == "clip") clip = &n;
+                check(clip != nullptr, "MidiClip node appears in snapshot");
+                if (clip) {
+                    check(clip->file_param_values.count("file") == 1,
+                          "visible MidiClip file param is copied");
+                    check(clip->file_param_values.count("pattern_data") == 0,
+                          "hidden MidiClip pattern_data is omitted from snapshot");
+                    check(clip->file_param_values.count("clip_data_ref") == 0,
+                          "hidden MidiClip clip_data_ref is omitted from snapshot");
+                }
+            } else {
+                std::fprintf(stderr, "  SKIP: MidiClip runtime.build() failed\n");
+            }
+            midi_runtime.shutdown();
+        } else {
+            std::fprintf(stderr, "  SKIP: midi_clip plugin not built\n");
+        }
+    }
+
     // --- Cleanup ---
     runtime.shutdown();
     std::filesystem::remove_all(staging);

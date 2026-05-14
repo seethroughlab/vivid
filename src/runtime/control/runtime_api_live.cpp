@@ -331,6 +331,26 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
     return {true, node_id + "/" + param + " = " + value};
 }
 
+CommandResult RuntimeAPI::get_string_param(const std::string& node_id, const std::string& param) {
+    auto* cg = core_.compiled_graph();
+    if (!cg) return {false, kNoCompiledGraph};
+    auto* cn = cg->find_node(node_id);
+    if (!cn) {
+        auto resolved = resolve_module_param(node_id, param);
+        if (!resolved) return {false, "unknown node '" + node_id + "'"};
+        cn = resolved->cn;
+        auto fi = cn->file_param_indices.find(resolved->internal_param);
+        if (fi == cn->file_param_indices.end() || fi->second >= cn->file_param_storage.size())
+            return {false, "unknown string param '" + param + "' on " + node_id};
+        return {true, cn->file_param_storage[fi->second]};
+    }
+
+    auto fi = cn->file_param_indices.find(param);
+    if (fi == cn->file_param_indices.end() || fi->second >= cn->file_param_storage.size())
+        return {false, "unknown string param '" + param + "' on " + node_id};
+    return {true, cn->file_param_storage[fi->second]};
+}
+
 CommandResult RuntimeAPI::get_param(const std::string& node_id, const std::string& param) {
     auto* cg = core_.compiled_graph();
     if (!cg) return {false, kNoCompiledGraph};
