@@ -523,7 +523,8 @@ nlohmann::json OperatorSourceDocs::resolve(const std::string& cache_key,
             index.searchable_files.push_back(normalized);
 
             const std::string ext = path.extension().string();
-            if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" && ext != ".mm")
+            if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" && ext != ".mm" &&
+                ext != ".h" && ext != ".hpp")
                 continue;
 
             const auto record = SourceSyntaxParser::parse(path.string());
