@@ -648,7 +648,7 @@ if(APPLE)
     )
     set_target_properties(vst3_instrument PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_include_directories(vst3_instrument PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-    target_link_libraries(vst3_instrument PRIVATE vivid_operator_api vst3_iids "-framework AppKit")
+    target_link_libraries(vst3_instrument PRIVATE vivid_operator_api vst3_iids z "-framework AppKit")
     add_custom_command(TARGET vst3_instrument POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns

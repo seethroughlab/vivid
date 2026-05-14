@@ -25,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <zlib.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
@@ -643,19 +644,65 @@ static std::string vst3_params_to_json(const Vst3Handle* h) {
 
 // ---------------------------------------------------------------------------
 // State save/load via IComponent::getState / setState
+//
+// Stored as "z:<base64>" where the base64 payload is zlib-compressed bytes.
+// Legacy blobs without the "z:" prefix are raw base64 (backward-compatible).
 // ---------------------------------------------------------------------------
+
+static std::string vst3_compress_b64(const uint8_t* data, size_t len) {
+    uLongf bound = compressBound(static_cast<uLong>(len));
+    std::vector<uint8_t> buf(bound);
+    if (compress2(buf.data(), &bound, data, static_cast<uLong>(len), Z_BEST_COMPRESSION) != Z_OK)
+        return {};
+    return "z:" + vst3_b64_encode(buf.data(), static_cast<size_t>(bound));
+}
+
+static std::vector<uint8_t> vst3_decompress_b64(const std::string& s) {
+    // s starts after the "z:" prefix
+    std::vector<uint8_t> compressed = vst3_b64_decode(s);
+    if (compressed.empty()) return {};
+
+    z_stream zs{};
+    if (inflateInit(&zs) != Z_OK) return {};
+    zs.next_in  = compressed.data();
+    zs.avail_in = static_cast<uInt>(compressed.size());
+
+    std::vector<uint8_t> out;
+    out.reserve(compressed.size() * 8);
+    uint8_t chunk[65536];
+    int r;
+    do {
+        zs.next_out  = chunk;
+        zs.avail_out = sizeof(chunk);
+        r = inflate(&zs, Z_NO_FLUSH);
+        if (r == Z_STREAM_ERROR || r == Z_DATA_ERROR || r == Z_MEM_ERROR) {
+            inflateEnd(&zs);
+            return {};
+        }
+        out.insert(out.end(), chunk, chunk + (sizeof(chunk) - zs.avail_out));
+    } while (r != Z_STREAM_END);
+    inflateEnd(&zs);
+    return out;
+}
 
 static std::string vst3_save_state(Vst3Handle* h) {
     if (!h || !h->component) return {};
     MemIBStream stream;
     if (h->component->getState(&stream) != kResultOk) return {};
     if (stream.buf.empty()) return {};
+    std::string compressed = vst3_compress_b64(stream.buf.data(), stream.buf.size());
+    if (!compressed.empty()) return compressed;
+    // Fall back to uncompressed if zlib fails (shouldn't happen, but be safe)
     return vst3_b64_encode(stream.buf.data(), stream.buf.size());
 }
 
 static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
     if (b64.empty() || !h || !h->component) return;
-    std::vector<uint8_t> raw = vst3_b64_decode(b64);
+    std::vector<uint8_t> raw;
+    if (b64.size() >= 2 && b64[0] == 'z' && b64[1] == ':')
+        raw = vst3_decompress_b64(b64.substr(2));
+    else
+        raw = vst3_b64_decode(b64);
     if (raw.empty()) return;
     MemIBStream stream;
     stream.buf = std::move(raw);
