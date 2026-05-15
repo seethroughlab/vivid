@@ -75,6 +75,8 @@ void populate_minimal(RuntimeHealthSnapshot& snap,
         snap.audio.xruns       = audio_engine->underrun_count();
         snap.audio.last_buffer_underrun = audio_engine->last_buffer_underrun();
         snap.audio.load        = static_cast<double>(audio_engine->audio_load());
+        snap.audio.late_delivery_count = audio_engine->late_delivery_count();
+        snap.audio.max_delivery_gap_us = audio_engine->max_delivery_gap_us();
     }
     snap.audio.lane_overflow_count = core.audio_frame_bridge().lane_overflow_count();
 
@@ -380,6 +382,7 @@ RuntimeHealthSnapshot collect(const Graph& graph,
                 static_cast<int64_t>(debug.last_block_total_us),
                 static_cast<int64_t>(debug.last_process_us),
                 static_cast<int64_t>(debug.ema_block_us),
+                static_cast<int64_t>(debug.peak_block_us),
                 static_cast<double>(debug.last_block_budget_pct),
                 static_cast<int64_t>(debug.last_lane_count),
                 static_cast<int64_t>(debug.lane_state_entries),
@@ -408,6 +411,24 @@ RuntimeHealthSnapshot collect(const Graph& graph,
         });
         for (size_t i = 0; i < by_lane_state.size() && i < kTopAudioNodes; ++i)
             snap.audio.top_lane_state_nodes.push_back(by_lane_state[i]);
+
+        // Copy overrun ring (benign racy read — diagnostic only).
+        uint32_t widx = cg->overrun_write_idx.load(std::memory_order_relaxed);
+        uint32_t nrec = std::min(widx, CompiledGraph::kOverrunRingSize);
+        snap.audio.overruns.reserve(nrec);
+        for (uint32_t i = 0; i < nrec; ++i) {
+            uint32_t slot = (widx - 1 - i) % CompiledGraph::kOverrunRingSize;
+            const auto& rec = cg->overrun_ring[slot];
+            AudioOverrunSnap s;
+            s.callback_frame = rec.callback_frame;
+            s.budget_us = rec.budget_us;
+            s.actual_us = rec.actual_us;
+            for (uint8_t j = 0; j < rec.node_count; ++j) {
+                const auto& e = rec.nodes[j];
+                s.nodes.push_back({e.node_id, e.total_us, e.process_us, e.lane_count});
+            }
+            snap.audio.overruns.push_back(std::move(s));
+        }
     }
 
     apply_severity_rules(snap);
@@ -423,6 +444,7 @@ nlohmann::json node_row_to_json(const AudioNodeHealth& row) {
         {"last_block_total_us", row.last_block_total_us},
         {"last_process_us", row.last_process_us},
         {"ema_block_us", row.ema_block_us},
+        {"peak_block_us", row.peak_block_us},
         {"last_block_budget_pct", row.last_block_budget_pct},
         {"last_lane_count", row.last_lane_count},
         {"lane_state_entries", row.lane_state_entries},
@@ -440,6 +462,8 @@ nlohmann::json to_json(const RuntimeHealthSnapshot& snap) {
     audio["xruns"] = snap.audio.xruns;
     audio["last_buffer_underrun"] = snap.audio.last_buffer_underrun;
     audio["load"] = snap.audio.load;
+    audio["late_delivery_count"] = snap.audio.late_delivery_count;
+    audio["max_delivery_gap_us"] = snap.audio.max_delivery_gap_us;
     audio["lane_overflow_count"] = snap.audio.lane_overflow_count;
     audio["peak_max"] = snap.audio.peak_max;
     audio["clipping_count"] = snap.audio.clipping_count;
@@ -454,6 +478,26 @@ nlohmann::json to_json(const RuntimeHealthSnapshot& snap) {
     for (const auto& r : snap.audio.top_lane_state_nodes)
         top_lane_state_nodes.push_back(node_row_to_json(r));
     audio["top_lane_state_nodes"] = std::move(top_lane_state_nodes);
+
+    nlohmann::json overruns_arr = nlohmann::json::array();
+    for (const auto& rec : snap.audio.overruns) {
+        nlohmann::json nodes_arr = nlohmann::json::array();
+        for (const auto& e : rec.nodes) {
+            nodes_arr.push_back({
+                {"node_id",    e.node_id},
+                {"total_us",   e.total_us},
+                {"process_us", e.process_us},
+                {"lane_count", e.lane_count},
+            });
+        }
+        overruns_arr.push_back({
+            {"callback_frame", rec.callback_frame},
+            {"budget_us",      rec.budget_us},
+            {"actual_us",      rec.actual_us},
+            {"nodes",          std::move(nodes_arr)},
+        });
+    }
+    audio["audio_overruns"] = std::move(overruns_arr);
 
     nlohmann::json graph_j = nlohmann::json::object();
     graph_j["declared_nodes"] = snap.graph.declared_nodes;

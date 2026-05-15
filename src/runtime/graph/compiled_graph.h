@@ -198,6 +198,7 @@ struct AudioNodeState {
         std::atomic<uint32_t> last_block_total_us{0};
         std::atomic<uint32_t> last_process_us{0};
         std::atomic<uint32_t> ema_block_us{0};
+        std::atomic<uint32_t> peak_block_us{0};  // high-water mark, never reset; reveals rare spikes
         std::atomic<float> last_block_budget_pct{0.0f};
         std::atomic<uint32_t> last_lane_count{0};
         std::atomic<uint32_t> lane_state_entries{0};
@@ -262,10 +263,26 @@ struct AudioNodeDebugSnapshot {
     uint32_t last_block_total_us = 0;
     uint32_t last_process_us = 0;
     uint32_t ema_block_us = 0;
+    uint32_t peak_block_us = 0;
     float last_block_budget_pct = 0.0f;
     uint32_t last_lane_count = 0;
     uint32_t lane_state_entries = 0;
     bool valid = false;
+};
+
+// Per-node timing snapshot captured when an audio callback exceeds its budget.
+struct AudioOverrunNodeEntry {
+    char     node_id[32];
+    uint32_t total_us;
+    uint32_t process_us;
+    uint32_t lane_count;
+};
+struct AudioOverrunRecord {
+    uint64_t callback_frame;
+    uint32_t budget_us;
+    uint32_t actual_us;
+    uint8_t  node_count;
+    AudioOverrunNodeEntry nodes[16];
 };
 
 inline AudioPortDebugSnapshot read_audio_port_debug(const AudioNodeState& a,
@@ -290,6 +307,7 @@ inline AudioNodeDebugSnapshot read_audio_node_debug(const AudioNodeState& a) {
     snap.last_block_total_us = a.node_debug.last_block_total_us.load(std::memory_order_relaxed);
     snap.last_process_us = a.node_debug.last_process_us.load(std::memory_order_relaxed);
     snap.ema_block_us = a.node_debug.ema_block_us.load(std::memory_order_relaxed);
+    snap.peak_block_us = a.node_debug.peak_block_us.load(std::memory_order_relaxed);
     snap.last_block_budget_pct = a.node_debug.last_block_budget_pct.load(std::memory_order_relaxed);
     snap.last_lane_count = a.node_debug.last_lane_count.load(std::memory_order_relaxed);
     snap.lane_state_entries = a.node_debug.lane_state_entries.load(std::memory_order_relaxed);
@@ -561,6 +579,11 @@ struct CompiledGraph {
         }
         return false;
     }
+
+    // Written by audio executor on budget overrun; read by frame thread (racy but safe for diagnostics).
+    static constexpr uint32_t kOverrunRingSize = 8;
+    mutable std::atomic<uint32_t> overrun_write_idx{0};
+    mutable AudioOverrunRecord overrun_ring[kOverrunRingSize]{};
 };
 
 } // namespace vivid

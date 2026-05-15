@@ -119,7 +119,10 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::string   last_applied_state_;   // plugin_state.str_value at last vst3_load_plugin call
     uint64_t      steady_sample_  = 0;
     uint32_t      sample_rate_    = 48000;
+    uint32_t      loaded_rate_    = 0;    // sample rate used at last plugin load
+    std::atomic<uint32_t> audio_rate_seen_{0};  // written by audio thread, read by main thread
     bool          state_dirty_    = false;
+    uint32_t      save_state_frame_ = 0; // throttle: only call getState() ~1/sec
 
     // --- Direct param queue (main thread → audio thread, unlimited params) ---
     DirectParamQueue direct_q_;
@@ -219,6 +222,17 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             }
         }
 
+        // If the audio thread reported a sample rate different from what we used to load
+        // the plugin, reload with the correct rate so setupProcessing and ProcessContext
+        // are consistent. State is preserved: plugin_state is not cleared.
+        {
+            uint32_t seen = audio_rate_seen_.load(std::memory_order_acquire);
+            if (seen > 0 && seen != loaded_rate_ && !last_name_.empty()) {
+                sample_rate_ = seen;
+                reload_for_rate_change();
+            }
+        }
+
         reload_if_changed();
         update_macro_map();
         refresh_vst3_params_json();
@@ -272,9 +286,28 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             sample_rate_, "", &host_app_);
         if (!h) return;
 
+        h->component_handler.state_dirty = &state_dirty_;
+        loaded_rate_ = sample_rate_;
         auto* old = pending_.exchange(h, std::memory_order_acq_rel);
         destroy_handle(old, false);
         last_applied_state_ = "";  // will be set once state is applied via main_thread_update
+        state_dirty_ = true;
+    }
+
+    // Reload the already-named plugin at a new sample rate, preserving saved state.
+    void reload_for_rate_change() {
+        const Vst3PluginInfo* pi = vst3_find_by_key(last_name_);
+        if (!pi) return;
+        Vst3Handle* h = vst3_load_plugin(
+            pi->path.c_str(), pi->uid_hex.c_str(),
+            sample_rate_, "", &host_app_);
+        if (!h) return;
+
+        h->component_handler.state_dirty = &state_dirty_;
+        loaded_rate_ = sample_rate_;
+        auto* old = pending_.exchange(h, std::memory_order_acq_rel);
+        destroy_handle(old, false);
+        last_applied_state_ = "";  // state will be re-applied via the post-swap path
         state_dirty_ = true;
     }
 
@@ -326,12 +359,21 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         if (pending_.load(std::memory_order_acquire)) return;
         auto* act = active_.load(std::memory_order_acquire);
         if (!act || !act->component) return;
+
+        // getState() called while process() runs concurrently is not guaranteed thread-safe.
+        // Many plugins (including Serum2) internally serialize these, causing the audio thread
+        // to stall for one full callback → audible silent dropout. Rely on performEdit()/setDirty()
+        // callbacks (wired via component_handler.state_dirty) to signal when state actually changes.
+        // The 3600-frame fallback (~1 min) covers non-conformant plugins that skip the callbacks.
+        if (!state_dirty_ && ++save_state_frame_ < 3600) return;
+        save_state_frame_ = 0;
+
         std::string s = vst3_save_state(act);
-        if (!s.empty()) {
-            plugin_state.str_value = std::move(s);
-            last_applied_state_ = plugin_state.str_value;
-            state_dirty_ = false;
+        if (!s.empty() && s != plugin_state.str_value) {
+            plugin_state.str_value = s;
+            last_applied_state_ = std::move(s);
         }
+        state_dirty_ = false;
     }
 
     // -----------------------------------------------------------------------
@@ -343,6 +385,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         using namespace Steinberg::Vst;
 
         sample_rate_ = ctx->sample_rate;
+        audio_rate_seen_.store(ctx->sample_rate, std::memory_order_relaxed);
 
         // Check for a pending plugin swap
         Vst3Handle* pend = pending_.load(std::memory_order_acquire);

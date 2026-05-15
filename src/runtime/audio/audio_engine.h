@@ -74,6 +74,8 @@ public:
     uint32_t underrun_count() const;
     bool last_buffer_underrun() const;
     float audio_load() const;
+    uint32_t late_delivery_count() const;
+    uint32_t max_delivery_gap_us() const;
     uint32_t node_count() const;
     uint32_t buffer_size() const;
     uint32_t sample_rate() const;

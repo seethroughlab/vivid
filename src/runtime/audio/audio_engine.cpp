@@ -367,6 +367,16 @@ float AudioEngine::audio_load() const {
     return 0.0f;
 }
 
+uint32_t AudioEngine::late_delivery_count() const {
+    if (audio_executor_) return audio_executor_->late_delivery_count();
+    return 0;
+}
+
+uint32_t AudioEngine::max_delivery_gap_us() const {
+    if (audio_executor_) return audio_executor_->max_delivery_gap_us();
+    return 0;
+}
+
 uint32_t AudioEngine::node_count() const {
     if (compiled_graph_) return static_cast<uint32_t>(compiled_graph_->audio_order.size());
     return 0;

@@ -398,6 +398,11 @@ struct Vst3Message final : IMessage {
 // IComponentHandler2 is a sibling of IComponentHandler (both extend FUnknown),
 // so we need multiple inheritance and explicit casts in queryInterface.
 struct Vst3ComponentHandler : IComponentHandler, IComponentHandler2 {
+    // Set by Vst3Instrument after vst3_load_plugin() returns. Signals the operator that
+    // plugin state has changed so save_state() can persist it without polling every frame.
+    // Only accessed from the UI/main thread (VST3 spec requirement for performEdit).
+    bool* state_dirty = nullptr;
+
     tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) override {
         if (!obj) return kInvalidArgument;
         if (std::memcmp(_iid, FUnknown::iid, sizeof(TUID)) == 0) {
@@ -417,12 +422,18 @@ struct Vst3ComponentHandler : IComponentHandler, IComponentHandler2 {
 
     // IComponentHandler
     tresult PLUGIN_API beginEdit(ParamID)                         override { return kResultOk; }
-    tresult PLUGIN_API performEdit(ParamID, ParamValue)           override { return kResultOk; }
+    tresult PLUGIN_API performEdit(ParamID, ParamValue)           override {
+        if (state_dirty) *state_dirty = true;
+        return kResultOk;
+    }
     tresult PLUGIN_API endEdit(ParamID)                           override { return kResultOk; }
     tresult PLUGIN_API restartComponent(int32)                    override { return kResultOk; }
 
     // IComponentHandler2
-    tresult PLUGIN_API setDirty(TBool)                            override { return kResultOk; }
+    tresult PLUGIN_API setDirty(TBool state)                      override {
+        if (state && state_dirty) *state_dirty = true;
+        return kResultOk;
+    }
     tresult PLUGIN_API requestOpenEditor(FIDString)               override { return kResultOk; }
     tresult PLUGIN_API startGroupEdit()                           override { return kResultOk; }
     tresult PLUGIN_API finishGroupEdit()                          override { return kResultOk; }

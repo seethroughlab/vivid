@@ -502,6 +502,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         uint32_t last_block_total_us = 0;
         uint32_t last_process_us = 0;
         uint32_t ema_block_us = 0;
+        uint32_t peak_block_us = 0;
         float last_block_budget_pct = 0.0f;
         uint32_t last_lane_count = 0;
         uint32_t lane_state_entries = 0;
@@ -519,6 +520,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             dbg.last_block_total_us,
             dbg.last_process_us,
             dbg.ema_block_us,
+            dbg.peak_block_us,
             dbg.last_block_budget_pct,
             dbg.last_lane_count,
             dbg.lane_state_entries,
@@ -531,6 +533,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         snap_row.last_block_total_us = row.last_block_total_us;
         snap_row.last_process_us = row.last_process_us;
         snap_row.ema_block_us = row.ema_block_us;
+        snap_row.peak_block_us = row.peak_block_us;
         snap_row.last_block_budget_pct = row.last_block_budget_pct;
         snap_row.last_lane_count = row.last_lane_count;
         snap_row.lane_state_entries = row.lane_state_entries;

@@ -108,6 +108,8 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::string        last_plugin_id_;
     uint64_t           steady_sample_         = 0;
     uint32_t           sample_rate_           = 48000;
+    uint32_t           loaded_rate_           = 0;
+    std::atomic<uint32_t> audio_rate_seen_    {0};
     bool               state_dirty_           = false;
     std::atomic<bool>  callback_requested_    {false};
 
@@ -228,6 +230,16 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (act && act->plugin) act->plugin->on_main_thread(act->plugin);
         }
 
+        // If the audio thread reported a sample rate different from what we used to activate
+        // the plugin, reload at the correct rate so activate() and process() are consistent.
+        {
+            uint32_t seen = audio_rate_seen_.load(std::memory_order_acquire);
+            if (seen > 0 && seen != loaded_rate_ && !last_path_.empty()) {
+                sample_rate_ = seen;
+                reload_for_rate_change();
+            }
+        }
+
         // Reload if path changed
         reload_if_changed();
 
@@ -280,11 +292,23 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         PluginHandle* h = load_plugin(last_path_.c_str(), last_plugin_id_.c_str());
         if (!h) return;
 
+        loaded_rate_ = sample_rate_;
         auto* old_pend = pending_.exchange(h, std::memory_order_acq_rel);
         destroy_plugin(old_pend, false);
 
         // Trigger an initial state save once the plugin becomes active, so new
         // graphs capture the plugin's default state on the first graph save.
+        state_dirty_ = true;
+    }
+
+    // Reload the current plugin at a new sample rate, preserving saved state.
+    void reload_for_rate_change() {
+        if (last_path_.empty()) return;
+        PluginHandle* h = load_plugin(last_path_.c_str(), last_plugin_id_.c_str());
+        if (!h) return;
+        loaded_rate_ = sample_rate_;
+        auto* old_pend = pending_.exchange(h, std::memory_order_acq_rel);
+        destroy_plugin(old_pend, false);
         state_dirty_ = true;
     }
 
@@ -398,6 +422,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         sample_rate_ = ctx->sample_rate;
+        audio_rate_seen_.store(ctx->sample_rate, std::memory_order_relaxed);
 
         // Check for a pending plugin swap
         PluginHandle* pend = pending_.load(std::memory_order_acquire);

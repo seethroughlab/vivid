@@ -79,6 +79,9 @@ void write_audio_node_telemetry(AudioNodeState& a,
                                 uint32_t lane_state_entries) {
     uint32_t prev_ema = a.node_debug.ema_block_us.load(std::memory_order_relaxed);
     uint32_t next_ema = (prev_ema == 0) ? total_us : ((prev_ema * 7u) + total_us) / 8u;
+    uint32_t prev_peak = a.node_debug.peak_block_us.load(std::memory_order_relaxed);
+    if (total_us > prev_peak)
+        a.node_debug.peak_block_us.store(total_us, std::memory_order_relaxed);
     a.node_debug.last_block_total_us.store(total_us, std::memory_order_relaxed);
     a.node_debug.last_process_us.store(process_us, std::memory_order_relaxed);
     a.node_debug.ema_block_us.store(next_ema, std::memory_order_relaxed);
@@ -109,6 +112,7 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
     metronome_store_ = &metronome_store;
     audio_start_wall_time_ = wall_time;
     sink_node_idx_ = -1;
+    debug_audio_ = std::getenv("VIVID_DEBUG_AUDIO") != nullptr;
     lane_lift_groups_.clear();
     node_to_lift_group_.clear();
     buffer_size_ = cg.audio_buffer_size;
@@ -179,6 +183,10 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
     // Reset lane state service
     lane_state_.clear();
     lane_state_.set_node_capacity(static_cast<uint32_t>(cg.nodes.size()));
+
+    // Pre-allocate per-node timing scratch for overrun diagnostics.
+    node_timing_scratch_.resize(cg.audio_order.size());
+    callback_frame_ = 0;
 
     // Build per-node lane state contexts
     node_lane_contexts_.resize(cg.audio_order.size());
@@ -439,9 +447,27 @@ void AudioExecutor::process_audio_for_test(float* output, uint32_t frame_count) 
 
 void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
     auto cb_start = std::chrono::steady_clock::now();
+    const bool kDebugAudio = debug_audio_;  // cached at build() — no OS call on RT thread
+
+    // Detect late delivery: measure gap from previous callback start.
+    // A gap > 1.5× expected period means the OS delivered this callback late
+    // (priority inversion, scheduling jitter) — distinct from callback-duration overruns.
+    if (last_cb_start_.time_since_epoch().count() != 0 && sample_rate_ > 0) {
+        double gap_us = std::chrono::duration<double, std::micro>(cb_start - last_cb_start_).count();
+        double expected_us = static_cast<double>(frame_count) / sample_rate_ * 1e6;
+        if (gap_us > expected_us * 1.5) {
+            late_delivery_count_.fetch_add(1, std::memory_order_relaxed);
+            uint32_t gap_u = static_cast<uint32_t>(gap_us);
+            uint32_t prev = max_delivery_gap_us_.load(std::memory_order_relaxed);
+            while (gap_u > prev &&
+                   !max_delivery_gap_us_.compare_exchange_weak(prev, gap_u,
+                       std::memory_order_relaxed, std::memory_order_relaxed)) {}
+        }
+    }
+    last_cb_start_ = cb_start;
 
     if (!bridge_ || !graph_) {
-        if (std::getenv("VIVID_DEBUG_AUDIO"))
+        if (kDebugAudio)
             std::fprintf(stderr, "[audio-debug] callback: bridge=%p graph=%p — skipping\n",
                          (void*)bridge_, (void*)graph_);
         std::memset(output, 0, frame_count * 2 * sizeof(float));
@@ -453,7 +479,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
     // sessions from accumulating stale lane-state entries indefinitely.
     lane_state_.sweep_retired();
 
-    if (std::getenv("VIVID_DEBUG_AUDIO"))
+    if (kDebugAudio)
         std::fprintf(stderr, "[audio-debug] callback: audio_order=%zu nodes\n",
                      graph_->audio_order.size());
 
@@ -535,6 +561,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                                            budget_pct,
                                            node_lane_count,
                                            lane_state_.live_entry_count(ni));
+                if (ni_ord < node_timing_scratch_.size()) {
+                    auto& s = node_timing_scratch_[ni_ord];
+                    s.node_global_idx = ni;
+                    s.total_us   = total_us;
+                    s.process_us = node_process_us;
+                    s.lane_count = node_lane_count;
+                }
             };
 
             // Reset input buffers to port default values (0 for most, 1.0 for multiplicative CVs)
@@ -622,13 +655,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 : GraphMetronomeSample{};
 
             // Debug node state
-            if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
+            if (kDebugAudio && frames_written == 0) {
                 std::fprintf(stderr, "[audio-debug] node '%s' loader=%p instance=%p errored=%d\n",
                              cn.node_id.c_str(), (void*)cn.loader,
                              cn.audio_instance ? cn.audio_instance : cn.instance, cn.errored);
             }
             // Debug lane data
-            if (std::getenv("VIVID_DEBUG_AUDIO")) {
+            if (kDebugAudio) {
                 for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
                     if (cn.c_in_lane_views[p].length > 0) {
                         std::fprintf(stderr, "[audio-debug] node '%s' input_lane[%u] len=%u val[0]=%.2f\n",
@@ -1017,7 +1050,7 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         float* dst = output + frames_written * 2;
         if (sink_node_idx_ >= 0 && static_cast<uint32_t>(sink_node_idx_) < cg.nodes.size()) {
             auto& sink = cg.nodes[sink_node_idx_];
-            if (std::getenv("VIVID_DEBUG_AUDIO") && frames_written == 0) {
+            if (kDebugAudio && frames_written == 0) {
                 float max_in = 0;
                 for (const auto& buf : sink.audio->buffers_in) {
                     for (uint32_t s = 0; s < chunk && s < buf.size(); ++s) {
@@ -1079,9 +1112,32 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         underrun_count_.fetch_add(1, std::memory_order_relaxed);
         last_buffer_underrun_.store(true, std::memory_order_relaxed);
         std::memset(output, 0, frame_count * 2 * sizeof(float));
+        // Write per-node breakdown to the overrun ring for diagnostics.
+        if (graph_) {
+            uint32_t widx = graph_->overrun_write_idx.fetch_add(1, std::memory_order_relaxed)
+                            % CompiledGraph::kOverrunRingSize;
+            auto& rec = graph_->overrun_ring[widx];
+            rec.callback_frame = callback_frame_;
+            rec.budget_us  = static_cast<uint32_t>(budget_us);
+            rec.actual_us  = static_cast<uint32_t>(elapsed_us);
+            rec.node_count = 0;
+            const auto& cg2 = *graph_;
+            for (size_t k = 0; k < node_timing_scratch_.size() && rec.node_count < 16; ++k) {
+                const auto& s = node_timing_scratch_[k];
+                if (s.total_us == 0) continue;
+                auto& e = rec.nodes[rec.node_count++];
+                const auto& nid = cg2.nodes[s.node_global_idx].node_id;
+                std::strncpy(e.node_id, nid.c_str(), sizeof(e.node_id) - 1);
+                e.node_id[sizeof(e.node_id) - 1] = '\0';
+                e.total_us   = s.total_us;
+                e.process_us = s.process_us;
+                e.lane_count = s.lane_count;
+            }
+        }
     } else {
         last_buffer_underrun_.store(false, std::memory_order_relaxed);
     }
+    ++callback_frame_;
 
     // Analysis snapshot write
     auto& analysis = bridge_->analysis_write_buffer();

@@ -53,9 +53,23 @@ struct AudioNodeHealth {
     int64_t last_block_total_us = 0;
     int64_t last_process_us = 0;
     int64_t ema_block_us = 0;
+    int64_t peak_block_us = 0;
     double  last_block_budget_pct = 0.0;
     int64_t last_lane_count = 0;
     int64_t lane_state_entries = 0;
+};
+
+struct AudioOverrunNodeSnap {
+    std::string node_id;
+    uint32_t    total_us = 0;
+    uint32_t    process_us = 0;
+    uint32_t    lane_count = 0;
+};
+struct AudioOverrunSnap {
+    uint64_t callback_frame = 0;
+    uint32_t budget_us = 0;
+    uint32_t actual_us = 0;
+    std::vector<AudioOverrunNodeSnap> nodes;
 };
 
 struct AudioHealth {
@@ -66,6 +80,8 @@ struct AudioHealth {
     uint32_t xruns = 0;
     bool last_buffer_underrun = false;
     double load = 0.0;
+    uint32_t late_delivery_count = 0;
+    uint32_t max_delivery_gap_us = 0;
     uint32_t lane_overflow_count = 0;
     double  peak_max = 0.0;          // max |sample| across all nodes/channels in active snapshot
     int64_t clipping_count = 0;      // count of |sample| >= 0.99 in active snapshot
@@ -73,6 +89,7 @@ struct AudioHealth {
     bool    silence_active = false;        // sustained silence detected (Phase 8c)
     std::vector<AudioNodeHealth> top_nodes;
     std::vector<AudioNodeHealth> top_lane_state_nodes;
+    std::vector<AudioOverrunSnap> overruns;  // recent overrun records, newest-first
 };
 
 struct GraphHealth {

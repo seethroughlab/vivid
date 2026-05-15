@@ -6,6 +6,7 @@
 #include "runtime/graph/snapshot_types.h"
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -86,6 +87,8 @@ public:
     uint32_t underrun_count() const { return underrun_count_.load(std::memory_order_relaxed); }
     bool last_buffer_underrun() const { return last_buffer_underrun_.load(std::memory_order_relaxed); }
     float audio_load() const { return audio_load_.load(std::memory_order_relaxed); }
+    uint32_t late_delivery_count() const { return late_delivery_count_.load(std::memory_order_relaxed); }
+    uint32_t max_delivery_gap_us() const { return max_delivery_gap_us_.load(std::memory_order_relaxed); }
     uint32_t buffer_size() const { return buffer_size_; }
     uint32_t sample_rate() const { return sample_rate_; }
     bool running() const { return running_; }
@@ -165,6 +168,9 @@ private:
     std::atomic<uint32_t> underrun_count_{0};
     std::atomic<bool> last_buffer_underrun_{false};
     std::atomic<float> audio_load_{0.0f};
+    std::atomic<uint32_t> late_delivery_count_{0};
+    std::atomic<uint32_t> max_delivery_gap_us_{0};
+    std::chrono::steady_clock::time_point last_cb_start_{};  // written & read only on audio thread
 
     // Pre-allocated scratch for LoopBased lane processing (avoids audio-thread allocation).
     std::vector<uint32_t> loop_lane_ids_scratch_;
@@ -174,6 +180,19 @@ private:
     // Recording tap
     RecordingTap recording_tap_;
     uint32_t recording_overrun_count_ = 0;
+
+    // Pre-allocated per-node timing scratch; filled each callback, flushed to overrun ring on budget exceed.
+    struct NodeTimingScratch {
+        uint32_t node_global_idx = 0;
+        uint32_t total_us = 0;
+        uint32_t process_us = 0;
+        uint32_t lane_count = 0;
+    };
+    std::vector<NodeTimingScratch> node_timing_scratch_;
+    uint64_t callback_frame_ = 0;
+
+    // Cached at build() — getenv() acquires a pthread_rwlock on macOS, not RT-safe.
+    bool debug_audio_ = false;
 };
 
 } // namespace vivid
