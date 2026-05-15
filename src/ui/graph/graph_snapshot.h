@@ -337,6 +337,7 @@ struct AudioHotNodeSnapshot {
     uint32_t last_block_total_us = 0;
     uint32_t last_process_us = 0;
     uint32_t ema_block_us = 0;
+    uint32_t peak_block_us = 0;
     float last_block_budget_pct = 0.0f;
     uint32_t last_lane_count = 0;
     uint32_t lane_state_entries = 0;
