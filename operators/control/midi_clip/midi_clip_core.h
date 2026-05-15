@@ -1140,6 +1140,7 @@ inline void MidiClipCore::commit_editor_notes(VividEditorContext* ctx) {
             audio_notes_ = editor_notes_;
             imported_audio_notes_.clear();
         }
+        thumbnail_notes_ = editor_notes_;
         if (ctx && ctx->commands.set_string_param) {
             ctx->commands.set_string_param(ctx->commands.opaque, "clip_data_ref", ref.c_str());
             ctx->commands.set_string_param(ctx->commands.opaque, "pattern_data", "[]");
@@ -1161,6 +1162,7 @@ inline void MidiClipCore::commit_editor_notes(VividEditorContext* ctx) {
 
     editor_submitted_str_ = s;
     cached_pattern_str_ = s;
+    thumbnail_notes_ = editor_notes_;
     cached_clip_data_ref_.clear();
     clip_data_ref_.str_value.clear();
     {
