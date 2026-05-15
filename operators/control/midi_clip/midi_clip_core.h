@@ -74,6 +74,9 @@ struct MidiClipCore : vivid::OperatorBase {
 
     // --- Audio-thread working state -----------------------------------
     VividNoteBuffer notes_buf_ = {};
+    // Notes cache — copied from audio_notes_ / imported_audio_notes_ only when
+    // clip_generation_ changes, not on every callback.
+    std::vector<midi_clip::ParsedNote> audio_notes_cache_;
 
     struct ActiveNote {
         uint64_t note_id     = 0;
@@ -109,6 +112,9 @@ struct MidiClipCore : vivid::OperatorBase {
     double                               clip_data_beat_length_ = 0.0;
     size_t                               clip_data_note_count_ = 0;
     std::vector<midi_clip::ParsedNote>   pending_notes_;
+    // Thumbnail-visible snapshot — main thread only, always up to date.
+    // draw_thumbnail reads this directly rather than re-parsing pattern_data JSON.
+    std::vector<midi_clip::ParsedNote>   thumbnail_notes_;
 
     struct SequenceData {
         vivid::midi_file::Sequence sequence;
@@ -278,10 +284,12 @@ struct MidiClipCore : vivid::OperatorBase {
         const std::string& clip_ref = clip_data_ref_.str_value;
         if (!clip_ref.empty() && clip_ref != cached_clip_data_ref_) {
             cached_clip_data_ref_ = clip_ref;
-            load_clip_data_ref(clip_ref);
+            if (load_clip_data_ref(clip_ref))
+                thumbnail_notes_ = pending_notes_;
         } else if (clip_ref.empty() && s != cached_pattern_str_) {
             cached_pattern_str_ = s;
             midi_clip::parse_pattern(s, pending_notes_);
+            thumbnail_notes_ = pending_notes_;
             std::lock_guard<std::mutex> lock(pattern_mutex_);
             audio_notes_ = pending_notes_;
             clip_generation_.fetch_add(1, std::memory_order_acq_rel);
@@ -643,6 +651,7 @@ inline void MidiClipCore::refresh_file_sequence() {
             file_duration_seconds_ = parsed.duration_seconds;
             const double beats = std::max(parsed.duration_beats, max_beat);
             set_clip_length_from_beats(beats);
+            thumbnail_notes_ = imported_notes;
             {
                 std::lock_guard<std::mutex> lock(pattern_mutex_);
                 imported_audio_notes_ = std::move(imported_notes);
@@ -959,6 +968,12 @@ inline void MidiClipCore::process_audio(const VividAudioContext* ctx) {
             clip_finished_ = false;
             stop_all_active_notes(0);
         }
+        // Refresh the audio-thread notes cache. Only on actual content change,
+        // not on every callback — eliminates the per-callback heap allocation.
+        {
+            std::lock_guard<std::mutex> lock(pattern_mutex_);
+            audio_notes_cache_ = pattern_mode_active() ? audio_notes_ : imported_audio_notes_;
+        }
     }
 
     if (!playing_now) {
@@ -973,12 +988,7 @@ inline void MidiClipCore::process_audio(const VividAudioContext* ctx) {
         return;
     }
 
-    // Grab latest parsed pattern from main thread
-    std::vector<midi_clip::ParsedNote> local_notes;
-    {
-        std::lock_guard<std::mutex> lock(pattern_mutex_);
-        local_notes = pattern_mode_active() ? audio_notes_ : imported_audio_notes_;
-    }
+    const std::vector<midi_clip::ParsedNote>& local_notes = audio_notes_cache_;
 
     const int    bpb     = static_cast<int>(ctx->metronome_beats_per_bar);
     const double pat_len = effective_clip_length_beats(bpb);

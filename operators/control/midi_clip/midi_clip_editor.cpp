@@ -82,9 +82,7 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
 
     d.draw_rect(o, 0.f, 0.f, W, H, {0.07f, 0.08f, 0.09f, 0.9f});
 
-    std::vector<midi_clip::ParsedNote> notes;
-    if (ctx->string_param_count > 0 && ctx->string_param_values && ctx->string_param_values[0])
-        midi_clip::parse_pattern(ctx->string_param_values[0], notes);
+    const std::vector<midi_clip::ParsedNote>& notes = thumbnail_notes_;
 
     if (notes.empty()) {
         if (d.draw_text)
