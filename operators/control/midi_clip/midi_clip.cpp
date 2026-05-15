@@ -16,6 +16,7 @@ VIVID_DEFINE_OP(MidiClip) {
 }
 
 VIVID_EDITOR(MidiClip)
+VIVID_THUMBNAIL(MidiClip)
 
 static const char* kMidiClipDropExts[] = {".mid", ".midi"};
 static const VividFileDropHandlerDescriptor kMidiClipFileDrops[] = {{
