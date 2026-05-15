@@ -30,6 +30,8 @@ public:
     void set_node_capacity(uint32_t count) {
         live_entry_count_capacity_ = count;
         live_entry_counts_.reset();
+        pending_retirements_.reserve(128);  // avoids alloc on note-off on audio thread
+        retiring_scratch_.reserve(128);
         if (count == 0) return;
         live_entry_counts_ = std::make_unique<std::atomic<uint32_t>[]>(count);
         for (uint32_t i = 0; i < count; ++i)
@@ -69,6 +71,7 @@ public:
     inline void retire(uint32_t /*node_idx*/, uint32_t lane_id) {
         std::lock_guard<std::mutex> lock(retire_mutex_);
         pending_retirements_.push_back(lane_id);
+        retirements_pending_.store(true, std::memory_order_release);
     }
 
     // Pre-allocate storage for a lane_id. Frame-thread only.
@@ -82,19 +85,20 @@ public:
         }
     }
 
-    // Clean up retired state. Frame-thread only.
+    // Clean up retired state. Called on the owning executor's thread (frame or audio).
     inline void sweep_retired() {
-        std::vector<uint32_t> to_retire;
+        if (!retirements_pending_.load(std::memory_order_acquire)) return;  // hot path: zero lock
         {
             std::lock_guard<std::mutex> lock(retire_mutex_);
-            to_retire.swap(pending_retirements_);
+            retiring_scratch_.swap(pending_retirements_);
+            retirements_pending_.store(false, std::memory_order_relaxed);
         }
-        if (to_retire.empty()) return;
+        if (retiring_scratch_.empty()) return;
 
         for (auto it = entries_.begin(); it != entries_.end(); ) {
             const uint32_t lane_id = static_cast<uint32_t>(it->first & 0xFFFFFFFFu);
             bool should_erase = false;
-            for (uint32_t retired_lane_id : to_retire) {
+            for (uint32_t retired_lane_id : retiring_scratch_) {
                 if (lane_id == retired_lane_id) {
                     should_erase = true;
                     break;
@@ -107,12 +111,15 @@ public:
                 ++it;
             }
         }
+        retiring_scratch_.clear();  // keep allocation for next sweep
     }
 
     // Clear all state (shutdown/rebuild).
     inline void clear() {
         entries_.clear();
         pending_retirements_.clear();
+        retiring_scratch_.clear();
+        retirements_pending_.store(false, std::memory_order_relaxed);
         next_lane_id_.store(1, std::memory_order_relaxed);
         for (uint32_t i = 0; i < live_entry_count_capacity_; ++i)
             live_entry_counts_[i].store(0, std::memory_order_relaxed);
@@ -147,7 +154,9 @@ private:
     std::unordered_map<uint64_t, Entry> entries_;
     std::atomic<uint32_t> next_lane_id_{1};
     std::vector<uint32_t> pending_retirements_;
+    std::vector<uint32_t> retiring_scratch_;  // persists allocation between sweeps
     std::mutex retire_mutex_;
+    std::atomic<bool> retirements_pending_{false};
     std::unique_ptr<std::atomic<uint32_t>[]> live_entry_counts_;
     uint32_t live_entry_count_capacity_ = 0;
 };
