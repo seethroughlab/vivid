@@ -591,8 +591,10 @@ static void _vivid_dispatch_audio(void* instance,                             \
                                   VividAudioContext* ctx) {                   \
     if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
         auto* inst = static_cast<_VividInstance*>(instance);                  \
-        _vivid_sync_params(inst, ctx->param_values,                           \
-                           ctx->file_param_values, ctx->file_param_count);    \
+        /* Skip TEXT/FILE params — vivid_main_thread_update() already syncs   \
+         * them on the frame thread. Copying large strings (e.g. pattern_data)\
+         * on every audio callback is a real-time safety violation. */        \
+        _vivid_sync_params(inst, ctx->param_values, nullptr, 0);              \
         static_cast<_Op&>(inst->op).process_audio(ctx);                       \
     }                                                                         \
 }                                                                             \
@@ -860,8 +862,10 @@ static void _vivid_dispatch_audio(void* instance,                             \
                                   VividAudioContext* ctx) {                   \
     if constexpr (std::is_base_of_v<vivid::AudioProcessable, _Op>) {          \
         auto* inst = static_cast<_VividInstance*>(instance);                  \
-        _vivid_sync_params(inst, ctx->param_values,                           \
-                           ctx->file_param_values, ctx->file_param_count);    \
+        /* Skip TEXT/FILE params — vivid_main_thread_update() already syncs   \
+         * them on the frame thread. Copying large strings (e.g. pattern_data)\
+         * on every audio callback is a real-time safety violation. */        \
+        _vivid_sync_params(inst, ctx->param_values, nullptr, 0);              \
         static_cast<_Op&>(inst->op).process_audio(ctx);                       \
     }                                                                         \
 }                                                                             \
