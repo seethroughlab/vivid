@@ -195,6 +195,18 @@ struct MidiClipCore : vivid::OperatorBase {
     std::vector<int> drag_selected_indices_;
     std::vector<midi_clip::ParsedNote> editor_clipboard_;
 
+    // Paste cursor: beat position for next Cmd+V (-1 = not set)
+    double paste_cursor_beat_ = -1.0;
+
+    // Per-editor undo/redo stack (local to the editor, independent of graph undo)
+    struct MidiClipUndoSnap {
+        std::vector<midi_clip::ParsedNote> notes;
+        std::vector<uint8_t>               selected;
+    };
+    static constexpr int kMaxUndoDepth = 50;
+    std::vector<MidiClipUndoSnap> undo_stack_;
+    std::vector<MidiClipUndoSnap> redo_stack_;
+
     // Length text-field state (main thread only)
     vivid::ui::TextFieldState  length_field_state_;
     char                       length_field_buf_[32] = "2";
@@ -385,6 +397,9 @@ private:
     void rebuild_editor_note_order_if_needed();
 public:
     void inject_events(const std::vector<std::vector<unsigned char>>& messages);
+    void push_undo_snapshot();
+    bool apply_undo(VividEditorContext* ctx);
+    bool apply_redo(VividEditorContext* ctx);
 private:
     std::mutex inject_mutex_;
     std::vector<std::vector<unsigned char>> inject_buffer_;
@@ -444,6 +459,35 @@ inline double MidiClipCore::editor_notes_beat_length() const {
 
 inline void MidiClipCore::mark_editor_note_order_dirty() {
     editor_note_order_dirty_ = true;
+}
+
+inline void MidiClipCore::push_undo_snapshot() {
+    undo_stack_.push_back({editor_notes_, note_selected_});
+    if (static_cast<int>(undo_stack_.size()) > kMaxUndoDepth)
+        undo_stack_.erase(undo_stack_.begin());
+    redo_stack_.clear();
+}
+
+inline bool MidiClipCore::apply_undo(VividEditorContext* ctx) {
+    if (undo_stack_.empty()) return false;
+    redo_stack_.push_back({std::move(editor_notes_), std::move(note_selected_)});
+    editor_notes_  = std::move(undo_stack_.back().notes);
+    note_selected_ = std::move(undo_stack_.back().selected);
+    undo_stack_.pop_back();
+    editor_note_order_dirty_ = true;
+    commit_editor_notes(ctx);
+    return true;
+}
+
+inline bool MidiClipCore::apply_redo(VividEditorContext* ctx) {
+    if (redo_stack_.empty()) return false;
+    undo_stack_.push_back({std::move(editor_notes_), std::move(note_selected_)});
+    editor_notes_  = std::move(redo_stack_.back().notes);
+    note_selected_ = std::move(redo_stack_.back().selected);
+    redo_stack_.pop_back();
+    editor_note_order_dirty_ = true;
+    commit_editor_notes(ctx);
+    return true;
 }
 
 inline void MidiClipCore::rebuild_editor_note_order_if_needed() {

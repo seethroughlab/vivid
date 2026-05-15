@@ -195,7 +195,7 @@ static VividEditorContext make_editor_ctx(EditorCapture& cap,
                                           float* params) {
     VividEditorContext ctx{};
     ctx.surface_width = 1100.0f;
-    ctx.surface_height = 640.0f;
+    ctx.surface_height = 700.0f;
     ctx.dpi_scale = 1.0f;
     ctx.draw.opaque = &cap;
     ctx.draw.draw_rect = noop_rect;
@@ -260,6 +260,38 @@ static bool has_widget_kind(const EditorCapture& cap, const std::string& kind) {
         if (w.kind == kind) return true;
     }
     return false;
+}
+
+static std::optional<EditorCapture::Widget> find_toolbar_section(
+        const EditorCapture& cap,
+        const std::string& label) {
+    for (const auto& w : cap.widgets) {
+        if (w.kind == "toolbar_section" && w.label == label)
+            return w;
+    }
+    return std::nullopt;
+}
+
+static bool rects_overlap(const EditorCapture::Widget& a,
+                          const EditorCapture::Widget& b) {
+    constexpr float eps = 0.25f;
+    return a.x + a.w > b.x + eps && b.x + b.w > a.x + eps &&
+           a.y + a.h > b.y + eps && b.y + b.h > a.y + eps;
+}
+
+static bool toolbar_sections_non_overlapping(const EditorCapture& cap) {
+    std::vector<EditorCapture::Widget> sections;
+    for (const auto& w : cap.widgets) {
+        if (w.kind == "toolbar_section")
+            sections.push_back(w);
+    }
+    for (size_t i = 0; i < sections.size(); ++i) {
+        for (size_t j = i + 1; j < sections.size(); ++j) {
+            if (rects_overlap(sections[i], sections[j]))
+                return false;
+        }
+    }
+    return true;
 }
 
 static std::array<float, 14> make_editor_params(float length_bars = 2.0f) {
@@ -499,7 +531,7 @@ int main() {
         const char* strings[5] = {"[]", "", "", "", ""};
         EditorCapture cap;
         auto ectx = make_editor_ctx(cap, strings, params.data());
-        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f,
                   true, true);
         op.draw_editor(&ectx);
         auto notes = parse_notes(cap.pattern_data);
@@ -534,7 +566,7 @@ int main() {
         const char* strings[5] = {"[]", "", "", "", ""};
         EditorCapture cap;
         auto ectx = make_editor_ctx(cap, strings, params.data());
-        set_mouse(ectx, 52.0f + 0.25f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+        set_mouse(ectx, 52.0f + 0.25f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f,
                   true, true, false, true);
         op.draw_editor(&ectx);
         check(!cap.pattern_data_written, "MidiClip shift empty drag does not add note immediately");
@@ -550,7 +582,7 @@ int main() {
         const char* strings[5] = {pattern.c_str(), "", "", "", ""};
         EditorCapture cap;
         auto ectx = make_editor_ctx(cap, strings, params.data());
-        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f,
                   true, true);
         op.draw_editor(&ectx);
         check(op.note_selected_.size() == 2 && op.note_selected_[0] && !op.note_selected_[1],
@@ -564,7 +596,7 @@ int main() {
         const char* strings[5] = {pattern.c_str(), "", "", "", ""};
         EditorCapture cap;
         auto ectx = make_editor_ctx(cap, strings, params.data());
-        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 52.0f + 31.0f * 14.0f + 7.0f,
+        set_mouse(ectx, 52.0f + 0.55f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f,
                   false, false, true);
         op.draw_editor(&ectx);
         auto notes = parse_notes(cap.pattern_data);
@@ -578,7 +610,7 @@ int main() {
         const char* strings[5] = {"[]", "", "", "", ""};
         EditorCapture cap;
         auto ectx = make_editor_ctx(cap, strings, params.data());
-        const float y = 52.0f + 31.0f * 14.0f + 7.0f;
+        const float y = 78.0f + 31.0f * 14.0f + 7.0f;
         set_mouse(ectx, 52.0f + 0.5f * 129.5f, y, true, true);
         op.draw_editor(&ectx);
         op.pattern_data.str_value = cap.pattern_data;
@@ -605,6 +637,14 @@ int main() {
             op.draw_editor(&ectx);
             check(!cap.pattern_data_written,
                   "Opening Sweelinck in MidiClip editor does not serialize pattern_data");
+            check(find_toolbar_section(cap, "CLIP").has_value() &&
+                  find_toolbar_section(cap, "TIME").has_value() &&
+                  find_toolbar_section(cap, "MUSIC").has_value() &&
+                  find_toolbar_section(cap, "NAV").has_value() &&
+                  find_toolbar_section(cap, "ACTIONS").has_value(),
+                  "MidiClip toolbar exposes grouped section introspection");
+            check(toolbar_sections_non_overlapping(cap),
+                  "MidiClip toolbar sections do not overlap at default width");
             check(drew_text_containing(cap, "sweelinck.mid"),
                   "MidiClip toolbar shows file-backed source name");
             check(drew_text_containing(cap, "197 bars"),
@@ -629,6 +669,18 @@ int main() {
               "MidiClip toolbar keeps authored clip length editable");
         check(drew_text_containing(cap, "Authored"),
               "MidiClip toolbar labels authored clips");
+    }
+
+    {
+        MidiClipCore op;
+        auto params = make_editor_params();
+        const char* strings[5] = {"[]", "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        ectx.surface_width = 720.0f;
+        op.draw_editor(&ectx);
+        check(toolbar_sections_non_overlapping(cap),
+              "MidiClip toolbar sections do not overlap at narrow width");
     }
 
     {
@@ -772,7 +824,7 @@ int main() {
         auto ectx = make_editor_ctx(cap, strings, params.data());
         op.draw_editor(&ectx);
 
-        set_mouse(ectx, 52.0f + 1.5f * 129.5f, 38.0f + 14.0f + (127 - 100) * 14.0f + 2.0f,
+        set_mouse(ectx, 52.0f + 1.5f * 129.5f, 64.0f + 14.0f + (127 - 100) * 14.0f + 2.0f,
                   true, true);
         op.draw_editor(&ectx);
 
@@ -792,6 +844,211 @@ int main() {
         auto* notes = static_cast<VividNoteBuffer*>(custom_outputs[0]);
         check(notes && notes->count > 0,
               "MidiClip reloads clip_data_ref sidecar for playback");
+    }
+
+    // -----------------------------------------------------------------------
+    // Undo / redo stack tests
+    // -----------------------------------------------------------------------
+
+    namespace ek = ::vivid::editor_keys;
+
+    auto key_ev = [](int k, int mods = 0) {
+        VividEditorEvent e{};
+        e.type      = VIVID_EDITOR_EVENT_KEY;
+        e.key       = k;
+        e.action    = ek::kPress;
+        e.modifiers = mods;
+        return e;
+    };
+
+    // Helper: single draw_editor call with a set of key events
+    auto draw_with_keys = [&](MidiClipCore& op, EditorCapture& cap,
+                              const char* const* strings, float* params,
+                              std::vector<VividEditorEvent> events) {
+        cap = EditorCapture{};
+        auto ectx = make_editor_ctx(cap, strings, params);
+        ectx.events      = events.empty() ? nullptr : events.data();
+        ectx.event_count = static_cast<uint32_t>(events.size());
+        op.draw_editor(&ectx);
+    };
+
+    {
+        // Undo add: add one note via left-click, Cmd+Z → note disappears
+        MidiClipCore op;
+        auto params = make_editor_params();
+        std::string pat = "[]";
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        // Click to add note
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f, true, true);
+        op.draw_editor(&ectx);
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        check(!op.undo_stack_.empty(), "MidiClip push_undo_snapshot records add-note action");
+        // Cmd+Z
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kZ, ek::kModSuper)});
+        auto notes = parse_notes(cap.pattern_data);
+        check(cap.pattern_data_written && notes.empty(),
+              "MidiClip Cmd+Z undoes note addition");
+        check(op.undo_stack_.empty(),
+              "MidiClip undo stack is empty after undoing last action");
+        check(!op.redo_stack_.empty(),
+              "MidiClip redo stack has one entry after undo");
+    }
+
+    {
+        // Redo: add note, undo, Cmd+Shift+Z → note returns
+        MidiClipCore op;
+        auto params = make_editor_params();
+        std::string pat = "[]";
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f, true, true);
+        op.draw_editor(&ectx);
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        // Undo
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kZ, ek::kModSuper)});
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        // Redo
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kZ, ek::kModSuper | ek::kModShift)});
+        auto notes = parse_notes(cap.pattern_data);
+        check(cap.pattern_data_written && notes.size() == 1,
+              "MidiClip Cmd+Shift+Z redoes note addition");
+    }
+
+    {
+        // Redo cleared on new action: add note, undo, add second note → redo_stack_ empty
+        MidiClipCore op;
+        auto params = make_editor_params();
+        std::string pat = "[]";
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        auto ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 0.5f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f, true, true);
+        op.draw_editor(&ectx);
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        // Undo
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kZ, ek::kModSuper)});
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        // New action: add a note at a different beat
+        ectx = make_editor_ctx(cap, strings, params.data());
+        set_mouse(ectx, 52.0f + 1.5f * 129.5f, 78.0f + 31.0f * 14.0f + 7.0f, true, true);
+        op.draw_editor(&ectx);
+        check(op.redo_stack_.empty(),
+              "MidiClip new action after undo clears redo stack");
+    }
+
+    {
+        // Undo delete: add note, delete via Delete key, undo → note returns
+        MidiClipCore op;
+        std::string pat = R"([{"p":96,"s":0.5,"d":0.25,"v":0.8}])";
+        auto params = make_editor_params();
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        // Select all, then delete
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kA, ek::kModSuper),
+                        key_ev(ek::kDelete)});
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        check(parse_notes(cap.pattern_data).empty(),
+              "MidiClip Delete key removes selected notes");
+        // Undo
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kZ, ek::kModSuper)});
+        auto notes = parse_notes(cap.pattern_data);
+        check(cap.pattern_data_written && notes.size() == 1,
+              "MidiClip Cmd+Z restores deleted note");
+    }
+
+    {
+        // Undo stack depth: push more than kMaxUndoDepth snapshots, verify cap
+        MidiClipCore op;
+        for (int i = 0; i < MidiClipCore::kMaxUndoDepth + 5; ++i) {
+            op.push_undo_snapshot();
+        }
+        check(static_cast<int>(op.undo_stack_.size()) == MidiClipCore::kMaxUndoDepth,
+              "MidiClip undo stack is capped at kMaxUndoDepth entries");
+    }
+
+    // -----------------------------------------------------------------------
+    // Paste cursor tests
+    // -----------------------------------------------------------------------
+
+    {
+        // Copy sets paste cursor to end of selection
+        MidiClipCore op;
+        std::string pat = R"([{"p":96,"s":0.0,"d":1.0,"v":0.8},{"p":97,"s":1.0,"d":0.5,"v":0.8}])";
+        auto params = make_editor_params();
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        // Select all, then Cmd+C
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kA, ek::kModSuper),
+                        key_ev(ek::kC, ek::kModSuper)});
+        check(op.paste_cursor_beat_ == 1.5,
+              "MidiClip Cmd+C sets paste cursor to end of copied selection");
+    }
+
+    {
+        // Paste at cursor, not scroll position
+        MidiClipCore op;
+        std::string pat = R"([{"p":96,"s":0.0,"d":0.25,"v":0.8}])";
+        auto params = make_editor_params(4.0f);  // 4-bar pattern
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        // Select all and copy → paste cursor = 0.25
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kA, ek::kModSuper),
+                        key_ev(ek::kC, ek::kModSuper)});
+        // Move paste cursor to beat 4.0 manually
+        op.paste_cursor_beat_ = 4.0;
+        // Paste
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kV, ek::kModSuper)});
+        auto notes = parse_notes(cap.pattern_data);
+        bool pasted_at_cursor = false;
+        for (const auto& n : notes)
+            if (std::fabs(n.start_beat - 4.0) < 0.01) pasted_at_cursor = true;
+        check(pasted_at_cursor,
+              "MidiClip Cmd+V pastes at paste_cursor_beat_ when set");
+    }
+
+    {
+        // Paste advances cursor by clipboard span
+        MidiClipCore op;
+        std::string pat = R"([{"p":96,"s":0.0,"d":1.0,"v":0.8}])";
+        auto params = make_editor_params(8.0f);
+        const char* strings[5] = {pat.c_str(), "", "", "", ""};
+        EditorCapture cap;
+        // Select all and copy (1-beat note → cursor = 1.0)
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kA, ek::kModSuper),
+                        key_ev(ek::kC, ek::kModSuper)});
+        check_float(static_cast<float>(op.paste_cursor_beat_), 1.0f, 1e-4f,
+                    "MidiClip Cmd+C sets paste cursor to 1.0 after copying 1-beat note");
+        // First paste: cursor moves to 2.0
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kV, ek::kModSuper)});
+        check_float(static_cast<float>(op.paste_cursor_beat_), 2.0f, 0.01f,
+                    "MidiClip first paste advances cursor by clipboard span");
+        // Second paste: cursor moves to 3.0
+        pat = cap.pattern_data;
+        strings[0] = pat.c_str();
+        draw_with_keys(op, cap, strings, params.data(),
+                       {key_ev(ek::kV, ek::kModSuper)});
+        check_float(static_cast<float>(op.paste_cursor_beat_), 3.0f, 0.01f,
+                    "MidiClip second paste advances cursor to 3.0 (chain paste)");
     }
 
     fs::remove_all(sandbox);

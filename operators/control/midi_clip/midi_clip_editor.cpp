@@ -568,7 +568,17 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             const bool cmd   = ek::is_cmd_or_ctrl(e.modifiers);
             const bool shift = (e.modifiers & ek::kModShift) != 0;
 
+            if (cmd && e.key == ek::kZ) {
+                if (shift) apply_redo(ctx);
+                else        apply_undo(ctx);
+                continue;
+            }
+
             if (e.key == ek::kDelete || e.key == ek::kBackspace) {
+                bool any = false;
+                for (size_t j = 0; j < note_selected_.size(); ++j)
+                    if (note_selected_[j]) { any = true; break; }
+                if (any) push_undo_snapshot();
                 for (int j = (int)editor_notes_.size() - 1; j >= 0; --j) {
                     if (j < (int)note_selected_.size() && note_selected_[j]) {
                         editor_notes_.erase(editor_notes_.begin() + j);
@@ -580,25 +590,33 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             else if (e.key == ek::kUp || e.key == ek::kDown) {
                 int delta = (e.key == ek::kUp ? 1 : -1) * (shift ? 12 : 1);
                 bool any = false;
-                for (int j = 0; j < (int)editor_notes_.size(); ++j) {
-                    if (j >= (int)note_selected_.size() || !note_selected_[j]) continue;
-                    editor_notes_[j].pitch = static_cast<uint8_t>(
-                        std::clamp(static_cast<int>(editor_notes_[j].pitch) + delta, 0, 127));
-                    any = true;
+                for (size_t j = 0; j < note_selected_.size(); ++j)
+                    if (note_selected_[j]) { any = true; break; }
+                if (any) {
+                    push_undo_snapshot();
+                    for (int j = 0; j < (int)editor_notes_.size(); ++j) {
+                        if (j >= (int)note_selected_.size() || !note_selected_[j]) continue;
+                        editor_notes_[j].pitch = static_cast<uint8_t>(
+                            std::clamp(static_cast<int>(editor_notes_[j].pitch) + delta, 0, 127));
+                    }
+                    commit_editor_notes(ctx);
                 }
-                if (any) commit_editor_notes(ctx);
             }
             else if (!cmd && (e.key == ek::kLeft || e.key == ek::kRight)) {
                 double delta = (e.key == ek::kRight ? 1.0 : -1.0) * cell_beats;
                 bool any = false;
-                for (int j = 0; j < (int)editor_notes_.size(); ++j) {
-                    if (j >= (int)note_selected_.size() || !note_selected_[j]) continue;
-                    editor_notes_[j].start_beat = std::clamp(
-                        editor_notes_[j].start_beat + delta,
-                        0.0, pat_len - editor_notes_[j].duration_beats);
-                    any = true;
+                for (size_t j = 0; j < note_selected_.size(); ++j)
+                    if (note_selected_[j]) { any = true; break; }
+                if (any) {
+                    push_undo_snapshot();
+                    for (int j = 0; j < (int)editor_notes_.size(); ++j) {
+                        if (j >= (int)note_selected_.size() || !note_selected_[j]) continue;
+                        editor_notes_[j].start_beat = std::clamp(
+                            editor_notes_[j].start_beat + delta,
+                            0.0, pat_len - editor_notes_[j].duration_beats);
+                    }
+                    commit_editor_notes(ctx);
                 }
-                if (any) commit_editor_notes(ctx);
             }
             else if (cmd && e.key == ek::kA) {
                 note_selected_.assign(editor_notes_.size(), true);
@@ -608,6 +626,12 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                 for (int j = 0; j < (int)editor_notes_.size(); ++j) {
                     if (j < (int)note_selected_.size() && note_selected_[j])
                         editor_clipboard_.push_back(editor_notes_[j]);
+                }
+                if (!editor_clipboard_.empty()) {
+                    double max_end = 0.0;
+                    for (const auto& n : editor_clipboard_)
+                        max_end = std::max(max_end, n.start_beat + n.duration_beats);
+                    paste_cursor_beat_ = max_end;
                 }
             }
             else if (cmd && e.key == ek::kD) {
@@ -619,6 +643,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                         editor_notes_[j].start_beat + editor_notes_[j].duration_beats);
                 }
                 if (max_end > min_start) {
+                    push_undo_snapshot();
                     double span = max_end - min_start;
                     std::vector<midi_clip::ParsedNote> copies;
                     for (int j = 0; j < (int)editor_notes_.size(); ++j) {
@@ -637,17 +662,23 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             }
             else if (cmd && e.key == ek::kV) {
                 if (!editor_clipboard_.empty()) {
+                    push_undo_snapshot();
                     double min_start = editor_clipboard_[0].start_beat;
                     for (const auto& n : editor_clipboard_)
                         min_start = std::min(min_start, n.start_beat);
-                    double paste_at = snap(editor_scroll_x_);
+                    double paste_at = snap(paste_cursor_beat_ >= 0.0
+                                          ? paste_cursor_beat_ : editor_scroll_x_);
                     std::fill(note_selected_.begin(), note_selected_.end(), false);
+                    double pasted_end = paste_at;
                     for (auto n : editor_clipboard_) {
-                        n.start_beat = std::clamp(paste_at + (n.start_beat - min_start),
-                                                  0.0, pat_len - n.duration_beats);
+                        const double offset = n.start_beat - min_start;
+                        n.start_beat = std::clamp(paste_at + offset, 0.0,
+                                                  pat_len - n.duration_beats);
+                        pasted_end = std::max(pasted_end, n.start_beat + n.duration_beats);
                         editor_notes_.push_back(n);
                         note_selected_.push_back(true);
                     }
+                    paste_cursor_beat_ = std::min(pasted_end, pat_len);
                     commit_editor_notes(ctx);
                 }
             }
@@ -656,6 +687,8 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                 for (uint8_t selected : note_selected_) {
                     if (selected) { any_selected = true; break; }
                 }
+                auto pre_notes = editor_notes_;
+                auto pre_sel   = note_selected_;
                 bool changed = false;
                 for (int j = 0; j < (int)editor_notes_.size(); ++j) {
                     if (any_selected && (j >= (int)note_selected_.size() || !note_selected_[j]))
@@ -669,7 +702,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     n.duration_beats = std::max(cell_beats, snapped_end - n.start_beat);
                     changed = changed || old_start != n.start_beat || old_dur != n.duration_beats;
                 }
-                if (changed) commit_editor_notes(ctx);
+                if (changed) {
+                    undo_stack_.push_back({std::move(pre_notes), std::move(pre_sel)});
+                    if (static_cast<int>(undo_stack_.size()) > kMaxUndoDepth)
+                        undo_stack_.erase(undo_stack_.begin());
+                    redo_stack_.clear();
+                    commit_editor_notes(ctx);
+                }
             }
         }
     }
@@ -707,6 +746,14 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         if (pb_x >= grid_x && pb_x <= grid_x + grid_w)
             vivid::ui::draw_playhead_line(d, o, pb_x, brace_y, brace_h,
                 {1.0f, 0.8f, 0.2f, 0.7f});
+
+        // Paste cursor (green vertical line, shows where next Cmd+V will land)
+        if (paste_cursor_beat_ >= 0.0 && !editor_clipboard_.empty()) {
+            const float pcx = beat_view.world_to_screen(static_cast<float>(paste_cursor_beat_));
+            if (pcx >= grid_x && pcx <= grid_x + grid_w)
+                vivid::ui::draw_playhead_line(d, o, pcx, brace_y, brace_h,
+                    {0.35f, 0.85f, 0.40f, 0.90f});
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1039,6 +1086,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                         import_status_ = "Click Clear Clip again";
                         import_status_until_ = ctx->time + 3.0;
                     } else {
+                        push_undo_snapshot();
                         editor_notes_.clear();
                         note_selected_.clear();
                         toolbar_clear_confirm_ = false;
@@ -1237,17 +1285,23 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             if (ctx->host.capture_pointer)
                 ctx->host.capture_pointer(ctx->host.opaque);
         }
-        // Right-click in brace: clear loop region
-        if (mouse_in_brace && ctx->mouse.right_clicked && has_loop_region) {
-            if (ctx->commands.set_param) {
-                ctx->commands.set_param(ctx->commands.opaque, "loop_start_beat", 0.0f);
-                ctx->commands.set_param(ctx->commands.opaque, "loop_end_beat",   0.0f);
+        // Right-click in brace: clear loop region, or set paste cursor if no loop region
+        if (mouse_in_brace && ctx->mouse.right_clicked) {
+            if (has_loop_region) {
+                if (ctx->commands.set_param) {
+                    ctx->commands.set_param(ctx->commands.opaque, "loop_start_beat", 0.0f);
+                    ctx->commands.set_param(ctx->commands.opaque, "loop_end_beat",   0.0f);
+                }
+            } else if (!editor_clipboard_.empty()) {
+                paste_cursor_beat_ = midi_clip::quantize_to_grid(
+                    beat_view.screen_to_world(ctx->mouse.x), grid_idx);
             }
         }
 
         // --- Mod strip press ---
         auto begin_strip_drag = [&](int best, DragMode mode) {
             if (!ctx->mouse.left_clicked || best < 0 || drag_mode_ != DragMode::None) return;
+            push_undo_snapshot();
             drag_note_idx_ = best;
             drag_start_my_ = ctx->mouse.y;
             drag_orig_vel_ = editor_notes_[best].velocity;
@@ -1263,10 +1317,13 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
 
         if (ctx->mouse.right_clicked && drag_mode_ == DragMode::None) {
             if (hov_vel >= 0) {
+                push_undo_snapshot();
                 editor_notes_[hov_vel].velocity = 0.8f; commit_editor_notes(ctx);
             } else if (hov_pb >= 0) {
+                push_undo_snapshot();
                 editor_notes_[hov_pb].pitch_bend = 0.0f; commit_editor_notes(ctx);
             } else if (hov_pr >= 0) {
+                push_undo_snapshot();
                 editor_notes_[hov_pr].pressure = 0.0f; commit_editor_notes(ctx);
             }
         }
@@ -1292,6 +1349,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                     drag_orig_start_ = n.start_beat;
                     drag_orig_dur_   = n.duration_beats;
                     drag_orig_pitch_ = n.pitch;
+                    push_undo_snapshot();
                     drag_orig_notes_ = editor_notes_;
                     drag_selected_indices_.clear();
                     for (int j = 0; j < (int)note_selected_.size(); ++j) {
@@ -1325,6 +1383,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
                         n.start_beat = start;
                         n.duration_beats = cell_beats;
                         n.velocity = 0.8f;
+                        push_undo_snapshot();
                         editor_notes_.push_back(n);
                         note_selected_.push_back(true);
                         drag_note_idx_ = static_cast<int>(editor_notes_.size()) - 1;
@@ -1345,6 +1404,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
         if (ctx->mouse.right_clicked && mouse_in_roll && drag_mode_ == DragMode::None) {
             auto hit = hit_test(ctx->mouse.x, ctx->mouse.y);
             if (hit.idx >= 0) {
+                push_undo_snapshot();
                 editor_notes_.erase(editor_notes_.begin() + hit.idx);
                 if (hit.idx < (int)note_selected_.size())
                     note_selected_.erase(note_selected_.begin() + hit.idx);
