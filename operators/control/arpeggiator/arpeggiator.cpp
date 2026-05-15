@@ -47,6 +47,7 @@ struct Arpeggiator : ArpeggiatorCore, vivid::AudioProcessable {
         std::lock_guard<std::mutex> lock(inject_mutex_);
         for (const auto& m : messages)
             inject_buffer_.push_back(m);
+        inject_pending_.store(true, std::memory_order_release);
     }
 
 private:
@@ -55,12 +56,14 @@ private:
     // first so caller-emitted events still take effect.
     bool drain_inject_into_buffer(VividNoteBuffer& out,
                                    const VividNoteBuffer* in) {
-        std::vector<std::vector<unsigned char>> drained;
+        if (!inject_pending_.load(std::memory_order_acquire)) return false;  // hot path: zero alloc, zero lock
+        inject_drain_scratch_.clear();
         {
             std::lock_guard<std::mutex> lock(inject_mutex_);
-            drained.swap(inject_buffer_);
+            inject_drain_scratch_.swap(inject_buffer_);
+            inject_pending_.store(false, std::memory_order_relaxed);
         }
-        if (drained.empty()) return false;
+        if (inject_drain_scratch_.empty()) return false;
 
         out.count = 0;
         if (in) {
@@ -69,7 +72,7 @@ private:
             for (uint32_t i = 0; i < n; ++i) out.events[out.count++] = in->events[i];
         }
 
-        for (const auto& msg : drained) {
+        for (const auto& msg : inject_drain_scratch_) {
             if (msg.size() < 1) continue;
             uint8_t status = msg[0];
             uint8_t type = status & 0xF0;
@@ -103,6 +106,8 @@ private:
 
     std::mutex inject_mutex_;
     std::vector<std::vector<unsigned char>> inject_buffer_;
+    std::atomic<bool>                       inject_pending_{false};
+    std::vector<std::vector<unsigned char>> inject_drain_scratch_;
     // Reserved high bit so injected ids never collide with caller-allocated
     // note_ids on notes_in.
     uint64_t inject_note_counter_ = 0x8000'0000'0000'0000ULL;

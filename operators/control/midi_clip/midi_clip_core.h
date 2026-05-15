@@ -415,6 +415,8 @@ public:
 private:
     std::mutex inject_mutex_;
     std::vector<std::vector<unsigned char>> inject_buffer_;
+    std::atomic<bool>                       inject_pending_{false};
+    std::vector<std::vector<unsigned char>> inject_drain_scratch_;
     void drain_inject(uint32_t frame_offset);
 };
 
@@ -762,15 +764,18 @@ inline void MidiClipCore::emit_file_events_in_range(
 inline void MidiClipCore::inject_events(const std::vector<std::vector<unsigned char>>& messages) {
     std::lock_guard<std::mutex> lock(inject_mutex_);
     for (const auto& m : messages) inject_buffer_.push_back(m);
+    inject_pending_.store(true, std::memory_order_release);
 }
 
 inline void MidiClipCore::drain_inject(uint32_t frame_offset) {
-    std::vector<std::vector<unsigned char>> drained;
+    if (!inject_pending_.load(std::memory_order_acquire)) return;  // hot path: zero alloc, zero lock
+    inject_drain_scratch_.clear();
     {
         std::lock_guard<std::mutex> lock(inject_mutex_);
-        drained.swap(inject_buffer_);
+        inject_drain_scratch_.swap(inject_buffer_);
+        inject_pending_.store(false, std::memory_order_relaxed);
     }
-    for (const auto& msg : drained) {
+    for (const auto& msg : inject_drain_scratch_) {
         if (msg.size() < 3) continue;
         uint8_t status = msg[0];
         uint8_t kind = status & 0xF0u;
