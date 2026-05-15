@@ -998,16 +998,25 @@ void DescriptorBuilder::process_record(const SourceSyntaxRecord& record, Descrip
     populate_port_specs(record, context, result);
     populate_metadata_specs(record, result);
 
-    // Detect via inline method bodies OR via VIVID_THUMBNAIL/INSPECTOR/EDITOR macros in source.
-    // Multi-file operators (drum_sequencer, arpeggiator, etc.) put method bodies in separate
-    // _editor.cpp files and reference them via macros in the primary source.
+    // Detect via inline method bodies, VIVID_THUMBNAIL/INSPECTOR/EDITOR macros in primary source,
+    // or method definitions in extra source files (EXTRA_CODEGEN_SOURCES). The macro fallback
+    // is now unnecessary when the editor file is listed as an extra source — codegen detects
+    // the method body directly.
+    auto extra_defines = [&](const char* method_name) -> bool {
+        for (const auto& extra : extra_source_texts_)
+            if (extra.find(method_name) != std::string::npos) return true;
+        return false;
+    };
     result.has_draw_thumbnail = context.methods.count("draw_thumbnail") > 0
-        || record.raw_source.find("VIVID_THUMBNAIL(") != std::string::npos;
+        || record.raw_source.find("VIVID_THUMBNAIL(") != std::string::npos
+        || extra_defines("draw_thumbnail");
     result.has_draw_inspector = context.methods.count("draw_inspector") > 0
         || record.raw_source.find("VIVID_INSPECTOR(") != std::string::npos
-        || record.raw_source.find("VIVID_INSPECTOR_FULL_MODE(") != std::string::npos;
+        || record.raw_source.find("VIVID_INSPECTOR_FULL_MODE(") != std::string::npos
+        || extra_defines("draw_inspector");
     result.has_draw_editor    = context.methods.count("draw_editor") > 0
-        || record.raw_source.find("VIVID_EDITOR(") != std::string::npos;
+        || record.raw_source.find("VIVID_EDITOR(") != std::string::npos
+        || extra_defines("draw_editor");
     if (result.has_draw_inspector)
         result.inspector_full_mode =
             record.raw_source.find("VIVID_INSPECTOR_FULL_MODE(") != std::string::npos;
