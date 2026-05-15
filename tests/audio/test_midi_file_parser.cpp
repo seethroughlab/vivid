@@ -210,6 +210,35 @@ int main() {
         check(!seq.ok(), "nonexistent file returns error");
     }
 
+    // --- Unclosed notes with zero elapsed duration (all events at tick 0) ---
+    // A file where all note-ons are at tick 0 with no note-offs produces
+    // note_spans with duration_beats == 0. They should still appear in note_spans
+    // so the thumbnail can render them (refresh_file_sequence assigns 1-beat default).
+    {
+        std::vector<uint8_t> track;
+        push_varlen(track, 0);
+        track.insert(track.end(), {0xFF, 0x51, 0x03, 0x07, 0xA1, 0x20}); // 500 ms/beat tempo
+        push_varlen(track, 0);
+        track.insert(track.end(), {0x90, 60, 100}); // note-on C4 at tick 0
+        push_varlen(track, 0);
+        track.insert(track.end(), {0x90, 64, 80});  // note-on E4 at tick 0
+        push_varlen(track, 0);
+        track.insert(track.end(), {0xFF, 0x2F, 0x00}); // end-of-track
+        auto path = write_bytes(sandbox / "unclosed_at_zero.mid", make_midi(0, 480, {track}));
+
+        auto seq = vivid::midi_file::parse_file(path.string());
+        check(seq.ok(), "unclosed-at-zero parses successfully");
+        if (seq.ok()) {
+            check(seq.events.size() == 2, "unclosed-at-zero yields two note-on events");
+            check(seq.note_spans.size() == 2,
+                  "unclosed-at-zero yields note_spans even with zero duration");
+            if (seq.note_spans.size() == 2) {
+                check(seq.note_spans[0].duration_beats == 0.0,
+                      "unclosed-at-zero span duration_beats is 0 (clamped by consumer)");
+            }
+        }
+    }
+
     // --- Fixture file parity (assets/sweelinck.mid) ---
     {
         auto fixture = fs::path(VIVID_SOURCE_DIR) / "assets" / "sweelinck.mid";

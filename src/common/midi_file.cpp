@@ -139,20 +139,19 @@ Sequence parse_file(const std::string& path) {
     for (uint8_t ch = 0; ch < 16; ++ch) {
         for (uint8_t pitch = 0; pitch < 128; ++pitch) {
             for (const auto& a : active[ch][pitch]) {
-                const double duration = std::max(0.0, last_event_time - a.start_seconds);
-                const double duration_beats = std::max(0.0, last_event_beats - a.start_beats);
-                if (duration > 0.0 && duration_beats > 0.0) {
-                    seq.note_spans.push_back({
-                        a.start_seconds,
-                        duration,
-                        a.start_beats,
-                        duration_beats,
-                        ch,
-                        pitch,
-                        a.velocity,
-                        a.order,
-                    });
-                }
+                // Always include unclosed notes — downstream clamps to a minimum.
+                // duration_beats may be 0 if all events share the same tick (e.g.
+                // a chord-at-tick-0 file); the consumer assigns a display default.
+                seq.note_spans.push_back({
+                    a.start_seconds,
+                    std::max(0.0, last_event_time - a.start_seconds),
+                    a.start_beats,
+                    std::max(0.0, last_event_beats - a.start_beats),
+                    ch,
+                    pitch,
+                    a.velocity,
+                    a.order,
+                });
             }
         }
     }

@@ -289,7 +289,11 @@ struct MidiClipCore : vivid::OperatorBase {
         } else if (clip_ref.empty() && s != cached_pattern_str_) {
             cached_pattern_str_ = s;
             midi_clip::parse_pattern(s, pending_notes_);
-            thumbnail_notes_ = pending_notes_;
+            // Only update the thumbnail from pattern_data when no MIDI file is
+            // active; file-backed clips populate thumbnail_notes_ in
+            // refresh_file_sequence instead.
+            if (file.str_value.empty())
+                thumbnail_notes_ = pending_notes_;
             std::lock_guard<std::mutex> lock(pattern_mutex_);
             audio_notes_ = pending_notes_;
             clip_generation_.fetch_add(1, std::memory_order_acq_rel);
@@ -640,7 +644,10 @@ inline void MidiClipCore::refresh_file_sequence() {
                 midi_clip::ParsedNote n{};
                 n.pitch = span.pitch;
                 n.start_beat = span.start_beats;
-                n.duration_beats = std::max(0.01, span.duration_beats);
+                // span.duration_beats is 0 for unclosed notes in files where all
+                // events share tick 0; assign 1 beat so the thumbnail is visible.
+                n.duration_beats = span.duration_beats > 0.0
+                    ? span.duration_beats : 1.0;
                 n.velocity = std::clamp(static_cast<float>(span.velocity) / 127.0f,
                                         0.01f, 1.0f);
                 imported_notes.push_back(n);

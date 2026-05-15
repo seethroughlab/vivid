@@ -85,21 +85,26 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
     const std::vector<midi_clip::ParsedNote>& notes = thumbnail_notes_;
 
     if (notes.empty()) {
-        if (d.draw_text)
-            d.draw_text(o, 4.f, H * 0.5f - 4.f, "empty", {0.28f, 0.32f, 0.38f, 0.8f}, 0.8f);
+        if (d.draw_text) {
+            const char* lbl = file_error_.empty() ? "empty" : file_error_.c_str();
+            d.draw_text(o, 4.f, H * 0.5f - 4.f, lbl, {0.28f, 0.32f, 0.38f, 0.8f}, 0.7f);
+        }
         return;
     }
 
-    // param_values layout (all 19 params in declaration order, TEXT/FILE slots = 0.0):
-    //   [0]=length_bars  [11]=loop_start_beat  [12]=loop_end_beat
-    const float length_bars    = (ctx->param_count > 0)  ? ctx->param_values[0]  : 2.f;
-    const float loop_start_b   = (ctx->param_count > 11) ? ctx->param_values[11] : 0.f;
-    const float loop_end_b     = (ctx->param_count > 12) ? ctx->param_values[12] : 0.f;
-    const float total_beats    = length_bars * 4.f;
+    // Use the operator's internally-computed clip length (set from file/pattern in
+    // refresh_file_sequence) rather than ctx->param_values[0], which is the host's
+    // copy and may lag until draw_inspector pushes the update.
+    const float total_beats = (clip_length_beats_ > 0.0)
+        ? static_cast<float>(clip_length_beats_)
+        : static_cast<float>(ctx->param_count > 0 ? ctx->param_values[0] : 2.f) * 4.f;
+
+    const float loop_start_b = (ctx->param_count > 11) ? ctx->param_values[11] : 0.f;
+    const float loop_end_b   = (ctx->param_count > 12) ? ctx->param_values[12] : 0.f;
 
     // output_values[0] = phase (0..1 playhead position through the clip)
-    const float phase          = (ctx->output_count > 0) ? ctx->output_values[0] : -1.f;
-    const float ph_beat        = (phase >= 0.f) ? phase * total_beats : -1.f;
+    const float phase    = (ctx->output_count > 0) ? ctx->output_values[0] : -1.f;
+    const float ph_beat  = (phase >= 0.f) ? phase * total_beats : -1.f;
 
     // Compute pitch range from notes, add margin, enforce minimum 12-semitone span
     int pitch_min = 127, pitch_max = 0;
@@ -114,7 +119,7 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
         pitch_min = std::max(0,   center - 6);
         pitch_max = std::min(127, center + 5);
     }
-    const int   pitch_range = pitch_max - pitch_min + 1;
+    const int pitch_range = pitch_max - pitch_min + 1;
 
     constexpr float kMargin = 2.f;
     const float gx = kMargin, gy = kMargin;
@@ -126,7 +131,7 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
 
     // Bar gridlines
     if (d.draw_line) {
-        const int bars = (int)std::ceil(length_bars);
+        const int bars = (int)std::ceil(total_beats / 4.f);
         for (int b = 0; b <= bars; ++b) {
             const float bx = gx + b * 4.f * px_per_beat;
             if (bx < gx - 0.5f || bx > gx + gw + 0.5f) continue;
@@ -149,11 +154,12 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
             d.draw_rect(o, le_x, gy, gx + gw - le_x, gh, kDim);
     }
 
-    // Notes
-    constexpr int kNoteDrawCap = 512;
-    int drawn = 0;
-    for (const auto& n : notes) {
-        if (drawn >= kNoteDrawCap) break;
+    // Notes — stride-based sampling so large files always show a representative
+    // cross-section rather than cutting off after an arbitrary count.
+    const size_t N = notes.size();
+    const size_t stride = std::max<size_t>(1, N / 2048);
+    for (size_t i = 0; i < N; i += stride) {
+        const auto& n = notes[i];
 
         const int pitch = (int)n.pitch;
         if (pitch < pitch_min || pitch > pitch_max) continue;
@@ -166,8 +172,8 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
         if (nx + nw < gx || nx > gx + gw) continue;
 
         const bool is_playing = (ph_beat >= 0.f &&
-                                 ph_beat >= n.start_beat &&
-                                 ph_beat <  n.start_beat + n.duration_beats);
+                                 ph_beat >= (float)n.start_beat &&
+                                 ph_beat <  (float)(n.start_beat + n.duration_beats));
 
         VividColor c = is_playing
             ? VividColor{0.94f, 0.72f, 0.22f, 1.0f}
@@ -178,7 +184,6 @@ void MidiClipCore::draw_thumbnail(const VividThumbnailContext* ctx) {
             d.draw_rounded_rect(o, nx, ny, nw, nh, 1.f, c);
         else
             d.draw_rect(o, nx, ny, nw, nh, c);
-        ++drawn;
     }
 
     // Playhead
