@@ -677,3 +677,14 @@ add_test(NAME test_mcp_operator_coverage
 set_tests_properties(test_mcp_operator_coverage PROPERTIES
     LABELS "HEADLESS_SMOKE"
     TIMEOUT 90)
+
+# Custom editor toolbar layout audit (script-only; strict only for migrated
+# high-risk editors, advisory for remaining manual top bars).
+add_test(NAME test_editor_toolbar_layout_audit
+    COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/audit_editor_toolbar_layout.py
+            --root ${CMAKE_SOURCE_DIR}
+            --format markdown
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+set_tests_properties(test_editor_toolbar_layout_audit PROPERTIES
+    LABELS "HEADLESS_SMOKE"
+    TIMEOUT 30)

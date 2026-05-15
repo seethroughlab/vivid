@@ -28,6 +28,7 @@
 #include "operator_api/editor_ui/drawing.h"
 #include "operator_api/editor_ui/viewport.h"
 #include "operator_api/editor_ui/timeline.h"
+#include "operator_api/editor_ui/toolbar.h"
 
 #include <algorithm>
 #include <cmath>

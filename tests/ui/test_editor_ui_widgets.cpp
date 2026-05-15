@@ -25,7 +25,11 @@ struct DrawCall {
     VividColor color{};
 };
 
-struct Recorder { std::vector<DrawCall> calls; };
+struct Recorder {
+    std::vector<DrawCall> calls;
+    int push_clip_count = 0;
+    int pop_clip_count = 0;
+};
 
 void rec_rect(void* o, float x, float y, float w, float h, VividColor c) {
     auto* r = static_cast<Recorder*>(o);
@@ -44,8 +48,14 @@ float fake_text_width(void*, const char* text, float scale) {
     return (text ? std::strlen(text) : 0u) * 6.0f * scale;
 }
 float fake_line_height(void*) { return 14.0f; }
-void noop_push_clip(void*, float, float, float, float) {}
-void noop_pop_clip(void*) {}
+void rec_push_clip(void* o, float, float, float, float) {
+    auto* r = static_cast<Recorder*>(o);
+    ++r->push_clip_count;
+}
+void rec_pop_clip(void* o) {
+    auto* r = static_cast<Recorder*>(o);
+    ++r->pop_clip_count;
+}
 
 VividDrawAPI make_draw_api(Recorder* rec) {
     VividDrawAPI d{};
@@ -56,14 +66,31 @@ VividDrawAPI make_draw_api(Recorder* rec) {
     d.draw_line         = rec_line;
     d.text_width        = fake_text_width;
     d.line_height       = fake_line_height;
-    d.push_clip_rect    = noop_push_clip;
-    d.pop_clip_rect     = noop_pop_clip;
+    d.push_clip_rect    = rec_push_clip;
+    d.pop_clip_rect     = rec_pop_clip;
     return d;
+}
+
+struct WidgetRecord {
+    std::string kind;
+    std::string label;
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
+void rec_introspect(void* o, const VividIntrospectWidget* w) {
+    auto* out = static_cast<std::vector<WidgetRecord>*>(o);
+    if (!out || !w) return;
+    out->push_back({w->kind ? w->kind : "", w->label ? w->label : "",
+                    w->x, w->y, w->w, w->h});
 }
 
 // --- Fake context -----------------------------------------------------------
 struct Harness {
     Recorder rec;
+    std::vector<WidgetRecord> widgets;
     VividEditorContext ctx{};
 
     Harness() {
@@ -83,6 +110,8 @@ struct Harness {
         ctx.output_count   = 0;
         ctx.events         = nullptr;
         ctx.event_count    = 0;
+        ctx.introspect_sink = &widgets;
+        ctx.introspect_fn = rec_introspect;
     }
 
     void click(float x, float y) {
@@ -427,6 +456,44 @@ int main() {
         h.idle(0.0f, 0.0f);
         res = ui::ui_icon_button(h.ctx, r, "▶", /*active=*/true);
         check(!res.clicked, "icon_button active=true idle → not clicked");
+    }
+
+    // --- toolbar layout helpers -----------------------------------------
+    {
+        Harness h;
+        auto row = ui::toolbar_row(ui::Rect{0, 0, 400, 24}, 8.0f, 6.0f);
+        ui::Rect right = ui::toolbar_reserve_right(row, 96.0f);
+        auto left = ui::toolbar_section(h.ctx, row, "LEFT", 160.0f, 120.0f, 42.0f);
+        auto mid = ui::toolbar_section(h.ctx, row, "MID", 300.0f, 80.0f, 38.0f);
+        check(!ui::toolbar_rects_overlap(left.bounds, mid.bounds),
+              "toolbar sections allocate non-overlapping rects");
+        check(!ui::toolbar_rects_overlap(mid.bounds, right),
+              "toolbar right reservation does not overlap flow sections");
+        check(left.content.x > left.bounds.x && left.content.w < left.bounds.w,
+              "toolbar section reserves label gutter before content");
+
+        ui::toolbar_text(h.ctx, ui::Rect{10, 30, 40, 18}, "very long toolbar text",
+                         {1, 1, 1, 1}, 1.0f);
+        check(h.rec.push_clip_count == h.rec.pop_clip_count && h.rec.push_clip_count > 0,
+              "toolbar clipped text balances clip rect push/pop");
+
+        check(h.widgets.size() >= 2 &&
+              h.widgets[0].kind == "toolbar_section" &&
+              h.widgets[0].label == "LEFT",
+              "toolbar sections emit introspection records");
+    }
+
+    {
+        Harness h;
+        auto row = ui::toolbar_row(ui::Rect{0, 0, 180, 24}, 8.0f, 6.0f);
+        (void)ui::toolbar_reserve_right(row, 72.0f);
+        auto section = ui::toolbar_section(h.ctx, row, "NARROW", 200.0f, 120.0f, 54.0f);
+        check(section.bounds.w <= 180.0f - 16.0f - 72.0f + 0.1f,
+              "toolbar narrow widths clamp sections to available space");
+        ui::Rect item = ui::toolbar_item(section, 200.0f);
+        check(item.x >= section.content.x &&
+              item.x + item.w <= section.bounds.x + section.bounds.w - 5.9f,
+              "toolbar item clamps inside section bounds");
     }
 
     std::fprintf(stderr, "%s (%d failures)\n",
