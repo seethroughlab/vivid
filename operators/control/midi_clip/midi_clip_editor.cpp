@@ -408,27 +408,31 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
     const double inv_bw  = beat_view.units_per_pixel();
     const double visible_start_beat = beat_view.visible_range().start;
     const double visible_end_beat = beat_view.visible_range().end;
-    rebuild_editor_note_order_if_needed();
     std::vector<int> visible_note_indices;
     visible_note_indices.reserve(std::min<size_t>(editor_notes_.size(), 1024));
-    const double candidate_start = visible_start_beat - editor_max_note_duration_;
-    auto first_visible = std::lower_bound(
-        editor_note_order_by_start_.begin(), editor_note_order_by_start_.end(), candidate_start,
-        [&](int idx, double beat) {
-            return editor_notes_[static_cast<size_t>(idx)].start_beat < beat;
-        });
-    editor_last_visible_scan_count_ = 0;
-    for (auto it = first_visible; it != editor_note_order_by_start_.end(); ++it) {
-        const int i = *it;
-        const auto& n = editor_notes_[i];
-        if (n.start_beat > visible_end_beat)
-            break;
-        ++editor_last_visible_scan_count_;
-        if (n.start_beat + n.duration_beats < visible_start_beat) {
-            continue;
+    auto rebuild_visible_note_indices = [&]() {
+        rebuild_editor_note_order_if_needed();
+        visible_note_indices.clear();
+        const double candidate_start = visible_start_beat - editor_max_note_duration_;
+        auto first_visible = std::lower_bound(
+            editor_note_order_by_start_.begin(), editor_note_order_by_start_.end(), candidate_start,
+            [&](int idx, double beat) {
+                return editor_notes_[static_cast<size_t>(idx)].start_beat < beat;
+            });
+        editor_last_visible_scan_count_ = 0;
+        for (auto it = first_visible; it != editor_note_order_by_start_.end(); ++it) {
+            const int i = *it;
+            const auto& n = editor_notes_[i];
+            if (n.start_beat > visible_end_beat)
+                break;
+            ++editor_last_visible_scan_count_;
+            if (n.start_beat + n.duration_beats < visible_start_beat) {
+                continue;
+            }
+            visible_note_indices.push_back(i);
         }
-        visible_note_indices.push_back(i);
-    }
+    };
+    rebuild_visible_note_indices();
 
     // Loop brace pixel positions (for both rendering and interaction)
     float loop_lx = beat_view.world_to_screen(ls_param);
@@ -712,6 +716,7 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             }
         }
     }
+    rebuild_visible_note_indices();
 
     // -----------------------------------------------------------------------
     // Background
@@ -838,18 +843,27 @@ void MidiClipCore::draw_editor(VividEditorContext* ctx) {
             bool active   = (idx == drag_note_idx_ && drag_mode_ != DragMode::None);
             bool strip_hl = (!active && idx == mod_hover_idx);
             bool selected = (idx < (int)note_selected_.size() && note_selected_[idx]);
-            d.draw_rounded_rect(o, nx, ny + 1.5f, nw, row_h_ - 3.0f, 2.0f,
+            const VividColor fill =
                 active     ? VividColor{0.55f, 0.80f, 1.0f, 1.0f}
                 : selected ? VividColor{0.95f, 0.75f, 0.20f, 0.95f}
                 : strip_hl ? VividColor{0.42f, 0.72f, 1.0f, 0.97f}
-                           : VividColor{0.30f, 0.65f, 0.95f, 0.92f});
-            d.draw_rounded_rect(o, nx, ny + 1.5f, nw, row_h_ - 3.0f, 2.0f,
+                           : VividColor{0.30f, 0.65f, 0.95f, 0.92f};
+            const VividColor sheen =
                 active     ? VividColor{0.80f, 0.95f, 1.0f, 0.60f}
                 : selected ? VividColor{1.0f,  0.92f, 0.55f, 0.55f}
                 : strip_hl ? VividColor{0.70f, 0.90f, 1.0f, 0.50f}
-                           : VividColor{0.50f, 0.80f, 1.0f, 0.40f});
+                           : VividColor{0.50f, 0.80f, 1.0f, 0.40f};
+            const float note_y = ny + 1.5f;
+            const float note_h = row_h_ - 3.0f;
+            if (nw < 10.0f || note_h < 8.0f) {
+                d.draw_rect(o, nx, note_y, nw, note_h, fill);
+                d.draw_rect(o, nx, note_y, nw, std::min(2.0f, note_h), sheen);
+            } else {
+                d.draw_rounded_rect(o, nx, note_y, nw, note_h, 2.0f, fill);
+                d.draw_rounded_rect(o, nx, note_y, nw, note_h, 2.0f, sheen);
+            }
             if (nw > 10.0f) {
-                d.draw_rounded_rect(o, nx + nw - 4.0f, ny + 2.5f, 3.0f, row_h_ - 5.0f, 1.0f,
+                d.draw_rect(o, nx + nw - 4.0f, ny + 2.5f, 3.0f, row_h_ - 5.0f,
                     {0.75f, 0.90f, 1.0f, (active || strip_hl) ? 0.9f : 0.5f});
             }
         }
