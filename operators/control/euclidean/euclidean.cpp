@@ -30,5 +30,4 @@ struct Euclidean : EuclideanCore, vivid::AudioProcessable {
 VIVID_DEFINE_OP(Euclidean) {
 }
 
-VIVID_THUMBNAIL(Euclidean)
 VIVID_EDITOR(Euclidean)

@@ -84,10 +84,12 @@ function(add_vivid_operator name source)
             list(APPEND _codegen_command --wgsl ${_wgsl_source})
             list(APPEND _codegen_depends ${_wgsl_source})
         endif()
+        set(_extra_compile_sources "")
         foreach(_extra_src ${ARG_EXTRA_CODEGEN_SOURCES})
             get_filename_component(_extra_src_abs "${_extra_src}" ABSOLUTE BASE_DIR "${CMAKE_SOURCE_DIR}")
             list(APPEND _codegen_command --extra-source ${_extra_src_abs})
             list(APPEND _codegen_depends ${_extra_src_abs})
+            list(APPEND _extra_compile_sources "${_extra_src_abs}")
         endforeach()
         add_custom_command(
             OUTPUT ${_generated_cpp} ${_generated_uniforms}
@@ -99,6 +101,9 @@ function(add_vivid_operator name source)
         set(_operator_sources ${_generated_cpp})
     endif()
     add_library(${name} MODULE ${_operator_sources})
+    if(_extra_compile_sources)
+        target_sources(${name} PRIVATE ${_extra_compile_sources})
+    endif()
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_link_libraries(${name} PRIVATE vivid_operator_api ${ARG_EXTRA_LIBS})
     if(ARG_CODEGEN)
@@ -238,52 +243,50 @@ add_vivid_operator(quantizer         operators/control/quantizer/quantizer.cpp  
 add_vivid_operator(macro             operators/control/macro/macro.cpp CODEGEN)
 add_vivid_operator(mseg              operators/control/mseg/mseg.cpp CODEGEN
                    FACTORY_PRESETS operators/control/mseg/factory_presets.json
-                   EXTRA_LIBS webgpu)
+                   EXTRA_LIBS webgpu
+                   EXTRA_CODEGEN_SOURCES operators/control/mseg/mseg_editor.cpp)
 target_sources(mseg PRIVATE
-    operators/control/mseg/mseg_editor.cpp
     operators/control/mseg/mseg_editor_shared.cpp)
 
 # --- Sequencer operators ---
 add_vivid_operator(sequencer         operators/control/sequencer/sequencer.cpp CODEGEN
-                   FACTORY_PRESETS operators/control/sequencer/factory_presets.json)
+                   FACTORY_PRESETS operators/control/sequencer/factory_presets.json
+                   EXTRA_CODEGEN_SOURCES operators/control/sequencer/sequencer_editor.cpp)
 target_sources(sequencer PRIVATE
-    operators/control/sequencer/sequencer_editor.cpp
     operators/control/sequencer/sequencer_editor_shared.cpp)
 add_vivid_operator(drum_sequencer    operators/control/drum_sequencer/drum_sequencer.cpp CODEGEN
                    EXTRA_LIBS webgpu
-                   EXTRA_CODEGEN_SOURCES operators/control/drum_sequencer/drum_sequencer_core.cpp)
+                   EXTRA_CODEGEN_SOURCES operators/control/drum_sequencer/drum_sequencer_core.cpp
+                                         operators/control/drum_sequencer/drum_sequencer_editor.cpp)
 target_sources(drum_sequencer PRIVATE
-    operators/control/drum_sequencer/drum_sequencer_core.cpp
-    operators/control/drum_sequencer/drum_sequencer_editor.cpp
     operators/control/drum_sequencer/drum_sequencer_editor_shared.cpp)
-add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.cpp CODEGEN)
+add_vivid_operator(pattern_seq       operators/control/pattern_seq/pattern_seq.cpp CODEGEN
+                   EXTRA_CODEGEN_SOURCES operators/control/pattern_seq/pattern_seq_editor.cpp)
 target_sources(pattern_seq PRIVATE
-    operators/control/pattern_seq/pattern_seq_editor.cpp
     operators/control/pattern_seq/pattern_seq_editor_shared.cpp)
 add_vivid_operator(note_pattern      operators/control/note_pattern/note_pattern.cpp CODEGEN    EXTRA_LIBS webgpu)
 add_vivid_operator(midi_clip         operators/control/midi_clip/midi_clip.cpp CODEGEN
-                   EXTRA_LIBS webgpu nlohmann_json::nlohmann_json midifile)
+                   EXTRA_LIBS webgpu nlohmann_json::nlohmann_json midifile
+                   EXTRA_CODEGEN_SOURCES operators/control/midi_clip/midi_clip_editor.cpp)
 target_sources(midi_clip PRIVATE
     operators/control/midi_clip/midi_clip_editor_shared.cpp
-    operators/control/midi_clip/midi_clip_editor.cpp
     src/common/midi_file.cpp)
 add_vivid_operator(note_duration     operators/control/note_duration/note_duration.cpp CODEGEN)
-add_vivid_operator(arpeggiator       operators/control/arpeggiator/arpeggiator.cpp CODEGEN     EXTRA_LIBS webgpu)
+add_vivid_operator(arpeggiator       operators/control/arpeggiator/arpeggiator.cpp CODEGEN     EXTRA_LIBS webgpu
+                   EXTRA_CODEGEN_SOURCES operators/control/arpeggiator/arpeggiator_editor.cpp)
 target_sources(arpeggiator PRIVATE
-    operators/control/arpeggiator/arpeggiator_editor.cpp
     operators/control/arpeggiator/arpeggiator_editor_shared.cpp)
 add_vivid_operator(chord_progression operators/control/chord_progression/chord_progression.cpp CODEGEN EXTRA_LIBS webgpu)
 add_vivid_operator(state_machine     operators/control/state_machine/state_machine.cpp CODEGEN)
 add_vivid_operator(tracker           operators/control/tracker/tracker.cpp CODEGEN
                    EXTRA_LIBS webgpu nlohmann_json::nlohmann_json
-                   EXTRA_CODEGEN_SOURCES operators/control/tracker/tracker_core.cpp)
+                   EXTRA_CODEGEN_SOURCES operators/control/tracker/tracker_core.cpp
+                                         operators/control/tracker/tracker_editor.cpp)
 target_sources(tracker PRIVATE
-    operators/control/tracker/tracker_core.cpp
-    operators/control/tracker/tracker_editor.cpp
     operators/control/tracker/tracker_editor_shared.cpp)
-add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp CODEGEN       EXTRA_LIBS webgpu vivid_embeddable_op_support)
+add_vivid_operator(euclidean         operators/control/euclidean/euclidean.cpp CODEGEN       EXTRA_LIBS webgpu vivid_embeddable_op_support
+                   EXTRA_CODEGEN_SOURCES operators/control/euclidean/euclidean_editor.cpp)
 target_sources(euclidean PRIVATE
-    operators/control/euclidean/euclidean_editor.cpp
     operators/control/euclidean/euclidean_editor_shared.cpp)
 add_vivid_operator(pat_transform     operators/control/pat_transform/pat_transform.cpp CODEGEN)
 add_vivid_operator(phase_to_midi     operators/control/phase_to_midi/phase_to_midi.cpp CODEGEN)

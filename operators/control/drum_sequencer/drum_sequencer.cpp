@@ -27,5 +27,4 @@ struct DrumSequencer : DrumSequencerCore, vivid::AudioProcessable {
 VIVID_DEFINE_OP(DrumSequencer) {
 }
 
-VIVID_THUMBNAIL(DrumSequencer)
 VIVID_EDITOR(DrumSequencer)
