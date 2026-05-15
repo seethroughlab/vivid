@@ -49,8 +49,9 @@ inline void draw_compact_strip_background(VividDrawAPI& d, void* o,
                                           VividColor fill,
                                           VividColor label_color,
                                           float separator_h = 1.0f) {
-    if (d.draw_rect && separator_h > 0.0f) {
-        d.draw_rect(o, strip.x, strip.y - separator_h, strip.w, separator_h, separator);
+    if (d.draw_rect) {
+        if (separator_h > 0.0f)
+            d.draw_rect(o, strip.x, strip.y - separator_h, strip.w, separator_h, separator);
         d.draw_rect(o, strip.x, strip.y, strip.w, strip.h, fill);
     }
     if (d.draw_text && label && *label) {

@@ -128,6 +128,18 @@ int main() {
     }
 
     {
+        ui::Viewport1D v{0.0, 4096.0, 0.0f, 160.0f, 0.0, 4096.0};
+        const double step = ui::timeline_grid_step_for_pixels(v, 0.25, 4.0, 3.0f);
+        check(step > 0.25, "timeline grid coarsens dense subpixel ticks");
+
+        Harness h;
+        ui::draw_timeline_grid(h.ctx.draw, h.ctx.draw.opaque,
+                               {0.0f, 0.0f, 160.0f, 80.0f},
+                               v, 0.25, 4.0, {1, 1, 1, 1});
+        check(h.rec.rects < 120, "timeline grid caps dense visible draw count");
+    }
+
+    {
         ui::Viewport1D v{0.0, 16.0, 0.0f, 160.0f, 0.0, 16.0};
         ui::RangeDragState st;
         double start = 2.0;

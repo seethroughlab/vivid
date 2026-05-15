@@ -118,13 +118,39 @@ inline void for_each_timeline_tick(VisibleRange range, double step,
     }
 }
 
+inline double timeline_grid_step_for_pixels(const Viewport1D& viewport,
+                                            double step,
+                                            double major_every,
+                                            float min_pixel_spacing = 3.0f) {
+    if (step <= 0.0) return step;
+    const double pixels_per_unit = std::fabs(viewport.pixels_per_unit());
+    if (pixels_per_unit <= 1e-12) return step;
+
+    const double requested_px = step * pixels_per_unit;
+    if (requested_px >= static_cast<double>(min_pixel_spacing)) return step;
+
+    if (major_every > step
+        && major_every * pixels_per_unit >= static_cast<double>(min_pixel_spacing)) {
+        return major_every;
+    }
+
+    const double base = (major_every > step) ? major_every : step;
+    const double base_px = base * pixels_per_unit;
+    if (base_px <= 1e-12) return step;
+    const double multiplier = std::ceil(static_cast<double>(min_pixel_spacing) / base_px);
+    return base * std::max(1.0, multiplier);
+}
+
 inline void draw_timeline_grid(VividDrawAPI& d, void* o, Rect bounds,
                                const Viewport1D& viewport,
                                double step, double major_every,
                                VividColor color,
                                float minor_alpha = 0.15f,
-                               float major_alpha = 0.4f) {
-    for_each_timeline_tick(viewport.visible_range(), step, major_every,
+                               float major_alpha = 0.4f,
+                               float min_pixel_spacing = 3.0f) {
+    const double effective_step = timeline_grid_step_for_pixels(
+        viewport, step, major_every, min_pixel_spacing);
+    for_each_timeline_tick(viewport.visible_range(), effective_step, major_every,
         [&](TimelineTick tick) {
             const float x = viewport.world_to_screen(tick.value);
             if (x < bounds.x - 1.0f || x > bounds.x + bounds.w + 1.0f) return;
