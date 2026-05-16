@@ -38,6 +38,7 @@ jobs:
           -B external-packages/vivid-wavetable/build
           -DVIVID_SRC_DIR=${{ github.workspace }}
           -DVIVID_PLUGIN_SUFFIX=.dylib
+          -DCMAKE_OSX_ARCHITECTURES=arm64
 
       - name: Build vivid-wavetable package
         run: >
