@@ -3315,19 +3315,6 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                             pending_select_crashed_node.clear();
                         }
                     }
-                    if (!test_dump_ui_state_path.empty()) {
-                        test_dump_state.final_state =
-                            vivid::capture_ui_test_observed_state(snapshot, graph_ui);
-                        test_dump_state.has_final_state = true;
-                        for (const auto& label : test_ui_script.pending_checkpoint_labels) {
-                            test_dump_state.checkpoints.push_back(
-                                vivid::UITestCheckpointState{
-                                    label,
-                                    vivid::capture_ui_test_observed_state(snapshot, graph_ui),
-                                });
-                        }
-                        test_ui_script.pending_checkpoint_labels.clear();
-                    }
                     if (interface_capture_requested) {
                         capture_coordinator.prepare_pending_interface_capture(graph_ui);
                     }
@@ -3340,6 +3327,21 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                                          screenshot_select_node.c_str());
                             screenshot_select_warned = true;
                         }
+                    }
+                    // Capture the UI state dump after screenshot-node selection so the
+                    // selection is visible in the dump (selection runs after update()).
+                    if (!test_dump_ui_state_path.empty()) {
+                        test_dump_state.final_state =
+                            vivid::capture_ui_test_observed_state(snapshot, graph_ui);
+                        test_dump_state.has_final_state = true;
+                        for (const auto& label : test_ui_script.pending_checkpoint_labels) {
+                            test_dump_state.checkpoints.push_back(
+                                vivid::UITestCheckpointState{
+                                    label,
+                                    vivid::capture_ui_test_observed_state(snapshot, graph_ui),
+                                });
+                        }
+                        test_ui_script.pending_checkpoint_labels.clear();
                     }
                 }
                 if (graph_ui.visible()) {
@@ -3382,7 +3384,13 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             }
 
             // --- Screenshot capture ---
+            // When a synthetic file drop was injected, delay the screenshot until all
+            // graph transactions (async add, graph reload) have settled.  This prevents
+            // a race where the screenshot fires before the async node-add completes,
+            // which would happen if the initial graph load consumed most of the delay.
+            const bool drop_settle_pending = synthetic_drop_injected && graph_transaction_active;
             if (!frame_already_submitted &&
+                !drop_settle_pending &&
                 try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,
                                        frame_count, screenshot_delay, window)) {
                 return true; // frame already submitted inside try_capture_screenshot
