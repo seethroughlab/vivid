@@ -251,6 +251,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void reload_if_changed() {
         if (plugin_name.str_value == last_name_) return;
+        const bool switching_plugin = !last_name_.empty();
         last_name_ = plugin_name.str_value;
 
 #ifdef __APPLE__
@@ -263,10 +264,14 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         direct_params_.str_value.clear();
         last_direct_params_.clear();
 
-        // Clear stale state so the previous plugin's state isn't applied to the new plugin.
-        // save_state() will skip while pending_ is non-null, so the post-loop will write
-        // "" to file_param_storage["plugin_state"] — preventing cross-plugin state bleed.
-        plugin_state.str_value.clear();
+        // Clear stale state only when switching from one plugin to another.
+        // On a fresh instance after a topology change, last_name_ was "" so
+        // switching_plugin is false — plugin_state holds the snapshot-restored
+        // state and must survive to be applied via the deferred setState path.
+        // When actually changing plugins, clear it to prevent cross-plugin bleed.
+        if (switching_plugin) {
+            plugin_state.str_value.clear();
+        }
 
         if (last_name_.empty()) {
             auto* old = pending_.exchange(new Vst3Handle(), std::memory_order_acq_rel);
