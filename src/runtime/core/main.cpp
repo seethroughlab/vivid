@@ -2660,6 +2660,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         if (!test_drop_path.empty() &&
             !synthetic_drop_injected &&
             graph_loaded &&
+            !async_add_coordinator.active() &&
+            !async_add_coordinator.has_result_pending() &&
+            !async_graph_load_coordinator.active() &&
+            !operator_preparation_service().has_graph_affecting_task() &&
             static_cast<int>(frame_count) >= test_drop_frame &&
             window_user_data.pending_drop_path.empty()) {
             std::filesystem::path drop_path(test_drop_path);
