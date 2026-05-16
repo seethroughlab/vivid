@@ -90,7 +90,7 @@
             midi_fixture,
             5,
             {},
-            30,
+            120,
             {"Test drop injected"},
             {
                 "Drop: failed to add",
