@@ -35,6 +35,12 @@ namespace {
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
+// Reference count per bundle path — prevents CFBundleUnloadExecutable from
+// unmapping a dylib that a second handle (e.g. from reload_for_rate_change)
+// still depends on. Only call bundle_exit/UnloadExecutable when count → 0.
+// All accesses are main-thread-only (load and destroy both happen on main).
+static std::unordered_map<std::string, int> g_vst3_bundle_refs;
+
 // ---------------------------------------------------------------------------
 // Base64 encode/decode (RFC 4648, standard alphabet)
 // ---------------------------------------------------------------------------
@@ -514,6 +520,7 @@ struct Vst3Handle {
     CFBundleRef        bundle                = nullptr;
     using BundleExitFn = bool (*)();
     BundleExitFn       bundle_exit           = nullptr;
+    std::string        bundle_path_;         // key into g_vst3_bundle_refs
 #else
     void*              library               = nullptr;
 #endif
@@ -547,8 +554,15 @@ struct Vst3Handle {
         if (component)   { component->terminate(); component->release();  component  = nullptr; }
         if (factory)     { factory->release();     factory     = nullptr; }
 #ifdef __APPLE__
-        if (bundle_exit) { bundle_exit();           bundle_exit = nullptr; }
-        if (bundle)      { CFBundleUnloadExecutable(bundle); CFRelease(bundle); bundle = nullptr; }
+        if (!bundle_path_.empty()) {
+            auto it = g_vst3_bundle_refs.find(bundle_path_);
+            if (it != g_vst3_bundle_refs.end() && --it->second <= 0) {
+                g_vst3_bundle_refs.erase(it);
+                if (bundle_exit) { bundle_exit(); bundle_exit = nullptr; }
+                if (bundle)      { CFBundleUnloadExecutable(bundle); }
+            }
+        }
+        if (bundle) { CFRelease(bundle); bundle = nullptr; }
 #else
         if (library)     { dlclose(library);        library     = nullptr; }
 #endif
@@ -1071,6 +1085,11 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
 
     vst3_cache_params(h);
     vst3_load_state(h, saved_state);
+
+#ifdef __APPLE__
+    h->bundle_path_ = b;
+    g_vst3_bundle_refs[b]++;
+#endif
 
 #undef VST3_RELEASE_BUNDLE
     return h;

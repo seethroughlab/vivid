@@ -11,8 +11,15 @@
 #include <vector>
 #include <cstring>
 #include <sys/stat.h>
+#include <unordered_map>
 
 namespace {
+
+// Reference count per binary path — prevents entry->deinit() from tearing
+// down a library's global state while a second handle (e.g. from
+// reload_for_rate_change) still depends on it. Only call deinit() when
+// count drops to 0. All accesses are main-thread-only.
+static std::unordered_map<std::string, int> g_clap_entry_refs;
 
 // ---------------------------------------------------------------------------
 // Event list — generic CLAP event queue (128 slots, 64 bytes each)
@@ -183,7 +190,15 @@ struct PluginHandle {
             plugin = nullptr;
         }
         if (entry) {
-            entry->deinit();
+            if (!path.empty()) {
+                auto it = g_clap_entry_refs.find(path);
+                if (it != g_clap_entry_refs.end() && --it->second <= 0) {
+                    g_clap_entry_refs.erase(it);
+                    entry->deinit();
+                }
+            } else {
+                entry->deinit();
+            }
             entry = nullptr;
         }
         if (library) {
