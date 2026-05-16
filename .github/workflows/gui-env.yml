@@ -79,6 +79,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gui-env-artifacts
-          path: build/.test_ui_screenshot_smoke/gui_env/artifacts
+          path: |
+            build/.test_ui_screenshot_smoke/gui_env/artifacts
+            build/.test_ui_screenshot_smoke/gui_smoke/artifacts
           if-no-files-found: ignore
           retention-days: 14

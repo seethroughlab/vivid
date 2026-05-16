@@ -2563,6 +2563,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     bool pkg_update_notice_done = false;
     bool core_update_notice_done = false;
     bool synthetic_drop_injected = false;
+    int drop_inject_attempt = 0;
     vivid::UITestDumpState test_dump_state;
     bool test_dump_write_attempted = false;
 #ifdef __APPLE__
@@ -2752,6 +2753,26 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
                     if (matches.size() == 1) {
                         mi::create_file_drop_node(graph_ui, matches.front(), path, graph_x, graph_y);
+                        // If the async add coordinator did not start (callback silently
+                        // rejected the drop — e.g. a graph transaction was in flight),
+                        // reset synthetic_drop_injected so the injection retries next frame.
+                        if (!test_drop_path.empty() && synthetic_drop_injected &&
+                            !async_add_coordinator.active() &&
+                            !async_add_coordinator.has_result_pending()) {
+                            constexpr int kMaxDropRetries = 60;
+                            if (drop_inject_attempt < kMaxDropRetries) {
+                                std::fprintf(stderr,
+                                    "[vivid] Drop: async add did not start for %s"
+                                    " — retry %d\n",
+                                    path.c_str(), drop_inject_attempt + 1);
+                                synthetic_drop_injected = false;
+                                drop_inject_attempt++;
+                            } else {
+                                std::fprintf(stderr,
+                                    "[vivid] Drop: gave up retrying %s after %d attempts\n",
+                                    path.c_str(), drop_inject_attempt);
+                            }
+                        }
                     } else {
                         std::vector<vivid::ui::FileDropChooserAction> actions;
                         actions.reserve(matches.size());

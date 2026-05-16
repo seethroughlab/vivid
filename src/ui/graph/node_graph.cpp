@@ -1492,7 +1492,13 @@ void NodeGraphUI::graph_center_position(float& gx, float& gy) const {
 
 void NodeGraphUI::open_file_drop_chooser(std::vector<FileDropChooserAction> actions,
                                          float graph_x, float graph_y) {
-    if (async_add_active_ || async_graph_load_active_) return;
+    if (async_add_active_ || async_graph_load_active_) {
+        std::fprintf(stderr,
+                     "[vivid] Drop: chooser blocked (async_add_active=%d async_graph_load_active=%d)\n",
+                     static_cast<int>(async_add_active_),
+                     static_cast<int>(async_graph_load_active_));
+        return;
+    }
     chooser_mode_ = ChooserMode::FileDrop;
     chooser_items_.clear();
     chooser_subtitles_.clear();
@@ -1763,6 +1769,8 @@ void NodeGraphUI::confirm_chooser_selection_idx(int idx) {
         std::string error;
         if (!async_add_callback_(request, error)) {
             chooser_error_ = error.empty() ? "Failed to start operator add" : error;
+            std::fprintf(stderr, "[vivid] Drop: failed to start async add — %s\n",
+                         chooser_error_.c_str());
             return;
         }
 
