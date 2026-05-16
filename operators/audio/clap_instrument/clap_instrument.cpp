@@ -119,11 +119,13 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::string      last_direct_params_;
 
     // --- Per-macro resolved CLAP param ID & range cache ---
+    // id and last_sent are atomic: audio thread reads id (acquire) and
+    // reads/writes last_sent in build_macro_events(); main thread writes both.
     struct MacroEntry {
-        clap_id id        = CLAP_INVALID_ID;
-        double  min_val   = 0.0;
-        double  max_val   = 1.0;
-        float   last_sent = -1.f;  // detect changes to avoid spamming events
+        std::atomic<clap_id> id      {CLAP_INVALID_ID};
+        double               min_val = 0.0;
+        double               max_val = 1.0;
+        std::atomic<float>   last_sent {-1.f};
     };
     MacroEntry macro_map_[8];
 
@@ -278,7 +280,10 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 #endif
 
         // Clear macro map and direct params — stale IDs must not reach the new plugin
-        for (auto& m : macro_map_) { m.id = CLAP_INVALID_ID; m.last_sent = -1.f; }
+        for (auto& m : macro_map_) {
+            m.id.store(CLAP_INVALID_ID, std::memory_order_release);
+            m.last_sent.store(-1.f, std::memory_order_relaxed);
+        }
         direct_params_.str_value.clear();
         last_direct_params_.clear();
 
@@ -328,11 +333,27 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             dlclose(lib); return nullptr;
         }
 
-        if (!entry->init(binary.c_str())) { fprintf(stderr, "[CLAPInstrument] entry->init failed\n"); dlclose(lib); return nullptr; }
+        bool first_init = (g_clap_entry_refs[binary]++ == 0);
+        if (first_init) {
+            if (!entry->init(binary.c_str())) {
+                fprintf(stderr, "[CLAPInstrument] entry->init failed\n");
+                g_clap_entry_refs.erase(binary);
+                dlclose(lib); return nullptr;
+            }
+        }
+
+        auto fail = [&]() {
+            auto it = g_clap_entry_refs.find(binary);
+            if (it != g_clap_entry_refs.end() && --it->second <= 0) {
+                g_clap_entry_refs.erase(it);
+                entry->deinit();
+            }
+            dlclose(lib);
+        };
 
         auto* factory = reinterpret_cast<const clap_plugin_factory_t*>(
             entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-        if (!factory) { fprintf(stderr, "[CLAPInstrument] no plugin factory\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!factory) { fprintf(stderr, "[CLAPInstrument] no plugin factory\n"); fail(); return nullptr; }
 
         uint32_t count = factory->get_plugin_count(factory);
         const clap_plugin_descriptor_t* desc = nullptr;
@@ -344,26 +365,26 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                 break;
             }
         }
-        if (!desc) { fprintf(stderr, "[CLAPInstrument] no matching plugin descriptor\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!desc) { fprintf(stderr, "[CLAPInstrument] no matching plugin descriptor\n"); fail(); return nullptr; }
 
         const clap_plugin_t* plugin = factory->create_plugin(factory, &host_desc_, desc->id);
-        if (!plugin) { fprintf(stderr, "[CLAPInstrument] create_plugin failed\n"); entry->deinit(); dlclose(lib); return nullptr; }
+        if (!plugin) { fprintf(stderr, "[CLAPInstrument] create_plugin failed\n"); fail(); return nullptr; }
 
         if (!plugin->init(plugin)) {
             fprintf(stderr, "[CLAPInstrument] plugin->init failed\n");
-            plugin->destroy(plugin); entry->deinit(); dlclose(lib); return nullptr;
+            plugin->destroy(plugin); fail(); return nullptr;
         }
 
         if (!plugin->activate(plugin, sample_rate_, 32, 4096)) {
             fprintf(stderr, "[CLAPInstrument] plugin->activate failed (sample_rate=%u)\n", sample_rate_);
-            plugin->destroy(plugin); entry->deinit(); dlclose(lib); return nullptr;
+            plugin->destroy(plugin); fail(); return nullptr;
         }
 
         auto* h    = new PluginHandle();
         h->library = lib;
         h->entry   = entry;
         h->plugin  = plugin;
-        h->path    = path;
+        h->path    = binary;
 
         cache_params(h);
         load_state(h);
@@ -379,12 +400,18 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
         for (int i = 0; i < 8; ++i) {
             const std::string& name = macro_id_[i]->str_value;
-            if (name.empty()) { macro_map_[i].id = CLAP_INVALID_ID; continue; }
-            if (macro_map_[i].id != CLAP_INVALID_ID) continue;
+            if (name.empty()) {
+                macro_map_[i].id.store(CLAP_INVALID_ID, std::memory_order_release);
+                continue;
+            }
+            if (macro_map_[i].id.load(std::memory_order_relaxed) != CLAP_INVALID_ID) continue;
 
             for (auto& p : act->params) {
                 if (std::strncmp(p.name, name.c_str(), CLAP_NAME_SIZE) == 0) {
-                    macro_map_[i] = { p.id, p.min_val, p.max_val, -1.f };
+                    macro_map_[i].min_val = p.min_val;
+                    macro_map_[i].max_val = p.max_val;
+                    macro_map_[i].last_sent.store(-1.f, std::memory_order_relaxed);
+                    macro_map_[i].id.store(p.id, std::memory_order_release);
                     break;
                 }
             }
@@ -551,16 +578,18 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             macro_4.value, macro_5.value, macro_6.value, macro_7.value,
         };
         for (int i = 0; i < 8; ++i) {
-            if (macro_map_[i].id == CLAP_INVALID_ID) continue;
-            if (std::fabs(vals[i] - macro_map_[i].last_sent) < 1e-6f) continue;
-            macro_map_[i].last_sent = vals[i];
+            auto id = macro_map_[i].id.load(std::memory_order_acquire);
+            if (id == CLAP_INVALID_ID) continue;
+            float prev = macro_map_[i].last_sent.load(std::memory_order_relaxed);
+            if (std::fabs(vals[i] - prev) < 1e-6f) continue;
+            macro_map_[i].last_sent.store(vals[i], std::memory_order_relaxed);
 
             double scaled = macro_map_[i].min_val +
                 static_cast<double>(vals[i]) * (macro_map_[i].max_val - macro_map_[i].min_val);
 
             clap_event_param_value_t e{};
             e.header     = { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
-            e.param_id   = macro_map_[i].id;
+            e.param_id   = id;
             e.cookie     = nullptr;
             e.note_id    = -1;  e.port_index = -1;  e.channel = -1;  e.key = -1;
             e.value      = scaled;

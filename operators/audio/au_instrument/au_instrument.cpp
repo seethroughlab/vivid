@@ -100,17 +100,22 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     // --- State ---
     std::string last_name_;
-    uint32_t    sample_rate_ = 48000;
-    bool        state_dirty_ = false;
-    uint64_t    steady_sample_ = 0;
+    uint32_t    sample_rate_       = 48000;
+    uint32_t    loaded_rate_       = 0;
+    std::atomic<uint32_t> audio_rate_seen_ {0};
+    bool        state_dirty_       = false;
+    uint32_t    save_state_frame_  = 0;
+    uint64_t    steady_sample_     = 0;
 
     // --- Per-macro resolved AU param ID & range cache ---
+    // id and last_sent are atomic: audio thread reads id (acquire) and
+    // reads/writes last_sent in send_macro_params(); main thread writes both.
     struct MacroEntry {
-        AudioUnitParameterID id        = kAUInvalidParamID;
-        float                min_val   = 0.f;
-        float                max_val   = 1.f;
-        float                last_sent = -1.f;
-        char                 units[32] = {};
+        std::atomic<AudioUnitParameterID> id   {kAUInvalidParamID};
+        float                             min_val   = 0.f;
+        float                             max_val   = 1.f;
+        std::atomic<float>                last_sent {-1.f};
+        char                              units[32] = {};
     };
     MacroEntry macro_map_[8];
 
@@ -158,7 +163,10 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::display_hint(au_params_,     VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(direct_params_, VIVID_DISPLAY_HIDDEN);
 
-        for (auto& m : macro_map_) { m.id = kAUInvalidParamID; m.last_sent = -1.f; }
+        for (auto& m : macro_map_) {
+            m.id.store(kAUInvalidParamID, std::memory_order_release);
+            m.last_sent.store(-1.f, std::memory_order_relaxed);
+        }
     }
 
     ~AUInstrument() {
@@ -186,12 +194,28 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         delete dead;
         delete dead2;
 
+        // Reload at the correct sample rate if the audio thread observed a mismatch.
+        // AU has no performEdit/mark_dirty callbacks, so we also use a periodic
+        // save_state() fallback (~1 min) to capture GUI-driven parameter changes.
+        {
+            uint32_t seen = audio_rate_seen_.load(std::memory_order_acquire);
+            if (seen > 0 && seen != loaded_rate_ && !last_name_.empty()) {
+                sample_rate_ = seen;
+                reload_for_rate_change();
+            }
+        }
+
         reload_if_changed();
         update_macro_map();
         refresh_au_params_json();
         process_direct_params();
 
-        if (state_dirty_) save_state();
+        if (!state_dirty_ && ++save_state_frame_ < 3600) {
+            // skip
+        } else {
+            save_state_frame_ = 0;
+            save_state();
+        }
     }
 
     void reload_if_changed() {
@@ -199,7 +223,10 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         last_name_ = plugin_name.str_value;
 
         // Reset macro map — will be resolved after new plugin loads
-        for (auto& m : macro_map_) { m.id = kAUInvalidParamID; m.last_sent = -1.f; }
+        for (auto& m : macro_map_) {
+            m.id.store(kAUInvalidParamID, std::memory_order_release);
+            m.last_sent.store(-1.f, std::memory_order_relaxed);
+        }
         direct_params_.str_value.clear();
         last_direct_params_.clear();
 
@@ -212,8 +239,23 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
         AUHandle* h = au_load_plugin(last_name_, sample_rate_, &transport_state_,
                                       plugin_state.str_value);
-        if (!h) return;
+        if (!h) {
+            fprintf(stderr, "[AUInstrument] failed to load plugin '%s'\n", last_name_.c_str());
+            return;
+        }
 
+        loaded_rate_ = sample_rate_;
+        auto* old = pending_.exchange(h, std::memory_order_acq_rel);
+        delete old;
+        state_dirty_ = true;
+    }
+
+    void reload_for_rate_change() {
+        if (last_name_.empty()) return;
+        AUHandle* h = au_load_plugin(last_name_, sample_rate_, &transport_state_,
+                                      plugin_state.str_value);
+        if (!h) return;
+        loaded_rate_ = sample_rate_;
         auto* old = pending_.exchange(h, std::memory_order_acq_rel);
         delete old;
         state_dirty_ = true;
@@ -225,17 +267,23 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
         for (int i = 0; i < 8; ++i) {
             const std::string& name = macro_id_[i]->str_value;
-            if (name.empty())                               { macro_map_[i].id = kAUInvalidParamID; continue; }
-            if (macro_map_[i].id != kAUInvalidParamID)     continue; // already resolved
+            if (name.empty()) {
+                macro_map_[i].id.store(kAUInvalidParamID, std::memory_order_release);
+                continue;
+            }
+            if (macro_map_[i].id.load(std::memory_order_relaxed) != kAUInvalidParamID)
+                continue; // already resolved
 
             for (const auto& p : act->params) {
                 if (name == p.name) {
-                    macro_map_[i].id        = p.id;
-                    macro_map_[i].min_val   = p.min_val;
-                    macro_map_[i].max_val   = p.max_val;
-                    macro_map_[i].last_sent = -1.f;
+                    // Write min/max/units before id so the audio thread's acquire-load
+                    // on id also acquires visibility of min/max/units.
+                    macro_map_[i].min_val = p.min_val;
+                    macro_map_[i].max_val = p.max_val;
+                    macro_map_[i].last_sent.store(-1.f, std::memory_order_relaxed);
                     std::strncpy(macro_map_[i].units, p.units, 31);
                     macro_map_[i].units[31] = '\0';
+                    macro_map_[i].id.store(p.id, std::memory_order_release);
                     break;
                 }
             }
@@ -275,6 +323,7 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void process_audio(const VividAudioContext* ctx) override {
         sample_rate_ = ctx->sample_rate;
+        audio_rate_seen_.store(ctx->sample_rate, std::memory_order_relaxed);
 
         // Update transport state before render (callbacks read these during AudioUnitRender)
         const double bpm   = ctx->metronome_bpm > 0.f ? ctx->metronome_bpm : 120.0;
@@ -380,13 +429,15 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             macro_4.value, macro_5.value, macro_6.value, macro_7.value,
         };
         for (int i = 0; i < 8; ++i) {
-            if (macro_map_[i].id == kAUInvalidParamID) continue;
-            if (std::fabs(vals[i] - macro_map_[i].last_sent) < 1e-6f) continue;
-            macro_map_[i].last_sent = vals[i];
+            auto id = macro_map_[i].id.load(std::memory_order_acquire);
+            if (id == kAUInvalidParamID) continue;
+            float prev = macro_map_[i].last_sent.load(std::memory_order_relaxed);
+            if (std::fabs(vals[i] - prev) < 1e-6f) continue;
+            macro_map_[i].last_sent.store(vals[i], std::memory_order_relaxed);
 
             float scaled = macro_map_[i].min_val +
                 vals[i] * (macro_map_[i].max_val - macro_map_[i].min_val);
-            AudioUnitSetParameter(act->au, macro_map_[i].id,
+            AudioUnitSetParameter(act->au, id,
                                    kAudioUnitScope_Global, 0, scaled, 0);
         }
 
