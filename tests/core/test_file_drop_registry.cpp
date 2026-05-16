@@ -29,7 +29,7 @@ int main() {
     drops.refresh(registry);
 
     auto handlers = drops.all_registered_handlers();
-    check(handlers.size() == 4, "invalid file-drop registration filtered out");
+    check(handlers.size() == 3, "invalid file-drop registration filtered out");
 
     auto matches = drops.matches_for_path((sandbox / "example.DROPX").string());
     check(matches.size() == 2, "extension match is case-insensitive");

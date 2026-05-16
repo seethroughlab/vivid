@@ -2819,6 +2819,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
                 command_sink.capture_external_undo_snapshot();
                 graph_ui.notify_async_add_success(added_node_id);
             } else {
+                std::fprintf(stderr, "[vivid] Drop: async add failed — %s\n",
+                             async_add_result.user_message.c_str());
                 graph_ui.notify_async_add_failure(async_add_result.user_message);
             }
         } else if (async_add_coordinator.active()) {
