@@ -283,6 +283,7 @@ public:
             opt.node = node.node_id;
             for (const auto& param : node.op_info->params) {
                 if (param.display_hint == VIVID_DISPLAY_HIDDEN) continue;
+                if (param.display_hint == VIVID_DISPLAY_EDITOR) continue;
                 opt.params.push_back(param.name);
             }
             if (!opt.params.empty())

@@ -142,6 +142,7 @@ inline const char* display_hint_str(VividDisplayHint hint) {
         case VIVID_DISPLAY_LFO:      return "lfo";
         case VIVID_DISPLAY_STEP_SEQ: return "step_seq";
         case VIVID_DISPLAY_HIDDEN:   return "hidden";
+        case VIVID_DISPLAY_EDITOR:   return "editor";
         default: return "unknown";
     }
 }

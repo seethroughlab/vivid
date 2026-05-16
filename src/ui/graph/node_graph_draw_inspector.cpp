@@ -397,7 +397,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     bool has_visible_standard_params = false;
     if (sel_node->op_info) {
         for (const auto& pd : sel_node->op_info->params) {
-            if (pd.display_hint != VIVID_DISPLAY_HIDDEN) {
+            if (pd.display_hint != VIVID_DISPLAY_HIDDEN &&
+                pd.display_hint != VIVID_DISPLAY_EDITOR) {
                 has_visible_standard_params = true;
                 break;
             }

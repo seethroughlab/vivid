@@ -171,6 +171,12 @@ Param<T>& display_hint(Param<T>& p, VividDisplayHint hint) {
 }
 
 template<typename T>
+Param<T>& editor_only(Param<T>& p) {
+    p.display_hint = VIVID_DISPLAY_EDITOR;
+    return p;
+}
+
+template<typename T>
 Param<T>& param_widget(Param<T>& p, const char* widget_id, uint32_t widget_span) {
     p.widget_id = widget_id;
     p.widget_span = widget_span;

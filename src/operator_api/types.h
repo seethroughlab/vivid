@@ -43,6 +43,7 @@ typedef uint32_t VividDisplayHint;
 #define VIVID_DISPLAY_ADSR     5u  // ADSR envelope editor (4 consecutive params: A, D, S, R)
 #define VIVID_DISPLAY_LFO      6u  // LFO waveform preview + enum selector (single enum param)
 #define VIVID_DISPLAY_STEP_SEQ 7u  // step sequencer grid (run: count + values [+ gates])
+#define VIVID_DISPLAY_EDITOR   8u  // editor-setting: not a modulation target; hidden from inspector but accessible via MCP/API
 
 typedef uint32_t VividParamVisibilityOp;
 #define VIVID_PARAM_VIS_ALWAYS 0u  // always show the param
