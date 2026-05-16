@@ -3874,7 +3874,7 @@ async def capture_note_response(midi_node_id: str,
     metrics (rms, fundamental_hz, dc_offset, ...).
 
     The named node must export the optional `vivid_op_inject_midi` symbol
-    (currently MidiInput, Arpeggiator, MidiClip, and legacy MidiFilePlayer).
+    (currently MidiInput, Arpeggiator, and MidiClip).
 
     Args:
         midi_node_id: Node id of a MidiInput-style operator.

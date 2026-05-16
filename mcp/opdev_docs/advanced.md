@@ -96,9 +96,8 @@ Type safety: `VIVID_DECLARE_CUSTOM_*_TYPE(...)` gives the type a stable namespac
 
 Inside the graph every note stream uses `VividNoteBuffer` — a buffer of
 timestamped per-note events keyed by stable `note_id`. External MIDI 1.0 and
-MPE live at the I/O boundary (`MidiInput`, `MidiClip`, and legacy
-`MidiFilePlayer`); inside the graph everything speaks this native protocol.
-Prefer `MidiClip` for MIDI file playback.
+MPE live at the I/O boundary (`MidiInput` and `MidiClip`); inside the graph
+everything speaks this native protocol. Use `MidiClip` for MIDI file playback.
 
 ```cpp
 #include "operator_api/note_types.h"

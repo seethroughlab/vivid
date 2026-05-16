@@ -230,7 +230,7 @@ int main(int argc, char* argv[]) {
         // process_audio_for_test as fast as it can), the cross-cadence
         // bridge timing is fragile — the tap usually contains silence by
         // the time the capture window closes. The inject *path* is
-        // verified by test_arpeggiator_inject and test_midi_file_player_inject;
+        // verified by test_arpeggiator_inject and test_midi_clip;
         // librosa pipeline correctness by test_audio_analysis. This test
         // just proves the C++ orchestration returns a well-formed response.
         vivid::NoteWindowRequest req;

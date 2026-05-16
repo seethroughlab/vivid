@@ -134,17 +134,6 @@ add_dependencies(test_arpeggiator_inject arpeggiator)
 add_test(NAME test_arpeggiator_inject COMMAND test_arpeggiator_inject ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# MidiFilePlayer MIDI-inject smoke — verifies the inject path emits NOTE_ON
-# into notes_out (custom_outputs[0]) even when no .mid file is loaded, and
-# that matched NOTE_OFFs reference the same note_id.
-add_executable(test_midi_file_player_inject
-    tests/operators/test_midi_file_player_inject.cpp
-)
-target_include_directories(test_midi_file_player_inject PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
-target_link_libraries(test_midi_file_player_inject PRIVATE vivid_runtime_testlib vivid_operator_api)
-add_dependencies(test_midi_file_player_inject midi_file_player)
-add_test(NAME test_midi_file_player_inject COMMAND test_midi_file_player_inject ${CMAKE_BINARY_DIR}
-    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Envelope poly release persistence — NoteBreakout drops released notes from
 # current lanes, but EnvelopeAu should keep rendering release tails for the
@@ -522,7 +511,7 @@ add_executable(test_file_drop_registry
 )
 target_include_directories(test_file_drop_registry PRIVATE src tests)
 target_link_libraries(test_file_drop_registry PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
-add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_file_player midi_clip)
+add_dependencies(test_file_drop_registry file_drop_test_op file_drop_test_op_alt file_drop_bad_param_op midi_clip)
 add_test(NAME test_file_drop_registry COMMAND test_file_drop_registry WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_file_parser
@@ -534,13 +523,6 @@ target_compile_definitions(test_midi_file_parser PRIVATE "VIVID_SOURCE_DIR=\"${C
 target_link_libraries(test_midi_file_parser PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
 add_test(NAME test_midi_file_parser COMMAND test_midi_file_parser WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-add_executable(test_midi_file_player
-    tests/audio/test_midi_file_player.cpp
-    src/common/midi_file.cpp
-)
-target_include_directories(test_midi_file_player PRIVATE src tests operators operators/shared/sequencer)
-target_link_libraries(test_midi_file_player PRIVATE vivid_runtime_testlib vivid_operator_api midifile)
-add_test(NAME test_midi_file_player COMMAND test_midi_file_player WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_midi_clip
     tests/audio/test_midi_clip.cpp

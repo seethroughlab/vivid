@@ -126,7 +126,6 @@ Current seed examples:
 - core:
   - `TextureLoader` handles `.png`, `.jpg`, `.jpeg`
   - `MidiClip` handles `.mid`, `.midi` as the canonical file-backed MIDI player/editor
-  - `MidiFilePlayer` remains available for older graphs and legacy workflows
 - sibling package:
   - `MeshImport` in `vivid-3d` handles `.glb`, `.gltf`, `.obj`
   - `Sampler` / `Slicer` in `vivid-sampler` handle `.wav`

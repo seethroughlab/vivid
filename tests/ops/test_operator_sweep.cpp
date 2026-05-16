@@ -164,7 +164,7 @@ static const std::unordered_set<std::string>& always_skip() {
 static const std::unordered_set<std::string>& resource_skip() {
     static const std::unordered_set<std::string> s = {
         "movie_file",
-        "midi_input", "midi_file_player",
+        "midi_input",
         "syphon_in", "syphon_out",
         "keyboard", "mouse",
         "mic_input",

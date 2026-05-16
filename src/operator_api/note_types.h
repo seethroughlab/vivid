@@ -16,9 +16,8 @@ extern "C" {
 // Re-triggering the same MIDI pitch produces a fresh `note_id` — so legato
 // retriggers and same-pitch overlap allocate distinct synth voices.
 //
-// External MIDI 1.0 and MPE live at the I/O boundary (MidiInput,
-// MidiFilePlayer, future MpeOutput). Inside the graph everything speaks
-// VividNoteBuffer.
+// External MIDI 1.0 and MPE live at the I/O boundary (MidiInput, MidiClip,
+// future MpeOutput). Inside the graph everything speaks VividNoteBuffer.
 //
 // See docs/plans/midi-native-protocol/phase-1-wire-format.md for the full
 // design and migration plan.

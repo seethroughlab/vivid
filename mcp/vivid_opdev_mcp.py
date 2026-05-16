@@ -224,7 +224,7 @@ CAPABILITY_GUIDANCE = {
         ),
     },
     "midi": {
-        "explanation": "Native note transport. Note streams between operators inside the graph use VividNoteBuffer (a buffer of timestamped per-note events keyed by uint64 note_id, carrying NOTE_ON/OFF plus PITCH_BEND/PRESSURE/TIMBRE expression). External MIDI 1.0 / MPE wire data is parsed at the I/O boundary (MidiInput, MidiClip, and legacy MidiFilePlayer) and translated into this internal protocol. Prefer MidiClip for MIDI file playback.",
+        "explanation": "Native note transport. Note streams between operators inside the graph use VividNoteBuffer (a buffer of timestamped per-note events keyed by uint64 note_id, carrying NOTE_ON/OFF plus PITCH_BEND/PRESSURE/TIMBRE expression). External MIDI 1.0 / MPE wire data is parsed at the I/O boundary (MidiInput and MidiClip) and translated into this internal protocol. Use MidiClip for MIDI file playback.",
         "doc_topic": "advanced",
         "example_operators": [
             {"env": "control", "name": "midi_input"},

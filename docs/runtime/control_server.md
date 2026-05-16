@@ -88,7 +88,7 @@ All requests are POSTs. The URL path is the method name (e.g. `POST /add_node`).
 
 - `MidiInput` — drains injected bytes alongside its real RtMidi stream.
 - `Arpeggiator` — drains and merges injected events with its `notes_in` wire so the arp pattern fires off injected chords.
-- `MidiFilePlayer` — drains and emits via the same `notes_out` buffer the file-playback path uses, so injected notes appear interleaved with file events. Works even when no `.mid` is loaded.
+- `MidiClip` — drains and emits via the same `notes_out` buffer the file-playback path uses, so injected notes appear interleaved with file events. Works even when no `.mid` is loaded.
 
 Operators that *generate* notes from internal state (Sequencer, NotePattern, ChordProgression, DrumSequencer) deliberately do not implement inject — their job is to emit, not relay. Wire a `MidiInput` (or one of the inject-supporting operators above) into the synth's `notes_in` to drive it from MCP debug tools.
 

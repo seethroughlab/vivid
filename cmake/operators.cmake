@@ -689,30 +689,6 @@ foreach(_samp_op sp404 sampler slicer)
         ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 
-vivid_codegen_for(midi_file_player operators/audio/midi_file_player/midi_file_player.cpp)
-add_library(midi_file_player MODULE
-    ${VIVID_CODEGEN_OUTPUT_midi_file_player}
-    src/common/midi_file.cpp
-)
-target_link_libraries(midi_file_player PRIVATE vivid_operator_api midifile)
-target_include_directories(midi_file_player PRIVATE
-    ${CMAKE_SOURCE_DIR}/operators/shared/sequencer
-    ${CMAKE_CURRENT_BINARY_DIR}
-)
-set_target_properties(midi_file_player PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-if(APPLE)
-    add_custom_command(TARGET midi_file_player POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory
-            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:midi_file_player>
-            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
-        COMMENT "Updating midi_file_player in Vivid.app bundle"
-    )
-endif()
-set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-    "  \"midi_file_player\": { \"sources\": [\"operators/audio/midi_file_player/midi_file_player.cpp\", \"src/common/midi_file.cpp\"], \"extra_libs\": [\"midifile\"] }")
-set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS midi_file_player)
 
 # --- Operators meta-target (for package smoke CI: builds all operator dylibs without the app) ---
 get_property(_vivid_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)

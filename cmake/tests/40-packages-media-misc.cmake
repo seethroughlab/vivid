@@ -83,7 +83,7 @@ add_executable(test_audio_capture_smoke
 target_include_directories(test_audio_capture_smoke PRIVATE src tests)
 target_link_libraries(test_audio_capture_smoke PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu rtmidi)
-add_dependencies(test_audio_capture_smoke arpeggiator midi_input midi_file_player)
+add_dependencies(test_audio_capture_smoke arpeggiator midi_input)
 add_test(NAME test_audio_capture_smoke
     COMMAND test_audio_capture_smoke ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})

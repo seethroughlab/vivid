@@ -17,8 +17,6 @@ int main() {
                   fs::copy_options::overwrite_existing);
     fs::copy_file("file_drop_bad_param_op.dylib", staging / "file_drop_bad_param_op.dylib",
                   fs::copy_options::overwrite_existing);
-    fs::copy_file("midi_file_player.dylib", staging / "midi_file_player.dylib",
-                  fs::copy_options::overwrite_existing);
     fs::copy_file("midi_clip.dylib", staging / "midi_clip.dylib",
                   fs::copy_options::overwrite_existing);
 

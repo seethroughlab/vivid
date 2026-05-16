@@ -6,7 +6,7 @@
 // Note-id allocator for native note emitters.
 //
 // Every emitter (Tracker, NotePattern, Sequencer, Arpeggiator, Euclidean,
-// DrumSequencer, MidiInput, MidiFilePlayer, ...) calls next_note_id() at
+// DrumSequencer, MidiInput, MidiClip, ...) calls next_note_id() at
 // each note-on to obtain a stable identity for that note. The id follows
 // the note across all expression updates and the matching note-off.
 //

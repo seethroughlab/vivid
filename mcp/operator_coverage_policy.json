@@ -1,17 +1,11 @@
 {
-  "legacy_operators": [
-    "MidiFilePlayer"
-  ],
-  "preferred_replacements": {
-    "MidiFilePlayer": "MidiClip",
-    "midi_file_player": "midi_clip"
-  },
+  "legacy_operators": [],
+  "preferred_replacements": {},
   "allowed_missing_docs": [
     "DrumKit",
     "Envelope",
     "Gate",
     "Macro",
-    "MidiFilePlayer",
     "Mseg",
     "PhaseToMidi",
     "SampleHold",
@@ -22,9 +16,6 @@
   "capability_expectations": {
     "midi_file_playback": {
       "preferred": "MidiClip",
-      "legacy": [
-        "MidiFilePlayer"
-      ],
       "mcp_terms": [
         "MidiClip",
         "midi_clip"
