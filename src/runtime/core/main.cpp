@@ -3386,9 +3386,13 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             // --- Screenshot capture ---
             // When a synthetic file drop was injected, delay the screenshot until all
             // graph transactions (async add, graph reload) have settled.  This prevents
-            // a race where the screenshot fires before the async node-add completes,
-            // which would happen if the initial graph load consumed most of the delay.
-            const bool drop_settle_pending = synthetic_drop_injected && graph_transaction_active;
+            // a race where the screenshot fires before the async node-add completes.
+            // We must also check has_result_pending(): the worker clears active_ after
+            // setting completed_, so there is a window where active_=false but the
+            // result has not yet been taken and adopted by the main thread.
+            const bool drop_settle_pending =
+                synthetic_drop_injected &&
+                (graph_transaction_active || async_add_coordinator.has_result_pending());
             if (!frame_already_submitted &&
                 !drop_settle_pending &&
                 try_capture_screenshot(screenshot_path, gpu, frame, fb_width, fb_height,

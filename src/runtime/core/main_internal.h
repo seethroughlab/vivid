@@ -108,6 +108,10 @@ public:
                std::string& error);
 
     bool active() const { return active_; }
+    // True if the worker finished but take_completed() hasn't been called yet.
+    // The window where active_=false but completed_=true is a race that the
+    // drop-settle screenshot guard must also block on.
+    bool has_result_pending() const { return completed_; }
     Stage stage() const { return stage_; }
     bool take_completed(AsyncAddPreparedResult& out);
 
