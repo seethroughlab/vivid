@@ -58,6 +58,8 @@ struct MidiClipCore : vivid::OperatorBase {
         vivid::description(loop, "Loop the MIDI file when it reaches the end");
         vivid::description(transpose, "Shift all notes up or down in semitones (-48 to +48)");
         vivid::description(velocity_scale, "Scale note velocities (1 = original, 0 = silent)");
+        vivid::editor_only(quantize_grid);  // piano-roll snap grid — no effect on audio output
+        vivid::editor_only(length_bars);    // clip length set via editor/file import, not a modulation target
         pattern_data.display_hint    = VIVID_DISPLAY_HIDDEN;
         midi_import.display_hint     = VIVID_DISPLAY_HIDDEN;
         playback_pos_.display_hint   = VIVID_DISPLAY_HIDDEN;
