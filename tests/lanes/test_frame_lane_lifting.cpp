@@ -56,6 +56,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "LoopBased strategy assignment");
 
         auto* op = runtime.compiled_graph()->find_node("op");
         check(op != nullptr, "op node found");
@@ -80,6 +81,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "per-lane output");
 
         runtime.tick(0.0, 1.0 / 60.0, 0);
 
@@ -115,6 +117,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "per-lane state persistence");
 
         // Run 3 ticks
         for (int t = 0; t < 3; ++t)
@@ -152,6 +155,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "identity lane_ids on frame path");
 
         auto* op_node = runtime.compiled_graph()->find_node("op");
         check(op_node != nullptr, "op node found");

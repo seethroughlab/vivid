@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
         std::fprintf(stderr, "\nResults: %d failed\n", failures);
         return 1;
     }
+    check_graph_clean(runtime.compiled_graph(), "tracker expression demo");
     runtime.reset_live_metronome(graph.metronome(), 0.0);
 
     // No missing-operator placeholders — the wavetable package must resolve.

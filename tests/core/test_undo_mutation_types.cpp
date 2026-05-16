@@ -1,4 +1,5 @@
 #include "runtime/operators/operator_registry.h"
+#include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/core/runtime_core.h"
 #include "runtime/audio/audio_engine.h"
@@ -55,6 +56,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "undo mutation types initial build");
 
     vivid::AudioEngine audio_engine;
     vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
@@ -238,6 +240,7 @@ int main(int argc, char* argv[]) {
   ]
 })"), "load graph for uninstall undo test");
         check(runtime.build(graph, registry), "rebuild runtime for uninstall undo test");
+        check_graph_clean(runtime.compiled_graph(), "uninstall undo rebuild");
         sink.reset_undo_history();
         sink.set_param("a", "scale", 12.0f);
         check(graph.find_node("a")->params["scale"] == 12.0f, "post-reset mutation applied");

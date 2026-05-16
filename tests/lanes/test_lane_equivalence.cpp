@@ -73,6 +73,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "LoopBased strategy assignment");
 
         auto* slew = runtime.compiled_graph()->find_node("slew");
         check(slew != nullptr, "slew node found");
@@ -102,6 +103,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "per-lane independent slew output");
 
         vivid::AudioEngine audio_engine;
         check(audio_engine.build(runtime), "audio_engine.build()");
@@ -185,6 +187,7 @@ int main(int argc, char* argv[]) {
 
             vivid::RuntimeCore runtime;
             check(runtime.build(graph, registry), "IPL: runtime.build()");
+            check_graph_clean(runtime.compiled_graph(), "IPL: InstancePerLane graph");
 
             auto* slew = runtime.compiled_graph()->find_node("slew");
             check(slew != nullptr, "IPL: slew found");
@@ -230,6 +233,7 @@ int main(int argc, char* argv[]) {
 
             vivid::RuntimeCore runtime;
             check(runtime.build(graph, registry), "LB: runtime.build()");
+            check_graph_clean(runtime.compiled_graph(), "LB: LoopBased graph");
 
             auto* dc_node = runtime.compiled_graph()->find_node("dc");
             auto* slew = runtime.compiled_graph()->find_node("slew");

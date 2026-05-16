@@ -101,6 +101,17 @@ struct ScopedEnvVar {
     ScopedEnvVar& operator=(const ScopedEnvVar&) = delete;
 };
 
+template<typename CG>
+static void check_graph_clean(const CG* cg, const char* ctx = "graph") {
+    if (!cg) return;
+    for (const auto& dc : cg->dropped_connections)
+        std::fprintf(stderr, "  dropped [%s]: %s/%s → %s/%s: %s\n",
+            ctx, dc.from_node.c_str(), dc.from_port.c_str(),
+            dc.to_node.c_str(), dc.to_port.c_str(), dc.reason.c_str());
+    check(cg->dropped_connections.empty(),
+          (std::string(ctx) + ": no dropped connections").c_str());
+}
+
 inline int find_free_loopback_port() {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return 0;

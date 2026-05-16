@@ -1,5 +1,6 @@
 #include "operator_api/types.h"
 #include "runtime/audio/audio_engine.h"
+#include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/core/runtime_core.h"
@@ -66,6 +67,7 @@ static void test_audio_scalar_routing(const std::string& build_dir) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "scalar port direct edge");
 
     bool found_direct = false;
     for (const auto& edge : runtime.compiled_graph()->edges) {

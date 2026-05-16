@@ -1,4 +1,5 @@
 #include "runtime/operators/builtin_operators.h"
+#include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/control/runtime_api.h"
@@ -73,6 +74,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "runtime stress");
     std::fprintf(stderr, "[runtime_stress] runtime built\n");
 
     vivid::AudioEngine audio_engine;

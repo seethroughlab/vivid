@@ -67,6 +67,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "lane compaction");
 
     // Verify tracker is LoopBased
     auto* src_node = runtime.compiled_graph()->find_node("src");

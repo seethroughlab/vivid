@@ -64,6 +64,7 @@ static void scenario_param_responsiveness(vivid::OperatorRegistry& registry) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "s1: runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "s1: param responsiveness");
 
     // Warm-up tick
     runtime.tick(0.0, 0.016, 0);
@@ -104,6 +105,7 @@ static void scenario_routing_responsiveness(vivid::OperatorRegistry& registry) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "s2: runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "s2: routing responsiveness");
     vivid::AudioEngine audio_engine;
     vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 
@@ -158,6 +160,7 @@ static void scenario_hot_reload(const std::string& build_dir) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, audio_registry), "s3: runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "s3: hot reload");
 
     vivid::AudioEngine audio_engine;
     check(audio_engine.build(runtime), "s3: audio_engine.build()");
@@ -210,6 +213,7 @@ static void scenario_introspection_refresh(vivid::OperatorRegistry& registry) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "s4: runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "s4: introspection refresh");
     vivid::AudioEngine audio_engine;
     vivid::RuntimeAPI api(graph, runtime, audio_engine, registry);
 

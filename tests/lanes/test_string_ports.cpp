@@ -33,6 +33,7 @@ int main() {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(g, registry), "build string graph succeeds");
+        check_graph_clean(runtime.compiled_graph(), "string ports");
         runtime.tick(0.0, 0.016, 0);
 
         auto* sink = runtime.compiled_graph()->find_node("sink");

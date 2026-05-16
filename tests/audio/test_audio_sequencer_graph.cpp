@@ -112,6 +112,7 @@ int main(int argc, char* argv[]) {
     runtime.set_audio_buffer_size(512);
     bool build_ok = runtime.build(graph, registry);
     check(build_ok, "Runtime built");
+    check_graph_clean(runtime.compiled_graph(), "sequencer graph");
 
     // Build audio engine
     vivid::AudioEngine audio;
@@ -268,6 +269,7 @@ int main(int argc, char* argv[]) {
         drum_runtime.set_audio_buffer_size(512);
         bool drum_build_ok = drum_runtime.build(drum_graph, registry);
         check(drum_build_ok, "Drum runtime built");
+        check_graph_clean(drum_runtime.compiled_graph(), "drum sequencer graph");
 
         vivid::AudioEngine drum_audio;
         bool drum_audio_ok = drum_audio.build(drum_runtime);

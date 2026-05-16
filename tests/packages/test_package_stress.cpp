@@ -111,6 +111,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build() with linked package");
+    check_graph_clean(runtime.compiled_graph(), "package stress linked build");
     vivid::AudioEngine audio_engine;
     bool has_gpu_ops = false;
     bool has_audio = false;

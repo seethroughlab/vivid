@@ -40,6 +40,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "lane bridge snapshot");
 
     vivid::AudioEngine audio_engine;
 

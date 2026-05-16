@@ -53,6 +53,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "256-lane frame lifting");
 
         auto* op = runtime.compiled_graph()->find_node("op");
         if (op) {
@@ -92,6 +93,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "512-lane frame lifting");
 
         runtime.tick(0.0, 1.0 / 60.0, 0);
 
@@ -133,6 +135,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "FFT-derived per-bin lane processing");
 
         // Verify FFTAnalysis is STRUCTURAL
         auto* fft_node = runtime.compiled_graph()->find_node("fft");

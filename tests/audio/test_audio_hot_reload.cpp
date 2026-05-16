@@ -1,6 +1,7 @@
 #include "runtime/audio/audio_engine.h"
 
 #include "runtime/operators/builtin_operators.h"
+#include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/core/runtime_core.h"
@@ -50,6 +51,7 @@ int main(int argc, char* argv[]) {
     vivid::RuntimeCore runtime;
     runtime.set_audio_buffer_size(512);
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "audio hot reload");
 
     vivid::AudioEngine audio_engine;
     check(audio_engine.build(runtime), "audio_engine.build()");

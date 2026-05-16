@@ -879,6 +879,116 @@ static void test_prepare_instance_assets_reload(const std::string& build_dir) {
 }
 
 // ---------------------------------------------------------------------------
+// Tests: dropped connections — missing node, missing port
+// ---------------------------------------------------------------------------
+
+static void test_dropped_missing_source_node() {
+    std::fprintf(stderr, "\n--- dropped: connection from missing source node ---\n");
+    vivid::Graph g;
+    g.add_node("dst", "UnknownDst");
+    g.add_connection("ghost", "out", "dst", "in");
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with missing source node");
+    if (cg) {
+        check(cg->dropped_connections.size() == 1, "one dropped connection");
+        if (!cg->dropped_connections.empty()) {
+            const auto& dc = cg->dropped_connections[0];
+            check(dc.from_node == "ghost", "from_node is ghost");
+            check(dc.reason.find("not found") != std::string::npos, "reason mentions not found");
+        }
+    }
+}
+
+static void test_dropped_missing_destination_node() {
+    std::fprintf(stderr, "\n--- dropped: connection to missing destination node ---\n");
+    vivid::Graph g;
+    g.add_node("src", "UnknownSrc");
+    g.add_connection("src", "out", "ghost", "in");
+    vivid::OperatorRegistry registry;
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with missing destination node");
+    if (cg) {
+        check(cg->dropped_connections.size() == 1, "one dropped connection");
+        if (!cg->dropped_connections.empty()) {
+            const auto& dc = cg->dropped_connections[0];
+            check(dc.to_node == "ghost", "to_node is ghost");
+            check(dc.reason.find("not found") != std::string::npos, "reason mentions not found");
+        }
+    }
+}
+
+static void test_dropped_missing_source_port(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- dropped: connection from nonexistent source port ---\n");
+    const std::string staging = build_dir + "/.test_dropped_src_port_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    {
+        std::string src = build_dir + "/lfo.dylib";
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, staging + "/lfo.dylib",
+                std::filesystem::copy_options::overwrite_existing);
+    }
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.add_node("lfo1", "Lfo");
+    g.add_node("lfo2", "Lfo");
+    g.add_connection("lfo1", "nonexistent_port", "lfo2", "rate");
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with missing source port");
+    if (cg) {
+        check(cg->dropped_connections.size() == 1, "one dropped connection");
+        if (!cg->dropped_connections.empty()) {
+            const auto& dc = cg->dropped_connections[0];
+            check(dc.from_node == "lfo1", "from_node is lfo1");
+            check(dc.from_port == "nonexistent_port", "from_port is nonexistent_port");
+            check(dc.reason.find("not found on node") != std::string::npos,
+                  "reason mentions not found on node");
+        }
+    }
+    std::filesystem::remove_all(staging);
+}
+
+static void test_dropped_missing_destination_port(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- dropped: connection to nonexistent destination port ---\n");
+    const std::string staging = build_dir + "/.test_dropped_dst_port_staging";
+    std::filesystem::remove_all(staging);
+    std::filesystem::create_directories(staging);
+    {
+        std::string src = build_dir + "/lfo.dylib";
+        if (std::filesystem::exists(src))
+            std::filesystem::copy_file(src, staging + "/lfo.dylib",
+                std::filesystem::copy_options::overwrite_existing);
+    }
+    vivid::OperatorRegistry registry;
+    registry.scan_deferred(staging.c_str());
+
+    vivid::Graph g;
+    g.add_node("lfo1", "Lfo");
+    g.add_node("lfo2", "Lfo");
+    g.add_connection("lfo1", "value", "lfo2", "nonexistent_input");
+    vivid::GraphCompiler::Options opts;
+    auto cg = vivid::GraphCompiler::compile(g, registry, opts);
+    check(cg != nullptr, "compiles with missing destination port");
+    if (cg) {
+        check(cg->dropped_connections.size() == 1, "one dropped connection");
+        if (!cg->dropped_connections.empty()) {
+            const auto& dc = cg->dropped_connections[0];
+            check(dc.to_node == "lfo2", "to_node is lfo2");
+            check(dc.to_port == "nonexistent_input", "to_port is nonexistent_input");
+            check(dc.reason.find("not found on node") != std::string::npos,
+                  "reason mentions not found on node");
+        }
+    }
+    std::filesystem::remove_all(staging);
+}
+
+// ---------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     std::string build_dir = ".";
@@ -906,6 +1016,10 @@ int main(int argc, char* argv[]) {
     test_bridge_kind_unknown_warns();
     test_prepare_instance_assets_compile(build_dir);
     test_prepare_instance_assets_reload(build_dir);
+    test_dropped_missing_source_node();
+    test_dropped_missing_destination_node();
+    test_dropped_missing_source_port(build_dir);
+    test_dropped_missing_destination_port(build_dir);
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

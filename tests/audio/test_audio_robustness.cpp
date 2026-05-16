@@ -41,6 +41,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "audio robustness");
 
     vivid::AudioEngine audio_engine;
     check(audio_engine.build(runtime), "audio_engine.build()");

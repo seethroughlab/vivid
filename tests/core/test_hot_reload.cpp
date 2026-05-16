@@ -52,6 +52,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build() succeeds");
+    check_graph_clean(runtime.compiled_graph(), "hot reload initial build");
     check(runtime.compiled_graph()->nodes.size() == 1, "runtime has 1 node");
 
     // Verify initial param: scale=5.0 (from JSON)

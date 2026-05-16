@@ -41,6 +41,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "lane metadata");
 
     runtime.tick(0.0, 1.0 / 60.0, 0);
 

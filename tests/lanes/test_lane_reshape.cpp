@@ -63,6 +63,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "Repeat scalar→8 lanes");
 
         runtime.tick(0.0, 1.0 / 60.0, 0);
 
@@ -93,6 +94,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "Tile [10,20,30]→9 elements");
 
         runtime.tick(0.0, 1.0 / 60.0, 0);
 
@@ -126,6 +128,7 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         check(runtime.build(graph, registry), "runtime.build()");
+        check_graph_clean(runtime.compiled_graph(), "Select lane 2 from [1,2,3,4]");
 
         runtime.tick(0.0, 1.0 / 60.0, 0);
 
@@ -162,6 +165,7 @@ int main(int argc, char* argv[]) {
         check(built, "compiles without lane mismatch (Select reduces to scalar)");
 
         if (built) {
+            check_graph_clean(runtime.compiled_graph(), "mismatch resolution via Select");
             runtime.tick(0.0, 1.0 / 60.0, 0);
 
             auto* sink = runtime.compiled_graph()->find_node("sink");
@@ -319,6 +323,7 @@ int main(int argc, char* argv[]) {
         check(built, "Tile from single source compiles");
 
         if (built) {
+            check_graph_clean(runtime.compiled_graph(), "Tile same-provenance");
             runtime.tick(0.0, 1.0 / 60.0, 0);
             auto* sink = runtime.compiled_graph()->find_node("sink");
             if (sink && !sink->output_lanes.empty()) {

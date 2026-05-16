@@ -42,6 +42,7 @@ int main(int argc, char* argv[]) {
 
     vivid::RuntimeCore runtime;
     check(runtime.build(graph, registry), "runtime.build()");
+    check_graph_clean(runtime.compiled_graph(), "lane broadcast");
 
     // --- Test 1: Single lane array propagates intact (no cycle-expand, no modulo) ---
     std::fprintf(stderr, "\n--- single lane-array propagation ---\n");
