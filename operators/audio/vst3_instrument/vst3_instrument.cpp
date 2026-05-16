@@ -110,6 +110,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::plugin_ui::PluginPickerState picker_state_;
     vivid::plugin_ui::PluginPickerState add_picker_state_;
     int drag_macro_ = -1;
+    vivid::draw_ui::InlineNumericField  text_field_;
 
     // Param name list for inspector dropdowns, rebuilt every frame from active/pending.
     std::vector<std::string> param_names_cache_;
@@ -630,6 +631,17 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
 
         if (m.left_released) drag_macro_ = -1;
 
+        // Process keyboard/char events while a text field is active.
+        bool text_confirmed = false;
+        if (text_field_.active) {
+            ctx->wants_keyboard = 1;
+            for (uint32_t ei = 0; ei < ctx->char_event_count; ++ei)
+                text_field_.handle_char(ctx->char_events[ei]);
+            for (uint32_t ei = 0; ei < ctx->key_event_count; ++ei)
+                if (text_field_.handle_key(ctx->key_events[ei].key, ctx->key_events[ei].action))
+                    text_confirmed = true;
+        }
+
         bool any_empty = false;
         for (int i = 0; i < 8; ++i) {
             if (macro_id_[i]->str_value.empty()) { any_empty = true; continue; }
@@ -641,8 +653,9 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             // Native value + units via VST3 controller
             double native = static_cast<double>(val);
             std::string units_str;
+            auto pid = kInvalidParamID;
             if (vctl) {
-                auto pid = macro_map_[i].id.load(std::memory_order_acquire);
+                pid = macro_map_[i].id.load(std::memory_order_acquire);
                 if (pid != kInvalidParamID) {
                     native = vctl->normalizedParamToPlain(pid,
                                  static_cast<Steinberg::Vst::ParamValue>(val));
@@ -675,11 +688,37 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             draw_meter(d, o, sli_x, row_y + (kRowH - 8.f) * 0.5f, sli_w, 8.f,
                        val, th.slider_fill, th.slider_track, MeterOrientation::Horizontal, 2.f);
 
-            // Native value label
-            if (d.push_clip_rect) d.push_clip_rect(o, val_x, row_y, kValW, kRowH);
-            if (d.draw_text)      d.draw_text(o, val_x, row_y + (kRowH - lh) * 0.5f,
-                                              val_buf, th.dim_text, 0.75f);
-            if (d.pop_clip_rect)  d.pop_clip_rect(o);
+            // Native value label / inline text field
+            bool over_val    = m.x >= val_x && m.x <= val_x + kValW
+                            && m.y >= row_y  && m.y <= row_y + kRowH;
+            bool editing_this = text_field_.active && text_field_.slot == i;
+
+            if (m.left_clicked && over_val && !text_field_.active) {
+                char init[40];
+                std::snprintf(init, sizeof(init), "%.6g", native);
+                text_field_.open(init, i);
+            }
+
+            if (editing_this) {
+                if (text_confirmed) {
+                    float typed  = text_field_.parsed_value(static_cast<float>(native));
+                    float norm   = vctl && pid != kInvalidParamID
+                                 ? static_cast<float>(vctl->plainParamToNormalized(pid, typed))
+                                 : typed;
+                    norm = std::clamp(norm, 0.f, 1.f);
+                    ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, norm);
+                    text_field_.close();
+                }
+                if (m.left_clicked && !over_val) text_field_.close();
+                draw_inline_numeric_field(d, o, val_x, row_y, kValW, kRowH, text_field_,
+                                          with_alpha(th.slider_track, 1.f), th.accent,
+                                          th.bright_text, ctx->time);
+            } else {
+                if (d.push_clip_rect) d.push_clip_rect(o, val_x, row_y, kValW, kRowH);
+                if (d.draw_text)      d.draw_text(o, val_x, row_y + (kRowH - lh) * 0.5f,
+                                                  val_buf, th.dim_text, 0.75f);
+                if (d.pop_clip_rect)  d.pop_clip_rect(o);
+            }
 
             // × clear button
             bool over_x = m.x >= x_btn && m.x <= x_btn + kXW

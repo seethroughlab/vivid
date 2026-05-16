@@ -254,4 +254,99 @@ inline void draw_labeled_slider_readonly(VividDrawAPI& d, void* o,
                       scale, 1.0f);
 }
 
+// ---------------------------------------------------------------------------
+// InlineNumericField — lightweight single-line numeric text input for use
+// inside custom inspector draw callbacks. Holds its own buffer and cursor;
+// the operator instance owns one of these per editable region.
+// ---------------------------------------------------------------------------
+
+// GLFW key codes referenced here to avoid pulling in glfw3.h from operator code.
+static constexpr int kKey_Escape    = 256;
+static constexpr int kKey_Enter     = 257;
+static constexpr int kKey_Backspace = 259;
+static constexpr int kKey_Delete    = 261;
+static constexpr int kKey_Right     = 262;
+static constexpr int kKey_Left      = 263;
+static constexpr int kKey_KpEnter   = 335;
+
+struct InlineNumericField {
+    bool active = false;
+    int  slot   = -1;
+    char buf[40] = {};
+    int  cursor  = 0;
+
+    void open(const char* initial, int slot_idx) {
+        active = true;
+        slot   = slot_idx;
+        std::strncpy(buf, initial, sizeof(buf) - 1);
+        buf[sizeof(buf) - 1] = '\0';
+        cursor = static_cast<int>(std::strlen(buf));
+    }
+
+    void close() { active = false; slot = -1; buf[0] = '\0'; cursor = 0; }
+
+    // Returns true if the value was confirmed (Enter pressed).
+    // Closes and returns false on Escape. No-ops and returns false otherwise.
+    bool handle_key(int key, int action) {
+        if (action == 0) return false;
+        if (key == kKey_Enter || key == kKey_KpEnter) return true;
+        if (key == kKey_Escape) { close(); return false; }
+        int n = static_cast<int>(std::strlen(buf));
+        if (key == kKey_Backspace && cursor > 0) {
+            std::memmove(buf + cursor - 1, buf + cursor, n - cursor + 1);
+            --cursor;
+        }
+        if (key == kKey_Delete && cursor < n)
+            std::memmove(buf + cursor, buf + cursor + 1, n - cursor);
+        if (key == kKey_Left  && cursor > 0) --cursor;
+        if (key == kKey_Right && cursor < n) ++cursor;
+        return false;
+    }
+
+    void handle_char(uint32_t cp) {
+        if (!active) return;
+        bool allowed = (cp >= '0' && cp <= '9') || cp == '.'
+                    || (cp == '-' && cursor == 0)
+                    || cp == 'e' || cp == 'E';
+        if (!allowed) return;
+        int n = static_cast<int>(std::strlen(buf));
+        if (n >= 38) return;
+        std::memmove(buf + cursor + 1, buf + cursor, n - cursor + 1);
+        buf[cursor++] = static_cast<char>(cp);
+    }
+
+    float parsed_value(float fallback) const {
+        if (!buf[0]) return fallback;
+        char* end = nullptr;
+        float v = std::strtof(buf, &end);
+        return (end && end != buf) ? v : fallback;
+    }
+};
+
+// Render an active InlineNumericField in place of a static value label.
+// bg / border / text_color should come from ctx->theme; time from ctx->time.
+inline void draw_inline_numeric_field(VividDrawAPI& d, void* o,
+                                       float x, float y, float w, float h,
+                                       const InlineNumericField& f,
+                                       VividColor bg, VividColor border,
+                                       VividColor text_color, double time,
+                                       float scale = 0.75f) {
+    draw_panel(d, o, x, y, w, h, bg, border, 2.f, 1.f);
+    float lh  = line_height_or(d, o, 12.f) * scale;
+    float ty  = y + std::max(0.f, (h - lh) * 0.5f - 1.f);
+    const float pad = 3.f;
+    if (d.push_clip_rect) d.push_clip_rect(o, x, y, w, h);
+    if (d.draw_text && f.buf[0])
+        d.draw_text(o, x + pad, ty, f.buf, text_color, scale);
+    // Blinking cursor (0.5 s on / 0.5 s off)
+    if (std::fmod(time, 1.0) < 0.5 && d.draw_rect) {
+        char tmp[40];
+        std::strncpy(tmp, f.buf, f.cursor);
+        tmp[f.cursor] = '\0';
+        float cx = x + pad + text_width_or(d, o, tmp, scale, f.cursor * 5.f * scale);
+        d.draw_rect(o, cx, ty, 1.f, lh, text_color);
+    }
+    if (d.pop_clip_rect) d.pop_clip_rect(o);
+}
+
 } // namespace vivid::draw_ui
