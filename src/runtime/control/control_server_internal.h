@@ -661,7 +661,19 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "add_sticky_note" ||
            method == "remove_sticky_note" ||
            method == "update_sticky_note" ||
-           method == "load_graph";
+           method == "load_graph" ||
+           method == "create_track" ||
+           method == "rename_track" ||
+           method == "remove_track" ||
+           method == "move_track" ||
+           method == "assign_nodes_to_track" ||
+           method == "unassign_nodes_from_track" ||
+           method == "save_clip" ||
+           method == "update_clip" ||
+           method == "rename_clip" ||
+           method == "remove_clip" ||
+           method == "move_clip" ||
+           method == "launch_clip";
 }
 
 // ---------------------------------------------------------------------------

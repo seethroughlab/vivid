@@ -149,6 +149,28 @@ public:
     // Per-operator preset state accessor for snapshot
     const std::string& active_preset(const std::string& node_id) const;
 
+    // --- Session: Track CRUD ---
+    CommandResult create_track(const std::string& name);
+    CommandResult rename_track(const std::string& track_id, const std::string& name);
+    CommandResult remove_track(const std::string& track_id);
+    CommandResult move_track(const std::string& track_id, int to_index);
+    CommandResult assign_nodes_to_track(const std::string& track_id,
+                                         const std::vector<std::string>& node_ids);
+    CommandResult unassign_nodes_from_track(const std::string& track_id,
+                                             const std::vector<std::string>& node_ids);
+
+    // --- Session: Clip CRUD + launch ---
+    CommandResult save_clip(const std::string& track_id, const std::string& name);
+    CommandResult update_clip(const std::string& track_id, const std::string& clip_id);
+    CommandResult rename_clip(const std::string& track_id, const std::string& clip_id,
+                               const std::string& new_name);
+    CommandResult remove_clip(const std::string& track_id, const std::string& clip_id);
+    CommandResult move_clip(const std::string& track_id, const std::string& clip_id, int to_index);
+    CommandResult launch_clip(const std::string& track_id, const std::string& clip_id);
+
+    // Active clip per track (set by launch_clip; empty = none launched)
+    const std::string& active_clip(const std::string& track_id) const;
+
     bool graph_dirty() const { return graph_dirty_; }
 
     // Persistence
@@ -268,6 +290,16 @@ private:
 
     // Active preset per node (node_id -> preset name)
     std::unordered_map<std::string, std::string> active_presets_;
+
+    // Active clip per track (track_id -> clip_id), set by launch_clip
+    std::unordered_map<std::string, std::string> active_clips_;
+
+    // Session clip capture/apply — used by save_clip, update_clip, launch_clip
+    std::pair<
+        std::unordered_map<std::string, std::unordered_map<std::string, float>>,
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
+    > capture_clip_params(const std::string& track_id) const;
+    void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
 
     // Graph base directory for resolving/relativizing file paths
     std::filesystem::path graph_base_dir() const;

@@ -956,6 +956,328 @@ int main(int argc, char* argv[]) {
     // "recall after node removal" variation test removed in Phase 1
     // (RuntimeAPI variation methods removed).
 
+    // =========================================================================
+    // Phase 2: Session Track/Clip CRUD + capture/apply
+    // =========================================================================
+
+    // Add two fresh nodes for Session tests to avoid state bleed from earlier tests.
+    std::fprintf(stderr, "\n--- session: setup ---\n");
+    {
+        auto r1 = api.add_node("TestOp", "s1");
+        check(r1.ok, "add s1");
+        auto r2 = api.add_node("TestOp", "s2");
+        check(r2.ok, "add s2");
+        check(api.has_pending(), "topology pending");
+        api.apply_pending(has_gpu_ops, has_audio);
+        api.set_param("s1", "scale", 5.0f);
+        api.set_param("s2", "scale", 9.0f);
+        runtime.tick(0.0, 0.016, 2);
+    }
+
+    // --- Track CRUD ---
+    std::fprintf(stderr, "\n--- session: track CRUD ---\n");
+    {
+        // create_track
+        auto r = api.create_track("Bass");
+        check(r.ok, "create_track Bass");
+        check(!r.message.empty(), "create_track returns id");
+        std::string tid = r.message;
+
+        // rename_track
+        auto rn = api.rename_track(tid, "Drums");
+        check(rn.ok, "rename_track to Drums");
+        check(graph.find_track(tid)->name == "Drums", "graph reflects rename");
+
+        // unknown track rename fails
+        auto bad = api.rename_track("no_such_track", "X");
+        check(!bad.ok, "rename unknown track fails");
+
+        // move_track: create a second track then move
+        auto t2r = api.create_track("Lead");
+        check(t2r.ok, "create second track Lead");
+        std::string tid2 = t2r.message;
+        check(graph.session().tracks[0].id == tid, "Drums first before move");
+        auto mv = api.move_track(tid, 1);
+        check(mv.ok, "move_track Drums to index 1");
+        check(graph.session().tracks[1].id == tid, "Drums at index 1");
+
+        // assign_nodes_to_track
+        auto ar = api.assign_nodes_to_track(tid, {"s1", "s2"});
+        check(ar.ok, "assign s1, s2 to track");
+        check(graph.find_track(tid)->owned_node_ids.size() == 2, "track owns 2 nodes");
+
+        // unassign_nodes_from_track
+        auto ur = api.unassign_nodes_from_track(tid, {"s2"});
+        check(ur.ok, "unassign s2");
+        check(graph.find_track(tid)->owned_node_ids.size() == 1, "track owns 1 node");
+        auto re_ar = api.assign_nodes_to_track(tid, {"s2"});
+        check(re_ar.ok, "re-assign s2");
+
+        // remove_track
+        auto rmr = api.remove_track(tid2);
+        check(rmr.ok, "remove_track Lead");
+        check(graph.find_track(tid2) == nullptr, "Lead removed from graph");
+        // tid (Drums) still present
+        check(graph.find_track(tid) != nullptr, "Drums track still present");
+    }
+
+    // --- save_clip captures owned-node params ---
+    std::fprintf(stderr, "\n--- session: save_clip captures params ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        // s1.scale=5, s2.scale=9 at this point
+        auto r = api.save_clip(tid, "Verse");
+        check(r.ok, "save_clip Verse");
+        std::string cid = r.message;
+        check(!cid.empty(), "save_clip returns clip id");
+        check(graph.find_track(tid)->clips.size() == 1, "1 clip after save");
+
+        const auto* clip = graph.find_clip(tid, cid);
+        check(clip != nullptr, "clip found by id");
+        if (clip) {
+            check(clip->params.count("s1") == 1, "s1 captured in clip");
+            check(clip->params.count("s2") == 1, "s2 captured in clip");
+            check(clip->params.at("s1").count("scale") == 1, "s1.scale in clip");
+            check_float(clip->params.at("s1").at("scale"), 5.0f, "s1.scale=5.0 captured");
+            check_float(clip->params.at("s2").at("scale"), 9.0f, "s2.scale=9.0 captured");
+        }
+    }
+
+    // --- save_clip skips wire-driven params ---
+    std::fprintf(stderr, "\n--- session: save_clip skips wired params ---\n");
+    {
+        // Re-establish a/out -> b/scale wire (it was disconnected in an earlier section).
+        api.connect("a/out", "b/scale");
+        api.apply_pending(has_gpu_ops, has_audio);
+
+        auto tr = api.create_track("WireTrack");
+        check(tr.ok, "create WireTrack");
+        std::string wire_tid = tr.message;
+        api.assign_nodes_to_track(wire_tid, {"b"});
+
+        auto r = api.save_clip(wire_tid, "WireClip");
+        check(r.ok, "save_clip on wire-driven track");
+        std::string cid = r.message;
+        const auto* clip = graph.find_clip(wire_tid, cid);
+        check(clip != nullptr, "wire clip found");
+        if (clip) {
+            // b/scale should be ABSENT because it's wire-driven
+            bool has_scale = clip->params.count("b") &&
+                             clip->params.at("b").count("scale");
+            check(!has_scale, "b.scale absent from clip (wire-driven)");
+        }
+        api.remove_track(wire_tid);
+
+        // Disconnect again to keep graph state clean for subsequent tests.
+        api.disconnect("a/out", "b/scale");
+        api.apply_pending(has_gpu_ops, has_audio);
+    }
+
+    // --- save_clip skips PARAM_LOCK_WIRES params ---
+    std::fprintf(stderr, "\n--- session: save_clip skips PARAM_LOCK_WIRES ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        // Lock s1.scale with PARAM_LOCK_WIRES
+        api.set_param_lock("s1", "scale", vivid::PARAM_LOCK_WIRES);
+        auto r = api.save_clip(tid, "LockedClip");
+        check(r.ok, "save_clip with locked param");
+        std::string cid = r.message;
+        const auto* clip = graph.find_clip(tid, cid);
+        check(clip != nullptr, "locked clip found");
+        if (clip) {
+            bool has_s1_scale = clip->params.count("s1") &&
+                                clip->params.at("s1").count("scale");
+            check(!has_s1_scale, "s1.scale absent (PARAM_LOCK_WIRES)");
+        }
+        // Restore: remove lock
+        api.set_param_lock("s1", "scale", vivid::PARAM_LOCK_NONE);
+    }
+
+    // --- save_clip does NOT capture non-owned nodes ---
+    std::fprintf(stderr, "\n--- session: save_clip scope is track-owned only ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        auto r = api.save_clip(tid, "ScopeClip");
+        check(r.ok, "save ScopeClip");
+        const auto* clip = graph.find_clip(tid, r.message);
+        check(clip != nullptr, "ScopeClip found");
+        if (clip) {
+            // "a" is not owned by this track — should NOT be captured
+            check(clip->params.count("a") == 0, "non-owned node 'a' absent from clip");
+        }
+    }
+
+    // --- launch_clip restores stored params ---
+    std::fprintf(stderr, "\n--- session: launch_clip restores params ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        // Find the "Verse" clip saved earlier (first clip)
+        std::string cid = graph.find_track(tid)->clips[0].id;
+
+        // Mutate live params
+        api.set_param("s1", "scale", 99.0f);
+        api.set_param("s2", "scale", 77.0f);
+        runtime.tick(0.0, 0.016, 3);
+
+        // Verify they changed
+        {
+            auto* cn = runtime.compiled_graph()->find_node("s1");
+            check(cn != nullptr, "s1 in compiled graph");
+            if (cn) check_float(cn->param_values[cn->param_indices.at("scale")], 99.0f, "s1.scale=99 before launch");
+        }
+
+        // Launch the Verse clip
+        auto r = api.launch_clip(tid, cid);
+        check(r.ok, "launch_clip Verse");
+        check(r.message == cid, "launch_clip returns clip_id");
+        check(api.active_clip(tid) == cid, "active_clip returns launched clip");
+
+        // Verify params restored in compiled graph
+        {
+            auto* cn1 = runtime.compiled_graph()->find_node("s1");
+            auto* cn2 = runtime.compiled_graph()->find_node("s2");
+            check(cn1 != nullptr && cn2 != nullptr, "s1 and s2 in compiled graph");
+            if (cn1)
+                check_float(cn1->param_values[cn1->param_indices.at("scale")], 5.0f,
+                            "s1.scale restored to 5.0");
+            if (cn2)
+                check_float(cn2->param_values[cn2->param_indices.at("scale")], 9.0f,
+                            "s2.scale restored to 9.0");
+        }
+        // Verify synced to graph NodeDef
+        {
+            auto* nd = graph.find_node("s1");
+            check(nd != nullptr, "s1 NodeDef exists");
+            if (nd) check_float(nd->params.at("scale"), 5.0f, "s1 NodeDef.scale=5.0");
+        }
+    }
+
+    // --- launch_clip does NOT touch non-Track-owned nodes ---
+    std::fprintf(stderr, "\n--- session: launch_clip scope isolation ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string cid = graph.find_track(tid)->clips[0].id;
+
+        // Set a.scale to a known value
+        api.set_param("a", "scale", 42.0f);
+        runtime.tick(0.0, 0.016, 4);
+
+        // Launch clip (track owns s1, s2 — not 'a')
+        api.launch_clip(tid, cid);
+        runtime.tick(0.0, 0.016, 5);
+
+        // a.scale must be untouched
+        auto* cn_a = runtime.compiled_graph()->find_node("a");
+        check(cn_a != nullptr, "a in compiled graph");
+        if (cn_a)
+            check_float(cn_a->param_values[cn_a->param_indices.at("scale")], 42.0f,
+                        "a.scale untouched by launch_clip");
+    }
+
+    // --- launch_clip respects PARAM_LOCK_PRESETS ---
+    std::fprintf(stderr, "\n--- session: launch_clip respects PARAM_LOCK_PRESETS ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string cid = graph.find_track(tid)->clips[0].id;  // Verse: s1.scale=5
+
+        // Set s1.scale to a known value, then lock it against presets
+        api.set_param("s1", "scale", 33.0f);
+        api.set_param_lock("s1", "scale", vivid::PARAM_LOCK_PRESETS);
+
+        api.launch_clip(tid, cid);
+
+        // s1.scale should NOT be restored (locked against presets/clips)
+        auto* cn1 = runtime.compiled_graph()->find_node("s1");
+        check(cn1 != nullptr, "s1 in graph");
+        if (cn1)
+            check_float(cn1->param_values[cn1->param_indices.at("scale")], 33.0f,
+                        "s1.scale untouched (PARAM_LOCK_PRESETS)");
+
+        // Restore lock
+        api.set_param_lock("s1", "scale", vivid::PARAM_LOCK_NONE);
+    }
+
+    // --- launch_clip with bad track/clip returns error ---
+    std::fprintf(stderr, "\n--- session: launch_clip error handling ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string cid = graph.find_track(tid)->clips[0].id;
+
+        auto bad_track = api.launch_clip("no_such_track", cid);
+        check(!bad_track.ok, "launch_clip unknown track fails");
+
+        auto bad_clip = api.launch_clip(tid, "no_such_clip");
+        check(!bad_clip.ok, "launch_clip unknown clip fails");
+    }
+
+    // --- save_clip without compiled graph returns error ---
+    std::fprintf(stderr, "\n--- session: save_clip no-cg guard ---\n");
+    {
+        vivid::Graph g2;
+        check(g2.load(graph_path.c_str()), "load fixture for no-cg test");
+        std::string tid2 = g2.create_track("T");
+        vivid::RuntimeCore rt2;
+        vivid::AudioEngine ae2;
+        vivid::RuntimeAPI api2(g2, rt2, ae2, registry);
+        auto r = api2.save_clip(tid2, "NoGraph");
+        check(!r.ok, "save_clip fails without compiled graph");
+        check(r.message == "no compiled graph", "error is no compiled graph");
+        auto lr = api2.launch_clip(tid2, "x");
+        check(!lr.ok, "launch_clip fails without compiled graph");
+    }
+
+    // --- Clip rename, move, remove ---
+    std::fprintf(stderr, "\n--- session: clip rename/move/remove ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string cid0 = graph.find_track(tid)->clips[0].id;
+
+        // rename
+        auto rn = api.rename_clip(tid, cid0, "Chorus");
+        check(rn.ok, "rename_clip ok");
+        check(graph.find_clip(tid, cid0)->name == "Chorus", "clip renamed");
+
+        // add a second clip then move
+        auto sc2 = api.save_clip(tid, "Bridge");
+        check(sc2.ok, "save Bridge clip");
+        std::string cid1 = sc2.message;
+        check(graph.find_track(tid)->clips.size() >= 2, "2+ clips");
+
+        auto mv = api.move_clip(tid, cid0, 1);
+        check(mv.ok, "move_clip cid0 to index 1");
+        check(graph.find_track(tid)->clips[1].id == cid0, "cid0 at index 1");
+
+        // remove
+        auto rm = api.remove_clip(tid, cid0);
+        check(rm.ok, "remove_clip cid0");
+        check(graph.find_clip(tid, cid0) == nullptr, "cid0 gone");
+        check(api.active_clip(tid).empty(), "active_clip cleared after remove");
+    }
+
+    // --- update_clip re-captures live state ---
+    std::fprintf(stderr, "\n--- session: update_clip re-captures ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        api.set_param("s1", "scale", 11.0f);
+        api.set_param("s2", "scale", 22.0f);
+        auto sc = api.save_clip(tid, "UpdateTest");
+        check(sc.ok, "save UpdateTest clip");
+        std::string cid = sc.message;
+
+        // Change params and update
+        api.set_param("s1", "scale", 55.0f);
+        api.set_param("s2", "scale", 66.0f);
+        auto ur = api.update_clip(tid, cid);
+        check(ur.ok, "update_clip succeeds");
+
+        const auto* clip = graph.find_clip(tid, cid);
+        check(clip != nullptr, "updated clip found");
+        if (clip) {
+            check_float(clip->params.at("s1").at("scale"), 55.0f, "s1.scale=55 after update");
+            check_float(clip->params.at("s2").at("scale"), 66.0f, "s2.scale=66 after update");
+        }
+    }
+
     // --- Cleanup ---
     runtime.shutdown();
     std::filesystem::remove_all(staging);

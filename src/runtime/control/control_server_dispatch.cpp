@@ -936,6 +936,114 @@ std::string dispatch(const std::string& method, const std::string& body,
                 result = command_result_to_json(
                     api.inspect_state_presets(root["sm_node"].get<std::string>()));
         }
+    } else if (method == "create_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'name'");
+        else
+            result = command_result_to_json(api.create_track(root["name"].get<std::string>()));
+    } else if (method == "rename_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'track_id' or 'name'");
+        else
+            result = command_result_to_json(
+                api.rename_track(root["track_id"].get<std::string>(), root["name"].get<std::string>()));
+    } else if (method == "remove_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string())
+            result = json_err("missing 'track_id'");
+        else
+            result = command_result_to_json(api.remove_track(root["track_id"].get<std::string>()));
+    } else if (method == "move_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("to_index") || !root["to_index"].is_number_integer())
+            result = json_err("missing 'track_id' or 'to_index'");
+        else
+            result = command_result_to_json(
+                api.move_track(root["track_id"].get<std::string>(), root["to_index"].get<int>()));
+    } else if (method == "assign_nodes_to_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("node_ids") || !root["node_ids"].is_array())
+            result = json_err("missing 'track_id' or 'node_ids'");
+        else {
+            std::vector<std::string> ids;
+            for (const auto& v : root["node_ids"]) {
+                if (v.is_string()) ids.push_back(v.get<std::string>());
+            }
+            result = command_result_to_json(
+                api.assign_nodes_to_track(root["track_id"].get<std::string>(), ids));
+        }
+    } else if (method == "unassign_nodes_from_track") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("node_ids") || !root["node_ids"].is_array())
+            result = json_err("missing 'track_id' or 'node_ids'");
+        else {
+            std::vector<std::string> ids;
+            for (const auto& v : root["node_ids"]) {
+                if (v.is_string()) ids.push_back(v.get<std::string>());
+            }
+            result = command_result_to_json(
+                api.unassign_nodes_from_track(root["track_id"].get<std::string>(), ids));
+        }
+    } else if (method == "save_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'track_id' or 'name'");
+        else
+            result = command_result_to_json(
+                api.save_clip(root["track_id"].get<std::string>(), root["name"].get<std::string>()));
+    } else if (method == "update_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string())
+            result = json_err("missing 'track_id' or 'clip_id'");
+        else
+            result = command_result_to_json(
+                api.update_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+    } else if (method == "rename_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                 !root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'track_id', 'clip_id', or 'name'");
+        else
+            result = command_result_to_json(
+                api.rename_clip(root["track_id"].get<std::string>(),
+                                root["clip_id"].get<std::string>(),
+                                root["name"].get<std::string>()));
+    } else if (method == "remove_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string())
+            result = json_err("missing 'track_id' or 'clip_id'");
+        else
+            result = command_result_to_json(
+                api.remove_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+    } else if (method == "move_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                 !root.contains("to_index") || !root["to_index"].is_number_integer())
+            result = json_err("missing 'track_id', 'clip_id', or 'to_index'");
+        else
+            result = command_result_to_json(
+                api.move_clip(root["track_id"].get<std::string>(),
+                              root["clip_id"].get<std::string>(),
+                              root["to_index"].get<int>()));
+    } else if (method == "launch_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string())
+            result = json_err("missing 'track_id' or 'clip_id'");
+        else
+            result = command_result_to_json(
+                api.launch_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
     } else if (method == "rescan_operators") {
         result = [&]() -> std::string {
             int newly = registry.rescan();
