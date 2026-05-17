@@ -343,11 +343,6 @@ struct AudioHotNodeSnapshot {
     uint32_t lane_state_entries = 0;
 };
 
-// Variation info for UI
-struct VariationInfo {
-    std::string name;
-};
-
 // Per-track clip launcher: one entry per StateMachine that has state-preset mappings
 struct StateMachineClipInfo {
     std::string node_id;
@@ -399,12 +394,8 @@ struct GraphSnapshot {
     std::vector<std::string> operator_types;  // sorted list
     std::unordered_map<std::string, std::shared_ptr<const OperatorInfo>> operator_catalog;
 
-    // Variation data
-    std::vector<VariationInfo> variations;
-    int active_variation = -1;
-    bool variation_dirty = false;
+    // Session / performance data
     bool graph_dirty = false;
-    int queued_variation = -1;
     std::vector<StateMachineClipInfo> clip_machines;
     std::string quantize_clock_node;
     float metronome_bpm = 120.0f;

@@ -327,11 +327,7 @@ bool NodeGraphUI::handle_session_mode_key(int key, int action, int mods, bool mo
 
     if (session_editing_name_) {
         if (key == GLFW_KEY_ENTER) {
-            if (!session_edit_buffer_.empty() && session_edit_idx_ >= 0 &&
-                session_edit_idx_ < static_cast<int>(snap_.variations.size())) {
-                commands_.rename_variation(snap_.variations[session_edit_idx_].name,
-                                           session_edit_buffer_);
-            }
+            // Phase 1 placeholder: rename wired up in Phase 3
             session_editing_name_ = false;
         } else if (key == GLFW_KEY_ESCAPE) {
             session_editing_name_ = false;
@@ -342,13 +338,6 @@ bool NodeGraphUI::handle_session_mode_key(int key, int action, int mods, bool mo
     }
 
     if (session_grid_open_ && session_selected_idx_ >= 0) {
-        if (key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) {
-            if (session_selected_idx_ < static_cast<int>(snap_.variations.size())) {
-                commands_.remove_variation(snap_.variations[session_selected_idx_].name);
-                session_selected_idx_ = -1;
-            }
-            return true;
-        }
         if (key == GLFW_KEY_ESCAPE) {
             session_selected_idx_ = -1;
             return true;

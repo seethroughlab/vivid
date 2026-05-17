@@ -22,6 +22,7 @@ int main() {
 
 #include "test_graph_load_and_variations.inc"
 #include "test_graph_variations_and_presets.inc"
+#include "test_graph_session_schema.inc"
 #include "test_graph_schema_and_versioning.inc"
 #include "test_graph_sticky_notes_and_bridges.inc"
 

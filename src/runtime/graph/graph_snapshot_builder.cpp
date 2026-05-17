@@ -603,13 +603,6 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         }
     }
 
-    // Variations
-    const auto& vars = graph.variations();
-    snap.variations.resize(vars.size());
-    for (size_t i = 0; i < vars.size(); ++i) {
-        snap.variations[i].name = vars[i].name;
-    }
-    snap.active_variation = graph.active_variation();
     snap.quantize_clock_node = graph.quantize_clock_node();
     const auto metronome = runtime_api
         ? runtime_api->current_metronome_sample()
@@ -656,9 +649,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         ss.color = gs.color;
     }
     if (runtime_api) {
-        snap.variation_dirty = runtime_api->variation_dirty();
         snap.graph_dirty = runtime_api->graph_dirty();
-        snap.queued_variation = runtime_api->pending_variation_idx();
     }
 
     // Solo state

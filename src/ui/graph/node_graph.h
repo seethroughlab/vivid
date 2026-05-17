@@ -837,9 +837,6 @@ private:
     bool session_editing_name_ = false;
     int session_edit_idx_ = -1;
     std::string session_edit_buffer_;
-    // Double-click detection for variation cell rename
-    double last_variation_click_time_ = 0.0;
-    int last_variation_click_idx_ = -1;
     // Quantize mode (persisted as UI state, synced via commands)
     int session_quantize_mode_ = 0;  // 0=Off, 1=Beat, 2=Bar, 3=4Bar
     // Selected card (separate from active — keyboard/visual focus)
@@ -858,8 +855,6 @@ private:
     // Hit-test rects
     struct SessionCollapsedRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
     SessionCollapsedRect session_collapsed_rect_;
-    struct VariationCellRect { float x, y, w, h; int idx; };
-    std::vector<VariationCellRect> variation_cell_rects_;
     struct SessionButtonRect { float x, y, w, h; int action; bool enabled = true; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch, 7=Close
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From

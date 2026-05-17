@@ -923,7 +923,7 @@ FlattenResult flatten_subgraphs(const Graph& authored, const SubgraphModuleRegis
         }
     }
 
-    // Build port and param binding lookups for rewriting connections, MIDI mappings, and variations.
+    // Build port and param binding lookups for rewriting connections and MIDI mappings.
     // Key format: "instance_id/name" (slash-separated, matching address convention).
     struct ResolvedBinding {
         std::string flat_node_id;
@@ -987,8 +987,9 @@ FlattenResult flatten_subgraphs(const Graph& authored, const SubgraphModuleRegis
         }
     }
 
-    // Copy non-graph metadata: MIDI mappings, variations, sticky notes.
-    // MIDI mappings and variations that target module nodes must be remapped
+    // Copy non-graph metadata: MIDI mappings. Sticky notes and session data
+    // are not propagated across subgraph module boundaries.
+    // MIDI mappings that target module nodes must be remapped
     // through the param binding table to reach the correct internal node/param.
 
     for (const auto& m : authored.midi_mappings()) {
@@ -1010,40 +1011,7 @@ FlattenResult flatten_subgraphs(const Graph& authored, const SubgraphModuleRegis
                               m.range_min, m.range_max);
     }
 
-    for (const auto& v : authored.variations()) {
-        VariationDef remapped;
-        remapped.name = v.name;
-        // Collect remapped entries separately to avoid iterator invalidation
-        for (const auto& [node_id, node_params] : v.params) {
-            if (module_node_ids.count(node_id)) {
-                // Distribute each param to its bound internal node
-                for (const auto& [pname, pval] : node_params) {
-                    std::string key = node_id + "/" + pname;
-                    auto pm_it = param_map.find(key);
-                    if (pm_it != param_map.end())
-                        remapped.params[pm_it->second.flat_node_id][pm_it->second.name] = pval;
-                }
-            } else {
-                remapped.params[node_id] = node_params;
-            }
-        }
-        for (const auto& [node_id, node_params] : v.string_params) {
-            if (module_node_ids.count(node_id)) {
-                for (const auto& [pname, pval] : node_params) {
-                    std::string key = node_id + "/" + pname;
-                    auto pm_it = param_map.find(key);
-                    if (pm_it != param_map.end())
-                        remapped.string_params[pm_it->second.flat_node_id][pm_it->second.name] = pval;
-                }
-            } else {
-                remapped.string_params[node_id] = node_params;
-            }
-        }
-        flat.add_variation(remapped);
-    }
-
-    if (authored.active_variation() >= 0)
-        flat.set_active_variation(authored.active_variation());
+    // Session data is not propagated across subgraph module boundaries.
 
     for (const auto& sn : authored.sticky_notes())
         flat.add_sticky_note(sn);

@@ -102,252 +102,11 @@
         std::remove(rt_path.c_str());
     }
 
-    // =====================================================================
-    // Test 16: Variation CRUD
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 16: Variation CRUD ===\n");
-        vivid::Graph g;
-        g.add_node("a", "Foo", {{"scale", 1.0f}});
-        g.add_node("b", "Bar", {{"gain", 0.5f}});
-
-        // add_variation
-        vivid::VariationDef v1;
-        v1.name = "Intro";
-        v1.params["a"] = {{"scale", 2.0f}};
-        v1.params["b"] = {{"gain", 0.8f}};
-        g.add_variation(std::move(v1));
-        check(g.variations().size() == 1, "1 variation after add");
-
-        vivid::VariationDef v2;
-        v2.name = "Drop";
-        v2.params["a"] = {{"scale", 5.0f}};
-        g.add_variation(std::move(v2));
-        check(g.variations().size() == 2, "2 variations after second add");
-
-        // find_variation — const
-        const vivid::Graph& cg = g;
-        const vivid::VariationDef* found = cg.find_variation("Intro");
-        check(found != nullptr, "find_variation const found");
-        check(cg.find_variation("nope") == nullptr, "find_variation const not-found");
-
-        // find_variation — mutable
-        vivid::VariationDef* mut = g.find_variation("Intro");
-        check(mut != nullptr, "find_variation mutable found");
-        check(g.find_variation("nope") == nullptr, "find_variation mutable not-found");
-
-        // find_variation_index
-        check(g.find_variation_index("Intro") == 0, "find_variation_index Intro = 0");
-        check(g.find_variation_index("Drop") == 1, "find_variation_index Drop = 1");
-        check(g.find_variation_index("nope") == -1, "find_variation_index not-found = -1");
-
-        // rename_variation — success
-        check(g.rename_variation("Intro", "Verse"), "rename Intro -> Verse succeeds");
-        check(g.find_variation("Verse") != nullptr, "renamed variation found");
-        check(g.find_variation("Intro") == nullptr, "old name gone");
-
-        // rename_variation — name conflict
-        check(!g.rename_variation("Verse", "Drop"), "rename to existing name fails");
-
-        // rename_variation — not found
-        check(!g.rename_variation("nope", "x"), "rename non-existent fails");
-
-        // remove_variation — success + adjusts active index
-        g.set_active_variation(1); // "Drop" is at index 1
-        check(g.remove_variation("Verse"), "remove Verse succeeds"); // index 0 removed
-        check(g.variations().size() == 1, "1 variation after remove");
-        check(g.active_variation() == 0, "active_variation decremented from 1 to 0");
-
-        // remove_variation — not found
-        check(!g.remove_variation("nope"), "remove non-existent fails");
-
-        // variations() accessor
-        check(g.variations()[0].name == "Drop", "remaining variation is Drop");
-    }
+    // Tests 16-20 removed in Phase 1: VariationDef replaced by SessionDef.
+    // Session CRUD tests live in test_graph_session_schema.inc (included in test_graph.cpp).
 
     // =====================================================================
-    // Test 17: active_variation + quantize_clock_node + metronome
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 17: active_variation + quantize_clock_node + metronome ===\n");
-        vivid::Graph g;
-
-        // Initial state
-        check(g.active_variation() == -1, "initial active_variation = -1");
-        check(g.quantize_clock_node().empty(), "initial quantize_clock_node empty");
-        check_float(g.metronome().bpm, 120.0f, "initial metronome bpm = 120");
-        check(g.metronome().beats_per_bar == 4, "initial beats_per_bar = 4");
-
-        // set/get round-trip
-        g.set_active_variation(2);
-        check(g.active_variation() == 2, "active_variation set to 2");
-
-        g.set_quantize_clock_node("clock1");
-        check(g.quantize_clock_node() == "clock1", "quantize_clock_node = clock1");
-
-        vivid::GraphMetronomeDef metronome;
-        metronome.bpm = 96.0f;
-        metronome.beats_per_bar = 7;
-        g.set_metronome(metronome);
-        check_float(g.metronome().bpm, 96.0f, "metronome bpm = 96");
-        check(g.metronome().beats_per_bar == 7, "beats_per_bar = 7");
-
-        // Removing variation at active index sets active to -1
-        vivid::VariationDef v1; v1.name = "A";
-        vivid::VariationDef v2; v2.name = "B";
-        vivid::VariationDef v3; v3.name = "C";
-        g.add_variation(std::move(v1));
-        g.add_variation(std::move(v2));
-        g.add_variation(std::move(v3));
-        g.set_active_variation(1); // "B"
-        g.remove_variation("B");
-        check(g.active_variation() == -1, "active = -1 after removing active variation");
-
-        // Removing variation before active index decrements active
-        g.set_active_variation(1); // "C" is now at index 1
-        g.remove_variation("A");   // remove index 0
-        check(g.active_variation() == 0, "active decremented after removing earlier variation");
-    }
-
-    // =====================================================================
-    // Test 18: Variation JSON load
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 18: Variation JSON load ===\n");
-        std::string path = write_temp("variations_load", R"({
-            "nodes": {
-                "osc": { "type": "Osc", "params": { "freq": 440.0 } },
-                "filt": { "type": "Filter", "params": { "cutoff": 1000.0 } }
-            },
-            "connections": [],
-            "variations": [
-                {
-                    "name": "Bright",
-                    "params": {
-                        "osc": { "freq": 880.0 },
-                        "filt": { "cutoff": 5000.0 }
-                    }
-                },
-                {
-                    "name": "Dark",
-                    "params": {
-                        "osc": { "freq": 220.0 },
-                        "filt": { "cutoff": 200.0 }
-                    }
-                }
-            ],
-            "active_variation": 1,
-            "quantize_clock": "clock1",
-            "metronome": { "bpm": 92.0, "beats_per_bar": 3 }
-        })");
-
-        vivid::Graph g;
-        check(g.load(path.c_str()), "load with variations succeeds");
-        check(g.variations().size() == 2, "2 variations loaded");
-        check(g.variations()[0].name == "Bright", "variation 0 name = Bright");
-        check(g.variations()[1].name == "Dark", "variation 1 name = Dark");
-
-        // Check nested param values
-        const auto& bright = g.variations()[0];
-        auto osc_it = bright.params.find("osc");
-        check(osc_it != bright.params.end(), "Bright has osc params");
-        if (osc_it != bright.params.end()) {
-            auto freq_it = osc_it->second.find("freq");
-            check(freq_it != osc_it->second.end(), "Bright/osc has freq");
-            if (freq_it != osc_it->second.end())
-                check_float(freq_it->second, 880.0f, "Bright osc freq = 880");
-        }
-
-        const auto& dark = g.variations()[1];
-        auto filt_it = dark.params.find("filt");
-        check(filt_it != dark.params.end(), "Dark has filt params");
-        if (filt_it != dark.params.end()) {
-            auto cutoff_it = filt_it->second.find("cutoff");
-            check(cutoff_it != filt_it->second.end(), "Dark/filt has cutoff");
-            if (cutoff_it != filt_it->second.end())
-                check_float(cutoff_it->second, 200.0f, "Dark filt cutoff = 200");
-        }
-
-        check(g.active_variation() == 1, "active_variation = 1");
-        check(g.quantize_clock_node() == "clock1", "quantize_clock = clock1");
-        check_float(g.metronome().bpm, 92.0f, "metronome bpm = 92");
-        check(g.metronome().beats_per_bar == 3, "metronome beats_per_bar = 3");
-    }
-
-    // =====================================================================
-    // Test 19: Variation JSON save/load round-trip
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 19: Variation JSON save/load round-trip ===\n");
-
-        // Build a graph with 2 variations programmatically
-        vivid::Graph g1;
-        g1.add_node("a", "Foo", {{"scale", 1.0f}});
-        g1.add_node("b", "Bar", {{"gain", 0.5f}});
-
-        vivid::VariationDef v1;
-        v1.name = "Intro";
-        v1.params["a"] = {{"scale", 3.0f}};
-        v1.params["b"] = {{"gain", 0.9f}};
-        g1.add_variation(std::move(v1));
-
-        vivid::VariationDef v2;
-        v2.name = "Chorus";
-        v2.params["a"] = {{"scale", 7.0f}};
-        g1.add_variation(std::move(v2));
-
-        g1.set_active_variation(0);
-        g1.set_quantize_clock_node("clk1");
-        vivid::GraphMetronomeDef metronome;
-        metronome.bpm = 135.0f;
-        metronome.beats_per_bar = 5;
-        g1.set_metronome(metronome);
-
-        std::string path = (g_tmp->path / "var_roundtrip.json").string();
-        check(g1.save(path.c_str()), "save with variations succeeds");
-
-        vivid::Graph g2;
-        check(g2.load(path.c_str()), "reload succeeds");
-        check(g2.variations().size() == 2, "2 variations after round-trip");
-        check(g2.variations()[0].name == "Intro", "variation 0 name preserved");
-        check(g2.variations()[1].name == "Chorus", "variation 1 name preserved");
-
-        // Check nested param values survived
-        const auto& intro = g2.variations()[0];
-        auto a_it = intro.params.find("a");
-        check(a_it != intro.params.end(), "Intro has node a params");
-        if (a_it != intro.params.end()) {
-            auto s_it = a_it->second.find("scale");
-            check(s_it != a_it->second.end(), "Intro/a has scale");
-            if (s_it != a_it->second.end())
-                check_float(s_it->second, 3.0f, "Intro a/scale = 3.0");
-        }
-
-        check(g2.active_variation() == 0, "active_variation preserved = 0");
-        check(g2.quantize_clock_node() == "clk1", "quantize_clock preserved = clk1");
-        check_float(g2.metronome().bpm, 135.0f, "metronome bpm preserved");
-        check(g2.metronome().beats_per_bar == 5, "metronome beats_per_bar preserved");
-
-        // Also verify a graph with 0 variations saves/loads cleanly
-        vivid::Graph g3;
-        g3.add_node("x", "X");
-        std::string path2 = (g_tmp->path / "var_empty.json").string();
-        check(g3.save(path2.c_str()), "save empty variations succeeds");
-
-        vivid::Graph g4;
-        check(g4.load(path2.c_str()), "reload empty variations succeeds");
-        check(g4.variations().empty(), "0 variations after round-trip");
-        check(g4.active_variation() == -1, "active_variation = -1 with no variations");
-        check(g4.quantize_clock_node().empty(), "quantize_clock empty with no variations");
-        check_float(g4.metronome().bpm, 120.0f, "default metronome bpm preserved");
-        check(g4.metronome().beats_per_bar == 4, "default metronome beats_per_bar preserved");
-
-        std::remove(path.c_str());
-        std::remove(path2.c_str());
-    }
-
-    // =====================================================================
-    // Test 20: remove_node cascading cleanup (presets, variations, state mappings)
+    // Test 20: remove_node cascading cleanup (presets, state mappings)
     // =====================================================================
     {
         std::fprintf(stderr, "\n=== Test 20: remove_node cascading cleanup ===\n");
@@ -362,15 +121,6 @@
         check(g.list_presets("osc").size() == 1, "osc has 1 preset");
         check(g.list_presets("filt").size() == 1, "filt has 1 preset");
 
-        // Add a variation referencing both nodes
-        vivid::VariationDef v;
-        v.name = "Main";
-        v.params["osc"] = {{"freq", 440.0f}};
-        v.params["filt"] = {{"cutoff", 1000.0f}};
-        v.string_params["osc"] = {{"waveform", "saw"}};
-        g.add_variation(std::move(v));
-        check(g.variations()[0].params.size() == 2, "variation has 2 node entries");
-
         // Add state-preset mappings: sm1 controls presets on osc and filt
         g.set_state_preset("sm1", 0, "osc", "Bright");
         g.set_state_preset("sm1", 0, "filt", "Open");
@@ -380,14 +130,10 @@
         g.add_node("sm2", "StateMachine");
         g.set_state_preset("sm2", 0, "osc", "Bright");
 
-        // Remove osc — should cascade to presets, variations, and state mappings
+        // Remove osc — should cascade to presets and state mappings
         g.remove_node("osc");
         check(g.list_presets("osc").empty(), "osc presets cleaned up");
         check(g.list_presets("filt").size() == 1, "filt presets untouched");
-        check(g.variations()[0].params.size() == 1, "variation has 1 node entry after removal");
-        check(g.variations()[0].params.count("filt") == 1, "variation still has filt");
-        check(g.variations()[0].params.count("osc") == 0, "variation no longer has osc");
-        check(g.variations()[0].string_params.count("osc") == 0, "variation string_params no longer has osc");
 
         // sm1 mapping should still exist but osc removed from targets
         const auto* sm1_map = g.find_state_mapping("sm1");

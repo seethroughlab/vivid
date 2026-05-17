@@ -59,9 +59,7 @@ int main(int argc, char* argv[]) {
         vivid::AudioEngine no_cg_audio;
         vivid::RuntimeAPI no_cg_api(no_cg_graph, no_cg_runtime, no_cg_audio, registry);
 
-        vivid::VariationDef variation;
-        variation.name = "NoCompiledGraphVariation";
-        no_cg_graph.add_variation(variation);
+        // VariationDef removed in Phase 1.
 
         vivid::OperatorPreset preset;
         preset.name = "NoCompiledGraphPreset";
@@ -79,14 +77,8 @@ int main(int argc, char* argv[]) {
                                  "set_param_lock fails cleanly");
         expect_no_compiled_graph(no_cg_api.get_param_lock("a", "scale"), "get_param_lock fails cleanly");
         expect_no_compiled_graph(no_cg_api.inspect("a"), "inspect fails cleanly");
-        expect_no_compiled_graph(no_cg_api.save_variation("NoCompiledGraphSaved"),
-                                 "save_variation fails cleanly");
-        expect_no_compiled_graph(no_cg_api.recall_variation("NoCompiledGraphVariation"),
-                                 "recall_variation fails cleanly");
-        expect_no_compiled_graph(no_cg_api.update_variation("NoCompiledGraphVariation"),
-                                 "update_variation fails cleanly");
-        expect_no_compiled_graph(no_cg_api.queue_variation("NoCompiledGraphVariation", "bar"),
-                                 "queue_variation fails cleanly");
+        // save_variation / recall_variation / update_variation / queue_variation
+        // removed in Phase 1 (RuntimeAPI variation methods removed).
         expect_no_compiled_graph(no_cg_api.save_preset("a", "NoCompiledGraphSavedPreset"),
                                  "save_preset fails cleanly");
         expect_no_compiled_graph(no_cg_api.recall_preset("a", "NoCompiledGraphPreset"),
@@ -105,7 +97,6 @@ int main(int argc, char* argv[]) {
         check(no_cg_api.needs_gpu_realloc(), "set_resolution marks gpu realloc without compiled graph");
         check(no_cg_api.graph_dirty(), "set_resolution marks graph dirty without compiled graph");
 
-        no_cg_api.tick_quantized_switch();
         no_cg_api.tick_state_presets();
         check(true, "tick helpers no-op without compiled graph");
     }
@@ -858,156 +849,9 @@ int main(int argc, char* argv[]) {
         std::filesystem::remove(tmp_path);
     }
 
-    // --- Test save_variation + recall round-trip ---
-    std::fprintf(stderr, "\n--- save_variation + recall ---\n");
-    float original_a_scale;
-    {
-        // Read current a/scale value
-        auto r0 = api.get_param("a", "scale");
-        check(r0.ok, "get a/scale before save");
-        original_a_scale = std::stof(r0.message);
-
-        auto r1 = api.save_variation("A");
-        check(r1.ok, "save_variation A");
-        check(!api.variation_dirty(), "not dirty after save");
-
-        // Modify a param
-        api.set_param("a", "scale", 99.0f);
-        check(api.variation_dirty(), "dirty after set_param");
-
-        auto r2 = api.save_variation("B");
-        check(r2.ok, "save_variation B");
-
-        // Recall A — should restore original value
-        auto r3 = api.recall_variation("A");
-        check(r3.ok, "recall_variation A");
-        auto r4 = api.get_param("a", "scale");
-        check(r4.ok, "get a/scale after recall A");
-        check_float(std::stof(r4.message), original_a_scale, "a/scale restored to original");
-
-        // Recall B — should have 99.0
-        auto r5 = api.recall_variation("B");
-        check(r5.ok, "recall_variation B");
-        auto r6 = api.get_param("a", "scale");
-        check(r6.ok, "get a/scale after recall B");
-        check_float(std::stof(r6.message), 99.0f, "a/scale = 99.0 from variation B");
-    }
-
-    // --- Test recall_variation_idx ---
-    std::fprintf(stderr, "\n--- recall_variation_idx ---\n");
-    {
-        auto r1 = api.recall_variation_idx(0);
-        check(r1.ok, "recall_variation_idx(0) ok");
-
-        auto r2 = api.recall_variation_idx(99);
-        check(!r2.ok, "recall_variation_idx(99) fails");
-    }
-
-    // --- Test list_variations ---
-    std::fprintf(stderr, "\n--- list_variations ---\n");
-    {
-        auto r = api.list_variations();
-        check(r.ok, "list_variations ok");
-        check(r.message.find("A") != std::string::npos, "list contains A");
-        check(r.message.find("B") != std::string::npos, "list contains B");
-    }
-
-    // --- Test update_variation ---
-    std::fprintf(stderr, "\n--- update_variation ---\n");
-    {
-        // Recall A, modify, update
-        api.recall_variation("A");
-        api.set_param("a", "scale", 55.0f);
-        auto r1 = api.update_variation("A");
-        check(r1.ok, "update_variation A ok");
-
-        // Recall B, then A — verify A has 55.0
-        api.recall_variation("B");
-        api.recall_variation("A");
-        auto r2 = api.get_param("a", "scale");
-        check(r2.ok, "get a/scale after update+recall A");
-        check_float(std::stof(r2.message), 55.0f, "a/scale = 55.0 after update");
-    }
-
-    // --- Test rename_variation ---
-    std::fprintf(stderr, "\n--- rename_variation ---\n");
-    {
-        auto r1 = api.rename_variation("A", "Intro");
-        check(r1.ok, "rename A -> Intro ok");
-
-        auto r2 = api.recall_variation("Intro");
-        check(r2.ok, "recall Intro (renamed from A) ok");
-
-        auto r3 = api.recall_variation("A");
-        check(!r3.ok, "recall A (old name) fails");
-
-        auto r4 = api.rename_variation("nope", "x");
-        check(!r4.ok, "rename non-existent fails");
-    }
-
-    // --- Test duplicate_variation ---
-    std::fprintf(stderr, "\n--- duplicate_variation ---\n");
-    {
-        // At this point we have "Intro" (renamed from A) and "B"
-        auto r1 = api.duplicate_variation("Intro", "Intro_copy");
-        check(r1.ok, "duplicate Intro -> Intro_copy ok");
-
-        // Recall the copy — should have same params as Intro
-        auto r2 = api.recall_variation("Intro_copy");
-        check(r2.ok, "recall Intro_copy ok");
-
-        // Name conflict
-        auto r3 = api.duplicate_variation("Intro", "B");
-        check(!r3.ok, "duplicate with name conflict fails");
-
-        // Not found
-        auto r4 = api.duplicate_variation("nope", "X");
-        check(!r4.ok, "duplicate non-existent fails");
-
-        // Clean up the copy for subsequent tests
-        api.remove_variation("Intro_copy");
-    }
-
-    // --- Test move_variation ---
-    std::fprintf(stderr, "\n--- move_variation ---\n");
-    {
-        // At this point we have "Intro" and "B"
-        auto r1 = api.move_variation("B", 0);
-        check(r1.ok, "move B to index 0 ok");
-
-        // Verify order: B should now be at index 0
-        auto r2 = api.list_variations();
-        check(r2.ok, "list after move ok");
-
-        // Move back
-        auto r3 = api.move_variation("B", 1);
-        check(r3.ok, "move B back to index 1 ok");
-
-        // Invalid index
-        auto r4 = api.move_variation("Intro", 99);
-        check(!r4.ok, "move to out-of-range fails");
-
-        // Not found
-        auto r5 = api.move_variation("nope", 0);
-        check(!r5.ok, "move non-existent fails");
-    }
-
-    // --- Test remove_variation ---
-    std::fprintf(stderr, "\n--- remove_variation ---\n");
-    {
-        auto r1 = api.remove_variation("B");
-        check(r1.ok, "remove_variation B ok");
-
-        auto r2 = api.remove_variation("B");
-        check(!r2.ok, "remove_variation B again fails");
-    }
-
-    // --- Test queue_variation (instant) ---
-    std::fprintf(stderr, "\n--- queue_variation ---\n");
-    {
-        auto r = api.queue_variation("Intro", "instant");
-        check(r.ok, "queue_variation Intro instant ok");
-    }
+    // save_variation, recall_variation, list_variations, update_variation, rename_variation,
+    // duplicate_variation, move_variation, remove_variation, queue_variation tests removed
+    // in Phase 1: RuntimeAPI variation methods removed.
 
     // --- Test metronome-backed quantized switching ---
     std::fprintf(stderr, "\n--- metronome-backed quantized switching ---\n");
@@ -1038,73 +882,19 @@ int main(int argc, char* argv[]) {
         check_float(static_cast<float>(slowed_sample.beats_elapsed), expected_beats, 0.02f,
                     "slower bpm advances from the preserved beat anchor");
 
-        auto s1 = api.set_param("a", "scale", 9.0f);
-        check(s1.ok, "set a/scale for QuantBase");
-        auto v1 = api.save_variation("QuantBase");
-        check(v1.ok, "save QuantBase ok");
-
-        auto s2 = api.set_param("a", "scale", 3.0f);
-        check(s2.ok, "set a/scale for QuantTarget");
-        auto v2 = api.save_variation("QuantTarget");
-        check(v2.ok, "save QuantTarget ok");
-
         auto meter_change = api.set_graph_metronome(60.0f, 5);
         check(meter_change.ok, "meter change ok");
         const auto reset_sample = api.current_metronome_sample();
         check(reset_sample.beats_per_bar == 5, "live metronome adopts new meter");
         check_float(static_cast<float>(reset_sample.beats_elapsed), 0.0f, 1e-5f,
                     "meter change resets beat count immediately");
-        auto queue_then_reset = api.queue_variation("QuantBase", "bar");
-        check(queue_then_reset.ok, "queue variation ok");
-        check(api.pending_variation_idx() == graph.find_variation_index("QuantBase"),
-              "pending variation armed");
 
-        // Switch to 120 BPM, 3/4 — resets beats to 0 (meter changed).
-        // Use absolute times > previous tick (11.00) so metronome advances forward.
+        // Switch to 120 BPM, 3/4
         auto meter_update = api.set_graph_metronome(120.0f, 3);
         check(meter_update.ok, "update metronome to 3/4 ok");
-        auto q = api.queue_variation("QuantBase", "bar");
-        check(q.ok, "queue QuantBase on next 3/4 bar ok");
-        check(api.pending_variation_idx() == graph.find_variation_index("QuantBase"),
-              "pending variation idx points at QuantBase");
 
-        const auto* a_node = runtime.compiled_graph()->find_node("a");
-        check(a_node != nullptr, "node a present for quantized switching");
-        if (a_node) {
-            auto pi = a_node->param_indices.find("scale");
-            check(pi != a_node->param_indices.end(), "node a has scale param");
-            if (pi != a_node->param_indices.end())
-                check_float(a_node->param_values[pi->second], 3.0f, "queued variation does not apply immediately");
-        }
-
-        api.tick_quantized_switch();
-        if (a_node) {
-            auto pi = a_node->param_indices.find("scale");
-            if (pi != a_node->param_indices.end())
-                check_float(a_node->param_values[pi->second], 3.0f, "same-beat tick still waits for boundary");
-        }
-
-        // At 120 BPM, 3 beats = 1.5s. Tick just before the bar boundary.
-        runtime.tick(12.24, 0.016, 33);
-        api.tick_quantized_switch();
-        if (a_node) {
-            auto pi = a_node->param_indices.find("scale");
-            if (pi != a_node->param_indices.end())
-                check_float(a_node->param_values[pi->second], 3.0f, "pre-boundary tick keeps active variation");
-        }
-
-        // Past the 3-beat bar boundary (1.5s at 120 BPM).
-        runtime.tick(12.50, 0.016, 34);
-        api.tick_quantized_switch();
-        if (a_node) {
-            auto pi = a_node->param_indices.find("scale");
-            if (pi != a_node->param_indices.end())
-                check_float(a_node->param_values[pi->second], 9.0f, "bar-quantized switch fires at 3/4 boundary");
-        }
-        check(api.pending_variation_idx() == -1, "pending variation clears after switch");
-
-        api.remove_variation("QuantBase");
-        api.remove_variation("QuantTarget");
+        // Quantized variation switching tests removed in Phase 1 (queue_variation,
+        // tick_quantized_switch, pending_variation_idx removed from RuntimeAPI).
     }
 
     // --- Test ensure_state_mapping ---
@@ -1163,27 +953,8 @@ int main(int argc, char* argv[]) {
         check(r.ok, "set_quantize_clock a ok");
     }
 
-    // --- Test recall after node removal ---
-    std::fprintf(stderr, "\n--- recall after node removal ---\n");
-    {
-        // Save a variation capturing both nodes
-        api.save_variation("PreRemove");
-
-        // Add a temporary node, save variation with it, then remove it
-        api.add_node("TestOp", "tmp_var_node");
-        api.apply_pending(has_gpu_ops, has_audio);
-        api.save_variation("WithTmp");
-        api.remove_node("tmp_var_node");
-        api.apply_pending(has_gpu_ops, has_audio);
-
-        // Recall the variation that included the now-removed node — should not crash
-        auto r = api.recall_variation("WithTmp");
-        check(r.ok, "recall variation with missing node does not crash");
-
-        // Cleanup: remove test variations
-        api.remove_variation("PreRemove");
-        api.remove_variation("WithTmp");
-    }
+    // "recall after node removal" variation test removed in Phase 1
+    // (RuntimeAPI variation methods removed).
 
     // --- Cleanup ---
     runtime.shutdown();

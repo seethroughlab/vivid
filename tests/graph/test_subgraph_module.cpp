@@ -466,47 +466,9 @@ static void test_flatten_midi_mapping_remap() {
 }
 
 static void test_flatten_variation_remap() {
-    std::fprintf(stderr, "\n--- flatten: variation params remapped through param binding ---\n");
-
-    vivid::SubgraphModuleRegistry registry;
-    std::string tmp_path = (g_tmp->path / "test_var.vivid-module.json").string();
-    {
-        FILE* f = std::fopen(tmp_path.c_str(), "w");
-        std::fputs(kSimpleModule, f);
-        std::fclose(f);
-    }
-    registry.load(tmp_path);
-
-    vivid::Graph parent;
-    parent.add_node("synth1", "TestSynth", {});
-    parent.add_node("out", "audio_out", {});
-    parent.add_connection("synth1", "output", "out", "input");
-
-    // Add a variation that sets module params + external node params
-    vivid::VariationDef var;
-    var.name = "Loud";
-    var.params["synth1"]["volume"] = 0.95f;
-    var.params["synth1"]["waveform"] = 3.0f;
-    var.params["out"]["master_vol"] = 0.8f;
-    parent.add_variation(var);
-
-    vivid::Graph flat = vivid::flatten_subgraphs(parent, registry).graph;
-
-    check(flat.variations().size() == 1, "1 variation preserved");
-    const auto& v = flat.variations()[0];
-    check(v.name == "Loud", "variation name preserved");
-
-    // Module params should be remapped
-    check(v.params.count("synth1") == 0, "module node ID removed from variation");
-    check(v.params.count("synth1.__mixer") == 1, "mixer params added");
-    check(v.params.at("synth1.__mixer").at("gain") == 0.95f, "volume -> gain remapped");
-    check(v.params.count("synth1.__osc") == 1, "osc params added");
-    check(v.params.at("synth1.__osc").at("waveform") == 3.0f, "waveform remapped");
-
-    // External node params preserved
-    check(v.params.count("out") == 1, "external node preserved");
-    check(v.params.at("out").at("master_vol") == 0.8f, "external param unchanged");
-
+    // Removed in Phase 1: VariationDef replaced by SessionDef.
+    // Session data is not propagated across subgraph module boundaries.
+    std::fprintf(stderr, "\n--- flatten: variation remap test skipped (Phase 1: VariationDef removed) ---\n");
 }
 
 static void test_flatten_cross_instance_connection() {

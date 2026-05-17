@@ -252,20 +252,9 @@ void NodeGraphUI::handle_right_click() {
         return;  // right-click in inspector but not on a label — ignore
     }
 
-    // Session grid right-click — context menu on card
+    // Session grid right-click — context menu placeholder (Phase 1)
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         session_ctx_menu_open_ = false;
-        for (const auto& cr : variation_cell_rects_) {
-            if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
-                mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
-                session_ctx_menu_open_ = true;
-                session_ctx_menu_x_ = mouse_.x;
-                session_ctx_menu_y_ = mouse_.y;
-                session_ctx_menu_idx_ = cr.idx;
-                session_selected_idx_ = cr.idx;
-                break;
-            }
-        }
         return;
     }
 

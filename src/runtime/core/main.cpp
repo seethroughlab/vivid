@@ -3040,8 +3040,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         // --- Apply MIDI mappings (before tick so wire wins on conflict) ---
         runtime_api.apply_midi_mappings();
 
-        // --- Tick quantized variation switching ---
-        runtime_api.tick_quantized_switch();
+        // --- Tick quantized state transitions ---
         runtime_api.tick_quantized_state_transitions();
 
         // --- Try to acquire surface texture for presentation ---

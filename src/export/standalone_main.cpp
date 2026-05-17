@@ -221,7 +221,6 @@ int main(int argc, char* argv[]) {
 
         // Apply MIDI mappings
         runtime_api.apply_midi_mappings();
-        runtime_api.tick_quantized_switch();
 
         // Begin frame
         vivid::FrameState frame;

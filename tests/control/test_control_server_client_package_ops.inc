@@ -160,78 +160,11 @@
         // Cleanup temp file
         std::filesystem::remove(tmp_path);
 
-        // Phase 14: Variations
-        std::fprintf(stderr, "\n--- variations ---\n");
+        // Phase 14: Variations removed in Phase 1 (HTTP variation endpoints removed).
+        // set_quantize_clock still valid:
         {
-            auto r1 = post(client, base_url, "save_variation", R"({"name":"V1"})");
-            check(r1.ok, "save_variation V1 ok");
-
-            auto r2 = post(client, base_url, "list_variations");
-            check(r2.ok, "list_variations ok");
-            if (!r2.j.is_null()) {
-                std::string msg = r2.j.value("message", "");
-                check(msg.find("V1") != std::string::npos,
-                      "list contains V1");
-            }
-
-            auto r3 = post(client, base_url, "save_variation", R"({"name":"V2"})");
-            check(r3.ok, "save_variation V2 ok");
-
-            auto r4 = post(client, base_url, "recall_variation", R"({"name":"V1"})");
-            check(r4.ok, "recall_variation V1 ok");
-
-            auto r5 = post(client, base_url, "update_variation", R"({"name":"V1"})");
-            check(r5.ok, "update_variation V1 ok");
-
-            auto r6 = post(client, base_url, "rename_variation",
-                R"({"old_name":"V1","new_name":"Intro"})");
-            check(r6.ok, "rename_variation V1 -> Intro ok");
-
-            auto r7 = post(client, base_url, "queue_variation",
-                R"({"name":"V2","quantize":"instant"})");
-            check(r7.ok, "queue_variation V2 instant ok");
-
             auto r8 = post(client, base_url, "set_quantize_clock", R"({"node_id":"a"})");
             check(r8.ok, "set_quantize_clock a ok");
-
-            auto r9 = post(client, base_url, "remove_variation", R"({"name":"V2"})");
-            check(r9.ok, "remove_variation V2 ok");
-
-            auto r10 = post(client, base_url, "remove_variation", R"({"name":"bogus"})");
-            check(!r10.ok, "remove_variation bogus fails");
-
-            // duplicate_variation
-            auto rd1 = post(client, base_url, "save_variation", R"({"name":"D1"})");
-            check(rd1.ok, "save_variation D1 ok");
-
-            auto rd2 = post(client, base_url, "duplicate_variation",
-                R"({"name":"D1","new_name":"D1_copy"})");
-            check(rd2.ok, "duplicate_variation D1 -> D1_copy ok");
-
-            auto rd3 = post(client, base_url, "duplicate_variation",
-                R"({"name":"D1","new_name":"D1_copy"})");
-            check(!rd3.ok, "duplicate_variation name conflict fails");
-
-            auto rd4 = post(client, base_url, "duplicate_variation",
-                R"({"name":"nope","new_name":"X"})");
-            check(!rd4.ok, "duplicate_variation not found fails");
-
-            // move_variation
-            auto rm1 = post(client, base_url, "move_variation",
-                R"({"name":"D1_copy","to_index":0})");
-            check(rm1.ok, "move_variation D1_copy to 0 ok");
-
-            auto rm2 = post(client, base_url, "move_variation",
-                R"({"name":"D1","to_index":99})");
-            check(!rm2.ok, "move_variation out of range fails");
-
-            auto rm3 = post(client, base_url, "move_variation",
-                R"({"name":"nope","to_index":0})");
-            check(!rm3.ok, "move_variation not found fails");
-
-            // Cleanup
-            post(client, base_url, "remove_variation", R"({"name":"D1"})");
-            post(client, base_url, "remove_variation", R"({"name":"D1_copy"})");
         }
 
         // --- input validation: recording path traversal ---

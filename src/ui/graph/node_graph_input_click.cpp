@@ -193,109 +193,19 @@ void NodeGraphUI::handle_left_click() {
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         // Close context menu if clicking elsewhere
         if (session_ctx_menu_open_) {
-            // Check context menu item clicks
-            for (const auto& cr : session_ctx_menu_rects_) {
-                if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
-                    mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
-                    int target = session_ctx_menu_idx_;
-                    if (target >= 0 && target < static_cast<int>(snap_.variations.size())) {
-                        const auto& vname = snap_.variations[target].name;
-                        if (cr.action == 0) {
-                            // Rename
-                            session_editing_name_ = true;
-                            session_edit_idx_ = target;
-                            session_edit_buffer_ = vname;
-                            text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
-                        } else if (cr.action == 1) {
-                            // Duplicate
-                            std::string new_name = vname + " copy";
-                            commands_.duplicate_variation(vname, new_name);
-                        } else if (cr.action == 2) {
-                            // Delete
-                            commands_.remove_variation(vname);
-                            if (session_selected_idx_ == target)
-                                session_selected_idx_ = -1;
-                        } else if (cr.action == 3) {
-                            // Branch From
-                            std::string branch_name = vname + " branch";
-                            commands_.duplicate_variation(vname, branch_name);
-                        }
-                    }
-                    session_ctx_menu_open_ = false;
-                    mouse_.left_clicked = false;
-                    return;
-                }
-            }
             session_ctx_menu_open_ = false;
             mouse_.left_clicked = false;
             return;
         }
 
-        // Check variation cells
-        for (const auto& cr : variation_cell_rects_) {
-            if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
-                mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
-                // Double-click to rename
-                double now = glfwGetTime();
-                if (last_variation_click_idx_ == cr.idx &&
-                    (now - last_variation_click_time_) < 0.4) {
-                    // Double-click — enter rename mode
-                    session_editing_name_ = true;
-                    session_edit_idx_ = cr.idx;
-                    session_edit_buffer_ = snap_.variations[cr.idx].name;
-                    text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
-                    last_variation_click_idx_ = -1;
-                } else {
-                    // Single click — select and recall/queue
-                    session_selected_idx_ = cr.idx;
-                    if (session_quantize_mode_ > 0) {
-                        static const char* q_modes[] = { "instant", "beat", "bar", "4bar" };
-                        commands_.queue_variation(snap_.variations[cr.idx].name,
-                                                  q_modes[session_quantize_mode_]);
-                    } else {
-                        commands_.recall_variation_idx(cr.idx);
-                    }
-                    // Begin potential drag
-                    session_drag_idx_ = cr.idx;
-                    session_drag_start_x_ = mouse_.x;
-                    session_drag_start_y_ = mouse_.y;
-                    session_drag_active_ = false;
-
-                    last_variation_click_idx_ = cr.idx;
-                    last_variation_click_time_ = now;
-                }
-                mouse_.left_clicked = false;
-                return;
-            }
-        }
         // Check buttons
         for (const auto& br : session_button_rects_) {
             if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
-                if (br.action == 0) {
-                    // + Save New
-                    std::string name = "Var " + std::to_string(snap_.variations.size() + 1);
-                    commands_.save_variation(name);
-                } else if (br.action == 1) {
-                    // Update (overwrite active variation)
-                    if (snap_.active_variation >= 0 &&
-                        snap_.active_variation < static_cast<int>(snap_.variations.size())) {
-                        commands_.update_variation(
-                            snap_.variations[snap_.active_variation].name);
-                    }
-                } else if (br.action >= 2 && br.action <= 5) {
+                if (br.action >= 2 && br.action <= 5) {
                     // Quantize mode buttons
                     session_quantize_mode_ = br.action - 2;
                     clear_status_banner();
-                } else if (br.action == 6) {
-                    // Branch (duplicate active variation then recall the copy)
-                    if (snap_.active_variation >= 0 &&
-                        snap_.active_variation < static_cast<int>(snap_.variations.size())) {
-                        const auto& active_name = snap_.variations[snap_.active_variation].name;
-                        std::string branch_name = active_name + " branch";
-                        commands_.duplicate_variation(active_name, branch_name);
-                        commands_.recall_variation(branch_name);
-                    }
                 } else if (br.action == 7) {
                     toggle_session_grid();
                 }

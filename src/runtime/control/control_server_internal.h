@@ -646,14 +646,6 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "add_midi_mapping" ||
            method == "remove_midi_mapping" ||
            method == "update_midi_mapping" ||
-           method == "save_variation" ||
-           method == "recall_variation" ||
-           method == "remove_variation" ||
-           method == "rename_variation" ||
-           method == "duplicate_variation" ||
-           method == "move_variation" ||
-           method == "update_variation" ||
-           method == "queue_variation" ||
            method == "set_graph_metronome" ||
            method == "set_quantize_clock" ||
            method == "set_analysis" ||

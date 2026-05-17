@@ -113,23 +113,10 @@ public:
     CommandResult list_mod_destinations(const std::string& node_id);
     CommandResult list_mod_assignments(const std::string& node_id);
 
-    // --- Variations ---
-    CommandResult save_variation(const std::string& name);
-    CommandResult recall_variation(const std::string& name);
-    CommandResult recall_variation_idx(int idx);
-    CommandResult remove_variation(const std::string& name);
-    CommandResult rename_variation(const std::string& old_name, const std::string& new_name);
-    CommandResult duplicate_variation(const std::string& name, const std::string& new_name);
-    CommandResult move_variation(const std::string& name, int to_index);
-    CommandResult update_variation(const std::string& name);
-    CommandResult list_variations();
-    CommandResult queue_variation(const std::string& name, const std::string& quantize);
+    // --- Quantize / Metronome ---
     CommandResult set_quantize_clock(const std::string& node_id);
     CommandResult set_graph_metronome(float bpm, int beats_per_bar);
     GraphMetronomeSample current_metronome_sample() const;
-
-    // Per-frame: check pending quantized variation switch
-    void tick_quantized_switch();
 
     // --- Per-Track StateMachine State Transitions ---
     CommandResult queue_state_transition(const std::string& sm_node_id, int state_idx,
@@ -162,9 +149,6 @@ public:
     // Per-operator preset state accessor for snapshot
     const std::string& active_preset(const std::string& node_id) const;
 
-    // Variation state accessors for snapshot
-    int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
-    bool variation_dirty() const { return variation_dirty_; }
     bool graph_dirty() const { return graph_dirty_; }
 
     // Persistence
@@ -261,15 +245,6 @@ private:
     uint64_t reload_serial_ = 0;
     bool preserve_undo_history_on_reload_ = false;
 
-    // Quantized variation switching state
-    struct PendingVariation {
-        int variation_idx = -1;
-        enum Quantize { Instant, Beat, Bar, FourBar } quantize = Instant;
-        int64_t target_beat_index = -1;
-        bool armed = false;
-    };
-    PendingVariation pending_variation_;
-
     // Per-track quantized state transitions (one per StateMachine node)
     struct PendingStateTransition {
         std::string sm_node_id;
@@ -280,14 +255,10 @@ private:
     };
     std::vector<PendingStateTransition> pending_state_transitions_;
 
-    bool variation_dirty_ = false;
     bool graph_dirty_ = false;
     std::string last_saved_graph_json_;
     std::string active_graph_source_path_;
     std::string resources_dir_;
-
-    // Internal helper to apply a variation's params to live nodes
-    void apply_variation(int idx);
 
     // State-preset mapping: track previous state per mapped state machine
     std::unordered_map<std::string, float> prev_sm_state_;

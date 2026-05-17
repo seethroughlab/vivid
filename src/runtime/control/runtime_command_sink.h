@@ -136,42 +136,6 @@ public:
         return true;
     }
 
-    void save_variation(const std::string& name) override {
-        auto r = api_.save_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void recall_variation(const std::string& name) override {
-        auto r = api_.recall_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void recall_variation_idx(int idx) override {
-        auto r = api_.recall_variation_idx(idx);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void remove_variation(const std::string& name) override {
-        auto r = api_.remove_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void rename_variation(const std::string& old_name, const std::string& new_name) override {
-        auto r = api_.rename_variation(old_name, new_name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void update_variation(const std::string& name) override {
-        auto r = api_.update_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void duplicate_variation(const std::string& name, const std::string& new_name) override {
-        auto r = api_.duplicate_variation(name, new_name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void move_variation(const std::string& name, int to_index) override {
-        auto r = api_.move_variation(name, to_index);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void queue_variation(const std::string& name, const std::string& quantize) override {
-        auto r = api_.queue_variation(name, quantize);
-        if (r.ok) capture_undo_snapshot();
-    }
     void queue_state_transition(const std::string& sm_node_id, int state_idx,
                                 const std::string& quantize) override {
         api_.queue_state_transition(sm_node_id, state_idx, quantize);

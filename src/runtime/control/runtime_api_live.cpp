@@ -233,7 +233,6 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
                 // Update authored graph (for persistence)
                 NodeDef* ndef = graph_.find_node(node_id);
                 if (ndef) ndef->params[param] = value;
-                if (graph_.active_variation() >= 0) variation_dirty_ = true;
                 mark_graph_dirty();
                 std::ostringstream oss;
                 oss << node_id << "/" << param << " = " << value << " (modulated base)";
@@ -248,7 +247,6 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
         // Sync to authored graph's module node (not internal node)
         NodeDef* ndef = graph_.find_node(node_id);
         if (ndef) ndef->params[param] = value;
-        if (graph_.active_variation() >= 0) variation_dirty_ = true;
         mark_graph_dirty();
         std::ostringstream oss;
         oss << node_id << "/" << param << " = " << value;
@@ -288,8 +286,6 @@ CommandResult RuntimeAPI::set_param(const std::string& node_id, const std::strin
         ndef->params[param] = value;
     }
 
-    if (graph_.active_variation() >= 0)
-        variation_dirty_ = true;
     mark_graph_dirty();
 
     std::ostringstream oss;
@@ -310,7 +306,6 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
         set_file_param_internal(*resolved->cn, resolved->internal_param, value);
         NodeDef* ndef = graph_.find_node(node_id);
         if (ndef) ndef->string_params[param] = value;
-        if (graph_.active_variation() >= 0) variation_dirty_ = true;
         mark_graph_dirty();
         return {true, node_id + "/" + param + " = " + value};
     }
@@ -324,8 +319,6 @@ CommandResult RuntimeAPI::set_string_param(const std::string& node_id, const std
     NodeDef* ndef = graph_.find_node(node_id);
     if (ndef) ndef->string_params[param] = value;
 
-    if (graph_.active_variation() >= 0)
-        variation_dirty_ = true;
     mark_graph_dirty();
 
     return {true, node_id + "/" + param + " = " + value};
