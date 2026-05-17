@@ -73,6 +73,14 @@
       "content": "src/tutorials/complete-av-patch.md"
     },
     {
+      "slug": "session-tracks-clips-scenes",
+      "title": "Session: Tracks, Clips, and Scenes",
+      "track": "composer",
+      "difficulty": "intermediate",
+      "brief": "Capture parameter snapshots as Clips, organize them into Tracks, and launch coordinated Scenes for live performance.",
+      "content": "src/tutorials/session-tracks-clips-scenes.md"
+    },
+    {
       "slug": "custom-gpu-operator",
       "title": "Writing a Custom GPU Operator",
       "track": "developer",
