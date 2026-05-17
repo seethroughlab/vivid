@@ -55,7 +55,7 @@ struct NotePatternCore : vivid::OperatorBase {
     vivid::Param<float> gate_length  {"gate_length",    0.8f, 0.01f, 1.0f};
     vivid::Param<float> velocity     {"velocity",       0.8f, 0.0f, 1.0f};
     vivid::Param<int>   midi_channel {"midi_channel",   1, 1, 16};
-    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     NotePatternCore() {
         vivid::description(steps, "Number of active chord steps in the sequence, 1 to 8");

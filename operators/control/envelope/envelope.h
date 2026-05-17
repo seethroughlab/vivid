@@ -18,14 +18,14 @@
  * @input gate Gate signal. Rising edges start the ADSR and falling edges trigger release.
  * @input beat_phase External 0-1 beat ramp. A wrap retriggers the envelope globally.
  * @output value The computed envelope value after amplitude and offset are applied.
- * @tip Connect beat_phase from a Clock to retrigger the envelope rhythmically.
+ * @tip To retrigger rhythmically, set clock_source=metronome (default) or connect beat_phase from a Clock for a custom tempo.
  * @tip In polyphonic graphs, drive gate from NoteBreakout/voice_gates and lane_ids from NoteBreakout/voice_ids so each lane gets its own ADSR state.
  * @recipe NoteBreakout/voice_gates -> Envelope/gate; NoteBreakout/voice_ids -> Envelope/lane_ids -> VoiceMixer/amp_env_audio
  * @recipe Envelope/value -> Filter/cutoff_mod with NoteBreakout/voice_freqs -> Filter/frequencies
  * @pitfall beat_phase retriggers globally; use gate when you want per-note articulation.
  * @family voice_shaper
  * @best_used_with NoteBreakout, VoiceMixer, Filter
- * @common_companions Clock, ChordProgression, WavetableOsc
+ * @common_companions ChordProgression, WavetableOsc
  * @param curve Envelope curve shape: linear, exponential, or logarithmic.
  * @see LFO, MSEG, SpreadADSR
  */
@@ -43,7 +43,7 @@ struct Envelope : vivid::OperatorBase {
     vivid::Param<float> amplitude{"amplitude", 1.0f,   0.0f,   10.0f};
     vivid::Param<float> offset   {"offset",    0.0f,   0.0f,   10.0f};
     vivid::Param<int>   curve    {"curve",     1,      {"linear", "exponential", "logarithmic"}};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     enum Stage : uint8_t { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
 

@@ -75,7 +75,7 @@ struct SequencerCore : vivid::OperatorBase {
     }};
 
     // --- Clock and output shaping ---
-    vivid::Param<int>   rate_mode      {"rate_mode",      vivid::kRateModeExternal, vivid::rate_mode_labels()};
+    vivid::Param<int>   rate_mode      {"rate_mode",      vivid::kRateModeMetronome, vivid::rate_mode_labels()};
     vivid::Param<float> frequency      {"frequency",      1.0f, 0.01f, 20.0f};
     vivid::Param<int>   sync_division  {"sync_division",  2, vivid::metronome_division_labels()};
     vivid::Param<float> glide          {"glide",          0.0f, 0.0f, 1.0f};

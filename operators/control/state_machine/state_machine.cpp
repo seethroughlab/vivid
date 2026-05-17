@@ -35,7 +35,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> dur_5       {"dur_5", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_6       {"dur_6", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_7       {"dur_7", 4.0f, 0.0f, 256.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
     vivid::Param<int>   force_state {"force_state",  -1, -1, 7};
 
     StateMachine() {

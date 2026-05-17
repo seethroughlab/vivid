@@ -22,7 +22,7 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
-    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     Alternate() {
         vivid::description(cycle, "How many beats before advancing to the next input");

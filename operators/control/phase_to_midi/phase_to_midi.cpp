@@ -13,7 +13,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
 
     vivid::Param<int>   note    {"note",     60,  0, 127};
     vivid::Param<float> velocity{"velocity", 100.0f, 0.0f, 127.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     float prev_phase_ = 0.0f;
     VividNoteBuffer notes_buf_ = {};
