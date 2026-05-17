@@ -7,20 +7,20 @@
 #include <cstring>
 
 /**
- * @brief Master tempo clock generating beat and bar phase signals.
+ * @brief Custom or subdivided tempo source with beat and bar phase outputs.
  *
- * Drives time-based operators with a steady pulse. Outputs a 0-1 sawtooth
- * beat phase, bar phase, milliseconds per beat, and a trigger pulse on
- * each beat boundary.
+ * Use Clock when you need a tempo independent from the graph metronome, or
+ * to subdivide the global beat (e.g. half-time, triplets). Outputs a 0-1
+ * sawtooth beat phase, bar phase, milliseconds per beat, and a trigger pulse.
+ * Operators default to the graph metronome; connect beat_phase to override.
  *
- * @tip Connect beat_phase to any operator with a beat_phase input for tempo sync.
- * @tip Use beat_phase for global tempo sync, not for per-note ADSR triggering.
+ * @tip Use Clock to override an operator's tempo or add a subdivided beat — most
+ * operators already sync to the graph metronome without a Clock connection.
+ * @tip beat_phase is a transport ramp, not a per-note trigger; don't use it to drive ADSR articulation.
  * @output beat_phase Sawtooth ramp 0-1 over each beat.
  * @output beat_ms Milliseconds per beat at the current tempo.
  * @output bar_phase Sawtooth ramp 0-1 over each bar.
  * @output beat_trigger Impulse on each beat boundary.
- * @recipe Clock/beat_phase -> LFO/beat_phase
- * @recipe Clock/beat_phase -> ChordProgression/beat_phase
  * @pitfall beat_phase is a global transport signal; it does not create separate per-note envelope state.
  * @family note_source
  * @best_used_with ChordProgression, Envelope, LFO
