@@ -5,29 +5,28 @@ A complete audio-visual performance patch: a drum machine with reverb and delay,
 ## Graph overview
 
 ```
-ClockFr ─────────────────────────────────────────────────┐
-    │                                                     │
-    ├── beat_phase → DrumSequencer                        │
-    │                   │                                 │
-    │           track_1 → DrumKick ──┐                   │
-    │           track_2 → DrumSnare──┤                   │
-    │           track_3 → DrumHiHat─┤                   │
-    │                                ↓                   │
-    │                             Mixer → Reverb → audio_out
-    │                                │
-    │                          AudioAnalysis
-    │                          rms ─→ Smooth(kick) ─→ Metaball/radii
-    │                          peak → Smooth(hat)  ─→ LfoFr/amplitude
-    │                                                     │
-    └── beat_phase → LfoFr ──────────────────────────────→ Metaball/pos_x
-                                                          │
-                                                    Bloom → Feedback → video_out
+[metronome 120 BPM]
+        │
+        ├── (tempo) → DrumSequencer
+        │                   │
+        │           track_1 → DrumKick ──┐
+        │           track_2 → DrumSnare──┤
+        │           track_3 → DrumHiHat─┤
+        │                                ↓
+        │                             Mixer → Reverb → audio_out
+        │                                │
+        │                          AudioAnalysis
+        │                          rms ─→ Smooth(kick) ─→ Metaball/radii
+        │                          peak → Smooth(hat)  ─→ LfoFr/amplitude
+        │                                                    │
+        └── (tempo) → LfoFr ────────────────────────────→ Metaball/pos_x
+                                                            │
+                                                      Bloom → Feedback → video_out
 ```
 
 ## Step 1: Drum machine
 
-1. Add **ClockFr** (bpm: 120)
-2. Add **DrumSequencer**. Connect `clock1/beat_phase` → `drumseq1/beat_phase`.
+1. Add **DrumSequencer**. It syncs to the graph metronome (default 120 BPM) — no Clock needed.
    Program: kick on beats 1 and 3, snare on 2 and 4, hi-hat on every eighth note.
 3. Add **DrumKick**, **DrumSnare**, **DrumHiHat**. Connect the sequencer track outputs to trigger inputs.
 4. Add **Mixer**. Connect all drum outputs to mixer inputs.
@@ -51,8 +50,8 @@ A static cluster of blobs appears with glow and trails.
 
 ## Step 4: Animate the blobs
 
-Sync the blob motion to the clock:
-1. Add **LfoFr**. Connect `clock1/beat_phase` → `lfo1/beat_phase`. Set `rate_mode` to **sync**, `waveform` to **sine**.
+Sync the blob motion to tempo:
+1. Add **LfoFr**. Set `rate_mode` to **metronome**, `sync_division` to **1/1**, `waveform` to **sine**. No Clock connection needed — LfoFr reads the graph metronome directly.
 2. Connect `lfo1/value` → `metaball1/pos_x`.
 
 The blobs sweep horizontally, locked to tempo.
@@ -79,7 +78,7 @@ Now the hi-hat energy briefly widens the sweep range of the blobs.
 
 | What to adjust | Where |
 |----------------|-------|
-| Overall tempo | ClockFr `bpm` |
+| Overall tempo | Graph metronome BPM (bottom-left of the session strip, or `set_graph_metronome` via MCP) |
 | Kick punch | DrumKick `pitch_env`, `click` |
 | Reverb space | Reverb `room_size`, `damping` |
 | Trail length | Feedback `decay` |
@@ -104,7 +103,7 @@ Neither Audio nor GPU ever communicate directly. Everything routes through Contr
 ## Performance tips
 
 - Use **Macros** to surface the key parameters (BPM, kick level, visual brightness) as a single performance panel
-- Save **Variations** (`Cmd+S` in the variations panel) to capture different states of the patch for live switching
+- Press **V** to open the Session strip — save Clips per track and launch Scenes to switch states during a live set
 - Try replacing DrumSequencer with **Euclidean** on one track for generative rhythmic variation
 
 ## Next steps
