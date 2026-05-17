@@ -115,7 +115,7 @@ The threshold between "I changed something and I see/hear the result" and "I'm w
 Experimentation isn't just tweaking parameters — it's combining different building blocks. The palette of available operators, connections, and configurations must be easy to browse, easy to populate (both by user and LLM), and easy to extend.
 
 #### Happy Accidents Require Branching
-When something unexpected and good happens, there must be a low-cost way to save the current state, continue exploring, and return to it later. Undo/redo is not enough — it's linear. What's needed is branching: "save this as a variation, keep going."
+When something unexpected and good happens, there must be a low-cost way to save the current state, continue exploring, and return to it later. Undo/redo is not enough — it's linear. What's needed is branching: "save this as a clip or scene, keep going."
 
 #### Visible Options Produce More Exploration
 When alternatives are visible (a grid of visual variations, a set of connection configurations), users explore more combinations than when they must imagine alternatives. The interface should make options spatial, not just sequential.
@@ -125,7 +125,7 @@ When alternatives are visible (a grid of visual variations, a set of connection 
 
 ### 3.2 The Six Experimentation Interfaces
 
-> **1.0 Status:** Two of the six interfaces shipped: the node graph (strong) and the session/variation surface (functional as a linear variation strip with save/recall/queue/quantize/reorder/branch). The remaining four — live REPL, parameter space explorer, pattern algebra, and state machine — are deferred past 1.0. See `docs/plans/ROADMAP.md` for the deferred list.
+> **1.0 Status:** Two of the six interfaces shipped: the node graph (strong) and the Session Tracks/Clips/Scenes surface for performance authoring. The remaining four — live REPL, parameter space explorer, pattern algebra, and state machine — are deferred past 1.0. See `docs/plans/ROADMAP.md` for the deferred list.
 
 Each interface below is a lens on the same underlying patch — different views of the same data, optimized for different exploration modes.
 
@@ -135,9 +135,9 @@ The graph is the canonical structural view: operators as nodes, connections as w
 
 Discovery potential: low (structural, not parametric). Latency: instant for connections, 50–200ms for adding operators.
 
-#### The Session / Variation Grid
+#### The Session Tracks / Clips / Scenes Grid
 
-A grid where columns are different configurations of the same structural patch, and rows might represent audio variations, visual variations, or complete A/V states. The user can click through columns to audition, drag to reorder, and ask the LLM to "fill this row with 8 variations of the particle behavior." Think Ableton Session View but for audiovisual configurations rather than clip launching.
+A grid where tracks represent performance channels, clips capture per-track audio/visual/control states, and scenes launch clip assignments across tracks. The user can audition a single track's clip, launch a full verse/chorus/drop scene, reorder authoring elements, and ask the LLM to generate alternate clips for a track. Think Ableton Session View adapted for audiovisual graph state rather than audio files alone.
 
 Discovery potential: very high. Latency: instant for parameter snapshots, 50–200ms for kernel swaps.
 
@@ -169,7 +169,7 @@ Discovery potential: moderate (high for composition). Latency: 50–200ms for ke
 
 A critical design constraint: the preceding interfaces implicitly treat audio and visual exploration as if they have the same feedback characteristics. They do not.
 
-Visual exploration is spatial and instantaneous — you can glance at a grid of 8 visual variations and evaluate all of them in under a second. Audio exploration is temporal and sequential — you cannot "glance" at a sound. You have to listen to it unfold over at least a bar or two. The evaluation bandwidth asymmetry is roughly 65×: visual permits ~8 options per second; audio permits ~0.12 options per second (~8 seconds per variation).
+Visual exploration is spatial and instantaneous — you can glance at a grid of 8 visual alternatives and evaluate all of them in under a second. Audio exploration is temporal and sequential — you cannot "glance" at a sound. You have to listen to it unfold over at least a bar or two. The evaluation bandwidth asymmetry is roughly 65×: visual permits ~8 options per second; audio permits ~0.12 options per second (~8 seconds per option).
 
 When exploring audio and visual together, the audio's temporal constraint dominates. Visual exploration gets slowed to audio speed, wasting the spatial advantage that makes visual experimentation so productive.
 
@@ -181,7 +181,7 @@ The resolution is not to treat audio and visual exploration identically, but to 
 
 The most productive cross-domain exploration comes from holding one domain stable while freely exploring the other. Which domain to anchor is the creator's choice:
 
-- **Audio-first:** select or compose an audio element, then rapidly explore visual responses against it. The audio loops; visual changes are instant. The variation/session surface and parameter exploration tools are at their most powerful here.
+- **Audio-first:** select or compose an audio element, then rapidly explore visual responses against it. The audio loops; visual changes are instant. The Session surface and parameter exploration tools are at their most powerful here.
 - **Visual-first:** build a visual scene, then explore how different audio elements interact with it. This is common for installations where the visual identity is primary and audio is a reactive layer.
 
 The interface assists whichever domain is being explored: when exploring audio, it offers rich metadata, short-loop auditioning, and A/B comparison to compensate for audio's slower evaluation. When exploring visuals, it offers spatial grids, instant switching, and LLM-generated mapping variations.
@@ -194,17 +194,17 @@ Fine-tuning the relationship between audio and visual once both are roughly in p
 
 Because audio evaluates slower than visual, the interface provides tools to narrow the gap:
 
-- **LLM annotations:** each audio variation tagged with semantic descriptions ("more syncopated," "darker harmonic quality"). The user scans descriptions first, auditions only promising ones.
+- **LLM annotations:** each audio option tagged with semantic descriptions ("more syncopated," "darker harmonic quality"). The user scans descriptions first, auditions only promising ones.
 - **Visual audio previews:** spectrograms, rhythm grids, harmonic maps — giving audio some of visual's spatial evaluation quality.
 - **Short-loop auditioning:** 2-beat excerpts rather than full 4-bar phrases. Cuts audition time by 75%.
-- **Comparative playback:** A/B toggle switching between variations on the beat boundary.
+- **Comparative playback:** A/B toggle switching between clips on the beat boundary.
 
 ### 3.5 LLM Role by Exploration Strategy
 
 | Strategy | LLM Role | Example |
 |----------|----------|---------|
-| Audio Exploration | Annotator + pre-filter | "Variation B has a deeper swing feel with a Neapolitan chord in bar 3." |
-| Visual Exploration | Variation generator | "Here are 6 mapping configurations ranging from minimal to heavy audio-reactivity." |
+| Audio Exploration | Annotator + pre-filter | "Clip B has a deeper swing feel with a Neapolitan chord in bar 3." |
+| Visual Exploration | Clip generator | "Here are 6 mapping configurations ranging from minimal to heavy audio-reactivity." |
 | Coupled Refinement | Critic + advisor | "Particle density peaks are lagging the beat by ~100ms. Try routing onset detection with 0 smoothing." |
 
 ---
@@ -239,7 +239,7 @@ Build toward visual graph equivalence on top of the same JSON representation. Ev
 
 **Routing layer — LLM as architect.** "Build me a patch with 3 audio analysis bands driving 3 visual layers with independent particle systems." The LLM generates graph structure as JSON that the user then explores. This is the scaffolding role — often combined with operator authoring when the scaffold requires new operators that don't yet exist.
 
-**Experimentation layer — LLM as variation generator.** "Generate 8 different particle behavior variations." "Fill this session column with alternate mappings and parameter moods." The user evaluates and selects. The LLM produces breadth; the user provides taste.
+**Experimentation layer — LLM as clip generator.** "Generate 8 different particle behavior clips." "Fill this session track with alternate mappings and parameter moods." The user evaluates and selects. The LLM produces breadth; the user provides taste.
 
 **Reflective layer — LLM as critic and analyst.** "What's happening harmonically in the audio right now?" "The visual rhythm isn't syncing with the beat — what's wrong?" The LLM observes the current state and helps the user understand and refine.
 
@@ -249,11 +249,11 @@ The LLM connects to Vivid through two complementary paths, both built on a share
 
 The Runtime API is an internal interface exposing all LLM-relevant operations: inspect graph structure, read and write parameters, capture frames and audio, run analysis tools, evaluate assertions, scaffold operators, and modify graph topology. This is the single source of truth for what the LLM can do. Both integration paths below call into the same API.
 
-**Path 1: Built-in chat.** A collapsible chat panel inside Vivid's interface (§6.4) calls the Anthropic API directly and invokes the Runtime API in-process. This is the primary workflow for creative exploration: "make the particles react more to the bass," "generate 5 variations of this feedback loop," "why is the output so dark?" Zero latency between the LLM's intent and its effect on the graph. The user stays in Vivid.
+**Path 1: Built-in chat.** A collapsible chat panel inside Vivid's interface (§6.4) calls the Anthropic API directly and invokes the Runtime API in-process. This is the primary workflow for creative exploration: "make the particles react more to the bass," "generate 5 clips for this feedback loop," "why is the output so dark?" Zero latency between the LLM's intent and its effect on the graph. The user stays in Vivid.
 
-**Path 2: Python MCP bridge.** A separate Python MCP bridge process exposes the same Runtime API as MCP tools by connecting to the running Vivid instance over the local HTTP control server. Claude Code, Claude.ai, or any MCP-capable LLM connects to that bridge externally. This is the power-user workflow for operator development: scaffolding C++ operators, debugging compilation errors, running test assertions from the terminal, and automating batch operations. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch variations, installation monitors watching for drift.
+**Path 2: Python MCP bridge.** A separate Python MCP bridge process exposes the same Runtime API as MCP tools by connecting to the running Vivid instance over the local HTTP control server. Claude Code, Claude.ai, or any MCP-capable LLM connects to that bridge externally. This is the power-user workflow for operator development: scaffolding C++ operators, debugging compilation errors, running test assertions from the terminal, and automating batch operations. It also enables non-interactive use cases: CI pipelines running assertions, scripts generating patch alternatives, installation monitors watching for drift.
 
-> **1.0 Status:** The Python MCP bridge is the shipped 1.0 LLM integration path (57 tools covering graph manipulation, introspection, packages, variations, checks, and more). The built-in chat panel is deferred past 1.0. The Runtime API and HTTP control server (61 endpoints) are fully implemented; the MCP bridge wraps most but not all of them (notable gap: `analyze_output` and `compare_outputs` are HTTP-only and should be added to the MCP bridge as a near-term 1.0 item).
+> **1.0 Status:** The Python MCP bridge is the shipped 1.0 LLM integration path, covering graph manipulation, introspection, packages, Session Tracks/Clips/Scenes, checks, and more. The built-in chat panel is deferred past 1.0. The Runtime API and HTTP control server are fully implemented; the MCP bridge wraps most but not all of them (notable gap: `analyze_output` and `compare_outputs` are HTTP-only and should be added to the MCP bridge as a near-term 1.0 item).
 
 Both paths were part of the original 1.0 design. The built-in chat handles creative workflows where immediacy matters. The Python MCP bridge handles development workflows where the user is already in their IDE or terminal. The underlying Runtime API is implemented once; the chat panel and MCP bridge are thin layers on top.
 
@@ -611,7 +611,7 @@ Native rendering gives zero-copy texture thumbnails (every intermediate texture 
 
 **Decision: Retained-mode UI, not immediate mode.** In immediate mode (Dear ImGui), the application redraws the entire UI every frame with no persistent widget objects. In retained mode, widgets are objects that persist between frames and manage their own state: a slider knows it's being dragged, a panel knows which child has focus, a list knows its scroll position.
 
-Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its variation and playback state, a parameter control tracks its MIDI mapping and drag state, and a node remembers selection, pinning, and inline editing state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
+Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its active clip and launch state, a parameter control tracks its MIDI mapping and drag state, and a node remembers selection, pinning, and inline editing state. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
 
 > **Implementation note:** The actual UI uses a hybrid approach. The node graph is the primary interface, rendered directly via WebGPU using `renderer_2d.cpp` for 2D drawing primitives. There is no separate retained-mode widget library — the node graph, inspector, and overlays are purpose-built drawing code in `src/ui/node_graph.cpp` (~5000 lines) with overlay layout logic in `overlay_layouts.cpp`.
 
@@ -635,13 +635,13 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 The visibility hierarchy driving this layout:
 
 - **Always visible:** output preview (the perception-action loop), active parameters (context-sensitive to selection), transport/clock.
-- **Primary workspace:** node graph as the central editor, with variation/session surfaces layered around it. Switching should feel like changing exploration mode, not navigating to a different application.
+- **Primary workspace:** node graph as the central editor, with the Session Tracks/Clips/Scenes surface layered around it. Switching should feel like changing exploration mode, not navigating to a different application.
 - **On-demand (collapsible):** LLM chat, live REPL, pattern editor, state machine editor. Brought up when needed, don't consume space during direct manipulation.
 - **External:** operator code editing happens in the user's IDE, not inside Vivid.
 
-The main workspace interaction pattern is centered on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should live close to the graph rather than requiring a separate connection matrix view.
+The main workspace interaction pattern is centered on the node graph for structure and wiring, with the Session surface managing Tracks, Clips, Scenes, branching, and alternate states. Parameter exploration and modulation overlays should live close to the graph rather than requiring a separate connection matrix view.
 
-> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). The session surface (toggled with V) provides variation branching, drag reorder, context menus (rename/duplicate/delete/branch), quantized switching, and five distinct card states (active/queued/dirty/selected/inactive). The always-visible transport strip now surfaces graph-metronome status plus active/queued variation state, and the closed session surface leaves a persistent affordance at the bottom of the graph for discoverability. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
+> **Implementation note:** The actual layout centers on the node graph as the primary workspace. The inspector is an overlay panel (not a separate pane). The session surface (toggled with V) provides track columns, clip cells, scene launching, context menus, quantized switching, and visible active/queued/dirty states. The always-visible transport strip now surfaces graph-metronome status plus session launch state, and the closed session surface leaves a persistent affordance at the bottom of the graph for discoverability. The output preview is the selected GPU node's texture, displayed in the node graph itself via live thumbnails. File dialogs use native macOS sheets (`src/ui/file_dialog.mm`).
 
 ### 6.5 Node Thumbnails
 
@@ -685,7 +685,7 @@ The main workspace interaction pattern is centered on the node graph for structu
 
 See `docs/plans/ROADMAP.md` for current planning and the full list of delivered capabilities.
 
-**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge (57 tools), MIDI/OSC input, WGSL shader operators, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, variations/presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
+**Completed highlights:** Three-domain data flow, Spreads, hot-reload, 71 operators across 3 domains, Python MCP bridge, MIDI/OSC input, WGSL shader operators, package ecosystem (install/link/scaffold/publish/test), movie playback (MovieLoaded trio), standalone export, operator versioning, first-class GPU port types (buffer/mesh/compute), multiple output ports, output analyzer (audio/visual/AV metrics + comparison), capture/recording, Session Tracks/Clips/Scenes, presets, undo/redo, introspection/diagnostics/checks. North Star validation completed.
 
 **In progress:** Core stability verification, operator creation modal, solo mode, semantic tag rollout, launch prep.
 
@@ -721,7 +721,7 @@ Whether GPU operators are primarily C++ host code dispatching compute shaders / 
 
 The declarative graph representation enabling LLM-driven patching. Needs to capture node types, connections, parameter values, and semantic tags. This is the single source of truth for the entire system.
 
-> **Resolved:** JSON with `schema_version`, `vivid_version`, `meta` block, `nodes`, `connections`, and optional `variations`/`midi_mappings` arrays. See ARCHITECTURE.md §5.11.
+> **Resolved:** JSON with `schema_version`, `vivid_version`, `meta` block, `nodes`, `connections`, `session`, and optional `midi_mappings` arrays. See ARCHITECTURE.md §5.11.
 
 **Control Operator Sufficiency**
 
@@ -800,7 +800,7 @@ The following topics are acknowledged as important but are not yet designed. The
 
 **Subpatches**
 
-Equivalent to TouchDesigner's Bases or Max/MSP's subpatchers. A subpatch collapses a group of operators into a single node with defined inputs and outputs. Essential for managing graph complexity, enabling operator reuse, and supporting LLM scaffolding (the LLM generates a subpatch, not a flat graph). The design depends on how Spreads and Simulation Zones interact with encapsulation boundaries. A subpatch may also serve as the unit of session grid variation — swapping a cell swaps a subpatch.
+Equivalent to TouchDesigner's Bases or Max/MSP's subpatchers. A subpatch collapses a group of operators into a single node with defined inputs and outputs. Essential for managing graph complexity, enabling operator reuse, and supporting LLM scaffolding (the LLM generates a subpatch, not a flat graph). The design depends on how Spreads and Simulation Zones interact with encapsulation boundaries. A subpatch may also become a future clip payload boundary for session launches.
 
 **Project File Format**
 

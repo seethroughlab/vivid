@@ -343,7 +343,7 @@ static constexpr float kPrefsSectionGap = 12.0f;
 static constexpr float kPrefsBtnW = 70.0f;
 static constexpr float kPrefsBtnH = 24.0f;
 
-// Session grid (variation strip / exploration surface)
+// Session grid (Tracks / Clips / Scenes performance surface)
 static constexpr float kSessionStripH = 84.0f;
 static constexpr float kSessionHeaderH = 28.0f;
 static constexpr float kSessionCellW = 130.0f;

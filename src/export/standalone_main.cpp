@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
     vivid::SystemMidiListener system_midi;
     system_midi.open_all();
 
-    // --- RuntimeAPI (for MIDI mappings, variations) ---
+    // --- RuntimeAPI (for MIDI mappings, session state, presets) ---
     vivid::RuntimeAPI runtime_api(graph, runtime, audio_engine, registry, &system_midi);
 
 #ifdef VIVID_STANDALONE_CONTROL_SERVER

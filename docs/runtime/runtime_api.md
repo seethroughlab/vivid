@@ -7,7 +7,7 @@ all runtime mutations. It owns references to `Graph`, `RuntimeCore`, `AudioEngin
 `OperatorRegistry`, and provides a single `CommandResult`-returning API over all of them.
 
 It also owns cross-cutting state that doesn't belong in any single subsystem:
-undo/redo, graph metronome state, quantized variation switching, state-preset machine,
+undo/redo, graph metronome state, session launch quantization, state-preset machine,
 crossfade state, active presets.
 
 ## Construction
@@ -38,7 +38,7 @@ lane-state counts.
 Some control-server requests can arrive while `RuntimeCore` has no compiled graph, such as during
 startup, reload, or after a failed rebuild. Live-state commands that require compiled nodes fail
 cleanly with `"no compiled graph"` instead of dereferencing runtime state. Graph-only commands may
-still update the authored `Graph`, and per-frame helpers such as quantized variation and
+still update the authored `Graph`, and per-frame helpers such as session launch quantization and
 state-preset ticks no-op until compiled state is available again.
 
 ## Immediate vs. Buffered
@@ -138,31 +138,29 @@ Recent hardening guarantees in this area:
 - `apply_snapshot_json()` is transactional for graph/runtime rebuild purposes and preserves source-path identity
 - package/runtime refresh flows that rebuild the graph route through the same transactional restore logic
 
-## Variations
+## Session Launch Quantization and Legacy Variation Compatibility
 
 ```cpp
-CommandResult save_variation(name);      // snapshot all params from live runtime
-CommandResult recall_variation(name);    // apply variation params to runtime nodes
-CommandResult recall_variation_idx(idx);
-CommandResult update_variation(name);    // overwrite with current params
-CommandResult queue_variation(name, quantize);  // schedule for next beat/bar
 CommandResult set_graph_metronome(bpm, beats_per_bar);
 CommandResult set_quantize_clock(node_id);  // deprecated compatibility shim
 GraphMetronomeSample current_metronome_sample() const;
-void tick_quantized_switch();            // call each frame to fire pending switches
+void tick_quantized_switch();            // call each frame to fire pending session launches
 ```
 
 Quantize modes: `"instant"`, `"beat"`, `"bar"`, `"4bar"` (`"four_bar"` is still accepted as a
 legacy alias).
 
-Quantized switching is now graph-metronome-backed:
+Quantized session launching is graph-metronome-backed:
 
 - beat/bar/4-bar boundaries are derived from the graph metronome's `bpm` and `beats_per_bar`
-- `tick_quantized_switch()` compares the current metronome beat count against the queued target
-  boundary instead of watching a hidden designated clock node
+- queued session launches compare the current metronome beat count against the target boundary
+  instead of watching a hidden designated clock node
 
 `set_quantize_clock()` remains for backward compatibility with older graphs and tooling, but the
-runtime no longer uses that hidden clock-node reference to schedule variation recalls.
+runtime no longer uses that hidden clock-node reference to schedule launches.
+
+Legacy whole-graph variation commands may still exist in compatibility code paths, but they are not
+the current authoring model. New performance workflows should use Session Tracks, Clips, and Scenes.
 
 ## Graph Metronome
 
@@ -174,7 +172,7 @@ GraphMetronomeSample current_metronome_sample() const;
 The graph metronome is optional shared transport metadata stored on `Graph`. It is intentionally
 not a timeline and not a special operator. Its job is to provide a common pulse for:
 
-- quantized variation switching
+- session clip/scene launch quantization
 - clocks that opt into metronome sync mode
 - transport UI/status surfaces
 

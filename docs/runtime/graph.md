@@ -39,9 +39,11 @@ struct ConnectionDef {
 ### `MidiMappingDef`
 Maps a MIDI CC to a node parameter: `node_id`, `param_name`, `cc_number` (0-127), `channel` (0=omni), `range_min/max`.
 
-### `VariationDef`
-Named parameter snapshot for all nodes: `name` + `params[node_id][param_name] = value`.
-`active_variation_` (-1 = none) tracks which variation is active.
+### `SessionDef`
+Performance authoring state for Tracks, Clips, and Scenes. Tracks own nodes and clips, clips
+store per-track parameter state, scenes store track-to-clip assignments, and `active_clips`
+tracks the visible launched clip per track. Transition fields are parsed and round-tripped as
+reserved schema but are not consulted by current launch behavior.
 
 ### `OperatorPreset`
 Per-operator named preset: `name` + `params[param_name] = value` + `string_params`.
@@ -156,15 +158,18 @@ differs from the installed version. Each entry has: `node_id`, `pkg_name`, `save
     "beats_per_bar": 4
   },
   "midi_mappings": [...],
-  "variations": [...],
-  "active_variation": -1,
+  "session": {
+    "tracks": [...],
+    "scenes": [...],
+    "active_clips": {"track_id": "clip_id"}
+  },
   "node_presets": { "lfo1": [{ "name": "slow", "params": {"freq": 0.1} }] }
 }
 ```
 
 `metronome` is optional graph-level transport metadata. It does not create a global timeline or a
-special node; it simply provides an optional shared pulse that clocks and quantized variation
-switching can follow. Graphs that omit it behave as before: no shared metronome, no forced sync.
+special node; it simply provides an optional shared pulse that clocks and quantized session
+launches can follow. Graphs that omit it behave as before: no shared metronome, no forced sync.
 
 Operators opt into that pulse explicitly. Time-based operators now use one of two shared contracts:
 
@@ -178,8 +183,8 @@ Operators opt into that pulse explicitly. Time-based operators now use one of tw
 In other words, the graph metronome adds a discoverable shared pulse without replacing external
 clock wiring or forcing all temporal logic through one global source.
 
-`quantize_clock` is still read and written for backward compatibility, but quantized variation
-switching now uses the graph metronome.
+`quantize_clock` is still read and written for backward compatibility with older graphs and tools.
+Session launch quantization uses the graph metronome.
 
 At runtime, that transport is sampled from `RuntimeCore`'s live metronome state rather than from
 the compiled graph metadata. That means:

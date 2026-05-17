@@ -25,7 +25,7 @@ Evaluate and revise beginner-facing documentation from the point of view of a sy
    - Open examples
    - Hear/see what changed
    - Tweak these controls
-   - Save a variation
+   - Save a clip or scene
    - Recover if something goes wrong
 6. Create or revise a short "First 15 Minutes" path with a curated beginner example sequence.
 7. Add fallback guidance for missing audio output, camera permission, microphone permission, MIDI devices, movie assets, or package-required examples.

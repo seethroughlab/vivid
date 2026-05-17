@@ -864,7 +864,7 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
 }
 
 // -----------------------------------------------------------------------
-// Session grid (variation strip at bottom)
+// Session grid (Tracks / Clips / Scenes performance surface)
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     session_button_rects_.clear();

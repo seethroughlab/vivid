@@ -831,7 +831,7 @@ private:
 
     // --- Graph meta editor (migrated to DialogManager) ---
 
-    // --- Session grid (variation strip / exploration surface) ---
+    // --- Session grid (Tracks / Clips / Scenes performance surface) ---
     bool session_grid_open_ = false;
     float session_scroll_x_ = 0.0f;
     int session_hovered_col_ = -1;

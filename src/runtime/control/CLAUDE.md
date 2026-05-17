@@ -18,7 +18,7 @@ This directory contains the HTTP control server that exposes the Vivid runtime t
 | `runtime_api_live.cpp` | Live-state queries: inspect, introspect, sample outputs |
 | `runtime_api_modulation.cpp` | Modulation assignment CRUD |
 | `runtime_api_persistence.cpp` | Save, load, reload, new graph, snapshot application |
-| `runtime_api_variations.cpp` | Variation and preset management, quantized switching, state-preset mapping |
+| `runtime_api_variations.cpp` | Legacy variation compatibility, preset management, session quantization, state-preset mapping |
 | `runtime_command_sink.h/cpp` | Abstract command sink interface for decoupling UI from control server |
 | `graph_file_io.h/cpp` | Graph file loading/saving helpers |
 
@@ -50,9 +50,9 @@ Mutations that affect graph topology (add_node, remove_node, connect, disconnect
 - **`runtime_api_live.cpp`** — live-state inspection and node output sampling
 - **`runtime_api_modulation.cpp`** — modulation source/destination/assignment CRUD
 - **`runtime_api_persistence.cpp`** — save/load/reload, snapshot application, graph identity management
-- **`runtime_api_variations.cpp`** — variation CRUD, quantized switching, per-operator presets, state-preset mapping
+- **`runtime_api_variations.cpp`** — legacy variation compatibility, session quantization, per-operator presets, state-preset mapping
 
-`RuntimeAPI` also owns cross-cutting state: undo/redo history, reload serial (bumped on every topology change), graph dirty tracking, and crossfade state for smooth variation transitions.
+`RuntimeAPI` also owns cross-cutting state: undo/redo history, reload serial (bumped on every topology change), graph dirty tracking, and reserved crossfade state for future session transitions.
 
 ## Relationships
 

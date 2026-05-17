@@ -401,7 +401,7 @@ Exposed params can carry performance-surface metadata to curate a live performan
 | `performance_order` | Sort order within the page |
 | `performance_role` | Built-in role: `macro`, `mod_wheel`, `expression`, `aftertouch`, `xy_x`, `xy_y` |
 
-Performance controls are ordinary exposed params — presets, variations, and modulation still apply to them.
+Performance controls are ordinary exposed params — presets, session clips, and modulation still apply to them.
 
 ### Asset-Bound Params
 

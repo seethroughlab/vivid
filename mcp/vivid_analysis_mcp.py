@@ -69,7 +69,7 @@ Plus **visual style tags** via SigLIP embeddings (35 descriptors across 4 catego
 ### Audio → Vivid
 - **BPM** → Clock node tempo, LFO rates
 - **Key/mode** → oscillator frequencies, sequencer note choices
-- **Energy shape + section boundaries** → variation presets (Intro, Verse, Chorus, Drop)
+- **Energy shape + section boundaries** → Session scenes/clips (Intro, Verse, Chorus, Drop)
 - **Brightness/spectral data** → visual color temperatures, filter settings
 - **Rhythmic patterns** (syncopation, swing) → LFO and sequencer behavior
 - **Build/drop events** → trigger points for transitions

@@ -14,7 +14,7 @@ back toward implicit or lossy behavior.
 - connections, including broken connections
 - audio analysis
 - MIDI mapping state
-- variation / solo / recording state
+- session launch / solo / recording state
 - chooser catalog data
 
 It is not a mutation surface. All writes still go through `UICommandSink`.

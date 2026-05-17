@@ -45,7 +45,7 @@ Validate the complete friend-beta experience: setup, launch, permissions, first 
 
 ## Pass/Fail Criteria
 
-Pass when a beta tester can follow the documented path to a successful audio/video moment, tweak a graph, save a variation, and recover from common missing-device cases without developer help.
+Pass when a beta tester can follow the documented path to a successful audio/video moment, tweak a graph, save a clip or scene, and recover from common missing-device cases without developer help.
 
 Fail on install dead ends, launch failure, permission dead ends, first-example silence/black output, unexplained device problems, scary audio, unreadable beginner docs, or beta-path blockers carried forward from earlier phases.
 

@@ -135,23 +135,27 @@ Operators that *generate* notes from internal state (Sequencer, NotePattern, Cho
 | `undo` | — | Undo last graph mutation |
 | `redo` | — | Redo undone mutation |
 
-### Variations
+### Legacy Variation Compatibility
+
+Whole-graph variation endpoints are compatibility-only. New performance authoring should use
+Session Tracks, Clips, and Scenes instead of these snapshot commands.
+
 | Method | Key params | Description |
 |--------|-----------|-------------|
-| `save_variation` | `name` | Snapshot all params as named variation |
-| `recall_variation` | `name` | Apply variation params to live nodes |
-| `remove_variation` | `name` | Delete variation |
-| `rename_variation` | `old_name`, `new_name` | Rename |
-| `update_variation` | `name` | Overwrite with current params |
-| `list_variations` | — | All variation names |
-| `queue_variation` | `name`, `quantize` (`"instant"/"beat"/"bar"/"4bar"`, legacy `"four_bar"` also accepted) | Schedule switch |
-| `duplicate_variation` | `name` | Clone an existing variation |
-| `move_variation` | `name`, `position` | Reorder variation in list |
+| `save_variation` | `name` | Legacy: snapshot all params as named variation |
+| `recall_variation` | `name` | Legacy: apply variation params to live nodes |
+| `remove_variation` | `name` | Legacy: delete variation |
+| `rename_variation` | `old_name`, `new_name` | Legacy: rename |
+| `update_variation` | `name` | Legacy: overwrite with current params |
+| `list_variations` | — | Legacy: all variation names |
+| `queue_variation` | `name`, `quantize` (`"instant"/"beat"/"bar"/"4bar"`, legacy `"four_bar"` also accepted) | Legacy: schedule switch |
+| `duplicate_variation` | `name` | Legacy: clone an existing variation |
+| `move_variation` | `name`, `position` | Legacy: reorder variation in list |
 | `set_graph_metronome` | `bpm`, `beats_per_bar` | Update graph-wide metronome state and retime the live runtime immediately |
 | `set_quantize_clock` | `node_id` | Deprecated compatibility shim for older graphs/tools |
 
-Quantized variation switching uses the graph metronome. Live tempo updates are phase-continuous for BPM changes; meter changes restart
-the bar immediately and clear any queued quantized switch.
+Session launch quantization uses the graph metronome. Live tempo updates are phase-continuous for BPM changes; meter changes restart
+the bar immediately and clear any queued quantized launch.
 
 ### Per-Operator Presets
 | Method | Key params | Description |
@@ -262,7 +266,7 @@ server isn't wired to an `EditorWindowManager` (e.g. headless utility binaries).
 `is_topology_command()` returns true for commands that must be applied via `apply_pending()`:
 `add_node`, `remove_node`, `connect`, `disconnect`,
 `set_connection_remap`, `set_param`, `set_string_param`, `set_resolution`, `set_node_layout`,
-MIDI/variation/preset mutations, `load_graph`.
+MIDI/session/preset mutations, legacy variation compatibility mutations, `load_graph`.
 
 Non-topology commands (`inspect_graph`, `list_types`, etc.) can execute immediately on the main thread.
 

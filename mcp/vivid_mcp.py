@@ -4826,7 +4826,7 @@ async def load_graph(path: str) -> str:
 @mcp.tool()
 async def new_graph() -> str:
     """Reset to a new empty graph with default audio_out and video_out sink nodes.
-    Clears all nodes, connections, variations, and undo history."""
+    Clears all nodes, connections, session state, and undo history."""
     return await _post("new_graph")
 
 
@@ -5292,7 +5292,7 @@ async def queue_state_transition(sm_node: str, state: int, quantize: str = "bar"
 
 @mcp.tool()
 async def set_quantize_clock(node_id: str) -> str:
-    """Designate a Clock node for beat-synced variation switching.
+    """Designate a Clock node for beat-synced session, clip, and scene launch quantization.
 
     Args:
         node_id: ID of a Clock node whose beat_phase output drives quantization

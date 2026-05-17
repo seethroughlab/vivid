@@ -16,7 +16,7 @@ Issues that block the beta from shipping. Every blocker must be fixed or the aff
 | B8 | Persistent silence | Audio graph produces no audible output when it should | Oscillator connected but gain is 0 by default |
 | B9 | Black/frozen visual | GPU graph produces black or frozen output when it should animate | Shader compile failure silently degrades |
 | B10 | Scary audio | Runaway feedback, extreme clipping, stuck notes, painful volume spikes | No limiter on a feedback path |
-| B11 | Broken save/load | Save, load, or variation recall corrupts or loses graph data | Variation recall drops a connection |
+| B11 | Broken save/load | Save, load, or session recall corrupts or loses graph data | Scene launch drops a connection |
 | B12 | Beginner-blocking docs | Setup docs that prevent a non-programmer from launching the app | "Run cmake" with no context or prerequisites |
 
 ## Non-Blocker Classes
