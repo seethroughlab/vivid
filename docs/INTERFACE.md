@@ -14,7 +14,7 @@ Native rendering gives zero-copy texture thumbnails (every intermediate texture 
 
 **Decision: Retained-mode UI, not immediate mode.** In immediate mode (Dear ImGui), the application redraws the entire UI every frame with no persistent widget objects. In retained mode, widgets are objects that persist between frames and manage their own state: a slider knows it's being dragged, a panel knows which child has focus, a list knows its scroll position.
 
-Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its variation and playback state, a parameter knob tracks its MIDI mapping and drag state, and graph interaction state persists across frames. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
+Vivid's experimentation interfaces are inherently stateful — a session grid cell knows its active clip and launch state, a parameter knob tracks its MIDI mapping and drag state, and graph interaction state persists across frames. Retained mode handles this naturally. Immediate mode would require maintaining all interaction state in parallel data structures, manually synchronized with draw calls every frame.
 
 ## 6.3 Toolkit: Custom Purpose-Built Widgets
 
@@ -35,11 +35,11 @@ The custom approach gives zero-copy texture thumbnails trivially (same GPU conte
 The visibility hierarchy driving this layout:
 
 - **Always visible:** output preview (the perception-action loop), active parameters (context-sensitive to selection), transport/clock.
-- **Primary workspace:** node graph as the central structural editor, with session/variation surfaces layered around it. Switching should feel like changing exploration mode, not navigating to a different screen.
+- **Primary workspace:** node graph as the central structural editor, with the session surface layered around it. Switching should feel like changing exploration mode, not navigating to a different screen.
 - **On-demand (collapsible):** LLM chat, live REPL, pattern editor, state machine editor. Brought up when needed, don't consume space during direct manipulation.
 - **External:** operator code editing happens in the user's IDE, not inside Vivid.
 
-The main workspace interaction pattern centers on the node graph for structure and wiring, with the session/variation surface managing branching and alternate states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
+The main workspace interaction pattern centers on the node graph for structure and wiring, with the session surface (Tracks, Clips, Scenes) managing performance states. Parameter exploration and modulation overlays should stay close to the graph rather than requiring a separate connection matrix view.
 
 ## 6.5 Workspace Header + Session Surface
 
@@ -171,8 +171,8 @@ preexisting patterns; new session work should use Tracks, Clips, and Scenes abov
 - **Inspector.** Dark background, parameters as horizontal rows. Slider tracks are dark with a domain-colored fill. Modulation range overlays (Bitwig-inspired) appear as subtle highlights showing the modulated range. Modulation source is indicated by a small tag next to the parameter.
   Role-binding UI should prioritize the role label, target, and available actions. Runtime implementation details such as `runtime_scope` may exist in the model, but are intentionally hidden from the main inspector surface unless a quieter advanced/debug presentation is added later.
 - **Workspace header.** Minimal but explicit. Graph metronome status, BPM, meter, diagnostics,
-  capture actions, and lightweight variation status live here. Session editing and quantization do
-  not; those stay in the session strip. No timeline, but no hidden transport state either.
+  and capture actions live here. Session editing and quantization do not; those stay in the session
+  strip. No timeline, but no hidden transport state either.
 
 ### What This Is NOT
 

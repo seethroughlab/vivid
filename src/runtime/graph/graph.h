@@ -122,15 +122,17 @@ struct MidiMappingDef {
     float range_max = 1.0f;
 };
 
+// Reserved for future crossfade support — parsed and round-tripped but not consulted by
+// apply_clip_params / launch_clip / fire_scene. All launches are currently instant (cut).
 struct SessionTransitionDef {
-    bool fade = false;          // false = cut (default), true = fade
-    float duration_bars = 0.0f; // only meaningful when fade = true
+    bool fade = false;
+    float duration_bars = 0.0f;
 };
 
 struct SessionClipDef {
     std::string id;    // stable, generated (e.g. "c_a3f1b2c4")
     std::string name;  // display label only
-    std::optional<SessionTransitionDef> transition_override; // nullopt = inherit track default
+    std::optional<SessionTransitionDef> transition_override; // reserved — not yet consulted at launch
     // ParamSet: node_id -> param_name -> value
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
@@ -140,7 +142,7 @@ struct SessionTrackDef {
     std::string id;                          // stable, generated (e.g. "tr_9b2c3d4e")
     std::string name;                        // display label only
     std::vector<std::string> owned_node_ids; // nodes owned by this track
-    SessionTransitionDef default_transition;
+    SessionTransitionDef default_transition; // reserved — not yet consulted at launch
     std::vector<SessionClipDef> clips;
 };
 

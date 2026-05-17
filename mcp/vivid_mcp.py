@@ -5422,11 +5422,11 @@ async def clear_state_presets(sm_node: str) -> str:
 
 @mcp.tool()
 async def ensure_state_mapping(sm_node: str) -> str:
-    """Register a StateMachine node in the Session view clip launcher grid.
+    """Register a StateMachine node as a legacy step-sequencer track (advanced).
 
-    Creates an empty state-preset mapping entry so the SM appears as a column
-    in the clip grid even before any presets are bound to it. Safe to call if
-    the mapping already exists (no-op).
+    Creates an empty state-preset mapping entry for the SM. This is the legacy
+    StateMachine-based launcher; new session work should use Tracks/Clips/Scenes.
+    Safe to call if the mapping already exists (no-op).
 
     Args:
         sm_node: ID of the StateMachine node
@@ -5437,11 +5437,11 @@ async def ensure_state_mapping(sm_node: str) -> str:
 @mcp.tool()
 async def add_clip_track(sm_node: str = "", midi_clip_node: str = "",
                          num_states: int = 4, x: float = 0.0, y: float = -200.0) -> str:
-    """Create a StateMachine + MidiClip pair and register it in the clip launcher.
+    """Create a StateMachine + MidiClip pair as a legacy step-sequencer track (advanced).
 
     Creates both nodes, connects MidiClip phase → StateMachine beat_phase for
-    timing sync, and calls ensure_state_mapping so the track appears in the
-    Session view clip grid immediately.
+    timing sync, and calls ensure_state_mapping. This is the legacy StateMachine-based
+    launcher; new session work should use Tracks/Clips/Scenes instead.
 
     Args:
         sm_node: ID for the StateMachine node (auto-generated if empty)
