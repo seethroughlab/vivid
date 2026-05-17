@@ -327,10 +327,20 @@ bool NodeGraphUI::handle_session_mode_key(int key, int action, int mods, bool mo
 
     if (session_editing_name_) {
         if (key == GLFW_KEY_ENTER) {
-            // Phase 1 placeholder: rename wired up in Phase 3
+            if (!session_edit_buffer_.empty()) {
+                if (session_edit_type_ == 1)
+                    commands_.session_rename_track(session_edit_id_, session_edit_buffer_);
+                else if (session_edit_type_ == 2)
+                    commands_.session_rename_clip(session_edit_track_id_, session_edit_id_,
+                                                  session_edit_buffer_);
+                else if (session_edit_type_ == 3)
+                    commands_.session_rename_scene(session_edit_id_, session_edit_buffer_);
+            }
             session_editing_name_ = false;
+            session_edit_type_ = 0;
         } else if (key == GLFW_KEY_ESCAPE) {
             session_editing_name_ = false;
+            session_edit_type_ = 0;
         } else if (key == GLFW_KEY_BACKSPACE) {
             text_edit_backspace(session_edit_buffer_, text_edit_);
         }

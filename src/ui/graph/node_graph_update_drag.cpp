@@ -197,6 +197,19 @@ void NodeGraphUI::update_transport_bpm_drag() {
     }
 }
 
+void NodeGraphUI::update_session_resize_drag() {
+    if (!session_resize_active_) return;
+    if (mouse_.left_down) {
+        // Dragging up (mouse_.y decreasing) increases the panel height
+        const float delta = session_resize_start_y_ - mouse_.y;
+        session_panel_h_ = std::clamp(session_resize_start_h_ + delta,
+                                      kSessionPanelMinH, kSessionPanelMaxH);
+    }
+    if (mouse_.left_released) {
+        session_resize_active_ = false;
+    }
+}
+
 void NodeGraphUI::update_modulation_drag() {
     if (!inspector_.modulation_amount_dragging || dragging_node_idx_ >= 0) return;
     if (mouse_.left_down) {

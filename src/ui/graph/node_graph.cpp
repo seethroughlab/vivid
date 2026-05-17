@@ -264,7 +264,7 @@ float NodeGraphUI::graph_bottom() const {
 }
 
 float NodeGraphUI::session_strip_height() const {
-    return kSessionStripH + (session_grid_open_ ? kClipSectionH : 0.0f);
+    return kSessionResizeHandleH + kSessionHeaderH + session_panel_h_;
 }
 
 float NodeGraphUI::session_strip_top() const {

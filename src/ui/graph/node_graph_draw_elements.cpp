@@ -870,6 +870,9 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     session_button_rects_.clear();
     session_ctx_menu_rects_.clear();
     clip_cell_rects_.clear();
+    session_track_rects_.clear();
+    session_scene_rects_.clear();
+    session_cell_rects_.clear();
 
     if (!session_grid_open_) {
         session_collapsed_rect_ = {};
@@ -903,21 +906,32 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
 
     session_collapsed_rect_ = {};
 
-    const float clip_section_h = kClipSectionH;
-    const float total_strip_h  = kSessionStripH + clip_section_h;
-    float strip_y = static_cast<float>(win_h_) - total_strip_h;
-    float strip_w = static_cast<float>(win_w_);
+    const float strip_h = session_strip_height();
+    const float strip_y = static_cast<float>(win_h_) - strip_h;
+    const float strip_w = static_cast<float>(win_w_);
 
-    // Background
-    tr.draw_rect(0, strip_y, strip_w, total_strip_h,
+    // Background + top border
+    tr.draw_rect(0, strip_y, strip_w, strip_h,
                  style_.dark_bg[0], style_.dark_bg[1], style_.dark_bg[2], 0.95f);
-    // Top border
     tr.draw_rect(0, strip_y, strip_w, 1,
                  style_.accent[0], style_.accent[1], style_.accent[2], 0.5f);
 
+    // --- Resize handle ---
+    const float rh_h = kSessionResizeHandleH;
+    const bool rh_hov = (mouse_.y >= strip_y && mouse_.y < strip_y + rh_h);
+    tr.draw_rect(0, strip_y, strip_w, rh_h,
+                 style_.dark_bg[0] + (rh_hov ? 0.06f : 0.0f),
+                 style_.dark_bg[1] + (rh_hov ? 0.06f : 0.0f),
+                 style_.dark_bg[2] + (rh_hov ? 0.06f : 0.0f),
+                 rh_hov ? 0.98f : 0.95f);
+    tr.draw_rect(strip_w * 0.5f - 20.0f, strip_y + 2.5f, 40.0f, 1.0f,
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.4f);
+    session_resize_handle_ = {0, strip_y, strip_w, rh_h};
+
     // --- Header row ---
+    const float header_y = strip_y + kSessionResizeHandleH;
     float hx = kSessionPadX;
-    float hy = strip_y + 5;
+    float hy = header_y + 5.0f;
     tr.draw_text(hx, hy + 2, T("session", "SESSION"),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
     hx += 70;
@@ -931,146 +945,305 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     hx += 72;
     for (int i = 0; i < 4; ++i) {
         float bw = 38.0f;
-        bool enabled = true;
         bool active = (session_quantize_mode_ == i);
-        float r = active && enabled ? style_.accent[0] : style_.slider_track[0];
-        float g = active && enabled ? style_.accent[1] : style_.slider_track[1];
-        float b = active && enabled ? style_.accent[2] : style_.slider_track[2];
-        tr.draw_rect(hx, hy, bw, 18, r, g, b, enabled ? (active ? 0.9f : 0.6f) : 0.22f);
-        float trr = enabled ? style_.bright_text[0] : style_.dim_text[0];
-        float trg = enabled ? style_.bright_text[1] : style_.dim_text[1];
-        float trb = enabled ? style_.bright_text[2] : style_.dim_text[2];
-        tr.draw_text(hx + 4, hy + 2, quantize_labels[i], trr, trg, trb);
-        session_button_rects_.push_back({hx, hy, bw, 18.0f, 2 + i, enabled});
+        float r = active ? style_.accent[0] : style_.slider_track[0];
+        float g = active ? style_.accent[1] : style_.slider_track[1];
+        float b = active ? style_.accent[2] : style_.slider_track[2];
+        tr.draw_rect(hx, hy, bw, 18.0f, r, g, b, active ? 0.9f : 0.6f);
+        tr.draw_text(hx + 4, hy + 2, quantize_labels[i],
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+        session_button_rects_.push_back({hx, hy, bw, 18.0f, 2 + i, true});
         hx += bw + 3;
     }
 
-    hx += 10;
-    (void)hx;
-
+    // Close button
     {
-        const char* close_label = "X";
-        float close_w = 18.0f;
-        float close_x = strip_w - kSessionPadX - close_w;
-        bool hovered = mouse_.x >= close_x && mouse_.x <= close_x + close_w &&
-                       mouse_.y >= hy && mouse_.y <= hy + 18.0f;
+        const float close_w = 18.0f;
+        const float close_x = strip_w - kSessionPadX - close_w;
+        bool hov = mouse_.x >= close_x && mouse_.x <= close_x + close_w &&
+                   mouse_.y >= hy && mouse_.y <= hy + 18.0f;
         tr.draw_rect(close_x, hy, close_w, 18.0f,
                      style_.slider_track[0], style_.slider_track[1], style_.slider_track[2],
-                     hovered ? 0.82f : 0.62f);
-        tr.draw_text(close_x + 6.0f, hy + 2, close_label,
+                     hov ? 0.82f : 0.62f);
+        tr.draw_text(close_x + 6.0f, hy + 2, "X",
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
         session_button_rects_.push_back({close_x, hy, close_w, 18.0f, 7, true});
     }
 
-    // --- Card row --- (placeholder: variation cards removed in Phase 1)
-    float cy = strip_y + kSessionHeaderH + 4;
-    float cx = kSessionPadX - session_scroll_x_;
-    tr.draw_text(cx, cy + 14, T("session_placeholder", "Session grid coming soon"),
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+    // --- Grid area ---
+    const float grid_y = header_y + kSessionHeaderH;
+    const float grid_h = strip_h - kSessionResizeHandleH - kSessionHeaderH;
 
-    // --- Clip launcher grid (always shown when session grid is open) ---
+    tr.push_clip_rect(0, grid_y, strip_w, grid_h);
+
+    // Beat-sync pulse animation (shared across scene/cell states)
+    const float pulse = 0.5f + 0.5f * std::sin(
+        static_cast<float>(std::fmod(snap_.metronome_beat_phase * 6.28318f, 6.28318f)));
+
+    // Track header row
     {
-        const float clips_y = strip_y + kSessionStripH;
-        // Separator
-        tr.draw_rect(0, clips_y - 1.0f, strip_w, 1,
-                     style_.accent[0], style_.accent[1], style_.accent[2], 0.25f);
-        // "CLIPS" label
-        tr.draw_text(kSessionPadX, clips_y + 4,
-                     T("clips_label", "CLIPS"),
-                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        float tx = kSessionPadX + kSessionSceneLabelW + kSessionGridCellPad;
+        // Scene label column spacer
+        tr.draw_rect(kSessionPadX, grid_y, kSessionSceneLabelW, kSessionTrackHeaderH,
+                     0.08f, 0.09f, 0.10f, 0.7f);
 
-        float cx = kSessionPadX + 50.0f;
-        for (const auto& sm : snap_.clip_machines) {
-            // Column header (SM node id)
-            tr.draw_text(cx, clips_y + 4, sm.display_name.c_str(),
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-            // State cells
-            for (int si = 0; si < sm.state_count; ++si) {
-                const float cell_y = clips_y + 18.0f + si * (kClipCellH + kClipCellPad);
-                const bool  active = (si == sm.active_state);
-                const bool  queued = (si == sm.queued_state);
-                const bool  hovered = (mouse_.x >= cx && mouse_.x < cx + kClipCellW &&
-                                       mouse_.y >= cell_y && mouse_.y < cell_y + kClipCellH);
+        for (const auto& track : snap_.session.tracks) {
+            bool hov = mouse_.x >= tx && mouse_.x < tx + kSessionTrackColW &&
+                       mouse_.y >= grid_y && mouse_.y < grid_y + kSessionTrackHeaderH;
+            tr.draw_rect(tx, grid_y, kSessionTrackColW, kSessionTrackHeaderH,
+                         0.12f, 0.14f, 0.16f, hov ? 0.9f : 0.7f);
 
-                float br = active ? style_.accent[0] * 0.30f
-                         : queued ? style_.accent[0] * 0.18f
-                         : hovered ? 0.25f : 0.15f;
-                float bg = active ? style_.accent[1] * 0.30f
-                         : queued ? style_.accent[1] * 0.18f
-                         : hovered ? 0.25f : 0.15f;
-                float bb = active ? style_.accent[2] * 0.30f
-                         : queued ? style_.accent[2] * 0.18f
-                         : hovered ? 0.27f : 0.17f;
-                tr.draw_rect(cx, cell_y, kClipCellW, kClipCellH, br, bg, bb, 0.9f);
-
-                if (active) {
-                    draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
-                                     style_.accent[0], style_.accent[1], style_.accent[2], 0.9f);
-                } else if (queued) {
-                    const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(
-                        std::fmod(snap_.metronome_beat_phase * 6.28318f, 6.28318f)));
-                    draw_rect_border(tr, cx, cell_y, kClipCellW, kClipCellH,
-                                     style_.accent[0], style_.accent[1], style_.accent[2],
-                                     0.4f + 0.5f * pulse);
-                }
-
-                char lbl[20];
-                std::snprintf(lbl, sizeof(lbl), "State %d", si + 1);
-                tr.draw_text(cx + 5, cell_y + 4, lbl,
-                             active ? style_.bright_text[0] : style_.dim_text[0],
-                             active ? style_.bright_text[1] : style_.dim_text[1],
-                             active ? style_.bright_text[2] : style_.dim_text[2]);
-
-                clip_cell_rects_.push_back({cx, cell_y, kClipCellW, kClipCellH,
-                                            sm.node_id, si});
+            // Dirty dot
+            if (track.dirty) {
+                tr.draw_rect(tx + 5.0f, grid_y + 5.0f, 5.0f, 5.0f,
+                             1.0f, 0.85f, 0.2f, 0.9f);
             }
-            cx += kClipCellW + 8.0f;
+
+            // Track name (clipped, leaving room for "+" button)
+            const float plus_w = 22.0f;
+            tr.push_clip_rect(tx + (track.dirty ? 13.0f : 4.0f), grid_y + 2,
+                              kSessionTrackColW - plus_w - 8.0f, kSessionTrackHeaderH - 4);
+            tr.draw_text(tx + (track.dirty ? 13.0f : 4.0f), grid_y + 8,
+                         track.name.c_str(),
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            tr.pop_clip_rect();
+
+            // "+" save-clip button
+            const float plus_x = tx + kSessionTrackColW - plus_w - 2.0f;
+            const float plus_y = grid_y + (kSessionTrackHeaderH - 18.0f) * 0.5f;
+            bool plus_hov = mouse_.x >= plus_x && mouse_.x < plus_x + plus_w &&
+                            mouse_.y >= plus_y && mouse_.y < plus_y + 18.0f;
+            tr.draw_rect(plus_x, plus_y, plus_w, 18.0f,
+                         plus_hov ? 0.30f : 0.18f,
+                         plus_hov ? 0.30f : 0.18f,
+                         plus_hov ? 0.32f : 0.20f, 0.9f);
+            tr.draw_text(plus_x + 7.0f, plus_y + 2.0f, "+",
+                         style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+            session_track_rects_.push_back({plus_x, plus_y, plus_w, 18.0f, track.id, 1});
+            // Full header rect for right-click context
+            session_track_rects_.push_back({tx, grid_y, kSessionTrackColW, kSessionTrackHeaderH,
+                                            track.id, 0});
+            tx += kSessionTrackColW + kSessionGridCellPad;
         }
 
-        // "Add Track" / "+" button — always present at end of track columns
-        const bool  no_tracks = snap_.clip_machines.empty();
-        const float btn_w     = no_tracks ? 82.0f : 22.0f;
-        const float btn_h     = kClipCellH;
-        const float btn_x     = cx;
-        const float btn_y     = clips_y + 4.0f;
-        const bool  btn_hov   = (mouse_.x >= btn_x && mouse_.x < btn_x + btn_w &&
-                                 mouse_.y >= btn_y && mouse_.y < btn_y + btn_h);
-        tr.draw_rect(btn_x, btn_y, btn_w, btn_h,
-                     btn_hov ? 0.28f : 0.16f, btn_hov ? 0.28f : 0.16f,
-                     btn_hov ? 0.28f : 0.16f, 0.9f);
-        draw_rect_border(tr, btn_x, btn_y, btn_w, btn_h,
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.35f);
-        tr.draw_text(btn_x + 5, btn_y + 4,
-                     no_tracks ? T("add_track", "+ Add Track") : "+",
+        // "+ Add Track" button
+        const float add_w = 90.0f;
+        const float add_h = kSessionTrackHeaderH;
+        bool add_hov = mouse_.x >= tx && mouse_.x < tx + add_w &&
+                       mouse_.y >= grid_y && mouse_.y < grid_y + add_h;
+        tr.draw_rect(tx, grid_y, add_w, add_h,
+                     add_hov ? 0.20f : 0.12f,
+                     add_hov ? 0.20f : 0.12f,
+                     add_hov ? 0.22f : 0.13f, 0.8f);
+        draw_rect_border(tr, tx, grid_y, add_w, add_h,
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.3f);
+        tr.draw_text(tx + 6.0f, grid_y + (add_h - 12.0f) * 0.5f, "+ Add Track",
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-        add_track_btn_ = {btn_x, btn_y, btn_w, btn_h};
+        session_add_track_btn_ = {tx, grid_y, add_w, add_h};
     }
 
+    // Scene rows
+    {
+        const std::string& queued_scene_id = snap_.session.queued_scene_id;
+        float row_y = grid_y + kSessionTrackHeaderH + kSessionGridCellPad;
+
+        for (const auto& scene : snap_.session.scenes) {
+            // Compute scene state: 0=INACTIVE, 1=PARTIAL, 2=EXACT, 3=QUEUED
+            const bool is_queued = (scene.id == queued_scene_id);
+            int matched = 0;
+            const int total = static_cast<int>(scene.assignments.size());
+            for (const auto& [tid, cid] : scene.assignments) {
+                const auto* trk = snap_.session.find_track(tid);
+                if (trk && trk->active_clip_id == cid) ++matched;
+            }
+            const int scene_state = is_queued ? 3
+                                  : (total > 0 && matched == total) ? 2
+                                  : (matched > 0) ? 1 : 0;
+
+            // Scene label cell
+            {
+                const float cell_h = kSessionSceneRowH;
+                float bg_r = style_.dark_bg[0], bg_g = style_.dark_bg[1], bg_b = style_.dark_bg[2];
+                if (scene_state == 2) { bg_g += 0.06f; bg_r += 0.02f; }
+                else if (scene_state == 1) { bg_r += 0.05f; bg_g += 0.04f; }
+                const float bg_a = (scene_state == 3) ? 0.55f + 0.3f * pulse : 0.75f;
+                const bool hov = mouse_.x >= kSessionPadX &&
+                                 mouse_.x < kSessionPadX + kSessionSceneLabelW &&
+                                 mouse_.y >= row_y && mouse_.y < row_y + cell_h;
+
+                tr.draw_rect(kSessionPadX, row_y, kSessionSceneLabelW, cell_h,
+                             bg_r, bg_g, bg_b, bg_a + (hov ? 0.1f : 0.0f));
+
+                // ▶ launch indicator
+                tr.draw_text(kSessionPadX + 3.0f, row_y + (cell_h - 12.0f) * 0.5f, ">",
+                             hov ? style_.bright_text[0] : style_.dim_text[0],
+                             hov ? style_.bright_text[1] : style_.dim_text[1],
+                             hov ? style_.bright_text[2] : style_.dim_text[2]);
+
+                // Scene name (or inline edit)
+                const float play_w = 16.0f;
+                if (session_editing_name_ && session_edit_type_ == 3 &&
+                    session_edit_id_ == scene.id) {
+                    tr.draw_rect(kSessionPadX + play_w, row_y,
+                                 kSessionSceneLabelW - play_w, cell_h,
+                                 0.18f, 0.22f, 0.30f, 0.95f);
+                    tr.draw_text(kSessionPadX + play_w + 3.0f,
+                                 row_y + (cell_h - 12.0f) * 0.5f,
+                                 session_edit_buffer_.c_str(),
+                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                } else {
+                    tr.push_clip_rect(kSessionPadX + play_w, row_y,
+                                      kSessionSceneLabelW - play_w - 8.0f, cell_h);
+                    tr.draw_text(kSessionPadX + play_w + 3.0f,
+                                 row_y + (cell_h - 12.0f) * 0.5f,
+                                 scene.name.c_str(),
+                                 scene_state >= 2 ? style_.bright_text[0] : style_.dim_text[0],
+                                 scene_state >= 2 ? style_.bright_text[1] : style_.dim_text[1],
+                                 scene_state >= 2 ? style_.bright_text[2] : style_.dim_text[2]);
+                    tr.pop_clip_rect();
+                }
+
+                // State dot
+                const float dot_x = kSessionPadX + kSessionSceneLabelW - 7.0f;
+                const float dot_y = row_y + (cell_h - 4.0f) * 0.5f;
+                if (scene_state == 2) {
+                    tr.draw_rect(dot_x, dot_y, 4.0f, 4.0f, 0.3f, 0.9f, 0.3f, 0.9f);
+                } else if (scene_state == 1) {
+                    tr.draw_rect(dot_x, dot_y, 4.0f, 4.0f, 0.9f, 0.85f, 0.2f, 0.9f);
+                } else if (scene_state == 3) {
+                    tr.draw_rect(dot_x, dot_y, 4.0f, 4.0f,
+                                 style_.accent[0], style_.accent[1], style_.accent[2],
+                                 0.4f + 0.5f * pulse);
+                }
+
+                session_scene_rects_.push_back({kSessionPadX, row_y,
+                                                kSessionSceneLabelW, cell_h,
+                                                scene.id, 0});
+            }
+
+            // Per-track cells
+            float tx = kSessionPadX + kSessionSceneLabelW + kSessionGridCellPad;
+            for (const auto& track : snap_.session.tracks) {
+                auto assign_it = scene.assignments.find(track.id);
+                const bool is_leave = scene.leave_unchanged.count(track.id) > 0;
+                const bool has_assign = (assign_it != scene.assignments.end());
+                const std::string clip_id = has_assign ? assign_it->second : std::string();
+
+                std::string clip_name;
+                if (has_assign) {
+                    for (const auto& c : track.clips) {
+                        if (c.id == clip_id) { clip_name = c.name; break; }
+                    }
+                }
+
+                // Cell state: 0=ACTIVE, 1=QUEUED, 2=LEAVE_UNCHANGED, 3=INACTIVE, 4=UNASSIGNED
+                int cell_state;
+                if (is_leave)          cell_state = 2;
+                else if (!has_assign)  cell_state = 4;
+                else if (clip_id == track.active_clip_id) cell_state = 0;
+                else if (clip_id == track.queued_clip_id) cell_state = 1;
+                else                   cell_state = 3;
+
+                const float cell_h = kSessionSceneRowH;
+                const bool hov = has_assign && !is_leave &&
+                                 mouse_.x >= tx && mouse_.x < tx + kSessionTrackColW &&
+                                 mouse_.y >= row_y && mouse_.y < row_y + cell_h;
+
+                float cr = 0.11f, cg = 0.12f, cb = 0.13f, ca = 0.7f;
+                if (cell_state == 0) {
+                    cr = style_.accent[0] * 0.28f;
+                    cg = style_.accent[1] * 0.28f;
+                    cb = style_.accent[2] * 0.28f;
+                    ca = 0.92f;
+                } else if (cell_state == 1) {
+                    cr = style_.accent[0] * 0.20f;
+                    cg = style_.accent[1] * 0.20f;
+                    cb = style_.accent[2] * 0.20f;
+                    ca = 0.5f + 0.4f * pulse;
+                } else if (cell_state == 2) {
+                    cr = 0.14f; cg = 0.14f; cb = 0.16f; ca = 0.6f;
+                } else if (cell_state == 4) {
+                    cr = 0.08f; cg = 0.08f; cb = 0.09f; ca = 0.5f;
+                }
+                if (hov) { cr += 0.06f; cg += 0.06f; cb += 0.06f; }
+
+                tr.draw_rect(tx, row_y, kSessionTrackColW, cell_h, cr, cg, cb, ca);
+
+                if (cell_state == 0) {
+                    draw_rect_border(tr, tx, row_y, kSessionTrackColW, cell_h,
+                                     style_.accent[0], style_.accent[1], style_.accent[2], 0.8f);
+                } else if (cell_state == 1) {
+                    draw_rect_border(tr, tx, row_y, kSessionTrackColW, cell_h,
+                                     style_.accent[0], style_.accent[1], style_.accent[2],
+                                     0.3f + 0.5f * pulse);
+                }
+
+                tr.push_clip_rect(tx + 2.0f, row_y + 1.0f, kSessionTrackColW - 4.0f, cell_h - 2.0f);
+                if (is_leave) {
+                    tr.draw_text(tx + 4.0f, row_y + (cell_h - 12.0f) * 0.5f, "-",
+                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                } else if (has_assign && !clip_name.empty()) {
+                    float nr = (cell_state == 0) ? style_.bright_text[0] : style_.dim_text[0];
+                    float ng = (cell_state == 0) ? style_.bright_text[1] : style_.dim_text[1];
+                    float nb = (cell_state == 0) ? style_.bright_text[2] : style_.dim_text[2];
+                    tr.draw_text(tx + 4.0f, row_y + (cell_h - 12.0f) * 0.5f, clip_name.c_str(),
+                                 nr, ng, nb);
+                }
+                tr.pop_clip_rect();
+
+                session_cell_rects_.push_back({tx, row_y, kSessionTrackColW, cell_h,
+                                               scene.id, track.id, clip_id});
+                tx += kSessionTrackColW + kSessionGridCellPad;
+            }
+
+            row_y += kSessionSceneRowH + kSessionGridCellPad;
+        }
+
+        // "+ Save Scene" button
+        {
+            const bool hov = mouse_.x >= kSessionPadX &&
+                             mouse_.x < kSessionPadX + kSessionSceneLabelW &&
+                             mouse_.y >= row_y && mouse_.y < row_y + kSessionAddRowH;
+            tr.draw_rect(kSessionPadX, row_y, kSessionSceneLabelW, kSessionAddRowH,
+                         hov ? 0.16f : 0.10f,
+                         hov ? 0.16f : 0.10f,
+                         hov ? 0.18f : 0.11f, 0.8f);
+            draw_rect_border(tr, kSessionPadX, row_y, kSessionSceneLabelW, kSessionAddRowH,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.3f);
+            tr.draw_text(kSessionPadX + 5.0f, row_y + (kSessionAddRowH - 12.0f) * 0.5f,
+                         "+ Save Scene",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            session_add_scene_btn_ = {kSessionPadX, row_y, kSessionSceneLabelW, kSessionAddRowH};
+        }
+    }
+
+    tr.pop_clip_rect();  // grid area clip
+
     // --- Context menu ---
-    if (session_ctx_menu_open_ && session_ctx_menu_idx_ >= 0) {
-        const char* ctx_labels[] = {
-            T("session_rename", "Rename"), T("session_duplicate", "Duplicate"),
-            T("session_delete", "Delete"), T("session_branch_from", "Branch From") };
-        int item_count = 4;
-        float menu_w = kSessionCtxMenuW;
-        float menu_h = item_count * kSessionCtxMenuItemH + 4;
+    if (session_ctx_menu_open_) {
+        // session_ctx_menu_idx_: 1=track ctx, 2=scene ctx
+        const char* track_labels[] = { "Rename", "Remove" };
+        const char* scene_labels[] = { "Rename", "Update", "Remove" };
+        const char** ctx_labels = (session_ctx_menu_idx_ == 1) ? track_labels : scene_labels;
+        const int item_count = (session_ctx_menu_idx_ == 1) ? 2 : 3;
+
+        const float menu_w = kSessionCtxMenuW;
+        const float menu_h = item_count * kSessionCtxMenuItemH + 4.0f;
         float menu_x = session_ctx_menu_x_;
         float menu_y = session_ctx_menu_y_;
-        // Clamp to screen
         if (menu_x + menu_w > strip_w) menu_x = strip_w - menu_w;
         if (menu_y + menu_h > static_cast<float>(win_h_)) menu_y -= menu_h;
 
         draw_popup_bg(tr, style_, menu_x, menu_y, menu_w, menu_h);
-
         for (int ci = 0; ci < item_count; ++ci) {
-            float iy = menu_y + 2 + ci * kSessionCtxMenuItemH;
-            bool hovered = (mouse_.x >= menu_x && mouse_.x <= menu_x + menu_w &&
-                            mouse_.y >= iy && mouse_.y <= iy + kSessionCtxMenuItemH);
-            if (hovered) {
-                tr.draw_rect(menu_x + 2, iy, menu_w - 4, kSessionCtxMenuItemH,
+            const float iy = menu_y + 2.0f + ci * kSessionCtxMenuItemH;
+            const bool hov = mouse_.x >= menu_x && mouse_.x <= menu_x + menu_w &&
+                             mouse_.y >= iy && mouse_.y <= iy + kSessionCtxMenuItemH;
+            if (hov) {
+                tr.draw_rect(menu_x + 2.0f, iy, menu_w - 4.0f, kSessionCtxMenuItemH,
                              style_.accent[0], style_.accent[1], style_.accent[2], 0.2f);
             }
-            tr.draw_text(menu_x + 10, iy + 3, ctx_labels[ci],
+            tr.draw_text(menu_x + 10.0f, iy + 3.0f, ctx_labels[ci],
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             session_ctx_menu_rects_.push_back({menu_x, iy, menu_w, kSessionCtxMenuItemH, ci});
         }

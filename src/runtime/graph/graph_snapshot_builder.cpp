@@ -651,6 +651,25 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
             ts.active_clip_id = runtime_api->active_clip(track.id);
             ts.queued_clip_id = runtime_api->queued_clip_for(track.id);
         }
+        // Compute dirty: live param values differ from stored clip params
+        if (cg && !ts.active_clip_id.empty()) {
+            const auto* clip = graph.find_clip(track.id, ts.active_clip_id);
+            if (clip) {
+                for (const auto& [nid, nparams] : clip->params) {
+                    if (ts.dirty) break;
+                    const auto* cn = cg->find_node(nid);
+                    if (!cn) continue;
+                    for (const auto& [pname, pval] : nparams) {
+                        auto pi = cn->param_indices.find(pname);
+                        if (pi != cn->param_indices.end() &&
+                            std::abs(cn->param_values[pi->second] - pval) > 1e-5f) {
+                            ts.dirty = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         snap.session.track_index[track.id] = snap.session.tracks.size() - 1;
     }
     for (const auto& scene : graph.session().scenes) {

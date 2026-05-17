@@ -163,6 +163,26 @@ public:
     virtual bool redo() { return false; }
     virtual bool can_undo() const { return false; }
     virtual bool can_redo() const { return false; }
+
+    // Session Track/Clip/Scene operations (defaults are no-ops for headless/test sinks)
+    virtual void session_create_track(const std::string& name) {}
+    virtual void session_rename_track(const std::string& track_id, const std::string& name) {}
+    virtual void session_remove_track(const std::string& track_id) {}
+    virtual void session_save_clip(const std::string& track_id, const std::string& name) {}
+    virtual void session_rename_clip(const std::string& track_id, const std::string& clip_id,
+                                     const std::string& name) {}
+    virtual void session_remove_clip(const std::string& track_id, const std::string& clip_id) {}
+    virtual void session_save_scene(const std::string& name) {}
+    virtual void session_rename_scene(const std::string& scene_id, const std::string& name) {}
+    virtual void session_remove_scene(const std::string& scene_id) {}
+    virtual void session_update_scene(const std::string& scene_id) {}
+    virtual void session_assign_nodes(const std::string& track_id,
+                                      const std::vector<std::string>& node_ids) {}
+    // Launch (NOT undo-tracked — real-time performance actions)
+    virtual void session_queue_clip(const std::string& track_id, const std::string& clip_id,
+                                    const std::string& quantize) {}
+    virtual void session_queue_scene(const std::string& scene_id,
+                                     const std::string& quantize) {}
 };
 
 } // namespace vivid::ui

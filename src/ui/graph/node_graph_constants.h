@@ -359,6 +359,18 @@ static constexpr float kClipSectionH  = 60.0f;  // strip height added to session
 static constexpr float kClipCellW     = 110.0f;
 static constexpr float kClipCellH     = 22.0f;
 static constexpr float kClipCellPad   = 3.0f;
+
+// Session grid — Scene×Track grid panel
+static constexpr float kSessionResizeHandleH = 6.0f;
+static constexpr float kSessionPanelMinH     = 120.0f;
+static constexpr float kSessionPanelMaxH     = 600.0f;
+static constexpr float kSessionPanelDefaultH = 240.0f;
+static constexpr float kSessionSceneLabelW   = 112.0f;
+static constexpr float kSessionTrackColW     = 120.0f;
+static constexpr float kSessionTrackHeaderH  = 32.0f;
+static constexpr float kSessionSceneRowH     = 24.0f;
+static constexpr float kSessionAddRowH       = 24.0f;
+static constexpr float kSessionGridCellPad   = 2.0f;
 static constexpr float kSessionCtxMenuItemH = 22.0f;
 static constexpr float kSessionDragThreshold = 3.0f;
 

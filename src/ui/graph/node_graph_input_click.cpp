@@ -80,8 +80,7 @@ void NodeGraphUI::handle_left_click() {
     }
 
     {
-        const float clip_h = snap_.clip_machines.empty() ? 0.0f : kClipSectionH;
-        float bottom_offset = session_grid_open_ ? kSessionStripH + clip_h : 0.0f;
+        float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
         if (!build_console_panel_.contains(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset))
             build_console_panel_.blur();
     }
@@ -181,8 +180,7 @@ void NodeGraphUI::handle_left_click() {
     }
 
     {
-        const float clip_h = snap_.clip_machines.empty() ? 0.0f : kClipSectionH;
-        float bottom_offset = session_grid_open_ ? kSessionStripH + clip_h : 0.0f;
+        float bottom_offset = session_grid_open_ ? session_strip_height() : 0.0f;
         if (build_console_panel_.handle_left_press(mouse_.x, mouse_.y, win_w_, win_h_, bottom_offset)) {
             mouse_.left_clicked = false;
             return;
@@ -191,19 +189,69 @@ void NodeGraphUI::handle_left_click() {
 
     // Session grid click handling
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
-        // Close context menu if clicking elsewhere
+        // Context menu dispatch
         if (session_ctx_menu_open_) {
+            for (const auto& cr : session_ctx_menu_rects_) {
+                if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
+                    mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
+                    if (session_ctx_menu_idx_ == 1) {
+                        // Track context menu
+                        if (cr.action == 0) {  // Rename
+                            session_edit_type_ = 1;
+                            session_edit_id_ = session_edit_track_id_;
+                            session_edit_buffer_ = "";
+                            // Find current name
+                            for (const auto& t : snap_.session.tracks)
+                                if (t.id == session_edit_id_) { session_edit_buffer_ = t.name; break; }
+                            text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
+                            session_editing_name_ = true;
+                        } else if (cr.action == 1) {  // Remove
+                            commands_.session_remove_track(session_edit_track_id_);
+                        }
+                    } else {
+                        // Scene context menu (session_ctx_menu_idx_ == 2)
+                        if (cr.action == 0) {  // Rename
+                            session_edit_type_ = 3;
+                            session_edit_id_ = session_edit_track_id_;  // reused as scene_id
+                            session_edit_buffer_ = "";
+                            for (const auto& s : snap_.session.scenes)
+                                if (s.id == session_edit_id_) { session_edit_buffer_ = s.name; break; }
+                            text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
+                            session_editing_name_ = true;
+                        } else if (cr.action == 1) {  // Update
+                            commands_.session_update_scene(session_edit_track_id_);
+                        } else if (cr.action == 2) {  // Remove
+                            commands_.session_remove_scene(session_edit_track_id_);
+                        }
+                    }
+                    session_ctx_menu_open_ = false;
+                    mouse_.left_clicked = false;
+                    return;
+                }
+            }
             session_ctx_menu_open_ = false;
             mouse_.left_clicked = false;
             return;
         }
 
-        // Check buttons
+        // Resize handle — start drag
+        {
+            const auto& rh = session_resize_handle_;
+            if (mouse_.x >= rh.x && mouse_.x < rh.x + rh.w &&
+                mouse_.y >= rh.y && mouse_.y < rh.y + rh.h) {
+                session_resize_active_ = true;
+                session_resize_start_y_ = mouse_.y;
+                session_resize_start_h_ = session_panel_h_;
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+
+        // Quantize and close buttons
         for (const auto& br : session_button_rects_) {
             if (mouse_.x >= br.x && mouse_.x <= br.x + br.w &&
                 mouse_.y >= br.y && mouse_.y <= br.y + br.h) {
                 if (br.action >= 2 && br.action <= 5) {
-                    // Quantize mode buttons
                     session_quantize_mode_ = br.action - 2;
                     clear_status_banner();
                 } else if (br.action == 7) {
@@ -213,45 +261,70 @@ void NodeGraphUI::handle_left_click() {
                 return;
             }
         }
-        // Check clip grid cells
-        for (const auto& cr : clip_cell_rects_) {
+
+        // Track header "+" save-clip button (action=1) — must check before full header (action=0)
+        for (const auto& tr : session_track_rects_) {
+            if (tr.action != 1) continue;
+            if (mouse_.x >= tr.x && mouse_.x < tr.x + tr.w &&
+                mouse_.y >= tr.y && mouse_.y < tr.y + tr.h) {
+                const auto* tsnap = snap_.session.find_track(tr.track_id);
+                int n = tsnap ? static_cast<int>(tsnap->clips.size()) + 1 : 1;
+                commands_.session_save_clip(tr.track_id, "Clip " + std::to_string(n));
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+
+        // "+ Add Track" button
+        {
+            const auto& b = session_add_track_btn_;
+            if (b.w > 0 && mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+                mouse_.y >= b.y && mouse_.y < b.y + b.h) {
+                int n = static_cast<int>(snap_.session.tracks.size()) + 1;
+                commands_.session_create_track("Track " + std::to_string(n));
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+
+        // Scene launch button (left side of scene row)
+        for (const auto& sr : session_scene_rects_) {
+            if (mouse_.x >= sr.x && mouse_.x < sr.x + sr.w &&
+                mouse_.y >= sr.y && mouse_.y < sr.y + sr.h) {
+                static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
+                const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
+                commands_.session_queue_scene(sr.scene_id, q);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+
+        // Grid cell click → launch clip for this track
+        for (const auto& cr : session_cell_rects_) {
+            if (cr.clip_id.empty()) continue;
             if (mouse_.x >= cr.x && mouse_.x < cr.x + cr.w &&
                 mouse_.y >= cr.y && mouse_.y < cr.y + cr.h) {
                 static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
                 const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
-                commands_.queue_state_transition(cr.sm_node_id, cr.state_idx, q);
+                commands_.session_queue_clip(cr.track_id, cr.clip_id, q);
                 mouse_.left_clicked = false;
                 return;
             }
         }
-        // "Add Track" button
+
+        // "+ Save Scene" button
         {
-            const auto& b = add_track_btn_;
-            if (mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+            const auto& b = session_add_scene_btn_;
+            if (b.w > 0 && mouse_.x >= b.x && mouse_.x < b.x + b.w &&
                 mouse_.y >= b.y && mouse_.y < b.y + b.h) {
-                const int n = next_clip_track_idx_++;
-                const std::string sm_id = "sm_track_" + std::to_string(n);
-                const std::string mc_id = "midi_clip_track_" + std::to_string(n);
-                const float gx = sx_to_gx(win_w_ * 0.5f);
-                const float gy = sy_to_gy((win_h_ - session_strip_height()) * 0.5f);
-                std::string err;
-                if (!commands_.try_add_node("StateMachine", sm_id, &err)) {
-                    mouse_.left_clicked = false;
-                    return;
-                }
-                if (!commands_.try_add_node("MidiClip", mc_id, &err)) {
-                    mouse_.left_clicked = false;
-                    return;
-                }
-                commands_.connect(mc_id + "/phase", sm_id + "/beat_phase");
-                commands_.ensure_state_mapping(sm_id);
-                commands_.set_node_layout(sm_id, gx, gy);
-                commands_.set_node_layout(mc_id, gx + 280.0f, gy);
+                int n = static_cast<int>(snap_.session.scenes.size()) + 1;
+                commands_.session_save_scene("Scene " + std::to_string(n));
                 mouse_.left_clicked = false;
                 return;
             }
         }
-        // Clicked in session strip but not on a cell/button — deselect
+
+        // Clicked in session strip but not on any interactive element
         session_selected_idx_ = -1;
         mouse_.left_clicked = false;
         return;

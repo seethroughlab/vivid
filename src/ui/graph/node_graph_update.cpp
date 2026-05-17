@@ -204,6 +204,7 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_scrollbar_drag();
     update_slider_drag();
     update_transport_bpm_drag();
+    update_session_resize_drag();
     update_modulation_drag();
     update_xy_pad_drag();
     update_rich_inspector_drag();

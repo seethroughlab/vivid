@@ -252,8 +252,33 @@ void NodeGraphUI::handle_right_click() {
         return;  // right-click in inspector but not on a label — ignore
     }
 
-    // Session grid right-click — context menu placeholder (Phase 1)
+    // Session grid right-click — track header and scene row context menus
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
+        // Track header right-click (action=0 = full header, check before "+" button)
+        for (const auto& tr : session_track_rects_) {
+            if (tr.action != 0) continue;
+            if (mouse_.x >= tr.x && mouse_.x < tr.x + tr.w &&
+                mouse_.y >= tr.y && mouse_.y < tr.y + tr.h) {
+                session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 1;           // track context
+                session_edit_track_id_ = tr.track_id; // target id stored here
+                session_ctx_menu_x_ = mouse_.x;
+                session_ctx_menu_y_ = mouse_.y;
+                return;
+            }
+        }
+        // Scene row right-click
+        for (const auto& sr : session_scene_rects_) {
+            if (mouse_.x >= sr.x && mouse_.x < sr.x + sr.w &&
+                mouse_.y >= sr.y && mouse_.y < sr.y + sr.h) {
+                session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 2;           // scene context
+                session_edit_track_id_ = sr.scene_id; // reuse field for scene_id
+                session_ctx_menu_x_ = mouse_.x;
+                session_ctx_menu_y_ = mouse_.y;
+                return;
+            }
+        }
         session_ctx_menu_open_ = false;
         return;
     }

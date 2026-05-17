@@ -140,6 +140,7 @@ public:
             || patch_ctx_open_
             || transport_bpm_editing_
             || session_editing_name_
+            || session_edit_type_ != 0
             || session_ctx_menu_open_
             || record_dropdown_open_
             || editing_sticky_
@@ -544,6 +545,7 @@ private:
     void update_wire_drag();
     void update_slider_drag();
     void update_transport_bpm_drag();
+    void update_session_resize_drag();
     void update_modulation_drag();
     void update_xy_pad_drag();
     void update_rich_inspector_drag();
@@ -862,8 +864,46 @@ private:
     struct ClipCellRect { float x, y, w, h; std::string sm_node_id; int state_idx; };
     std::vector<ClipCellRect> clip_cell_rects_;
     struct Rect2 { float x = 0, y = 0, w = 0, h = 0; };
+    struct SessionTrackColRect {
+        float x, y, w, h;
+        std::string track_id;
+        int action;  // 0=header-click, 1=save-clip (+), 2=context-menu
+    };
+    struct SessionSceneRowRect {
+        float x, y, w, h;
+        std::string scene_id;
+        int action;  // 0=launch, 1=context-menu
+    };
+    struct SessionGridCellRect {
+        float x, y, w, h;
+        std::string scene_id;
+        std::string track_id;
+        std::string clip_id;  // empty = no assignment
+    };
+    struct SessionResizeRect { float x = 0, y = 0, w = 0, h = 0; };
+
     Rect2 add_track_btn_ {};
     int   next_clip_track_idx_ = 1;
+
+    // Session panel resize
+    float session_panel_h_ = kSessionPanelDefaultH;
+    bool  session_resize_active_ = false;
+    float session_resize_start_y_ = 0.0f;
+    float session_resize_start_h_ = 0.0f;
+    SessionResizeRect session_resize_handle_ {};
+
+    // Session grid hit-test data (rebuilt each draw call)
+    std::vector<SessionTrackColRect> session_track_rects_;
+    std::vector<SessionSceneRowRect> session_scene_rects_;
+    std::vector<SessionGridCellRect> session_cell_rects_;
+    Rect2 session_add_track_btn_ {};
+    Rect2 session_add_scene_btn_ {};
+
+    // Session inline name editing
+    // edit_type: 0=none, 1=track, 2=clip, 3=scene
+    int         session_edit_type_ = 0;
+    std::string session_edit_id_;        // track_id / clip_id / scene_id
+    std::string session_edit_track_id_;  // parent track_id when editing a clip
 
     // Active UI style
     UIStyle style_;

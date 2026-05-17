@@ -357,6 +357,7 @@ struct SessionTrackSnap {
     std::vector<SessionClipSnap> clips;
     std::string active_clip_id;
     std::string queued_clip_id;
+    bool dirty = false;   // live param values differ from stored active clip params
 };
 
 struct SessionSceneSnap {

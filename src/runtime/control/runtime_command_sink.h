@@ -180,6 +180,63 @@ public:
         if (r.ok) capture_undo_snapshot();
     }
 
+    void session_create_track(const std::string& name) override {
+        auto r = api_.create_track(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_track(const std::string& track_id, const std::string& name) override {
+        auto r = api_.rename_track(track_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_track(const std::string& track_id) override {
+        auto r = api_.remove_track(track_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_save_clip(const std::string& track_id, const std::string& name) override {
+        auto r = api_.save_clip(track_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_clip(const std::string& track_id, const std::string& clip_id,
+                             const std::string& name) override {
+        auto r = api_.rename_clip(track_id, clip_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_clip(const std::string& track_id, const std::string& clip_id) override {
+        auto r = api_.remove_clip(track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_save_scene(const std::string& name) override {
+        auto r = api_.save_scene(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_scene(const std::string& scene_id, const std::string& name) override {
+        auto r = api_.rename_scene(scene_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_scene(const std::string& scene_id) override {
+        auto r = api_.remove_scene(scene_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_update_scene(const std::string& scene_id) override {
+        auto r = api_.update_scene(scene_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_assign_nodes(const std::string& track_id,
+                              const std::vector<std::string>& node_ids) override {
+        auto r = api_.assign_nodes_to_track(track_id, node_ids);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_queue_clip(const std::string& track_id, const std::string& clip_id,
+                            const std::string& quantize) override {
+        api_.queue_clip(track_id, clip_id, quantize);
+        // No undo snapshot: launch is a live performance action
+    }
+    void session_queue_scene(const std::string& scene_id,
+                             const std::string& quantize) override {
+        api_.queue_scene(scene_id, quantize);
+        // No undo snapshot: launch is a live performance action
+    }
+
     void open_shader(const std::string& type_name) override;
     void open_module_source(const std::string& type_name) override;
     void open_editor(const std::string& node_id) override;
