@@ -211,8 +211,8 @@ void NodeGraphUI::handle_left_click() {
                         } else if (cr.action == 2) {  // Remove
                             commands_.session_remove_track(session_edit_track_id_);
                         }
-                    } else {
-                        // Scene context menu (session_ctx_menu_idx_ == 2)
+                    } else if (session_ctx_menu_idx_ == 2) {
+                        // Scene context menu
                         if (cr.action == 0) {  // Rename
                             session_edit_type_ = 3;
                             session_edit_id_ = session_edit_track_id_;  // reused as scene_id
@@ -225,6 +225,39 @@ void NodeGraphUI::handle_left_click() {
                             commands_.session_update_scene(session_edit_track_id_);
                         } else if (cr.action == 2) {  // Remove
                             commands_.session_remove_scene(session_edit_track_id_);
+                        }
+                    } else if (session_ctx_menu_idx_ == 3) {
+                        // Clip cell context menu
+                        if (cr.action == 0) {  // Update Clip
+                            commands_.session_update_clip(session_ctx_cell_track_id_,
+                                                          session_ctx_cell_clip_id_);
+                        } else if (cr.action == 1) {  // Rename Clip
+                            session_edit_type_ = 2;
+                            session_edit_id_       = session_ctx_cell_clip_id_;
+                            session_edit_track_id_ = session_ctx_cell_track_id_;
+                            session_edit_buffer_ = "";
+                            const auto* ts = snap_.session.find_track(session_ctx_cell_track_id_);
+                            if (ts) {
+                                for (const auto& c : ts->clips)
+                                    if (c.id == session_ctx_cell_clip_id_) { session_edit_buffer_ = c.name; break; }
+                            }
+                            text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
+                            session_editing_name_ = true;
+                        } else if (cr.action == 2) {  // Remove Clip
+                            commands_.session_remove_clip(session_ctx_cell_track_id_,
+                                                          session_ctx_cell_clip_id_);
+                        } else if (cr.action == 3) {  // Clear from Scene
+                            commands_.session_clear_scene_assignment(session_ctx_cell_scene_id_,
+                                                                      session_ctx_cell_track_id_);
+                        }
+                    } else if (session_ctx_menu_idx_ == 4) {
+                        // Empty cell context menu
+                        if (cr.action == 0) {  // Assign Active Clip
+                            const auto* ts = snap_.session.find_track(session_ctx_cell_track_id_);
+                            if (ts && !ts->active_clip_id.empty())
+                                commands_.session_set_scene_assignment(session_ctx_cell_scene_id_,
+                                                                        session_ctx_cell_track_id_,
+                                                                        ts->active_clip_id);
                         }
                     }
                     session_ctx_menu_open_ = false;

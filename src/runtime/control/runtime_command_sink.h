@@ -205,6 +205,21 @@ public:
         auto r = api_.remove_clip(track_id, clip_id);
         if (r.ok) capture_undo_snapshot();
     }
+    void session_update_clip(const std::string& track_id, const std::string& clip_id) override {
+        auto r = api_.update_clip(track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_set_scene_assignment(const std::string& scene_id,
+                                       const std::string& track_id,
+                                       const std::string& clip_id) override {
+        auto r = api_.set_scene_assignment(scene_id, track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_clear_scene_assignment(const std::string& scene_id,
+                                         const std::string& track_id) override {
+        auto r = api_.clear_scene_assignment(scene_id, track_id);
+        if (r.ok) capture_undo_snapshot();
+    }
     void session_save_scene(const std::string& name) override {
         auto r = api_.save_scene(name);
         if (r.ok) capture_undo_snapshot();

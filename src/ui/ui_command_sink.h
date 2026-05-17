@@ -172,6 +172,12 @@ public:
     virtual void session_rename_clip(const std::string& track_id, const std::string& clip_id,
                                      const std::string& name) {}
     virtual void session_remove_clip(const std::string& track_id, const std::string& clip_id) {}
+    virtual void session_update_clip(const std::string& track_id, const std::string& clip_id) {}
+    virtual void session_set_scene_assignment(const std::string& scene_id,
+                                               const std::string& track_id,
+                                               const std::string& clip_id) {}
+    virtual void session_clear_scene_assignment(const std::string& scene_id,
+                                                 const std::string& track_id) {}
     virtual void session_save_scene(const std::string& name) {}
     virtual void session_rename_scene(const std::string& scene_id, const std::string& name) {}
     virtual void session_remove_scene(const std::string& scene_id) {}

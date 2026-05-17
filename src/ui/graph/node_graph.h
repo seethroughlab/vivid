@@ -900,6 +900,11 @@ private:
     std::string session_edit_id_;        // track_id / clip_id / scene_id
     std::string session_edit_track_id_;  // parent track_id when editing a clip
 
+    // Cell whose context menu is open (set on right-click)
+    std::string session_ctx_cell_scene_id_;
+    std::string session_ctx_cell_track_id_;
+    std::string session_ctx_cell_clip_id_;
+
     // Active UI style
     UIStyle style_;
     BuildConsolePanel build_console_panel_;

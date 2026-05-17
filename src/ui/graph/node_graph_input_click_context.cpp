@@ -279,6 +279,33 @@ void NodeGraphUI::handle_right_click() {
                 return;
             }
         }
+        // Cell right-click
+        for (const auto& cr : session_cell_rects_) {
+            if (!(mouse_.x >= cr.x && mouse_.x < cr.x + cr.w &&
+                  mouse_.y >= cr.y && mouse_.y < cr.y + cr.h)) continue;
+            if (!cr.clip_id.empty()) {
+                session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 3;
+                session_ctx_cell_scene_id_ = cr.scene_id;
+                session_ctx_cell_track_id_ = cr.track_id;
+                session_ctx_cell_clip_id_  = cr.clip_id;
+                session_ctx_menu_x_ = mouse_.x;
+                session_ctx_menu_y_ = mouse_.y;
+            } else {
+                const auto* ts = snap_.session.find_track(cr.track_id);
+                if (ts && !ts->active_clip_id.empty()) {
+                    session_ctx_menu_open_ = true;
+                    session_ctx_menu_idx_ = 4;
+                    session_ctx_cell_scene_id_ = cr.scene_id;
+                    session_ctx_cell_track_id_ = cr.track_id;
+                    session_ctx_cell_clip_id_  = "";
+                    session_ctx_menu_x_ = mouse_.x;
+                    session_ctx_menu_y_ = mouse_.y;
+                }
+            }
+            mouse_.right_clicked = false;
+            return;
+        }
         session_ctx_menu_open_ = false;
         return;
     }

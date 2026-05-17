@@ -1221,10 +1221,16 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     // --- Context menu ---
     if (session_ctx_menu_open_) {
         // session_ctx_menu_idx_: 1=track ctx, 2=scene ctx
-        const char* track_labels[] = { "Rename", "Assign Selected", "Remove" };
-        const char* scene_labels[] = { "Rename", "Update", "Remove" };
-        const char** ctx_labels = (session_ctx_menu_idx_ == 1) ? track_labels : scene_labels;
-        const int item_count = (session_ctx_menu_idx_ == 1) ? 3 : 3;
+        const char* track_labels[]      = { "Rename", "Assign Selected", "Remove" };
+        const char* scene_labels[]      = { "Rename", "Update", "Remove" };
+        const char* clip_cell_labels[]  = { "Update Clip", "Rename Clip", "Remove Clip", "Clear from Scene" };
+        const char* empty_cell_labels[] = { "Assign Active Clip" };
+        const char** ctx_labels;
+        int item_count;
+        if      (session_ctx_menu_idx_ == 1) { ctx_labels = track_labels;      item_count = 3; }
+        else if (session_ctx_menu_idx_ == 2) { ctx_labels = scene_labels;      item_count = 3; }
+        else if (session_ctx_menu_idx_ == 3) { ctx_labels = clip_cell_labels;  item_count = 4; }
+        else                                 { ctx_labels = empty_cell_labels; item_count = 1; }
 
         const float menu_w = kSessionCtxMenuW;
         const float menu_h = item_count * kSessionCtxMenuItemH + 4.0f;
