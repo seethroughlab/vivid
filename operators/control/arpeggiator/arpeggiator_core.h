@@ -53,7 +53,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     vivid::Param<float> swing       {"swing",       0.0f, 0.0f, 1.0f};
     vivid::Param<bool>  latch       {"latch",       false};
     vivid::Param<int>   mod_steps   {"mod_steps",   8, 1, 16};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     // --- Per-step velocity modifiers (legacy 0..7 + new 8..15) ---
     vivid::Param<float> vel_0 {"vel_0", 1.0f, 0.0f, 1.0f};

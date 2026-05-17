@@ -75,7 +75,7 @@ Audit only beginner-facing docs for this beta path: `README.md`, `docs/GETTING-S
 
 Add or revise first-run setup for macOS users who may need Homebrew/CMake, with a clear "you do not need to program" framing.
 
-Rewrite confusing developer-first language in beginner docs into task-first language: open the app, open examples, hear/see what changed, tweak these controls, save a variation, recover if something goes wrong.
+Rewrite confusing developer-first language in beginner docs into task-first language: open the app, open examples, hear/see what changed, tweak these controls, save a clip or scene, recover if something goes wrong.
 
 Create a short "First 15 Minutes" path with a small curated example sequence and one fallback if audio, camera, or movie permissions are missing.
 
@@ -110,5 +110,5 @@ If review finds beginner-blocking metadata gaps, update graph `meta` fields and 
 ## Test Plan
 
 - Automated: build, full test baseline, `test_demo_graphs`, `UI_SMOKE`, `GUI_SMOKE`, `GUI_ENV` where available, movie playback go/no-go, stability stress, soak.
-- Manual: all-graph A/V review, every-operator inspector review, beginner docs walk-through, fresh setup path, permissions/device path, save/load/variation smoke.
+- Manual: all-graph A/V review, every-operator inspector review, beginner docs walk-through, fresh setup path, permissions/device path, save/load/session smoke.
 - Acceptance: zero crashes, zero scary-audio failures, zero unintended black/silent starter graphs, zero beginner-blocking docs gaps in the first-run path, and every blocking issue either fixed or removed from the beta surface.

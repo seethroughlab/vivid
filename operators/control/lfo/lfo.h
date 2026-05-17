@@ -37,7 +37,7 @@
  * @param polarity bipolar = -1..1, unipolar = 0..1.
  * @param slew Smooths output transitions. Higher values = more lag.
  * @input gate Rising edge resets phase and starts fade-in timer.
- * @input beat_phase External phase source (0-1 sawtooth from Clock) for sync mode.
+ * @input beat_phase Optional external phase source (0-1 sawtooth) used when rate_mode=external.
  * @output value The computed LFO signal.
  */
 struct LFO : vivid::OperatorBase {

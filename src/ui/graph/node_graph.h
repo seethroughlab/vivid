@@ -140,6 +140,7 @@ public:
             || patch_ctx_open_
             || transport_bpm_editing_
             || session_editing_name_
+            || session_edit_type_ != 0
             || session_ctx_menu_open_
             || record_dropdown_open_
             || editing_sticky_
@@ -544,6 +545,7 @@ private:
     void update_wire_drag();
     void update_slider_drag();
     void update_transport_bpm_drag();
+    void update_session_resize_drag();
     void update_modulation_drag();
     void update_xy_pad_drag();
     void update_rich_inspector_drag();
@@ -829,7 +831,7 @@ private:
 
     // --- Graph meta editor (migrated to DialogManager) ---
 
-    // --- Session grid (variation strip / exploration surface) ---
+    // --- Session grid (Tracks / Clips / Scenes performance surface) ---
     bool session_grid_open_ = false;
     float session_scroll_x_ = 0.0f;
     int session_hovered_col_ = -1;
@@ -837,9 +839,6 @@ private:
     bool session_editing_name_ = false;
     int session_edit_idx_ = -1;
     std::string session_edit_buffer_;
-    // Double-click detection for variation cell rename
-    double last_variation_click_time_ = 0.0;
-    int last_variation_click_idx_ = -1;
     // Quantize mode (persisted as UI state, synced via commands)
     int session_quantize_mode_ = 0;  // 0=Off, 1=Beat, 2=Bar, 3=4Bar
     // Selected card (separate from active — keyboard/visual focus)
@@ -858,17 +857,53 @@ private:
     // Hit-test rects
     struct SessionCollapsedRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
     SessionCollapsedRect session_collapsed_rect_;
-    struct VariationCellRect { float x, y, w, h; int idx; };
-    std::vector<VariationCellRect> variation_cell_rects_;
     struct SessionButtonRect { float x, y, w, h; int action; bool enabled = true; }; // action: 0=+New, 1=Update, 2-5=quantize, 6=Branch, 7=Close
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
-    struct ClipCellRect { float x, y, w, h; std::string sm_node_id; int state_idx; };
-    std::vector<ClipCellRect> clip_cell_rects_;
     struct Rect2 { float x = 0, y = 0, w = 0, h = 0; };
-    Rect2 add_track_btn_ {};
-    int   next_clip_track_idx_ = 1;
+    struct SessionTrackColRect {
+        float x, y, w, h;
+        std::string track_id;
+        int action;  // 0=header-click, 1=save-clip (+), 2=context-menu
+    };
+    struct SessionSceneRowRect {
+        float x, y, w, h;
+        std::string scene_id;
+        int action;  // 0=launch, 1=context-menu
+    };
+    struct SessionGridCellRect {
+        float x, y, w, h;
+        std::string scene_id;
+        std::string track_id;
+        std::string clip_id;  // empty = no assignment
+    };
+    struct SessionResizeRect { float x = 0, y = 0, w = 0, h = 0; };
+
+    // Session panel resize
+    float session_panel_h_ = kSessionPanelDefaultH;
+    bool  session_resize_active_ = false;
+    float session_resize_start_y_ = 0.0f;
+    float session_resize_start_h_ = 0.0f;
+    SessionResizeRect session_resize_handle_ {};
+
+    // Session grid hit-test data (rebuilt each draw call)
+    std::vector<SessionTrackColRect> session_track_rects_;
+    std::vector<SessionSceneRowRect> session_scene_rects_;
+    std::vector<SessionGridCellRect> session_cell_rects_;
+    Rect2 session_add_track_btn_ {};
+    Rect2 session_add_scene_btn_ {};
+
+    // Session inline name editing
+    // edit_type: 0=none, 1=track, 2=clip, 3=scene
+    int         session_edit_type_ = 0;
+    std::string session_edit_id_;        // track_id / clip_id / scene_id
+    std::string session_edit_track_id_;  // parent track_id when editing a clip
+
+    // Cell whose context menu is open (set on right-click)
+    std::string session_ctx_cell_scene_id_;
+    std::string session_ctx_cell_track_id_;
+    std::string session_ctx_cell_clip_id_;
 
     // Active UI style
     UIStyle style_;

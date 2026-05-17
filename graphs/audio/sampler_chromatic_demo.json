@@ -24,16 +24,6 @@
     "playability": "self_playing"
   },
   "nodes": {
-    "clock1": {
-      "type": "Clock",
-      "params": {
-        "bpm": 120.0
-      },
-      "layout": {
-        "x": 0.0,
-        "y": 0.0
-      }
-    },
     "cp1": {
       "type": "ChordProgression",
       "params": {
@@ -108,14 +98,6 @@
     }
   },
   "connections": [
-    {
-      "from": "clock1/beat_phase",
-      "to": "cp1/beat_phase"
-    },
-    {
-      "from": "clock1/beat_phase",
-      "to": "arp1/beat_phase"
-    },
     {
       "from": "cp1/notes_out",
       "to": "arp1/notes_in"

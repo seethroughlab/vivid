@@ -27,10 +27,7 @@ struct DummySink : UICommandSink {
     std::vector<ParamCall> set_param_calls;
     std::vector<StringParamCall> set_string_param_calls;
     std::vector<LayoutCall> layout_calls;
-    std::vector<std::pair<std::string, int>> move_variation_calls;
-    std::vector<std::string> save_variation_calls;
     std::vector<MetronomeCall> metronome_calls;
-    std::vector<int> recall_variation_idx_calls;
     int undo_calls = 0;
     int redo_calls = 0;
 
@@ -69,15 +66,6 @@ struct DummySink : UICommandSink {
     }
     void set_graph_metronome(float bpm, int beats_per_bar) override {
         metronome_calls.push_back({bpm, beats_per_bar});
-    }
-    void save_variation(const std::string& name) override {
-        save_variation_calls.push_back(name);
-    }
-    void recall_variation_idx(int idx) override {
-        recall_variation_idx_calls.push_back(idx);
-    }
-    void move_variation(const std::string& name, int to_index) override {
-        move_variation_calls.push_back({name, to_index});
     }
     bool undo() override {
         ++undo_calls;
@@ -167,8 +155,6 @@ static GraphSnapshot make_editor_snapshot() {
 
 static GraphSnapshot make_session_snapshot() {
     GraphSnapshot snap = make_editor_snapshot();
-    snap.variations = {{"A"}, {"B"}, {"C"}};
-    snap.active_variation = 0;
     snap.metronome_bpm = 120.0f;
     snap.metronome_beats_per_bar = 4;
     return snap;
@@ -343,30 +329,8 @@ int main() {
               "Paste selects the newly created nodes");
     }
 
-    {
-        DummySink sink;
-        NodeGraphUI ui(sink);
-        auto snap = make_session_snapshot();
-        ui.session_grid_open_ = true;
-        ui.variation_cell_rects_ = {
-            {20.0f, 620.0f, 120.0f, 48.0f, 0},
-            {160.0f, 620.0f, 120.0f, 48.0f, 1},
-            {300.0f, 620.0f, 120.0f, 48.0f, 2},
-        };
-        ui.on_mouse_move(80.0f, 640.0f);
-        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_PRESS, 0);
-        ui.update(snap);
-        ui.on_mouse_move(410.0f, 640.0f);
-        ui.update(snap);
-        ui.on_mouse_button(GLFW_MOUSE_BUTTON_LEFT, GLFW_RELEASE, 0);
-        ui.update(snap);
-        check(sink.recall_variation_idx_calls.size() == 1 && sink.recall_variation_idx_calls[0] == 0,
-              "Session card click recalls the selected variation");
-        check(sink.move_variation_calls.size() == 1 &&
-                  sink.move_variation_calls[0].first == "A" &&
-                  sink.move_variation_calls[0].second == 2,
-              "Session drag reorder dispatches the moved card target index");
-    }
+    // Session card click / drag reorder test removed in Phase 1:
+    // variation_cell_rects_ removed; Session card interactions wired up in Phase 3.
 
     {
         DummySink sink;
@@ -583,21 +547,8 @@ int main() {
         check(!ui.session_grid_open_, "Session strip close button collapses the strip");
     }
 
-    {
-        DummySink sink;
-        NodeGraphUI ui(sink);
-        auto snap = make_session_snapshot();
-        ui.update(snap);
-        ui.session_grid_open_ = true;
-        ui.session_button_rects_ = {{20.0f, 650.0f, 96.0f, 44.0f, 0, true}};
-        ui.mouse_ = {};
-        ui.mouse_.x = 96.0f;
-        ui.mouse_.y = 672.0f;
-        ui.mouse_.left_clicked = true;
-        ui.handle_left_click();
-        check(sink.save_variation_calls.size() == 1, "Save New button dispatches variation save through its resized hit rect");
-        check(sink.save_variation_calls.front() == "Var 4", "Save New names the new variation from the next index");
-    }
+    // "Save New" button test removed in Phase 1: save_variation removed from UICommandSink.
+    // Session save wired up in Phase 3.
 
     std::fprintf(stderr, "%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures == 0 ? 0 : 1;

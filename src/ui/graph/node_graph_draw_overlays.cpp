@@ -426,20 +426,6 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
                  kPerfBarBg[0], kPerfBarBg[1], kPerfBarBg[2], kPerfBarBg[3]);
     tr.draw_rect(0, kPerfBarH - 1, fw, 1, 0.20f, 0.22f, 0.25f, 0.6f);
 
-    auto active_variation_name = [&]() -> std::string {
-        if (snap_.active_variation >= 0 &&
-            snap_.active_variation < static_cast<int>(snap_.variations.size())) {
-            return snap_.variations[snap_.active_variation].name;
-        }
-        return "none";
-    };
-    auto queued_variation_name = [&]() -> std::string {
-        if (snap_.queued_variation >= 0 &&
-            snap_.queued_variation < static_cast<int>(snap_.variations.size())) {
-            return snap_.variations[snap_.queued_variation].name;
-        }
-        return "";
-    };
     auto now_ms = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -697,23 +683,7 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     }
     draw_left_button("+", 7, true);
 
-    float session_zone_right = right_x;
-    if (!snap_.variations.empty() && left_x + 70.0f < session_zone_right) {
-        const bool has_active = snap_.active_variation >= 0 &&
-                                snap_.active_variation < static_cast<int>(snap_.variations.size());
-        draw_divider(left_x - kPerfBtnMargin * 0.5f);
-        left_x += 8.0f;
-        draw_chip(left_x, session_zone_right, active_variation_name(),
-                  style_.accent[0], style_.accent[1], style_.accent[2],
-                  has_active ? 0.20f : 0.10f,
-                  has_active,
-                  has_active && snap_.variation_dirty);
-        const std::string queued = queued_variation_name();
-        if (!queued.empty() && fw > 1080.0f) {
-            draw_chip(left_x, session_zone_right, std::string("> ") + queued,
-                      style_.accent[0], style_.accent[1], style_.accent[2], 0.12f, false, false);
-        }
-    }
+    (void)right_x;
 }
 
 void NodeGraphUI::draw_perf_sparkline(Renderer2D& tr, const float* buf, uint32_t buf_len,

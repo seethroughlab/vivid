@@ -39,7 +39,7 @@ The automated portion of the readiness review runs through the **production gate
    - Persistent silence in an intended-audio graph
    - Black or frozen output in an intended-visual graph
    - Scary clipping, runaway feedback, or stuck notes
-   - Broken save/load or variation recall
+   - Broken save/load or session recall
    - Beginner-blocking docs or setup confusion
 6. Define non-blocking classes:
    - Cosmetic wording issues

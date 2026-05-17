@@ -172,13 +172,14 @@ For each case, record:
 - Fail criteria:
   - Stuck notes, wrong channel mapping, or lost device after reconnect.
 
-## Variations and Presets
+## Session Clips, Scenes, and Presets
 
-### Save/Recall and Interpolation
+### Save/Recall and Launch
 
-- Expected behavior: variation states are stored and recalled deterministically.
+- Expected behavior: session clips and scenes are stored and launched deterministically.
 - Pass criteria:
-  - Recall reproduces parameter state exactly.
+  - Clip launch reproduces the owned track parameter state exactly.
+  - Scene launch recalls the expected clip assignment on each participating track.
   - Preset file round-trip preserves values and metadata.
   - Interpolation (where supported) transitions smoothly between states.
 - Fail criteria:

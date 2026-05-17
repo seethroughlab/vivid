@@ -136,42 +136,6 @@ public:
         return true;
     }
 
-    void save_variation(const std::string& name) override {
-        auto r = api_.save_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void recall_variation(const std::string& name) override {
-        auto r = api_.recall_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void recall_variation_idx(int idx) override {
-        auto r = api_.recall_variation_idx(idx);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void remove_variation(const std::string& name) override {
-        auto r = api_.remove_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void rename_variation(const std::string& old_name, const std::string& new_name) override {
-        auto r = api_.rename_variation(old_name, new_name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void update_variation(const std::string& name) override {
-        auto r = api_.update_variation(name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void duplicate_variation(const std::string& name, const std::string& new_name) override {
-        auto r = api_.duplicate_variation(name, new_name);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void move_variation(const std::string& name, int to_index) override {
-        auto r = api_.move_variation(name, to_index);
-        if (r.ok) capture_undo_snapshot();
-    }
-    void queue_variation(const std::string& name, const std::string& quantize) override {
-        auto r = api_.queue_variation(name, quantize);
-        if (r.ok) capture_undo_snapshot();
-    }
     void queue_state_transition(const std::string& sm_node_id, int state_idx,
                                 const std::string& quantize) override {
         api_.queue_state_transition(sm_node_id, state_idx, quantize);
@@ -214,6 +178,78 @@ public:
     void ensure_state_mapping(const std::string& sm_node) override {
         auto r = api_.ensure_state_mapping(sm_node);
         if (r.ok) capture_undo_snapshot();
+    }
+
+    void session_create_track(const std::string& name) override {
+        auto r = api_.create_track(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_track(const std::string& track_id, const std::string& name) override {
+        auto r = api_.rename_track(track_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_track(const std::string& track_id) override {
+        auto r = api_.remove_track(track_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_save_clip(const std::string& track_id, const std::string& name) override {
+        auto r = api_.save_clip(track_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_clip(const std::string& track_id, const std::string& clip_id,
+                             const std::string& name) override {
+        auto r = api_.rename_clip(track_id, clip_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_clip(const std::string& track_id, const std::string& clip_id) override {
+        auto r = api_.remove_clip(track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_update_clip(const std::string& track_id, const std::string& clip_id) override {
+        auto r = api_.update_clip(track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_set_scene_assignment(const std::string& scene_id,
+                                       const std::string& track_id,
+                                       const std::string& clip_id) override {
+        auto r = api_.set_scene_assignment(scene_id, track_id, clip_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_clear_scene_assignment(const std::string& scene_id,
+                                         const std::string& track_id) override {
+        auto r = api_.clear_scene_assignment(scene_id, track_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_save_scene(const std::string& name) override {
+        auto r = api_.save_scene(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_rename_scene(const std::string& scene_id, const std::string& name) override {
+        auto r = api_.rename_scene(scene_id, name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_remove_scene(const std::string& scene_id) override {
+        auto r = api_.remove_scene(scene_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_update_scene(const std::string& scene_id) override {
+        auto r = api_.update_scene(scene_id);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_assign_nodes(const std::string& track_id,
+                              const std::vector<std::string>& node_ids) override {
+        auto r = api_.assign_nodes_to_track(track_id, node_ids);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_queue_clip(const std::string& track_id, const std::string& clip_id,
+                            const std::string& quantize) override {
+        api_.queue_clip(track_id, clip_id, quantize);
+        // No undo snapshot: launch is a live performance action
+    }
+    void session_queue_scene(const std::string& scene_id,
+                             const std::string& quantize) override {
+        api_.queue_scene(scene_id, quantize);
+        // No undo snapshot: launch is a live performance action
     }
 
     void open_shader(const std::string& type_name) override;

@@ -122,16 +122,12 @@ static void compare_graphs(const vivid::Graph& a, const vivid::Graph& b,
         check_float(ma.range_max, mb.range_max, (mc + " range_max").c_str());
     }
 
-    // Variations
-    check(a.variations().size() == b.variations().size(),
-          (ctx + " variation count").c_str());
-    for (size_t i = 0; i < std::min(a.variations().size(), b.variations().size()); i++) {
-        auto& va = a.variations()[i];
-        auto& vb = b.variations()[i];
-        std::string vc = ctx + " var[" + std::to_string(i) + "]";
-        check(va.name == vb.name, (vc + " name").c_str());
-        check(va.params.size() == vb.params.size(), (vc + " params count").c_str());
-    }
+    // Session tracks
+    check(a.session().tracks.size() == b.session().tracks.size(),
+          (ctx + " session track count").c_str());
+    // Session scenes
+    check(a.session().scenes.size() == b.session().scenes.size(),
+          (ctx + " session scene count").c_str());
 
     // Viewport
     check_float(a.viewport_pan_x, b.viewport_pan_x, (ctx + " viewport_pan_x").c_str());
@@ -226,10 +222,7 @@ int main() {
         g.add_connection("osc", "output", "mix", "input");
         g.add_midi_mapping("osc", "frequency", 74, 1, 20.0f, 2000.0f);
 
-        vivid::VariationDef var;
-        var.name = "Bright";
-        var.params["osc"]["frequency"] = 880.0f;
-        g.add_variation(var);
+        // Variation data removed in Phase 1 (VariationDef replaced by SessionDef).
 
         vivid::StickyNoteDef sn;
         sn.id = "note1"; sn.text = "Test note"; sn.x = 50.0f; sn.y = 75.0f;

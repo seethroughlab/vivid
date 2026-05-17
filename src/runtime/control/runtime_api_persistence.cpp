@@ -117,6 +117,7 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     if (!graph_.load(path.c_str())) {
         return restore_previous_state("failed to reload " + path);
     }
+    active_clips_ = graph_.active_clips();
 
     if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after reload");
@@ -237,6 +238,7 @@ CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {
         has_gpu_ops = false;
         return {false, "failed to load default graph template"};
     }
+    active_clips_ = graph_.active_clips();
     if (!core_.build(graph_, registry_)) {
         has_gpu_ops = false;
         return {false, "runtime build failed for new graph"};
@@ -334,6 +336,7 @@ CommandResult RuntimeAPI::apply_snapshot_json(const std::string& graph_json,
     if (!graph_.load_from_string(graph_json.c_str(), graph_json.size(), true)) {
         return restore_previous_state("failed to load graph snapshot JSON");
     }
+    active_clips_ = graph_.active_clips();
 
     if (!core_.build(graph_, registry_)) {
         return restore_previous_state("rebuild failed after snapshot load");
@@ -454,6 +457,7 @@ void RuntimeAPI::notify_external_graph_mutation() {
 }
 
 void RuntimeAPI::finalize_external_graph_load() {
+    active_clips_ = graph_.active_clips();
     pending_topology_change_ = false;
     active_crossfades_.clear();
     preserve_undo_history_on_reload_ = false;

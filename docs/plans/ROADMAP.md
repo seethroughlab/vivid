@@ -14,11 +14,11 @@ Major capabilities delivered for 1.0:
 - **71 operators** across audio, GPU, and control domains (seed set + packages)
 - **Hot reload** — parameter/routing changes same-frame, operator code recompile in 1–3 seconds with rollback-first safety
 - **Package ecosystem** — install, link, unlink, rebuild, scaffold, test, browse, publish; project-local operator ownership
-- **Python MCP bridge** — 57 tools exposing graph manipulation, introspection, packages, variations, checks, diagnostics, and more
+- **Python MCP bridge** — tools exposing graph manipulation, introspection, packages, Session Tracks/Clips/Scenes, checks, diagnostics, and more
 - **HTTP control server** — 61 endpoints covering full Runtime API surface
 - **Output analyzer** — audio metrics (RMS, peak, spectral centroid, brightness, flatness), visual metrics (brightness, contrast, motion), AV reactivity correlation, structured comparison with semantic labels
 - **Capture and recording** — frame and audio capture for analysis and export
-- **Variations and presets** — save, recall, rename, duplicate, reorder, queue, quantized switching, branching; operator-level presets with factory preset support
+- **Session Tracks/Clips/Scenes and presets** — per-track clip capture/launch, scene launch, quantized switching, active clip persistence; operator-level presets with factory preset support
 - **MIDI and OSC** — MIDI input/mapping/learn, OSC input/output
 - **Undo/redo** — full graph state undo/redo
 - **Export pipeline** — standalone binary export with tree-shaking
@@ -104,7 +104,7 @@ Project-local operator ownership (clone/scaffold destination policy, package CMa
   - Richer browser grouping and instrument-library visual affordances
   - Authoring UI for selecting `preview_controls`
   - Favorites, ratings, and library-curation fields
-  - Per-variation or exposed-control snapshot browsing if usage proves it worthwhile
+  - Per-clip or exposed-control snapshot browsing if usage proves it worthwhile
   - Step 5 performance-page and browser-preview integration
 
 ---

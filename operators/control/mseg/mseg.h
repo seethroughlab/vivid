@@ -33,7 +33,7 @@ struct MSEG : vivid::OperatorBase {
     vivid::Param<int>   loop_start   {"loop_start",   0,    0, 15};
     vivid::Param<int>   loop_end     {"loop_end",     3,    1, 15};
     vivid::Param<float> amplitude    {"amplitude",    1.0f, 0.0f, 10.0f};
-    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     // --- Hidden params: breakpoint data ---
     // pt_time_0..15, pt_value_0..15, pt_curve_0..14

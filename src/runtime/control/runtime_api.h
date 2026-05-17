@@ -113,23 +113,10 @@ public:
     CommandResult list_mod_destinations(const std::string& node_id);
     CommandResult list_mod_assignments(const std::string& node_id);
 
-    // --- Variations ---
-    CommandResult save_variation(const std::string& name);
-    CommandResult recall_variation(const std::string& name);
-    CommandResult recall_variation_idx(int idx);
-    CommandResult remove_variation(const std::string& name);
-    CommandResult rename_variation(const std::string& old_name, const std::string& new_name);
-    CommandResult duplicate_variation(const std::string& name, const std::string& new_name);
-    CommandResult move_variation(const std::string& name, int to_index);
-    CommandResult update_variation(const std::string& name);
-    CommandResult list_variations();
-    CommandResult queue_variation(const std::string& name, const std::string& quantize);
+    // --- Quantize / Metronome ---
     CommandResult set_quantize_clock(const std::string& node_id);
     CommandResult set_graph_metronome(float bpm, int beats_per_bar);
     GraphMetronomeSample current_metronome_sample() const;
-
-    // Per-frame: check pending quantized variation switch
-    void tick_quantized_switch();
 
     // --- Per-Track StateMachine State Transitions ---
     CommandResult queue_state_transition(const std::string& sm_node_id, int state_idx,
@@ -162,9 +149,56 @@ public:
     // Per-operator preset state accessor for snapshot
     const std::string& active_preset(const std::string& node_id) const;
 
-    // Variation state accessors for snapshot
-    int pending_variation_idx() const { return pending_variation_.armed ? pending_variation_.variation_idx : -1; }
-    bool variation_dirty() const { return variation_dirty_; }
+    // --- Session: Track CRUD ---
+    CommandResult create_track(const std::string& name);
+    CommandResult rename_track(const std::string& track_id, const std::string& name);
+    CommandResult remove_track(const std::string& track_id);
+    CommandResult move_track(const std::string& track_id, int to_index);
+    CommandResult assign_nodes_to_track(const std::string& track_id,
+                                         const std::vector<std::string>& node_ids);
+    CommandResult unassign_nodes_from_track(const std::string& track_id,
+                                             const std::vector<std::string>& node_ids);
+
+    // --- Session: Clip CRUD + launch ---
+    CommandResult save_clip(const std::string& track_id, const std::string& name);
+    CommandResult update_clip(const std::string& track_id, const std::string& clip_id);
+    CommandResult rename_clip(const std::string& track_id, const std::string& clip_id,
+                               const std::string& new_name);
+    CommandResult remove_clip(const std::string& track_id, const std::string& clip_id);
+    CommandResult move_clip(const std::string& track_id, const std::string& clip_id, int to_index);
+    CommandResult launch_clip(const std::string& track_id, const std::string& clip_id);
+
+    // Active clip per track (set by launch_clip / queue_clip; empty = none launched)
+    const std::string& active_clip(const std::string& track_id) const;
+
+    // --- Session: Scene CRUD ---
+    CommandResult save_scene(const std::string& name);
+    CommandResult update_scene(const std::string& scene_id);
+    CommandResult rename_scene(const std::string& scene_id, const std::string& new_name);
+    CommandResult remove_scene(const std::string& scene_id);
+    CommandResult move_scene(const std::string& scene_id, int to_index);
+
+    // --- Session: Scene assignment ---
+    CommandResult set_scene_assignment(const std::string& scene_id,
+                                        const std::string& track_id,
+                                        const std::string& clip_id);
+    CommandResult set_scene_leave_unchanged(const std::string& scene_id,
+                                             const std::string& track_id);
+    CommandResult clear_scene_assignment(const std::string& scene_id,
+                                          const std::string& track_id);
+
+    // --- Session: Quantized launch ---
+    CommandResult queue_clip(const std::string& track_id, const std::string& clip_id,
+                              const std::string& quantize);
+    CommandResult queue_scene(const std::string& scene_id, const std::string& quantize);
+
+    // Per-tick: fire pending clip/scene launches at beat boundary
+    void tick_quantized_clip_scene_launches();
+
+    // Accessors for snapshot (Phase 4)
+    const std::string& queued_scene_id() const;
+    const std::string& queued_clip_for(const std::string& track_id) const;
+
     bool graph_dirty() const { return graph_dirty_; }
 
     // Persistence
@@ -261,15 +295,6 @@ private:
     uint64_t reload_serial_ = 0;
     bool preserve_undo_history_on_reload_ = false;
 
-    // Quantized variation switching state
-    struct PendingVariation {
-        int variation_idx = -1;
-        enum Quantize { Instant, Beat, Bar, FourBar } quantize = Instant;
-        int64_t target_beat_index = -1;
-        bool armed = false;
-    };
-    PendingVariation pending_variation_;
-
     // Per-track quantized state transitions (one per StateMachine node)
     struct PendingStateTransition {
         std::string sm_node_id;
@@ -280,14 +305,10 @@ private:
     };
     std::vector<PendingStateTransition> pending_state_transitions_;
 
-    bool variation_dirty_ = false;
     bool graph_dirty_ = false;
     std::string last_saved_graph_json_;
     std::string active_graph_source_path_;
     std::string resources_dir_;
-
-    // Internal helper to apply a variation's params to live nodes
-    void apply_variation(int idx);
 
     // State-preset mapping: track previous state per mapped state machine
     std::unordered_map<std::string, float> prev_sm_state_;
@@ -297,6 +318,33 @@ private:
 
     // Active preset per node (node_id -> preset name)
     std::unordered_map<std::string, std::string> active_presets_;
+
+    // Active clip per track (track_id -> clip_id), set by launch_clip / queue_clip
+    std::unordered_map<std::string, std::string> active_clips_;
+
+    // Pending quantized clip launches (one per track; new entry replaces old for same track)
+    struct PendingClipLaunch {
+        std::string track_id;
+        std::string clip_id;
+        int64_t target_beat_index = 0;
+    };
+    std::vector<PendingClipLaunch> pending_clip_launches_;
+
+    // Pending quantized scene launch (at most one at a time)
+    struct PendingSceneLaunch {
+        std::string scene_id;
+        int64_t target_beat_index = 0;
+    };
+    std::optional<PendingSceneLaunch> pending_scene_launch_;
+
+    // Session clip capture/apply — used by save_clip, update_clip, launch_clip, queue_clip
+    std::pair<
+        std::unordered_map<std::string, std::unordered_map<std::string, float>>,
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
+    > capture_clip_params(const std::string& track_id) const;
+    void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
+    void fire_scene(const std::string& scene_id);
+    int64_t compute_quantize_target_beat(const std::string& quantize) const;
 
     // Graph base directory for resolving/relativizing file paths
     std::filesystem::path graph_base_dir() const;

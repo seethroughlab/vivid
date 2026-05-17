@@ -252,20 +252,61 @@ void NodeGraphUI::handle_right_click() {
         return;  // right-click in inspector but not on a label — ignore
     }
 
-    // Session grid right-click — context menu on card
+    // Session grid right-click — track header and scene row context menus
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
-        session_ctx_menu_open_ = false;
-        for (const auto& cr : variation_cell_rects_) {
-            if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
-                mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
+        // Track header right-click (action=0 = full header, check before "+" button)
+        for (const auto& tr : session_track_rects_) {
+            if (tr.action != 0) continue;
+            if (mouse_.x >= tr.x && mouse_.x < tr.x + tr.w &&
+                mouse_.y >= tr.y && mouse_.y < tr.y + tr.h) {
                 session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 1;           // track context
+                session_edit_track_id_ = tr.track_id; // target id stored here
                 session_ctx_menu_x_ = mouse_.x;
                 session_ctx_menu_y_ = mouse_.y;
-                session_ctx_menu_idx_ = cr.idx;
-                session_selected_idx_ = cr.idx;
-                break;
+                return;
             }
         }
+        // Scene row right-click
+        for (const auto& sr : session_scene_rects_) {
+            if (mouse_.x >= sr.x && mouse_.x < sr.x + sr.w &&
+                mouse_.y >= sr.y && mouse_.y < sr.y + sr.h) {
+                session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 2;           // scene context
+                session_edit_track_id_ = sr.scene_id; // reuse field for scene_id
+                session_ctx_menu_x_ = mouse_.x;
+                session_ctx_menu_y_ = mouse_.y;
+                return;
+            }
+        }
+        // Cell right-click
+        for (const auto& cr : session_cell_rects_) {
+            if (!(mouse_.x >= cr.x && mouse_.x < cr.x + cr.w &&
+                  mouse_.y >= cr.y && mouse_.y < cr.y + cr.h)) continue;
+            if (!cr.clip_id.empty()) {
+                session_ctx_menu_open_ = true;
+                session_ctx_menu_idx_ = 3;
+                session_ctx_cell_scene_id_ = cr.scene_id;
+                session_ctx_cell_track_id_ = cr.track_id;
+                session_ctx_cell_clip_id_  = cr.clip_id;
+                session_ctx_menu_x_ = mouse_.x;
+                session_ctx_menu_y_ = mouse_.y;
+            } else {
+                const auto* ts = snap_.session.find_track(cr.track_id);
+                if (ts && !ts->active_clip_id.empty()) {
+                    session_ctx_menu_open_ = true;
+                    session_ctx_menu_idx_ = 4;
+                    session_ctx_cell_scene_id_ = cr.scene_id;
+                    session_ctx_cell_track_id_ = cr.track_id;
+                    session_ctx_cell_clip_id_  = "";
+                    session_ctx_menu_x_ = mouse_.x;
+                    session_ctx_menu_y_ = mouse_.y;
+                }
+            }
+            mouse_.right_clicked = false;
+            return;
+        }
+        session_ctx_menu_open_ = false;
         return;
     }
 

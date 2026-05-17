@@ -603,13 +603,6 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         }
     }
 
-    // Variations
-    const auto& vars = graph.variations();
-    snap.variations.resize(vars.size());
-    for (size_t i = 0; i < vars.size(); ++i) {
-        snap.variations[i].name = vars[i].name;
-    }
-    snap.active_variation = graph.active_variation();
     snap.quantize_clock_node = graph.quantize_clock_node();
     const auto metronome = runtime_api
         ? runtime_api->current_metronome_sample()
@@ -641,6 +634,70 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         }
     }
 
+    // Session: Tracks, Clips, Scenes
+    snap.session.tracks.clear();
+    snap.session.scenes.clear();
+    snap.session.track_index.clear();
+    snap.session.scene_index.clear();
+    snap.session.queued_scene_id.clear();
+    for (const auto& track : graph.session().tracks) {
+        auto& ts = snap.session.tracks.emplace_back();
+        ts.id   = track.id;
+        ts.name = track.name;
+        ts.owned_node_ids = track.owned_node_ids;
+        for (const auto& clip : track.clips)
+            ts.clips.push_back({clip.id, clip.name});
+        if (runtime_api) {
+            ts.active_clip_id = runtime_api->active_clip(track.id);
+            ts.queued_clip_id = runtime_api->queued_clip_for(track.id);
+        }
+        // Compute dirty: live param values differ from stored clip params
+        if (cg && !ts.active_clip_id.empty()) {
+            const auto* clip = graph.find_clip(track.id, ts.active_clip_id);
+            if (clip) {
+                for (const auto& [nid, nparams] : clip->params) {
+                    if (ts.dirty) break;
+                    const auto* cn = cg->find_node(nid);
+                    if (!cn) continue;
+                    for (const auto& [pname, pval] : nparams) {
+                        auto pi = cn->param_indices.find(pname);
+                        if (pi != cn->param_indices.end() &&
+                            std::abs(cn->param_values[pi->second] - pval) > 1e-5f) {
+                            ts.dirty = true;
+                            break;
+                        }
+                    }
+                }
+                // Also check string/file params
+                for (const auto& [nid, nparams] : clip->string_params) {
+                    if (ts.dirty) break;
+                    const auto* cn = cg->find_node(nid);
+                    if (!cn) continue;
+                    for (const auto& [pname, pval] : nparams) {
+                        auto fi = cn->file_param_indices.find(pname);
+                        if (fi != cn->file_param_indices.end()) {
+                            const std::string& live_val =
+                                (fi->second < cn->file_param_storage.size())
+                                ? cn->file_param_storage[fi->second] : std::string{};
+                            if (live_val != pval) { ts.dirty = true; break; }
+                        }
+                    }
+                }
+            }
+        }
+        snap.session.track_index[track.id] = snap.session.tracks.size() - 1;
+    }
+    for (const auto& scene : graph.session().scenes) {
+        auto& ss = snap.session.scenes.emplace_back();
+        ss.id             = scene.id;
+        ss.name           = scene.name;
+        ss.assignments    = scene.assignments;
+        ss.leave_unchanged = scene.leave_unchanged;
+        snap.session.scene_index[scene.id] = snap.session.scenes.size() - 1;
+    }
+    if (runtime_api)
+        snap.session.queued_scene_id = runtime_api->queued_scene_id();
+
     // Sticky notes
     const auto& sticky = graph.sticky_notes();
     snap.sticky_notes.resize(sticky.size());
@@ -656,9 +713,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         ss.color = gs.color;
     }
     if (runtime_api) {
-        snap.variation_dirty = runtime_api->variation_dirty();
         snap.graph_dirty = runtime_api->graph_dirty();
-        snap.queued_variation = runtime_api->pending_variation_idx();
     }
 
     // Solo state

@@ -224,18 +224,20 @@
     }
 
     // =====================================================================
-    // Test 33: active_variation out of bounds clamped to -1
+    // Test 33: legacy variations key is ignored (pre-alpha clean break)
     // =====================================================================
     {
-        std::fprintf(stderr, "\n=== Test 33: active_variation out of bounds reset to -1 ===\n");
+        std::fprintf(stderr, "\n=== Test 33: legacy variations key silently ignored ===\n");
         const char* json = R"({
             "nodes": { "a": { "type": "Foo" } },
             "connections": [],
-            "active_variation": 99
+            "variations": [{ "name": "OldVar", "params": {} }],
+            "active_variation": 0
         })";
         vivid::Graph g;
-        check(g.load_from_string(json, 0), "load with bad active_variation succeeds");
-        check(g.active_variation() == -1, "active_variation clamped to -1");
+        check(g.load_from_string(json, 0), "load with legacy variations succeeds");
+        check(g.session().tracks.empty(), "no tracks from legacy data");
+        check(g.session().scenes.empty(), "no scenes from legacy data");
     }
 
     // =====================================================================

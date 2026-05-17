@@ -94,6 +94,7 @@ add_executable(vivid
     src/runtime/control/runtime_api.cpp
     src/runtime/control/runtime_api_live.cpp
     src/runtime/control/runtime_api_variations.cpp
+    src/runtime/control/runtime_api_session.cpp
     src/runtime/control/runtime_api_modulation.cpp
     src/runtime/control/runtime_api_persistence.cpp
     src/runtime/packages/package_compiler.cpp

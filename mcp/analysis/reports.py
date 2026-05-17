@@ -909,7 +909,7 @@ def _translation_hints(analysis: dict[str, Any]) -> list[str]:
         elif len(unique) >= 5:
             hints.append(
                 f"Rich structure ({len(unique)} unique section labels across {form}) — "
-                "use variation presets keyed to section boundaries for strong per-section identity."
+                "use Session scenes/clips keyed to section boundaries for strong per-section identity."
             )
 
     # Dynamics-driven vs spectral-driven macro arc.

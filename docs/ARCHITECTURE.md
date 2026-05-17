@@ -112,7 +112,7 @@ Port types can carry optional semantic tags: normalized (0–1), bipolar (-1 to 
 
 `VividParamType` intentionally stays primitive: float, int, bool, file, and text. Params own persisted configuration values; they do not own executable behavior or arbitrary structured blobs. Compound inspector controls are modeled as widgets over runs of primitive params via optional `widget_id` and `widget_span` descriptor metadata.
 
-Built-in widgets such as ADSR, LFO preview, color, XY pad, and step sequencer use the same widget registry path as package-defined widgets. Existing `display_hint` values remain supported as compatibility metadata. Package operators may tag a primitive param run with a custom widget id and render that run from the operator's custom inspector callback. Graph JSON, presets, variations, locks, MIDI mapping, and `set_param` / `set_string_param` continue to address the primitive params by name.
+Built-in widgets such as ADSR, LFO preview, color, XY pad, and step sequencer use the same widget registry path as package-defined widgets. Existing `display_hint` values remain supported as compatibility metadata. Package operators may tag a primitive param run with a custom widget id and render that run from the operator's custom inspector callback. Graph JSON, presets, session clips, locks, MIDI mapping, and `set_param` / `set_string_param` continue to address the primitive params by name.
 
 Envelope, oscillator, and LFO controls in inspectors are presentation over primitive params unless they need executable private state. Executable host-local behavior belongs in an owned `ChildOp<T>`; graph-visible data belongs on ports, including custom port types when a package needs a new wire payload.
 
@@ -452,7 +452,7 @@ The JSON graph is the single source of truth for the entire system. Every operat
 - **Layout is optional:** each node can carry `"layout": {"x": ..., "y": ...}` for node positions. Nodes without layout use auto-placement.
 - **Connection remapping:** connections can carry `from_min`/`from_max`/`to_min`/`to_max`/`clamp` fields for inline value rescaling. Connections without these fields pass values through unchanged.
 - **Package provenance:** nodes from installed packages carry `"pkg": {"name": "...", "version": "..."}` for version mismatch diagnostics at load time. Core operators omit this.
-- **Parameter lock flags:** nodes can carry `"param_lock_flags": {"param_name": flags}` to protect individual parameters from variation recall (`PARAM_LOCK_PRESETS`) or wire-driven changes (`PARAM_LOCK_WIRES`).
+- **Parameter lock flags:** nodes can carry `"param_lock_flags": {"param_name": flags}` to protect individual parameters from preset/session recall (`PARAM_LOCK_PRESETS`) or wire-driven changes (`PARAM_LOCK_WIRES`).
 
 ## 5.12 Platform Target
 
@@ -708,33 +708,21 @@ The long-term goal is that each state owns a subgraph — a self-contained patch
 
 **How the current operator accommodates subgraphs:** The state index output, progress output, and trigger output are designed so that no changes to the StateMachine operator itself will be needed when subgraphs are implemented — only the runtime infrastructure around it. State index drives activation, progress drives the blend factor, trigger fires activation/deactivation, and bar-based durations map directly to "run this subgraph for N bars."
 
-## 5.20 Variation & Session System
+## 5.20 Session Tracks, Clips, and Scenes
 
-**Decision: Variations are complete parameter snapshots with beat-quantized recall.** A `VariationDef` captures the delta between current parameter values and their defaults across every node in the graph. Recalling a variation restores that state — subject to parameter lock flags that protect individual parameters from being overwritten.
+**Decision: Sessions are authored as performance structures, not whole-graph parameter snapshots.** A `SessionDef` owns the named tracks, clips, scenes, active clip assignments, and reserved transition metadata that make up a performance arrangement. This gives performers a stable mental model for building parts such as verse, chorus, bridge, drop, and visual states.
 
-**Core data structure:**
+**Tracks** are user-facing performance channels. A track has a name, owns a set of nodes, and presents a list of clips that can be launched independently from other tracks. Tracks work equally well for audio, visuals, control, or mixed AV responsibilities.
 
-```cpp
-struct VariationDef {
-    std::string name;
-    std::unordered_map<std::string,
-        std::unordered_map<std::string, float>> params;        // node_id → param → value
-    std::unordered_map<std::string,
-        std::unordered_map<std::string, std::string>> string_params;
-};
-```
+**Clips** capture the playable state of one track. Launching a clip recalls that track's intended node state while leaving unrelated tracks alone. Clips are the unit of per-track exploration and performance.
 
-Only non-default values are stored (delta encoding), keeping snapshots compact.
+**Scenes** capture clip assignments across tracks. Launching a scene queues or applies the selected clip on each participating track so a full arrangement moment can change together. A scene stores the performance choice — which clip each track should play — rather than a raw whole-graph parameter dump.
 
-**Beat-quantized switching:** A designated Clock node's `beat_phase` output drives quantized recall. When a variation is queued with a quantize mode (instant, beat, bar, four-bar), a `PendingVariation` struct counts beat-phase zero-crossings until the target boundary, then applies. This ensures variation switches are always musically aligned.
+**Beat-quantized launching:** The graph's session quantization clock drives launch timing for clips and scenes. Quantize modes such as instant, beat, bar, and four-bar align performance changes to musical boundaries without exposing the older snapshot-recall model.
 
-**Parameter lock flags:** Each parameter carries a `ParamLockFlags` bitmask. `PARAM_LOCK_PRESETS` protects a parameter from variation recall — useful for keeping a specific knob position while switching everything else. `PARAM_LOCK_WIRES` protects from wire-driven changes.
+**Active state and persistence:** The session records active clip assignments so reopening a graph restores the visible session state. Transition metadata exists on session structures as reserved schema for future crossfade/launch behavior; current launch behavior does not consult those fields.
 
-**Apply process (two-phase):** First, all unlocked parameters reset to defaults. Then, the variation's stored deltas are applied. This ensures clean transitions — parameters not captured in the variation return to their defaults rather than retaining stale values from a previous variation.
-
-**Dirty tracking:** A `variation_dirty_` flag indicates when live parameter edits have diverged from the active variation, allowing the UI to show which variation is "out of sync."
-
-This system is the core experimentation mechanism: save what works, explore freely, recall instantly on the beat.
+**Legacy note:** Whole-graph Variations were removed as the primary authoring surface. Any remaining references to variations should be treated as compatibility, migration, archived planning, or deprecated internals rather than current user-facing architecture.
 
 ## 5.21 Pattern Algebra
 
@@ -813,7 +801,7 @@ Asset index entries carry: `asset_id`, kind, display name, source scope (package
 
 Extends `MidiInput` with lane-array outputs for expressive per-note data: `lane_ids`, `pitch_bends`, `pressures`, `slides`, `expressions`, `channels`. A `mode` param selects `poly_shared` (broadcast), `mpe_lower`, or `mpe_upper` (per-channel-to-lane mapping). Scalar outputs `aftertouch` and `expression` are also added.
 
-Performance-surface metadata on exposed params: `performance_page`, `performance_order`, `performance_role` (built-in roles: `macro`, `mod_wheel`, `expression`, `aftertouch`, `xy_x`, `xy_y`). Performance controls are ordinary exposed params — presets, variations, and modulation still apply.
+Performance-surface metadata on exposed params: `performance_page`, `performance_order`, `performance_role` (built-in roles: `macro`, `mod_wheel`, `expression`, `aftertouch`, `xy_x`, `xy_y`). Performance controls are ordinary exposed params — presets, session clips, and modulation still apply.
 
 ### Graph Content Metadata & Browser (Step 6)
 

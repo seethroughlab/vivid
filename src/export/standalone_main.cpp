@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
     vivid::SystemMidiListener system_midi;
     system_midi.open_all();
 
-    // --- RuntimeAPI (for MIDI mappings, variations) ---
+    // --- RuntimeAPI (for MIDI mappings, session state, presets) ---
     vivid::RuntimeAPI runtime_api(graph, runtime, audio_engine, registry, &system_midi);
 
 #ifdef VIVID_STANDALONE_CONTROL_SERVER
@@ -221,7 +221,6 @@ int main(int argc, char* argv[]) {
 
         // Apply MIDI mappings
         runtime_api.apply_midi_mappings();
-        runtime_api.tick_quantized_switch();
 
         // Begin frame
         vivid::FrameState frame;
@@ -248,8 +247,9 @@ int main(int argc, char* argv[]) {
         // Tick runtime
         runtime.tick(now, dt, frame_count, &gpu_state, nullptr);
 
-        // Tick state presets
+        // Tick state presets and quantized clip/scene launches
         runtime_api.tick_state_presets();
+        runtime_api.tick_quantized_clip_scene_launches();
 
         // Push params to audio thread
         if (has_audio)

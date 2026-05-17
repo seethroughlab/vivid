@@ -39,7 +39,7 @@ For static lookups (operator catalog, docs, package metadata), the MCP servers c
 - Capture: capture_image, analyze_output, compare_outputs
 - Persistence: save_graph, load_graph, new_graph
 - Packages: install_package, list_packages, rebuild_package
-- Variations, presets, MIDI mappings, modulation assignments
+- Session Tracks/Clips/Scenes, presets, MIDI mappings, modulation assignments
 
 **vivid_opdev_mcp.py** — for building custom operators:
 - Source browsing: search_source, read_source_file, find_symbol, find_references

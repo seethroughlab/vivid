@@ -1,142 +1,5 @@
-    // =====================================================================
-    // Test 46: duplicate_variation
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 46: duplicate_variation ===\n");
-        vivid::Graph g;
-        g.add_node("a", "Foo", {{"scale", 1.0f}});
-
-        vivid::VariationDef v1;
-        v1.name = "A";
-        v1.params["a"] = {{"scale", 2.0f}};
-        v1.string_params["a"] = {{"file", "hello.wav"}};
-        g.add_variation(std::move(v1));
-
-        vivid::VariationDef v2;
-        v2.name = "B";
-        v2.params["a"] = {{"scale", 5.0f}};
-        g.add_variation(std::move(v2));
-
-        // Duplicate A as A_copy — should insert after A
-        check(g.duplicate_variation("A", "A_copy"), "duplicate A -> A_copy succeeds");
-        check(g.variations().size() == 3, "3 variations after duplicate");
-        check(g.variations()[0].name == "A", "index 0 = A");
-        check(g.variations()[1].name == "A_copy", "index 1 = A_copy (inserted after source)");
-        check(g.variations()[2].name == "B", "index 2 = B");
-
-        // Deep copy check: params and string_params copied
-        const auto& dup = g.variations()[1];
-        auto a_it = dup.params.find("a");
-        check(a_it != dup.params.end(), "A_copy has node a params");
-        if (a_it != dup.params.end()) {
-            auto s_it = a_it->second.find("scale");
-            check(s_it != a_it->second.end(), "A_copy has scale param");
-            if (s_it != a_it->second.end())
-                check_float(s_it->second, 2.0f, "A_copy a/scale = 2.0");
-        }
-        auto sp_it = dup.string_params.find("a");
-        check(sp_it != dup.string_params.end(), "A_copy has string_params for node a");
-        if (sp_it != dup.string_params.end()) {
-            auto f_it = sp_it->second.find("file");
-            check(f_it != sp_it->second.end() && f_it->second == "hello.wav",
-                  "A_copy string_param file = hello.wav");
-        }
-
-        // Name conflict
-        check(!g.duplicate_variation("A", "B"), "duplicate with name conflict fails");
-
-        // Not found
-        check(!g.duplicate_variation("nope", "X"), "duplicate non-existent fails");
-
-        // Active index adjustment: active after insertion point shifts
-        g.set_active_variation(2); // "B"
-        check(g.duplicate_variation("A", "A2"), "duplicate A -> A2");
-        check(g.active_variation() == 3, "active shifted from 2 to 3 after insert at 1");
-
-        // Active index unchanged when inserting after active
-        g.set_active_variation(0); // "A"
-        check(g.duplicate_variation("B", "B2"), "duplicate B -> B2");
-        check(g.active_variation() == 0, "active stays 0 when inserting after it");
-    }
-
-    // =====================================================================
-    // Test 47: move_variation
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 47: move_variation ===\n");
-        vivid::Graph g;
-        g.add_node("a", "Foo");
-
-        vivid::VariationDef v1; v1.name = "A";
-        vivid::VariationDef v2; v2.name = "B";
-        vivid::VariationDef v3; v3.name = "C";
-        g.add_variation(std::move(v1));
-        g.add_variation(std::move(v2));
-        g.add_variation(std::move(v3));
-
-        // Move C (idx 2) to idx 0
-        g.set_active_variation(2); // "C"
-        check(g.move_variation("C", 0), "move C to 0 succeeds");
-        check(g.variations()[0].name == "C", "C now at 0");
-        check(g.variations()[1].name == "A", "A now at 1");
-        check(g.variations()[2].name == "B", "B now at 2");
-        check(g.active_variation() == 0, "active tracks C to 0");
-
-        // Move C (idx 0) to idx 2
-        check(g.move_variation("C", 2), "move C to 2 succeeds");
-        check(g.variations()[0].name == "A", "A at 0");
-        check(g.variations()[1].name == "B", "B at 1");
-        check(g.variations()[2].name == "C", "C at 2");
-        check(g.active_variation() == 2, "active tracks C to 2");
-
-        // Move to same position — no-op
-        check(g.move_variation("B", 1), "move to same pos succeeds");
-        check(g.variations()[1].name == "B", "B still at 1");
-
-        // Active adjustment: active=0(A), move B(1) to 0 — active should shift to 1
-        g.set_active_variation(0); // "A"
-        check(g.move_variation("B", 0), "move B to 0");
-        check(g.variations()[0].name == "B", "B at 0");
-        check(g.variations()[1].name == "A", "A at 1");
-        check(g.active_variation() == 1, "active A shifted from 0 to 1");
-
-        // Invalid index
-        check(!g.move_variation("A", 99), "move to out-of-range fails");
-        check(!g.move_variation("A", -1), "move to negative fails");
-
-        // Not found
-        check(!g.move_variation("nope", 0), "move non-existent fails");
-    }
-
-    // =====================================================================
-    // Test 48: duplicate + move variation save/load round-trip
-    // =====================================================================
-    {
-        std::fprintf(stderr, "\n=== Test 48: duplicate + move variation save/load round-trip ===\n");
-        vivid::Graph g1;
-        g1.add_node("a", "Foo", {{"scale", 1.0f}});
-
-        vivid::VariationDef v1; v1.name = "A"; v1.params["a"] = {{"scale", 1.0f}};
-        vivid::VariationDef v2; v2.name = "B"; v2.params["a"] = {{"scale", 2.0f}};
-        g1.add_variation(std::move(v1));
-        g1.add_variation(std::move(v2));
-        g1.duplicate_variation("A", "A_copy");
-        g1.move_variation("B", 0);
-        g1.set_active_variation(1); // "A" after move
-
-        std::string path = (g_tmp->path / "dup_move_rt.json").string();
-        check(g1.save(path.c_str()), "save after dup+move succeeds");
-
-        vivid::Graph g2;
-        check(g2.load(path.c_str()), "reload succeeds");
-        check(g2.variations().size() == 3, "3 variations after round-trip");
-        check(g2.variations()[0].name == "B", "order preserved: B at 0");
-        check(g2.variations()[1].name == "A", "order preserved: A at 1");
-        check(g2.variations()[2].name == "A_copy", "order preserved: A_copy at 2");
-        check(g2.active_variation() == 1, "active_variation preserved");
-
-        std::remove(path.c_str());
-    }
+    // Tests 46-48 (duplicate_variation, move_variation) removed in Phase 1.
+    // VariationDef replaced by SessionDef — see test_graph_session_schema.inc.
 
     // =====================================================================
     // Test: Sticky note CRUD
@@ -230,11 +93,11 @@
         g.add_node("n1", "Oscillator");
         std::string json;
         check(g.save_to_string(json), "save graph");
-        check(json.find("\"schema_version\": 1") != std::string::npos ||
-              json.find("\"schema_version\":1") != std::string::npos,
-              "saved JSON has schema_version 1");
+        check(json.find("\"schema_version\": 2") != std::string::npos ||
+              json.find("\"schema_version\":2") != std::string::npos,
+              "saved JSON has schema_version 2");
         vivid::Graph g2;
-        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v1 graph");
+        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
     }
 
     // =====================================================================

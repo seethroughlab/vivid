@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include <unordered_map>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -34,6 +35,13 @@ using vivid::format_uint;
 // -----------------------------------------------------------------------
 void NodeGraphUI::draw_graph(Renderer2D& tr) {
     expand_affordance_rects_.clear();
+
+    // Per-frame node→track lookup (O(total owned nodes))
+    std::unordered_map<std::string, size_t> node_track_idx;
+    for (size_t ti = 0; ti < snap_.session.tracks.size(); ++ti)
+        for (const auto& nid : snap_.session.tracks[ti].owned_node_ids)
+            node_track_idx[nid] = ti;
+
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = selected_node_ids_.count(r.node_id) > 0;
@@ -345,6 +353,37 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             float bby = sy + s_accent_h + g_to_s(4);
             tr.draw_text(bbx, bby, badge,
                          kBypassAccent[0], kBypassAccent[1], kBypassAccent[2], 0.95f, bscale);
+        }
+
+        // Track ownership badge (top-right corner, below accent bar)
+        {
+            auto track_it = node_track_idx.find(r.node_id);
+            if (track_it != node_track_idx.end()) {
+                static const float kTrackColors[8][3] = {
+                    {0.40f, 0.72f, 1.00f},
+                    {0.40f, 1.00f, 0.60f},
+                    {1.00f, 0.72f, 0.32f},
+                    {0.88f, 0.40f, 0.70f},
+                    {0.68f, 0.50f, 1.00f},
+                    {1.00f, 0.48f, 0.48f},
+                    {0.45f, 0.95f, 0.95f},
+                    {1.00f, 0.95f, 0.40f},
+                };
+                const float* tc = kTrackColors[track_it->second % 8];
+                const auto& tname = snap_.session.tracks[track_it->second].name;
+                std::string abbrev = tname.size() > 4 ? tname.substr(0, 4) : tname;
+                const float bscale = zoom_ * 0.65f;
+                const float btw = tr.text_width(abbrev.c_str(), bscale);
+                const float bpad = 3.0f * zoom_;
+                const float badge_w = btw + bpad * 2.0f;
+                const float badge_h = 12.0f * zoom_;
+                const float badge_x = sx + sw - badge_w - 2.0f * zoom_;
+                const float badge_y = sy + s_accent_h + 2.0f * zoom_;
+                tr.draw_rounded_rect(badge_x, badge_y, badge_w, badge_h, 2.0f * zoom_,
+                                     tc[0], tc[1], tc[2], 0.85f);
+                tr.draw_text(badge_x + bpad, badge_y + 1.0f * zoom_, abbrev.c_str(),
+                             1.0f, 1.0f, 1.0f, 1.0f, bscale);
+            }
         }
 
         // Node ID below type

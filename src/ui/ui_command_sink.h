@@ -81,16 +81,6 @@ public:
         return false;
     }
 
-    // Variation operations (defaults are no-ops for headless/test sinks)
-    virtual void save_variation(const std::string& name) {}
-    virtual void recall_variation(const std::string& name) {}
-    virtual void recall_variation_idx(int idx) {}
-    virtual void remove_variation(const std::string& name) {}
-    virtual void rename_variation(const std::string& old_name, const std::string& new_name) {}
-    virtual void update_variation(const std::string& name) {}
-    virtual void duplicate_variation(const std::string& name, const std::string& new_name) {}
-    virtual void move_variation(const std::string& name, int to_index) {}
-    virtual void queue_variation(const std::string& name, const std::string& quantize) {}
     virtual void queue_state_transition(const std::string& sm_node_id, int state_idx,
                                         const std::string& quantize) {}
     virtual void set_quantize_clock(const std::string& node_id) {}
@@ -173,6 +163,32 @@ public:
     virtual bool redo() { return false; }
     virtual bool can_undo() const { return false; }
     virtual bool can_redo() const { return false; }
+
+    // Session Track/Clip/Scene operations (defaults are no-ops for headless/test sinks)
+    virtual void session_create_track(const std::string& name) {}
+    virtual void session_rename_track(const std::string& track_id, const std::string& name) {}
+    virtual void session_remove_track(const std::string& track_id) {}
+    virtual void session_save_clip(const std::string& track_id, const std::string& name) {}
+    virtual void session_rename_clip(const std::string& track_id, const std::string& clip_id,
+                                     const std::string& name) {}
+    virtual void session_remove_clip(const std::string& track_id, const std::string& clip_id) {}
+    virtual void session_update_clip(const std::string& track_id, const std::string& clip_id) {}
+    virtual void session_set_scene_assignment(const std::string& scene_id,
+                                               const std::string& track_id,
+                                               const std::string& clip_id) {}
+    virtual void session_clear_scene_assignment(const std::string& scene_id,
+                                                 const std::string& track_id) {}
+    virtual void session_save_scene(const std::string& name) {}
+    virtual void session_rename_scene(const std::string& scene_id, const std::string& name) {}
+    virtual void session_remove_scene(const std::string& scene_id) {}
+    virtual void session_update_scene(const std::string& scene_id) {}
+    virtual void session_assign_nodes(const std::string& track_id,
+                                      const std::vector<std::string>& node_ids) {}
+    // Launch (NOT undo-tracked — real-time performance actions)
+    virtual void session_queue_clip(const std::string& track_id, const std::string& clip_id,
+                                    const std::string& quantize) {}
+    virtual void session_queue_scene(const std::string& scene_id,
+                                     const std::string& quantize) {}
 };
 
 } // namespace vivid::ui

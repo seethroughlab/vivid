@@ -646,14 +646,6 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "add_midi_mapping" ||
            method == "remove_midi_mapping" ||
            method == "update_midi_mapping" ||
-           method == "save_variation" ||
-           method == "recall_variation" ||
-           method == "remove_variation" ||
-           method == "rename_variation" ||
-           method == "duplicate_variation" ||
-           method == "move_variation" ||
-           method == "update_variation" ||
-           method == "queue_variation" ||
            method == "set_graph_metronome" ||
            method == "set_quantize_clock" ||
            method == "set_analysis" ||
@@ -669,7 +661,28 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "add_sticky_note" ||
            method == "remove_sticky_note" ||
            method == "update_sticky_note" ||
-           method == "load_graph";
+           method == "load_graph" ||
+           method == "create_track" ||
+           method == "rename_track" ||
+           method == "remove_track" ||
+           method == "move_track" ||
+           method == "assign_nodes_to_track" ||
+           method == "unassign_nodes_from_track" ||
+           method == "save_clip" ||
+           method == "update_clip" ||
+           method == "rename_clip" ||
+           method == "remove_clip" ||
+           method == "move_clip" ||
+           method == "launch_clip" ||
+           method == "save_scene" ||
+           method == "update_scene" ||
+           method == "rename_scene" ||
+           method == "remove_scene" ||
+           method == "move_scene" ||
+           method == "set_scene_assignment" ||
+           method == "set_scene_leave_unchanged" ||
+           method == "clear_scene_assignment";
+           // queue_clip and queue_scene are real-time performance commands — not undo-tracked
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +691,9 @@ inline bool is_undo_tracked_method(const std::string& method) {
 
 // Query handlers (defined in control_server_query.cpp)
 std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const SubgraphModuleRegistry* modules = nullptr, const std::string& detail = "full");
+std::string handle_inspect_session(const Graph& graph, const RuntimeAPI& runtime_api);
+std::string handle_inspect_clip(const Graph& graph, const std::string& track_id, const std::string& clip_id);
+std::string handle_inspect_scene(const Graph& graph, const RuntimeAPI& runtime_api, const std::string& scene_id);
 nlohmann::json make_audio_node_debug_json(const CompiledNode& ns);
 nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns, bool include_lanes);
 std::string handle_sample_node_outputs(Graph& graph, RuntimeCore& core, const nlohmann::json& root);

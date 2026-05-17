@@ -42,7 +42,7 @@ lane model itself remains the same on both sides of the boundary.
 Each frame:
 1. `control_server.process_requests(runtime_api, graph, runtime, registry, ...)` — drain HTTP queue, apply topology changes
 2. `runtime_api.apply_midi_mappings()` — map CC values to params
-3. `runtime_api.tick_quantized_switch()` — fire pending variation switches on beat/bar boundaries
+3. `runtime_api.tick_quantized_switch()` — fire pending session launches on beat/bar boundaries
 4. `runtime_api.tick_state_presets()` — apply state machine → preset transitions
 5. `runtime.pre_tick_audio_sync(time)` — pull audio analysis into frame-rate nodes, push display params
 6. `gpu_context.begin_frame()` → `runtime.tick(time, delta, frame, gpu_state)` → `gpu_context.end_frame()`

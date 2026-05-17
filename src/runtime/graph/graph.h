@@ -3,16 +3,19 @@
 #include <array>
 #include <atomic>
 #include <algorithm>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <cmath>
 #include <nlohmann/json_fwd.hpp>
 #include "runtime/graph/cadence_types.h"
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
-#define GRAPH_SCHEMA_VERSION 1
+#define GRAPH_SCHEMA_VERSION 3
 
 namespace vivid {
 
@@ -119,11 +122,43 @@ struct MidiMappingDef {
     float range_max = 1.0f;
 };
 
-struct VariationDef {
-    std::string name;
-    // node_id -> { param_name -> value }
+// Reserved for future crossfade support — parsed and round-tripped but not consulted by
+// apply_clip_params / launch_clip / fire_scene. All launches are currently instant (cut).
+struct SessionTransitionDef {
+    bool fade = false;
+    float duration_bars = 0.0f;
+};
+
+struct SessionClipDef {
+    std::string id;    // stable, generated (e.g. "c_a3f1b2c4")
+    std::string name;  // display label only
+    std::optional<SessionTransitionDef> transition_override; // reserved — not yet consulted at launch
+    // ParamSet: node_id -> param_name -> value
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
+};
+
+struct SessionTrackDef {
+    std::string id;                          // stable, generated (e.g. "tr_9b2c3d4e")
+    std::string name;                        // display label only
+    std::vector<std::string> owned_node_ids; // nodes owned by this track
+    SessionTransitionDef default_transition; // reserved — not yet consulted at launch
+    std::vector<SessionClipDef> clips;
+};
+
+struct SessionSceneDef {
+    std::string id;   // stable, generated (e.g. "sc_4d7e8f9a")
+    std::string name;
+    // track_id -> clip_id for tracks with a clip assignment
+    std::unordered_map<std::string, std::string> assignments;
+    // track_ids explicitly set to "leave unchanged" (intentional null)
+    std::unordered_set<std::string> leave_unchanged;
+};
+
+struct SessionDef {
+    std::vector<SessionTrackDef> tracks;
+    std::vector<SessionSceneDef> scenes;
+    std::unordered_map<std::string, std::string> active_clips;  // track_id → clip_id
 };
 
 struct GraphMetronomeDef {
@@ -235,7 +270,6 @@ public:
     const std::vector<NodeDef>& nodes() const { return nodes_; }
     const std::vector<ConnectionDef>& connections() const { return connections_; }
     const std::vector<MidiMappingDef>& midi_mappings() const { return midi_mappings_; }
-    const std::vector<VariationDef>& variations() const { return variations_; }
     const std::string& source_path() const { return source_path_; }
     void set_source_path(std::string path) { source_path_ = std::move(path); }
     const GraphContentMeta& meta() const { return meta_; }
@@ -267,18 +301,51 @@ public:
     const MidiMappingDef* find_midi_mapping(const std::string& node_id,
                                             const std::string& param) const;
 
-    // Variation mutation
-    void add_variation(VariationDef v);
-    bool remove_variation(const std::string& name);
-    bool rename_variation(const std::string& old_name, const std::string& new_name);
-    bool duplicate_variation(const std::string& name, const std::string& new_name);
-    bool move_variation(const std::string& name, int to_index);
-    const VariationDef* find_variation(const std::string& name) const;
-    VariationDef* find_variation(const std::string& name);
-    int find_variation_index(const std::string& name) const;
+    // Session accessors
+    const SessionDef& session() const { return session_; }
+    SessionDef& session_mut() { return session_; }
+    void set_active_clip(const std::string& track_id, const std::string& clip_id) {
+        session_.active_clips[track_id] = clip_id;
+    }
+    void clear_active_clip(const std::string& track_id) {
+        session_.active_clips.erase(track_id);
+    }
+    const std::unordered_map<std::string, std::string>& active_clips() const {
+        return session_.active_clips;
+    }
 
-    int active_variation() const { return active_variation_; }
-    void set_active_variation(int idx) { active_variation_ = idx; }
+    // Session CRUD
+    std::string create_track(std::string name);
+    bool rename_track(const std::string& track_id, std::string new_name);
+    bool remove_track(const std::string& track_id);
+    bool move_track(const std::string& track_id, int to_index);
+    bool assign_nodes_to_track(const std::string& track_id, std::vector<std::string> node_ids);
+    bool unassign_nodes_from_track(const std::string& track_id, const std::vector<std::string>& node_ids);
+    std::string save_clip(const std::string& track_id, std::string name,
+                          std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
+                          std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params);
+    bool update_clip(const std::string& track_id, const std::string& clip_id,
+                     std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
+                     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params);
+    bool rename_clip(const std::string& track_id, const std::string& clip_id, std::string new_name);
+    bool remove_clip(const std::string& track_id, const std::string& clip_id);
+    bool move_clip(const std::string& track_id, const std::string& clip_id, int to_index);
+    std::string save_scene(std::string name);
+    bool rename_scene(const std::string& scene_id, std::string new_name);
+    bool remove_scene(const std::string& scene_id);
+    bool move_scene(const std::string& scene_id, int to_index);
+    bool set_scene_assignment(const std::string& scene_id, const std::string& track_id, const std::string& clip_id);
+    bool set_scene_leave_unchanged(const std::string& scene_id, const std::string& track_id);
+    bool clear_scene_assignment(const std::string& scene_id, const std::string& track_id);
+    bool update_scene_assignments(const std::string& scene_id,
+                                   const std::unordered_map<std::string, std::string>& assignments);
+    const SessionTrackDef* find_track(const std::string& id) const;
+    SessionTrackDef* find_track(const std::string& id);
+    const SessionClipDef* find_clip(const std::string& track_id, const std::string& clip_id) const;
+    SessionClipDef* find_clip(const std::string& track_id, const std::string& clip_id);
+    const SessionSceneDef* find_scene(const std::string& id) const;
+    SessionSceneDef* find_scene(const std::string& id);
+
     const std::string& quantize_clock_node() const { return quantize_clock_node_; }
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
     const GraphMetronomeDef& metronome() const { return metronome_; }
@@ -371,9 +438,9 @@ private:
     std::vector<NodeDef> nodes_;
     std::vector<ConnectionDef> connections_;
     std::vector<MidiMappingDef> midi_mappings_;
-    std::vector<VariationDef> variations_;
-    int active_variation_ = -1;
+    SessionDef session_;
     std::string quantize_clock_node_;
+    std::string gen_session_id(std::string_view prefix);
     GraphMetronomeDef metronome_;
     std::string source_path_;
     GraphContentMeta meta_;

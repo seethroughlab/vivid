@@ -1895,54 +1895,237 @@ async def diagnose_composition_issue(analysis_json: str = "",
 
 @mcp.tool()
 async def get_session_view_guide() -> str:
-    """Return a guide to Vivid's Session view: variations and the per-track clip launcher.
+    """Return a guide to Vivid's Session model: Tracks, Clips, and Scenes.
 
-    Describes both whole-graph variation switching and per-track clip launching,
-    with the relevant tools for each workflow. Call this when you need to understand
-    how to use the Session view or set up a clip launcher track.
+    Describes the Track/Clip/Scene performance model and the relevant tools for
+    authoring and launching session content. Call this when you need to understand
+    how to set up a session or drive live performance from code.
     """
     return json.dumps({
-        "session_view_features": {
-            "variations": {
-                "description": "Whole-graph preset snapshots. One variation captures "
-                               "all node parameter values at once.",
-                "tools": {
-                    "save_variation": "Snapshot current graph state as a named variation",
-                    "recall_variation": "Restore a saved variation immediately",
-                    "queue_variation": "Switch to a variation at a beat boundary (instant/beat/bar/4bar)",
-                    "list_variations": "Show all saved variations",
-                },
-            },
-            "clip_launcher": {
-                "description": "Per-track state switching. Each track is a StateMachine "
-                               "that independently controls which preset is active on a "
-                               "target node (e.g., a synth or effect). Multiple tracks "
-                               "can be launched simultaneously at bar boundaries.",
-                "how_it_works": [
-                    "A StateMachine registered with ensure_state_mapping appears as a "
-                    "column in the Session view clip grid",
-                    "Each state (row) can be bound to a preset on any node via set_state_preset",
-                    "Clicking a cell (or calling queue_state_transition) launches that state "
-                    "at the next quantize boundary, recalling its bound preset",
-                    "MidiClip phase -> SM beat_phase wires timing sync (add_clip_track does this)",
-                ],
-                "quick_setup": [
-                    "add_clip_track() — creates StateMachine + MidiClip, registers in grid",
-                    "save_preset(node_id, 'preset_name') — save a preset on a target node",
-                    "set_state_preset(sm_node, state_idx, target_node, preset_name) — bind it",
-                    "queue_state_transition(sm_node, state, 'bar') — launch from code",
-                ],
-                "tools": {
-                    "add_clip_track": "One-shot setup: creates SM + MidiClip pair and registers in grid",
-                    "ensure_state_mapping": "Register an existing SM in the clip grid (no presets required)",
-                    "queue_state_transition": "Launch a clip: jump SM to state at beat boundary",
-                    "set_state_preset": "Bind a preset to a state (what gets recalled on launch)",
-                    "inspect_state_presets": "Show current preset bindings for a StateMachine",
-                    "clear_state_presets": "Remove all preset bindings from a StateMachine",
-                },
-            },
-        }
+        "session_model": {
+            "track": "A named group of nodes. Each track owns one or more nodes and holds a list of Clips.",
+            "clip": "A named snapshot of a track's node params. Launching a clip restores those params to the live graph.",
+            "scene": "A collection of track→clip assignments. Launching a scene fires all assignments at once.",
+        },
+        "workflow": [
+            "create_track(name) — create a track and give it a name",
+            "assign_nodes_to_track(track_id, node_ids) — assign nodes to the track",
+            "set_param(...) — dial in params on the owned nodes",
+            "save_clip(track_id, 'Verse') — capture current param state as a clip",
+            "save_scene('Drop') — capture all current active clips as a scene",
+            "queue_scene(scene_id, 'bar') — fire all scene assignments at next bar boundary",
+        ],
+        "inspection": {
+            "inspect_session": "Full session state: all tracks, clips, scenes, active/queued clip per track",
+            "inspect_clip": "Stored param values inside a specific clip",
+            "inspect_scene": "Scene assignments with resolved names, leave-unchanged set, unassigned tracks",
+        },
+        "launch": {
+            "launch_clip": "Immediately apply a clip's params to its track's nodes",
+            "queue_clip": "Apply at a beat boundary (instant/beat/bar/4bar)",
+            "queue_scene": "Fire all scene assignments at a beat boundary (instant/beat/bar/4bar)",
+        },
+        "quantize_modes": ["instant", "beat", "bar", "4bar"],
+        "legacy_advanced_tools": {
+            "note": "StateMachine-based clip launcher still works for existing graphs. Whole-graph Variations were removed in schema v2 — use Tracks/Clips instead.",
+            "tools": ["add_clip_track", "ensure_state_mapping", "queue_state_transition",
+                      "set_state_preset", "inspect_state_presets"],
+        },
     }, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Session: Tracks, Clips, Scenes — inspection, CRUD, and launch
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+async def inspect_session() -> str:
+    """Return all tracks, clips, and scenes with their active/queued state.
+
+    Call this before any session operation to understand the current structure:
+    which tracks exist, what clips each has, which clip is active/queued per track,
+    and what scenes are defined. Also reports the queued scene (if any).
+    """
+    return await _post("inspect_session", {})
+
+
+@mcp.tool()
+async def inspect_clip(track_id: str, clip_id: str) -> str:
+    """Return the stored param values inside a specific clip.
+
+    Shows the float params and string params captured when the clip was saved or
+    last updated. Use this to verify what a clip will restore before launching it.
+    """
+    return await _post("inspect_clip", {"track_id": track_id, "clip_id": clip_id})
+
+
+@mcp.tool()
+async def inspect_scene(scene_id: str) -> str:
+    """Return scene assignments with resolved track/clip names.
+
+    Shows each track→clip assignment with human-readable names, the leave-unchanged
+    set (tracks explicitly excluded from this scene), and unassigned tracks (tracks
+    that are neither assigned nor leave-unchanged in this scene).
+    """
+    return await _post("inspect_scene", {"scene_id": scene_id})
+
+
+@mcp.tool()
+async def create_track(name: str) -> str:
+    """Create a new session track with the given name. Returns the new track_id."""
+    return await _post("create_track", {"name": name})
+
+
+@mcp.tool()
+async def rename_track(track_id: str, name: str) -> str:
+    """Rename a session track."""
+    return await _post("rename_track", {"track_id": track_id, "name": name})
+
+
+@mcp.tool()
+async def remove_track(track_id: str) -> str:
+    """Remove a session track and all its clips."""
+    return await _post("remove_track", {"track_id": track_id})
+
+
+@mcp.tool()
+async def move_track(track_id: str, to_index: int) -> str:
+    """Move a track to a new position in the track list (0-based)."""
+    return await _post("move_track", {"track_id": track_id, "to_index": to_index})
+
+
+@mcp.tool()
+async def assign_nodes_to_track(track_id: str, node_ids: list[str]) -> str:
+    """Assign graph nodes to a track. These nodes' params will be captured by save_clip."""
+    return await _post("assign_nodes_to_track", {"track_id": track_id, "node_ids": node_ids})
+
+
+@mcp.tool()
+async def unassign_nodes_from_track(track_id: str, node_ids: list[str]) -> str:
+    """Remove nodes from a track's owned set."""
+    return await _post("unassign_nodes_from_track", {"track_id": track_id, "node_ids": node_ids})
+
+
+@mcp.tool()
+async def save_clip(track_id: str, name: str) -> str:
+    """Capture current param state of the track's owned nodes as a new clip.
+
+    Returns the new clip_id. Wire-driven params and params with PARAM_LOCK_WIRES
+    are excluded from the capture.
+    """
+    return await _post("save_clip", {"track_id": track_id, "name": name})
+
+
+@mcp.tool()
+async def update_clip(track_id: str, clip_id: str) -> str:
+    """Re-capture the current param state into an existing clip, replacing its stored values."""
+    return await _post("update_clip", {"track_id": track_id, "clip_id": clip_id})
+
+
+@mcp.tool()
+async def rename_clip(track_id: str, clip_id: str, name: str) -> str:
+    """Rename a clip."""
+    return await _post("rename_clip", {"track_id": track_id, "clip_id": clip_id, "name": name})
+
+
+@mcp.tool()
+async def remove_clip(track_id: str, clip_id: str) -> str:
+    """Remove a clip from a track."""
+    return await _post("remove_clip", {"track_id": track_id, "clip_id": clip_id})
+
+
+@mcp.tool()
+async def move_clip(track_id: str, clip_id: str, to_index: int) -> str:
+    """Move a clip to a new position within its track's clip list (0-based)."""
+    return await _post("move_clip", {"track_id": track_id, "clip_id": clip_id, "to_index": to_index})
+
+
+@mcp.tool()
+async def launch_clip(track_id: str, clip_id: str) -> str:
+    """Immediately apply a clip's stored params to its track's owned nodes.
+
+    This is the same as queue_clip with quantize='instant'. The active_clip for
+    the track is updated to clip_id.
+    """
+    return await _post("launch_clip", {"track_id": track_id, "clip_id": clip_id})
+
+
+@mcp.tool()
+async def queue_clip(track_id: str, clip_id: str, quantize: str = "instant") -> str:
+    """Queue a clip launch at a beat boundary.
+
+    quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
+    A new queue_clip for the same track replaces any existing queued launch for that track.
+    """
+    return await _post("queue_clip", {"track_id": track_id, "clip_id": clip_id, "quantize": quantize})
+
+
+@mcp.tool()
+async def save_scene(name: str) -> str:
+    """Capture the current active clips as a new scene.
+
+    Creates a scene whose assignments are the current active_clip for every track
+    that has one. Returns the new scene_id.
+    """
+    return await _post("save_scene", {"name": name})
+
+
+@mcp.tool()
+async def update_scene(scene_id: str) -> str:
+    """Re-capture current active clips into an existing scene, replacing its assignments."""
+    return await _post("update_scene", {"scene_id": scene_id})
+
+
+@mcp.tool()
+async def rename_scene(scene_id: str, new_name: str) -> str:
+    """Rename a scene."""
+    return await _post("rename_scene", {"scene_id": scene_id, "new_name": new_name})
+
+
+@mcp.tool()
+async def remove_scene(scene_id: str) -> str:
+    """Remove a scene."""
+    return await _post("remove_scene", {"scene_id": scene_id})
+
+
+@mcp.tool()
+async def move_scene(scene_id: str, to_index: int) -> str:
+    """Move a scene to a new position in the scene list (0-based)."""
+    return await _post("move_scene", {"scene_id": scene_id, "to_index": to_index})
+
+
+@mcp.tool()
+async def set_scene_assignment(scene_id: str, track_id: str, clip_id: str) -> str:
+    """Set the clip assignment for a track within a scene."""
+    return await _post("set_scene_assignment",
+                       {"scene_id": scene_id, "track_id": track_id, "clip_id": clip_id})
+
+
+@mcp.tool()
+async def set_scene_leave_unchanged(scene_id: str, track_id: str) -> str:
+    """Mark a track as intentionally excluded from a scene (leave unchanged when scene fires)."""
+    return await _post("set_scene_leave_unchanged",
+                       {"scene_id": scene_id, "track_id": track_id})
+
+
+@mcp.tool()
+async def clear_scene_assignment(scene_id: str, track_id: str) -> str:
+    """Remove the clip assignment for a track from a scene (track becomes unassigned)."""
+    return await _post("clear_scene_assignment",
+                       {"scene_id": scene_id, "track_id": track_id})
+
+
+@mcp.tool()
+async def queue_scene(scene_id: str, quantize: str = "instant") -> str:
+    """Queue a scene launch at a beat boundary.
+
+    Fires all track→clip assignments in the scene simultaneously. Tracks marked
+    leave_unchanged are skipped. Unassigned tracks are untouched.
+
+    quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
+    A new queue_scene replaces any previously queued scene.
+    """
+    return await _post("queue_scene", {"scene_id": scene_id, "quantize": quantize})
 
 
 # ---------------------------------------------------------------------------
@@ -4643,7 +4826,7 @@ async def load_graph(path: str) -> str:
 @mcp.tool()
 async def new_graph() -> str:
     """Reset to a new empty graph with default audio_out and video_out sink nodes.
-    Clears all nodes, connections, variations, and undo history."""
+    Clears all nodes, connections, session state, and undo history."""
     return await _post("new_graph")
 
 
@@ -5095,74 +5278,6 @@ async def scaffold_operator(name: str, env: str, variant: str = "",
 
 
 @mcp.tool()
-async def save_variation(name: str) -> str:
-    """Save a named snapshot of all current parameter values across every node.
-
-    Args:
-        name: Name for the variation (e.g. "Intro", "Drop")
-    """
-    return await _post("save_variation", {"name": name})
-
-
-@mcp.tool()
-async def recall_variation(name: str) -> str:
-    """Instantly recall a saved variation, restoring all parameter values.
-
-    Args:
-        name: Name of the variation to recall
-    """
-    return await _post("recall_variation", {"name": name})
-
-
-@mcp.tool()
-async def remove_variation(name: str) -> str:
-    """Delete a saved variation.
-
-    Args:
-        name: Name of the variation to remove
-    """
-    return await _post("remove_variation", {"name": name})
-
-
-@mcp.tool()
-async def rename_variation(old_name: str, new_name: str) -> str:
-    """Rename a saved variation.
-
-    Args:
-        old_name: Current name
-        new_name: New name
-    """
-    return await _post("rename_variation", {"old_name": old_name, "new_name": new_name})
-
-
-@mcp.tool()
-async def update_variation(name: str) -> str:
-    """Overwrite a variation with the current parameter values (re-save in place).
-
-    Args:
-        name: Name of the variation to update
-    """
-    return await _post("update_variation", {"name": name})
-
-
-@mcp.tool()
-async def list_variations() -> str:
-    """List all saved variations. Active variation is marked with *."""
-    return await _post("list_variations")
-
-
-@mcp.tool()
-async def queue_variation(name: str, quantize: str = "instant") -> str:
-    """Queue a variation switch, optionally quantized to a beat boundary.
-
-    Args:
-        name: Name of the variation to switch to
-        quantize: Timing — "instant", "beat", "bar", or "4bar"
-    """
-    return await _post("queue_variation", {"name": name, "quantize": quantize})
-
-
-@mcp.tool()
 async def queue_state_transition(sm_node: str, state: int, quantize: str = "bar") -> str:
     """Jump a StateMachine to a specific state, quantized to a beat boundary.
 
@@ -5177,7 +5292,7 @@ async def queue_state_transition(sm_node: str, state: int, quantize: str = "bar"
 
 @mcp.tool()
 async def set_quantize_clock(node_id: str) -> str:
-    """Designate a Clock node for beat-synced variation switching.
+    """Designate a Clock node for beat-synced session, clip, and scene launch quantization.
 
     Args:
         node_id: ID of a Clock node whose beat_phase output drives quantization
@@ -5307,11 +5422,11 @@ async def clear_state_presets(sm_node: str) -> str:
 
 @mcp.tool()
 async def ensure_state_mapping(sm_node: str) -> str:
-    """Register a StateMachine node in the Session view clip launcher grid.
+    """Register a StateMachine node as a legacy step-sequencer track (advanced).
 
-    Creates an empty state-preset mapping entry so the SM appears as a column
-    in the clip grid even before any presets are bound to it. Safe to call if
-    the mapping already exists (no-op).
+    Creates an empty state-preset mapping entry for the SM. This is the legacy
+    StateMachine-based launcher; new session work should use Tracks/Clips/Scenes.
+    Safe to call if the mapping already exists (no-op).
 
     Args:
         sm_node: ID of the StateMachine node
@@ -5322,11 +5437,11 @@ async def ensure_state_mapping(sm_node: str) -> str:
 @mcp.tool()
 async def add_clip_track(sm_node: str = "", midi_clip_node: str = "",
                          num_states: int = 4, x: float = 0.0, y: float = -200.0) -> str:
-    """Create a StateMachine + MidiClip pair and register it in the clip launcher.
+    """Create a StateMachine + MidiClip pair as a legacy step-sequencer track (advanced).
 
     Creates both nodes, connects MidiClip phase → StateMachine beat_phase for
-    timing sync, and calls ensure_state_mapping so the track appears in the
-    Session view clip grid immediately.
+    timing sync, and calls ensure_state_mapping. This is the legacy StateMachine-based
+    launcher; new session work should use Tracks/Clips/Scenes instead.
 
     Args:
         sm_node: ID for the StateMachine node (auto-generated if empty)

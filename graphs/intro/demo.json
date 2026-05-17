@@ -1,129 +1,119 @@
 {
-    "schema_version": 1,
-    "vivid_version": "0.1.0",
-    "meta": {
-        "id": "intro_demo",
-        "title": "Getting Started",
-        "description": "A clocked LFO pulses the radius of an SDF circle so the simplest visual patch breathes with the beat.",
-        "tags": [
-            "intro",
-            "clock",
-            "lfo",
-            "shape",
-            "beat-sync"
-        ],
-        "difficulty": "beginner",
-        "domains": [
-            "gpu",
-            "control"
-        ],
-        "featured_rank": 6,
-        "estimated_minutes": 1,
-        "content_kind": "example",
-        "category": "starter",
-        "family": "First steps",
-        "role": "starter",
-        "playability": "self_playing"
-    },
-    "nodes": {
-        "clock1": {
-            "type": "ClockFr",
-            "params": {
-                "bpm": 60.0,
-                "beats_per_bar": 4.0
-            },
-            "layout": {
-                "x": -113.95703,
-                "y": 373.16406
-            }
-        },
-        "lfo1": {
-            "type": "LfoFr",
-            "params": {
-                "offset": 0.25,
-                "amplitude": 0.15
-            },
-            "layout": {
-                "x": 157.21875,
-                "y": 387.96875
-            }
-        },
-        "shape1": {
-            "type": "Shape2D",
-            "params": {
-                "softness": 0.0,
-                "g": 0.6,
-                "scale_y": 0.25,
-                "sides": 18.0,
-                "scale_x": 0.25,
-                "r": 0.3,
-                "b": 1.0
-            },
-            "layout": {
-                "x": 369.57224,
-                "y": 382.8523
-            }
-        },
-        "shape1_render": {
-            "type": "Render2D",
-            "layout": {
-                "x": 579.8633,
-                "y": 358.64453
-            }
-        },
-        "vout": {
-            "type": "video_out",
-            "layout": {
-                "x": 737.1875,
-                "y": 329.91016
-            }
-        }
-    },
-    "connections": [
-        {
-            "from": "clock1/beat_phase",
-            "to": "lfo1/beat_phase"
-        },
-        {
-            "from": "lfo1/value",
-            "to": "shape1/scale_x"
-        },
-        {
-            "from": "lfo1/value",
-            "to": "shape1/scale_y"
-        },
-        {
-            "from": "shape1_render/texture",
-            "to": "vout/input"
-        },
-        {
-            "from": "shape1/drawable",
-            "to": "shape1_render/drawable"
-        }
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "intro_demo",
+    "title": "Getting Started",
+    "description": "A clocked LFO pulses the radius of an SDF circle so the simplest visual patch breathes with the beat.",
+    "tags": [
+      "intro",
+      "clock",
+      "lfo",
+      "shape",
+      "beat-sync"
     ],
-    "viewport": {
-        "pan_x": 409.58072,
-        "pan_y": 49.487667,
-        "zoom": 0.5880328
+    "difficulty": "beginner",
+    "domains": [
+      "gpu",
+      "control"
+    ],
+    "featured_rank": 6,
+    "estimated_minutes": 1,
+    "content_kind": "example",
+    "category": "starter",
+    "family": "First steps",
+    "role": "starter",
+    "playability": "self_playing"
+  },
+  "nodes": {
+    "lfo1": {
+      "type": "LfoFr",
+      "params": {
+        "offset": 0.25,
+        "amplitude": 0.15,
+        "rate_mode": 2,
+        "sync_division": 2
+      },
+      "layout": {
+        "x": 157.21875,
+        "y": 387.96875
+      }
     },
-    "sticky_notes": [
-        {
-            "id": "note_1",
-            "text": "**Clock → LFO → Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
-            "x": -41.75,
-            "y": 250.38672,
-            "width": 280.0,
-            "height": 80.0,
-            "color": 0
-        },
-        {
-            "id": "note_2",
-            "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 → 0.40 so the circle breathes with the beat",
-            "x": -40.30078,
-            "y": 174.08984,
-            "width": 250.0,
-            "height": 60.0,
-            "color": 2
-        }
-    ]
+    "shape1": {
+      "type": "Shape2D",
+      "params": {
+        "softness": 0.0,
+        "g": 0.6,
+        "scale_y": 0.25,
+        "sides": 18.0,
+        "scale_x": 0.25,
+        "r": 0.3,
+        "b": 1.0
+      },
+      "layout": {
+        "x": 369.57224,
+        "y": 382.8523
+      }
+    },
+    "shape1_render": {
+      "type": "Render2D",
+      "layout": {
+        "x": 579.8633,
+        "y": 358.64453
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": {
+        "x": 737.1875,
+        "y": 329.91016
+      }
+    }
+  },
+  "connections": [
+    {
+      "from": "lfo1/value",
+      "to": "shape1/scale_x"
+    },
+    {
+      "from": "lfo1/value",
+      "to": "shape1/scale_y"
+    },
+    {
+      "from": "shape1_render/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "shape1/drawable",
+      "to": "shape1_render/drawable"
+    }
+  ],
+  "viewport": {
+    "pan_x": 409.58072,
+    "pan_y": 49.487667,
+    "zoom": 0.5880328
+  },
+  "sticky_notes": [
+    {
+      "id": "note_1",
+      "text": "**Clock \u2192 LFO \u2192 Shape** pipeline The Clock's beat_phase drives the LFO, which pulses the circle's radius",
+      "x": -41.75,
+      "y": 250.38672,
+      "width": 280.0,
+      "height": 80.0,
+      "color": 0
+    },
+    {
+      "id": "note_2",
+      "text": "LFO offset=0.25, amplitude=0.15 sweeps radius 0.10 \u2192 0.40 so the circle breathes with the beat",
+      "x": -40.30078,
+      "y": 174.08984,
+      "width": 250.0,
+      "height": 60.0,
+      "color": 2
+    }
+  ],
+  "metronome": {
+    "bpm": 60.0
+  }
 }

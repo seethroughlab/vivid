@@ -32,7 +32,7 @@ struct EuclideanCore : vivid::OperatorBase {
     vivid::Param<int>   rotation    {"rotation",    0, 0, 31};
     vivid::Param<float> gate_length {"gate_length", 0.5f, 0.01f, 1.0f};
     vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
     vivid::Param<int>   bar_sync    {"bar_sync",    0, {"off","1 bar","2 bar","4 bar","8 bar"}};
     vivid::Param<int>   note        {"note",        36, 0, 127};
     vivid::Param<int>   velocity    {"velocity",    100, 1, 127};

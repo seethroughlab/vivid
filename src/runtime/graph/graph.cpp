@@ -7,6 +7,7 @@
 #include <cstring>
 #include <algorithm>
 #include <fstream>
+#include <random>
 #include <unordered_set>
 
 #ifndef VIVID_CORE_VERSION
@@ -175,13 +176,12 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     nodes_.clear();
     connections_.clear();
     midi_mappings_.clear();
-    variations_.clear();
+    session_ = {};
     node_presets_.clear();
     state_preset_mappings_.clear();
     sticky_notes_.clear();
     mod_assignments_.clear();
     load_diagnostics.clear();
-    active_variation_ = -1;
     quantize_clock_node_.clear();
     metronome_ = {};
     meta_ = {};
@@ -390,39 +390,158 @@ bool Graph::parse_doc(const nlohmann::json& root) {
         }
     }
 
-    // Parse variations
-    auto var_it = root.find("variations");
-    if (var_it != root.end() && var_it->is_array()) {
-        for (auto& vval : *var_it) {
-            VariationDef vd;
-            auto vname = vval.find("name");
-            if (vname != vval.end() && vname->is_string())
-                vd.name = vname->get<std::string>();
-            auto vparams = vval.find("params");
-            if (vparams != vval.end() && vparams->is_object()) {
-                for (auto& [node_id, nval] : vparams->items()) {
-                    if (nval.is_object()) {
-                        for (auto& [pkey, pv] : nval.items()) {
-                            if (pv.is_number())
-                                vd.params[node_id][pkey] = static_cast<float>(pv.get<double>());
-                            else if (pv.is_string())
-                                vd.string_params[node_id][pkey] = pv.get<std::string>();
+    // Legacy variation data warning
+    if (root.contains("variations")) {
+        std::fprintf(stderr, "[session] legacy variation data ignored (pre-alpha schema break)\n");
+    }
+
+    // Parse session
+    auto sess_it = root.find("session");
+    if (sess_it != root.end() && sess_it->is_object()) {
+        std::unordered_set<std::string> seen_track_ids;
+        std::unordered_set<std::string> owned_nodes_global; // enforce single-track ownership
+        // parse tracks
+        auto tracks_it = sess_it->find("tracks");
+        if (tracks_it != sess_it->end() && tracks_it->is_array()) {
+            for (const auto& tval : *tracks_it) {
+                auto tid_it = tval.find("id");
+                if (tid_it == tval.end() || !tid_it->is_string()) continue;
+                std::string track_id = tid_it->get<std::string>();
+                if (seen_track_ids.count(track_id)) {
+                    std::fprintf(stderr, "[session] duplicate track id '%s', skipping\n", track_id.c_str());
+                    continue;
+                }
+                seen_track_ids.insert(track_id);
+                SessionTrackDef track;
+                track.id = track_id;
+                auto tname = tval.find("name");
+                if (tname != tval.end() && tname->is_string())
+                    track.name = tname->get<std::string>();
+                auto owned = tval.find("owned_nodes");
+                if (owned != tval.end() && owned->is_array()) {
+                    for (const auto& n : *owned) {
+                        if (!n.is_string()) continue;
+                        std::string nid = n.get<std::string>();
+                        if (owned_nodes_global.count(nid)) {
+                            std::fprintf(stderr, "[session] node '%s' owned by multiple tracks, skipping duplicate\n", nid.c_str());
+                            continue;
+                        }
+                        owned_nodes_global.insert(nid);
+                        track.owned_node_ids.push_back(nid);
+                    }
+                }
+                auto dt_it = tval.find("default_transition");
+                if (dt_it != tval.end() && dt_it->is_object()) {
+                    auto mode = dt_it->find("mode");
+                    if (mode != dt_it->end() && mode->is_string())
+                        track.default_transition.fade = (mode->get<std::string>() == "fade");
+                    auto dur = dt_it->find("duration_bars");
+                    if (dur != dt_it->end() && dur->is_number())
+                        track.default_transition.duration_bars = static_cast<float>(dur->get<double>());
+                }
+                std::unordered_set<std::string> seen_clip_ids;
+                auto clips_it = tval.find("clips");
+                if (clips_it != tval.end() && clips_it->is_array()) {
+                    for (const auto& cval : *clips_it) {
+                        auto cid_it = cval.find("id");
+                        if (cid_it == cval.end() || !cid_it->is_string()) continue;
+                        std::string clip_id = cid_it->get<std::string>();
+                        if (seen_clip_ids.count(clip_id)) {
+                            std::fprintf(stderr, "[session] duplicate clip id '%s' in track '%s', skipping\n",
+                                         clip_id.c_str(), track_id.c_str());
+                            continue;
+                        }
+                        seen_clip_ids.insert(clip_id);
+                        SessionClipDef clip;
+                        clip.id = clip_id;
+                        auto cname = cval.find("name");
+                        if (cname != cval.end() && cname->is_string())
+                            clip.name = cname->get<std::string>();
+                        auto ct_it = cval.find("transition_override");
+                        if (ct_it != cval.end() && ct_it->is_object()) {
+                            SessionTransitionDef transition;
+                            auto mode = ct_it->find("mode");
+                            if (mode != ct_it->end() && mode->is_string())
+                                transition.fade = (mode->get<std::string>() == "fade");
+                            auto dur = ct_it->find("duration_bars");
+                            if (dur != ct_it->end() && dur->is_number())
+                                transition.duration_bars = static_cast<float>(dur->get<double>());
+                            clip.transition_override = transition;
+                        }
+                        auto cparams = cval.find("params");
+                        if (cparams != cval.end() && cparams->is_object()) {
+                            for (auto& [nid, nval] : cparams->items()) {
+                                if (!nval.is_object()) continue;
+                                for (auto& [pkey, pv] : nval.items()) {
+                                    if (pv.is_number())
+                                        clip.params[nid][pkey] = static_cast<float>(pv.get<double>());
+                                    else if (pv.is_string())
+                                        clip.string_params[nid][pkey] = pv.get<std::string>();
+                                }
+                            }
+                        }
+                        track.clips.push_back(std::move(clip));
+                    }
+                }
+                session_.tracks.push_back(std::move(track));
+            }
+        }
+        // parse scenes
+        std::unordered_set<std::string> seen_scene_ids;
+        auto scenes_it = sess_it->find("scenes");
+        if (scenes_it != sess_it->end() && scenes_it->is_array()) {
+            for (const auto& sval : *scenes_it) {
+                auto sid_it = sval.find("id");
+                if (sid_it == sval.end() || !sid_it->is_string()) continue;
+                std::string scene_id = sid_it->get<std::string>();
+                if (seen_scene_ids.count(scene_id)) {
+                    std::fprintf(stderr, "[session] duplicate scene id '%s', skipping\n", scene_id.c_str());
+                    continue;
+                }
+                seen_scene_ids.insert(scene_id);
+                SessionSceneDef scene;
+                scene.id = scene_id;
+                auto sname = sval.find("name");
+                if (sname != sval.end() && sname->is_string())
+                    scene.name = sname->get<std::string>();
+                auto asn_it = sval.find("assignments");
+                if (asn_it != sval.end() && asn_it->is_object()) {
+                    for (auto& [tid, cval] : asn_it->items()) {
+                        if (!find_track(tid)) {
+                            std::fprintf(stderr, "[session] scene '%s' assignment references unknown track '%s', skipping\n",
+                                         scene_id.c_str(), tid.c_str());
+                            continue;
+                        }
+                        if (cval.is_null()) {
+                            scene.leave_unchanged.insert(tid);
+                        } else if (cval.is_string()) {
+                            std::string clip_id = cval.get<std::string>();
+                            if (clip_id.empty()) {
+                                std::fprintf(stderr, "[session] scene '%s' assignment for track '%s' has empty clip id, skipping\n",
+                                             scene_id.c_str(), tid.c_str());
+                                continue;
+                            }
+                            if (!find_clip(tid, clip_id)) {
+                                std::fprintf(stderr, "[session] scene '%s' assignment references missing clip '%s' for track '%s', skipping\n",
+                                             scene_id.c_str(), clip_id.c_str(), tid.c_str());
+                                continue;
+                            }
+                            scene.assignments[tid] = std::move(clip_id);
                         }
                     }
                 }
+                session_.scenes.push_back(std::move(scene));
             }
-            variations_.push_back(std::move(vd));
         }
-    }
-
-    // Parse active_variation
-    auto av_it = root.find("active_variation");
-    if (av_it != root.end() && av_it->is_number_integer()) {
-        active_variation_ = static_cast<int>(av_it->get<int64_t>());
-        if (active_variation_ >= static_cast<int>(variations_.size())) {
-            std::fprintf(stderr, "[vivid] Graph: active_variation %d out of bounds (%zu variations), resetting to -1\n",
-                         active_variation_, variations_.size());
-            active_variation_ = -1;
+        // parse active_clips
+        auto ac_it = sess_it->find("active_clips");
+        if (ac_it != sess_it->end() && ac_it->is_object()) {
+            for (auto& [tid, cval] : ac_it->items()) {
+                if (!cval.is_string()) continue;
+                std::string clip_id = cval.get<std::string>();
+                if (find_track(tid) && find_clip(tid, clip_id))
+                    session_.active_clips[tid] = std::move(clip_id);
+            }
         }
     }
 
@@ -590,10 +709,15 @@ bool Graph::remove_node(const std::string& id) {
         midi_mappings_.end());
     // Remove per-operator presets for this node
     node_presets_.erase(id);
-    // Strip this node from each variation's param maps
-    for (auto& v : variations_) {
-        v.params.erase(id);
-        v.string_params.erase(id);
+    // Remove this node from session track ownership and clip ParamSets
+    for (auto& track : session_.tracks) {
+        auto it = std::find(track.owned_node_ids.begin(), track.owned_node_ids.end(), id);
+        if (it != track.owned_node_ids.end())
+            track.owned_node_ids.erase(it);
+        for (auto& clip : track.clips) {
+            clip.params.erase(id);
+            clip.string_params.erase(id);
+        }
     }
     // Clean up state-preset mappings referencing this node
     // Remove mappings where this node IS the state machine
@@ -728,96 +852,279 @@ const MidiMappingDef* Graph::find_midi_mapping(const std::string& node_id,
     return nullptr;
 }
 
-// --- Variation Mutation ---
+// --- Session ID generator ---
 
-void Graph::add_variation(VariationDef v) {
-    // Replace if already exists
-    for (auto& existing : variations_) {
-        if (existing.name == v.name) {
-            existing = std::move(v);
-            return;
+std::string Graph::gen_session_id(std::string_view prefix) {
+    static std::mt19937 rng(std::random_device{}());
+    std::uniform_int_distribution<uint32_t> dist;
+    char buf[32];
+    for (int attempt = 0; attempt < 32; ++attempt) {
+        std::snprintf(buf, sizeof(buf), "%.*s_%08x",
+                      static_cast<int>(prefix.size()), prefix.data(), dist(rng));
+        std::string id(buf);
+        // Check for collisions across all session IDs
+        bool used = false;
+        for (const auto& t : session_.tracks) {
+            if (t.id == id) { used = true; break; }
+            for (const auto& c : t.clips)
+                if (c.id == id) { used = true; break; }
+            if (used) break;
+        }
+        if (!used) for (const auto& s : session_.scenes)
+            if (s.id == id) { used = true; break; }
+        if (!used) return id;
+    }
+    return std::string(buf); // fallback
+}
+
+// --- Session Track CRUD ---
+
+std::string Graph::create_track(std::string name) {
+    SessionTrackDef track;
+    track.id = gen_session_id("tr");
+    track.name = std::move(name);
+    session_.tracks.push_back(std::move(track));
+    return session_.tracks.back().id;
+}
+
+bool Graph::rename_track(const std::string& track_id, std::string new_name) {
+    auto* t = find_track(track_id);
+    if (!t) return false;
+    t->name = std::move(new_name);
+    return true;
+}
+
+bool Graph::remove_track(const std::string& track_id) {
+    auto it = std::find_if(session_.tracks.begin(), session_.tracks.end(),
+        [&](const SessionTrackDef& t) { return t.id == track_id; });
+    if (it == session_.tracks.end()) return false;
+    session_.tracks.erase(it);
+    // Remove this track from all scene assignments
+    for (auto& scene : session_.scenes) {
+        scene.assignments.erase(track_id);
+        scene.leave_unchanged.erase(track_id);
+    }
+    return true;
+}
+
+bool Graph::move_track(const std::string& track_id, int to_index) {
+    int n = static_cast<int>(session_.tracks.size());
+    auto it = std::find_if(session_.tracks.begin(), session_.tracks.end(),
+        [&](const SessionTrackDef& t) { return t.id == track_id; });
+    if (it == session_.tracks.end()) return false;
+    int from = static_cast<int>(it - session_.tracks.begin());
+    if (to_index < 0 || to_index >= n || from == to_index) return to_index == from;
+    SessionTrackDef tmp = std::move(*it);
+    session_.tracks.erase(it);
+    session_.tracks.insert(session_.tracks.begin() + to_index, std::move(tmp));
+    return true;
+}
+
+bool Graph::assign_nodes_to_track(const std::string& track_id, std::vector<std::string> node_ids) {
+    auto* t = find_track(track_id);
+    if (!t) return false;
+    // Remove each node from any other track first
+    for (const auto& nid : node_ids) {
+        for (auto& other : session_.tracks) {
+            if (other.id == track_id) continue;
+            auto oit = std::find(other.owned_node_ids.begin(), other.owned_node_ids.end(), nid);
+            if (oit != other.owned_node_ids.end())
+                other.owned_node_ids.erase(oit);
+        }
+        // Add if not already owned
+        if (std::find(t->owned_node_ids.begin(), t->owned_node_ids.end(), nid) == t->owned_node_ids.end())
+            t->owned_node_ids.push_back(nid);
+    }
+    return true;
+}
+
+bool Graph::unassign_nodes_from_track(const std::string& track_id, const std::vector<std::string>& node_ids) {
+    auto* t = find_track(track_id);
+    if (!t) return false;
+    for (const auto& nid : node_ids) {
+        auto it = std::find(t->owned_node_ids.begin(), t->owned_node_ids.end(), nid);
+        if (it != t->owned_node_ids.end())
+            t->owned_node_ids.erase(it);
+    }
+    return true;
+}
+
+// --- Session Clip CRUD ---
+
+std::string Graph::save_clip(const std::string& track_id, std::string name,
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params) {
+    auto* t = find_track(track_id);
+    if (!t) return {};
+    SessionClipDef clip;
+    clip.id = gen_session_id("c");
+    clip.name = std::move(name);
+    clip.params = std::move(params);
+    clip.string_params = std::move(string_params);
+    t->clips.push_back(std::move(clip));
+    return t->clips.back().id;
+}
+
+bool Graph::update_clip(const std::string& track_id, const std::string& clip_id,
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params) {
+    auto* c = find_clip(track_id, clip_id);
+    if (!c) return false;
+    c->params = std::move(params);
+    c->string_params = std::move(string_params);
+    return true;
+}
+
+bool Graph::rename_clip(const std::string& track_id, const std::string& clip_id, std::string new_name) {
+    auto* c = find_clip(track_id, clip_id);
+    if (!c) return false;
+    c->name = std::move(new_name);
+    return true;
+}
+
+bool Graph::remove_clip(const std::string& track_id, const std::string& clip_id) {
+    auto* t = find_track(track_id);
+    if (!t) return false;
+    auto it = std::find_if(t->clips.begin(), t->clips.end(),
+        [&](const SessionClipDef& c) { return c.id == clip_id; });
+    if (it == t->clips.end()) return false;
+    t->clips.erase(it);
+    // Erase this clip from all scene assignments (don't leave a dangling empty-string reference)
+    for (auto& scene : session_.scenes) {
+        auto it = scene.assignments.begin();
+        while (it != scene.assignments.end()) {
+            if (it->second == clip_id)
+                it = scene.assignments.erase(it);
+            else
+                ++it;
         }
     }
-    variations_.push_back(std::move(v));
-}
-
-bool Graph::remove_variation(const std::string& name) {
-    auto it = std::find_if(variations_.begin(), variations_.end(),
-        [&](const VariationDef& v) { return v.name == name; });
-    if (it == variations_.end()) return false;
-    int idx = static_cast<int>(it - variations_.begin());
-    variations_.erase(it);
-    // Adjust active_variation index
-    if (active_variation_ == idx)
-        active_variation_ = -1;
-    else if (active_variation_ > idx)
-        active_variation_--;
     return true;
 }
 
-bool Graph::rename_variation(const std::string& old_name, const std::string& new_name) {
-    auto* v = find_variation(old_name);
-    if (!v) return false;
-    if (find_variation(new_name)) return false; // name conflict
-    v->name = new_name;
+bool Graph::move_clip(const std::string& track_id, const std::string& clip_id, int to_index) {
+    auto* t = find_track(track_id);
+    if (!t) return false;
+    int n = static_cast<int>(t->clips.size());
+    auto it = std::find_if(t->clips.begin(), t->clips.end(),
+        [&](const SessionClipDef& c) { return c.id == clip_id; });
+    if (it == t->clips.end()) return false;
+    int from = static_cast<int>(it - t->clips.begin());
+    if (to_index < 0 || to_index >= n || from == to_index) return to_index == from;
+    SessionClipDef tmp = std::move(*it);
+    t->clips.erase(it);
+    t->clips.insert(t->clips.begin() + to_index, std::move(tmp));
     return true;
 }
 
-bool Graph::duplicate_variation(const std::string& name, const std::string& new_name) {
-    if (find_variation(new_name)) return false; // name conflict
-    int src_idx = find_variation_index(name);
-    if (src_idx < 0) return false;
-    // Deep copy the source variation
-    VariationDef copy = variations_[src_idx];
-    copy.name = new_name;
-    // Insert after source
-    variations_.insert(variations_.begin() + src_idx + 1, std::move(copy));
-    // Adjust active_variation_ if it's after the insertion point
-    if (active_variation_ > src_idx)
-        active_variation_++;
+// --- Session Scene CRUD ---
+
+std::string Graph::save_scene(std::string name) {
+    SessionSceneDef scene;
+    scene.id = gen_session_id("sc");
+    scene.name = std::move(name);
+    session_.scenes.push_back(std::move(scene));
+    return session_.scenes.back().id;
+}
+
+bool Graph::rename_scene(const std::string& scene_id, std::string new_name) {
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    s->name = std::move(new_name);
     return true;
 }
 
-bool Graph::move_variation(const std::string& name, int to_index) {
-    int from_idx = find_variation_index(name);
-    if (from_idx < 0) return false;
-    int n = static_cast<int>(variations_.size());
-    if (to_index < 0 || to_index >= n) return false;
-    if (from_idx == to_index) return true; // no-op
-    // Extract, erase, re-insert
-    VariationDef tmp = std::move(variations_[from_idx]);
-    variations_.erase(variations_.begin() + from_idx);
-    variations_.insert(variations_.begin() + to_index, std::move(tmp));
-    // Adjust active_variation_ to track the same variation
-    if (active_variation_ == from_idx) {
-        active_variation_ = to_index;
-    } else if (from_idx < active_variation_ && to_index >= active_variation_) {
-        active_variation_--;
-    } else if (from_idx > active_variation_ && to_index <= active_variation_) {
-        active_variation_++;
-    }
+bool Graph::remove_scene(const std::string& scene_id) {
+    auto it = std::find_if(session_.scenes.begin(), session_.scenes.end(),
+        [&](const SessionSceneDef& s) { return s.id == scene_id; });
+    if (it == session_.scenes.end()) return false;
+    session_.scenes.erase(it);
     return true;
 }
 
-const VariationDef* Graph::find_variation(const std::string& name) const {
-    for (const auto& v : variations_) {
-        if (v.name == name) return &v;
-    }
+bool Graph::move_scene(const std::string& scene_id, int to_index) {
+    int n = static_cast<int>(session_.scenes.size());
+    auto it = std::find_if(session_.scenes.begin(), session_.scenes.end(),
+        [&](const SessionSceneDef& s) { return s.id == scene_id; });
+    if (it == session_.scenes.end()) return false;
+    int from = static_cast<int>(it - session_.scenes.begin());
+    if (to_index < 0 || to_index >= n || from == to_index) return to_index == from;
+    SessionSceneDef tmp = std::move(*it);
+    session_.scenes.erase(it);
+    session_.scenes.insert(session_.scenes.begin() + to_index, std::move(tmp));
+    return true;
+}
+
+bool Graph::set_scene_assignment(const std::string& scene_id, const std::string& track_id,
+                                  const std::string& clip_id) {
+    if (clip_id.empty()) return false;
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    if (!find_track(track_id)) return false;
+    if (!find_clip(track_id, clip_id)) return false;
+    s->assignments[track_id] = clip_id;
+    s->leave_unchanged.erase(track_id);
+    return true;
+}
+
+bool Graph::set_scene_leave_unchanged(const std::string& scene_id, const std::string& track_id) {
+    if (track_id.empty()) return false;
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    if (!find_track(track_id)) return false;
+    s->assignments.erase(track_id);
+    s->leave_unchanged.insert(track_id);
+    return true;
+}
+
+bool Graph::clear_scene_assignment(const std::string& scene_id, const std::string& track_id) {
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    s->assignments.erase(track_id);
+    s->leave_unchanged.erase(track_id);
+    return true;
+}
+
+bool Graph::update_scene_assignments(const std::string& scene_id,
+                                      const std::unordered_map<std::string, std::string>& assignments) {
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    s->assignments.clear();
+    s->leave_unchanged.clear();
+    for (const auto& [tid, cid] : assignments)
+        s->assignments[tid] = cid;
+    return true;
+}
+
+// --- Session finder helpers ---
+
+const SessionTrackDef* Graph::find_track(const std::string& id) const {
+    for (const auto& t : session_.tracks) if (t.id == id) return &t;
     return nullptr;
 }
-
-VariationDef* Graph::find_variation(const std::string& name) {
-    for (auto& v : variations_) {
-        if (v.name == name) return &v;
-    }
+SessionTrackDef* Graph::find_track(const std::string& id) {
+    for (auto& t : session_.tracks) if (t.id == id) return &t;
     return nullptr;
 }
-
-int Graph::find_variation_index(const std::string& name) const {
-    for (int i = 0; i < static_cast<int>(variations_.size()); ++i) {
-        if (variations_[i].name == name) return i;
-    }
-    return -1;
+const SessionClipDef* Graph::find_clip(const std::string& track_id, const std::string& clip_id) const {
+    const auto* t = find_track(track_id);
+    if (!t) return nullptr;
+    for (const auto& c : t->clips) if (c.id == clip_id) return &c;
+    return nullptr;
+}
+SessionClipDef* Graph::find_clip(const std::string& track_id, const std::string& clip_id) {
+    auto* t = find_track(track_id);
+    if (!t) return nullptr;
+    for (auto& c : t->clips) if (c.id == clip_id) return &c;
+    return nullptr;
+}
+const SessionSceneDef* Graph::find_scene(const std::string& id) const {
+    for (const auto& s : session_.scenes) if (s.id == id) return &s;
+    return nullptr;
+}
+SessionSceneDef* Graph::find_scene(const std::string& id) {
+    for (auto& s : session_.scenes) if (s.id == id) return &s;
+    return nullptr;
 }
 
 // --- Per-Operator Preset CRUD ---
@@ -1162,44 +1469,6 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
         root["midi_mappings"] = std::move(midi_arr);
     }
 
-    // Variations
-    if (!graph.variations().empty()) {
-        nlohmann::ordered_json var_arr = nlohmann::ordered_json::array();
-        for (const auto& vd : graph.variations()) {
-            nlohmann::ordered_json v_obj = nlohmann::ordered_json::object();
-            v_obj["name"] = vd.name;
-            nlohmann::ordered_json params_obj = nlohmann::ordered_json::object();
-            // Write float params (node_id refs stable in vd.params)
-            for (const auto& [node_id, pm] : vd.params) {
-                nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
-                for (const auto& [pname, pval] : pm) {
-                    node_obj[pname] = clean_float(pval);
-                }
-                // Also add string params for this node if present
-                auto sit = vd.string_params.find(node_id);
-                if (sit != vd.string_params.end()) {
-                    for (const auto& [pname, pval] : sit->second) {
-                        node_obj[pname] = pval;
-                    }
-                }
-                params_obj[node_id] = std::move(node_obj);
-            }
-            // Write nodes that only have string params (not in vd.params)
-            for (const auto& [node_id, spm] : vd.string_params) {
-                if (vd.params.count(node_id)) continue;  // already handled above
-                nlohmann::ordered_json node_obj = nlohmann::ordered_json::object();
-                for (const auto& [pname, pval] : spm) {
-                    node_obj[pname] = pval;
-                }
-                params_obj[node_id] = std::move(node_obj);
-            }
-            v_obj["params"] = std::move(params_obj);
-            var_arr.push_back(std::move(v_obj));
-        }
-        root["variations"] = std::move(var_arr);
-    }
-    if (graph.active_variation() >= 0)
-        root["active_variation"] = graph.active_variation();
     if (!graph.quantize_clock_node().empty())
         root["quantize_clock"] = graph.quantize_clock_node();
     if (graph.metronome().bpm != 120.0f || graph.metronome().beats_per_bar != 4) {
@@ -1297,6 +1566,87 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             ma_obj[node_id] = std::move(arr);
         }
         root["mod_assignments"] = std::move(ma_obj);
+    }
+
+    // Session
+    const auto& sess = graph.session();
+    if (!sess.tracks.empty() || !sess.scenes.empty() || !sess.active_clips.empty()) {
+        nlohmann::ordered_json sess_obj = nlohmann::ordered_json::object();
+        // tracks
+        nlohmann::ordered_json tracks_arr = nlohmann::ordered_json::array();
+        for (const auto& track : sess.tracks) {
+            nlohmann::ordered_json t_obj = nlohmann::ordered_json::object();
+            t_obj["id"] = track.id;
+            t_obj["name"] = track.name;
+            t_obj["owned_nodes"] = track.owned_node_ids;
+            if (track.default_transition.fade) {
+                nlohmann::ordered_json dt_obj = nlohmann::ordered_json::object();
+                dt_obj["mode"] = "fade";
+                dt_obj["duration_bars"] = clean_float(track.default_transition.duration_bars);
+                t_obj["default_transition"] = std::move(dt_obj);
+            }
+            nlohmann::ordered_json clips_arr = nlohmann::ordered_json::array();
+            for (const auto& clip : track.clips) {
+                nlohmann::ordered_json c_obj = nlohmann::ordered_json::object();
+                c_obj["id"] = clip.id;
+                c_obj["name"] = clip.name;
+                if (clip.transition_override) {
+                    const auto& transition = *clip.transition_override;
+                    nlohmann::ordered_json ct_obj = nlohmann::ordered_json::object();
+                    ct_obj["mode"] = transition.fade ? "fade" : "cut";
+                    if (transition.fade)
+                        ct_obj["duration_bars"] = clean_float(transition.duration_bars);
+                    c_obj["transition_override"] = std::move(ct_obj);
+                }
+                if (!clip.params.empty() || !clip.string_params.empty()) {
+                    nlohmann::ordered_json p_obj = nlohmann::ordered_json::object();
+                    for (const auto& [nid, pm] : clip.params) {
+                        nlohmann::ordered_json n_obj = nlohmann::ordered_json::object();
+                        for (const auto& [pn, pv] : pm)
+                            n_obj[pn] = clean_float(pv);
+                        auto sit = clip.string_params.find(nid);
+                        if (sit != clip.string_params.end())
+                            for (const auto& [pn, pv] : sit->second)
+                                n_obj[pn] = pv;
+                        p_obj[nid] = std::move(n_obj);
+                    }
+                    for (const auto& [nid, spm] : clip.string_params) {
+                        if (clip.params.count(nid)) continue;
+                        nlohmann::ordered_json n_obj = nlohmann::ordered_json::object();
+                        for (const auto& [pn, pv] : spm)
+                            n_obj[pn] = pv;
+                        p_obj[nid] = std::move(n_obj);
+                    }
+                    c_obj["params"] = std::move(p_obj);
+                }
+                clips_arr.push_back(std::move(c_obj));
+            }
+            t_obj["clips"] = std::move(clips_arr);
+            tracks_arr.push_back(std::move(t_obj));
+        }
+        sess_obj["tracks"] = std::move(tracks_arr);
+        // scenes
+        nlohmann::ordered_json scenes_arr = nlohmann::ordered_json::array();
+        for (const auto& scene : sess.scenes) {
+            nlohmann::ordered_json s_obj = nlohmann::ordered_json::object();
+            s_obj["id"] = scene.id;
+            s_obj["name"] = scene.name;
+            nlohmann::ordered_json asn_obj = nlohmann::ordered_json::object();
+            for (const auto& [tid, cid] : scene.assignments)
+                asn_obj[tid] = cid;
+            for (const auto& tid : scene.leave_unchanged)
+                asn_obj[tid] = nullptr;
+            s_obj["assignments"] = std::move(asn_obj);
+            scenes_arr.push_back(std::move(s_obj));
+        }
+        sess_obj["scenes"] = std::move(scenes_arr);
+        if (!sess.active_clips.empty()) {
+            nlohmann::ordered_json ac_obj = nlohmann::ordered_json::object();
+            for (const auto& [tid, cid] : sess.active_clips)
+                ac_obj[tid] = cid;
+            sess_obj["active_clips"] = std::move(ac_obj);
+        }
+        root["session"] = std::move(sess_obj);
     }
 
     return root;

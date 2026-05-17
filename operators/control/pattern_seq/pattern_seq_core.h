@@ -26,7 +26,7 @@ struct PatternSeqCore : vivid::OperatorBase {
     vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
     vivid::Param<float> gate_length {"gate_length", 0.8f, 0.01f, 1.0f};
     vivid::Param<float> probability {"probability", 1.0f, 0.0f, 1.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
     vivid::Param<float> val_0  {"val_0",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_1  {"val_1",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_2  {"val_2",  0.0f, -10000.0f, 10000.0f};

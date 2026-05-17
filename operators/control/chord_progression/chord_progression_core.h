@@ -53,17 +53,16 @@ static void chord_display_name(char* buf, int buf_size,
  * note stream on `notes_out` plus scalar convenience signals for the first
  * chord tone.
  *
- * @input beat_phase Global 0-1 beat phase from a Clock.
+ * @input beat_phase Optional beat phase override (0-1 sawtooth). When unconnected, syncs to the graph metronome via clock_source.
  * @output note First note of the current chord as a scalar convenience output.
  * @output vel First velocity of the current chord as a scalar convenience output.
  * @output gate First gate of the current chord as a scalar convenience output.
  * @output notes_out Native note-stream output carrying the chord's note events.
- * @recipe Clock/beat_phase -> ChordProgression/beat_phase
  * @recipe ChordProgression/notes_out -> Synth/notes_in (e.g. WavetableOsc, FmSynth, AnalogOsc)
  * @recipe ChordProgression/notes_out -> NoteBreakout/notes_in (when shared per-voice control state is needed)
  * @pitfall ChordProgression emits a note stream; downstream voice shaping uses notes_in or NoteBreakout's voice_* breakouts.
  * @family note_source
- * @best_used_with Clock, NoteBreakout, Envelope
+ * @best_used_with NoteBreakout, Envelope
  * @common_companions Arpeggiator, WavetableOsc, VoiceMixer
  * @param mode Scale mode: Major, Minor, Dorian, Mixolydian, Harmonic Minor, Melodic Minor.
  * @see NotePattern, Arpeggiator, Sequencer
@@ -111,7 +110,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
     vivid::Param<int>   ext_7 {"ext_7", 0, {"Triad","7th","Add9"}};
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
-    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceExternal, vivid::clock_source_labels()};
+    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
 
     // Internal state
     int beat_count_ = 0;
