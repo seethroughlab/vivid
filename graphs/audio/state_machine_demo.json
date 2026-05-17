@@ -1,16 +1,6 @@
 {
   "schema_version": 1,
   "nodes": {
-    "clock1": {
-      "type": "Clock",
-      "params": {
-        "bpm": 120.0
-      },
-      "layout": {
-        "x": 0.0,
-        "y": 0.0
-      }
-    },
     "sm1": {
       "type": "StateMachine",
       "params": {
@@ -217,18 +207,6 @@
     }
   },
   "connections": [
-    {
-      "from": "clock1/beat_phase",
-      "to": "sm1/beat_phase"
-    },
-    {
-      "from": "clock1/beat_phase",
-      "to": "drums1/beat_phase"
-    },
-    {
-      "from": "clock1/beat_phase",
-      "to": "notes1/beat_phase"
-    },
     {
       "from": "lfo1/value",
       "to": "shape1/rotation",
