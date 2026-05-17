@@ -4,10 +4,23 @@
   "meta": {
     "id": "session_av_performance",
     "title": "AV Performance Session",
-    "description": "A complete audio-visual performance rig: three tracks (Drums, Synth, Visual) each with four clips mapped to song sections — Intro, Verse, Chorus, Drop. Use the scene launcher with Bar quantization to arrange a live set without touching the node graph.",
-    "tags": ["session", "tracks", "scenes", "drums", "synth", "visuals", "performance", "advanced", "tutorial"],
+    "description": "A complete audio-visual performance rig: three tracks (Drums, Synth, Visual) each with four clips mapped to song sections \u2014 Intro, Verse, Chorus, Drop. Use the scene launcher with Bar quantization to arrange a live set without touching the node graph.",
+    "tags": [
+      "session",
+      "tracks",
+      "scenes",
+      "drums",
+      "synth",
+      "visuals",
+      "performance",
+      "advanced",
+      "tutorial"
+    ],
     "difficulty": "advanced",
-    "domains": ["audio", "gpu"],
+    "domains": [
+      "audio",
+      "gpu"
+    ],
     "requires_packages": [],
     "featured_rank": -1,
     "estimated_minutes": 8,
@@ -17,126 +30,289 @@
     "role": "educational",
     "playability": "self_playing",
     "preview_controls": [
-      {"node": "clock1", "param": "bpm", "label": "Tempo"}
+      {
+        "node": "clock1",
+        "param": "bpm",
+        "label": "Tempo"
+      }
     ]
   },
   "nodes": {
     "clock1": {
       "type": "Clock",
-      "params": {"bpm": 120.0},
-      "layout": {"x": 0.0, "y": 400.0}
+      "params": {
+        "bpm": 120.0
+      },
+      "layout": {
+        "x": 0.0,
+        "y": 400.0
+      }
     },
     "seq": {
       "type": "DrumSequencer",
       "params": {
         "steps": 16.0,
         "swing": 0.0,
-        "kick_0": 1.0, "kick_8": 1.0,
-        "hat_4": 1.0, "hat_12": 1.0
+        "kick_0": 1.0,
+        "kick_8": 1.0,
+        "hat_4": 1.0,
+        "hat_12": 1.0
       },
-      "layout": {"x": 250.0, "y": 400.0}
+      "layout": {
+        "x": 250.0,
+        "y": 400.0
+      }
     },
     "kick": {
       "type": "DrumKick",
-      "params": {"pitch": 52.0, "pitch_env": 160.0, "decay": 0.55, "click": 0.1, "volume": 0.55},
-      "layout": {"x": 500.0, "y": 260.0}
+      "params": {
+        "pitch": 52.0,
+        "pitch_env": 160.0,
+        "decay": 0.55,
+        "click": 0.1,
+        "volume": 0.55
+      },
+      "layout": {
+        "x": 500.0,
+        "y": 260.0
+      }
     },
     "snare": {
       "type": "DrumSnare",
-      "params": {"pitch": 190.0, "tone": 0.4, "noise": 0.7, "tone_decay": 0.1, "noise_decay": 0.2, "snappy": 0.6, "volume": 0.0},
-      "layout": {"x": 500.0, "y": 360.0}
+      "params": {
+        "pitch": 190.0,
+        "tone": 0.4,
+        "noise": 0.7,
+        "tone_decay": 0.1,
+        "noise_decay": 0.2,
+        "snappy": 0.6,
+        "volume": 0.0
+      },
+      "layout": {
+        "x": 500.0,
+        "y": 360.0
+      }
     },
     "hat": {
       "type": "DrumHiHat",
-      "params": {"decay": 0.1, "tone": 0.55, "ring": 0.15, "volume": 0.12},
-      "layout": {"x": 500.0, "y": 460.0}
+      "params": {
+        "decay": 0.1,
+        "tone": 0.55,
+        "ring": 0.15,
+        "volume": 0.12
+      },
+      "layout": {
+        "x": 500.0,
+        "y": 460.0
+      }
     },
     "clap": {
       "type": "DrumClap",
-      "params": {"decay": 0.5, "tone": 0.5, "sloppy": 0.45, "tail": 0.5, "volume": 0.0},
-      "layout": {"x": 500.0, "y": 560.0}
+      "params": {
+        "decay": 0.5,
+        "tone": 0.5,
+        "sloppy": 0.45,
+        "tail": 0.5,
+        "volume": 0.0
+      },
+      "layout": {
+        "x": 500.0,
+        "y": 560.0
+      }
     },
     "aout": {
       "type": "audio_out",
-      "layout": {"x": 750.0, "y": 410.0}
+      "layout": {
+        "x": 750.0,
+        "y": 410.0
+      }
     },
     "lfo": {
       "type": "LfoFr",
-      "params": {"amplitude": 0.5, "offset": 0.5, "polarity": 1.0},
-      "layout": {"x": 200.0, "y": 650.0}
+      "params": {
+        "amplitude": 0.5,
+        "offset": 0.5,
+        "polarity": 1.0
+      },
+      "layout": {
+        "x": 200.0,
+        "y": 650.0
+      }
     },
     "osc": {
       "type": "Oscillator",
-      "params": {"frequency": 110.0, "amplitude": 0.5},
-      "layout": {"x": 450.0, "y": 650.0}
+      "params": {
+        "frequency": 110.0,
+        "amplitude": 0.5
+      },
+      "layout": {
+        "x": 450.0,
+        "y": 650.0
+      }
     },
     "gain": {
       "type": "Gain",
-      "params": {"gain": 0.1},
-      "layout": {"x": 650.0, "y": 650.0}
+      "params": {
+        "gain": 0.1
+      },
+      "layout": {
+        "x": 650.0,
+        "y": 650.0
+      }
     },
     "noise": {
       "type": "NoiseTexture",
       "params": {
-        "scale": 3.0, "speed": 0.1, "octaves": 4.0,
-        "persistence": 0.5, "lacunarity": 2.0, "channels": 1.0
+        "scale": 3.0,
+        "speed": 0.1,
+        "octaves": 4.0,
+        "persistence": 0.5,
+        "lacunarity": 2.0,
+        "channels": 1.0
       },
-      "layout": {"x": 100.0, "y": 50.0}
+      "layout": {
+        "x": 100.0,
+        "y": 50.0
+      }
     },
     "bloom": {
       "type": "Bloom",
-      "params": {"intensity": 0.1, "threshold": 0.3, "radius": 2.5, "passes": 4.0},
-      "layout": {"x": 400.0, "y": 50.0}
+      "params": {
+        "intensity": 0.1,
+        "threshold": 0.3,
+        "radius": 2.5,
+        "passes": 4.0
+      },
+      "layout": {
+        "x": 400.0,
+        "y": 50.0
+      }
     },
     "vout": {
       "type": "video_out",
-      "layout": {"x": 650.0, "y": 50.0}
+      "layout": {
+        "x": 650.0,
+        "y": 50.0
+      }
     }
   },
   "connections": [
-    {"from": "clock1/bar_phase", "to": "seq/beat_phase"},
-    {"from": "seq/kick_out", "to": "kick/notes_in"},
-    {"from": "seq/snare_out", "to": "snare/notes_in"},
-    {"from": "seq/hat_out", "to": "hat/notes_in"},
-    {"from": "seq/clap_out", "to": "clap/notes_in"},
-    {"from": "kick/output", "to": "aout/input"},
-    {"from": "snare/output", "to": "aout/input"},
-    {"from": "hat/output", "to": "aout/input"},
-    {"from": "clap/output", "to": "aout/input"},
-    {"from": "clock1/beat_phase", "to": "lfo/beat_phase"},
-    {"from": "lfo/value", "to": "osc/frequency", "from_min": 0.0, "from_max": 1.0, "to_min": 55.0, "to_max": 330.0, "bridge": "hold"},
-    {"from": "gain/output", "to": "aout/input"},
-    {"from": "osc/output", "to": "gain/input"},
-    {"from": "noise/texture", "to": "bloom/input"},
-    {"from": "bloom/texture", "to": "vout/input"}
+    {
+      "from": "clock1/bar_phase",
+      "to": "seq/beat_phase"
+    },
+    {
+      "from": "seq/kick_out",
+      "to": "kick/notes_in"
+    },
+    {
+      "from": "seq/snare_out",
+      "to": "snare/notes_in"
+    },
+    {
+      "from": "seq/hat_out",
+      "to": "hat/notes_in"
+    },
+    {
+      "from": "seq/clap_out",
+      "to": "clap/notes_in"
+    },
+    {
+      "from": "kick/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "snare/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "hat/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "clap/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "lfo/value",
+      "to": "osc/frequency",
+      "from_min": 0.0,
+      "from_max": 1.0,
+      "to_min": 55.0,
+      "to_max": 330.0,
+      "bridge": "hold"
+    },
+    {
+      "from": "gain/output",
+      "to": "aout/input"
+    },
+    {
+      "from": "osc/output",
+      "to": "gain/input"
+    },
+    {
+      "from": "noise/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    }
   ],
-  "metronome": {"bpm": 120.0, "beats_per_bar": 4},
-  "viewport": {"pan_x": -80.0, "pan_y": -450.0, "zoom": 0.85},
+  "metronome": {
+    "bpm": 120.0,
+    "beats_per_bar": 4
+  },
+  "viewport": {
+    "pan_x": -80.0,
+    "pan_y": -450.0,
+    "zoom": 0.85
+  },
   "sticky_notes": [
     {
       "id": "note_rig",
-      "text": "**AV Performance Session**\n\nThree tracks cover the full performance:\n- **Drums** — sequencer + four drum synths\n- **Synth** — LFO-swept oscillator tone\n- **Visual** — animated noise texture + bloom\n\nFour scenes map to song sections. Press **V** to open the session strip, then click ▶ on a scene.",
-      "x": -20.0, "y": -200.0, "width": 400.0, "height": 150.0, "color": 0
+      "text": "**AV Performance Session**\n\nThree tracks cover the full performance:\n- **Drums** \u2014 sequencer + four drum synths\n- **Synth** \u2014 LFO-swept oscillator tone\n- **Visual** \u2014 animated noise texture + bloom\n\nFour scenes map to song sections. Press **V** to open the session strip, then click \u25b6 on a scene.",
+      "x": -20.0,
+      "y": -200.0,
+      "width": 400.0,
+      "height": 150.0,
+      "color": 0
     },
     {
       "id": "note_quantize",
-      "text": "**Set quantize to Bar** before launching scenes — each scene fires exactly at the next bar boundary so all tracks stay locked in time.\n\nOr use **Instant** for an immediate cut.",
-      "x": 450.0, "y": -200.0, "width": 340.0, "height": 90.0, "color": 4
+      "text": "**Set quantize to Bar** before launching scenes \u2014 each scene fires exactly at the next bar boundary so all tracks stay locked in time.\n\nOr use **Instant** for an immediate cut.",
+      "x": 450.0,
+      "y": -200.0,
+      "width": 340.0,
+      "height": 90.0,
+      "color": 4
     },
     {
       "id": "note_synth",
-      "text": "**Synth track:** LFO drives Oscillator frequency via a remap wire (0–1 → 55–330 Hz). Clips change the LFO sweep range and the Gain level — giving each section a distinct timbral character.",
-      "x": -20.0, "y": 800.0, "width": 380.0, "height": 90.0, "color": 2
+      "text": "**Synth track:** LFO drives Oscillator frequency via a remap wire (0\u20131 \u2192 55\u2013330 Hz). Clips change the LFO sweep range and the Gain level \u2014 giving each section a distinct timbral character.",
+      "x": -20.0,
+      "y": 800.0,
+      "width": 380.0,
+      "height": 90.0,
+      "color": 2
     },
     {
       "id": "note_visual",
-      "text": "**Visual track:** NoiseTexture → Bloom. Clips change the noise scale (spatial frequency), animation speed, and bloom intensity. Intro is calm; Drop pushes all three to maximum.",
-      "x": 430.0, "y": 800.0, "width": 380.0, "height": 90.0, "color": 1
+      "text": "**Visual track:** NoiseTexture \u2192 Bloom. Clips change the noise scale (spatial frequency), animation speed, and bloom intensity. Intro is calm; Drop pushes all three to maximum.",
+      "x": 430.0,
+      "y": 800.0,
+      "width": 380.0,
+      "height": 90.0,
+      "color": 1
     },
     {
       "id": "note_extend",
-      "text": "**Make it yours:**\n- Add clips to any track (+ in track header)\n- Add scenes for breaks, outros, or fills\n- Mix and match: launch one track's clip while another plays freely\n- Select nodes in the graph, right-click a track header → **Assign Selected**",
-      "x": -20.0, "y": 920.0, "width": 790.0, "height": 90.0, "color": 3
+      "text": "**Make it yours:**\n- Add clips to any track (+ in track header)\n- Add scenes for breaks, outros, or fills\n- Mix and match: launch one track's clip while another plays freely\n- Select nodes in the graph, right-click a track header \u2192 **Assign Selected**",
+      "x": -20.0,
+      "y": 920.0,
+      "width": 790.0,
+      "height": 90.0,
+      "color": 3
     }
   ],
   "session": {
@@ -144,24 +320,59 @@
       {
         "id": "tr_drums",
         "name": "Drums",
-        "owned_nodes": ["seq", "kick", "snare", "hat", "clap"],
+        "owned_nodes": [
+          "seq",
+          "kick",
+          "snare",
+          "hat",
+          "clap"
+        ],
         "clips": [
           {
             "id": "c_d_intro",
             "name": "Intro",
             "params": {
               "seq": {
-                "kick_0": 1.0, "kick_2": 0.0, "kick_4": 0.0, "kick_6": 0.0,
-                "kick_8": 1.0, "kick_10": 0.0, "kick_12": 0.0, "kick_14": 0.0,
-                "snare_0": 0.0, "snare_4": 0.0, "snare_8": 0.0, "snare_12": 0.0,
-                "hat_0": 0.0, "hat_2": 0.0, "hat_4": 1.0, "hat_6": 0.0,
-                "hat_8": 0.0, "hat_10": 0.0, "hat_12": 1.0, "hat_14": 0.0,
-                "clap_0": 0.0, "clap_4": 0.0, "clap_8": 0.0, "clap_12": 0.0
+                "kick_0": 1.0,
+                "kick_2": 0.0,
+                "kick_4": 0.0,
+                "kick_6": 0.0,
+                "kick_8": 1.0,
+                "kick_10": 0.0,
+                "kick_12": 0.0,
+                "kick_14": 0.0,
+                "snare_0": 0.0,
+                "snare_4": 0.0,
+                "snare_8": 0.0,
+                "snare_12": 0.0,
+                "hat_0": 0.0,
+                "hat_2": 0.0,
+                "hat_4": 1.0,
+                "hat_6": 0.0,
+                "hat_8": 0.0,
+                "hat_10": 0.0,
+                "hat_12": 1.0,
+                "hat_14": 0.0,
+                "clap_0": 0.0,
+                "clap_4": 0.0,
+                "clap_8": 0.0,
+                "clap_12": 0.0
               },
-              "kick": {"pitch": 52.0, "decay": 0.55, "volume": 0.55},
-              "snare": {"volume": 0.0},
-              "hat": {"decay": 0.10, "volume": 0.12},
-              "clap": {"volume": 0.0}
+              "kick": {
+                "pitch": 52.0,
+                "decay": 0.55,
+                "volume": 0.55
+              },
+              "snare": {
+                "volume": 0.0
+              },
+              "hat": {
+                "decay": 0.1,
+                "volume": 0.12
+              },
+              "clap": {
+                "volume": 0.0
+              }
             },
             "string_params": {}
           },
@@ -170,17 +381,47 @@
             "name": "Verse",
             "params": {
               "seq": {
-                "kick_0": 1.0, "kick_2": 0.0, "kick_4": 1.0, "kick_6": 0.0,
-                "kick_8": 1.0, "kick_10": 0.0, "kick_12": 1.0, "kick_14": 0.0,
-                "snare_0": 0.0, "snare_4": 1.0, "snare_8": 0.0, "snare_12": 1.0,
-                "hat_0": 0.0, "hat_2": 1.0, "hat_4": 0.0, "hat_6": 1.0,
-                "hat_8": 0.0, "hat_10": 1.0, "hat_12": 0.0, "hat_14": 1.0,
-                "clap_0": 0.0, "clap_4": 0.0, "clap_8": 0.0, "clap_12": 0.0
+                "kick_0": 1.0,
+                "kick_2": 0.0,
+                "kick_4": 1.0,
+                "kick_6": 0.0,
+                "kick_8": 1.0,
+                "kick_10": 0.0,
+                "kick_12": 1.0,
+                "kick_14": 0.0,
+                "snare_0": 0.0,
+                "snare_4": 1.0,
+                "snare_8": 0.0,
+                "snare_12": 1.0,
+                "hat_0": 0.0,
+                "hat_2": 1.0,
+                "hat_4": 0.0,
+                "hat_6": 1.0,
+                "hat_8": 0.0,
+                "hat_10": 1.0,
+                "hat_12": 0.0,
+                "hat_14": 1.0,
+                "clap_0": 0.0,
+                "clap_4": 0.0,
+                "clap_8": 0.0,
+                "clap_12": 0.0
               },
-              "kick": {"pitch": 55.0, "decay": 0.40, "volume": 0.65},
-              "snare": {"pitch": 195.0, "volume": 0.30},
-              "hat": {"decay": 0.07, "volume": 0.20},
-              "clap": {"volume": 0.0}
+              "kick": {
+                "pitch": 55.0,
+                "decay": 0.4,
+                "volume": 0.65
+              },
+              "snare": {
+                "pitch": 195.0,
+                "volume": 0.3
+              },
+              "hat": {
+                "decay": 0.07,
+                "volume": 0.2
+              },
+              "clap": {
+                "volume": 0.0
+              }
             },
             "string_params": {}
           },
@@ -189,17 +430,48 @@
             "name": "Chorus",
             "params": {
               "seq": {
-                "kick_0": 1.0, "kick_2": 0.0, "kick_4": 1.0, "kick_6": 0.0,
-                "kick_8": 1.0, "kick_10": 0.0, "kick_12": 1.0, "kick_14": 0.0,
-                "snare_0": 0.0, "snare_4": 1.0, "snare_8": 0.0, "snare_12": 1.0,
-                "hat_0": 1.0, "hat_2": 1.0, "hat_4": 1.0, "hat_6": 1.0,
-                "hat_8": 1.0, "hat_10": 1.0, "hat_12": 1.0, "hat_14": 1.0,
-                "clap_0": 0.0, "clap_4": 1.0, "clap_8": 0.0, "clap_12": 1.0
+                "kick_0": 1.0,
+                "kick_2": 0.0,
+                "kick_4": 1.0,
+                "kick_6": 0.0,
+                "kick_8": 1.0,
+                "kick_10": 0.0,
+                "kick_12": 1.0,
+                "kick_14": 0.0,
+                "snare_0": 0.0,
+                "snare_4": 1.0,
+                "snare_8": 0.0,
+                "snare_12": 1.0,
+                "hat_0": 1.0,
+                "hat_2": 1.0,
+                "hat_4": 1.0,
+                "hat_6": 1.0,
+                "hat_8": 1.0,
+                "hat_10": 1.0,
+                "hat_12": 1.0,
+                "hat_14": 1.0,
+                "clap_0": 0.0,
+                "clap_4": 1.0,
+                "clap_8": 0.0,
+                "clap_12": 1.0
               },
-              "kick": {"pitch": 55.0, "decay": 0.38, "volume": 0.70},
-              "snare": {"pitch": 200.0, "volume": 0.35},
-              "hat": {"decay": 0.05, "volume": 0.22},
-              "clap": {"decay": 0.4, "volume": 0.50}
+              "kick": {
+                "pitch": 55.0,
+                "decay": 0.38,
+                "volume": 0.7
+              },
+              "snare": {
+                "pitch": 200.0,
+                "volume": 0.35
+              },
+              "hat": {
+                "decay": 0.05,
+                "volume": 0.22
+              },
+              "clap": {
+                "decay": 0.4,
+                "volume": 0.5
+              }
             },
             "string_params": {}
           },
@@ -208,17 +480,49 @@
             "name": "Drop",
             "params": {
               "seq": {
-                "kick_0": 1.0, "kick_2": 1.0, "kick_4": 1.0, "kick_6": 1.0,
-                "kick_8": 1.0, "kick_10": 1.0, "kick_12": 1.0, "kick_14": 1.0,
-                "snare_0": 1.0, "snare_4": 1.0, "snare_8": 1.0, "snare_12": 1.0,
-                "hat_0": 1.0, "hat_2": 1.0, "hat_4": 1.0, "hat_6": 1.0,
-                "hat_8": 1.0, "hat_10": 1.0, "hat_12": 1.0, "hat_14": 1.0,
-                "clap_0": 0.0, "clap_4": 1.0, "clap_8": 0.0, "clap_12": 1.0
+                "kick_0": 1.0,
+                "kick_2": 1.0,
+                "kick_4": 1.0,
+                "kick_6": 1.0,
+                "kick_8": 1.0,
+                "kick_10": 1.0,
+                "kick_12": 1.0,
+                "kick_14": 1.0,
+                "snare_0": 1.0,
+                "snare_4": 1.0,
+                "snare_8": 1.0,
+                "snare_12": 1.0,
+                "hat_0": 1.0,
+                "hat_2": 1.0,
+                "hat_4": 1.0,
+                "hat_6": 1.0,
+                "hat_8": 1.0,
+                "hat_10": 1.0,
+                "hat_12": 1.0,
+                "hat_14": 1.0,
+                "clap_0": 0.0,
+                "clap_4": 1.0,
+                "clap_8": 0.0,
+                "clap_12": 1.0
               },
-              "kick": {"pitch": 58.0, "decay": 0.28, "volume": 0.88},
-              "snare": {"pitch": 220.0, "tone_decay": 0.08, "volume": 0.50},
-              "hat": {"decay": 0.04, "volume": 0.18},
-              "clap": {"decay": 0.3, "volume": 0.75}
+              "kick": {
+                "pitch": 58.0,
+                "decay": 0.28,
+                "volume": 0.88
+              },
+              "snare": {
+                "pitch": 220.0,
+                "tone_decay": 0.08,
+                "volume": 0.5
+              },
+              "hat": {
+                "decay": 0.04,
+                "volume": 0.18
+              },
+              "clap": {
+                "decay": 0.3,
+                "volume": 0.75
+              }
             },
             "string_params": {}
           }
@@ -227,15 +531,26 @@
       {
         "id": "tr_synth",
         "name": "Synth",
-        "owned_nodes": ["lfo", "osc", "gain"],
+        "owned_nodes": [
+          "lfo",
+          "osc",
+          "gain"
+        ],
         "clips": [
           {
             "id": "c_s_intro",
             "name": "Intro",
             "params": {
-              "lfo": {"amplitude": 0.5, "offset": 0.5},
-              "osc": {"amplitude": 0.5},
-              "gain": {"gain": 0.10}
+              "lfo": {
+                "amplitude": 0.5,
+                "offset": 0.5
+              },
+              "osc": {
+                "amplitude": 0.5
+              },
+              "gain": {
+                "gain": 0.1
+              }
             },
             "string_params": {}
           },
@@ -243,9 +558,16 @@
             "id": "c_s_verse",
             "name": "Verse",
             "params": {
-              "lfo": {"amplitude": 2.0, "offset": 3.0},
-              "osc": {"amplitude": 0.5},
-              "gain": {"gain": 0.18}
+              "lfo": {
+                "amplitude": 2.0,
+                "offset": 3.0
+              },
+              "osc": {
+                "amplitude": 0.5
+              },
+              "gain": {
+                "gain": 0.18
+              }
             },
             "string_params": {}
           },
@@ -253,9 +575,16 @@
             "id": "c_s_chorus",
             "name": "Chorus",
             "params": {
-              "lfo": {"amplitude": 5.0, "offset": 5.0},
-              "osc": {"amplitude": 0.6},
-              "gain": {"gain": 0.25}
+              "lfo": {
+                "amplitude": 5.0,
+                "offset": 5.0
+              },
+              "osc": {
+                "amplitude": 0.6
+              },
+              "gain": {
+                "gain": 0.25
+              }
             },
             "string_params": {}
           },
@@ -263,9 +592,16 @@
             "id": "c_s_drop",
             "name": "Drop",
             "params": {
-              "lfo": {"amplitude": 8.0, "offset": 2.0},
-              "osc": {"amplitude": 0.7},
-              "gain": {"gain": 0.35}
+              "lfo": {
+                "amplitude": 8.0,
+                "offset": 2.0
+              },
+              "osc": {
+                "amplitude": 0.7
+              },
+              "gain": {
+                "gain": 0.35
+              }
             },
             "string_params": {}
           }
@@ -274,14 +610,23 @@
       {
         "id": "tr_visual",
         "name": "Visual",
-        "owned_nodes": ["noise", "bloom"],
+        "owned_nodes": [
+          "noise",
+          "bloom"
+        ],
         "clips": [
           {
             "id": "c_v_intro",
             "name": "Intro",
             "params": {
-              "noise": {"scale": 3.0, "speed": 0.10},
-              "bloom": {"intensity": 0.10, "threshold": 0.30}
+              "noise": {
+                "scale": 3.0,
+                "speed": 0.1
+              },
+              "bloom": {
+                "intensity": 0.1,
+                "threshold": 0.3
+              }
             },
             "string_params": {}
           },
@@ -289,8 +634,14 @@
             "id": "c_v_verse",
             "name": "Verse",
             "params": {
-              "noise": {"scale": 5.0, "speed": 0.30},
-              "bloom": {"intensity": 0.35, "threshold": 0.20}
+              "noise": {
+                "scale": 5.0,
+                "speed": 0.3
+              },
+              "bloom": {
+                "intensity": 0.35,
+                "threshold": 0.2
+              }
             },
             "string_params": {}
           },
@@ -298,8 +649,14 @@
             "id": "c_v_chorus",
             "name": "Chorus",
             "params": {
-              "noise": {"scale": 8.0, "speed": 0.60},
-              "bloom": {"intensity": 0.70, "threshold": 0.12}
+              "noise": {
+                "scale": 8.0,
+                "speed": 0.6
+              },
+              "bloom": {
+                "intensity": 0.7,
+                "threshold": 0.12
+              }
             },
             "string_params": {}
           },
@@ -307,8 +664,14 @@
             "id": "c_v_drop",
             "name": "Drop",
             "params": {
-              "noise": {"scale": 12.0, "speed": 1.5},
-              "bloom": {"intensity": 1.8, "threshold": 0.05}
+              "noise": {
+                "scale": 12.0,
+                "speed": 1.5
+              },
+              "bloom": {
+                "intensity": 1.8,
+                "threshold": 0.05
+              }
             },
             "string_params": {}
           }
@@ -319,22 +682,38 @@
       {
         "id": "sc_intro",
         "name": "Intro",
-        "assignments": {"tr_drums": "c_d_intro", "tr_synth": "c_s_intro", "tr_visual": "c_v_intro"}
+        "assignments": {
+          "tr_drums": "c_d_intro",
+          "tr_synth": "c_s_intro",
+          "tr_visual": "c_v_intro"
+        }
       },
       {
         "id": "sc_verse",
         "name": "Verse",
-        "assignments": {"tr_drums": "c_d_verse", "tr_synth": "c_s_verse", "tr_visual": "c_v_verse"}
+        "assignments": {
+          "tr_drums": "c_d_verse",
+          "tr_synth": "c_s_verse",
+          "tr_visual": "c_v_verse"
+        }
       },
       {
         "id": "sc_chorus",
         "name": "Chorus",
-        "assignments": {"tr_drums": "c_d_chorus", "tr_synth": "c_s_chorus", "tr_visual": "c_v_chorus"}
+        "assignments": {
+          "tr_drums": "c_d_chorus",
+          "tr_synth": "c_s_chorus",
+          "tr_visual": "c_v_chorus"
+        }
       },
       {
         "id": "sc_drop",
         "name": "Drop",
-        "assignments": {"tr_drums": "c_d_drop", "tr_synth": "c_s_drop", "tr_visual": "c_v_drop"}
+        "assignments": {
+          "tr_drums": "c_d_drop",
+          "tr_synth": "c_s_drop",
+          "tr_visual": "c_v_drop"
+        }
       }
     ],
     "active_clips": {
