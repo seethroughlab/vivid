@@ -869,7 +869,6 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
 void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     session_button_rects_.clear();
     session_ctx_menu_rects_.clear();
-    clip_cell_rects_.clear();
     session_track_rects_.clear();
     session_scene_rects_.clear();
     session_cell_rects_.clear();
@@ -1222,10 +1221,10 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     // --- Context menu ---
     if (session_ctx_menu_open_) {
         // session_ctx_menu_idx_: 1=track ctx, 2=scene ctx
-        const char* track_labels[] = { "Rename", "Remove" };
+        const char* track_labels[] = { "Rename", "Assign Selected", "Remove" };
         const char* scene_labels[] = { "Rename", "Update", "Remove" };
         const char** ctx_labels = (session_ctx_menu_idx_ == 1) ? track_labels : scene_labels;
-        const int item_count = (session_ctx_menu_idx_ == 1) ? 2 : 3;
+        const int item_count = (session_ctx_menu_idx_ == 1) ? 3 : 3;
 
         const float menu_w = kSessionCtxMenuW;
         const float menu_h = item_count * kSessionCtxMenuItemH + 4.0f;

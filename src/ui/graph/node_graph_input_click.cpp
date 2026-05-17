@@ -205,7 +205,10 @@ void NodeGraphUI::handle_left_click() {
                                 if (t.id == session_edit_id_) { session_edit_buffer_ = t.name; break; }
                             text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
                             session_editing_name_ = true;
-                        } else if (cr.action == 1) {  // Remove
+                        } else if (cr.action == 1) {  // Assign Selected
+                            std::vector<std::string> ids(selected_node_ids_.begin(), selected_node_ids_.end());
+                            commands_.session_assign_nodes(session_edit_track_id_, ids);
+                        } else if (cr.action == 2) {  // Remove
                             commands_.session_remove_track(session_edit_track_id_);
                         }
                     } else {
@@ -262,17 +265,26 @@ void NodeGraphUI::handle_left_click() {
             }
         }
 
-        // Track header "+" save-clip button (action=1) — must check before full header (action=0)
+        // Track header clicks
         for (const auto& tr : session_track_rects_) {
-            if (tr.action != 1) continue;
-            if (mouse_.x >= tr.x && mouse_.x < tr.x + tr.w &&
-                mouse_.y >= tr.y && mouse_.y < tr.y + tr.h) {
+            if (!(mouse_.x >= tr.x && mouse_.x < tr.x + tr.w &&
+                  mouse_.y >= tr.y && mouse_.y < tr.y + tr.h)) continue;
+            if (tr.action == 1) {
+                // "+" save-clip button
                 const auto* tsnap = snap_.session.find_track(tr.track_id);
                 int n = tsnap ? static_cast<int>(tsnap->clips.size()) + 1 : 1;
                 commands_.session_save_clip(tr.track_id, "Clip " + std::to_string(n));
-                mouse_.left_clicked = false;
-                return;
+            } else if (tr.action == 0) {
+                // Full header left-click → select owned nodes in graph
+                const auto* ts = snap_.session.find_track(tr.track_id);
+                if (ts) {
+                    selected_node_ids_.clear();
+                    for (const auto& nid : ts->owned_node_ids)
+                        selected_node_ids_.insert(nid);
+                }
             }
+            mouse_.left_clicked = false;
+            return;
         }
 
         // "+ Add Track" button
