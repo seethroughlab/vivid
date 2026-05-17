@@ -94,7 +94,7 @@
     }
   },
   "connections": [
-    {"from": "clock1/beat_phase", "to": "seq/beat_phase"},
+    {"from": "clock1/bar_phase", "to": "seq/beat_phase"},
     {"from": "seq/kick_out", "to": "kick/notes_in"},
     {"from": "seq/snare_out", "to": "snare/notes_in"},
     {"from": "seq/hat_out", "to": "hat/notes_in"},
