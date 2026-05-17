@@ -4,15 +4,23 @@
 #include <algorithm>
 #include <cmath>
 /**
- * @brief Eight-state sequencer with beat-quantized transitions and crossfade.
+ * @brief Automated structural sequencer outputting state index, progress, and crossfade signals.
  *
- * Progresses through up to 8 states with configurable duration per state.
- * Transitions can be sequential, manual (trigger-driven), or threshold-based.
- * Supports crossfade between states for smooth blending.
+ * Advances through up to 8 states automatically (after N bars), on trigger, or when
+ * a signal crosses a threshold. Outputs the current state index and a 0-1 xfade ramp
+ * on transitions — wire these into shaders, Mix nodes, or other operators to drive
+ * automated visual/audio structure changes without human intervention.
  *
- * @param transition Transition mode: sequential, manual, or threshold.
- * @param xfade_mode How states blend: cut, crossfade, or morph.
- * @see Clock, Sequencer, Envelope
+ * Unlike the Session system (which stores param snapshots launched manually), StateMachine
+ * produces control signals that other operators consume continuously.
+ *
+ * @param transition Transition mode: sequential (auto after N bars), manual (trigger input), or threshold (signal crossing).
+ * @param xfade_mode How the xfade output ramps: cut (instant), crossfade (linear), or morph (smoothstep).
+ * @output state Current state index (0–7) as a continuous scalar.
+ * @output xfade 0-1 blend ramp during transitions; use to crossfade between two signal chains.
+ * @output progress 0-1 ramp through the current state's duration.
+ * @output trigger Fires 1.0 on each state change.
+ * @see Sequencer, Alternate, Envelope
  */
 struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "StateMachine";
@@ -319,8 +327,10 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
 VIVID_DEFINE_OP(StateMachine) {
     name = "StateMachine";
     keywords = {"state", "machine", "sequence", "transition", "crossfade", "automation",
-                "clip", "launcher", "per-track", "session"};
+                "structural", "blend", "threshold"};
     summary = "Eight-state sequencer with beat-quantized transitions and crossfade. "
-              "Used with state-preset mappings for per-track clip launching in the Session view.";
+              "Outputs a state index, progress ramp, transition trigger, and xfade blend signal "
+              "for driving automated structural changes in a graph — visual mode switching, "
+              "signal chain blending, or threshold-reactive section changes.";
 }
 
