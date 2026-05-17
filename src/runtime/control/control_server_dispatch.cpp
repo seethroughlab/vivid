@@ -1044,6 +1044,89 @@ std::string dispatch(const std::string& method, const std::string& body,
         else
             result = command_result_to_json(
                 api.launch_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+    } else if (method == "save_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'name'");
+        else
+            result = command_result_to_json(api.save_scene(root["name"].get<std::string>()));
+    } else if (method == "update_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string())
+            result = json_err("missing 'scene_id'");
+        else
+            result = command_result_to_json(api.update_scene(root["scene_id"].get<std::string>()));
+    } else if (method == "rename_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("new_name") || !root["new_name"].is_string())
+            result = json_err("missing 'scene_id' or 'new_name'");
+        else
+            result = command_result_to_json(
+                api.rename_scene(root["scene_id"].get<std::string>(), root["new_name"].get<std::string>()));
+    } else if (method == "remove_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string())
+            result = json_err("missing 'scene_id'");
+        else
+            result = command_result_to_json(api.remove_scene(root["scene_id"].get<std::string>()));
+    } else if (method == "move_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("to_index") || !root["to_index"].is_number_integer())
+            result = json_err("missing 'scene_id' or 'to_index'");
+        else
+            result = command_result_to_json(
+                api.move_scene(root["scene_id"].get<std::string>(), root["to_index"].get<int>()));
+    } else if (method == "set_scene_assignment") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id")  || !root["clip_id"].is_string())
+            result = json_err("missing 'scene_id', 'track_id', or 'clip_id'");
+        else
+            result = command_result_to_json(
+                api.set_scene_assignment(root["scene_id"].get<std::string>(),
+                                          root["track_id"].get<std::string>(),
+                                          root["clip_id"].get<std::string>()));
+    } else if (method == "set_scene_leave_unchanged") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("track_id") || !root["track_id"].is_string())
+            result = json_err("missing 'scene_id' or 'track_id'");
+        else
+            result = command_result_to_json(
+                api.set_scene_leave_unchanged(root["scene_id"].get<std::string>(),
+                                               root["track_id"].get<std::string>()));
+    } else if (method == "clear_scene_assignment") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("track_id") || !root["track_id"].is_string())
+            result = json_err("missing 'scene_id' or 'track_id'");
+        else
+            result = command_result_to_json(
+                api.clear_scene_assignment(root["scene_id"].get<std::string>(),
+                                            root["track_id"].get<std::string>()));
+    } else if (method == "queue_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id")  || !root["clip_id"].is_string() ||
+                 !root.contains("quantize") || !root["quantize"].is_string())
+            result = json_err("missing 'track_id', 'clip_id', or 'quantize'");
+        else
+            result = command_result_to_json(
+                api.queue_clip(root["track_id"].get<std::string>(),
+                                root["clip_id"].get<std::string>(),
+                                root["quantize"].get<std::string>()));
+    } else if (method == "queue_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                 !root.contains("quantize") || !root["quantize"].is_string())
+            result = json_err("missing 'scene_id' or 'quantize'");
+        else
+            result = command_result_to_json(
+                api.queue_scene(root["scene_id"].get<std::string>(),
+                                 root["quantize"].get<std::string>()));
     } else if (method == "rescan_operators") {
         result = [&]() -> std::string {
             int newly = registry.rescan();

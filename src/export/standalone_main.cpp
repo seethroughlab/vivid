@@ -247,8 +247,9 @@ int main(int argc, char* argv[]) {
         // Tick runtime
         runtime.tick(now, dt, frame_count, &gpu_state, nullptr);
 
-        // Tick state presets
+        // Tick state presets and quantized clip/scene launches
         runtime_api.tick_state_presets();
+        runtime_api.tick_quantized_clip_scene_launches();
 
         // Push params to audio thread
         if (has_audio)

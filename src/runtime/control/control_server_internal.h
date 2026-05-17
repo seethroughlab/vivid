@@ -673,7 +673,16 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "rename_clip" ||
            method == "remove_clip" ||
            method == "move_clip" ||
-           method == "launch_clip";
+           method == "launch_clip" ||
+           method == "save_scene" ||
+           method == "update_scene" ||
+           method == "rename_scene" ||
+           method == "remove_scene" ||
+           method == "move_scene" ||
+           method == "set_scene_assignment" ||
+           method == "set_scene_leave_unchanged" ||
+           method == "clear_scene_assignment";
+           // queue_clip and queue_scene are real-time performance commands — not undo-tracked
 }
 
 // ---------------------------------------------------------------------------

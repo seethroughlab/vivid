@@ -1075,6 +1075,17 @@ bool Graph::clear_scene_assignment(const std::string& scene_id, const std::strin
     return true;
 }
 
+bool Graph::update_scene_assignments(const std::string& scene_id,
+                                      const std::unordered_map<std::string, std::string>& assignments) {
+    auto* s = find_scene(scene_id);
+    if (!s) return false;
+    s->assignments.clear();
+    s->leave_unchanged.clear();
+    for (const auto& [tid, cid] : assignments)
+        s->assignments[tid] = cid;
+    return true;
+}
+
 // --- Session finder helpers ---
 
 const SessionTrackDef* Graph::find_track(const std::string& id) const {

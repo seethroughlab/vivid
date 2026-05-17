@@ -168,8 +168,36 @@ public:
     CommandResult move_clip(const std::string& track_id, const std::string& clip_id, int to_index);
     CommandResult launch_clip(const std::string& track_id, const std::string& clip_id);
 
-    // Active clip per track (set by launch_clip; empty = none launched)
+    // Active clip per track (set by launch_clip / queue_clip; empty = none launched)
     const std::string& active_clip(const std::string& track_id) const;
+
+    // --- Session: Scene CRUD ---
+    CommandResult save_scene(const std::string& name);
+    CommandResult update_scene(const std::string& scene_id);
+    CommandResult rename_scene(const std::string& scene_id, const std::string& new_name);
+    CommandResult remove_scene(const std::string& scene_id);
+    CommandResult move_scene(const std::string& scene_id, int to_index);
+
+    // --- Session: Scene assignment ---
+    CommandResult set_scene_assignment(const std::string& scene_id,
+                                        const std::string& track_id,
+                                        const std::string& clip_id);
+    CommandResult set_scene_leave_unchanged(const std::string& scene_id,
+                                             const std::string& track_id);
+    CommandResult clear_scene_assignment(const std::string& scene_id,
+                                          const std::string& track_id);
+
+    // --- Session: Quantized launch ---
+    CommandResult queue_clip(const std::string& track_id, const std::string& clip_id,
+                              const std::string& quantize);
+    CommandResult queue_scene(const std::string& scene_id, const std::string& quantize);
+
+    // Per-tick: fire pending clip/scene launches at beat boundary
+    void tick_quantized_clip_scene_launches();
+
+    // Accessors for snapshot (Phase 4)
+    const std::string& queued_scene_id() const;
+    const std::string& queued_clip_for(const std::string& track_id) const;
 
     bool graph_dirty() const { return graph_dirty_; }
 
@@ -291,15 +319,32 @@ private:
     // Active preset per node (node_id -> preset name)
     std::unordered_map<std::string, std::string> active_presets_;
 
-    // Active clip per track (track_id -> clip_id), set by launch_clip
+    // Active clip per track (track_id -> clip_id), set by launch_clip / queue_clip
     std::unordered_map<std::string, std::string> active_clips_;
 
-    // Session clip capture/apply — used by save_clip, update_clip, launch_clip
+    // Pending quantized clip launches (one per track; new entry replaces old for same track)
+    struct PendingClipLaunch {
+        std::string track_id;
+        std::string clip_id;
+        int64_t target_beat_index = 0;
+    };
+    std::vector<PendingClipLaunch> pending_clip_launches_;
+
+    // Pending quantized scene launch (at most one at a time)
+    struct PendingSceneLaunch {
+        std::string scene_id;
+        int64_t target_beat_index = 0;
+    };
+    std::optional<PendingSceneLaunch> pending_scene_launch_;
+
+    // Session clip capture/apply — used by save_clip, update_clip, launch_clip, queue_clip
     std::pair<
         std::unordered_map<std::string, std::unordered_map<std::string, float>>,
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
     > capture_clip_params(const std::string& track_id) const;
     void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
+    void fire_scene(const std::string& scene_id);
+    int64_t compute_quantize_target_beat(const std::string& quantize) const;
 
     // Graph base directory for resolving/relativizing file paths
     std::filesystem::path graph_base_dir() const;

@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstdint>
 #include <algorithm>
+#include <cmath>
+#include <optional>
 
 namespace vivid {
 
@@ -248,6 +250,225 @@ const std::string& RuntimeAPI::active_clip(const std::string& track_id) const {
     static const std::string empty;
     auto it = active_clips_.find(track_id);
     return (it != active_clips_.end()) ? it->second : empty;
+}
+
+// ---------------------------------------------------------------------------
+// Scene CRUD
+// ---------------------------------------------------------------------------
+
+CommandResult RuntimeAPI::save_scene(const std::string& name) {
+    std::string scene_id = graph_.save_scene(name);
+    if (scene_id.empty()) return {false, "save_scene failed"};
+    for (const auto& [track_id, clip_id] : active_clips_)
+        graph_.set_scene_assignment(scene_id, track_id, clip_id);
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::update_scene(const std::string& scene_id) {
+    if (!graph_.find_scene(scene_id))
+        return {false, "unknown scene '" + scene_id + "'"};
+    graph_.update_scene_assignments(scene_id, active_clips_);
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::rename_scene(const std::string& scene_id, const std::string& new_name) {
+    if (!graph_.rename_scene(scene_id, new_name))
+        return {false, "unknown scene '" + scene_id + "'"};
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::remove_scene(const std::string& scene_id) {
+    if (!graph_.remove_scene(scene_id))
+        return {false, "unknown scene '" + scene_id + "'"};
+    if (pending_scene_launch_ && pending_scene_launch_->scene_id == scene_id)
+        pending_scene_launch_.reset();
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::move_scene(const std::string& scene_id, int to_index) {
+    if (!graph_.move_scene(scene_id, to_index))
+        return {false, "move_scene failed for '" + scene_id + "'"};
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+// ---------------------------------------------------------------------------
+// Scene assignment
+// ---------------------------------------------------------------------------
+
+CommandResult RuntimeAPI::set_scene_assignment(const std::string& scene_id,
+                                                 const std::string& track_id,
+                                                 const std::string& clip_id) {
+    if (!graph_.set_scene_assignment(scene_id, track_id, clip_id))
+        return {false, "set_scene_assignment failed — unknown scene, track, or clip"};
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::set_scene_leave_unchanged(const std::string& scene_id,
+                                                      const std::string& track_id) {
+    if (!graph_.set_scene_leave_unchanged(scene_id, track_id))
+        return {false, "set_scene_leave_unchanged failed — unknown scene or track"};
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::clear_scene_assignment(const std::string& scene_id,
+                                                   const std::string& track_id) {
+    if (!graph_.clear_scene_assignment(scene_id, track_id))
+        return {false, "unknown scene '" + scene_id + "'"};
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+// ---------------------------------------------------------------------------
+// Quantize helpers + fire_scene
+// ---------------------------------------------------------------------------
+
+int64_t RuntimeAPI::compute_quantize_target_beat(const std::string& quantize) const {
+    const auto metronome = current_metronome_sample();
+    const int bpb = std::max(1, metronome.beats_per_bar);
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+    if (quantize == "beat") return current_beat + 1;
+    if (quantize == "bar")  return ((current_beat / bpb) + 1) * bpb;
+    if (quantize == "4bar" || quantize == "four_bar") {
+        const int four_bar = bpb * 4;
+        return ((current_beat / four_bar) + 1) * four_bar;
+    }
+    return current_beat + 1; // fallback: next beat
+}
+
+void RuntimeAPI::fire_scene(const std::string& scene_id) {
+    const auto* scene = graph_.find_scene(scene_id);
+    if (!scene) {
+        std::fprintf(stderr, "[session] fire_scene: scene '%s' not found — skipped\n",
+                     scene_id.c_str());
+        return;
+    }
+    for (const auto& [track_id, clip_id] : scene->assignments) {
+        const auto* clip = graph_.find_clip(track_id, clip_id);
+        if (!clip) {
+            std::fprintf(stderr,
+                "[session] fire_scene: clip '%s' for track '%s' not found — skipped\n",
+                clip_id.c_str(), track_id.c_str());
+            continue;
+        }
+        apply_clip_params(track_id, *clip);
+        active_clips_[track_id] = clip_id;
+    }
+    // scene-level launch wins over any individually pending clips for assigned tracks
+    pending_clip_launches_.erase(
+        std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
+                       [&](const PendingClipLaunch& p) {
+                           return scene->assignments.count(p.track_id) > 0;
+                       }),
+        pending_clip_launches_.end());
+}
+
+// ---------------------------------------------------------------------------
+// Quantized launch: queue_clip / queue_scene
+// ---------------------------------------------------------------------------
+
+CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::string& clip_id,
+                                      const std::string& quantize) {
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
+    if (!graph_.find_track(track_id))
+        return {false, "unknown track '" + track_id + "'"};
+    const auto* clip = graph_.find_clip(track_id, clip_id);
+    if (!clip)
+        return {false, "unknown clip '" + clip_id + "'"};
+
+    if (quantize == "instant") {
+        apply_clip_params(track_id, *clip);
+        active_clips_[track_id] = clip_id;
+        return {true, clip_id};
+    }
+    if (quantize != "beat" && quantize != "bar" &&
+        quantize != "4bar" && quantize != "four_bar")
+        return {false, "unknown quantize mode '" + quantize + "'"};
+
+    const int64_t target = compute_quantize_target_beat(quantize);
+    // replace any existing pending for this track
+    pending_clip_launches_.erase(
+        std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
+                       [&](const PendingClipLaunch& p) { return p.track_id == track_id; }),
+        pending_clip_launches_.end());
+    pending_clip_launches_.push_back({track_id, clip_id, target});
+    return {true, clip_id};
+}
+
+CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::string& quantize) {
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
+    if (!graph_.find_scene(scene_id))
+        return {false, "unknown scene '" + scene_id + "'"};
+
+    if (quantize == "instant") {
+        fire_scene(scene_id);
+        return {true, scene_id};
+    }
+    if (quantize != "beat" && quantize != "bar" &&
+        quantize != "4bar" && quantize != "four_bar")
+        return {false, "unknown quantize mode '" + quantize + "'"};
+
+    const int64_t target = compute_quantize_target_beat(quantize);
+    pending_scene_launch_ = {scene_id, target};
+    return {true, scene_id};
+}
+
+// ---------------------------------------------------------------------------
+// Tick: fire pending launches at beat boundary
+// ---------------------------------------------------------------------------
+
+void RuntimeAPI::tick_quantized_clip_scene_launches() {
+    if (!pending_scene_launch_ && pending_clip_launches_.empty()) return;
+    if (!core_.compiled_graph()) return;
+
+    const auto metronome = current_metronome_sample();
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+
+    if (pending_scene_launch_ && current_beat >= pending_scene_launch_->target_beat_index) {
+        fire_scene(pending_scene_launch_->scene_id);
+        pending_scene_launch_.reset();
+    }
+
+    for (auto& p : pending_clip_launches_) {
+        if (current_beat >= p.target_beat_index) {
+            const auto* clip = graph_.find_clip(p.track_id, p.clip_id);
+            if (clip) {
+                apply_clip_params(p.track_id, *clip);
+                active_clips_[p.track_id] = p.clip_id;
+            } else {
+                std::fprintf(stderr,
+                    "[session] tick: clip '%s' for track '%s' not found — skipped\n",
+                    p.clip_id.c_str(), p.track_id.c_str());
+            }
+            p.target_beat_index = INT64_MAX; // mark fired
+        }
+    }
+    pending_clip_launches_.erase(
+        std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
+                       [](const PendingClipLaunch& p) { return p.target_beat_index == INT64_MAX; }),
+        pending_clip_launches_.end());
+}
+
+// ---------------------------------------------------------------------------
+// Accessors
+// ---------------------------------------------------------------------------
+
+const std::string& RuntimeAPI::queued_scene_id() const {
+    static const std::string empty;
+    return pending_scene_launch_ ? pending_scene_launch_->scene_id : empty;
+}
+
+const std::string& RuntimeAPI::queued_clip_for(const std::string& track_id) const {
+    static const std::string empty;
+    for (const auto& p : pending_clip_launches_)
+        if (p.track_id == track_id) return p.clip_id;
+    return empty;
 }
 
 } // namespace vivid

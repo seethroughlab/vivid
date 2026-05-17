@@ -325,6 +325,8 @@ public:
     bool set_scene_assignment(const std::string& scene_id, const std::string& track_id, const std::string& clip_id);
     bool set_scene_leave_unchanged(const std::string& scene_id, const std::string& track_id);
     bool clear_scene_assignment(const std::string& scene_id, const std::string& track_id);
+    bool update_scene_assignments(const std::string& scene_id,
+                                   const std::unordered_map<std::string, std::string>& assignments);
     const SessionTrackDef* find_track(const std::string& id) const;
     SessionTrackDef* find_track(const std::string& id);
     const SessionClipDef* find_clip(const std::string& track_id, const std::string& clip_id) const;

@@ -1283,6 +1283,295 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    // ==========================================================================
+    // Phase 3: Scene CRUD + Quantized Clip/Scene Launch
+    // ==========================================================================
+    // Phase 2 tests left s1.scale with PARAM_LOCK_PRESETS; clear all locks first.
+    std::fprintf(stderr, "\n--- session: Phase 3 setup ---\n");
+    {
+        api.set_param_lock("s1", "scale", vivid::PARAM_LOCK_NONE);
+        api.set_param_lock("s2", "scale", vivid::PARAM_LOCK_NONE);
+        api.set_param("s1", "scale", 5.0f);
+        api.set_param("s2", "scale", 9.0f);
+        // Rebuild the Verse clip with clean params (s1=5, s2=9)
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        api.update_clip(tid, verse_cid);
+        api.launch_clip(tid, verse_cid);
+        check(api.active_clip(tid) == verse_cid, "Phase 3 setup: active_clip set");
+    }
+
+    // --- session: save_scene captures active_clips ---
+    std::fprintf(stderr, "\n--- session: save_scene captures active_clips ---\n");
+    std::string verse_sid;
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+
+        auto r = api.save_scene("Verse");
+        check(r.ok, "save_scene Verse");
+        verse_sid = r.message;
+        check(!verse_sid.empty(), "save_scene returns scene_id");
+
+        const auto* scene = graph.find_scene(verse_sid);
+        check(scene != nullptr, "scene found by id");
+        if (scene) {
+            bool has_tid = scene->assignments.count(tid) > 0;
+            check(has_tid, "scene has assignment for track");
+            if (has_tid)
+                check(scene->assignments.at(tid) == verse_cid, "scene assignment = Verse clip");
+        }
+    }
+
+    // --- session: save_scene with no active clips ---
+    std::fprintf(stderr, "\n--- session: save_scene empty active_clips ---\n");
+    {
+        // Create a fresh Graph+API with no clips launched (active_clips_ is empty)
+        vivid::Graph g_sc;
+        vivid::RuntimeCore s_sc;
+        vivid::AudioEngine ae_sc;
+        vivid::RuntimeAPI api_sc(g_sc, s_sc, ae_sc, registry);
+        auto r = api_sc.save_scene("Empty");
+        check(r.ok, "save_scene with empty active_clips succeeds");
+        check(!r.message.empty(), "returns scene_id even when empty");
+        const auto* scene = g_sc.find_scene(r.message);
+        check(scene != nullptr, "empty scene created");
+        if (scene) check(scene->assignments.empty(), "no assignments in empty scene");
+    }
+
+    // --- session: scene rename / move / remove ---
+    std::fprintf(stderr, "\n--- session: scene rename/move/remove ---\n");
+    {
+        auto r2 = api.save_scene("Chorus");
+        check(r2.ok, "save_scene Chorus");
+        std::string chorus_sid = r2.message;
+
+        check(api.rename_scene(verse_sid, "Intro").ok, "rename_scene ok");
+        check(graph.find_scene(verse_sid)->name == "Intro", "scene renamed");
+
+        // Two scenes: move Chorus to index 0
+        check(api.move_scene(chorus_sid, 0).ok, "move_scene ok");
+        check(graph.session().scenes[0].id == chorus_sid, "Chorus at index 0");
+
+        check(api.remove_scene(chorus_sid).ok, "remove_scene ok");
+        check(graph.find_scene(chorus_sid) == nullptr, "Chorus removed");
+
+        // Rename back to Verse for subsequent tests
+        api.rename_scene(verse_sid, "Verse");
+    }
+
+    // --- session: set_scene_assignment / set_scene_leave_unchanged / clear_scene_assignment ---
+    std::fprintf(stderr, "\n--- session: scene assignment manipulation ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string cid = graph.find_track(tid)->clips[0].id;
+
+        // Manually clear and re-add assignment
+        check(api.clear_scene_assignment(verse_sid, tid).ok, "clear_scene_assignment ok");
+        {
+            const auto* s = graph.find_scene(verse_sid);
+            check(s && s->assignments.count(tid) == 0, "assignment cleared");
+            check(s && s->leave_unchanged.count(tid) == 0, "not in leave_unchanged either");
+        }
+
+        check(api.set_scene_assignment(verse_sid, tid, cid).ok, "set_scene_assignment ok");
+        check(graph.find_scene(verse_sid)->assignments.count(tid) > 0, "assignment restored");
+
+        check(api.set_scene_leave_unchanged(verse_sid, tid).ok, "set_scene_leave_unchanged ok");
+        {
+            const auto* s = graph.find_scene(verse_sid);
+            check(s && s->assignments.count(tid) == 0, "not in assignments after leave_unchanged");
+            check(s && s->leave_unchanged.count(tid) > 0, "in leave_unchanged set");
+        }
+
+        // Restore correct assignment for launch tests
+        check(api.set_scene_assignment(verse_sid, tid, cid).ok, "restore assignment");
+    }
+
+    // --- session: update_scene re-captures active_clips ---
+    std::fprintf(stderr, "\n--- session: update_scene re-captures ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        // Save a second clip and launch it
+        api.set_param("s1", "scale", 20.0f);
+        api.set_param("s2", "scale", 30.0f);
+        auto r = api.save_clip(tid, "Chorus");
+        check(r.ok, "save Chorus clip");
+        std::string chorus_cid = r.message;
+        api.launch_clip(tid, chorus_cid);
+
+        // Now update the scene — it should capture chorus_cid
+        check(api.update_scene(verse_sid).ok, "update_scene ok");
+        const auto* s = graph.find_scene(verse_sid);
+        check(s != nullptr, "scene still exists");
+        if (s) {
+            bool has_tid = s->assignments.count(tid) > 0;
+            check(has_tid, "update_scene: assignment exists");
+            if (has_tid)
+                check(s->assignments.at(tid) == chorus_cid, "update_scene: captures chorus clip");
+        }
+
+        // Restore Verse state for subsequent tests
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        api.launch_clip(tid, verse_cid);
+        api.update_scene(verse_sid);
+    }
+
+    // --- session: queue_clip instant ---
+    std::fprintf(stderr, "\n--- session: queue_clip instant ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id; // Chorus
+
+        api.set_param("s1", "scale", 99.0f);
+        auto r = api.queue_clip(tid, chorus_cid, "instant");
+        check(r.ok, "queue_clip instant ok");
+        // Should apply immediately like launch_clip
+        auto* cn = runtime.compiled_graph()->find_node("s1");
+        check(cn != nullptr, "s1 in graph");
+        if (cn)
+            check_float(cn->param_values[cn->param_indices.at("scale")], 20.0f,
+                        "queue_clip instant: s1.scale=20");
+        check(api.active_clip(tid) == chorus_cid, "active_clip updated by queue_clip instant");
+        check(api.queued_clip_for(tid).empty(), "no pending after instant");
+    }
+
+    // --- session: queue_clip beat-aligned ---
+    std::fprintf(stderr, "\n--- session: queue_clip beat-aligned ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+
+        // Queue the Verse clip at bar boundary (high target beat so it doesn't fire immediately)
+        auto r = api.queue_clip(tid, verse_cid, "bar");
+        check(r.ok, "queue_clip bar ok");
+        check(api.queued_clip_for(tid) == verse_cid, "queued_clip_for returns verse_cid");
+        check(api.active_clip(tid) != verse_cid, "clip not yet active");
+
+        // Replacing queue with a new entry for the same track
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id;
+        auto r2 = api.queue_clip(tid, chorus_cid, "bar");
+        check(r2.ok, "replace queued clip ok");
+        check(api.queued_clip_for(tid) == chorus_cid, "replaced queued clip");
+
+        // Tick at beat 0 — the bar target is at least beat bpb (>=1 bar), shouldn't fire yet
+        // (metronome starts at 0, so target = bpb; at beat 0, current < target)
+        runtime.tick(0.0, 0.0, 100);
+        api.tick_quantized_clip_scene_launches();
+        check(!api.queued_clip_for(tid).empty(), "still queued at beat 0");
+
+        // Tick past one bar (default 4/4 = bar at beat 4; use 100 bars to guarantee fire)
+        runtime.tick(400.0, 0.0, 101);  // 400 beats elapsed at 120 bpm -> well past bar boundary
+        api.tick_quantized_clip_scene_launches();
+        check(api.queued_clip_for(tid).empty(), "clip fired and cleared from queue");
+        check(api.active_clip(tid) == chorus_cid, "chorus now active after fire");
+    }
+
+    // --- session: queue_scene instant ---
+    std::fprintf(stderr, "\n--- session: queue_scene instant ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        // Ensure Verse is assigned in verse_sid scene
+        api.set_scene_assignment(verse_sid, tid, verse_cid);
+
+        // Mutate to known-different state
+        api.set_param("s1", "scale", 99.0f);
+        auto r = api.queue_scene(verse_sid, "instant");
+        check(r.ok, "queue_scene instant ok");
+        // All assignments applied immediately
+        auto* cn = runtime.compiled_graph()->find_node("s1");
+        check(cn != nullptr, "s1 in graph");
+        if (cn)
+            check_float(cn->param_values[cn->param_indices.at("scale")], 5.0f,
+                        "queue_scene instant: s1.scale=5 (Verse)");
+        check(api.active_clip(tid) == verse_cid, "active_clip = Verse after instant scene");
+        check(api.queued_scene_id().empty(), "no pending scene after instant");
+    }
+
+    // --- session: queue_scene beat-aligned ---
+    std::fprintf(stderr, "\n--- session: queue_scene beat-aligned ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id;
+
+        // Build a Chorus scene
+        api.launch_clip(tid, chorus_cid);
+        auto sc_r = api.save_scene("Drop");
+        check(sc_r.ok, "save Drop scene");
+        std::string drop_sid = sc_r.message;
+
+        // Queue it at bar
+        api.launch_clip(tid, graph.find_track(tid)->clips[0].id); // back to Verse
+        auto r = api.queue_scene(drop_sid, "bar");
+        check(r.ok, "queue_scene bar ok");
+        check(api.queued_scene_id() == drop_sid, "queued_scene_id returns drop_sid");
+
+        // Doesn't fire at beat 0
+        runtime.tick(0.0, 0.0, 200);
+        api.tick_quantized_clip_scene_launches();
+        check(!api.queued_scene_id().empty(), "scene still queued at beat 0");
+
+        // Fires past bar boundary
+        runtime.tick(800.0, 0.0, 201);
+        api.tick_quantized_clip_scene_launches();
+        check(api.queued_scene_id().empty(), "scene fired and cleared");
+        check(api.active_clip(tid) == chorus_cid, "Drop scene applied: chorus active");
+    }
+
+    // --- session: queue_scene leaves leave_unchanged tracks alone ---
+    std::fprintf(stderr, "\n--- session: queue_scene respects leave_unchanged ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        // Build a scene with leave_unchanged for the track
+        auto sc_r = api.save_scene("SilentScene");
+        check(sc_r.ok, "save SilentScene");
+        std::string silent_sid = sc_r.message;
+        api.set_scene_leave_unchanged(silent_sid, tid);
+
+        // Set a known param value
+        api.set_param("s1", "scale", 77.0f);
+        auto* cn = runtime.compiled_graph()->find_node("s1");
+
+        api.queue_scene(silent_sid, "instant");
+        // s1.scale must be untouched — track is leave_unchanged
+        if (cn)
+            check_float(cn->param_values[cn->param_indices.at("scale")], 77.0f,
+                        "leave_unchanged: s1.scale untouched");
+    }
+
+    // --- session: queue_scene cancels individual pending queue_clip for assigned track ---
+    std::fprintf(stderr, "\n--- session: queue_scene cancels conflicting queue_clip ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id;
+        api.set_scene_assignment(verse_sid, tid, verse_cid);
+
+        // Queue a clip for the same track
+        api.queue_clip(tid, chorus_cid, "bar");
+        check(!api.queued_clip_for(tid).empty(), "clip queued");
+
+        // Fire a scene that also assigns this track — the scene should cancel the clip queue
+        api.queue_scene(verse_sid, "instant");
+        check(api.queued_clip_for(tid).empty(), "queue_clip cancelled by scene fire");
+    }
+
+    // --- session: queue_scene error handling ---
+    std::fprintf(stderr, "\n--- session: queue_scene error handling ---\n");
+    {
+        auto r1 = api.queue_scene("sc_unknown_xxx", "instant");
+        check(!r1.ok, "queue_scene unknown scene fails");
+        auto r2 = api.queue_scene(verse_sid, "unknown_quantize");
+        check(!r2.ok, "queue_scene bad quantize fails");
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        auto r3 = api.queue_clip(tid, "c_unknown_xxx", "instant");
+        check(!r3.ok, "queue_clip unknown clip fails");
+        auto r4 = api.queue_clip("tr_unknown_xxx", verse_cid, "instant");
+        check(!r4.ok, "queue_clip unknown track fails");
+    }
+
     // --- Cleanup ---
     runtime.shutdown();
     std::filesystem::remove_all(staging);
