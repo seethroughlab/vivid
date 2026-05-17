@@ -1926,8 +1926,8 @@ async def get_session_view_guide() -> str:
             "queue_scene": "Fire all scene assignments at a beat boundary (instant/beat/bar/4bar)",
         },
         "quantize_modes": ["instant", "beat", "bar", "4bar"],
-        "legacy_clip_launcher": {
-            "note": "StateMachine-based clip launcher still works for existing graphs.",
+        "legacy_advanced_tools": {
+            "note": "StateMachine-based clip launcher still works for existing graphs. Whole-graph Variations were removed in schema v2 — use Tracks/Clips instead.",
             "tools": ["add_clip_track", "ensure_state_mapping", "queue_state_transition",
                       "set_state_preset", "inspect_state_presets"],
         },
@@ -5275,74 +5275,6 @@ async def scaffold_operator(name: str, env: str, variant: str = "",
         args.extend(["--destination", destination])
     args.append("--json")
     return await _run_vivid_cli_json(args)
-
-
-@mcp.tool()
-async def save_variation(name: str) -> str:
-    """Save a named snapshot of all current parameter values across every node.
-
-    Args:
-        name: Name for the variation (e.g. "Intro", "Drop")
-    """
-    return await _post("save_variation", {"name": name})
-
-
-@mcp.tool()
-async def recall_variation(name: str) -> str:
-    """Instantly recall a saved variation, restoring all parameter values.
-
-    Args:
-        name: Name of the variation to recall
-    """
-    return await _post("recall_variation", {"name": name})
-
-
-@mcp.tool()
-async def remove_variation(name: str) -> str:
-    """Delete a saved variation.
-
-    Args:
-        name: Name of the variation to remove
-    """
-    return await _post("remove_variation", {"name": name})
-
-
-@mcp.tool()
-async def rename_variation(old_name: str, new_name: str) -> str:
-    """Rename a saved variation.
-
-    Args:
-        old_name: Current name
-        new_name: New name
-    """
-    return await _post("rename_variation", {"old_name": old_name, "new_name": new_name})
-
-
-@mcp.tool()
-async def update_variation(name: str) -> str:
-    """Overwrite a variation with the current parameter values (re-save in place).
-
-    Args:
-        name: Name of the variation to update
-    """
-    return await _post("update_variation", {"name": name})
-
-
-@mcp.tool()
-async def list_variations() -> str:
-    """List all saved variations. Active variation is marked with *."""
-    return await _post("list_variations")
-
-
-@mcp.tool()
-async def queue_variation(name: str, quantize: str = "instant") -> str:
-    """Queue a variation switch, optionally quantized to a beat boundary.
-
-    Args:
-        name: Name of the variation to switch to
-        quantize: Timing — "instant", "beat", "bar", or "4bar"
-    """
-    return await _post("queue_variation", {"name": name, "quantize": quantize})
 
 
 @mcp.tool()

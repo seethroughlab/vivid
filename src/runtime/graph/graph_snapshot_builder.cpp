@@ -668,6 +668,21 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                         }
                     }
                 }
+                // Also check string/file params
+                for (const auto& [nid, nparams] : clip->string_params) {
+                    if (ts.dirty) break;
+                    const auto* cn = cg->find_node(nid);
+                    if (!cn) continue;
+                    for (const auto& [pname, pval] : nparams) {
+                        auto fi = cn->file_param_indices.find(pname);
+                        if (fi != cn->file_param_indices.end()) {
+                            const std::string& live_val =
+                                (fi->second < cn->file_param_storage.size())
+                                ? cn->file_param_storage[fi->second] : std::string{};
+                            if (live_val != pval) { ts.dirty = true; break; }
+                        }
+                    }
+                }
             }
         }
         snap.session.track_index[track.id] = snap.session.tracks.size() - 1;

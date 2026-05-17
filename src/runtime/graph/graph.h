@@ -15,7 +15,7 @@
 
 // Bumped when the graph JSON format changes in a backward-incompatible way.
 // Graphs saved with schema_version > GRAPH_SCHEMA_VERSION are hard-rejected.
-#define GRAPH_SCHEMA_VERSION 2
+#define GRAPH_SCHEMA_VERSION 3
 
 namespace vivid {
 
@@ -156,6 +156,7 @@ struct SessionSceneDef {
 struct SessionDef {
     std::vector<SessionTrackDef> tracks;
     std::vector<SessionSceneDef> scenes;
+    std::unordered_map<std::string, std::string> active_clips;  // track_id → clip_id
 };
 
 struct GraphMetronomeDef {
@@ -301,6 +302,15 @@ public:
     // Session accessors
     const SessionDef& session() const { return session_; }
     SessionDef& session_mut() { return session_; }
+    void set_active_clip(const std::string& track_id, const std::string& clip_id) {
+        session_.active_clips[track_id] = clip_id;
+    }
+    void clear_active_clip(const std::string& track_id) {
+        session_.active_clips.erase(track_id);
+    }
+    const std::unordered_map<std::string, std::string>& active_clips() const {
+        return session_.active_clips;
+    }
 
     // Session CRUD
     std::string create_track(std::string name);

@@ -153,6 +153,7 @@ CommandResult RuntimeAPI::remove_track(const std::string& track_id) {
     if (!graph_.remove_track(track_id))
         return {false, "unknown track '" + track_id + "'"};
     active_clips_.erase(track_id);
+    graph_.clear_active_clip(track_id);
     mark_graph_dirty();
     return {true, track_id};
 }
@@ -220,8 +221,10 @@ CommandResult RuntimeAPI::remove_clip(const std::string& track_id, const std::st
     if (!graph_.remove_clip(track_id, clip_id))
         return {false, "unknown clip '" + clip_id + "'"};
     auto it = active_clips_.find(track_id);
-    if (it != active_clips_.end() && it->second == clip_id)
+    if (it != active_clips_.end() && it->second == clip_id) {
         active_clips_.erase(it);
+        graph_.clear_active_clip(track_id);
+    }
     mark_graph_dirty();
     return {true, clip_id};
 }
@@ -243,6 +246,8 @@ CommandResult RuntimeAPI::launch_clip(const std::string& track_id, const std::st
         return {false, "unknown clip '" + clip_id + "'"};
     apply_clip_params(track_id, *clip);
     active_clips_[track_id] = clip_id;
+    graph_.set_active_clip(track_id, clip_id);
+    mark_graph_dirty();
     return {true, clip_id};
 }
 
@@ -359,7 +364,9 @@ void RuntimeAPI::fire_scene(const std::string& scene_id) {
         }
         apply_clip_params(track_id, *clip);
         active_clips_[track_id] = clip_id;
+        graph_.set_active_clip(track_id, clip_id);
     }
+    mark_graph_dirty();
     // scene-level launch wins over any individually pending clips for assigned tracks
     pending_clip_launches_.erase(
         std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
@@ -385,6 +392,8 @@ CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::str
     if (quantize == "instant") {
         apply_clip_params(track_id, *clip);
         active_clips_[track_id] = clip_id;
+        graph_.set_active_clip(track_id, clip_id);
+        mark_graph_dirty();
         return {true, clip_id};
     }
     if (quantize != "beat" && quantize != "bar" &&
@@ -441,6 +450,7 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
             if (clip) {
                 apply_clip_params(p.track_id, *clip);
                 active_clips_[p.track_id] = p.clip_id;
+                graph_.set_active_clip(p.track_id, p.clip_id);
             } else {
                 std::fprintf(stderr,
                     "[session] tick: clip '%s' for track '%s' not found — skipped\n",
@@ -449,10 +459,15 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
             p.target_beat_index = INT64_MAX; // mark fired
         }
     }
+    bool any_fired = false;
     pending_clip_launches_.erase(
         std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
-                       [](const PendingClipLaunch& p) { return p.target_beat_index == INT64_MAX; }),
+                       [&](const PendingClipLaunch& p) {
+                           if (p.target_beat_index == INT64_MAX) { any_fired = true; return true; }
+                           return false;
+                       }),
         pending_clip_launches_.end());
+    if (any_fired) mark_graph_dirty();
 }
 
 // ---------------------------------------------------------------------------

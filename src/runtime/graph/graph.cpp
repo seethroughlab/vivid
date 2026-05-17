@@ -533,6 +533,16 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                 session_.scenes.push_back(std::move(scene));
             }
         }
+        // parse active_clips
+        auto ac_it = sess_it->find("active_clips");
+        if (ac_it != sess_it->end() && ac_it->is_object()) {
+            for (auto& [tid, cval] : ac_it->items()) {
+                if (!cval.is_string()) continue;
+                std::string clip_id = cval.get<std::string>();
+                if (find_track(tid) && find_clip(tid, clip_id))
+                    session_.active_clips[tid] = std::move(clip_id);
+            }
+        }
     }
 
     // Parse quantize_clock
@@ -1560,7 +1570,7 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
 
     // Session
     const auto& sess = graph.session();
-    if (!sess.tracks.empty() || !sess.scenes.empty()) {
+    if (!sess.tracks.empty() || !sess.scenes.empty() || !sess.active_clips.empty()) {
         nlohmann::ordered_json sess_obj = nlohmann::ordered_json::object();
         // tracks
         nlohmann::ordered_json tracks_arr = nlohmann::ordered_json::array();
@@ -1630,6 +1640,12 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             scenes_arr.push_back(std::move(s_obj));
         }
         sess_obj["scenes"] = std::move(scenes_arr);
+        if (!sess.active_clips.empty()) {
+            nlohmann::ordered_json ac_obj = nlohmann::ordered_json::object();
+            for (const auto& [tid, cid] : sess.active_clips)
+                ac_obj[tid] = cid;
+            sess_obj["active_clips"] = std::move(ac_obj);
+        }
         root["session"] = std::move(sess_obj);
     }
 

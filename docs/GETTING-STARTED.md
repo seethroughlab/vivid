@@ -36,18 +36,26 @@ Use **File → Open Example...** to browse. Here's a suggested progression:
 
 The first three are about *experiencing*. The next five teach you *how it works*, one concept at a time. Each graph has sticky notes that explain what's happening.
 
-## 4. Save Variations
+## 4. Session: Tracks, Clips, and Scenes
 
-Press **V** to open the variation surface at the bottom of the graph.
+Press **V** to open the Session strip at the bottom of the graph.
 
-1. Tweak parameters until you like the current state
-2. Click **+ Save New** to store it as a variation
-3. Keep tweaking — the card shows a dot when you've changed something
-4. Click **Branch** to explore a new direction without losing the original
-5. Audition between variations by clicking cards
-6. Use quantize mode (Beat / Bar / 4Bar) for tempo-synced switches
+The Session strip is a Scene × Track grid for managing performance states.
 
-Variations persist when you save the graph.
+1. **Right-click a track header** → "Assign Selected" to assign the nodes you currently have
+   selected in the graph to that track
+2. Dial in parameters on the owned nodes until they sound/look right
+3. Click **+** in the track header to save a named Clip — a snapshot of the current params
+4. Click a clip cell to launch it; the track's nodes instantly snap to those params
+5. Create multiple tracks (one per synth, one per visual chain) — each runs independently
+6. **Right-click a scene row** → "Update" to capture the active clip per track into a scene; then
+   click ▶ on the scene to launch all tracks at once
+7. Use the quantize selector (Beat / Bar / 4Bar) for tempo-synced launches
+
+The dirty dot on a track header means the live params differ from the active clip — click **+**
+to save a new clip or right-click the cell → "Update Clip" to overwrite.
+
+Session state persists when you save the graph.
 
 ## 5. Build Your First Graph
 
