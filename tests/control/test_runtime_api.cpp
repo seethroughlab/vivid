@@ -1132,17 +1132,22 @@ int main(int argc, char* argv[]) {
         check(r.message == cid, "launch_clip returns clip_id");
         check(api.active_clip(tid) == cid, "active_clip returns launched clip");
 
-        // Verify params restored in compiled graph
+        // Verify params restored in compiled graph and nodes marked dirty
+        // (dirty flag ensures non-leaf nodes re-process on next tick)
         {
             auto* cn1 = runtime.compiled_graph()->find_node("s1");
             auto* cn2 = runtime.compiled_graph()->find_node("s2");
             check(cn1 != nullptr && cn2 != nullptr, "s1 and s2 in compiled graph");
-            if (cn1)
+            if (cn1) {
                 check_float(cn1->param_values[cn1->param_indices.at("scale")], 5.0f,
                             "s1.scale restored to 5.0");
-            if (cn2)
+                check(cn1->dirty, "s1 marked dirty after launch_clip");
+            }
+            if (cn2) {
                 check_float(cn2->param_values[cn2->param_indices.at("scale")], 9.0f,
                             "s2.scale restored to 9.0");
+                check(cn2->dirty, "s2 marked dirty after launch_clip");
+            }
         }
         // Verify synced to graph NodeDef
         {

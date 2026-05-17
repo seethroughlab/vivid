@@ -108,6 +108,7 @@ void RuntimeAPI::apply_clip_params(const std::string& track_id, const SessionCli
                 if (pi == cn->param_indices.end()) continue;
                 if (cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS) continue;
                 cn->param_values[pi->second] = pval;
+                cn->dirty = true;
                 if (ndef) ndef->params[pname] = pval;
             }
         }
@@ -119,6 +120,7 @@ void RuntimeAPI::apply_clip_params(const std::string& track_id, const SessionCli
                 if (fi == cn->file_param_indices.end()) continue;
                 const std::string runtime_val = to_runtime_string_value(*cn, pname, pval);
                 cn->file_param_storage[fi->second] = runtime_val;
+                cn->dirty = true;
                 if (fi->second < cn->file_param_ptrs.size())
                     cn->file_param_ptrs[fi->second] = cn->file_param_storage[fi->second].c_str();
                 if (ndef) ndef->string_params[pname] = pval;
