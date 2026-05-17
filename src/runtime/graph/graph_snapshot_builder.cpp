@@ -634,6 +634,36 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         }
     }
 
+    // Session: Tracks, Clips, Scenes
+    snap.session.tracks.clear();
+    snap.session.scenes.clear();
+    snap.session.track_index.clear();
+    snap.session.scene_index.clear();
+    snap.session.queued_scene_id.clear();
+    for (const auto& track : graph.session().tracks) {
+        auto& ts = snap.session.tracks.emplace_back();
+        ts.id   = track.id;
+        ts.name = track.name;
+        ts.owned_node_ids = track.owned_node_ids;
+        for (const auto& clip : track.clips)
+            ts.clips.push_back({clip.id, clip.name});
+        if (runtime_api) {
+            ts.active_clip_id = runtime_api->active_clip(track.id);
+            ts.queued_clip_id = runtime_api->queued_clip_for(track.id);
+        }
+        snap.session.track_index[track.id] = snap.session.tracks.size() - 1;
+    }
+    for (const auto& scene : graph.session().scenes) {
+        auto& ss = snap.session.scenes.emplace_back();
+        ss.id             = scene.id;
+        ss.name           = scene.name;
+        ss.assignments    = scene.assignments;
+        ss.leave_unchanged = scene.leave_unchanged;
+        snap.session.scene_index[scene.id] = snap.session.scenes.size() - 1;
+    }
+    if (runtime_api)
+        snap.session.queued_scene_id = runtime_api->queued_scene_id();
+
     // Sticky notes
     const auto& sticky = graph.sticky_notes();
     snap.sticky_notes.resize(sticky.size());

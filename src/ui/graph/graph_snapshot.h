@@ -9,6 +9,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <memory>
 #include <cstdint>
 
@@ -343,6 +344,46 @@ struct AudioHotNodeSnapshot {
     uint32_t lane_state_entries = 0;
 };
 
+// Session snapshot structs — lightweight view of Track/Clip/Scene state for the UI
+struct SessionClipSnap {
+    std::string id;
+    std::string name;
+};
+
+struct SessionTrackSnap {
+    std::string id;
+    std::string name;
+    std::vector<std::string> owned_node_ids;
+    std::vector<SessionClipSnap> clips;
+    std::string active_clip_id;
+    std::string queued_clip_id;
+};
+
+struct SessionSceneSnap {
+    std::string id;
+    std::string name;
+    std::unordered_map<std::string, std::string> assignments;  // track_id → clip_id
+    std::unordered_set<std::string> leave_unchanged;
+};
+
+struct SessionSnap {
+    std::vector<SessionTrackSnap> tracks;
+    std::vector<SessionSceneSnap> scenes;
+    std::string queued_scene_id;
+
+    std::unordered_map<std::string, size_t> track_index;
+    std::unordered_map<std::string, size_t> scene_index;
+
+    const SessionTrackSnap* find_track(const std::string& id) const {
+        auto it = track_index.find(id);
+        return it == track_index.end() ? nullptr : &tracks[it->second];
+    }
+    const SessionSceneSnap* find_scene(const std::string& id) const {
+        auto it = scene_index.find(id);
+        return it == scene_index.end() ? nullptr : &scenes[it->second];
+    }
+};
+
 // Per-track clip launcher: one entry per StateMachine that has state-preset mappings
 struct StateMachineClipInfo {
     std::string node_id;
@@ -397,6 +438,7 @@ struct GraphSnapshot {
     // Session / performance data
     bool graph_dirty = false;
     std::vector<StateMachineClipInfo> clip_machines;
+    SessionSnap session;
     std::string quantize_clock_node;
     float metronome_bpm = 120.0f;
     int metronome_beats_per_bar = 4;

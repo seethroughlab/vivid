@@ -35,6 +35,7 @@ std::string dispatch(const std::string& method, const std::string& body,
                             EditorWindowManager* editor_window_manager) {
     // Read-only queries (no body needed)
     // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
+    if (method == "inspect_session") return handle_inspect_session(graph, api);
     if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
     if (method == "run_diagnostics")
         return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine, gpu_context, package_catalog, control_server);
@@ -1127,6 +1128,13 @@ std::string dispatch(const std::string& method, const std::string& body,
             result = command_result_to_json(
                 api.queue_scene(root["scene_id"].get<std::string>(),
                                  root["quantize"].get<std::string>()));
+    } else if (method == "inspect_clip") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_inspect_clip(graph,
+            root.value("track_id", ""), root.value("clip_id", ""));
+    } else if (method == "inspect_scene") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else result = handle_inspect_scene(graph, api, root.value("scene_id", ""));
     } else if (method == "rescan_operators") {
         result = [&]() -> std::string {
             int newly = registry.rescan();

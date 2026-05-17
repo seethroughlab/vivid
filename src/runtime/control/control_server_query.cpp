@@ -2129,4 +2129,171 @@ std::string handle_validate_operators(OperatorRegistry& registry) {
     return result.dump();
 }
 
+// ---------------------------------------------------------------------------
+// Session inspection: inspect_session, inspect_clip, inspect_scene
+// ---------------------------------------------------------------------------
+
+std::string handle_inspect_session(const Graph& graph, const RuntimeAPI& runtime_api) {
+    nlohmann::json tracks_arr = nlohmann::json::array();
+    for (const auto& track : graph.session().tracks) {
+        nlohmann::json t = nlohmann::json::object();
+        t["id"]   = track.id;
+        t["name"] = track.name;
+
+        nlohmann::json owned = nlohmann::json::array();
+        for (const auto& nid : track.owned_node_ids)
+            owned.push_back(nid);
+        t["owned_nodes"] = std::move(owned);
+
+        nlohmann::json clips_arr = nlohmann::json::array();
+        for (const auto& clip : track.clips)
+            clips_arr.push_back({{"id", clip.id}, {"name", clip.name}});
+        t["clips"] = std::move(clips_arr);
+
+        const std::string& active_id = runtime_api.active_clip(track.id);
+        t["active_clip"] = active_id;
+        // Resolve name for convenience
+        std::string active_name;
+        for (const auto& c : track.clips) {
+            if (c.id == active_id) { active_name = c.name; break; }
+        }
+        t["active_clip_name"] = active_name;
+
+        const std::string& queued_id = runtime_api.queued_clip_for(track.id);
+        t["queued_clip"] = queued_id;
+        std::string queued_name;
+        for (const auto& c : track.clips) {
+            if (c.id == queued_id) { queued_name = c.name; break; }
+        }
+        t["queued_clip_name"] = queued_name;
+
+        tracks_arr.push_back(std::move(t));
+    }
+
+    nlohmann::json scenes_arr = nlohmann::json::array();
+    for (const auto& scene : graph.session().scenes) {
+        nlohmann::json s = nlohmann::json::object();
+        s["id"]   = scene.id;
+        s["name"] = scene.name;
+
+        nlohmann::json assignments = nlohmann::json::object();
+        for (const auto& [tid, cid] : scene.assignments)
+            assignments[tid] = cid;
+        s["assignments"] = std::move(assignments);
+
+        nlohmann::json lu_arr = nlohmann::json::array();
+        for (const auto& tid : scene.leave_unchanged)
+            lu_arr.push_back(tid);
+        s["leave_unchanged"] = std::move(lu_arr);
+
+        scenes_arr.push_back(std::move(s));
+    }
+
+    const std::string& qsid = runtime_api.queued_scene_id();
+    std::string qsname;
+    for (const auto& sc : graph.session().scenes) {
+        if (sc.id == qsid) { qsname = sc.name; break; }
+    }
+
+    nlohmann::json result = nlohmann::json::object();
+    result["tracks"]            = std::move(tracks_arr);
+    result["scenes"]            = std::move(scenes_arr);
+    result["queued_scene"]      = qsid;
+    result["queued_scene_name"] = qsname;
+    return result.dump();
+}
+
+std::string handle_inspect_clip(const Graph& graph,
+                                 const std::string& track_id,
+                                 const std::string& clip_id) {
+    const auto* track = graph.find_track(track_id);
+    if (!track) {
+        nlohmann::json e;
+        e["ok"] = false;
+        e["error"] = "track '" + track_id + "' not found";
+        return e.dump();
+    }
+    const auto* clip = graph.find_clip(track_id, clip_id);
+    if (!clip) {
+        nlohmann::json e;
+        e["ok"] = false;
+        e["error"] = "clip '" + clip_id + "' not found in track '" + track_id + "'";
+        return e.dump();
+    }
+
+    nlohmann::json params_obj = nlohmann::json::object();
+    for (const auto& [node_id, node_params] : clip->params) {
+        nlohmann::json np = nlohmann::json::object();
+        for (const auto& [pname, pval] : node_params)
+            np[pname] = static_cast<double>(pval);
+        params_obj[node_id] = std::move(np);
+    }
+
+    nlohmann::json string_params_obj = nlohmann::json::object();
+    for (const auto& [node_id, node_sp] : clip->string_params) {
+        nlohmann::json nsp = nlohmann::json::object();
+        for (const auto& [pname, pval] : node_sp)
+            nsp[pname] = pval;
+        string_params_obj[node_id] = std::move(nsp);
+    }
+
+    nlohmann::json result = nlohmann::json::object();
+    result["id"]           = clip->id;
+    result["name"]         = clip->name;
+    result["track_id"]     = track_id;
+    result["params"]       = std::move(params_obj);
+    result["string_params"] = std::move(string_params_obj);
+    return result.dump();
+}
+
+std::string handle_inspect_scene(const Graph& graph, const RuntimeAPI& runtime_api,
+                                  const std::string& scene_id) {
+    const auto* scene = graph.find_scene(scene_id);
+    if (!scene) {
+        nlohmann::json e;
+        e["ok"] = false;
+        e["error"] = "scene '" + scene_id + "' not found";
+        return e.dump();
+    }
+
+    // Build assignment list with resolved names
+    nlohmann::json assignments_arr = nlohmann::json::array();
+    for (const auto& [tid, cid] : scene->assignments) {
+        nlohmann::json entry = nlohmann::json::object();
+        entry["track_id"] = tid;
+        entry["clip_id"]  = cid;
+        // Resolve names
+        std::string track_name, clip_name;
+        const auto* track = graph.find_track(tid);
+        if (track) {
+            track_name = track->name;
+            const auto* clip = graph.find_clip(tid, cid);
+            if (clip) clip_name = clip->name;
+        }
+        entry["track_name"] = track_name;
+        entry["clip_name"]  = clip_name;
+        assignments_arr.push_back(std::move(entry));
+    }
+
+    nlohmann::json lu_arr = nlohmann::json::array();
+    for (const auto& tid : scene->leave_unchanged)
+        lu_arr.push_back(tid);
+
+    // Unassigned: tracks not in assignments and not in leave_unchanged
+    nlohmann::json unassigned_arr = nlohmann::json::array();
+    for (const auto& track : graph.session().tracks) {
+        if (scene->assignments.count(track.id) == 0 &&
+            scene->leave_unchanged.count(track.id) == 0)
+            unassigned_arr.push_back(track.id);
+    }
+
+    nlohmann::json result = nlohmann::json::object();
+    result["id"]               = scene->id;
+    result["name"]             = scene->name;
+    result["assignments"]      = std::move(assignments_arr);
+    result["leave_unchanged"]  = std::move(lu_arr);
+    result["unassigned_tracks"] = std::move(unassigned_arr);
+    return result.dump();
+}
+
 } // namespace vivid
