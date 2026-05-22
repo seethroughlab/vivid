@@ -620,6 +620,12 @@ bool RuntimeAPI::apply_pending(bool& has_gpu_ops, bool& has_audio) {
     pending_topology_change_ = false;
     active_crossfades_.clear();
 
+    // Flush main_thread_update write-backs before snapshot: ensures file_param_storage
+    // (e.g. VST3 plugin_state) captures any state_dirty_ changes that arrived via the
+    // Cocoa run loop since the last pre_tick_audio_sync. save_state() has its own dirty
+    // check, so getState() is only called when state actually changed.
+    core_.update_audio_sources(0.0);
+
     std::unordered_map<std::string, std::unordered_map<std::string, float>> saved_params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> saved_string_params;
     std::unordered_map<std::string, std::unordered_map<std::string, uint8_t>> saved_locks;

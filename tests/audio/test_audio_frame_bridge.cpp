@@ -6,6 +6,7 @@
 #include "runtime/audio/audio_frame_bridge.h"
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include "test_helpers.h"
 
@@ -23,8 +24,8 @@ struct AudioNodeSpec {
     bool has_analysis;  // rms, peak, waveform output ports
 };
 
-static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& specs) {
-    vivid::CompiledGraph cg;
+static std::unique_ptr<vivid::CompiledGraph> make_audio_graph(const std::vector<AudioNodeSpec>& specs) {
+    auto cg = std::make_unique<vivid::CompiledGraph>();
     for (uint32_t i = 0; i < specs.size(); ++i) {
         const auto& s = specs[i];
         vivid::CompiledNode cn;
@@ -57,9 +58,9 @@ static vivid::CompiledGraph make_audio_graph(const std::vector<AudioNodeSpec>& s
             a.analysis_output_port_indices["waveform"] = wave_idx;
         }
 
-        cg.node_id_to_index[s.id] = i;
-        cg.nodes.push_back(std::move(cn));
-        cg.audio_order.push_back(i);
+        cg->node_id_to_index[s.id] = i;
+        cg->nodes.push_back(std::move(cn));
+        cg->audio_order.push_back(i);
     }
     return cg;
 }
@@ -77,7 +78,7 @@ static void test_build_snapshot_allocation() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Both snapshots should be allocated for 2 audio nodes
     const auto& snap = bridge.active_params();
@@ -99,7 +100,7 @@ static void test_build_analysis_allocation() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     const auto& analysis = bridge.active_analysis();
     check(analysis.rms.size() == 1, "1 rms entry");
@@ -129,14 +130,14 @@ static void test_push_snapshots_params() {
     auto cg = make_audio_graph({
         {"osc", 2, 0, 1, 0, 0, false},
     });
-    cg.nodes[0].param_values = {440.0f, 0.8f};
+    cg->nodes[0].param_values = {440.0f, 0.8f};
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Modify param and push
-    cg.nodes[0].param_values[0] = 880.0f;
-    bridge.push_to_audio(cg);
+    cg->nodes[0].param_values[0] = 880.0f;
+    bridge.push_to_audio(*cg);
 
     const auto& snap = bridge.active_params();
     check(snap.node_params[0][0] == 880.0f, "freq updated to 880");
@@ -152,11 +153,11 @@ static void test_push_scalar_bridge_via_edge() {
         {"osc",  1, 1, 1, 1, 0, false},
     });
     // LFO is actually a frame node for this test
-    cg.nodes[0].active_cadence = vivid::Cadence::Frame;
-    cg.audio_order = {1};  // only osc is audio
+    cg->nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg->audio_order = {1};  // only osc is audio
 
     // LFO output
-    cg.nodes[0].output_values = {0.75f};
+    cg->nodes[0].output_values = {0.75f};
 
     // Add a snapshot edge: lfo out:0 → osc input
     vivid::CompiledEdge edge{};
@@ -166,12 +167,12 @@ static void test_push_scalar_bridge_via_edge() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
-    cg.frame_to_audio_edges.push_back(0);
+    cg->edges.push_back(edge);
+    cg->frame_to_audio_edges.push_back(0);
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
-    bridge.push_to_audio(cg);
+    bridge.build(*cg);
+    bridge.push_to_audio(*cg);
 
     const auto& snap = bridge.active_params();
 }
@@ -195,8 +196,8 @@ static void test_pull_scalar_bridge_output() {
     frame_node.input_values.assign(1, 0.0f);
     frame_node.bridge_input_values.assign(1, 0.0f);
     frame_node.bridge_input_dirty.assign(1, 0);
-    cg.nodes.push_back(std::move(frame_node));
-    cg.node_id_to_index["display"] = 1;
+    cg->nodes.push_back(std::move(frame_node));
+    cg->node_id_to_index["display"] = 1;
 
     // Snapshot edge: clock → display
     vivid::CompiledEdge edge{};
@@ -206,29 +207,29 @@ static void test_pull_scalar_bridge_output() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
-    cg.audio_to_frame_edges.push_back(0);
+    cg->edges.push_back(edge);
+    cg->audio_to_frame_edges.push_back(0);
 
     // Mark clock output port 0 as SCALAR
-    cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
+    cg->nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Simulate audio thread writing analysis
     auto& write_buf = bridge.analysis_write_buffer();
     bridge.publish_analysis();
 
     // Main thread pulls
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(cg.nodes[1].bridge_input_values[0] == 0.42f,
+    check(cg->nodes[1].bridge_input_values[0] == 0.42f,
           "scalar bridge output pulled to bridge_input_values");
-    check(cg.nodes[1].bridge_input_dirty[0] == 1, "bridge_input_dirty set");
-    check(cg.nodes[1].dirty, "frame node marked dirty");
+    check(cg->nodes[1].bridge_input_dirty[0] == 1, "bridge_input_dirty set");
+    check(cg->nodes[1].dirty, "frame node marked dirty");
 
     // Simulate frame executor applying bridge values
-    auto& cn = cg.nodes[1];
+    auto& cn = cg->nodes[1];
     for (size_t p = 0; p < cn.bridge_input_dirty.size() && p < cn.input_values.size(); ++p) {
         if (cn.bridge_input_dirty[p]) {
             cn.input_values[p] = cn.bridge_input_values[p];
@@ -247,7 +248,7 @@ static void test_pull_analysis_data() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Simulate audio thread writing analysis values
     auto& write_buf = bridge.analysis_write_buffer();
@@ -255,11 +256,11 @@ static void test_pull_analysis_data() {
     write_buf.peak[0][0] = 0.95f;
     bridge.publish_analysis();
 
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(cg.nodes[0].output_values[1] == 0.65f, "rms injected at port 1");
-    check(cg.nodes[0].output_values[2] == 0.95f, "peak injected at port 2");
-    check(cg.nodes[0].dirty, "analyzer marked dirty");
+    check(cg->nodes[0].output_values[1] == 0.65f, "rms injected at port 1");
+    check(cg->nodes[0].output_values[2] == 0.95f, "peak injected at port 2");
+    check(cg->nodes[0].dirty, "analyzer marked dirty");
 }
 
 static void test_pull_last_sample_scalar_bridge_output() {
@@ -268,8 +269,8 @@ static void test_pull_last_sample_scalar_bridge_output() {
     auto cg = make_audio_graph({
         {"clock", 0, 0, 2, 0, 0, false},
     });
-    cg.nodes[0].output_port_types[0] = VIVID_PORT_AUDIO_BUFFER;
-    cg.nodes[0].output_port_types[1] = VIVID_PORT_SCALAR;
+    cg->nodes[0].output_port_types[0] = VIVID_PORT_AUDIO_BUFFER;
+    cg->nodes[0].output_port_types[1] = VIVID_PORT_SCALAR;
 
     vivid::CompiledNode frame_node;
     frame_node.node_id = "display";
@@ -278,8 +279,8 @@ static void test_pull_last_sample_scalar_bridge_output() {
     frame_node.input_values.assign(1, 0.0f);
     frame_node.bridge_input_values.assign(1, 0.0f);
     frame_node.bridge_input_dirty.assign(1, 0);
-    cg.nodes.push_back(std::move(frame_node));
-    cg.node_id_to_index["display"] = 1;
+    cg->nodes.push_back(std::move(frame_node));
+    cg->node_id_to_index["display"] = 1;
 
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
@@ -289,23 +290,23 @@ static void test_pull_last_sample_scalar_bridge_output() {
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.bridge_kind = vivid::BridgeKind::LastSample;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
-    cg.audio_to_frame_edges.push_back(0);
+    cg->edges.push_back(edge);
+    cg->audio_to_frame_edges.push_back(0);
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     auto& write_buf = bridge.analysis_write_buffer();
     write_buf.scalar_outputs[0][0] = 123.0f; // audio buffer output should be ignored
     write_buf.scalar_outputs[0][1] = 0.42f;  // bridged scalar output
     bridge.publish_analysis();
 
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(cg.nodes[1].bridge_input_values[0] == 0.42f,
+    check(cg->nodes[1].bridge_input_values[0] == 0.42f,
           "LastSample bridge pulls the requested scalar output port");
-    check(cg.nodes[1].bridge_input_dirty[0] == 1, "LastSample marks bridge input dirty");
-    check(cg.nodes[0].output_values[1] == 0.42f,
+    check(cg->nodes[1].bridge_input_dirty[0] == 1, "LastSample marks bridge input dirty");
+    check(cg->nodes[0].output_values[1] == 0.42f,
           "audio output_values mirror bridged scalar snapshot for inspection");
 }
 
@@ -317,7 +318,7 @@ static void test_pull_error_propagation() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Simulate error on audio thread
     auto& write_buf = bridge.analysis_write_buffer();
@@ -325,18 +326,18 @@ static void test_pull_error_propagation() {
     std::strncpy(write_buf.error_msgs[0].data(), "buffer overflow", 255);
     bridge.publish_analysis();
 
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(cg.nodes[0].errored, "error flag set");
-    check(cg.nodes[0].error_message == "buffer overflow", "error message propagated");
+    check(cg->nodes[0].errored, "error flag set");
+    check(cg->nodes[0].error_message == "buffer overflow", "error message propagated");
 
     // Clear error
     write_buf.errored[0] = false;
     bridge.publish_analysis();
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(!cg.nodes[0].errored, "error cleared");
-    check(cg.nodes[0].error_message.empty(), "error message cleared");
+    check(!cg->nodes[0].errored, "error cleared");
+    check(cg->nodes[0].error_message.empty(), "error message cleared");
 }
 
 // ---------------------------------------------------------------------------
@@ -351,7 +352,7 @@ static void test_double_buffer_swap() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Write to inactive, publish
     auto& buf1 = bridge.analysis_write_buffer();
@@ -382,13 +383,13 @@ static void test_solo_active_set() {
     });
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Set solo — written to inactive snapshot
     bridge.set_solo_active_set({true, false});
 
     // After push_to_audio, the new snapshot becomes active
-    bridge.push_to_audio(cg);
+    bridge.push_to_audio(*cg);
     const auto& snap = bridge.active_params();
     check(snap.solo_active_set.size() == 2, "solo set size 2");
     check(snap.solo_active_set[0] == true, "osc active");
@@ -407,9 +408,9 @@ static void test_propagate_audio_display_params() {
         {"lfo",  0, 0, 1, 0, 0, false},
         {"osc",  2, 1, 1, 0, 0, false},
     });
-    cg.nodes[0].active_cadence = vivid::Cadence::Frame;
-    cg.nodes[0].output_values = {0.7f};
-    cg.nodes[1].param_values = {440.0f, 0.5f};
+    cg->nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg->nodes[0].output_values = {0.7f};
+    cg->nodes[1].param_values = {440.0f, 0.5f};
 
     // Edge: lfo out:0 → osc param:0 (targets_param)
     vivid::CompiledEdge edge{};
@@ -419,14 +420,14 @@ static void test_propagate_audio_display_params() {
     edge.to_port = 0;
     edge.targets_param = true;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
+    cg->edges.push_back(edge);
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
-    bridge.propagate_audio_display_params(cg);
+    bridge.build(*cg);
+    bridge.propagate_audio_display_params(*cg);
 
-    check(cg.nodes[1].param_values[0] == 0.7f, "param 0 updated to 0.7 for display");
-    check(cg.nodes[1].param_values[1] == 0.5f, "param 1 unchanged");
+    check(cg->nodes[1].param_values[0] == 0.7f, "param 0 updated to 0.7 for display");
+    check(cg->nodes[1].param_values[1] == 0.5f, "param 1 unchanged");
 }
 
 static void test_propagate_respects_param_lock() {
@@ -436,10 +437,10 @@ static void test_propagate_respects_param_lock() {
         {"lfo",  0, 0, 1, 0, 0, false},
         {"osc",  1, 0, 1, 0, 0, false},
     });
-    cg.nodes[0].active_cadence = vivid::Cadence::Frame;
-    cg.nodes[0].output_values = {999.0f};
-    cg.nodes[1].param_values = {440.0f};
-    cg.nodes[1].param_lock_flags = {vivid::PARAM_LOCK_WIRES};
+    cg->nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg->nodes[0].output_values = {999.0f};
+    cg->nodes[1].param_values = {440.0f};
+    cg->nodes[1].param_lock_flags = {vivid::PARAM_LOCK_WIRES};
 
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
@@ -448,13 +449,13 @@ static void test_propagate_respects_param_lock() {
     edge.to_port = 0;
     edge.targets_param = true;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
+    cg->edges.push_back(edge);
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
-    bridge.propagate_audio_display_params(cg);
+    bridge.build(*cg);
+    bridge.propagate_audio_display_params(*cg);
 
-    check(cg.nodes[1].param_values[0] == 440.0f, "locked param not overwritten");
+    check(cg->nodes[1].param_values[0] == 440.0f, "locked param not overwritten");
 }
 
 // ---------------------------------------------------------------------------
@@ -476,8 +477,8 @@ static void test_bridge_zero_value_passthrough() {
     frame_node.input_values.assign(1, 999.0f);  // sentinel — should be overwritten with 0.0
     frame_node.bridge_input_values.assign(1, 0.0f);
     frame_node.bridge_input_dirty.assign(1, 0);
-    cg.nodes.push_back(std::move(frame_node));
-    cg.node_id_to_index["dst"] = 1;
+    cg->nodes.push_back(std::move(frame_node));
+    cg->node_id_to_index["dst"] = 1;
 
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
@@ -486,22 +487,22 @@ static void test_bridge_zero_value_passthrough() {
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_SCALAR;
-    cg.edges.push_back(edge);
-    cg.audio_to_frame_edges.push_back(0);
-    cg.nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
+    cg->edges.push_back(edge);
+    cg->audio_to_frame_edges.push_back(0);
+    cg->nodes[0].output_port_types[0] = VIVID_PORT_SCALAR;
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
+    bridge.build(*cg);
 
     // Audio thread outputs exactly 0.0
     auto& write_buf = bridge.analysis_write_buffer();
     bridge.publish_analysis();
-    bridge.pull_from_audio(cg);
+    bridge.pull_from_audio(*cg);
 
-    check(cg.nodes[1].bridge_input_dirty[0] == 1, "dirty flag set for zero value");
+    check(cg->nodes[1].bridge_input_dirty[0] == 1, "dirty flag set for zero value");
 
     // Simulate frame executor
-    auto& cn = cg.nodes[1];
+    auto& cn = cg->nodes[1];
     for (size_t p = 0; p < cn.bridge_input_dirty.size() && p < cn.input_values.size(); ++p) {
         if (cn.bridge_input_dirty[p]) {
             cn.input_values[p] = cn.bridge_input_values[p];
@@ -521,15 +522,15 @@ static void test_push_lane_preserves_lane_set_id() {
         {"gen",  0, 0, 1, 0, 0, false},
         {"osc",  1, 1, 1, 0, 0, false},
     });
-    cg.nodes[0].active_cadence = vivid::Cadence::Frame;
-    cg.audio_order = {1};
+    cg->nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg->audio_order = {1};
 
     // gen outputs a lane array — populate both old field and canonical ref
-    cg.nodes[0].output_lanes[0] = {1.0f, 2.0f, 3.0f};
+    cg->nodes[0].output_lanes[0] = {1.0f, 2.0f, 3.0f};
     static vivid::LaneBuffer test_lane_buf(1024);
     test_lane_buf.data[0] = 1.0f; test_lane_buf.data[1] = 2.0f; test_lane_buf.data[2] = 3.0f;
     test_lane_buf.committed_length = 3;
-    cg.nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&test_lane_buf);
+    cg->nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&test_lane_buf);
 
     // Snapshot edge with lane_set_id = 42
     vivid::CompiledEdge edge{};
@@ -540,12 +541,12 @@ static void test_push_lane_preserves_lane_set_id() {
     edge.transport = vivid::EdgeTransport::Snapshot;
     edge.data_type = VIVID_PORT_LANE_ARRAY;
     edge.lane_set_id = 42;
-    cg.edges.push_back(edge);
-    cg.frame_to_audio_edges.push_back(0);
+    cg->edges.push_back(edge);
+    cg->frame_to_audio_edges.push_back(0);
 
     vivid::AudioFrameBridge bridge;
-    bridge.build(cg);
-    bridge.push_to_audio(cg);
+    bridge.build(*cg);
+    bridge.push_to_audio(*cg);
 
     const auto& snap = bridge.active_params();
     check(snap.lane_inputs[0][0].length == 3, "lane length = 3");
