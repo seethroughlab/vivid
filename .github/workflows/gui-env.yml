@@ -1,8 +1,6 @@
 name: GUI Env Tests
 
 on:
-  schedule:
-    - cron: "0 9 * * *"
   workflow_dispatch:
 
 jobs:
