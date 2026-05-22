@@ -262,8 +262,8 @@ public:
     uint64_t reload_serial() const { return reload_serial_; }
     void notify_external_graph_mutation();
     void finalize_external_graph_load();
-    PreservedRuntimeState capture_preserved_runtime_state_for_path(const std::string& path) const;
-    PreservedRuntimeState capture_current_runtime_state() const;
+    PreservedRuntimeState capture_preserved_runtime_state_for_path(const std::string& path);
+    PreservedRuntimeState capture_current_runtime_state();
     void apply_preserved_runtime_state(const PreservedRuntimeState& state);
     bool consume_preserve_undo_history_reload() {
         bool preserve = preserve_undo_history_on_reload_;
@@ -341,7 +341,7 @@ private:
     std::pair<
         std::unordered_map<std::string, std::unordered_map<std::string, float>>,
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
-    > capture_clip_params(const std::string& track_id) const;
+    > capture_clip_params(const std::string& track_id);
     void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
     void fire_scene(const std::string& scene_id);
     int64_t compute_quantize_target_beat(const std::string& quantize) const;

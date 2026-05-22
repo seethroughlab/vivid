@@ -3,6 +3,7 @@
 
 #include "runtime/graph/frame_executor.h"
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 #include "test_helpers.h"
@@ -16,8 +17,8 @@ struct NodeSpec {
     bool has_tex_output;
 };
 
-static vivid::CompiledGraph make_graph(const std::vector<NodeSpec>& specs) {
-    vivid::CompiledGraph cg;
+static std::unique_ptr<vivid::CompiledGraph> make_graph(const std::vector<NodeSpec>& specs) {
+    auto cg = std::make_unique<vivid::CompiledGraph>();
     for (uint32_t i = 0; i < specs.size(); ++i) {
         vivid::CompiledNode cn;
         cn.node_id = specs[i].id;
@@ -27,9 +28,9 @@ static vivid::CompiledGraph make_graph(const std::vector<NodeSpec>& specs) {
             cn.gpu->is_sink = specs[i].is_sink;
             cn.gpu->has_texture_output = specs[i].has_tex_output;
         }
-        cg.nodes.push_back(std::move(cn));
-        cg.node_id_to_index[specs[i].id] = i;
-        cg.frame_order.push_back(i);
+        cg->nodes.push_back(std::move(cn));
+        cg->node_id_to_index[specs[i].id] = i;
+        cg->frame_order.push_back(i);
     }
     return cg;
 }
@@ -85,7 +86,7 @@ static void test_find_gpu_sink_none() {
         {"lfo", false, false, false},
         {"gain", false, false, false},
     });
-    check(exec.find_gpu_sink(cg) == -1, "no GPU nodes → -1");
+    check(exec.find_gpu_sink(*cg) == -1, "no GPU nodes → -1");
 }
 
 static void test_find_gpu_sink_found() {
@@ -96,7 +97,7 @@ static void test_find_gpu_sink_found() {
         {"shape",     true, false, true},  // generator (has output, not sink)
         {"composite", true, true, false},  // sink (has input, no output)
     });
-    int idx = exec.find_gpu_sink(cg);
+    int idx = exec.find_gpu_sink(*cg);
     check(idx == 1, "finds sink at index 1");
 }
 
@@ -108,7 +109,7 @@ static void test_find_gpu_sink_no_sink_among_gpu() {
         {"shape",  true, false, true},
         {"bloom",  true, false, true},
     });
-    check(exec.find_gpu_sink(cg) == -1, "no sink among GPU nodes");
+    check(exec.find_gpu_sink(*cg) == -1, "no sink among GPU nodes");
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +124,7 @@ static void test_effective_sink_no_solo() {
         {"shape",     true, false, true},
         {"composite", true, true, false},
     });
-    check(exec.find_effective_gpu_sink(cg) == 1, "falls through to find_gpu_sink");
+    check(exec.find_effective_gpu_sink(*cg) == 1, "falls through to find_gpu_sink");
 }
 
 static void test_effective_sink_solo_with_texture() {
@@ -136,7 +137,7 @@ static void test_effective_sink_solo_with_texture() {
     });
     exec.set_solo(0, {true, false});
 
-    int idx = exec.find_effective_gpu_sink(cg);
+    int idx = exec.find_effective_gpu_sink(*cg);
     check(idx == 0, "solo node 0 with texture output used as effective sink");
 }
 
@@ -150,7 +151,7 @@ static void test_effective_sink_solo_without_texture() {
     });
     exec.set_solo(0, {true, false});
 
-    int idx = exec.find_effective_gpu_sink(cg);
+    int idx = exec.find_effective_gpu_sink(*cg);
     check(idx == 1, "solo without texture → falls back to find_gpu_sink");
 }
 
@@ -164,13 +165,13 @@ static void test_has_gpu_operators() {
     vivid::FrameExecutor exec;
 
     auto no_gpu = make_graph({{"lfo", false, false, false}});
-    check(!exec.has_gpu_operators(no_gpu), "no GPU operators");
+    check(!exec.has_gpu_operators(*no_gpu), "no GPU operators");
 
     auto with_gpu = make_graph({
         {"lfo", false, false, false},
         {"shape", true, false, true},
     });
-    check(exec.has_gpu_operators(with_gpu), "has GPU operators");
+    check(exec.has_gpu_operators(*with_gpu), "has GPU operators");
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +187,8 @@ static void test_gpu_sink_source_size() {
         {"composite", true, true, false},
     });
     // Set upstream texture size
-    cg.nodes[0].gpu->tex_width = 1920;
-    cg.nodes[0].gpu->tex_height = 1080;
+    cg->nodes[0].gpu->tex_width = 1920;
+    cg->nodes[0].gpu->tex_height = 1080;
 
     // Add a texture edge from shape → composite
     vivid::CompiledEdge edge{};
@@ -197,10 +198,10 @@ static void test_gpu_sink_source_size() {
     edge.to_port = 0;
     edge.data_type = VIVID_PORT_TEXTURE;
     edge.targets_param = false;
-    cg.edges.push_back(edge);
+    cg->edges.push_back(edge);
 
     uint32_t w = 0, h = 0;
-    bool ok = exec.gpu_sink_source_size(cg, 1, w, h);
+    bool ok = exec.gpu_sink_source_size(*cg, 1, w, h);
     check(ok, "found source size");
     check(w == 1920, "width 1920");
     check(h == 1080, "height 1080");
@@ -213,7 +214,7 @@ static void test_gpu_sink_source_size_no_edge() {
     auto cg = make_graph({{"composite", true, true, false}});
 
     uint32_t w = 0, h = 0;
-    bool ok = exec.gpu_sink_source_size(cg, 0, w, h);
+    bool ok = exec.gpu_sink_source_size(*cg, 0, w, h);
     check(!ok, "no upstream edge → false");
 }
 

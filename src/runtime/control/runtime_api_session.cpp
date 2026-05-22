@@ -50,7 +50,8 @@ std::pair<
     std::unordered_map<std::string, std::unordered_map<std::string, float>>,
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
 >
-RuntimeAPI::capture_clip_params(const std::string& track_id) const {
+RuntimeAPI::capture_clip_params(const std::string& track_id) {
+    core_.update_audio_sources(0.0);
     using P = std::unordered_map<std::string, std::unordered_map<std::string, float>>;
     using S = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
     P params;
