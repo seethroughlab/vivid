@@ -27,10 +27,9 @@ CommandResult RuntimeAPI::save() {
 }
 
 CommandResult RuntimeAPI::save_as(const std::string& path) {
-    // Flush write-back string params (e.g. plugin_state written by main_thread_update)
-    // from compiled node storage into the Graph model before serializing.
-    // set_file_param_internal only syncs on explicit set_param calls; operators that
-    // write str_value directly (like save_state) update file_param_storage but not ndef.
+    // Flush any pending main_thread_update write-backs (e.g. VST3/CLAP/AU plugin_state)
+    // into file_param_storage before reading it into the Graph model for serialization.
+    core_.update_audio_sources(0.0);
     if (core_.compiled_graph()) {
         for (const auto& cn : core_.compiled_graph()->nodes) {
             NodeDef* ndef = graph_.find_node(cn.node_id);
@@ -468,7 +467,8 @@ void RuntimeAPI::finalize_external_graph_load() {
 }
 
 RuntimeAPI::PreservedRuntimeState
-RuntimeAPI::capture_preserved_runtime_state_for_path(const std::string& path) const {
+RuntimeAPI::capture_preserved_runtime_state_for_path(const std::string& path) {
+    core_.update_audio_sources(0.0);
     PreservedRuntimeState state;
     if (normalized_graph_identity_path(path) != active_graph_source_path_) return state;
     if (!core_.compiled_graph()) return state;
@@ -490,7 +490,8 @@ RuntimeAPI::capture_preserved_runtime_state_for_path(const std::string& path) co
     return state;
 }
 
-RuntimeAPI::PreservedRuntimeState RuntimeAPI::capture_current_runtime_state() const {
+RuntimeAPI::PreservedRuntimeState RuntimeAPI::capture_current_runtime_state() {
+    core_.update_audio_sources(0.0);
     PreservedRuntimeState state;
     if (!core_.compiled_graph()) return state;
     state.active = true;
