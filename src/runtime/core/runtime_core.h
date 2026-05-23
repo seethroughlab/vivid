@@ -122,6 +122,11 @@ public:
     // output). `time` is caller-domain — wall-clock from main.cpp, sim time
     // from tests; window queries on the samplers use the same domain.
     void sample_runtime_health(double time);
+
+    // Main-thread update hook for audio-cadence operators that need it
+    // (e.g. media decoding, file I/O). Called during pre_tick_audio_sync and
+    // explicitly after load_graph to trigger file loading before audio starts.
+    void update_audio_sources(double time);
     const RuntimeHealthSamplers& health_samplers() const { return health_samplers_; }
     RuntimeHealthSamplers& health_samplers() { return health_samplers_; }
 
@@ -182,10 +187,6 @@ private:
     LockfileStatus lockfile_status_;
 
     void write_live_metronome_state(const LiveMetronomeState& state);
-
-    // Main-thread update hook for audio-cadence operators that need it
-    // (e.g. media decoding, file I/O). Called during pre_tick_audio_sync.
-    void update_audio_sources(double time);
 };
 
 } // namespace vivid

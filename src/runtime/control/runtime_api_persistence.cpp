@@ -180,6 +180,10 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     has_gpu_ops = core_.has_gpu_operators();
     if (has_gpu_ops) needs_gpu_realloc_ = true;
 
+    // Trigger file-param loading synchronously so audio nodes see their files
+    // before the audio engine starts.
+    core_.update_audio_sources(0.0);
+
     if (core_.has_audio_operators()) {
         if (audio_engine_.build(core_)) {
             if (audio_engine_.start()) {
