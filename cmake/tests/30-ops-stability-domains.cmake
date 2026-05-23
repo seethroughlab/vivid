@@ -245,6 +245,42 @@ add_test(NAME test_parametric_eq_editor
          COMMAND test_parametric_eq_editor
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# AudioClip editor helpers — viewport-aware drag math and effective loop
+# clamping shared by the dedicated waveform editor.
+add_executable(test_audio_clip_editor_helpers
+    tests/operators/test_audio_clip_editor_helpers.cpp
+    operators/audio/audio_clip/audio_clip_editor_shared.cpp
+)
+target_include_directories(test_audio_clip_editor_helpers PRIVATE
+    src tests
+    operators/audio/audio_clip
+    operators)
+target_link_libraries(test_audio_clip_editor_helpers PRIVATE vivid_runtime_testlib)
+add_test(NAME test_audio_clip_editor_helpers
+         COMMAND test_audio_clip_editor_helpers
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# AudioClip audio behavior — scalar output buffers, external scrubbing, done
+# pulse isolation, and simple 44.1k→48k resampling sanity.
+add_executable(test_audio_clip
+    tests/operators/test_audio_clip.cpp
+    operators/audio/audio_clip/audio_clip.cpp
+    operators/audio/audio_clip/audio_clip_editor.cpp
+    operators/audio/audio_clip/audio_clip_editor_shared.cpp
+)
+target_include_directories(test_audio_clip PRIVATE
+    src tests
+    operators/audio/audio_clip
+    operators/shared/sampler_common
+    deps/miniaudio
+    ${signalsmith_stretch_SOURCE_DIR}
+    operators)
+target_link_libraries(test_audio_clip PRIVATE
+    vivid_runtime_testlib vivid_operator_api sampler_miniaudio nlohmann_json::nlohmann_json)
+add_test(NAME test_audio_clip
+         COMMAND test_audio_clip
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Tracker pattern_data serialize/deserialize — JSON schema v=1 round-trip,
 # legacy MOD-text fallback, format dispatch, sparse-cell preservation,
 # note-off (255), schema v>1 rejection.
