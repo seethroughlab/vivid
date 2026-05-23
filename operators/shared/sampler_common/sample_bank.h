@@ -7,6 +7,8 @@
 #include <cstdio>
 #include <cmath>
 #include <fstream>
+#include <cstring>
+#include <cctype>
 #include "miniaudio.h"
 #include <nlohmann/json.hpp>
 
@@ -21,6 +23,7 @@ struct SampleData {
     std::vector<float> samples_R;   // right channel (empty if mono)
     uint32_t sample_rate = 0;
     bool stereo = false;
+    float tempo_bpm = 0.0f;         // from ACID chunk or filename; 0 if unknown
 };
 
 struct SampleRegion {
@@ -64,6 +67,82 @@ struct SampleBank {
 
 inline float db_to_linear(float db) {
     return std::pow(10.0f, db / 20.0f);
+}
+
+// ---------------------------------------------------------------------------
+// BPM detection helpers
+// ---------------------------------------------------------------------------
+
+// Scan a WAV file for an ACID metadata chunk and return its tempo field.
+// Returns 0 if the chunk is absent or the value is out of [40, 300].
+inline float wav_acid_bpm(const std::string& path) {
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return 0.0f;
+    char hdr[12];
+    if (std::fread(hdr, 1, 12, f) != 12 ||
+        std::memcmp(hdr,     "RIFF", 4) != 0 ||
+        std::memcmp(hdr + 8, "WAVE", 4) != 0) {
+        std::fclose(f);
+        return 0.0f;
+    }
+    float bpm = 0.0f;
+    char id[4];
+    uint32_t sz;
+    while (std::fread(id, 1, 4, f) == 4 && std::fread(&sz, 4, 1, f) == 1) {
+        if (std::memcmp(id, "acid", 4) == 0) {
+            // ACID chunk layout: flags(4) root(2) unk(2) unk_f(4) beats(4)
+            //   meter_denom(2) meter_num(2) tempo_f32(4) — tempo at offset 20
+            if (sz >= 24) {
+                unsigned char data[24];
+                if (std::fread(data, 1, 24, f) == 24) {
+                    float t;
+                    std::memcpy(&t, data + 20, 4);
+                    if (t >= 40.0f && t <= 300.0f) bpm = t;
+                }
+            }
+            break;
+        }
+        // Skip chunk (RIFF pads to even byte boundary)
+        long skip = static_cast<long>(sz) + (sz & 1u);
+        std::fseek(f, skip, SEEK_CUR);
+    }
+    std::fclose(f);
+    return bpm;
+}
+
+// Heuristically extract a BPM from the filename stem.
+// Matches standalone digit sequences in [40, 300] that are not part of a
+// longer word (e.g. "48kHz", "24bit", "v2" are skipped; "120bpm" is accepted).
+// Returns 0 if no unambiguous BPM token is found.
+inline float wav_filename_bpm(const std::string& path) {
+    size_t slash = path.find_last_of("/\\");
+    std::string name = (slash == std::string::npos) ? path : path.substr(slash + 1);
+    size_t dot = name.rfind('.');
+    if (dot != std::string::npos) name.resize(dot);
+
+    int candidate = 0, count = 0;
+    for (size_t i = 0; i < name.size(); ) {
+        if (std::isdigit((unsigned char)name[i])) {
+            size_t j = i;
+            while (j < name.size() && std::isdigit((unsigned char)name[j])) ++j;
+            const bool preceded_by_alpha = (i > 0 && std::isalpha((unsigned char)name[i-1]));
+            const bool followed_by_alpha = (j < name.size() && std::isalpha((unsigned char)name[j]));
+            // Allow digits followed by "bpm" (e.g. "120bpm")
+            const bool followed_by_bpm = (j + 2 < name.size() &&
+                std::tolower((unsigned char)name[j])   == 'b' &&
+                std::tolower((unsigned char)name[j+1]) == 'p' &&
+                std::tolower((unsigned char)name[j+2]) == 'm');
+            if (!preceded_by_alpha && (!followed_by_alpha || followed_by_bpm)) {
+                int val = 0;
+                for (size_t k = i; k < j; ++k) val = val * 10 + (name[k] - '0');
+                if (val >= 40 && val <= 300) { candidate = val; ++count; }
+            }
+            i = j;
+        } else {
+            ++i;
+        }
+    }
+    return (count == 1) ? static_cast<float>(candidate) : 0.0f;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,9 +195,17 @@ inline std::shared_ptr<SampleData> decode_wav(const std::string& path) {
         }
     }
 
-    fprintf(stderr, "[vivid-sampler] Decoded: %s (%llu frames, %u Hz, %s)\n",
-            path.c_str(), (unsigned long long)frames_read,
-            sample->sample_rate, stereo ? "stereo" : "mono");
+    sample->tempo_bpm = wav_acid_bpm(path);
+    if (sample->tempo_bpm == 0.0f) sample->tempo_bpm = wav_filename_bpm(path);
+
+    if (sample->tempo_bpm > 0.0f)
+        fprintf(stderr, "[vivid-sampler] Decoded: %s (%llu frames, %u Hz, %s, %.0f BPM)\n",
+                path.c_str(), (unsigned long long)frames_read,
+                sample->sample_rate, stereo ? "stereo" : "mono", sample->tempo_bpm);
+    else
+        fprintf(stderr, "[vivid-sampler] Decoded: %s (%llu frames, %u Hz, %s)\n",
+                path.c_str(), (unsigned long long)frames_read,
+                sample->sample_rate, stereo ? "stereo" : "mono");
 
     return sample;
 }

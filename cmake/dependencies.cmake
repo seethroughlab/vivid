@@ -358,3 +358,11 @@ target_include_directories(tree_sitter_cpp_lib PUBLIC
     ${tree_sitter_cpp_SOURCE_DIR}/src
 )
 target_link_libraries(tree_sitter_cpp_lib PUBLIC tree_sitter_runtime)
+
+# --- Signalsmith Stretch (pitch-preserving time stretch, MIT) ---
+# Header-only; DSP helpers are in the dsp/ subdirectory (no submodules needed).
+FetchContent_Declare(signalsmith_stretch
+    GIT_REPOSITORY https://github.com/Signalsmith-Audio/signalsmith-stretch.git
+    GIT_TAG        1.1.0
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(signalsmith_stretch)

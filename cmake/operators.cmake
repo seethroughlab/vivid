@@ -689,6 +689,16 @@ foreach(_samp_op sp404 sampler slicer)
         ${CMAKE_SOURCE_DIR}/operators/shared/sequencer)
 endforeach()
 
+add_vivid_operator(audio_clip operators/audio/audio_clip/audio_clip.cpp CODEGEN
+                   EXTRA_LIBS sampler_miniaudio nlohmann_json::nlohmann_json)
+target_sources(audio_clip PRIVATE
+    operators/audio/audio_clip/audio_clip_editor.cpp
+    operators/audio/audio_clip/audio_clip_editor_shared.cpp)
+target_include_directories(audio_clip PRIVATE
+    ${CMAKE_SOURCE_DIR}/operators/shared/sampler_common
+    ${CMAKE_SOURCE_DIR}/deps/miniaudio
+    ${signalsmith_stretch_SOURCE_DIR})
+
 
 # --- Operators meta-target (for package smoke CI: builds all operator dylibs without the app) ---
 get_property(_vivid_op_targets GLOBAL PROPERTY VIVID_OPERATOR_TARGETS)
