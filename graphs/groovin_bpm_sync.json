@@ -1,0 +1,125 @@
+{
+    "schema_version": 3,
+    "vivid_version": "0.1.0",
+    "nodes": {
+        "audio_out": {
+            "type": "audio_out",
+            "layout": {
+                "x": 1430.0304,
+                "y": 122.30617
+            }
+        },
+        "video_out": {
+            "type": "video_out",
+            "layout": {
+                "x": 1580.7261,
+                "y": 507.50287
+            }
+        },
+        "clip_72": {
+            "type": "AudioClip",
+            "params": {
+                "auto_play": 1.0,
+                "volume": 0.6,
+                "rate_mode": 2.0,
+                "file_bpm": 72.0,
+                "warp_points": "",
+                "file": "../assets/audio/GROOVIN__72_drum_loops_heavy_chains.wav"
+            },
+            "layout": {
+                "x": 201.72972,
+                "y": -50.030045
+            }
+        },
+        "clip_84": {
+            "type": "AudioClip",
+            "params": {
+                "auto_play": 1.0,
+                "volume": 0.6,
+                "rate_mode": 2.0,
+                "file_bpm": 84.0,
+                "warp_points": "",
+                "file": "../assets/audio/GROOVIN__84_drum_loops_chillin_.wav"
+            },
+            "layout": {
+                "x": 193.30556,
+                "y": 190.82742
+            }
+        },
+        "clip_98": {
+            "type": "AudioClip",
+            "params": {
+                "auto_play": 1.0,
+                "volume": 0.6,
+                "rate_mode": 2.0,
+                "file_bpm": 98.0,
+                "warp_points": "",
+                "file": "../assets/audio/GROOVIN__98_drum_loops_break_it.wav"
+            },
+            "layout": {
+                "x": 202.10187,
+                "y": 413.27667
+            }
+        },
+        "clip_140": {
+            "type": "AudioClip",
+            "params": {
+                "auto_play": 1.0,
+                "volume": 0.6,
+                "rate_mode": 2.0,
+                "file_bpm": 140.0,
+                "warp_points": "",
+                "file": "../assets/audio/GROOVIN__140_drum_loops_linear_backbeat.wav"
+            },
+            "layout": {
+                "x": 212.16223,
+                "y": 638.63055
+            }
+        },
+        "mix1": {
+            "type": "Mixer",
+            "layout": {
+                "x": 836.7231,
+                "y": 184.0953
+            }
+        },
+        "lim1": {
+            "type": "Limiter",
+            "layout": {
+                "x": 1130.6565,
+                "y": 104.583145
+            }
+        }
+    },
+    "connections": [
+        {
+            "from": "clip_72/audio_out",
+            "to": "mix1/input_0"
+        },
+        {
+            "from": "clip_84/audio_out",
+            "to": "mix1/input_1"
+        },
+        {
+            "from": "clip_98/audio_out",
+            "to": "mix1/input_2"
+        },
+        {
+            "from": "clip_140/audio_out",
+            "to": "mix1/input_3"
+        },
+        {
+            "from": "mix1/output",
+            "to": "lim1/input"
+        },
+        {
+            "from": "lim1/output",
+            "to": "audio_out/input"
+        }
+    ],
+    "viewport": {
+        "pan_x": 255.3884,
+        "pan_y": 162.74832,
+        "zoom": 0.70493644
+    }
+}
