@@ -67,7 +67,22 @@
         "sp1": {
             "type": "SP404",
             "params": {
-                "file": "../../assets/audio/sp404-kit/sp404-kit.json",
+                "pad_file_0":  "../../assets/audio/sp404-kit/samples/kick-deep.wav",
+                "pad_file_1":  "../../assets/audio/sp404-kit/samples/kick-electro.wav",
+                "pad_file_2":  "../../assets/audio/sp404-kit/samples/snare-lofi.wav",
+                "pad_file_3":  "../../assets/audio/sp404-kit/samples/snare-dubby.wav",
+                "pad_file_4":  "../../assets/audio/sp404-kit/samples/hat-closed.wav",
+                "pad_file_5":  "../../assets/audio/sp404-kit/samples/hat-open.wav",
+                "pad_file_6":  "../../assets/audio/sp404-kit/samples/conga-slap.wav",
+                "pad_file_7":  "../../assets/audio/sp404-kit/samples/mambo-bell.wav",
+                "pad_file_8":  "../../assets/audio/sp404-kit/samples/cha-cha-bell.wav",
+                "pad_file_9":  "../../assets/audio/sp404-kit/samples/wood-block.wav",
+                "pad_file_10": "../../assets/audio/sp404-kit/samples/frame-drum.wav",
+                "pad_file_11": "../../assets/audio/sp404-kit/samples/caixa-hit.wav",
+                "pad_file_12": "../../assets/audio/sp404-kit/samples/piano-dusty-95bpm.wav",
+                "pad_file_13": "../../assets/audio/sp404-kit/samples/epiano-vinyl-95bpm.wav",
+                "pad_file_14": "../../assets/audio/sp404-kit/samples/piano-cmaj-70bpm.wav",
+                "pad_file_15": "../../assets/audio/sp404-kit/samples/keys-vinyl-73bpm.wav",
                 "mode": 0,
                 "volume": 0.8
             },

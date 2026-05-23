@@ -281,6 +281,20 @@ add_test(NAME test_audio_clip
          COMMAND test_audio_clip
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# SP404 shared voice behavior — tape-style detune rate, reverse playback,
+# and opt-in loop crossfade without changing Sampler's default call path.
+add_executable(test_sp404_voice
+    tests/operators/test_sp404_voice.cpp
+)
+target_include_directories(test_sp404_voice PRIVATE
+    src tests
+    deps/miniaudio
+    operators)
+target_link_libraries(test_sp404_voice PRIVATE nlohmann_json::nlohmann_json)
+add_test(NAME test_sp404_voice
+         COMMAND test_sp404_voice
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Tracker pattern_data serialize/deserialize — JSON schema v=1 round-trip,
 # legacy MOD-text fallback, format dispatch, sparse-cell preservation,
 # note-off (255), schema v>1 rejection.

@@ -161,6 +161,13 @@ static void check_breakout_surface(vivid::OperatorLoader& loader, const char* op
         check(voices_out_p->channels >= 2,
               (std::string(op_name) + "/voices_out has multichannel layout").c_str());
     }
+    if (std::strcmp(op_name, "sp404") == 0) {
+        check(find_param(desc, "reverse") >= 0, "SP404 declares reverse param");
+        check(find_param(desc, "detune_semitones") >= 0,
+              "SP404 declares detune_semitones param");
+        check(find_param(desc, "loop_crossfade_ms") >= 0,
+              "SP404 declares loop_crossfade_ms param");
+    }
 }
 
 }  // namespace
