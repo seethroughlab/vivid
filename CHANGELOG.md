@@ -7,6 +7,153 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.2] - 2026-05-26
+
+Second alpha release. Approximately five weeks after alpha.1, this release
+delivers the complete session system (Tracks, Clips, Scenes), the native note
+protocol replacing MIDI buffers, full CLAP plugin hosting, the operator codegen
+framework, a unified 2D GPU drawable pipeline, and dedicated editor windows for
+all major sequencer and synthesis operators.
+
+### Session
+
+- **Track / Clip / Scene architecture.** Replaces the legacy Variations model.
+  Clips hold parameter snapshots; scenes group cross-track assignments; launch
+  is quantized to a configurable clock (Phases 1–5 complete).
+- **Scene×Track grid UI.** Cell context menus, ownership badges, and a
+  node-assignment workflow replace the legacy clip launcher panel.
+- **MCP tools.** `inspect_session`, `inspect_clip`, `inspect_scene`, and
+  `GraphSnapshot` for LLM-driven session introspection.
+
+### Operators — New & Changed
+
+- **AudioClip.** New MIDI/audio clip operator with waveform editor, per-editor
+  undo/redo, piano-roll thumbnail, and sync modes. Replaces MidiFilePlayer.
+- **SP404.** Sampler-based drum machine with 16×4 pad grid, per-pad file
+  parameters, and a dedicated grid editor.
+- **Tape.** Analog tape emulation: saturation, wow, flutter, and hiss.
+- **ColorBands / SpreadNoise / EnvelopeFr.** New GPU source and control operators.
+- **PhrasePulse.** Phrase-aligned sequencer reset with `bar_sync` support.
+- **DrumSequencer.** 4-pattern store + auto-advance song mode; per-drum MIDI
+  outputs routable without a hub node.
+- **Math.** Added subtract, divide, and modulo with safe zero handling.
+- **Composite.** Fixed black-output bug when blending onto an empty accumulator.
+- **audio_out.** Real device dropdown, hot-plug support, native sample-rate
+  negotiation.
+
+### Editor Windows
+
+Dedicated editor windows replace inspector panels for all major sequencer and
+synthesis operators: MSEG, Sequencer, DrumSequencer (probability, roll, pattern
+A/B), Tracker, Arpeggiator, Euclidean, PatternSeq, ParametricEq, AudioClip
+waveform editor, and SP404 pad grid editor. All editors share a per-editor
+undo/redo stack with paste cursor; toolbars use shared layout helpers; dense
+timelines auto-coarsen their grid.
+
+### Plugin Hosting
+
+- **CLAP.** Full CLAP instrument and effect support (`CLAPInstrument`,
+  `CLAPEffect` operators), plugin browser editor window, MCP tools, and
+  transport sync.
+- **VST3.** Reintegrated with SDK v3.8 (MIT license); `IMidiMapping2` support;
+  plugin state persisted across topology changes.
+- **AU.** Parity improvements matching VST3/CLAP enhancements.
+- **Shared improvements.** `DirectParamQueue` for low-latency param delivery;
+  param metadata API; curated inspector UI for macro slots; inline numeric text
+  entry; library ref-counting for safe rate-change reload.
+- **Stutter fix.** `getState()` gated on `state_dirty_` with a 1 Hz max to
+  prevent audio-thread stalls under concurrent calls.
+
+### Native Note Protocol
+
+`VividMidiBuffer` wire type replaced by `VividNoteBuffer`, carrying per-voice
+expression (pitch bend, pressure, timbre) from emitters through `VoiceAllocator`
+to all polyphonic synths. `note_breakout` provides shared-control fanout and
+per-voice lane outputs. Legacy `LANE_ARRAY` note outputs removed.
+
+### Operator Framework
+
+- **operator_codegen.** AST-based (tree-sitter) code generation tool;
+  `VIVID_DEFINE_OP` v2 pattern with descriptor validation at build time. All
+  production operators migrated; packages use `VIVID_REGISTER` for codegen-free
+  registration.
+- **V3 metadata.** `display_name`, `keywords`, and `summary` fields on all
+  operators; surfaced in `operator_docs` and the chooser.
+- **`VIVID_DISPLAY_EDITOR` hint.** Marks params that appear only in dedicated
+  editor windows.
+- **Operator alias resolver.** Table-driven legacy-id → new-id mapping for
+  future renames; `EnvelopeFollower` aliases to `SmoothFr`.
+
+### GPU / 2D Visual Pipeline
+
+- **Drawable pipeline (Phase E complete).** Unified 2D rendering path;
+  `ShapeField` promoted to drawable; `Text2D` subsumes RichText. Legacy
+  texture-chain duplicates retired.
+- Operator `kName` normalized to CamelCase throughout.
+- `Shape2D` draw_thumbnail previews the actual polygon; GPU thumbnail mipmap
+  chain for filtered zoom.
+- `Shape2D` position_x / position_y params.
+- `create_shader_checked()` with validation error scope for cleaner WGSL
+  diagnostics.
+
+### MCP & Developer Tooling
+
+- Music evaluation backend switched to Gemini; `configure_music_eval_backend`
+  MCP tool.
+- 16 audio-analysis diagnostic tools for LLM-driven audio reasoning
+  (librosa-based).
+- Reference-driven AV composition tools and AV-coupling visual evaluation tools.
+- `validate_operators` HTTP command + MCP tool; `rescan_operators` for
+  late-bound dylibs.
+- `scaffold_operator` defaults to the project-local package (not core).
+- Operator coverage policy, audit script, and tests.
+- Shader-filter description and per-param docs surfaced in `operator_docs`.
+
+### UI
+
+- Session panel drawn in the overlay pass; track node-assignment workflow with
+  ownership badges.
+- Operator chooser polish; `Make many` shortcut.
+- Port description tooltip on hover.
+- Inspector docs-link button.
+- Chooser Map tab axis-label polish and sizing.
+- Diagnostics panel: long-window memory trend with slope indicator; AV
+  reactivity analysis expanded to three lenses.
+- Crash-recovery dialog wraps to fit long prompts.
+
+### Audio Analysis
+
+- `AudioAnalysis` operator writes smoothed RMS, peak, spectral centroid, and
+  related values to named scalar output ports for direct wire connections into
+  the graph.
+
+### Demo Graphs
+
+- Proswell-style IDM/chiptune demo with multi-track drums and 4-section song mode.
+- GROOVIN drum-loops + SP404 sync-mode demo.
+- Session example graphs (tracks, clips, scenes).
+- Intro demos updated: both shape axes driven, envelope-followed drums.
+
+### Build & Localization
+
+- wgpu-native upgraded to v29.0.0.0.
+- ARM64 macOS architecture pinning; oscpack ARM64 guards patched at configure
+  time.
+- `.json` graphs open via drag-drop onto the app icon or "Open With".
+- 22 new locale keys translated across all 21 locales.
+- Default output texture resolution raised from 800×600 to **1280×720**.
+
+### Bug Fixes & Performance
+
+- `drain_inject` hot path: atomic pending flag + pre-allocated scratch buffer
+  eliminates per-frame allocation.
+- Lane state `sweep_retired`: atomic flag makes the sweep zero-cost when idle.
+- Dock-icon drop no longer shows a spurious "cannot open Vivid Graph" dialog.
+- Drop-settle race conditions fixed (guard on `completed_` flag, async retry on
+  silent failures).
+- TEXT/FILE param sync skipped on the audio thread to prevent callback races.
+- Graph compiler bridge-annotation enforcement relaxed to warnings.
+
 ## [0.1.0-alpha.1] - 2026-04-18
 
 First official release. This entry collapses all prior development history
