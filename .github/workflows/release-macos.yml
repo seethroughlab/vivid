@@ -16,7 +16,7 @@ jobs:
       APP_NAME: Vivid
       SPARKLE_VERSION: 2.6.4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 0
@@ -323,7 +323,7 @@ jobs:
           echo "path=build/appcast.xml" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           generate_release_notes: true

@@ -11,7 +11,7 @@ jobs:
     env:
       VIVID_GUI_SMOKE_HOME: ${{ github.workspace }}/build/.test_ui_screenshot_smoke/gui_smoke/home
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: recursive
 

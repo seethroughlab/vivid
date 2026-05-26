@@ -20,7 +20,7 @@ jobs:
       APP_NAME: Vivid
       SPARKLE_VERSION: 2.6.4
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
           submodules: recursive
