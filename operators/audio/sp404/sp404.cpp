@@ -590,6 +590,9 @@ void SP404::draw_editor(VividEditorContext* ctx) {
 }
 
 VIVID_DEFINE_OP(SP404) {
+    display_name = "SP404";
+    keywords     = {"sampler", "drum", "pad", "sample", "groovebox", "percussion", "sp404"};
+    summary      = "16-pad sample-based drum machine with per-pad audio files and a dedicated grid editor.";
 }
 
 VIVID_EDITOR(SP404)
