@@ -120,6 +120,11 @@ int main(int argc, char* argv[]) {
             },
         };
 
+        // Clear persisted window settings between cases so one case's window
+        // position can't place the next case's window on a different DPI display.
+        std::filesystem::remove(runtime_config_dir / "settings.json", fs_ec);
+        fs_ec.clear();
+
         report_check(report, FailureKind::Harness, std::filesystem::exists(graph_path),
                      "graph fixture exists: " + graph_path.string());
         if (!c.test_drop_path.empty()) {

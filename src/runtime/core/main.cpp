@@ -2560,6 +2560,8 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
     double prev_time = glfwGetTime();
     uint64_t frame_count = 0;
+    uint32_t consecutive_surface_failures = 0;
+    bool test_surface_abort = false;
     bool pkg_update_notice_done = false;
     bool core_update_notice_done = false;
     bool synthetic_drop_injected = false;
@@ -3047,6 +3049,23 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         // --- Try to acquire surface texture for presentation ---
         vivid::FrameState frame;
         bool have_surface = !suppress_surface_frame && gpu.begin_frame(frame);
+
+        // In scripted/screenshot test modes a permanently broken surface means the
+        // test will never take its screenshot and will hang until CTest kills it.
+        // After ~5 s of consecutive failures, abort with a non-zero exit so the
+        // harness gets a fast, diagnosable failure instead of a 300 s timeout.
+        if (!have_surface && (!test_ui_script_path.empty() || !screenshot_path.empty())) {
+            if (++consecutive_surface_failures >= 300) {
+                std::fprintf(stderr,
+                    "[vivid] Surface texture acquisition failed for %u consecutive frames "
+                    "in test mode — aborting.\n",
+                    consecutive_surface_failures);
+                test_surface_abort = true;
+                return false;
+            }
+        } else {
+            consecutive_surface_failures = 0;
+        }
 
         // If no surface (e.g. during resize), create a standalone encoder
         // so offscreen GPU work (runtime tick, thumbnails) still runs.
@@ -3589,6 +3608,10 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
     glfwDestroyWindow(window);
     glfwTerminate();
 
+    if (test_surface_abort) {
+        std::fprintf(stderr, "[vivid] Shutdown after surface-failure abort in test mode\n");
+        return 1;
+    }
     std::fprintf(stderr, "[vivid] Clean shutdown\n");
     return 0;
 }
