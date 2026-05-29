@@ -40,10 +40,12 @@ struct ConnectionDef {
 Maps a MIDI CC to a node parameter: `node_id`, `param_name`, `cc_number` (0-127), `channel` (0=omni), `range_min/max`.
 
 ### `SessionDef`
-Performance authoring state for Tracks, Clips, and Scenes. Tracks own nodes and clips, clips
-store per-track parameter state, scenes store track-to-clip assignments, and `active_clips`
-tracks the visible launched clip per track. Transition fields are parsed and round-tripped as
-reserved schema but are not consulted by current launch behavior.
+Performance authoring state for Tracks, Clips, Scenes, and Cue Paths. Tracks own nodes and clips,
+clips store per-track parameter state, scenes store track-to-clip assignments, and cue paths store
+optional ordered scene progressions. Cue paths reference scenes by stable id; they do not store raw
+parameters and they do not introduce a master timeline. `active_clips` tracks the visible launched
+clip per track. Transition fields are parsed and round-tripped as reserved schema but are not
+consulted by current launch behavior.
 
 ### `OperatorPreset`
 Per-operator named preset: `name` + `params[param_name] = value` + `string_params`.

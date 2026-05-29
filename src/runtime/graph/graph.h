@@ -155,9 +155,23 @@ struct SessionSceneDef {
     std::unordered_set<std::string> leave_unchanged;
 };
 
+struct SessionCueStepDef {
+    std::string id;       // stable, generated (e.g. "qs_8a1b2c3d")
+    std::string scene_id; // referenced SessionSceneDef id
+    std::string advance_mode = "manual"; // manual | after_bars | on_scene_launch
+    int bars = 0;         // used by after_bars
+};
+
+struct SessionCuePathDef {
+    std::string id;   // stable, generated (e.g. "qp_1a2b3c4d")
+    std::string name;
+    std::vector<SessionCueStepDef> steps;
+};
+
 struct SessionDef {
     std::vector<SessionTrackDef> tracks;
     std::vector<SessionSceneDef> scenes;
+    std::vector<SessionCuePathDef> cue_paths;
     std::unordered_map<std::string, std::string> active_clips;  // track_id → clip_id
 };
 
@@ -339,12 +353,25 @@ public:
     bool clear_scene_assignment(const std::string& scene_id, const std::string& track_id);
     bool update_scene_assignments(const std::string& scene_id,
                                    const std::unordered_map<std::string, std::string>& assignments);
+    std::string create_cue_path(std::string name);
+    bool rename_cue_path(const std::string& path_id, std::string new_name);
+    bool remove_cue_path(const std::string& path_id);
+    bool move_cue_path(const std::string& path_id, int to_index);
+    std::string add_cue_step(const std::string& path_id, const std::string& scene_id, int index = -1);
+    bool remove_cue_step(const std::string& path_id, const std::string& step_id);
+    bool move_cue_step(const std::string& path_id, const std::string& step_id, int to_index);
+    bool set_cue_step_advance(const std::string& path_id, const std::string& step_id,
+                              std::string advance_mode, int bars);
     const SessionTrackDef* find_track(const std::string& id) const;
     SessionTrackDef* find_track(const std::string& id);
     const SessionClipDef* find_clip(const std::string& track_id, const std::string& clip_id) const;
     SessionClipDef* find_clip(const std::string& track_id, const std::string& clip_id);
     const SessionSceneDef* find_scene(const std::string& id) const;
     SessionSceneDef* find_scene(const std::string& id);
+    const SessionCuePathDef* find_cue_path(const std::string& id) const;
+    SessionCuePathDef* find_cue_path(const std::string& id);
+    const SessionCueStepDef* find_cue_step(const std::string& path_id, const std::string& step_id) const;
+    SessionCueStepDef* find_cue_step(const std::string& path_id, const std::string& step_id);
 
     const std::string& quantize_clock_node() const { return quantize_clock_node_; }
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }

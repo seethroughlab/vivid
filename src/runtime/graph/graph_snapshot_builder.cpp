@@ -637,9 +637,16 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
     // Session: Tracks, Clips, Scenes
     snap.session.tracks.clear();
     snap.session.scenes.clear();
+    snap.session.cue_paths.clear();
     snap.session.track_index.clear();
     snap.session.scene_index.clear();
+    snap.session.cue_path_index.clear();
     snap.session.queued_scene_id.clear();
+    snap.session.active_cue_path_id.clear();
+    snap.session.active_cue_step_id.clear();
+    snap.session.queued_cue_path_id.clear();
+    snap.session.queued_cue_step_id.clear();
+    snap.session.cue_follow_beats_remaining = -1;
     for (const auto& track : graph.session().tracks) {
         auto& ts = snap.session.tracks.emplace_back();
         ts.id   = track.id;
@@ -695,8 +702,30 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         ss.leave_unchanged = scene.leave_unchanged;
         snap.session.scene_index[scene.id] = snap.session.scenes.size() - 1;
     }
-    if (runtime_api)
+    for (const auto& path : graph.session().cue_paths) {
+        auto& ps = snap.session.cue_paths.emplace_back();
+        ps.id = path.id;
+        ps.name = path.name;
+        for (const auto& step : path.steps) {
+            ui::SessionCueStepSnap ss;
+            ss.id = step.id;
+            ss.scene_id = step.scene_id;
+            if (const auto* scene = graph.find_scene(step.scene_id))
+                ss.scene_name = scene->name;
+            ss.advance_mode = step.advance_mode;
+            ss.bars = step.bars;
+            ps.steps.push_back(std::move(ss));
+        }
+        snap.session.cue_path_index[path.id] = snap.session.cue_paths.size() - 1;
+    }
+    if (runtime_api) {
         snap.session.queued_scene_id = runtime_api->queued_scene_id();
+        snap.session.active_cue_path_id = runtime_api->active_cue_path_id();
+        snap.session.active_cue_step_id = runtime_api->active_cue_step_id();
+        snap.session.queued_cue_path_id = runtime_api->queued_cue_path_id();
+        snap.session.queued_cue_step_id = runtime_api->queued_cue_step_id();
+        snap.session.cue_follow_beats_remaining = runtime_api->cue_follow_beats_remaining();
+    }
 
     // Sticky notes
     const auto& sticky = graph.sticky_notes();

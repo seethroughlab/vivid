@@ -533,6 +533,71 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                 session_.scenes.push_back(std::move(scene));
             }
         }
+        // parse cue paths
+        std::unordered_set<std::string> seen_cue_path_ids;
+        auto cue_paths_it = sess_it->find("cue_paths");
+        if (cue_paths_it != sess_it->end() && cue_paths_it->is_array()) {
+            for (const auto& pval : *cue_paths_it) {
+                auto pid_it = pval.find("id");
+                if (pid_it == pval.end() || !pid_it->is_string()) continue;
+                std::string path_id = pid_it->get<std::string>();
+                if (seen_cue_path_ids.count(path_id)) {
+                    std::fprintf(stderr, "[session] duplicate cue path id '%s', skipping\n",
+                                 path_id.c_str());
+                    continue;
+                }
+                seen_cue_path_ids.insert(path_id);
+                SessionCuePathDef path;
+                path.id = path_id;
+                auto pname = pval.find("name");
+                if (pname != pval.end() && pname->is_string())
+                    path.name = pname->get<std::string>();
+
+                std::unordered_set<std::string> seen_step_ids;
+                auto steps_it = pval.find("steps");
+                if (steps_it != pval.end() && steps_it->is_array()) {
+                    for (const auto& step_val : *steps_it) {
+                        auto sid_it = step_val.find("id");
+                        auto scid_it = step_val.find("scene_id");
+                        if (sid_it == step_val.end() || !sid_it->is_string() ||
+                            scid_it == step_val.end() || !scid_it->is_string())
+                            continue;
+                        std::string step_id = sid_it->get<std::string>();
+                        if (seen_step_ids.count(step_id)) {
+                            std::fprintf(stderr,
+                                         "[session] duplicate cue step id '%s' in path '%s', skipping\n",
+                                         step_id.c_str(), path_id.c_str());
+                            continue;
+                        }
+                        std::string scene_id = scid_it->get<std::string>();
+                        if (!find_scene(scene_id)) {
+                            std::fprintf(stderr,
+                                         "[session] cue path '%s' step '%s' references missing scene '%s', skipping\n",
+                                         path_id.c_str(), step_id.c_str(), scene_id.c_str());
+                            continue;
+                        }
+                        seen_step_ids.insert(step_id);
+                        SessionCueStepDef step;
+                        step.id = std::move(step_id);
+                        step.scene_id = std::move(scene_id);
+                        auto mode_it = step_val.find("advance_mode");
+                        if (mode_it != step_val.end() && mode_it->is_string()) {
+                            std::string mode = mode_it->get<std::string>();
+                            if (mode == "manual" || mode == "after_bars" ||
+                                mode == "on_scene_launch")
+                                step.advance_mode = std::move(mode);
+                        }
+                        auto bars_it = step_val.find("bars");
+                        if (bars_it != step_val.end() && bars_it->is_number_integer())
+                            step.bars = std::max(0, bars_it->get<int>());
+                        if (step.advance_mode == "after_bars" && step.bars <= 0)
+                            step.bars = 1;
+                        path.steps.push_back(std::move(step));
+                    }
+                }
+                session_.cue_paths.push_back(std::move(path));
+            }
+        }
         // parse active_clips
         auto ac_it = sess_it->find("active_clips");
         if (ac_it != sess_it->end() && ac_it->is_object()) {
@@ -872,6 +937,12 @@ std::string Graph::gen_session_id(std::string_view prefix) {
         }
         if (!used) for (const auto& s : session_.scenes)
             if (s.id == id) { used = true; break; }
+        if (!used) for (const auto& p : session_.cue_paths) {
+            if (p.id == id) { used = true; break; }
+            for (const auto& step : p.steps)
+                if (step.id == id) { used = true; break; }
+            if (used) break;
+        }
         if (!used) return id;
     }
     return std::string(buf); // fallback
@@ -1039,6 +1110,14 @@ bool Graph::remove_scene(const std::string& scene_id) {
         [&](const SessionSceneDef& s) { return s.id == scene_id; });
     if (it == session_.scenes.end()) return false;
     session_.scenes.erase(it);
+    for (auto& path : session_.cue_paths) {
+        path.steps.erase(
+            std::remove_if(path.steps.begin(), path.steps.end(),
+                           [&](const SessionCueStepDef& step) {
+                               return step.scene_id == scene_id;
+                           }),
+            path.steps.end());
+    }
     return true;
 }
 
@@ -1096,6 +1175,95 @@ bool Graph::update_scene_assignments(const std::string& scene_id,
     return true;
 }
 
+// --- Session Cue Path CRUD ---
+
+std::string Graph::create_cue_path(std::string name) {
+    SessionCuePathDef path;
+    path.id = gen_session_id("qp");
+    path.name = std::move(name);
+    session_.cue_paths.push_back(std::move(path));
+    return session_.cue_paths.back().id;
+}
+
+bool Graph::rename_cue_path(const std::string& path_id, std::string new_name) {
+    auto* p = find_cue_path(path_id);
+    if (!p) return false;
+    p->name = std::move(new_name);
+    return true;
+}
+
+bool Graph::remove_cue_path(const std::string& path_id) {
+    auto it = std::find_if(session_.cue_paths.begin(), session_.cue_paths.end(),
+        [&](const SessionCuePathDef& p) { return p.id == path_id; });
+    if (it == session_.cue_paths.end()) return false;
+    session_.cue_paths.erase(it);
+    return true;
+}
+
+bool Graph::move_cue_path(const std::string& path_id, int to_index) {
+    int n = static_cast<int>(session_.cue_paths.size());
+    auto it = std::find_if(session_.cue_paths.begin(), session_.cue_paths.end(),
+        [&](const SessionCuePathDef& p) { return p.id == path_id; });
+    if (it == session_.cue_paths.end()) return false;
+    int from = static_cast<int>(it - session_.cue_paths.begin());
+    if (to_index < 0 || to_index >= n || from == to_index) return to_index == from;
+    SessionCuePathDef tmp = std::move(*it);
+    session_.cue_paths.erase(it);
+    session_.cue_paths.insert(session_.cue_paths.begin() + to_index, std::move(tmp));
+    return true;
+}
+
+std::string Graph::add_cue_step(const std::string& path_id, const std::string& scene_id, int index) {
+    auto* p = find_cue_path(path_id);
+    if (!p || !find_scene(scene_id)) return {};
+    SessionCueStepDef step;
+    step.id = gen_session_id("qs");
+    step.scene_id = scene_id;
+    if (index < 0 || index > static_cast<int>(p->steps.size()))
+        index = static_cast<int>(p->steps.size());
+    p->steps.insert(p->steps.begin() + index, std::move(step));
+    return p->steps[index].id;
+}
+
+bool Graph::remove_cue_step(const std::string& path_id, const std::string& step_id) {
+    auto* p = find_cue_path(path_id);
+    if (!p) return false;
+    auto it = std::find_if(p->steps.begin(), p->steps.end(),
+        [&](const SessionCueStepDef& step) { return step.id == step_id; });
+    if (it == p->steps.end()) return false;
+    p->steps.erase(it);
+    return true;
+}
+
+bool Graph::move_cue_step(const std::string& path_id, const std::string& step_id, int to_index) {
+    auto* p = find_cue_path(path_id);
+    if (!p) return false;
+    int n = static_cast<int>(p->steps.size());
+    auto it = std::find_if(p->steps.begin(), p->steps.end(),
+        [&](const SessionCueStepDef& step) { return step.id == step_id; });
+    if (it == p->steps.end()) return false;
+    int from = static_cast<int>(it - p->steps.begin());
+    if (to_index < 0 || to_index >= n || from == to_index) return to_index == from;
+    SessionCueStepDef tmp = std::move(*it);
+    p->steps.erase(it);
+    p->steps.insert(p->steps.begin() + to_index, std::move(tmp));
+    return true;
+}
+
+bool Graph::set_cue_step_advance(const std::string& path_id, const std::string& step_id,
+                                 std::string advance_mode, int bars) {
+    if (advance_mode != "manual" && advance_mode != "after_bars" &&
+        advance_mode != "on_scene_launch")
+        return false;
+    auto* step = find_cue_step(path_id, step_id);
+    if (!step) return false;
+    step->advance_mode = std::move(advance_mode);
+    step->bars = std::max(0, bars);
+    if (step->advance_mode == "after_bars" && step->bars <= 0)
+        step->bars = 1;
+    return true;
+}
+
 // --- Session finder helpers ---
 
 const SessionTrackDef* Graph::find_track(const std::string& id) const {
@@ -1124,6 +1292,32 @@ const SessionSceneDef* Graph::find_scene(const std::string& id) const {
 }
 SessionSceneDef* Graph::find_scene(const std::string& id) {
     for (auto& s : session_.scenes) if (s.id == id) return &s;
+    return nullptr;
+}
+
+const SessionCuePathDef* Graph::find_cue_path(const std::string& id) const {
+    for (const auto& p : session_.cue_paths) if (p.id == id) return &p;
+    return nullptr;
+}
+
+SessionCuePathDef* Graph::find_cue_path(const std::string& id) {
+    for (auto& p : session_.cue_paths) if (p.id == id) return &p;
+    return nullptr;
+}
+
+const SessionCueStepDef* Graph::find_cue_step(const std::string& path_id,
+                                              const std::string& step_id) const {
+    const auto* p = find_cue_path(path_id);
+    if (!p) return nullptr;
+    for (const auto& step : p->steps) if (step.id == step_id) return &step;
+    return nullptr;
+}
+
+SessionCueStepDef* Graph::find_cue_step(const std::string& path_id,
+                                        const std::string& step_id) {
+    auto* p = find_cue_path(path_id);
+    if (!p) return nullptr;
+    for (auto& step : p->steps) if (step.id == step_id) return &step;
     return nullptr;
 }
 
@@ -1570,7 +1764,8 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
 
     // Session
     const auto& sess = graph.session();
-    if (!sess.tracks.empty() || !sess.scenes.empty() || !sess.active_clips.empty()) {
+    if (!sess.tracks.empty() || !sess.scenes.empty() || !sess.cue_paths.empty() ||
+        !sess.active_clips.empty()) {
         nlohmann::ordered_json sess_obj = nlohmann::ordered_json::object();
         // tracks
         nlohmann::ordered_json tracks_arr = nlohmann::ordered_json::array();
@@ -1640,6 +1835,28 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
             scenes_arr.push_back(std::move(s_obj));
         }
         sess_obj["scenes"] = std::move(scenes_arr);
+        // cue paths
+        nlohmann::ordered_json cue_paths_arr = nlohmann::ordered_json::array();
+        for (const auto& path : sess.cue_paths) {
+            nlohmann::ordered_json p_obj = nlohmann::ordered_json::object();
+            p_obj["id"] = path.id;
+            p_obj["name"] = path.name;
+            nlohmann::ordered_json steps_arr = nlohmann::ordered_json::array();
+            for (const auto& step : path.steps) {
+                nlohmann::ordered_json st_obj = nlohmann::ordered_json::object();
+                st_obj["id"] = step.id;
+                st_obj["scene_id"] = step.scene_id;
+                if (step.advance_mode != "manual")
+                    st_obj["advance_mode"] = step.advance_mode;
+                if (step.advance_mode == "after_bars")
+                    st_obj["bars"] = step.bars;
+                steps_arr.push_back(std::move(st_obj));
+            }
+            p_obj["steps"] = std::move(steps_arr);
+            cue_paths_arr.push_back(std::move(p_obj));
+        }
+        if (!cue_paths_arr.empty())
+            sess_obj["cue_paths"] = std::move(cue_paths_arr);
         if (!sess.active_clips.empty()) {
             nlohmann::ordered_json ac_obj = nlohmann::ordered_json::object();
             for (const auto& [tid, cid] : sess.active_clips)

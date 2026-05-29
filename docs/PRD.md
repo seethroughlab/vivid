@@ -60,6 +60,11 @@ metronome is not a timeline and does not replace independent clocks. It exists s
 can opt into a common BPM/meter when that is useful, while other clocks remain unrelated and
 free-running.
 
+Session Cue Paths are the same principle at composition scale: they organize scene-to-scene
+progression as clocked cues, not as clips placed on an absolute time ruler. A cue path can describe
+Intro -> Build -> Drop for performance, while an installation can still branch, wait, loop, or sit
+in a state indefinitely.
+
 ### 2.3 General-Purpose Positioning
 
 Vivid is a general-purpose creative coding platform — not just a performance tool. The A/V parity thesis isn't about live AV artists alone; it's about the entire creative coding ecosystem where audio is structurally second-class across installations, branded experiences, museum exhibits, and any context where visuals and sound should respond to the same data.
@@ -137,7 +142,7 @@ Discovery potential: low (structural, not parametric). Latency: instant for conn
 
 #### The Session Tracks / Clips / Scenes Grid
 
-A grid where tracks represent performance channels, clips capture per-track audio/visual/control states, and scenes launch clip assignments across tracks. The user can audition a single track's clip, launch a full verse/chorus/drop scene, reorder authoring elements, and ask the LLM to generate alternate clips for a track. Think Ableton Session View adapted for audiovisual graph state rather than audio files alone.
+A grid where tracks represent performance channels, clips capture per-track audio/visual/control states, and scenes launch clip assignments across tracks. Optional cue paths organize scenes into clocked progressions without introducing a master timeline. The user can audition a single track's clip, launch a full verse/chorus/drop scene, step through a cue path, reorder authoring elements, and ask the LLM to generate alternate clips for a track. Think Ableton Session View adapted for audiovisual graph state, plus cue-system progression for installations and live sets.
 
 Discovery potential: very high. Latency: instant for parameter snapshots, 50–200ms for kernel swaps.
 

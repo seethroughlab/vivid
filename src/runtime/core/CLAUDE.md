@@ -45,7 +45,7 @@ This directory contains the application entry point, the main frame loop, and th
 Each frame, `main.cpp`'s tick lambda runs roughly these steps:
 
 1. Apply MIDI mappings to live parameters
-2. Tick quantized session launches (beat/bar-synced clip/scene changes)
+2. Tick quantized session launches (beat/bar-synced clip/scene/cue changes and cue follow actions)
 3. Acquire GPU surface (`gpu.begin_frame()`)
 4. Poll hot-reload (if enabled)
 5. Pre-audio sync (frame→audio bridge update)

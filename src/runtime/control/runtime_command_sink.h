@@ -251,6 +251,26 @@ public:
         api_.queue_scene(scene_id, quantize);
         // No undo snapshot: launch is a live performance action
     }
+    void session_create_cue_path(const std::string& name) override {
+        auto r = api_.create_cue_path(name);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_add_cue_step(const std::string& path_id, const std::string& scene_id,
+                              int index = -1) override {
+        auto r = api_.add_cue_step(path_id, scene_id, index);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_launch_cue_step(const std::string& path_id, const std::string& step_id,
+                                 const std::string& quantize) override {
+        api_.launch_cue_step(path_id, step_id, quantize);
+    }
+    void session_advance_cue_path(const std::string& path_id,
+                                  const std::string& quantize) override {
+        api_.advance_cue_path(path_id, quantize);
+    }
+    void session_stop_cue_path(const std::string& path_id) override {
+        api_.stop_cue_path(path_id);
+    }
 
     void open_shader(const std::string& type_name) override;
     void open_module_source(const std::string& type_name) override;

@@ -256,6 +256,46 @@
     }
 
     // =====================================================================
+    // Test S5b: Cue path schema round-trip and scene cleanup
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test S5b: Session cue paths round-trip ===\n");
+        vivid::Graph g1;
+        std::string sid1 = g1.save_scene("Intro");
+        std::string sid2 = g1.save_scene("Drop");
+        std::string path_id = g1.create_cue_path("Set Path");
+        std::string step1 = g1.add_cue_step(path_id, sid1);
+        std::string step2 = g1.add_cue_step(path_id, sid2);
+        check(!path_id.empty() && !step1.empty() && !step2.empty(), "cue path and steps created");
+        check(g1.set_cue_step_advance(path_id, step1, "after_bars", 4),
+              "cue step after_bars set");
+        check(g1.move_cue_step(path_id, step2, 0), "cue step reorder succeeds");
+
+        std::string path = (g_tmp->path / "cue_path_roundtrip.json").string();
+        check(g1.save(path.c_str()), "save with cue paths succeeds");
+
+        vivid::Graph g2;
+        check(g2.load(path.c_str()), "reload with cue paths succeeds");
+        check(g2.session().cue_paths.size() == 1, "1 cue path after reload");
+        const auto* cp = g2.find_cue_path(path_id);
+        check(cp != nullptr, "cue path found by stable id");
+        if (cp) {
+            check(cp->name == "Set Path", "cue path name preserved");
+            check(cp->steps.size() == 2, "cue path has 2 steps");
+            check(cp->steps[0].id == step2, "cue step order preserved");
+            check(cp->steps[1].advance_mode == "after_bars", "advance mode preserved");
+            check(cp->steps[1].bars == 4, "advance bars preserved");
+        }
+
+        check(g2.remove_scene(sid2), "remove referenced scene succeeds");
+        cp = g2.find_cue_path(path_id);
+        check(cp && cp->steps.size() == 1, "removing scene prunes cue step");
+        check(cp && cp->steps[0].scene_id == sid1, "remaining cue step references Intro");
+
+        std::remove(path.c_str());
+    }
+
+    // =====================================================================
     // Test S6: Legacy "variations" key in JSON — silent ignore on load
     // =====================================================================
     {

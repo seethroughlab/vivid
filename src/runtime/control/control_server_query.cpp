@@ -2195,11 +2195,39 @@ std::string handle_inspect_session(const Graph& graph, const RuntimeAPI& runtime
         if (sc.id == qsid) { qsname = sc.name; break; }
     }
 
+    nlohmann::json cue_paths_arr = nlohmann::json::array();
+    for (const auto& path : graph.session().cue_paths) {
+        nlohmann::json p = nlohmann::json::object();
+        p["id"] = path.id;
+        p["name"] = path.name;
+        nlohmann::json steps = nlohmann::json::array();
+        for (const auto& step : path.steps) {
+            nlohmann::json st = nlohmann::json::object();
+            st["id"] = step.id;
+            st["scene_id"] = step.scene_id;
+            std::string scene_name;
+            if (const auto* sc = graph.find_scene(step.scene_id))
+                scene_name = sc->name;
+            st["scene_name"] = scene_name;
+            st["advance_mode"] = step.advance_mode;
+            st["bars"] = step.bars;
+            steps.push_back(std::move(st));
+        }
+        p["steps"] = std::move(steps);
+        cue_paths_arr.push_back(std::move(p));
+    }
+
     nlohmann::json result = nlohmann::json::object();
     result["tracks"]            = std::move(tracks_arr);
     result["scenes"]            = std::move(scenes_arr);
+    result["cue_paths"]         = std::move(cue_paths_arr);
     result["queued_scene"]      = qsid;
     result["queued_scene_name"] = qsname;
+    result["active_cue_path"]   = runtime_api.active_cue_path_id();
+    result["active_cue_step"]   = runtime_api.active_cue_step_id();
+    result["queued_cue_path"]   = runtime_api.queued_cue_path_id();
+    result["queued_cue_step"]   = runtime_api.queued_cue_step_id();
+    result["cue_follow_beats_remaining"] = runtime_api.cue_follow_beats_remaining();
     return result.dump();
 }
 

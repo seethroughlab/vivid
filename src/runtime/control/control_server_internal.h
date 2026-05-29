@@ -681,8 +681,17 @@ inline bool is_undo_tracked_method(const std::string& method) {
            method == "move_scene" ||
            method == "set_scene_assignment" ||
            method == "set_scene_leave_unchanged" ||
-           method == "clear_scene_assignment";
-           // queue_clip and queue_scene are real-time performance commands — not undo-tracked
+           method == "clear_scene_assignment" ||
+           method == "create_cue_path" ||
+           method == "rename_cue_path" ||
+           method == "remove_cue_path" ||
+           method == "move_cue_path" ||
+           method == "add_cue_step" ||
+           method == "remove_cue_step" ||
+           method == "move_cue_step" ||
+           method == "set_cue_step_advance";
+           // queue_clip, queue_scene, launch_cue_step, advance_cue_path, and
+           // stop_cue_path are real-time performance commands — not undo-tracked
 }
 
 // ---------------------------------------------------------------------------

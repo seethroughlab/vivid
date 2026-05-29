@@ -716,6 +716,36 @@
         }
       }
     ],
+    "cue_paths": [
+      {
+        "id": "qp_main_set",
+        "name": "Main Set",
+        "steps": [
+          {
+            "id": "qs_intro",
+            "scene_id": "sc_intro",
+            "advance_mode": "after_bars",
+            "bars": 4
+          },
+          {
+            "id": "qs_verse",
+            "scene_id": "sc_verse",
+            "advance_mode": "after_bars",
+            "bars": 4
+          },
+          {
+            "id": "qs_chorus",
+            "scene_id": "sc_chorus",
+            "advance_mode": "after_bars",
+            "bars": 4
+          },
+          {
+            "id": "qs_drop",
+            "scene_id": "sc_drop"
+          }
+        ]
+      }
+    ],
     "active_clips": {
       "tr_drums": "c_d_intro",
       "tr_synth": "c_s_intro",

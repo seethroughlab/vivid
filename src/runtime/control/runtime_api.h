@@ -187,6 +187,23 @@ public:
     CommandResult clear_scene_assignment(const std::string& scene_id,
                                           const std::string& track_id);
 
+    // --- Session: Cue paths ---
+    CommandResult create_cue_path(const std::string& name);
+    CommandResult rename_cue_path(const std::string& path_id, const std::string& name);
+    CommandResult remove_cue_path(const std::string& path_id);
+    CommandResult move_cue_path(const std::string& path_id, int to_index);
+    CommandResult add_cue_step(const std::string& path_id, const std::string& scene_id,
+                               int index = -1);
+    CommandResult remove_cue_step(const std::string& path_id, const std::string& step_id);
+    CommandResult move_cue_step(const std::string& path_id, const std::string& step_id,
+                                int to_index);
+    CommandResult set_cue_step_advance(const std::string& path_id, const std::string& step_id,
+                                       const std::string& advance_mode, int bars);
+    CommandResult launch_cue_step(const std::string& path_id, const std::string& step_id,
+                                  const std::string& quantize);
+    CommandResult advance_cue_path(const std::string& path_id, const std::string& quantize);
+    CommandResult stop_cue_path(const std::string& path_id);
+
     // --- Session: Quantized launch ---
     CommandResult queue_clip(const std::string& track_id, const std::string& clip_id,
                               const std::string& quantize);
@@ -198,6 +215,11 @@ public:
     // Accessors for snapshot (Phase 4)
     const std::string& queued_scene_id() const;
     const std::string& queued_clip_for(const std::string& track_id) const;
+    const std::string& active_cue_path_id() const { return active_cue_path_id_; }
+    const std::string& active_cue_step_id() const { return active_cue_step_id_; }
+    const std::string& queued_cue_path_id() const { return queued_cue_path_id_; }
+    const std::string& queued_cue_step_id() const { return queued_cue_step_id_; }
+    int cue_follow_beats_remaining() const;
 
     bool graph_dirty() const { return graph_dirty_; }
 
@@ -334,8 +356,16 @@ private:
     struct PendingSceneLaunch {
         std::string scene_id;
         int64_t target_beat_index = 0;
+        std::string cue_path_id;
+        std::string cue_step_id;
     };
     std::optional<PendingSceneLaunch> pending_scene_launch_;
+
+    std::string active_cue_path_id_;
+    std::string active_cue_step_id_;
+    std::string queued_cue_path_id_;
+    std::string queued_cue_step_id_;
+    int64_t cue_follow_target_beat_index_ = -1;
 
     // Session clip capture/apply — used by save_clip, update_clip, launch_clip, queue_clip
     std::pair<
@@ -343,7 +373,8 @@ private:
         std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
     > capture_clip_params(const std::string& track_id);
     void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
-    void fire_scene(const std::string& scene_id);
+    bool fire_scene(const std::string& scene_id);
+    void mark_cue_step_fired(const std::string& path_id, const std::string& step_id);
     int64_t compute_quantize_target_beat(const std::string& quantize) const;
 
     // Graph base directory for resolving/relativizing file paths

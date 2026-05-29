@@ -189,6 +189,14 @@ public:
                                     const std::string& quantize) {}
     virtual void session_queue_scene(const std::string& scene_id,
                                      const std::string& quantize) {}
+    virtual void session_create_cue_path(const std::string& name) {}
+    virtual void session_add_cue_step(const std::string& path_id, const std::string& scene_id,
+                                      int index = -1) {}
+    virtual void session_launch_cue_step(const std::string& path_id, const std::string& step_id,
+                                         const std::string& quantize) {}
+    virtual void session_advance_cue_path(const std::string& path_id,
+                                          const std::string& quantize) {}
+    virtual void session_stop_cue_path(const std::string& path_id) {}
 };
 
 } // namespace vivid::ui

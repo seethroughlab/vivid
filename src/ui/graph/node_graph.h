@@ -878,6 +878,11 @@ private:
         std::string track_id;
         std::string clip_id;  // empty = no assignment
     };
+    struct SessionCueStepRect {
+        float x, y, w, h;
+        std::string path_id;
+        std::string step_id;
+    };
     struct SessionResizeRect { float x = 0, y = 0, w = 0, h = 0; };
 
     // Session panel resize
@@ -891,8 +896,12 @@ private:
     std::vector<SessionTrackColRect> session_track_rects_;
     std::vector<SessionSceneRowRect> session_scene_rects_;
     std::vector<SessionGridCellRect> session_cell_rects_;
+    std::vector<SessionCueStepRect> session_cue_step_rects_;
     Rect2 session_add_track_btn_ {};
     Rect2 session_add_scene_btn_ {};
+    Rect2 session_add_cue_path_btn_ {};
+    Rect2 session_cue_advance_btn_ {};
+    Rect2 session_cue_stop_btn_ {};
 
     // Session inline name editing
     // edit_type: 0=none, 1=track, 2=clip, 3=scene

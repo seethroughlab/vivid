@@ -144,7 +144,7 @@ Recent hardening guarantees in this area:
 CommandResult set_graph_metronome(bpm, beats_per_bar);
 CommandResult set_quantize_clock(node_id);  // deprecated compatibility shim
 GraphMetronomeSample current_metronome_sample() const;
-void tick_quantized_switch();            // call each frame to fire pending session launches
+void tick_quantized_clip_scene_launches(); // call each frame for clip/scene/cue launches
 ```
 
 Quantize modes: `"instant"`, `"beat"`, `"bar"`, `"4bar"` (`"four_bar"` is still accepted as a
@@ -159,8 +159,14 @@ Quantized session launching is graph-metronome-backed:
 `set_quantize_clock()` remains for backward compatibility with older graphs and tooling, but the
 runtime no longer uses that hidden clock-node reference to schedule launches.
 
+Cue Paths are optional ordered scene progressions. `launch_cue_step(path_id, step_id, quantize)`
+launches the step's referenced scene through the same quantized scene-launch path; `after_bars`
+follow actions begin counting only after that scene actually fires. A direct clip or scene launch
+does not stop the active cue path, so the grid can honestly show mixed/manual performance state.
+
 Legacy whole-graph variation commands may still exist in compatibility code paths, but they are not
-the current authoring model. New performance workflows should use Session Tracks, Clips, and Scenes.
+the current authoring model. New performance workflows should use Session Tracks, Clips, Scenes, and
+Cue Paths.
 
 ## Graph Metronome
 

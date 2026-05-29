@@ -1572,6 +1572,63 @@ int main(int argc, char* argv[]) {
         check(!r4.ok, "queue_clip unknown track fails");
     }
 
+    // --- session: cue path CRUD + launch ---
+    std::fprintf(stderr, "\n--- session: cue path CRUD + launch ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id;
+
+        api.set_scene_assignment(verse_sid, tid, verse_cid);
+        api.launch_clip(tid, chorus_cid);
+        auto sc = api.save_scene("Cue Chorus");
+        check(sc.ok, "save cue chorus scene");
+        std::string chorus_sid = sc.message;
+
+        auto cp = api.create_cue_path("Main Cue Path");
+        check(cp.ok, "create_cue_path ok");
+        std::string path_id = cp.message;
+        auto st1 = api.add_cue_step(path_id, verse_sid);
+        auto st2 = api.add_cue_step(path_id, chorus_sid);
+        check(st1.ok && st2.ok, "add two cue steps");
+        check(api.move_cue_step(path_id, st2.message, 0).ok, "move_cue_step ok");
+        check(graph.find_cue_path(path_id)->steps[0].id == st2.message,
+              "cue step moved to index 0");
+        check(api.move_cue_step(path_id, st2.message, 1).ok, "move_cue_step restore");
+        check(api.set_cue_step_advance(path_id, st1.message, "after_bars", 1).ok,
+              "set after_bars on first cue step");
+
+        api.set_param("s1", "scale", 123.0f);
+        auto launch = api.launch_cue_step(path_id, st1.message, "instant");
+        check(launch.ok, "launch_cue_step instant ok");
+        check(api.active_cue_path_id() == path_id, "active cue path set");
+        check(api.active_cue_step_id() == st1.message, "active cue step set");
+        check(api.cue_follow_beats_remaining() >= 0, "after_bars follow scheduled");
+        auto* cn = runtime.compiled_graph()->find_node("s1");
+        if (cn)
+            check_float(cn->param_values[cn->param_indices.at("scale")], 5.0f,
+                        "cue step launched Verse scene");
+
+        runtime.tick(1000.0, 0.0, 300);
+        api.tick_quantized_clip_scene_launches();
+        check(api.active_cue_step_id() == st2.message,
+              "after_bars advanced to second cue step");
+        check(api.active_clip(tid) == chorus_cid,
+              "after_bars advance launched Chorus scene");
+
+        api.queue_clip(tid, verse_cid, "instant");
+        check(api.active_cue_path_id() == path_id,
+              "direct clip launch does not stop cue path");
+        check(api.active_clip(tid) == verse_cid,
+              "direct clip launch can diverge from active cue step");
+
+        check(api.stop_cue_path(path_id).ok, "stop_cue_path ok");
+        check(api.active_cue_path_id().empty(), "cue path stopped");
+        check(api.remove_cue_step(path_id, st1.message).ok, "remove_cue_step ok");
+        check(api.remove_cue_path(path_id).ok, "remove_cue_path ok");
+        check(graph.find_cue_path(path_id) == nullptr, "cue path removed from graph");
+    }
+
     // --- Cleanup ---
     runtime.shutdown();
     std::filesystem::remove_all(staging);

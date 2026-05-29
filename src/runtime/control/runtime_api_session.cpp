@@ -291,6 +291,14 @@ CommandResult RuntimeAPI::remove_scene(const std::string& scene_id) {
         return {false, "unknown scene '" + scene_id + "'"};
     if (pending_scene_launch_ && pending_scene_launch_->scene_id == scene_id)
         pending_scene_launch_.reset();
+    if (!active_cue_path_id_.empty()) {
+        const auto* path = graph_.find_cue_path(active_cue_path_id_);
+        if (!path || !graph_.find_cue_step(active_cue_path_id_, active_cue_step_id_)) {
+            active_cue_path_id_.clear();
+            active_cue_step_id_.clear();
+            cue_follow_target_beat_index_ = -1;
+        }
+    }
     mark_graph_dirty();
     return {true, scene_id};
 }
@@ -332,6 +340,167 @@ CommandResult RuntimeAPI::clear_scene_assignment(const std::string& scene_id,
 }
 
 // ---------------------------------------------------------------------------
+// Cue path CRUD + launch
+// ---------------------------------------------------------------------------
+
+CommandResult RuntimeAPI::create_cue_path(const std::string& name) {
+    std::string id = graph_.create_cue_path(name);
+    if (id.empty()) return {false, "create_cue_path failed"};
+    mark_graph_dirty();
+    return {true, id};
+}
+
+CommandResult RuntimeAPI::rename_cue_path(const std::string& path_id, const std::string& name) {
+    if (!graph_.rename_cue_path(path_id, name))
+        return {false, "unknown cue path '" + path_id + "'"};
+    mark_graph_dirty();
+    return {true, path_id};
+}
+
+CommandResult RuntimeAPI::remove_cue_path(const std::string& path_id) {
+    if (!graph_.remove_cue_path(path_id))
+        return {false, "unknown cue path '" + path_id + "'"};
+    if (active_cue_path_id_ == path_id) {
+        active_cue_path_id_.clear();
+        active_cue_step_id_.clear();
+        cue_follow_target_beat_index_ = -1;
+    }
+    if (queued_cue_path_id_ == path_id) {
+        queued_cue_path_id_.clear();
+        queued_cue_step_id_.clear();
+        if (pending_scene_launch_ && pending_scene_launch_->cue_path_id == path_id)
+            pending_scene_launch_.reset();
+    }
+    mark_graph_dirty();
+    return {true, path_id};
+}
+
+CommandResult RuntimeAPI::move_cue_path(const std::string& path_id, int to_index) {
+    if (!graph_.move_cue_path(path_id, to_index))
+        return {false, "move_cue_path failed for '" + path_id + "'"};
+    mark_graph_dirty();
+    return {true, path_id};
+}
+
+CommandResult RuntimeAPI::add_cue_step(const std::string& path_id, const std::string& scene_id,
+                                       int index) {
+    if (!graph_.find_cue_path(path_id))
+        return {false, "unknown cue path '" + path_id + "'"};
+    if (!graph_.find_scene(scene_id))
+        return {false, "unknown scene '" + scene_id + "'"};
+    std::string step_id = graph_.add_cue_step(path_id, scene_id, index);
+    if (step_id.empty()) return {false, "add_cue_step failed"};
+    mark_graph_dirty();
+    return {true, step_id};
+}
+
+CommandResult RuntimeAPI::remove_cue_step(const std::string& path_id,
+                                          const std::string& step_id) {
+    if (!graph_.remove_cue_step(path_id, step_id))
+        return {false, "unknown cue step '" + step_id + "'"};
+    if (active_cue_path_id_ == path_id && active_cue_step_id_ == step_id) {
+        active_cue_path_id_.clear();
+        active_cue_step_id_.clear();
+        cue_follow_target_beat_index_ = -1;
+    }
+    if (queued_cue_path_id_ == path_id && queued_cue_step_id_ == step_id) {
+        queued_cue_path_id_.clear();
+        queued_cue_step_id_.clear();
+        if (pending_scene_launch_ && pending_scene_launch_->cue_path_id == path_id &&
+            pending_scene_launch_->cue_step_id == step_id)
+            pending_scene_launch_.reset();
+    }
+    mark_graph_dirty();
+    return {true, step_id};
+}
+
+CommandResult RuntimeAPI::move_cue_step(const std::string& path_id, const std::string& step_id,
+                                        int to_index) {
+    if (!graph_.move_cue_step(path_id, step_id, to_index))
+        return {false, "move_cue_step failed for '" + step_id + "'"};
+    mark_graph_dirty();
+    return {true, step_id};
+}
+
+CommandResult RuntimeAPI::set_cue_step_advance(const std::string& path_id,
+                                               const std::string& step_id,
+                                               const std::string& advance_mode,
+                                               int bars) {
+    if (!graph_.set_cue_step_advance(path_id, step_id, advance_mode, bars))
+        return {false, "set_cue_step_advance failed"};
+    mark_graph_dirty();
+    return {true, step_id};
+}
+
+CommandResult RuntimeAPI::launch_cue_step(const std::string& path_id,
+                                          const std::string& step_id,
+                                          const std::string& quantize) {
+    if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
+    const auto* path = graph_.find_cue_path(path_id);
+    if (!path) return {false, "unknown cue path '" + path_id + "'"};
+    const auto* step = graph_.find_cue_step(path_id, step_id);
+    if (!step) return {false, "unknown cue step '" + step_id + "'"};
+    if (!graph_.find_scene(step->scene_id))
+        return {false, "cue step references missing scene '" + step->scene_id + "'"};
+
+    active_cue_path_id_.clear();
+    active_cue_step_id_.clear();
+    cue_follow_target_beat_index_ = -1;
+
+    if (quantize == "instant") {
+        if (!fire_scene(step->scene_id))
+            return {false, "launch_cue_step failed"};
+        mark_cue_step_fired(path_id, step_id);
+        return {true, step_id};
+    }
+    if (quantize != "beat" && quantize != "bar" &&
+        quantize != "4bar" && quantize != "four_bar")
+        return {false, "unknown quantize mode '" + quantize + "'"};
+
+    const int64_t target = compute_quantize_target_beat(quantize);
+    pending_scene_launch_ = {step->scene_id, target, path_id, step_id};
+    queued_cue_path_id_ = path_id;
+    queued_cue_step_id_ = step_id;
+    return {true, step_id};
+}
+
+CommandResult RuntimeAPI::advance_cue_path(const std::string& path_id,
+                                           const std::string& quantize) {
+    const auto* path = graph_.find_cue_path(path_id);
+    if (!path) return {false, "unknown cue path '" + path_id + "'"};
+    if (path->steps.empty()) return {false, "cue path has no steps"};
+
+    int next = 0;
+    if (active_cue_path_id_ == path_id && !active_cue_step_id_.empty()) {
+        for (int i = 0; i < static_cast<int>(path->steps.size()); ++i) {
+            if (path->steps[i].id == active_cue_step_id_) {
+                next = std::min(i + 1, static_cast<int>(path->steps.size()) - 1);
+                break;
+            }
+        }
+    }
+    return launch_cue_step(path_id, path->steps[next].id, quantize);
+}
+
+CommandResult RuntimeAPI::stop_cue_path(const std::string& path_id) {
+    if (!path_id.empty() && active_cue_path_id_ != path_id && queued_cue_path_id_ != path_id)
+        return {false, "cue path '" + path_id + "' is not active or queued"};
+    if (pending_scene_launch_ && (path_id.empty() ||
+        pending_scene_launch_->cue_path_id == path_id))
+        pending_scene_launch_.reset();
+    if (path_id.empty() || active_cue_path_id_ == path_id) {
+        active_cue_path_id_.clear();
+        active_cue_step_id_.clear();
+        cue_follow_target_beat_index_ = -1;
+    }
+    if (path_id.empty() || queued_cue_path_id_ == path_id) {
+        queued_cue_path_id_.clear();
+        queued_cue_step_id_.clear();
+    }
+    return {true, path_id};
+}
+
+// ---------------------------------------------------------------------------
 // Quantize helpers + fire_scene
 // ---------------------------------------------------------------------------
 
@@ -348,12 +517,12 @@ int64_t RuntimeAPI::compute_quantize_target_beat(const std::string& quantize) co
     return current_beat + 1; // fallback: next beat
 }
 
-void RuntimeAPI::fire_scene(const std::string& scene_id) {
+bool RuntimeAPI::fire_scene(const std::string& scene_id) {
     const auto* scene = graph_.find_scene(scene_id);
     if (!scene) {
         std::fprintf(stderr, "[session] fire_scene: scene '%s' not found — skipped\n",
                      scene_id.c_str());
-        return;
+        return false;
     }
     for (const auto& [track_id, clip_id] : scene->assignments) {
         const auto* clip = graph_.find_clip(track_id, clip_id);
@@ -375,6 +544,24 @@ void RuntimeAPI::fire_scene(const std::string& scene_id) {
                            return scene->assignments.count(p.track_id) > 0;
                        }),
         pending_clip_launches_.end());
+    return true;
+}
+
+void RuntimeAPI::mark_cue_step_fired(const std::string& path_id, const std::string& step_id) {
+    const auto* step = graph_.find_cue_step(path_id, step_id);
+    if (!step) return;
+    active_cue_path_id_ = path_id;
+    active_cue_step_id_ = step_id;
+    queued_cue_path_id_.clear();
+    queued_cue_step_id_.clear();
+    cue_follow_target_beat_index_ = -1;
+    if (step->advance_mode == "after_bars") {
+        const auto metronome = current_metronome_sample();
+        const int bpb = std::max(1, metronome.beats_per_bar);
+        const int bars = std::max(1, step->bars);
+        const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+        cue_follow_target_beat_index_ = current_beat + static_cast<int64_t>(bars) * bpb;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -417,6 +604,8 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
         return {false, "unknown scene '" + scene_id + "'"};
 
     if (quantize == "instant") {
+        queued_cue_path_id_.clear();
+        queued_cue_step_id_.clear();
         fire_scene(scene_id);
         return {true, scene_id};
     }
@@ -425,7 +614,9 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
         return {false, "unknown quantize mode '" + quantize + "'"};
 
     const int64_t target = compute_quantize_target_beat(quantize);
-    pending_scene_launch_ = {scene_id, target};
+    pending_scene_launch_ = {scene_id, target, {}, {}};
+    queued_cue_path_id_.clear();
+    queued_cue_step_id_.clear();
     return {true, scene_id};
 }
 
@@ -434,14 +625,21 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
 // ---------------------------------------------------------------------------
 
 void RuntimeAPI::tick_quantized_clip_scene_launches() {
-    if (!pending_scene_launch_ && pending_clip_launches_.empty()) return;
+    if (!pending_scene_launch_ && pending_clip_launches_.empty() &&
+        cue_follow_target_beat_index_ < 0)
+        return;
     if (!core_.compiled_graph()) return;
 
     const auto metronome = current_metronome_sample();
     const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
 
     if (pending_scene_launch_ && current_beat >= pending_scene_launch_->target_beat_index) {
-        fire_scene(pending_scene_launch_->scene_id);
+        const auto cue_path_id = pending_scene_launch_->cue_path_id;
+        const auto cue_step_id = pending_scene_launch_->cue_step_id;
+        if (fire_scene(pending_scene_launch_->scene_id) &&
+            !cue_path_id.empty() && !cue_step_id.empty()) {
+            mark_cue_step_fired(cue_path_id, cue_step_id);
+        }
         pending_scene_launch_.reset();
     }
 
@@ -469,6 +667,14 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
                        }),
         pending_clip_launches_.end());
     if (any_fired) mark_graph_dirty();
+
+    if (cue_follow_target_beat_index_ >= 0 &&
+        current_beat >= cue_follow_target_beat_index_ &&
+        !active_cue_path_id_.empty()) {
+        cue_follow_target_beat_index_ = -1;
+        const std::string path_id = active_cue_path_id_;
+        advance_cue_path(path_id, "instant");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +691,13 @@ const std::string& RuntimeAPI::queued_clip_for(const std::string& track_id) cons
     for (const auto& p : pending_clip_launches_)
         if (p.track_id == track_id) return p.clip_id;
     return empty;
+}
+
+int RuntimeAPI::cue_follow_beats_remaining() const {
+    if (cue_follow_target_beat_index_ < 0) return -1;
+    const auto metronome = current_metronome_sample();
+    const int64_t current_beat = static_cast<int64_t>(std::floor(metronome.beats_elapsed));
+    return static_cast<int>(std::max<int64_t>(0, cue_follow_target_beat_index_ - current_beat));
 }
 
 } // namespace vivid

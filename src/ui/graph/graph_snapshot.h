@@ -367,13 +367,34 @@ struct SessionSceneSnap {
     std::unordered_set<std::string> leave_unchanged;
 };
 
+struct SessionCueStepSnap {
+    std::string id;
+    std::string scene_id;
+    std::string scene_name;
+    std::string advance_mode = "manual";
+    int bars = 0;
+};
+
+struct SessionCuePathSnap {
+    std::string id;
+    std::string name;
+    std::vector<SessionCueStepSnap> steps;
+};
+
 struct SessionSnap {
     std::vector<SessionTrackSnap> tracks;
     std::vector<SessionSceneSnap> scenes;
+    std::vector<SessionCuePathSnap> cue_paths;
     std::string queued_scene_id;
+    std::string active_cue_path_id;
+    std::string active_cue_step_id;
+    std::string queued_cue_path_id;
+    std::string queued_cue_step_id;
+    int cue_follow_beats_remaining = -1;
 
     std::unordered_map<std::string, size_t> track_index;
     std::unordered_map<std::string, size_t> scene_index;
+    std::unordered_map<std::string, size_t> cue_path_index;
 
     const SessionTrackSnap* find_track(const std::string& id) const {
         auto it = track_index.find(id);
@@ -382,6 +403,10 @@ struct SessionSnap {
     const SessionSceneSnap* find_scene(const std::string& id) const {
         auto it = scene_index.find(id);
         return it == scene_index.end() ? nullptr : &scenes[it->second];
+    }
+    const SessionCuePathSnap* find_cue_path(const std::string& id) const {
+        auto it = cue_path_index.find(id);
+        return it == cue_path_index.end() ? nullptr : &cue_paths[it->second];
     }
 };
 

@@ -225,6 +225,10 @@ void NodeGraphUI::handle_left_click() {
                             commands_.session_update_scene(session_edit_track_id_);
                         } else if (cr.action == 2) {  // Remove
                             commands_.session_remove_scene(session_edit_track_id_);
+                        } else if (cr.action == 3) {  // Add to Cue
+                            if (!snap_.session.cue_paths.empty())
+                                commands_.session_add_cue_step(snap_.session.cue_paths.front().id,
+                                                               session_edit_track_id_, -1);
                         }
                     } else if (session_ctx_menu_idx_ == 3) {
                         // Clip cell context menu
@@ -339,6 +343,52 @@ void NodeGraphUI::handle_left_click() {
                 static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
                 const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
                 commands_.session_queue_scene(sr.scene_id, q);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+
+        // Cue path controls
+        {
+            const auto& b = session_add_cue_path_btn_;
+            if (b.w > 0 && mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+                mouse_.y >= b.y && mouse_.y < b.y + b.h) {
+                int n = static_cast<int>(snap_.session.cue_paths.size()) + 1;
+                commands_.session_create_cue_path("Cue Path " + std::to_string(n));
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        {
+            const auto& b = session_cue_advance_btn_;
+            if (b.w > 0 && mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+                mouse_.y >= b.y && mouse_.y < b.y + b.h &&
+                !snap_.session.active_cue_path_id.empty()) {
+                static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
+                const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
+                commands_.session_advance_cue_path(snap_.session.active_cue_path_id, q);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        {
+            const auto& b = session_cue_stop_btn_;
+            if (b.w > 0 && mouse_.x >= b.x && mouse_.x < b.x + b.w &&
+                mouse_.y >= b.y && mouse_.y < b.y + b.h) {
+                const std::string& path_id = !snap_.session.active_cue_path_id.empty()
+                    ? snap_.session.active_cue_path_id : snap_.session.queued_cue_path_id;
+                if (!path_id.empty())
+                    commands_.session_stop_cue_path(path_id);
+                mouse_.left_clicked = false;
+                return;
+            }
+        }
+        for (const auto& cr : session_cue_step_rects_) {
+            if (mouse_.x >= cr.x && mouse_.x < cr.x + cr.w &&
+                mouse_.y >= cr.y && mouse_.y < cr.y + cr.h) {
+                static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
+                const char* q = q_modes[std::clamp(session_quantize_mode_, 0, 3)];
+                commands_.session_launch_cue_step(cr.path_id, cr.step_id, q);
                 mouse_.left_clicked = false;
                 return;
             }

@@ -872,6 +872,10 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     session_track_rects_.clear();
     session_scene_rects_.clear();
     session_cell_rects_.clear();
+    session_cue_step_rects_.clear();
+    session_add_cue_path_btn_ = {};
+    session_cue_advance_btn_ = {};
+    session_cue_stop_btn_ = {};
 
     if (!session_grid_open_) {
         session_collapsed_rect_ = {};
@@ -1214,6 +1218,90 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
             session_add_scene_btn_ = {kSessionPadX, row_y, kSessionSceneLabelW, kSessionAddRowH};
         }
+
+        row_y += kSessionAddRowH + kSessionGridCellPad * 3.0f;
+
+        const float cue_x = kSessionPadX;
+        const float cue_w = std::max(160.0f, strip_w - kSessionPadX * 2.0f);
+        tr.draw_text(cue_x, row_y + 3.0f, "CUE PATHS",
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        const float cue_btn_y = row_y;
+        const float cue_btn_h = 18.0f;
+        if (snap_.session.cue_paths.empty()) {
+            const float add_w = 92.0f;
+            const float add_x = cue_x + 86.0f;
+            bool hov = mouse_.x >= add_x && mouse_.x < add_x + add_w &&
+                       mouse_.y >= cue_btn_y && mouse_.y < cue_btn_y + cue_btn_h;
+            tr.draw_rect(add_x, cue_btn_y, add_w, cue_btn_h,
+                         hov ? 0.18f : 0.11f, hov ? 0.18f : 0.11f,
+                         hov ? 0.20f : 0.13f, 0.85f);
+            tr.draw_text(add_x + 5.0f, cue_btn_y + 2.0f, "+ Cue Path",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+            session_add_cue_path_btn_ = {add_x, cue_btn_y, add_w, cue_btn_h};
+            row_y += cue_btn_h + kSessionGridCellPad;
+        } else {
+            row_y += cue_btn_h + kSessionGridCellPad;
+            for (const auto& path : snap_.session.cue_paths) {
+                const bool active_path = path.id == snap_.session.active_cue_path_id;
+                const float header_h = 22.0f;
+                tr.draw_rect(cue_x, row_y, cue_w, header_h,
+                             active_path ? 0.14f : 0.10f,
+                             active_path ? 0.17f : 0.11f,
+                             active_path ? 0.18f : 0.12f, 0.82f);
+                tr.push_clip_rect(cue_x + 5.0f, row_y + 1.0f, cue_w - 130.0f, header_h - 2.0f);
+                tr.draw_text(cue_x + 5.0f, row_y + 5.0f, path.name.c_str(),
+                             style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                tr.pop_clip_rect();
+
+                const float adv_x = cue_x + cue_w - 118.0f;
+                const float stop_x = cue_x + cue_w - 58.0f;
+                tr.draw_rect(adv_x, row_y + 2.0f, 54.0f, 18.0f, 0.16f, 0.17f, 0.18f, 0.9f);
+                tr.draw_text(adv_x + 5.0f, row_y + 4.0f, "Advance",
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                tr.draw_rect(stop_x, row_y + 2.0f, 52.0f, 18.0f, 0.16f, 0.17f, 0.18f, 0.9f);
+                tr.draw_text(stop_x + 8.0f, row_y + 4.0f, "Stop",
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                if (active_path || snap_.session.queued_cue_path_id == path.id) {
+                    session_cue_advance_btn_ = {adv_x, row_y + 2.0f, 54.0f, 18.0f};
+                    session_cue_stop_btn_ = {stop_x, row_y + 2.0f, 52.0f, 18.0f};
+                }
+                row_y += header_h + kSessionGridCellPad;
+
+                float step_x = cue_x;
+                for (const auto& step : path.steps) {
+                    const float step_w = 116.0f;
+                    const bool active = path.id == snap_.session.active_cue_path_id &&
+                                        step.id == snap_.session.active_cue_step_id;
+                    const bool queued = path.id == snap_.session.queued_cue_path_id &&
+                                        step.id == snap_.session.queued_cue_step_id;
+                    float r = active ? style_.accent[0] * 0.30f : 0.10f;
+                    float g = active ? style_.accent[1] * 0.30f : 0.11f;
+                    float b = active ? style_.accent[2] * 0.30f : 0.12f;
+                    float a = queued ? 0.45f + 0.4f * pulse : 0.82f;
+                    tr.draw_rect(step_x, row_y, step_w, kSessionSceneRowH, r, g, b, a);
+                    if (active || queued)
+                        draw_rect_border(tr, step_x, row_y, step_w, kSessionSceneRowH,
+                                         style_.accent[0], style_.accent[1], style_.accent[2],
+                                         queued ? 0.4f + 0.4f * pulse : 0.8f);
+                    tr.push_clip_rect(step_x + 4.0f, row_y + 1.0f,
+                                      step_w - 8.0f, kSessionSceneRowH - 2.0f);
+                    tr.draw_text(step_x + 4.0f, row_y + 6.0f,
+                                 step.scene_name.empty() ? step.scene_id.c_str()
+                                                         : step.scene_name.c_str(),
+                                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+                    tr.pop_clip_rect();
+                    session_cue_step_rects_.push_back({step_x, row_y, step_w,
+                                                       kSessionSceneRowH, path.id, step.id});
+                    step_x += step_w + kSessionGridCellPad;
+                    if (step_x + step_w > cue_x + cue_w) {
+                        step_x = cue_x;
+                        row_y += kSessionSceneRowH + kSessionGridCellPad;
+                    }
+                }
+                if (!path.steps.empty())
+                    row_y += kSessionSceneRowH + kSessionGridCellPad;
+            }
+        }
     }
 
     tr.pop_clip_rect();  // grid area clip
@@ -1222,13 +1310,13 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     if (session_ctx_menu_open_) {
         // session_ctx_menu_idx_: 1=track ctx, 2=scene ctx
         const char* track_labels[]      = { "Rename", "Assign Selected", "Remove" };
-        const char* scene_labels[]      = { "Rename", "Update", "Remove" };
+        const char* scene_labels[]      = { "Rename", "Update", "Remove", "Add to Cue" };
         const char* clip_cell_labels[]  = { "Update Clip", "Rename Clip", "Remove Clip", "Clear from Scene" };
         const char* empty_cell_labels[] = { "Assign Active Clip" };
         const char** ctx_labels;
         int item_count;
         if      (session_ctx_menu_idx_ == 1) { ctx_labels = track_labels;      item_count = 3; }
-        else if (session_ctx_menu_idx_ == 2) { ctx_labels = scene_labels;      item_count = 3; }
+        else if (session_ctx_menu_idx_ == 2) { ctx_labels = scene_labels;      item_count = 4; }
         else if (session_ctx_menu_idx_ == 3) { ctx_labels = clip_cell_labels;  item_count = 4; }
         else                                 { ctx_labels = empty_cell_labels; item_count = 1; }
 

@@ -73,6 +73,8 @@ capture controls. Session editing and quantization live in the session surface.
   to the live graph.
 - **Scene** — a collection of track→clip assignments. Launching a scene fires all assignments at
   once, at the same quantize boundary.
+- **Cue Path** — an optional ordered set of scene cues. A cue path can be advanced manually or by
+  step follow rules such as `after_bars`; it is clocked by the graph metronome, not by a timeline.
 
 ### Cell Visual States
 
@@ -135,6 +137,12 @@ The session surface uses these commands (available via UI, control server, and M
 - `set_scene_assignment(scene_id, track_id, clip_id)` — assign a clip to a scene slot
 - `clear_scene_assignment(scene_id, track_id)` — remove an assignment
 - `queue_scene(scene_id, quantize)` — launch all scene assignments at a beat boundary
+- `create_cue_path(name)` — create an ordered scene cue path
+- `add_cue_step(path_id, scene_id, index)` — append or insert a scene cue
+- `set_cue_step_advance(path_id, step_id, advance_mode, bars)` — set `manual`, `after_bars`, or `on_scene_launch`
+- `launch_cue_step(path_id, step_id, quantize)` — launch a cue's scene
+- `advance_cue_path(path_id, quantize)` — advance to the next cue step
+- `stop_cue_path(path_id)` — clear active/queued cue state
 - `set_graph_metronome(bpm, beats_per_bar)` — update graph-wide shared pulse state
 
 ### Legacy: StateMachine State Presets

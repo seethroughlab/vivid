@@ -1108,6 +1108,104 @@ std::string dispatch(const std::string& method, const std::string& body,
             result = command_result_to_json(
                 api.clear_scene_assignment(root["scene_id"].get<std::string>(),
                                             root["track_id"].get<std::string>()));
+    } else if (method == "create_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'name'");
+        else
+            result = command_result_to_json(api.create_cue_path(root["name"].get<std::string>()));
+    } else if (method == "rename_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("name") || !root["name"].is_string())
+            result = json_err("missing 'path_id' or 'name'");
+        else
+            result = command_result_to_json(
+                api.rename_cue_path(root["path_id"].get<std::string>(),
+                                    root["name"].get<std::string>()));
+    } else if (method == "remove_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string())
+            result = json_err("missing 'path_id'");
+        else
+            result = command_result_to_json(
+                api.remove_cue_path(root["path_id"].get<std::string>()));
+    } else if (method == "move_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("to_index") || !root["to_index"].is_number_integer())
+            result = json_err("missing 'path_id' or 'to_index'");
+        else
+            result = command_result_to_json(
+                api.move_cue_path(root["path_id"].get<std::string>(),
+                                  root["to_index"].get<int>()));
+    } else if (method == "add_cue_step") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("scene_id") || !root["scene_id"].is_string())
+            result = json_err("missing 'path_id' or 'scene_id'");
+        else
+            result = command_result_to_json(
+                api.add_cue_step(root["path_id"].get<std::string>(),
+                                 root["scene_id"].get<std::string>(),
+                                 root.value("index", -1)));
+    } else if (method == "remove_cue_step") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("step_id") || !root["step_id"].is_string())
+            result = json_err("missing 'path_id' or 'step_id'");
+        else
+            result = command_result_to_json(
+                api.remove_cue_step(root["path_id"].get<std::string>(),
+                                    root["step_id"].get<std::string>()));
+    } else if (method == "move_cue_step") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("step_id") || !root["step_id"].is_string() ||
+                 !root.contains("to_index") || !root["to_index"].is_number_integer())
+            result = json_err("missing 'path_id', 'step_id', or 'to_index'");
+        else
+            result = command_result_to_json(
+                api.move_cue_step(root["path_id"].get<std::string>(),
+                                  root["step_id"].get<std::string>(),
+                                  root["to_index"].get<int>()));
+    } else if (method == "set_cue_step_advance") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("step_id") || !root["step_id"].is_string() ||
+                 !root.contains("advance_mode") || !root["advance_mode"].is_string())
+            result = json_err("missing 'path_id', 'step_id', or 'advance_mode'");
+        else
+            result = command_result_to_json(
+                api.set_cue_step_advance(root["path_id"].get<std::string>(),
+                                         root["step_id"].get<std::string>(),
+                                         root["advance_mode"].get<std::string>(),
+                                         root.value("bars", 0)));
+    } else if (method == "launch_cue_step") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("step_id") || !root["step_id"].is_string() ||
+                 !root.contains("quantize") || !root["quantize"].is_string())
+            result = json_err("missing 'path_id', 'step_id', or 'quantize'");
+        else
+            result = command_result_to_json(
+                api.launch_cue_step(root["path_id"].get<std::string>(),
+                                    root["step_id"].get<std::string>(),
+                                    root["quantize"].get<std::string>()));
+    } else if (method == "advance_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                 !root.contains("quantize") || !root["quantize"].is_string())
+            result = json_err("missing 'path_id' or 'quantize'");
+        else
+            result = command_result_to_json(
+                api.advance_cue_path(root["path_id"].get<std::string>(),
+                                     root["quantize"].get<std::string>()));
+    } else if (method == "stop_cue_path") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else
+            result = command_result_to_json(
+                api.stop_cue_path(root.value("path_id", std::string{})));
     } else if (method == "queue_clip") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||
