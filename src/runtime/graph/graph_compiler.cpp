@@ -626,8 +626,32 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                         break;
                 }
 
-                for (auto& ols : cn.output_lane_sets)
-                    ols = output_ls;
+                // A Reduction node collapses its primary outputs to a scalar
+                // lane set so they mix freely (e.g. a polyphonic synth summing
+                // its voices to one audio stream — two such synths can then meet
+                // at a pointwise Mixer). Its lane-array breakout ports, however,
+                // still expose per-element structure (a synth's voice_* per-voice
+                // lanes); give all of them one shared, freshly minted lane set so
+                // downstream consumers see coherent, mutually-aligned provenance.
+                LaneSet breakout_ls;
+                bool    breakout_minted = false;
+                for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
+                    const bool is_lane_array =
+                        cn.lane_behavior == LaneBehavior::Reduction &&
+                        pi < cn.output_port_types.size() &&
+                        cn.output_port_types[pi] == VIVID_PORT_LANE_ARRAY;
+                    if (is_lane_array) {
+                        if (!breakout_minted) {
+                            breakout_ls.lane_set_id      = cg->next_lane_set_id++;
+                            breakout_ls.lane_count       = 1;  // runtime sets actual count
+                            breakout_ls.identity_bearing = false;
+                            breakout_minted = true;
+                        }
+                        cn.output_lane_sets[pi] = breakout_ls;
+                    } else {
+                        cn.output_lane_sets[pi] = output_ls;
+                    }
+                }
 
                 // Populate edge lane metadata for outgoing edges.
                 for (auto& e : cg->edges) {
