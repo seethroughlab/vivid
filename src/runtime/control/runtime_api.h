@@ -125,13 +125,16 @@ public:
     void tick_quantized_state_transitions();
 
     // --- Per-Operator Presets ---
-    CommandResult save_preset(const std::string& node_id, const std::string& name);
+    CommandResult save_preset(const std::string& node_id, const std::string& name,
+                              const std::string& metadata = "");
     CommandResult recall_preset(const std::string& node_id, const std::string& name);
     CommandResult update_preset(const std::string& node_id, const std::string& name);
     CommandResult remove_preset(const std::string& node_id, const std::string& name);
     CommandResult rename_preset(const std::string& node_id, const std::string& old_name,
                                 const std::string& new_name);
     CommandResult list_presets(const std::string& node_id);
+    // Structured listing: {"ok":true,"presets":[{name, metadata?}], "msg":"names"}.
+    std::string list_presets_json(const std::string& node_id) const;
     CommandResult list_factory_presets(const std::string& node_id);
 
     // --- State-Preset Mapping ---

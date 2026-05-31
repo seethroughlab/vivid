@@ -253,6 +253,10 @@ struct OperatorPreset {
     std::string name;
     std::unordered_map<std::string, float> params;  // param_name -> value
     std::unordered_map<std::string, std::string> string_params;  // file/string params
+    // Optional curation metadata as an opaque JSON object string (empty = none).
+    // Schema is owned by the MCP layer (e.g. {category, tags[], author, source,
+    // source_preset_id, notes}); the runtime stores/serializes it verbatim.
+    std::string metadata;
 };
 
 struct StatePresetMapping {

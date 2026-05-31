@@ -527,6 +527,10 @@ struct Vst3Handle {
     IPluginFactory*    factory               = nullptr;
     IComponent*        component             = nullptr;
     IAudioProcessor*   processor             = nullptr;
+    // Plugin identity, captured at load — used to resolve the standard preset
+    // directory (<root>/<vendor>/<plugin_name>) and match preset adapters.
+    std::string        vendor;               // PFactoryInfo.vendor
+    std::string        plugin_name;          // PClassInfo.name of the loaded Audio Module class
     IEditController*   controller            = nullptr;
     bool               controller_is_owned   = false; // created separately; we must terminate+release
     bool               processing            = false;  // setProcessing(true) called
@@ -1051,6 +1055,14 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     h->processor            = processor;
     h->controller           = controller;
     h->controller_is_owned  = controller_is_owned;
+
+    // Capture identity for preset-directory resolution and adapter matching.
+    h->plugin_name = target_info.name;
+    {
+        PFactoryInfo fi{};
+        if (factory->getFactoryInfo(&fi) == kResultOk)
+            h->vendor = fi.vendor;
+    }
 
     if (controller) {
         // setComponentHandler: required before any UI operation (Serum2 crashes without it).

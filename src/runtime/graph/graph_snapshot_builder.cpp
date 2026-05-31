@@ -27,7 +27,8 @@ static bool should_copy_string_param_to_snapshot(
     for (const auto& pd : info->params) {
         if (pd.name == param_name)
             return pd.display_hint != VIVID_DISPLAY_HIDDEN &&
-                   pd.display_hint != VIVID_DISPLAY_EDITOR;
+                   pd.display_hint != VIVID_DISPLAY_EDITOR &&
+                   pd.display_hint != VIVID_DISPLAY_TRANSIENT;
     }
     return true;
 }

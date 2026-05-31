@@ -649,6 +649,9 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                                 op.string_params[ppkey] = ppv.get<std::string>();
                         }
                     }
+                    auto pm = pentry.find("metadata");
+                    if (pm != pentry.end() && pm->is_object())
+                        op.metadata = pm->dump();
                     presets.push_back(std::move(op));
                 }
             }
@@ -1688,6 +1691,10 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
                     pp_obj[pname] = pval;
                 }
                 pr_obj["params"] = std::move(pp_obj);
+                if (!p.metadata.empty()) {
+                    auto meta = nlohmann::json::parse(p.metadata, nullptr, false);
+                    if (meta.is_object()) pr_obj["metadata"] = std::move(meta);
+                }
                 pr_arr.push_back(std::move(pr_obj));
             }
             presets_obj[node_id] = std::move(pr_arr);

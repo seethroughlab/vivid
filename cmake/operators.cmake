@@ -651,7 +651,7 @@ if(APPLE)
     )
     set_target_properties(vst3_instrument PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
     target_include_directories(vst3_instrument PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-    target_link_libraries(vst3_instrument PRIVATE vivid_operator_api vst3_iids z "-framework AppKit")
+    target_link_libraries(vst3_instrument PRIVATE vivid_operator_api vst3_iids z nlohmann_json::nlohmann_json "-framework AppKit")
     add_custom_command(TARGET vst3_instrument POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory
             $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
@@ -662,7 +662,7 @@ if(APPLE)
     )
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS vst3_instrument)
     set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
-        "  \"vst3_instrument\": { \"sources\": [\"operators/audio/vst3_instrument/vst3_instrument.cpp\", \"operators/shared/vst3_host/vst3_plugin_window.mm\"], \"extra_libs\": [\"vst3_iids\"], \"frameworks\": [\"AppKit\"] }")
+        "  \"vst3_instrument\": { \"sources\": [\"operators/audio/vst3_instrument/vst3_instrument.cpp\", \"operators/shared/vst3_host/vst3_plugin_window.mm\"], \"extra_libs\": [\"vst3_iids\", \"nlohmann_json::nlohmann_json\"], \"frameworks\": [\"AppKit\"] }")
 endif()
 
 add_vivid_operator(midi_out       operators/audio/midi_out/midi_out.cpp       CODEGEN EXTRA_LIBS rtmidi)

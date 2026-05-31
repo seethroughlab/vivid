@@ -190,9 +190,10 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::display_hint(macro_5, VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(macro_6, VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(macro_7, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(plugin_state,    VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(clap_params_,    VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(direct_params_,  VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,    VIVID_DISPLAY_HIDDEN);  // authored state — persisted
+        // Runtime-computed list / scratch input — recomputed live, not saved to disk.
+        vivid::transient_param(clap_params_);
+        vivid::transient_param(direct_params_);
     }
 
     ~CLAPInstrument() {

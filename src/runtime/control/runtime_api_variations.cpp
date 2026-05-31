@@ -5,6 +5,7 @@
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/audio/system_midi.h"
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 namespace vivid {
@@ -148,7 +149,8 @@ const std::string& RuntimeAPI::active_preset(const std::string& node_id) const {
     return (it != active_presets_.end()) ? it->second : empty;
 }
 
-CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name) {
+CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::string& name,
+                                      const std::string& metadata) {
     auto* cg = core_.compiled_graph();
     if (!cg) return {false, kNoCompiledGraph};
     auto* cn = cg->find_node(node_id);
@@ -175,6 +177,7 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
                 }
             }
         }
+        preset.metadata = metadata;
         graph_.save_preset(node_id, preset);
         active_presets_[node_id] = name;
         mark_graph_dirty();
@@ -186,11 +189,18 @@ CommandResult RuntimeAPI::save_preset(const std::string& node_id, const std::str
     OperatorPreset preset;
     preset.name = name;
     for (const auto& [pname, idx] : cn->param_indices) {
+        // String/file params have a meaningless numeric shadow (0); they are
+        // captured as strings below. Skip so they don't leak as numeric 0.0.
+        if (cn->file_param_indices.count(pname)) continue;
         preset.params[pname] = cn->param_values[idx];
     }
     for (const auto& [pname, idx] : cn->file_param_indices) {
+        // Skip transient params (runtime-computed catalogs / scratch) — they bloat
+        // the preset and are recomputed at runtime (same rule as graph save).
+        if (idx < cn->file_param_persist.size() && !cn->file_param_persist[idx]) continue;
         preset.string_params[pname] = to_persisted_string_value(*cn, pname, cn->file_param_storage[idx]);
     }
+    preset.metadata = metadata;
     graph_.save_preset(node_id, preset);
     active_presets_[node_id] = name;
     mark_graph_dirty();
@@ -278,6 +288,10 @@ CommandResult RuntimeAPI::recall_preset(const std::string& node_id, const std::s
     for (const auto& [pname, pval] : preset->string_params) {
         auto fi = cn->file_param_indices.find(pname);
         if (fi != cn->file_param_indices.end()) {
+            // Don't restore transient params (recomputed at runtime); also avoids
+            // applying a stale catalog from presets captured before this rule.
+            if (fi->second < cn->file_param_persist.size() && !cn->file_param_persist[fi->second])
+                continue;
             auto pi = cn->param_indices.find(pname);
             if (pi != cn->param_indices.end() &&
                 (cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS))
@@ -344,10 +358,12 @@ CommandResult RuntimeAPI::update_preset(const std::string& node_id, const std::s
 
     preset->params.clear();
     for (const auto& [pname, idx] : cn->param_indices) {
+        if (cn->file_param_indices.count(pname)) continue;  // string params captured below
         preset->params[pname] = cn->param_values[idx];
     }
     preset->string_params.clear();
     for (const auto& [pname, idx] : cn->file_param_indices) {
+        if (idx < cn->file_param_persist.size() && !cn->file_param_persist[idx]) continue;
         preset->string_params[pname] = to_persisted_string_value(*cn, pname, cn->file_param_storage[idx]);
     }
     mark_graph_dirty();
@@ -400,6 +416,27 @@ CommandResult RuntimeAPI::list_presets(const std::string& node_id) {
         oss << names[i];
     }
     return {true, oss.str()};
+}
+
+std::string RuntimeAPI::list_presets_json(const std::string& node_id) const {
+    nlohmann::json arr = nlohmann::json::array();
+    std::string names;
+    const auto& all = graph_.node_presets();
+    auto it = all.find(node_id);
+    if (it != all.end()) {
+        for (const auto& p : it->second) {
+            nlohmann::json e;
+            e["name"] = p.name;
+            if (!p.metadata.empty()) {
+                auto m = nlohmann::json::parse(p.metadata, nullptr, false);
+                if (m.is_object()) e["metadata"] = std::move(m);
+            }
+            arr.push_back(std::move(e));
+            if (!names.empty()) names += ", ";
+            names += p.name;
+        }
+    }
+    return nlohmann::json{{"ok", true}, {"presets", arr}, {"msg", names}}.dump();
 }
 
 CommandResult RuntimeAPI::list_factory_presets(const std::string& node_id) {

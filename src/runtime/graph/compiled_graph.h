@@ -450,6 +450,7 @@ struct CompiledNode {
     std::vector<std::string*> file_param_write_ptrs; // mutable pointers for main_thread_update write-back
     std::unordered_map<std::string, uint32_t> file_param_indices;
     std::vector<uint8_t> file_param_is_path;
+    std::vector<uint8_t> file_param_persist;  // 0 = transient (VIVID_DISPLAY_TRANSIENT), not written to saved graph
 
     // ── Frame-rate skip logic ────────────────────────────────────────────────
     bool time_dependent = false;

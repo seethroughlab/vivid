@@ -35,10 +35,16 @@ CommandResult RuntimeAPI::save_as(const std::string& path) {
             NodeDef* ndef = graph_.find_node(cn.node_id);
             if (!ndef) continue;
             for (const auto& [name, idx] : cn.file_param_indices) {
-                if (idx < cn.file_param_storage.size()) {
-                    ndef->string_params[name] =
-                        to_persisted_string_value(cn, name, cn.file_param_storage[idx]);
+                if (idx >= cn.file_param_storage.size()) continue;
+                // Skip transient params (runtime-computed catalogs / scratch inputs):
+                // they bloat the file and are recomputed at runtime. Also erase any
+                // stale value that an older saved graph may have carried in.
+                if (idx < cn.file_param_persist.size() && !cn.file_param_persist[idx]) {
+                    ndef->string_params.erase(name);
+                    continue;
                 }
+                ndef->string_params[name] =
+                    to_persisted_string_value(cn, name, cn.file_param_storage[idx]);
             }
         }
     }

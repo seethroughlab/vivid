@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
 #include "shared/vst3_host/vst3_host_common.h"
+#include "shared/vst3_host/vst3_presets.h"
 #include "shared/vst3_host/vst3_scanner.h"
 #include "shared/plugin_ui/plugin_picker.h"
 #include "shared/plugin_common/direct_param_queue.h"
@@ -10,6 +11,9 @@
 
 #include <atomic>
 #include <cmath>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 // ---------------------------------------------------------------------------
 // Vst3Instrument — hosts a VST3 instrument plugin as a Vivid audio operator.
@@ -61,6 +65,12 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     // main_thread_update() pushes each entry into direct_q_ for audio-thread delivery.
     // Cleared on plugin change so stale IDs are never sent to a different plugin.
     vivid::Param<vivid::TextValue> direct_params_     {"_vst3_direct_params"};
+    // JSON preset catalog (read by list_vst3_presets); rebuilt off-thread on plugin load.
+    vivid::Param<vivid::TextValue> vst3_presets_      {"_vst3_presets"};
+    // Load request (preset id) written by load_vst3_preset; applied in main_thread_update.
+    vivid::Param<vivid::TextValue> load_preset_       {"_vst3_load_preset"};
+    // GUI window request ("open"/"close") written by open_vst3_gui/close_vst3_gui.
+    vivid::Param<vivid::TextValue> gui_request_       {"_vst3_gui_request"};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_name);
@@ -75,6 +85,9 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&plugin_state);
         out.push_back(&vst3_params_);
         out.push_back(&direct_params_);
+        out.push_back(&vst3_presets_);
+        out.push_back(&load_preset_);
+        out.push_back(&gui_request_);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -124,10 +137,26 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::atomic<uint32_t> audio_rate_seen_{0};  // written by audio thread, read by main thread
     bool          state_dirty_    = false;
     uint32_t      save_state_frame_ = 0; // throttle: only call getState() ~1/sec
+    int           recapture_after_ = 0;  // frames until a one-shot getState re-capture (set after a tweak)
 
     // --- Direct param queue (main thread → audio thread, unlimited params) ---
     DirectParamQueue direct_q_;
     std::string      last_direct_params_;  // tracks last-pushed value to avoid re-push
+
+    // --- Preset catalog (built on a detached worker; published on main thread) ---
+    // Shared so a worker that outlives this operator never touches freed memory.
+    struct CatalogChannel {
+        std::mutex   mu;
+        std::string  staging;
+        uint64_t     staged_gen = 0;   // generation of the staged JSON
+        bool         ready      = false;
+    };
+    std::shared_ptr<CatalogChannel> catalog_ch_ = std::make_shared<CatalogChannel>();
+    uint64_t    catalog_gen_   = 0;    // bumped per rebuild request (main thread)
+    std::string catalog_plugin_;       // identity the current catalog was built for
+    std::string catalog_json_;         // published catalog JSON (source of truth)
+    std::string last_load_preset_;     // tracks last-applied load request
+    std::string last_gui_request_;     // tracks last-handled GUI open/close request
 
     // --- Per-frame event buffers (audio thread only) ---
     Vst3EventList   in_events_;
@@ -172,9 +201,14 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         // VIVID_INSPECTOR_FULL_MODE suppresses the auto-rendered controls section.
         for (int i = 0; i < 8; ++i)
             vivid::display_hint(*macro_float_[i], VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(vst3_params_,   VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(direct_params_, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);  // authored state — persisted
+        // Runtime-computed catalogs / scratch command inputs — recomputed live,
+        // never written to the saved graph (would bloat it by hundreds of KB).
+        vivid::transient_param(vst3_params_);
+        vivid::transient_param(direct_params_);
+        vivid::transient_param(vst3_presets_);
+        vivid::transient_param(load_preset_);
+        vivid::transient_param(gui_request_);
     }
 
     ~Vst3Instrument() {
@@ -239,6 +273,11 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         refresh_vst3_params_json();
         process_direct_params();
 
+        rebuild_catalog_if_changed();
+        publish_catalog();
+        process_load_request();
+        process_gui_request();
+
         save_state();
 
 #ifdef __APPLE__
@@ -263,6 +302,16 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         // Clear direct params so stale IDs aren't applied to the incoming plugin.
         direct_params_.str_value.clear();
         last_direct_params_.clear();
+
+        // Drop the previous plugin's preset catalog + any pending load request so a
+        // stale preset id is never applied to a different plugin.
+        catalog_plugin_.clear();
+        catalog_json_.clear();
+        vst3_presets_.str_value.clear();
+        load_preset_.str_value.clear();
+        last_load_preset_.clear();
+        gui_request_.str_value.clear();
+        last_gui_request_.clear();
 
         // Clear stale state only when switching from one plugin to another.
         // On a fresh instance after a topology change, last_name_ was "" so
@@ -347,6 +396,116 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         if (direct_params_.str_value == last_direct_params_) return;
         last_direct_params_ = direct_params_.str_value;
         direct_param_queue_parse_and_push(direct_q_, direct_params_.str_value);
+        // Host-automation param changes don't trigger the plugin's performEdit
+        // callback, so getState would never re-capture them. Schedule a one-shot
+        // re-capture a couple of frames out (after the audio thread has applied the
+        // change) so the tweak persists into plugin_state (save/reload + update_preset).
+        recapture_after_ = 2;
+    }
+
+    // Rebuild the preset catalog when the active plugin identity changes. Program
+    // lists are read here (main thread, needs the controller); the slow filesystem
+    // scan is handed to a detached worker so it never hitches the main thread.
+    void rebuild_catalog_if_changed() {
+        auto* act = active_.load(std::memory_order_acquire);
+        if (!act || !act->component) return;
+        if (act->plugin_name == catalog_plugin_) return;   // already built for this plugin
+        catalog_plugin_ = act->plugin_name;
+
+        std::vector<Vst3PresetMeta> program_metas = vst3_enumerate_programs(act);
+        std::string vendor = act->vendor;
+        std::string plugin = act->plugin_name;
+
+        const uint64_t gen = ++catalog_gen_;
+        auto ch = catalog_ch_;
+        std::thread([ch, gen, vendor, plugin, program_metas]() mutable {
+            std::vector<Vst3PresetMeta> metas = std::move(program_metas);
+            std::vector<Vst3PresetMeta> files = vst3_enumerate_file_presets(vendor, plugin);
+            metas.insert(metas.end(), files.begin(), files.end());
+            std::string json = vst3_catalog_to_json(metas);
+
+            std::lock_guard<std::mutex> lk(ch->mu);
+            if (gen >= ch->staged_gen) {        // ignore a stale worker from an older plugin
+                ch->staging   = std::move(json);
+                ch->staged_gen = gen;
+                ch->ready     = true;
+            }
+        }).detach();
+    }
+
+    void publish_catalog() {
+        {
+            std::lock_guard<std::mutex> lk(catalog_ch_->mu);
+            if (catalog_ch_->ready) {
+                catalog_json_ = catalog_ch_->staging;
+                catalog_ch_->ready = false;
+            }
+        }
+        // Re-assert every frame (diff-guarded) — hidden computed params can be
+        // clobbered back to "" by the host param sync; mirror refresh_vst3_params_json.
+        if (catalog_json_ != vst3_presets_.str_value)
+            vst3_presets_.str_value = catalog_json_;
+    }
+
+    // Apply a load_vst3_preset request to the active plugin. State presets are
+    // applied via setState (same path as plugin_state restore); program presets
+    // drive the program-change parameter through the audio-thread direct queue.
+    // Either way state_dirty_ is set so save_state() persists the result into
+    // plugin_state — so a loaded preset survives graph save/reload.
+    void process_load_request() {
+        if (load_preset_.str_value == last_load_preset_) return;
+        last_load_preset_ = load_preset_.str_value;
+        if (load_preset_.str_value.empty()) return;
+
+        auto* act = active_.load(std::memory_order_acquire);
+        if (!act || !act->component) return;
+
+        // Baseline only needed for adapter-spliced native formats.
+        const std::string& id = load_preset_.str_value;
+        const bool needs_baseline =
+            id.rfind("program:", 0) != 0 &&
+            !(id.size() > 10 && id.compare(id.size() - 10, 10, ".vstpreset") == 0);
+        std::vector<uint8_t> baseline =
+            needs_baseline ? vst3_current_component_state(act) : std::vector<uint8_t>{};
+
+        Vst3PresetLoad load = vst3_resolve_preset_load(
+            act, act->vendor, act->plugin_name, id, baseline);
+
+        if (load.kind == Vst3PresetLoad::kState) {
+            vst3_apply_preset_state(act, load.state);
+            state_dirty_ = true;
+        } else if (load.kind == Vst3PresetLoad::kProgram) {
+            direct_q_.push(load.program_param, load.program_normalized);
+            state_dirty_ = true;
+        } else {
+            fprintf(stderr, "[Vst3Instrument] preset '%s' could not be loaded "
+                            "(unsupported source or load not implemented)\n", id.c_str());
+        }
+    }
+
+    // Open/close the plugin's native GUI window on request (open_vst3_gui /
+    // close_vst3_gui MCP tools), mirroring the inspector's Open GUI button.
+    void process_gui_request() {
+        if (gui_request_.str_value == last_gui_request_) return;
+        last_gui_request_ = gui_request_.str_value;
+#ifdef __APPLE__
+        const std::string& req = gui_request_.str_value;
+        if (req == "open") {
+            if (gui_win_ && !vst3_plugin_window_is_open(gui_win_)) {
+                vst3_plugin_window_close(gui_win_); gui_win_ = nullptr;
+            }
+            if (!gui_win_) {
+                auto* act = active_.load(std::memory_order_acquire);
+                auto* ctl = act ? act->controller : nullptr;
+                if (ctl) {
+                    std::string title = last_name_.empty() ? "VST3 Plugin" : last_name_;
+                    gui_win_ = vst3_plugin_window_open(ctl, title.c_str());
+                }
+            }
+        } else if (req == "close") {
+            if (gui_win_) { vst3_plugin_window_close(gui_win_); gui_win_ = nullptr; }
+        }
+#endif
     }
 
     void destroy_handle(Vst3Handle* h, bool was_processing) {
@@ -365,6 +524,11 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         if (pending_.load(std::memory_order_acquire)) return;
         auto* act = active_.load(std::memory_order_acquire);
         if (!act || !act->component) return;
+
+        // One-shot deferred re-capture after a host-automation tweak: fire once the
+        // countdown elapses (by which point the audio thread has applied the change).
+        if (recapture_after_ > 0 && --recapture_after_ == 0)
+            state_dirty_ = true;
 
         // getState() called while process() runs concurrently is not guaranteed thread-safe.
         // Many plugins (including Serum2) internally serialize these, causing the audio thread

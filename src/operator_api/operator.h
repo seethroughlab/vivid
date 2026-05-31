@@ -176,6 +176,16 @@ Param<T>& editor_only(Param<T>& p) {
     return p;
 }
 
+// Mark a param as runtime scratch/computed state: hidden from the inspector and
+// NOT written to the saved graph (it is recomputed at runtime), yet still
+// readable/writable via MCP/API. Use for derived catalogs (e.g. plugin preset
+// lists) and scratch command-input params that should never bloat saved files.
+template<typename T>
+Param<T>& transient_param(Param<T>& p) {
+    p.display_hint = VIVID_DISPLAY_TRANSIENT;
+    return p;
+}
+
 template<typename T>
 Param<T>& param_widget(Param<T>& p, const char* widget_id, uint32_t widget_span) {
     p.widget_id = widget_id;

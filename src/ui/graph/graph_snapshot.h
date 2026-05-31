@@ -98,6 +98,7 @@ inline bool param_info_visible(const ParamInfo& pd,
                                const std::vector<float>& param_values) {
     if (pd.display_hint == VIVID_DISPLAY_HIDDEN) return false;
     if (pd.display_hint == VIVID_DISPLAY_EDITOR) return false;
+    if (pd.display_hint == VIVID_DISPLAY_TRANSIENT) return false;
     return param_visibility_matches(pd.visibility, param_values);
 }
 

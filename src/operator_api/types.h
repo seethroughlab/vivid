@@ -44,6 +44,7 @@ typedef uint32_t VividDisplayHint;
 #define VIVID_DISPLAY_LFO      6u  // LFO waveform preview + enum selector (single enum param)
 #define VIVID_DISPLAY_STEP_SEQ 7u  // step sequencer grid (run: count + values [+ gates])
 #define VIVID_DISPLAY_EDITOR   8u  // editor-setting: not a modulation target; hidden from inspector but accessible via MCP/API
+#define VIVID_DISPLAY_TRANSIENT 9u // runtime scratch/computed state: hidden, NOT persisted to the saved graph (recomputed at runtime), still readable/writable via MCP/API (e.g. _vst3_presets catalogs, scratch command inputs)
 
 typedef uint32_t VividParamVisibilityOp;
 #define VIVID_PARAM_VIS_ALWAYS 0u  // always show the param

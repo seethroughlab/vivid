@@ -124,6 +124,37 @@ user's reference.
 - `explain_graph_composition(graph_path)` — detects which mechanical pattern(s) a graph
   exhibits.
 
+## VST3 Instruments & Presets
+
+A `Vst3Instrument` node hosts a VST3 synth (notes_in → stereo audio). Workflow:
+1. `add_node` Vst3Instrument → `list_vst3_plugins` → `set_vst3_plugin(node_id, name)`.
+2. **Presets are where the sound lives.** `list_vst3_presets(node_id)` returns the plugin's
+   library merged from `.vstpreset` files, VST3 program lists, and per-plugin adapters for
+   native formats (e.g. Serum2's `.SerumPreset`). Each entry has `name`, `category`, `tags`,
+   `description`, `source`, and `loadable`. Pick by character using tags/category/description.
+3. `load_vst3_preset(node_id, preset_id)` loads a preset by its catalog `id` and persists it
+   into the node's saved state (survives save/reload).
+4. Fine-tune with `set_vst3_param(node_id, name, value)` after loading.
+
+**Audition loop:** load_vst3_preset → drive notes_in → `record_audio_to_wav` /
+`analyze_audio_spectrum` / `evaluate_audio_musically` → compare candidates → keep the best.
+
+**Honest limits:** `loadable: false` means Vivid can *describe* the preset (so you can browse
+and recommend it to the user) but cannot load it directly — some synths (e.g. Serum) keep presets
+in a proprietary format that only the plugin itself can apply. Prefer `source` `vstpreset`/`program`
+or `pigments` (all loadable). AU/CLAP instruments do not yet expose a preset catalog.
+
+**Capturing a sound for a discovery-only plugin (the bridge for Serum, etc.):**
+1. **Suggest** — `list_vst3_presets(node_id, filter="bass")` and pick candidates by name/category/tags.
+2. **Audition** — `open_vst3_gui(node_id)`; the *user* loads the candidates in the plugin's own UI and
+   keeps one (you can't load `loadable:false` presets programmatically).
+3. **Capture** — `capture_vst3_preset(node_id, "my-bass", source_preset_id="<the factory id>",
+   notes="…")` snapshots the live plugin state AND tags it with the factory metadata.
+4. **Tweak** — shape it with `set_vst3_param`, then `update_preset` (or capture under a new name).
+Later, `list_presets(node_id)` browses the captured library by character, and `recall_preset`
+restores any captured sound exactly. Never hand-edit plugin state — capture, recall, and tweak via
+parameters.
+
 ## Owned Child Operators
 
 Control operators can embed other operators internally using ChildOp<T>. Use `scaffold_operator`
@@ -4806,6 +4837,147 @@ async def set_vst3_param(node_id: str, param_name: str, value: float) -> str:
 
 
 @mcp.tool()
+async def list_vst3_presets(node_id: str, filter: str = "") -> str:
+    """List the preset library of the VST3 plugin loaded in a Vst3Instrument node.
+
+    Presets are discovered from three sources and merged into one catalog:
+      - ".vstpreset" files in the standard tree (<root>/<Vendor>/<Plugin>/)
+      - VST3 program lists (factory programs the plugin exposes via IUnitInfo)
+      - per-plugin adapters for native formats (e.g. Serum2's .SerumPreset,
+        Arturia Pigments, Xfer Cthulhu), which provide rich metadata even when
+        the format predates .vstpreset
+
+    Returns a JSON object {"ok": true, "presets": [...]} where each preset is:
+      {"id": "...", "name": "PN - Piano Dance", "category": "Piano",
+       "author": "...", "description": "...", "tags": ["Pad", ...],
+       "source": "serum2", "loadable": true}
+
+    Use the 'id' with load_vst3_preset to load a preset. 'loadable' is false for
+    sources Vivid can describe but not yet load directly (browse/recommend only);
+    'tags', 'category', and 'description' let you pick a sound by character.
+
+    Args:
+        node_id: ID of the Vst3Instrument node (with a plugin already loaded)
+        filter: optional case-insensitive substring; keeps only presets whose
+            name, category, or any tag matches. Large libraries (e.g. Pigments
+            has ~1500 presets) — use this to narrow by character, e.g. "bass",
+            "pad", "pluck", "ambient".
+    """
+    raw = await _post("list_vst3_presets", {"node_id": node_id})
+    if not filter:
+        return raw
+    try:
+        data = json.loads(raw)
+        presets = data.get("presets", [])
+        q = filter.lower()
+        def hit(p):
+            if q in str(p.get("name", "")).lower(): return True
+            if q in str(p.get("category", "")).lower(): return True
+            return any(q in str(t).lower() for t in p.get("tags", []))
+        data["presets"] = [p for p in presets if hit(p)]
+        data["filtered_from"] = len(presets)
+        return json.dumps(data)
+    except (ValueError, TypeError):
+        return raw
+
+
+@mcp.tool()
+async def load_vst3_preset(node_id: str, preset_id: str) -> str:
+    """Load a preset into a Vst3Instrument node by its catalog 'id'.
+
+    Applies the preset to the live plugin and persists it into the node's saved
+    state, so it survives graph save/reload. Pass an 'id' from list_vst3_presets.
+
+    To audition: load_vst3_preset -> play notes into the node's notes_in ->
+    record_audio_to_wav / analyze_audio_spectrum / evaluate_audio_musically,
+    then compare candidates and keep the best.
+
+    Args:
+        node_id: ID of the Vst3Instrument node
+        preset_id: The 'id' field of a preset from list_vst3_presets
+    """
+    await _post("set_string_param",
+                {"node_id": node_id, "param": "_vst3_load_preset", "value": preset_id})
+    return json.dumps({"ok": True, "node_id": node_id, "preset_id": preset_id})
+
+
+@mcp.tool()
+async def open_vst3_gui(node_id: str) -> str:
+    """Open the native GUI window of the VST3 plugin loaded in a Vst3Instrument node.
+
+    Use this for the *audition* step: open the plugin's own UI so the user can
+    browse its preset library and pick a sound by ear. (Loading native presets,
+    e.g. Serum's .SerumPreset, is discovery-only — the user picks in the plugin
+    UI, then you capture the live state with capture_vst3_preset.)
+
+    Args:
+        node_id: ID of the Vst3Instrument node (with a plugin loaded)
+    """
+    await _post("set_string_param",
+                {"node_id": node_id, "param": "_vst3_gui_request", "value": "open"})
+    return json.dumps({"ok": True, "node_id": node_id})
+
+
+@mcp.tool()
+async def close_vst3_gui(node_id: str) -> str:
+    """Close the native GUI window of the VST3 plugin loaded in a Vst3Instrument node."""
+    await _post("set_string_param",
+                {"node_id": node_id, "param": "_vst3_gui_request", "value": "close"})
+    return json.dumps({"ok": True, "node_id": node_id})
+
+
+@mcp.tool()
+async def capture_vst3_preset(node_id: str, name: str,
+                              source_preset_id: str = "", notes: str = "") -> str:
+    """Capture the CURRENT live plugin sound as a named, reusable operator-preset.
+
+    This is the bridge for plugins whose native presets can't be loaded directly
+    (e.g. Serum): the user loads a factory preset in the plugin's GUI (see
+    open_vst3_gui), then you call this to snapshot the live plugin state — which
+    Vivid recalls perfectly (recall_preset) and persists in the graph.
+
+    If source_preset_id (an 'id' from list_vst3_presets) is given, the factory
+    preset's discovery metadata (category, tags, author, source) is attached so
+    the captured library browses by character via list_presets — just like the
+    factory catalog. Add free-text notes to record why you kept it / what you changed.
+
+    Workflow: suggest (list_vst3_presets + filter) -> audition (open_vst3_gui, user
+    loads/listens) -> capture_vst3_preset -> tweak (set_vst3_param) -> recall_preset/
+    update_preset. Reuse the captured sound across the project by name.
+
+    Args:
+        node_id: ID of the Vst3Instrument node
+        name: Name for the captured preset (e.g. "deep-evolving-bass")
+        source_preset_id: Optional factory preset id (from list_vst3_presets) to tag with
+        notes: Optional free-text note attached to the captured preset
+    """
+    metadata: dict = {}
+    if source_preset_id:
+        raw = await _post("list_vst3_presets", {"node_id": node_id})
+        try:
+            cat = json.loads(raw).get("presets", [])
+            match = next((p for p in cat if p.get("id") == source_preset_id), None)
+            if match:
+                for k in ("category", "author", "source"):
+                    if match.get(k):
+                        metadata[k] = match[k]
+                if match.get("tags"):
+                    metadata["tags"] = match["tags"]
+                metadata["source_preset_id"] = source_preset_id
+                if match.get("name"):
+                    metadata["source_preset_name"] = match["name"]
+        except (ValueError, TypeError):
+            pass
+    if notes:
+        metadata["notes"] = notes
+    body: dict = {"node_id": node_id, "name": name}
+    if metadata:
+        body["metadata"] = metadata
+    await _post("save_preset", body)
+    return json.dumps({"ok": True, "node_id": node_id, "name": name, "metadata": metadata})
+
+
+@mcp.tool()
 async def save_graph(path: str | None = None) -> str:
     """Save the graph to disk.
 
@@ -5372,7 +5544,13 @@ async def rename_preset(node_id: str, old_name: str, new_name: str) -> str:
 
 @mcp.tool()
 async def list_presets(node_id: str) -> str:
-    """List all saved presets for an operator instance.
+    """List the saved operator-presets for a node, with their curation metadata.
+
+    Returns {"ok": true, "presets": [{"name": ..., "metadata": {category, tags,
+    author, source, source_preset_id, notes}}], "msg": "name1, name2"}. Presets
+    captured via capture_vst3_preset carry the source factory preset's metadata,
+    so you can browse a captured plugin library by character (category/tags) and
+    recall_preset the right one.
 
     Args:
         node_id: The node to list presets for

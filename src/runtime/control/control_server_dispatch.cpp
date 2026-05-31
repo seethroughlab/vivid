@@ -331,6 +331,37 @@ std::string dispatch(const std::string& method, const std::string& body,
             }
         }
 
+    } else if (method == "list_vst3_presets") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
+            result = json_err("missing 'node_id'");
+        } else {
+            auto* cg = core.compiled_graph();
+            if (!cg) {
+                result = json_err("no compiled graph");
+            } else {
+                const std::string nid = root["node_id"].get<std::string>();
+                const auto* cn = cg->find_node(nid);
+                if (!cn) {
+                    result = json_err("unknown node '" + nid + "'");
+                } else {
+                    auto fi = cn->file_param_indices.find("_vst3_presets");
+                    if (fi == cn->file_param_indices.end() ||
+                        fi->second >= cn->file_param_storage.size()) {
+                        result = json_err("node '" + nid + "' is not a VST3 operator");
+                    } else {
+                        const std::string& raw = cn->file_param_storage[fi->second];
+                        try {
+                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                            result = nlohmann::json{{"ok", true}, {"presets", arr}}.dump();
+                        } catch (...) {
+                            result = nlohmann::json{{"ok", true}, {"presets", nlohmann::json::array()}}.dump();
+                        }
+                    }
+                }
+            }
+        }
+
     // --- Editor-window LLM-transparency endpoints ---
     //
     // The five methods below forward to EditorWindowManager's existing
@@ -799,9 +830,15 @@ std::string dispatch(const std::string& method, const std::string& body,
             if (!root.contains("node_id") || !root["node_id"].is_string() ||
                 !root.contains("name") || !root["name"].is_string())
                 result = json_err("missing 'node_id' or 'name'");
-            else
+            else {
+                // Optional curation metadata (JSON object) stored verbatim on the preset.
+                std::string metadata;
+                if (root.contains("metadata") && root["metadata"].is_object())
+                    metadata = root["metadata"].dump();
                 result = command_result_to_json(
-                    api.save_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
+                    api.save_preset(root["node_id"].get<std::string>(),
+                                    root["name"].get<std::string>(), metadata));
+            }
         }
     } else if (method == "recall_preset") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
@@ -851,7 +888,7 @@ std::string dispatch(const std::string& method, const std::string& body,
             if (!root.contains("node_id") || !root["node_id"].is_string())
                 result = json_err("missing 'node_id'");
             else
-                result = command_result_to_json(api.list_presets(root["node_id"].get<std::string>()));
+                result = api.list_presets_json(root["node_id"].get<std::string>());
         }
     } else if (method == "list_factory_presets") {
         if (!root_valid) { result = json_err("invalid JSON body"); }

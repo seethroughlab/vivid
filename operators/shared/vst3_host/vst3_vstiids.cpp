@@ -11,6 +11,7 @@
 #include "pluginterfaces/vst/ivstmessage.h"
 #include "pluginterfaces/vst/ivstattributes.h"
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
+#include "pluginterfaces/vst/ivstunits.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/gui/iplugviewcontentscalesupport.h"
 
@@ -30,6 +31,7 @@ DEF_CLASS_IID (IParameterChanges)
 DEF_CLASS_IID (IParamValueQueue)
 DEF_CLASS_IID (IAttributeList)
 DEF_CLASS_IID (IMessage)
+DEF_CLASS_IID (IUnitInfo)
 
 } // namespace Vst
 

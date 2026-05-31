@@ -156,6 +156,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.file_param_write_ptrs.clear();
     cn.file_param_indices.clear();
     cn.file_param_is_path.clear();
+    cn.file_param_persist.clear();
     for (uint32_t i = 0; i < desc->param_count; ++i) {
         if (desc->params[i].type == VIVID_PARAM_FILE ||
             desc->params[i].type == VIVID_PARAM_TEXT) {
@@ -164,6 +165,9 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
             const char* def = desc->params[i].default_string;
             cn.file_param_storage.push_back(def ? def : "");
             cn.file_param_is_path.push_back(desc->params[i].type == VIVID_PARAM_FILE ? 1 : 0);
+            // Transient params (runtime-computed catalogs/scratch) are not saved.
+            cn.file_param_persist.push_back(
+                desc->params[i].display_hint == VIVID_DISPLAY_TRANSIENT ? 0 : 1);
         }
     }
     if (string_overrides) {

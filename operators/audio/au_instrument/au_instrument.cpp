@@ -159,9 +159,10 @@ struct AUInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::display_hint(macro_5, VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(macro_6, VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(macro_7, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(au_params_,     VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(direct_params_, VIVID_DISPLAY_HIDDEN);
+        vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);  // authored state — persisted
+        // Runtime-computed list / scratch input — recomputed live, not saved to disk.
+        vivid::transient_param(au_params_);
+        vivid::transient_param(direct_params_);
 
         for (auto& m : macro_map_) {
             m.id.store(kAUInvalidParamID, std::memory_order_release);
