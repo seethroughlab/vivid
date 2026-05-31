@@ -971,12 +971,29 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     if (component->activateBus(kAudio, kOutput, 0, true) != kResultOk)
         fprintf(stderr, "[Vst3] activateBus(kAudio, kOutput, 0) failed\n");
 
+    // Activate the event (MIDI/note) input bus so instruments actually receive
+    // note events. Without this, hosted synths produce silence. Only instruments
+    // expose an event input bus; skip silently for effects that have none.
+    if (component->getBusCount(kEvent, kInput) > 0 &&
+        component->activateBus(kEvent, kInput, 0, true) != kResultOk)
+        fprintf(stderr, "[Vst3] activateBus(kEvent, kInput, 0) failed\n");
+
     IAudioProcessor* processor = nullptr;
     if (component->queryInterface(IAudioProcessor::iid, (void**)&processor) != kResultOk
         || !processor) {
         fprintf(stderr, "[Vst3] no IAudioProcessor interface\n");
         component->terminate(); component->release();
         factory->release(); VST3_RELEASE_BUNDLE; return nullptr;
+    }
+
+    // Negotiate the output bus arrangement (stereo, no audio inputs). Many
+    // instruments output silence until setBusArrangements tells them their
+    // output speaker layout — this must happen while the component is inactive.
+    {
+        SpeakerArrangement out_arr = SpeakerArr::kStereo;
+        if (processor->setBusArrangements(nullptr, 0, &out_arr, 1) != kResultOk)
+            fprintf(stderr, "[Vst3] setBusArrangements(stereo out) not accepted; "
+                            "plugin may use its default layout\n");
     }
 
     ProcessSetup setup{};
