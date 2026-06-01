@@ -1,4 +1,5 @@
 #include "operator_api/operator.h"
+#include "operator_api/metronome_sync.h"
 
 #include <cmath>
 #include <cstring>
@@ -52,6 +53,8 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> time    {"time",     250.0f, 0.0f, 2000.0f};
     vivid::Param<float> feedback{"feedback",   0.3f, 0.0f,    0.99f};
     vivid::Param<float> mix     {"mix",        0.5f, 0.0f,    1.0f};
+    vivid::Param<int>   sync         {"sync",          0, {"Free", "Tempo Sync"}};
+    vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
 
     static constexpr uint32_t kMaxChannels = 2;
     DelayLine delay_[kMaxChannels];
@@ -76,12 +79,19 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_shape(mix, "scalar");
         vivid::semantic_intent(mix, "wet_mix");
         vivid::description(mix, "Dry/wet blend (0 = dry, 1 = fully delayed)");
+
+        vivid::description(sync, "Free uses the time knob (ms); Tempo Sync locks the "
+                                 "delay time to the graph tempo at the chosen note division");
+        vivid::description(sync_division, "Musical note length for the delay time when "
+                                          "Tempo Sync is on (e.g. 1/8, dotted 1/8)");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&time);
         out.push_back(&feedback);
         out.push_back(&mix);
+        out.push_back(&sync);
+        out.push_back(&sync_division);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -109,7 +119,16 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
         if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
-        int delay_samples = static_cast<int>(time.value * 0.001f * ctx->sample_rate);
+        // Tempo Sync: derive the delay time from the graph tempo at the chosen
+        // note division; otherwise use the free-running time knob (ms). The
+        // clamp below caps it to the 2-second buffer (a slow-tempo whole note
+        // can exceed it).
+        float delay_ms = time.value;
+        if (sync.int_value() != 0) {
+            const float bpm = ctx->metronome_bpm > 0.0f ? ctx->metronome_bpm : 120.0f;
+            delay_ms = vivid::sync_cycle_beats(sync_division.int_value()) * 60000.0f / bpm;
+        }
+        int delay_samples = static_cast<int>(delay_ms * 0.001f * ctx->sample_rate);
         if (delay_samples < 1) delay_samples = 1;
         if (delay_samples >= delay_[0].size) delay_samples = delay_[0].size - 1;
 
