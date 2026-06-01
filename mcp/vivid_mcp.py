@@ -3640,12 +3640,19 @@ async def analyze_audio_spectrum(duration_ms: float = 1000.0,
                                   mode: str = "single",
                                   db_scale: bool = True,
                                   fmin_hz: float = 0.0,
-                                  fmax_hz: float = 0.0) -> str:
+                                  fmax_hz: float = 0.0,
+                                  top_n: int = 0) -> str:
     """Numeric FFT magnitudes over a captured window.
 
     Returns `bins` as a list of `{hz, magnitude}` for inspection of
     *which* frequencies hold energy — complements `capture_spectrogram`
     (PNG) when you need quantitative bin values. Hann-windowed.
+
+    A full spectrum is large (fft_size/2 bins, e.g. 2048 at fft_size=4096)
+    and can blow the token budget. For the common "where is the energy?"
+    question, pass `top_n` to get just the strongest peaks; narrow with
+    `fmin_hz`/`fmax_hz` for a band. The full bins remain available at
+    top_n=0.
 
     For per-node captures (`node_id` set) the input is the 1024-sample
     waveform ring, so `fft_size > 1024` auto-clamps; `fft_size_used` and
@@ -3662,6 +3669,9 @@ async def analyze_audio_spectrum(duration_ms: float = 1000.0,
         db_scale: True returns dB (ref=peak); False returns linear
             magnitude.
         fmin_hz, fmax_hz: Visible frequency band. fmax_hz=0 ⇒ Nyquist.
+        top_n: When > 0, return only the `top_n` strongest bins (by
+            magnitude), listed in ascending frequency, plus `bins_total`
+            and `truncated`. 0 (default) returns the full spectrum.
     """
     fetched, err = await _fetch_wav_bytes(node_id, duration_ms)
     if err:
@@ -3678,6 +3688,17 @@ async def analyze_audio_spectrum(duration_ms: float = 1000.0,
     out["ok"] = True
     out["node_id"] = node_id
     out["source"] = "node_waveform_ring" if node_id else "final_mix"
+    if top_n and int(top_n) > 0 and isinstance(out.get("bins"), list):
+        bins = out["bins"]
+        out["bins_total"] = len(bins)
+        top = sorted(bins, key=lambda b: b.get("magnitude", float("-inf")),
+                     reverse=True)[:int(top_n)]
+        top.sort(key=lambda b: b.get("hz", 0.0))
+        out["bins"] = top
+        out["truncated"] = len(bins) > len(top)
+        out["note"] = (f"bins reduced to the {len(top)} strongest of "
+                       f"{out['bins_total']} (by magnitude); pass top_n=0 "
+                       f"for the full spectrum")
     return _json_response(out)
 
 
@@ -4861,7 +4882,7 @@ async def set_vst3_plugin(node_id: str, plugin_name: str) -> str:
 
 
 @mcp.tool()
-async def list_vst3_params(node_id: str) -> str:
+async def list_vst3_params(node_id: str, filter: str = "", max_results: int = 0) -> str:
     """List all parameters exposed by the VST3 plugin currently loaded in a Vst3Instrument node.
 
     Returns a JSON array of parameter descriptors:
@@ -4871,10 +4892,36 @@ async def list_vst3_params(node_id: str) -> str:
     The 'min', 'max', 'default', and 'value' fields are all plain values.
     Use set_vst3_param(node_id, "Cutoff", 1000.0) to control a parameter directly.
 
+    Big synths expose hundreds of params (Serum/Pigments > 500), which can blow
+    the token budget — narrow with `filter` (name/units substring) and/or cap
+    with `max_results`. When either is set the response adds `filtered_from`
+    and, on truncation, `truncated` + `result_total`.
+
     Args:
         node_id: ID of the Vst3Instrument node
+        filter: case-insensitive substring matched against param name or units
+        max_results: cap the returned list (0 = no cap)
     """
-    return await _post("list_vst3_params", {"node_id": node_id})
+    raw = await _post("list_vst3_params", {"node_id": node_id})
+    if not filter and (not max_results or int(max_results) <= 0):
+        return raw
+    try:
+        data = json.loads(raw)
+        params = data.get("params", [])
+        data["filtered_from"] = len(params)
+        if filter:
+            q = filter.lower()
+            params = [p for p in params
+                      if q in str(p.get("name", "")).lower()
+                      or q in str(p.get("units", "")).lower()]
+        if max_results and int(max_results) > 0 and len(params) > int(max_results):
+            data["truncated"] = True
+            data["result_total"] = len(params)
+            params = params[:int(max_results)]
+        data["params"] = params
+        return json.dumps(data)
+    except (ValueError, TypeError):
+        return raw
 
 
 @mcp.tool()
@@ -4912,7 +4959,8 @@ async def set_vst3_param(node_id: str, param_name: str, value: float) -> str:
 
 
 @mcp.tool()
-async def list_vst3_presets(node_id: str, filter: str = "") -> str:
+async def list_vst3_presets(node_id: str, filter: str = "",
+                            max_results: int = 0, drop_program: bool = True) -> str:
     """List the preset library of the VST3 plugin loaded in a Vst3Instrument node.
 
     Presets are discovered from three sources and merged into one catalog:
@@ -4940,20 +4988,34 @@ async def list_vst3_presets(node_id: str, filter: str = "") -> str:
             name, category, or any tag matches. Large libraries (e.g. Pigments
             has ~1500 presets) — use this to narrow by character, e.g. "bass",
             "pad", "pluck", "ambient".
+        max_results: cap the returned list (0 = no cap). On truncation the
+            response adds `truncated` + `result_total`.
+        drop_program: when true (default) drops the generic numbered
+            source=="program" slots so only real named factory presets remain;
+            pass false to include them. `filtered_from` reports the pre-filter
+            count either way.
     """
     raw = await _post("list_vst3_presets", {"node_id": node_id})
-    if not filter:
+    if not filter and not drop_program and (not max_results or int(max_results) <= 0):
         return raw
     try:
         data = json.loads(raw)
         presets = data.get("presets", [])
-        q = filter.lower()
-        def hit(p):
-            if q in str(p.get("name", "")).lower(): return True
-            if q in str(p.get("category", "")).lower(): return True
-            return any(q in str(t).lower() for t in p.get("tags", []))
-        data["presets"] = [p for p in presets if hit(p)]
         data["filtered_from"] = len(presets)
+        if drop_program:
+            presets = [p for p in presets if str(p.get("source", "")) != "program"]
+        if filter:
+            q = filter.lower()
+            def hit(p):
+                if q in str(p.get("name", "")).lower(): return True
+                if q in str(p.get("category", "")).lower(): return True
+                return any(q in str(t).lower() for t in p.get("tags", []))
+            presets = [p for p in presets if hit(p)]
+        if max_results and int(max_results) > 0 and len(presets) > int(max_results):
+            data["truncated"] = True
+            data["result_total"] = len(presets)
+            presets = presets[:int(max_results)]
+        data["presets"] = presets
         return json.dumps(data)
     except (ValueError, TypeError):
         return raw
