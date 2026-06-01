@@ -98,6 +98,16 @@ public:
         return true;
     }
 
+    // Rename a node's id (change its identity). Default no-op for headless/test
+    // sinks. The try_ variant reports a failure reason (e.g. id already in use).
+    virtual void rename_node(const std::string& old_id, const std::string& new_id) {}
+    virtual bool try_rename_node(const std::string& old_id, const std::string& new_id,
+                                 std::string* error = nullptr) {
+        rename_node(old_id, new_id);
+        if (error) error->clear();
+        return true;
+    }
+
     // Per-operator preset operations (defaults are no-ops for headless/test sinks)
     virtual void recall_preset(const std::string& node_id, const std::string& name) {}
     virtual void save_preset(const std::string& node_id, const std::string& name) {}

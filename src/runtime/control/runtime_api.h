@@ -73,6 +73,7 @@ public:
     // Buffered topology changes (require apply_pending)
     CommandResult add_node(const std::string& type, const std::string& id);
     CommandResult remove_node(const std::string& id);
+    CommandResult rename_node(const std::string& old_id, const std::string& new_id);
     CommandResult connect(const std::string& from_addr, const std::string& to_addr,
                           bool semantic_defaults = false,
                           const std::string& bridge = "");

@@ -533,6 +533,27 @@ CommandResult RuntimeAPI::remove_node(const std::string& id) {
     return {true, "removed " + id};
 }
 
+CommandResult RuntimeAPI::rename_node(const std::string& old_id,
+                                      const std::string& new_id) {
+    // Explicit checks first so callers/UI get a specific reason on failure.
+    if (new_id.empty())
+        return {false, "new node id cannot be empty"};
+    if (old_id == new_id)
+        return {false, "node id is unchanged"};
+    if (!graph_.find_node(old_id))
+        return {false, "unknown node '" + old_id + "'"};
+    if (graph_.find_node(new_id))
+        return {false, "node id '" + new_id + "' already in use"};
+    // Graph::rename_node re-validates (charset, subgraph scope) and performs the
+    // atomic reference sweep.
+    if (!graph_.rename_node(old_id, new_id))
+        return {false, "cannot rename '" + old_id + "' to '" + new_id +
+                       "' (invalid id, or node is part of a subgraph)"};
+    pending_topology_change_ = true;
+    mark_graph_dirty();
+    return {true, "renamed '" + old_id + "' to '" + new_id + "'"};
+}
+
 CommandResult RuntimeAPI::connect(const std::string& from_addr, const std::string& to_addr,
                                   bool semantic_defaults, const std::string& bridge) {
     std::string fn, fp, tn, tp;

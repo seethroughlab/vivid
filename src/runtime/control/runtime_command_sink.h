@@ -47,6 +47,21 @@ public:
         auto r = api_.remove_node(id);
         if (r.ok) capture_undo_snapshot();
     }
+    void rename_node(const std::string& old_id, const std::string& new_id) override {
+        auto r = api_.rename_node(old_id, new_id);
+        if (r.ok) capture_undo_snapshot("rename:" + old_id);
+    }
+    bool try_rename_node(const std::string& old_id, const std::string& new_id,
+                         std::string* error = nullptr) override {
+        auto r = api_.rename_node(old_id, new_id);
+        if (!r.ok) {
+            if (error) *error = r.message;
+            return false;
+        }
+        capture_undo_snapshot("rename:" + old_id);
+        if (error) error->clear();
+        return true;
+    }
     void connect(const std::string& from, const std::string& to) override {
         auto r = api_.connect(from, to);
         if (r.ok) capture_undo_snapshot();

@@ -466,6 +466,9 @@ private:
     void cancel_transport_bpm_edit();
     void confirm_param_edit();
     void cancel_param_edit();
+    void begin_node_id_edit(const std::string& node_id);
+    void confirm_node_id_edit();
+    void cancel_node_id_edit();
     void confirm_resolution_edit();
     void cancel_resolution_edit();
     void confirm_midi_range_edit();
@@ -1033,6 +1036,9 @@ private:
     bool transport_bpm_editing_ = false;
     std::string transport_bpm_edit_buffer_;
     double transport_bpm_last_click_time_ = -1.0;
+    // Double-click detection for the inspector header node-id (rename) field.
+    double node_id_label_last_click_time_ = -1.0;
+    std::string node_id_label_last_click_id_;
     bool diagnostics_panel_open_ = false;
     struct DiagnosticsPanelRect { float x = 0.0f, y = 0.0f, w = 0.0f, h = 0.0f; bool visible = false; };
     DiagnosticsPanelRect diagnostics_panel_rect_;

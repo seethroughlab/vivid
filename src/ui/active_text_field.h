@@ -23,6 +23,11 @@ inline bool filter_identifier(char c) {
     auto uc = static_cast<unsigned char>(c);
     return std::isalpha(uc) || std::isdigit(uc) || c == '_';
 }
+// Node ids: [A-Za-z0-9_-] (matches Graph::rename_node's accepted charset).
+inline bool filter_node_id(char c) {
+    auto uc = static_cast<unsigned char>(c);
+    return std::isalnum(uc) || c == '_' || c == '-';
+}
 inline bool filter_preset_name(char c) {
     auto uc = static_cast<unsigned char>(c);
     return std::isalnum(uc) || c == '_' || c == '/' || c == ' ' || c == '-';

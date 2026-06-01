@@ -25,6 +25,7 @@ int main() {
 #include "test_graph_session_schema.inc"
 #include "test_graph_schema_and_versioning.inc"
 #include "test_graph_sticky_notes_and_bridges.inc"
+#include "test_graph_rename_node.inc"
 
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);

@@ -199,6 +199,8 @@ ActiveTextField NodeGraphUI::resolve_active_text_field() {
             return {&inspector_.edit_buffer, filter_printable};
         return {&inspector_.edit_buffer, filter_numeric};
     }
+    if (inspector_.editing_node_id)
+        return {&inspector_.edit_buffer, filter_node_id};
     if (inspector_.editing_resolution)
         return {&inspector_.edit_buffer, filter_digits};
     if (inspector_.color_editing_hex)
@@ -372,6 +374,14 @@ bool NodeGraphUI::handle_session_mode_key(int key, int action, int mods, bool mo
 }
 
 bool NodeGraphUI::handle_inspector_edit_mode_key(int key) {
+    if (inspector_.editing_node_id) {
+        if (key == GLFW_KEY_ENTER)       confirm_node_id_edit();
+        else if (key == GLFW_KEY_ESCAPE) cancel_node_id_edit();
+        else if (key == GLFW_KEY_BACKSPACE)
+            text_edit_backspace(inspector_.edit_buffer, text_edit_);
+        return true;
+    }
+
     if (inspector_.editing_midi_range) {
         if (key == GLFW_KEY_ENTER)       confirm_midi_range_edit();
         else if (key == GLFW_KEY_ESCAPE) cancel_midi_range_edit();

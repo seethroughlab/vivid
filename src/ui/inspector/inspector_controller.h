@@ -66,6 +66,7 @@ public:
         return editing_param
             || editing_resolution
             || editing_wire_remap
+            || editing_node_id
             || dropdown_open
             || editing_midi_range
             || param_picker_open
@@ -120,6 +121,12 @@ public:
     std::string edit_node_id;
     std::string edit_param_name;
     std::string edit_buffer;
+
+    // Inline node-id (rename) editing in the inspector header.
+    bool editing_node_id = false;
+    std::string node_id_edit_old;             // id being renamed
+    std::string node_id_error;                // transient message (e.g. "id already in use")
+    std::vector<InspectorRect> node_id_rects; // hit-test the header id label
 
     std::vector<InspectorRect> bool_rects;
     std::vector<InspectorRect> value_text_rects;

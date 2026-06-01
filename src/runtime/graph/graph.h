@@ -298,6 +298,13 @@ public:
                   const std::unordered_map<std::string, float>& params = {},
                   const std::unordered_map<std::string, std::string>& string_params = {});
     bool remove_node(const std::string& id);
+    // Rename a node's id, atomically rewriting every reference (connections,
+    // presets, modulation, MIDI mappings, state-preset mappings, session track
+    // ownership + clip param sets, quantize-clock node, meta preview controls).
+    // No-op returning false if new_id is empty/invalid-charset/already-in-use,
+    // old_id is missing, or the node is a subgraph member / module owner
+    // (unsupported in v1). Valid ids: [A-Za-z0-9_-].
+    bool rename_node(const std::string& old_id, const std::string& new_id);
     bool add_connection(const std::string& from_node, const std::string& from_port,
                         const std::string& to_node, const std::string& to_port);
     bool remove_connection(const std::string& from_node, const std::string& from_port,

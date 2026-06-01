@@ -416,9 +416,12 @@ bool NodeGraphUI::handle_inspector_click() {
         }
     }
 
-    // Confirm any active text edit when clicking in inspector
+    // Confirm any active text edit when clicking in inspector. A pending node-id
+    // rename is discarded on click-away (renaming requires an explicit Enter);
+    // node_id_rects is empty while editing, so this never fires on the field itself.
     if (inspector_.editing_param) confirm_param_edit();
     if (inspector_.editing_resolution) confirm_resolution_edit();
+    if (inspector_.editing_node_id) cancel_node_id_edit();
 
     // Check docs link ("?" button next to operator name in inspector header).
     // Slug rule mirrors site/build_site.py::slugify — lowercase, then collapse
@@ -449,6 +452,28 @@ bool NodeGraphUI::handle_inspector_click() {
                         : std::string("https://vivid.seethroughlab.com/operators");
                     vivid::open_url(base + "/" + slug + "/");
                 }
+            }
+            return true;
+        }
+    }
+
+    // Node-id label in the header — double-click to rename (enter inline edit).
+    // Single click just records the time so a following click within the
+    // double-click window starts editing.
+    {
+        int ni = hit_test_rect(inspector_.node_id_rects, mouse_.x, mouse_.y);
+        if (ni >= 0) {
+            const std::string id = inspector_.node_id_rects[ni].node_id;
+            double now = glfwGetTime();
+            if (node_id_label_last_click_id_ == id &&
+                node_id_label_last_click_time_ >= 0.0 &&
+                (now - node_id_label_last_click_time_) < 0.4) {
+                begin_node_id_edit(id);
+                node_id_label_last_click_id_.clear();
+                node_id_label_last_click_time_ = -1.0;
+            } else {
+                node_id_label_last_click_id_ = id;
+                node_id_label_last_click_time_ = now;
             }
             return true;
         }

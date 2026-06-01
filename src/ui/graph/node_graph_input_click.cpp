@@ -436,6 +436,7 @@ void NodeGraphUI::handle_graph_click() {
     // Clicking in graph area confirms any active text edit
     if (inspector_.editing_param) confirm_param_edit();
     if (inspector_.editing_resolution) confirm_resolution_edit();
+    if (inspector_.editing_node_id) cancel_node_id_edit();
     inspector_.editing_wire_remap = false;
 
     // Check expand/collapse affordance rows before port hit testing

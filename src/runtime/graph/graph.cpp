@@ -802,6 +802,72 @@ bool Graph::remove_node(const std::string& id) {
     return true;
 }
 
+bool Graph::rename_node(const std::string& old_id, const std::string& new_id) {
+    // --- Validation (the uniqueness/validity guard) ---
+    if (old_id == new_id || new_id.empty()) return false;
+    // Node ids appear in "node/port" addresses and as JSON object keys, and the
+    // '.' / "instance." prefix is reserved for subgraph members — so restrict to
+    // a safe identifier charset.
+    for (char c : new_id) {
+        const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                        (c >= '0' && c <= '9') || c == '_' || c == '-';
+        if (!ok) return false;
+    }
+    NodeDef* node = find_node(old_id);
+    if (!node) return false;
+    if (find_node(new_id)) return false;  // already in use
+    // v1 scope: only top-level, non-module nodes. Renaming a subgraph member or
+    // a module owner would require rewriting "instance.__" member prefixes.
+    if (!node->subgraph_owner.empty()) return false;       // this node is a member
+    for (const auto& n : nodes_)
+        if (n.subgraph_owner == old_id) return false;       // this node owns members
+
+    // Move-erase-insert to re-key a map without iterator invalidation on rehash.
+    auto rekey = [](auto& m, const std::string& from, const std::string& to) {
+        auto it = m.find(from);
+        if (it == m.end()) return;
+        auto val = std::move(it->second);
+        m.erase(it);
+        m[to] = std::move(val);
+    };
+
+    // 1. The node itself.
+    node->id = new_id;
+    // 2. Connection endpoints.
+    for (auto& c : connections_) {
+        if (c.from_node == old_id) c.from_node = new_id;
+        if (c.to_node   == old_id) c.to_node   = new_id;
+    }
+    // 3. Per-operator presets (map keyed by node id).
+    rekey(node_presets_, old_id, new_id);
+    // 4. Modulation assignments (map keyed by node id).
+    rekey(mod_assignments_, old_id, new_id);
+    // 5. MIDI mappings.
+    for (auto& m : midi_mappings_)
+        if (m.node_id == old_id) m.node_id = new_id;
+    // 6. State-preset mappings: the SM node reference + per-state target keys.
+    for (auto& sm : state_preset_mappings_) {
+        if (sm.state_machine_node == old_id) sm.state_machine_node = new_id;
+        for (auto& bindings : sm.state_presets)
+            rekey(bindings, old_id, new_id);
+    }
+    // 7. Session: track ownership + clip param sets.
+    for (auto& tr : session_.tracks) {
+        for (auto& nid : tr.owned_node_ids)
+            if (nid == old_id) nid = new_id;
+        for (auto& clip : tr.clips) {
+            rekey(clip.params, old_id, new_id);
+            rekey(clip.string_params, old_id, new_id);
+        }
+    }
+    // 8. Quantize clock node reference.
+    if (quantize_clock_node_ == old_id) quantize_clock_node_ = new_id;
+    // 9. Meta preview controls.
+    for (auto& pc : meta_.preview_controls)
+        if (pc.node == old_id) pc.node = new_id;
+    return true;
+}
+
 bool Graph::add_connection(const std::string& from_node, const std::string& from_port,
                            const std::string& to_node, const std::string& to_port) {
     // Check for duplicate

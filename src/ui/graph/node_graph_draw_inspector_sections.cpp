@@ -214,8 +214,33 @@ void NodeGraphUI::draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node
     }
 
     py += kLineH;
-    tr.draw_text(px, py, single_selected_id().c_str(), style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
-    py += kLineH + 8;
+    // Node id — editable (rename) for a single, top-level, non-module node.
+    // Double-click enters edit mode; Enter commits, Esc cancels. The id is the
+    // node's identity, so a rename rewrites every reference (see Graph::rename_node).
+    const bool id_editable = !node.is_subgraph_member && !node.is_module_instance;
+    const bool editing_this = inspector_.editing_node_id &&
+                              inspector_.node_id_edit_old == node.node_id;
+    if (editing_this) {
+        draw_editing_text_field(tr, style_, px, py, kInspContentW, kLineH,
+                                inspector_.edit_buffer, text_edit_, cursor_blink_on(),
+                                4.0f, 0.0f);
+        py += kLineH;
+        if (!inspector_.node_id_error.empty()) {
+            tr.draw_text(px, py, inspector_.node_id_error.c_str(),
+                         0.90f, 0.42f, 0.42f, 1.0f, 0.8f);
+            py += kLineH;
+        }
+        py += 8;
+    } else {
+        tr.draw_text(px, py, single_selected_id().c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);
+        if (id_editable) {
+            float id_w = tr.text_width(single_selected_id().c_str());
+            inspector_.node_id_rects.push_back(
+                { px, py, std::max(id_w, 40.0f), kLineH, node.node_id, "" });
+        }
+        py += kLineH + 8;
+    }
 
     // Separator
     tr.draw_rect(px, py, kInspContentW, 1, style_.separator[0], style_.separator[1], style_.separator[2]);

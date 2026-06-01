@@ -109,6 +109,17 @@ std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(api.remove_node(root["node_id"].get<std::string>()));
         }
+    } else if (method == "rename_node") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("old_id") || !root["old_id"].is_string() ||
+                !root.contains("new_id") || !root["new_id"].is_string())
+                result = json_err("missing 'old_id' or 'new_id'");
+            else
+                result = command_result_to_json(
+                    api.rename_node(root["old_id"].get<std::string>(),
+                                    root["new_id"].get<std::string>()));
+        }
     } else if (method == "connect") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {

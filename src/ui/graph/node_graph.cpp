@@ -1217,6 +1217,51 @@ void NodeGraphUI::cancel_param_edit() {
     inspector_.edit_buffer.clear();
 }
 
+void NodeGraphUI::begin_node_id_edit(const std::string& node_id) {
+    // Only one inline edit mode at a time — clear the others.
+    inspector_.editing_param = false;
+    inspector_.editing_resolution = false;
+    inspector_.editing_midi_range = false;
+    inspector_.editing_wire_remap = false;
+    inspector_.editing_node_id = true;
+    inspector_.node_id_edit_old = node_id;
+    inspector_.node_id_error.clear();
+    inspector_.edit_buffer = node_id;
+    text_edit_.select_all(static_cast<int>(inspector_.edit_buffer.size()));
+}
+
+void NodeGraphUI::confirm_node_id_edit() {
+    if (!inspector_.editing_node_id) return;
+    const std::string old_id = inspector_.node_id_edit_old;
+    const std::string& new_id = inspector_.edit_buffer;
+    if (new_id.empty() || new_id == old_id) {  // nothing to do
+        cancel_node_id_edit();
+        return;
+    }
+    // Uniqueness guard: a duplicate keeps the field open with an inline error so
+    // the user can fix it. (filter_node_id already blocks invalid characters;
+    // RuntimeAPI/Graph re-validate as a safety net.)
+    if (snap_.find_node(new_id) != nullptr) {
+        inspector_.node_id_error = "id '" + new_id + "' already in use";
+        return;
+    }
+    commands_.rename_node(old_id, new_id);
+    // Selection holds node ids; the old id is gone after the rename, so move the
+    // selection to the new id to keep the node selected (inspector stays open).
+    if (selected_node_ids_.erase(old_id) > 0)
+        selected_node_ids_.insert(new_id);
+    if (inspector_.insp_scroll_node_id == old_id)
+        inspector_.insp_scroll_node_id = new_id;
+    cancel_node_id_edit();
+}
+
+void NodeGraphUI::cancel_node_id_edit() {
+    inspector_.editing_node_id = false;
+    inspector_.node_id_edit_old.clear();
+    inspector_.node_id_error.clear();
+    inspector_.edit_buffer.clear();
+}
+
 void NodeGraphUI::confirm_resolution_edit() {
     if (!inspector_.editing_resolution) return;
     try {
