@@ -30,6 +30,14 @@ For live-graph operations (add_node, set_param, capture, etc.), the MCP servers 
 
 For static lookups (operator catalog, docs, package metadata), the MCP servers can bypass the control server and invoke the `vivid` CLI directly for one-shot JSON queries.
 
+**Adding or changing a tool requires restarting the bridge process.** The MCP client
+loads the tool surface from the running Python bridge at connect time; editing
+`vivid_mcp.py` does not hot-reload. A client whose bridge predates a newly added
+`@mcp.tool()` will report it as unavailable even though it exists in source — restart
+the bridge (or, as a stopgap, call the underlying HTTP method directly via `POST`
+to port 9876, noting that MCP-only tools like `inspect_node`/`analyze_audio_*` have
+no raw-HTTP equivalent).
+
 ### Server Responsibilities
 
 **vivid_mcp.py** — the primary server for graph authoring:
@@ -61,4 +69,5 @@ For static lookups (operator catalog, docs, package metadata), the MCP servers c
 ## See Also
 
 - `docs/LLM-INTEGRATION.md` — MCP server design, four LLM roles, tool organization
+- `docs/MCP-COMPOSITION-COOKBOOK.md` — end-to-end recipe for authoring music through the MCP (human twin of the `get_authoring_guide()` tool)
 - `docs/runtime/control_server.md` — HTTP endpoint catalog

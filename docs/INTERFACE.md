@@ -135,6 +135,10 @@ The session surface uses these commands (available via UI, control server, and M
 - `queue_clip(track_id, clip_id, quantize)` — apply at a beat boundary
 - `create_scene(name)` — create a new scene
 - `set_scene_assignment(scene_id, track_id, clip_id)` — assign a clip to a scene slot
+  - **Building scenes programmatically:** `save_clip` snapshots params but does *not*
+    activate the clip, and `save_scene` captures only the *active* clip per track — so
+    `save_clip → save_scene` produces an empty scene. Assign clips to scenes explicitly
+    with `set_scene_assignment` (or `launch_clip` each first).
 - `clear_scene_assignment(scene_id, track_id)` — remove an assignment
 - `queue_scene(scene_id, quantize)` — launch all scene assignments at a beat boundary
 - `create_cue_path(name)` — create an ordered scene cue path

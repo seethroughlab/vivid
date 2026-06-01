@@ -6,6 +6,12 @@ Canonical reference for the `music_eval` tool family and inference service. Both
 
 The music eval surface adds a semantic, music-aware perception layer on top of Vivid's existing quantitative audio tools. It routes LALM inference through a persistent sidecar service (`services/music_eval/`) rather than loading a model into the MCP bridge process.
 
+> **The stub backend is the default.** Until `configure_music_eval_backend` selects a
+> real backend, `evaluate_audio_musically` and friends return canned placeholder values
+> — convincing-looking but not derived from the audio. Enable a real backend before
+> trusting any musical judgment, and treat the detected key *letter* as unreliable even
+> then. See §1.6.
+
 ```
 LLM client (Claude Code, Cursor)
         │  stdio (MCP)

@@ -20,6 +20,11 @@ This is what Max/MSP's Gen~ does for audio, what TouchDesigner's GLSL TOPs do fo
 
 This is the most LLM-friendly design: the LLM reads JSON, writes JSON. No code generation for the orchestration layer. Parameter transitions, pattern-driven modulation, and conditional logic are all visible as nodes rather than hidden in scripts.
 
+> For the concrete, step-by-step recipe of authoring a piece of music through the MCP
+> (tempo → instruments → presets → note clips → mixing → scenes) plus the non-obvious
+> failure modes, see `docs/MCP-COMPOSITION-COOKBOOK.md` and the in-session
+> `get_authoring_guide()` tool.
+
 **External integration via WebSocket:** Vivid's internal model is always JSON graph + control operators. A WebSocket API accepts graph mutations from external processes — a Python script, a JS orchestrator, a Max patch, or any other tool can generate JSON and feed it to Vivid. This provides scripting-level power for users who want it, without introducing a language dependency into the core.
 
 **Build toward visual graph equivalence** on top of the same JSON representation. Every graph has a canonical visual representation and a canonical JSON representation. They are isomorphic. The LLM generates JSON (its strength); the visual graph exists for direct manipulation. The escape hatch to raw WGSL/C++ exists for power users writing operator internals.

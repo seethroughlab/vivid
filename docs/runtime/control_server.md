@@ -102,6 +102,17 @@ Operators that *generate* notes from internal state (Sequencer, NotePattern, Cho
 | `disconnect` | `from_addr`, `to_addr` | Disconnect ports |
 | `set_connection_remap` | `from_addr`, `to_addr`, `from_min/max`, `to_min/max`, `clamp` | Set wire remap |
 
+`connect` stores the edge even when a port name doesn't exist on the operator
+(the wire is then dropped at compile and reported by `get_graph_errors`). To
+catch this early, the `connect` response includes a `"warnings"` array naming
+any address whose port is not an input/output of its operator, with the valid
+alternatives — e.g. connecting to `mixer/input` instead of `mixer/input_0`.
+Repeat-group (grow-on-connect) ports never trigger a false warning. Use
+`operator_docs(type)` for the exact port names before wiring.
+
+Note: tempo is set with `set_graph_metronome` (below), **not** `set_quantize_clock`,
+which is per-node clip/scene launch quantization — a common confusion.
+
 ### Module Modulation
 | Method | Key params | Description |
 |--------|-----------|-------------|
