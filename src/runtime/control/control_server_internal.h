@@ -336,7 +336,7 @@ inline nlohmann::json build_operator_docs_response(const VividOperatorDescriptor
                                                    const std::string& package_name = "") {
     nlohmann::json op = nlohmann::json::object();
     op["name"] = desc.name;
-    op["kind"] = kind_str(vivid_operator_kind(&desc));
+    op["kind"] = kind_str(vivid_operator_domain(&desc));
     op["time_dependent"] = (desc.time_dependent != 0);
     op["lane_behavior"] = lane_behavior_str(desc.lane_behavior);
     op["lane_behavior_help"] = lane_behavior_help_str(desc.lane_behavior);

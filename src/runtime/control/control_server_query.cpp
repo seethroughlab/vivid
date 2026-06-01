@@ -1419,7 +1419,7 @@ std::string handle_list_types(OperatorRegistry& registry,
         const auto* desc = registry.probe_descriptor(name);
         if (!desc) continue;
 
-        std::string kind = kind_str(vivid_operator_kind(desc));
+        std::string kind = kind_str(vivid_operator_domain(desc));
         if (!domain_filter.empty() && kind != domain_filter)
             continue;
 

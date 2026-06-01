@@ -105,7 +105,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.active_cadence = Cadence::Frame;
             }
             cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
-            cn.operator_kind = vivid_operator_kind(desc);
+            // Semantic domain (port-based), used for display/discovery surfaces.
+            // Execution cadence is carried separately by active_cadence above.
+            cn.operator_kind = vivid_operator_domain(desc);
 
             // Allocate audio sub-struct before init_frame_state (which uses it
             // for analysis port indices), but defer full audio init until after

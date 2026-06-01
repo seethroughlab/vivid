@@ -199,10 +199,32 @@ typedef struct VividGeneratedUniformLayout {
     const VividGeneratedUniformMember* members;
 } VividGeneratedUniformLayout;
 
-// Derive operator kind from capability flags (replaces stored field, v18+).
+// Derive operator *cadence kind* from capability flags (replaces stored field, v18+).
+// AUDIO here means "runs at audio cadence" (== active_cadence Audio). Use this for
+// cross-cadence bridge inference and scheduling-adjacent logic — NOT for the
+// user-facing domain, which is port-based (see vivid_operator_domain).
 static inline VividOperatorKind vivid_operator_kind(const VividOperatorDescriptor* d) {
     if (d->has_process_gpu)                              return VIVID_OP_GPU;
     if (d->has_process_audio && !d->has_process_frame)   return VIVID_OP_AUDIO;
+    return VIVID_OP_CONTROL;
+}
+
+// Derive an operator's *semantic domain* (gpu/audio/control) for discovery and
+// display surfaces (list_types, inspect, introspect). The audio/control split is
+// the part the cadence-based vivid_operator_kind() gets wrong: note/sequencer/
+// clock/modulation operators run at audio cadence for sample-accurate timing but
+// carry no audio I/O, so cadence mislabels them "audio". Here:
+//   - has_process_gpu  => gpu  (identical to the cadence-based GPU bucket; every
+//                               GPU texture/compute op inherits GpuProcessable)
+//   - else any audio-buffer I/O port => audio (real audio-DSP: synths, effects)
+//   - else control (note sources, modulators, frame/drawable builders — custom-ref
+//                   note ports are neither audio nor texture, so they land here)
+// This keeps the GPU bucket exactly as before and only refines audio vs control,
+// matching the documented port-type domain model.
+static inline VividOperatorKind vivid_operator_domain(const VividOperatorDescriptor* d) {
+    if (d->has_process_gpu) return VIVID_OP_GPU;
+    for (uint32_t i = 0; i < d->port_count; ++i)
+        if (d->ports[i].type == VIVID_PORT_AUDIO_BUFFER) return VIVID_OP_AUDIO;
     return VIVID_OP_CONTROL;
 }
 

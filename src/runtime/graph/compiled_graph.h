@@ -385,6 +385,9 @@ struct CompiledNode {
 
     // ── Cadence ─────────────────────────────────────────────────────────────
     Cadence active_cadence = Cadence::Frame;
+    // Semantic domain (gpu/audio/control) derived from I/O ports — see
+    // vivid_operator_domain(). Display/discovery only; NOT execution cadence
+    // (that's active_cadence above).
     VividOperatorKind operator_kind = VIVID_OP_CONTROL;
 
     // ── Port configuration (set once at compile time) ───────────────────────
