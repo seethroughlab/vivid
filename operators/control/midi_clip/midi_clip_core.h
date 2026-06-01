@@ -1031,10 +1031,24 @@ inline void MidiClipCore::process_audio(const VividAudioContext* ctx) {
     const double boundary_start = loop_enabled ? loop_origin : 0.0;
     const double boundary_end = loop_enabled ? (loop_origin + loop_len) : pat_len;
 
-    if (loop_enabled &&
-        (clip_playhead_beats_ < boundary_start || clip_playhead_beats_ >= boundary_end)) {
-        clip_playhead_beats_ = boundary_start;
-        stop_all_active_notes(0);
+    // Transport-lock: a looping clip's playhead is a pure function of the global
+    // transport position (metronome_beats_elapsed), so every looping clip stays
+    // bar-aligned regardless of when it started or how often it was re-triggered.
+    // The within-block emit loop below still does note scheduling and loop-wrap;
+    // we just anchor its starting position to the transport each block. One-shot
+    // clips (loop disabled) keep their own free-running playhead.
+    if (loop_enabled) {
+        double locked = std::fmod(ctx->metronome_beats_elapsed - loop_origin, loop_len);
+        if (locked < 0.0) locked += loop_len;
+        locked += loop_origin;
+        // Clear held notes only on a genuine re-anchor (startup / re-trigger /
+        // transport relocate). Measure the gap circularly so the natural loop
+        // wrap (≈loop_len → ≈0) is not mistaken for a jump.
+        double gap = locked - clip_playhead_beats_;
+        gap -= loop_len * std::round(gap / loop_len);
+        if (std::fabs(gap) > 1e-4)
+            stop_all_active_notes(0);
+        clip_playhead_beats_ = locked;
     }
 
     if (bps > 0.0 && !clip_finished_ && pat_len > 0.0) {
