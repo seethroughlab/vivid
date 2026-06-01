@@ -553,6 +553,67 @@ inline const ConnectionDef* find_connection_by_addr(const Graph& graph,
     return nullptr;
 }
 
+// Returns a human-readable warning when a connect address names a port that
+// the operator's descriptor doesn't expose (the most common silent failure:
+// e.g. "mixer/input" instead of "mixer/input_0"). The connection is still
+// stored — an unresolved port is dropped at compile and surfaced by
+// get_graph_errors — but this gives immediate feedback. Empty string = ok.
+// Conservative: only warns when the descriptor resolves AND the port is
+// neither an exact match nor a member of a repeat group (so grow-on-connect
+// variadic ports never produce a false warning).
+inline std::string connect_port_issue(OperatorRegistry& registry,
+                                       const NodeDef* node,
+                                       const std::string& port,
+                                       bool want_output) {
+    if (!node) return {};
+    const VividOperatorDescriptor* desc = registry.probe_descriptor(node->type);
+    if (!desc || !desc->ports) return {};  // unknown descriptor → stay silent
+
+    const VividPortDirection want_dir = want_output ? VIVID_PORT_OUTPUT : VIVID_PORT_INPUT;
+
+    // Strip a trailing "_<digits>" so repeat-group bases match (input_0 → input).
+    auto strip_index = [](const std::string& s) -> std::string {
+        size_t us = s.find_last_of('_');
+        if (us == std::string::npos || us + 1 >= s.size()) return s;
+        for (size_t i = us + 1; i < s.size(); ++i)
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return s;
+        return s.substr(0, us);
+    };
+    const std::string port_base = strip_index(port);
+
+    bool exact_match = false;
+    std::vector<std::string> candidates;  // valid same-direction port names
+    for (uint32_t i = 0; i < desc->port_count; ++i) {
+        const auto& p = desc->ports[i];
+        if (!p.name || p.direction != want_dir) continue;
+        const std::string name = p.name;
+        candidates.push_back(name);
+        if (name == port) { exact_match = true; break; }
+        // Repeat-group tolerance: accept any "<group>_<n>" when the group base
+        // or an enumerated member shares the stripped prefix.
+        if ((p.repeat_group && port_base == p.repeat_group) ||
+            strip_index(name) == port_base) {
+            exact_match = true;
+            break;
+        }
+    }
+    if (exact_match) return {};
+
+    std::string msg = "port '" + node->id + "/" + port + "' is not "
+        + (want_output ? "an output" : "an input")
+        + " of operator '" + node->type + "'";
+    if (!candidates.empty()) {
+        msg += " (available: ";
+        for (size_t i = 0; i < candidates.size() && i < 8; ++i)
+            msg += (i ? ", " : "") + candidates[i];
+        if (candidates.size() > 8) msg += ", …";
+        msg += ")";
+    }
+    msg += "; the connection was stored but will be dropped at compile — "
+           "check get_graph_errors";
+    return msg;
+}
+
 inline bool is_safe_package_name(const std::string& name) {
     return name.find('/') == std::string::npos &&
            name.find('\\') == std::string::npos &&

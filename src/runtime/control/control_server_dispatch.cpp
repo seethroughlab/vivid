@@ -141,6 +141,25 @@ std::string dispatch(const std::string& method, const std::string& body,
                     resp["ok"] = true;
                     resp["message"] = cr.message;
 
+                    // Surface dropped-port mistakes immediately (e.g. connecting
+                    // to "mixer/input" instead of "mixer/input_0") instead of
+                    // letting them fail silently until get_graph_errors.
+                    {
+                        std::string ffn, ffp, ttn, ttp;
+                        nlohmann::json warns = nlohmann::json::array();
+                        if (split_addr_local(from_addr, ffn, ffp)) {
+                            std::string w = connect_port_issue(
+                                registry, graph.find_node(ffn), ffp, /*want_output=*/true);
+                            if (!w.empty()) warns.push_back(w);
+                        }
+                        if (split_addr_local(to_addr, ttn, ttp)) {
+                            std::string w = connect_port_issue(
+                                registry, graph.find_node(ttn), ttp, /*want_output=*/false);
+                            if (!w.empty()) warns.push_back(w);
+                        }
+                        if (!warns.empty()) resp["warnings"] = std::move(warns);
+                    }
+
                     bool inferred_applied = false;
                     if (semantic_defaults) {
                         const ConnectionDef* conn = find_connection_by_addr(graph, from_addr, to_addr);

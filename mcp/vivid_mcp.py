@@ -4578,6 +4578,13 @@ async def remove_node(node_id: str) -> str:
 async def connect(from_addr: str, to_addr: str, semantic_defaults: bool = True) -> str:
     """Connect two ports. Address format is "node_id/port_name".
 
+    Port names must match the operator's descriptor exactly. A wrong port
+    name (e.g. "mixer/input" instead of "mixer/input_0") is STORED but
+    silently dropped at compile — the response now includes a "warnings"
+    array flagging ports that don't exist on the operator (with the valid
+    alternatives). Always check operator_docs(type) for exact port names,
+    and get_graph_errors after wiring a batch.
+
     Args:
         from_addr: Source port (e.g. "lfo1/value")
         to_addr: Destination port (e.g. "shape1/rotation")
