@@ -764,6 +764,54 @@ void EditorWindowManager::tick(double time) {
         ctx.wants_keyboard = 0;
         ctx.request_close = 0;
 
+        // Graph topology — wires landing on this node's input ports, so a
+        // Mixer-style editor can label its channels by their source node. The
+        // compiled graph keys edges by node/port index; resolve names here,
+        // mirroring the inspector's input_connections (built UI-side from the
+        // snapshot). Backing strings live in ed_conn_strs for the duration of
+        // the draw_editor() call below.
+        std::vector<VividInputConnection> ed_conns;
+        std::vector<std::array<std::string, 4>> ed_conn_strs;  // port,src_id,label,src_port
+        if (cg && node) {
+            const uint32_t self_idx =
+                static_cast<uint32_t>(node - cg->nodes.data());
+            auto name_for_index = [](const CompiledNode& n, bool input,
+                                     uint32_t idx) -> std::string {
+                const auto& m = input ? n.input_port_indices
+                                      : n.output_port_indices;
+                for (const auto& kv : m)
+                    if (kv.second == idx) return kv.first;
+                return std::string();
+            };
+            auto label_for = [](const CompiledNode& n) -> std::string {
+                const VividOperatorDescriptor* desc =
+                    n.loader ? n.loader->descriptor() : nullptr;
+                if (desc && desc->display_name && desc->display_name[0])
+                    return desc->display_name;
+                return n.type_name;
+            };
+            for (const auto& e : cg->edges) {
+                if (e.to_node != self_idx || e.targets_param) continue;
+                if (e.from_node >= cg->nodes.size()) continue;
+                const CompiledNode& src = cg->nodes[e.from_node];
+                ed_conn_strs.push_back({name_for_index(*node, true, e.to_port),
+                                        src.node_id, label_for(src),
+                                        name_for_index(src, false, e.from_port)});
+                VividInputConnection ic{};
+                ic.port_index = e.to_port;
+                ed_conns.push_back(ic);  // string pointers filled below
+            }
+            // Second pass: assign c_str() now that ed_conn_strs won't grow.
+            for (size_t i = 0; i < ed_conns.size(); ++i) {
+                ed_conns[i].port_name      = ed_conn_strs[i][0].c_str();
+                ed_conns[i].source_node_id = ed_conn_strs[i][1].c_str();
+                ed_conns[i].source_label   = ed_conn_strs[i][2].c_str();
+                ed_conns[i].source_port    = ed_conn_strs[i][3].c_str();
+            }
+        }
+        ctx.input_connections = ed_conns.empty() ? nullptr : ed_conns.data();
+        ctx.input_connection_count = static_cast<uint32_t>(ed_conns.size());
+
         // Host services (Phase D). Reset per-frame fields; pointer
         // capture persists until the operator releases it. The HostCtx
         // lives on the EditorWindow so thunks can dispatch via opaque.

@@ -494,6 +494,33 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     ctx.consumed_height = 0.0f;
     ctx.wants_keyboard = 0;
 
+    // Graph topology — resolve every wire landing on one of this node's input
+    // ports into an operator-visible record (source node id + display name).
+    // The operator's own process_*() context can't see upstream identity; this
+    // is where a Mixer-style inspector learns the names of what feeds it.
+    // Backing strings live in snap_ for the whole frame, so .c_str() pointers
+    // stay valid for the synchronous callback below.
+    std::vector<VividInputConnection> input_conns;
+    for (const auto& c : snap_.connections) {
+        if (c.to_node != node.node_id || c.to_is_param) continue;
+        VividInputConnection ic{};
+        auto pit = node.input_port_indices.find(c.to_port);
+        ic.port_index     = (pit != node.input_port_indices.end()) ? pit->second : 0u;
+        ic.port_name      = c.to_port.c_str();
+        ic.source_node_id = c.from_node.c_str();
+        ic.source_port    = c.from_port.c_str();
+        const NodeSnapshot* src = snap_.find_node(c.from_node);
+        if (src && src->op_info && !src->op_info->display_name.empty())
+            ic.source_label = src->op_info->display_name.c_str();
+        else if (src && !src->type_name.empty())
+            ic.source_label = src->type_name.c_str();
+        else
+            ic.source_label = c.from_node.c_str();
+        input_conns.push_back(ic);
+    }
+    ctx.input_connections = input_conns.empty() ? nullptr : input_conns.data();
+    ctx.input_connection_count = static_cast<uint32_t>(input_conns.size());
+
     inspector_.custom_inspector_cb(node.node_id, &ctx);
 
     py += ctx.consumed_height;

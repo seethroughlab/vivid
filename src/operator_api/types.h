@@ -528,6 +528,22 @@ typedef struct VividInspectorKeyEvent {
     int mods;    // bitmask
 } VividInspectorKeyEvent;
 
+// Host-resolved description of one graph wire landing on an input PORT of the
+// node being inspected (param-target wires are excluded). The runtime fills
+// these from graph topology — the operator's own process_*() context never
+// sees upstream identity, so this is the only place an operator learns the
+// names of what feeds it. One entry per connected input port; unconnected
+// ports are omitted, so iterate by count, not by port index. All pointers are
+// owned by the host and valid only for the duration of the draw call — copy
+// any string you need to retain past the callback.
+typedef struct VividInputConnection {
+    uint32_t    port_index;      // index of the target input port on this node
+    const char* port_name;       // target input port name, e.g. "input_3"
+    const char* source_node_id;  // upstream node id, e.g. "fm_synth_2"
+    const char* source_label;    // upstream operator display name, e.g. "FM Synth"
+    const char* source_port;     // upstream output port name, e.g. "output"
+} VividInputConnection;
+
 typedef struct VividInspectorContext {
     // Layout (absolute screen coords, scroll-adjusted)
     float content_x, content_y, content_width;
@@ -553,6 +569,12 @@ typedef struct VividInspectorContext {
     float consumed_height;
     // Return: operator writes 1 if it wants keyboard focus
     int   wants_keyboard;
+
+    // Graph topology — wires landing on this node's input ports (additive
+    // extension; appended last to preserve ABI for operators built against an
+    // earlier header). May be null with count 0 when nothing is connected.
+    const VividInputConnection* input_connections;
+    uint32_t                    input_connection_count;
 } VividInspectorContext;
 
 typedef void     (*VividDrawInspectorFn)(void* instance, VividInspectorContext* ctx);
@@ -687,6 +709,12 @@ typedef struct VividEditorContext {
      * directly. */
     void (*introspect_fn)(void* sink, const struct VividIntrospectWidget* w);
     void* introspect_sink;
+
+    // Graph topology — wires landing on this node's input ports (additive
+    // extension; appended last to preserve ABI). Same contract as the
+    // inspector context's input_connections. Null with count 0 when empty.
+    const VividInputConnection* input_connections;
+    uint32_t                    input_connection_count;
 } VividEditorContext;
 
 /* Flags used in VividIntrospectWidget.flags. Bitmask — any combination. */
