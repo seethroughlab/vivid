@@ -1942,8 +1942,10 @@ async def get_session_view_guide() -> str:
             "create_track(name) — create a track and give it a name",
             "assign_nodes_to_track(track_id, node_ids) — assign nodes to the track",
             "set_param(...) — dial in params on the owned nodes",
-            "save_clip(track_id, 'Verse') — capture current param state as a clip",
-            "save_scene('Drop') — capture all current active clips as a scene",
+            "save_clip(track_id, 'Verse') — capture current param state as a clip (does NOT activate it)",
+            "save_scene('Drop') then set_scene_assignment(scene_id, track_id, clip_id) for EACH track — "
+            "save_scene only captures clips that are already ACTIVE, and save_clip does not activate, so "
+            "build scenes explicitly with set_scene_assignment (or launch_clip each clip before save_scene)",
             "queue_scene(scene_id, 'bar') — fire all scene assignments at next bar boundary",
         ],
         "inspection": {
@@ -1962,6 +1964,68 @@ async def get_session_view_guide() -> str:
             "tools": ["add_clip_track", "ensure_state_mapping", "queue_state_transition",
                       "set_state_preset", "inspect_state_presets"],
         },
+    }, indent=2)
+
+
+@mcp.tool()
+async def get_authoring_guide() -> str:
+    """Return a step-by-step recipe for composing a music track via the MCP, plus the
+    non-obvious gotchas. Call this BEFORE building an audio graph from scratch — it captures
+    the workflow and pitfalls that otherwise take trial-and-error to discover.
+    """
+    return json.dumps({
+        "overview": "Build an audio graph live: set tempo -> add instruments -> load sounds -> "
+                    "author notes into MidiClips -> wire to a Mixer -> verify -> save. Then arrange "
+                    "sections with Session scenes (see get_session_view_guide).",
+        "recipe": [
+            "1. TEMPO: set_graph_metronome(bpm, beats_per_bar). This is the global tempo and drives "
+            "every audio-cadence operator. Do NOT use set_quantize_clock for tempo (that only quantizes "
+            "clip/scene launch timing). The metronome free-runs; no Clock node needed.",
+            "2. INSTRUMENTS: add_node('Vst3Instrument') then set_vst3_plugin(node, name) "
+            "(list_vst3_plugins to see what's installed). Native synths (FmSynth) are ~free CPU; each "
+            "VST3 synth instance costs ~4-14% — watch the count.",
+            "3. SOUND: list_vst3_presets(node, filter='pad'/'bass'/...) -> load_vst3_preset(node, id). "
+            "Only presets with loadable=true apply programmatically (Pigments). For loadable=false "
+            "(Serum native .SerumPreset), open_vst3_gui(node), let the user pick, then "
+            "capture_vst3_preset. Filter out source=='program' filler slots. Re-strike notes after a "
+            "load (it cuts held voices).",
+            "4. NOTES: author into a MidiClip via set_string_param(node, 'pattern_data', json) where "
+            "json is a list of {'p': midiPitch, 's': startBeat, 'd': durBeats, 'v': velocity0to1}. "
+            "Set loop=1 and length_bars BEFORE playing (enabling loop after a one-shot finishes won't "
+            "restart it). Wire MidiClip notes_out -> instrument notes_in. All MidiClips are "
+            "transport-locked: they bar-align to the metronome automatically, so independently "
+            "re-triggering one clip will NOT desync it from the others.",
+            "5. DRUMS: DrumSequencer (clock_source=metronome -> bar-locked) programs a 16-step grid via "
+            "named bool params kick_0..15 / snare_0..15 / hat_0..15 (1=hit) + a 'swing' param. Route its "
+            "per-drum note outs kick_out/snare_out/hat_out -> DrumKick/DrumSnare/DrumHiHat notes_in -> "
+            "Mixer. Native voices are ~free CPU.",
+            "6. MIX: a Mixer's inputs are named input_0..input_15 (NOT 'input'). connect() returns ok "
+            "even when the target port name is wrong — the wire is dropped silently. ALWAYS call "
+            "get_graph_errors after wiring to catch dropped connections. Per-channel gain/pan are "
+            "gain_N / pan_N.",
+            "7. VERIFY: get_graph_errors FIRST, then analyze_output(mode='audio') for level/spectrum. "
+            "For a musical read, evaluate_audio_musically — but its DEFAULT backend is a stub returning "
+            "fake values; call configure_music_eval_backend('gemini') first and trust its mood read over "
+            "its key letter.",
+            "8. PERSIST: save_graph(path) — and save OFTEN. A runtime crash/restart loses unsaved nodes.",
+            "9. ARRANGE: build verse/chorus sections as Session scenes (call get_session_view_guide). "
+            "Remember: save_scene only captures ACTIVE clips, so assign clips with set_scene_assignment.",
+        ],
+        "gotchas": {
+            "recompile_races": "add_node and set_vst3_plugin trigger a graph recompile; calls issued "
+                               "during it can time out or return 'unknown node'. Space mutations (wait "
+                               "~2-3s after a plugin load or batch of adds) and retry.",
+            "launch_after_rebuild": "After rebuilding operators, launch the runtime EMPTY (ensure_runtime "
+                                    "with no graph) then load_graph — launching directly with a graph "
+                                    "right after a full rebuild can crash via a stale hot-reload dylib.",
+            "tempo_vs_quantize": "set_graph_metronome = global BPM. set_quantize_clock = clip/scene "
+                                 "launch quantization only. They are unrelated.",
+            "large_outputs": "analyze_audio_spectrum, list_vst3_params and unfiltered list_vst3_presets "
+                             "can be very large — narrow with filters/args.",
+        },
+        "perf_notes": "Native operators (drum voices, filters, delays, Mixer) are nearly free once the "
+                      "build is optimized (Release/RelWithDebInfo, not Debug). VST3 synth instances are "
+                      "the real cost driver (~4-14% each).",
     }, indent=2)
 
 
@@ -2039,10 +2103,12 @@ async def unassign_nodes_from_track(track_id: str, node_ids: list[str]) -> str:
 
 @mcp.tool()
 async def save_clip(track_id: str, name: str) -> str:
-    """Capture current param state of the track's owned nodes as a new clip.
+    """Capture current param state of the track's owned nodes as a new clip. Returns clip_id.
 
-    Returns the new clip_id. Wire-driven params and params with PARAM_LOCK_WIRES
-    are excluded from the capture.
+    NOTE: saving a clip does NOT make it active. To build a scene from clips you must either
+    launch_clip() each desired clip first (so save_scene captures it), or — simpler and
+    order-independent — assign clips explicitly with set_scene_assignment(scene, track, clip).
+    Wire-driven params and params with PARAM_LOCK_WIRES are excluded from the capture.
     """
     return await _post("save_clip", {"track_id": track_id, "name": name})
 
@@ -2093,10 +2159,12 @@ async def queue_clip(track_id: str, clip_id: str, quantize: str = "instant") -> 
 
 @mcp.tool()
 async def save_scene(name: str) -> str:
-    """Capture the current active clips as a new scene.
+    """Capture the CURRENTLY ACTIVE clips as a new scene. Returns scene_id.
 
-    Creates a scene whose assignments are the current active_clip for every track
-    that has one. Returns the new scene_id.
+    Captures only each track's active_clip. Because save_clip does NOT activate the clip it
+    saves, calling save_clip then save_scene yields an EMPTY or partial scene. To build a scene
+    reliably: create it (save_scene once), then assign each track's clip with
+    set_scene_assignment(scene_id, track_id, clip_id) — or launch_clip each desired clip first.
     """
     return await _post("save_scene", {"name": name})
 
@@ -4854,7 +4922,10 @@ async def list_vst3_presets(node_id: str, filter: str = "") -> str:
 
     Use the 'id' with load_vst3_preset to load a preset. 'loadable' is false for
     sources Vivid can describe but not yet load directly (browse/recommend only);
-    'tags', 'category', and 'description' let you pick a sound by character.
+    'tags', 'category', and 'description' let you pick a sound by character. Many
+    plugins also expose hundreds of generic numbered slots (source="program", name
+    like "ProgramChan") — filter those out (keep source != "program") to get the
+    real named factory presets.
 
     Args:
         node_id: ID of the Vst3Instrument node (with a plugin already loaded)
@@ -4887,6 +4958,18 @@ async def load_vst3_preset(node_id: str, preset_id: str) -> str:
 
     Applies the preset to the live plugin and persists it into the node's saved
     state, so it survives graph save/reload. Pass an 'id' from list_vst3_presets.
+    (Mechanism: sets the node's "_vst3_load_preset" string param.)
+
+    ONLY works for presets with "loadable": true (e.g. Pigments). Presets with
+    "loadable": false — notably Serum2's native .SerumPreset — will NOT apply: for
+    those, open the plugin UI with open_vst3_gui(), let the user pick a sound, then
+    snapshot the live state with capture_vst3_preset(). Do NOT trust a spectral diff
+    to confirm a load took — if notes are playing, the spectrum changes regardless;
+    check by ear or with a sustained held note.
+
+    After loading, RE-STRIKE notes: loading a preset cuts the plugin's currently held
+    voices, so a sustained note must be re-triggered (e.g. toggle a MidiClip's playing
+    off/on) to sound again.
 
     To audition: load_vst3_preset -> play notes into the node's notes_in ->
     record_audio_to_wav / analyze_audio_spectrum / evaluate_audio_musically,
@@ -5464,12 +5547,32 @@ async def queue_state_transition(sm_node: str, state: int, quantize: str = "bar"
 
 @mcp.tool()
 async def set_quantize_clock(node_id: str) -> str:
-    """Designate a Clock node for beat-synced session, clip, and scene launch quantization.
+    """Designate a Clock node for beat-synced session/clip/scene LAUNCH quantization.
+
+    This is NOT the tempo control — it only governs WHEN queued clips/scenes fire. To set the
+    global tempo (BPM), use set_graph_metronome(). The graph metronome free-runs by default, so
+    you do not need a Clock node just to have a tempo.
 
     Args:
-        node_id: ID of a Clock node whose beat_phase output drives quantization
+        node_id: ID of a Clock node whose beat_phase output drives launch quantization
     """
     return await _post("set_quantize_clock", {"node_id": node_id})
+
+
+@mcp.tool()
+async def set_graph_metronome(bpm: float = 120.0, beats_per_bar: int = 4) -> str:
+    """Set the GLOBAL graph tempo (BPM) and time signature — this is the tempo control.
+
+    Drives the transport for every audio-cadence operator: MidiClip playback, DrumSequencer,
+    tempo-synced delays/LFOs/flangers, etc. The metronome free-runs; you do NOT need a Clock node
+    wired anywhere. (set_quantize_clock is unrelated — it only quantizes clip/scene LAUNCH timing.)
+
+    Args:
+        bpm: Beats per minute (e.g. 84 for a slow half-time feel)
+        beats_per_bar: Time-signature numerator (default 4)
+    """
+    return await _post("set_graph_metronome",
+                       {"bpm": bpm, "beats_per_bar": beats_per_bar})
 
 
 @mcp.tool()
@@ -5950,6 +6053,13 @@ async def evaluate_audio_musically(window_seconds: float = 30.0,
 
     Requires the music_eval service running (check music_eval_status first).
     Inference is seconds-scale — treat this as a reflective tool, not a meter.
+
+    THE DEFAULT BACKEND IS A STUB that returns canned, non-real values (a fixed
+    "C major / 120 BPM" caption). Call configure_music_eval_backend("gemini") once to
+    get real analysis (needs GOOGLE_API_KEY in services/music_eval/.env); verify with
+    music_eval_status that backend != "stub". Even on the real backend, treat the exact
+    KEY LETTER as unreliable (it's an audio LLM, not a pitch detector) — trust its
+    mood / instrumentation / structure read, not the key name.
 
     Args:
         window_seconds: Capture duration (1–60). Defaults to 30.
