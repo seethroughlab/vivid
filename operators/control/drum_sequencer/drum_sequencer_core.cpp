@@ -359,7 +359,12 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     // a clean "start over" boundary.
     int cs = clock_source.int_value();
     if (cs != prev_clock_source_) {
-        phase_offset_ = phase;
+        // Transport-lock: on the metronome clock, anchor the grid to the bar
+        // (phase_offset_ = 0) so step 0 lands on the bar downbeat and the
+        // pattern stays bar-aligned with transport-locked MidiClips regardless
+        // of when the sequencer started. External clock keeps the legacy
+        // "capture the current phase" behavior (the phase is user-driven there).
+        phase_offset_ = (cs == vivid::kClockSourceMetronome) ? 0.0f : phase;
         prev_clock_source_ = cs;
         song_pos_ = 0;
         wraps_in_section_ = 0;
@@ -384,9 +389,11 @@ void DrumSequencerCore::compute(float phase, float reset_in,
         phrase_initialized_ = true;
     }
 
-    // Rising-edge reset: capture current phase as offset and rewind song.
+    // Rising-edge reset: re-anchor the grid and rewind the song. On the
+    // metronome clock, re-anchor to the bar (transport-lock); on the external
+    // clock, capture the current phase as the offset (legacy behavior).
     if (reset && !prev_reset_) {
-        phase_offset_ = phase;
+        phase_offset_ = (cs == vivid::kClockSourceMetronome) ? 0.0f : phase;
         song_pos_ = 0;
         wraps_in_section_ = 0;
     }
