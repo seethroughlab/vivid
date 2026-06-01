@@ -23,6 +23,34 @@
 #include <string>
 #include <vector>
 
+/**
+ * @brief Looping piano-roll clip that emits note events to instruments.
+ *
+ * Authors a melody / chord / bass loop as note events on the `notes_out`
+ * port -- wire it into any instrument's note input (native synths,
+ * Vst3Instrument, Sampler, DrumKit, etc.). Two authoring modes: an inline
+ * JSON pattern (`pattern_data`) or a dropped / loaded `.mid` file (`file`).
+ * Note positions are in beats, so the clip stays locked to the graph tempo
+ * (set with set_graph_metronome). When `loop` is on, the playhead is derived
+ * from the global transport, so every looping clip bar-aligns regardless of
+ * when it was triggered.
+ *
+ * `pattern_data` is a JSON array of note objects, each with keys:
+ *   {"p": <midi pitch 0-127>, "s": <start beat>, "d": <duration beats>, "v": <velocity 0-1>}
+ * e.g. an A-minor triad held for one beat at the top of the loop:
+ *   [{"p":57,"s":0,"d":1,"v":0.8},{"p":60,"s":0,"d":1,"v":0.8},{"p":64,"s":0,"d":1,"v":0.8}]
+ * Set it with set_string_param(node, "pattern_data", "<json>"). `length_bars`
+ * (or the loaded file) sets the loop length; notes past the end are not heard.
+ *
+ * @pitfall Enabling `loop` AFTER a one-shot clip has already finished does not
+ *   restart it. Set loop=true before playback, or toggle `playing` off then on
+ *   (or re-send pattern_data) to re-arm.
+ * @pitfall An empty pattern is the literal string "[]". A freshly added node
+ *   emits nothing until pattern_data is filled or a file is loaded.
+ * @output notes_out Note event stream -- connect to an instrument's note input.
+ * @output phase Playhead position 0..1 through the loop window (control signal).
+ * @see DrumSequencer, Arpeggiator, NotePattern
+ */
 struct MidiClipCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
@@ -54,8 +82,14 @@ struct MidiClipCore : vivid::OperatorBase {
     MidiClipCore() {
         vivid::semantic_shape(file, "path");
         vivid::description(file, "Path to a .mid MIDI file to play");
+        vivid::description(pattern_data,
+            "Inline note pattern as a JSON array: "
+            "[{\"p\":pitch 0-127,\"s\":start beat,\"d\":duration beats,\"v\":velocity 0-1}]. "
+            "Empty pattern is \"[]\". Set via set_string_param.");
         vivid::description(playing, "Enable or disable playback");
-        vivid::description(loop, "Loop the MIDI file when it reaches the end");
+        vivid::description(loop,
+            "Loop the clip / file continuously. Enable BEFORE playback -- "
+            "toggling loop on after a one-shot has already finished won't restart it.");
         vivid::description(transpose, "Shift all notes up or down in semitones (-48 to +48)");
         vivid::description(velocity_scale, "Scale note velocities (1 = original, 0 = silent)");
         vivid::editor_only(quantize_grid);  // piano-roll snap grid — no effect on audio output

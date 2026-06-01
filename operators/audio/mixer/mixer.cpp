@@ -19,6 +19,16 @@ static constexpr int kMaxInputs = 16;
  * Disconnected inputs contribute silence. Uses repeat-group ports
  * for grow-on-connect UI behavior.
  *
+ * The input ports are named `input_0` .. `input_15`; per-input controls are
+ * `gain_<n>` (0..2, 1 = unity) and `pan_<n>` (-1..+1). Connect an audio
+ * source with connect(src/output, mixer/input_0), then ramp gain_0.
+ *
+ * @pitfall The ports are `input_0`..`input_15`, NOT a single `input`.
+ *   Connecting to a non-existent port name (e.g. "input") returns ok but
+ *   silently drops the wire -- it carries no audio. Run get_graph_errors
+ *   after wiring to catch dropped connections.
+ * @input input_0 First audio input (mono or stereo); input_1..input_15 follow.
+ * @output output Stereo sum of all connected inputs after gain + pan.
  * @see Gain, Composite, StereoPanWidth
  */
 struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
