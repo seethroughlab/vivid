@@ -70,8 +70,8 @@ void NodeGraphUI::update_context_menu() {
             item_count = 2;  // "Re-layout All" + "Add Sticky Note"
         else if (is_sticky_ctx)
             item_count = 2;  // "Delete Note" + "Change Color"
-        else if (!context_node_id_.empty() && context_node_has_shader_)
-            item_count = 2;  // + "Clone & Edit"
+        else if (!context_node_id_.empty())
+            item_count = 2;  // "Delete Node" + "Clone & Edit"
         if (!context_bg_menu_ && !is_sticky_ctx && context_wire_idx_ >= 0 && context_node_id_.empty())
             item_count = 2;  // + "Insert Node"
         // Solo + Reset All Params items for node context menus
@@ -133,8 +133,8 @@ void NodeGraphUI::update_context_menu() {
                 // Build the item index map to match draw order
                 const bool show_make_many_click = is_drawable_emitter_type(context_node_type_);
                 int delete_idx = 0;
-                int clone_idx = context_node_has_shader_ ? 1 : -1;
-                int solo_idx = context_node_has_shader_ ? 2 : 1;
+                int clone_idx = 1;
+                int solo_idx = 2;
                 int bypass_idx = show_bypass_click ? (solo_idx + 1) : -1;
                 int reset_idx = (bypass_idx >= 0 ? bypass_idx : solo_idx) + 1;
                 int make_many_idx = show_make_many_click ? (reset_idx + 1) : -1;
@@ -150,7 +150,7 @@ void NodeGraphUI::update_context_menu() {
                         commands_.remove_node(context_node_id_);
                         selected_node_ids_.erase(context_node_id_);
                     }
-                } else if (clicked_item == clone_idx && context_node_has_shader_) {
+                } else if (clicked_item == clone_idx) {
                     // "Clone & Edit"
                     open_clone_confirm_dialog(context_node_type_, context_node_id_);
                 } else if (clicked_item == solo_idx) {
@@ -312,7 +312,6 @@ void NodeGraphUI::handle_right_click() {
 
     inspector_.param_ctx_menu_open = false;  // close param menu when opening graph context menu
     context_menu_open_ = false;
-    context_node_has_shader_ = false;
     context_node_type_.clear();
     context_bg_menu_ = false;
     int ni = hit_test_node(mouse_.x, mouse_.y);
@@ -323,10 +322,6 @@ void NodeGraphUI::handle_right_click() {
         context_wire_idx_ = -1;
         context_menu_x_ = mouse_.x;
         context_menu_y_ = mouse_.y;
-        // Check if this node type has a shader (for "Duplicate Filter" option)
-        auto cat_it = snap_.operator_catalog.find(context_node_type_);
-        if (cat_it != snap_.operator_catalog.end() && cat_it->second)
-            context_node_has_shader_ = cat_it->second->has_shader;
     } else {
         // Check sticky notes first
         int sticky_hit = -1;

@@ -167,15 +167,16 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Right-click context menu
     if (context_menu_open_) {
         int item_count = 1;
-        if (!context_node_id_.empty() && context_node_has_shader_)
-            item_count = 2;
+        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
+        bool is_node_ctx = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx;
+        if (is_node_ctx)
+            item_count = 2;  // "Delete" + "Clone & Edit"
         if (context_wire_idx_ >= 0)
             item_count = 2;
         if (context_bg_menu_)
             item_count = 2;  // "Re-layout All" + "Add Sticky Note"
         // Solo + Reset All Params items for node context menus
         bool show_solo = !context_node_id_.empty() && !context_bg_menu_;
-        bool is_sticky_ctx = (context_node_id_ == "__sticky__");
         if (show_solo && !is_sticky_ctx) item_count += 2;  // Solo + Reset All Params
         bool show_make_many = !context_node_id_.empty() && !context_bg_menu_ && !is_sticky_ctx
                               && is_drawable_emitter_type(context_node_type_);
@@ -217,8 +218,7 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
             } else {
                 labels[label_idx++] = T("delete_node", "Delete Node");
             }
-            if (context_node_has_shader_)
-                labels[label_idx++] = T("clone_and_edit", "Clone & Edit");
+            labels[label_idx++] = T("clone_and_edit", "Clone & Edit");
             // Solo/Unsolo
             bool is_soloed = (!snap_.solo_node_id.empty() && snap_.solo_node_id == context_node_id_);
             labels[label_idx++] = is_soloed ? T("unsolo", "Unsolo") : T("solo", "Solo");

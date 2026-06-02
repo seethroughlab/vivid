@@ -785,7 +785,6 @@ private:
     float context_menu_x_ = 0, context_menu_y_ = 0;  // screen space
     std::string context_node_id_;   // non-empty if node menu
     std::string context_node_type_; // type of context node (for duplicate filter)
-    bool context_node_has_shader_ = false;  // true if node is a shader-based filter
     int context_wire_idx_ = -1;     // >= 0 if wire menu
     bool context_bg_menu_ = false;  // true if background menu (no node/wire)
     int hovered_wire_idx_ = -1;

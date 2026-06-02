@@ -515,7 +515,7 @@ void NodeGraphUI::handle_graph_click() {
                 }
             }
 
-            // Double-click detection: open/clone operator
+            // Double-click detection: open the operator's editor if it has one.
             double now = glfwGetTime();
             if (node_id == last_click_node_id_ && (now - last_click_time_) < 0.3) {
                 const std::string& type_name = node_rects_[ni].type_name;
@@ -524,12 +524,16 @@ void NodeGraphUI::handle_graph_click() {
                                cat_it->second && cat_it->second->is_user;
                 bool is_module = cat_it != snap_.operator_catalog.end() &&
                                  cat_it->second && cat_it->second->is_module;
-                if (is_user) {
+                const NodeSnapshot* ns = snap_.find_node(node_id);
+                bool has_editor = ns && ns->op_info && ns->op_info->has_editor;
+                if (has_editor) {
+                    // Operators that define an editor window (e.g. MIDI Clip,
+                    // Drum Sequencer) open it. Clone now lives in the context menu.
+                    commands_.open_editor(node_id);
+                } else if (is_user) {
                     commands_.open_shader(type_name);
                 } else if (is_module) {
                     commands_.open_module_source(type_name);
-                } else {
-                    open_clone_confirm_dialog(type_name, node_id);
                 }
                 last_click_node_id_.clear();
             } else {
