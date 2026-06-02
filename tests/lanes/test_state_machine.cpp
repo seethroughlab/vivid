@@ -30,6 +30,11 @@ struct SMDriver {
         for (size_t i = 0; i < param_ptrs.size(); ++i) {
             param_values[i] = param_ptrs[i]->default_value;
         }
+        // These tests drive the beat_phase INPUT directly (simulate_beats) and
+        // call process_audio() without host param-sync, so set the clock_mode
+        // member to external. Operators default to the graph metronome since
+        // 17aa940d, which would otherwise ignore the driven input.
+        sm.clock_mode.value = static_cast<float>(vivid::kClockModeSyncedExternal);
     }
 
     void set_param(const char* name, float value) {
