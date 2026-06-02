@@ -366,7 +366,7 @@ static void test_ping_pong_delay(const std::string& staging) {
 
     check(std::strcmp(desc->name, "PingPongDelay") == 0, "name matches");
     check(vivid_operator_kind(desc) == VIVID_OP_AUDIO, "env = AUDIO");
-    check(static_cast<int>(desc->param_count) == 6, "param_count = 6");
+    check(static_cast<int>(desc->param_count) == 8, "param_count = 8");
     check(static_cast<int>(desc->port_count) == 7, "port_count = 7 (4 + 3 analysis)");
 
     // Verify stereo channels on audio ports

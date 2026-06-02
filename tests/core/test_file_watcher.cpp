@@ -36,7 +36,7 @@ static std::string normalized_path(const fs::path& p) {
 }
 
 static bool has_event_for_target(vivid::FileWatcher& fw, const std::string& target) {
-    for (int attempt = 0; attempt < 40; ++attempt) {
+    for (int attempt = 0; attempt < 100; ++attempt) {  // ~5s; FSEvents has latency/coalescing
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         auto events = fw.poll_changes();
         for (auto& e : events) {
@@ -50,7 +50,7 @@ static bool has_event_for_target(vivid::FileWatcher& fw, const std::string& targ
 static bool has_event_for_target_and_path(vivid::FileWatcher& fw,
                                           const std::string& target,
                                           const std::string& path) {
-    for (int attempt = 0; attempt < 40; ++attempt) {
+    for (int attempt = 0; attempt < 100; ++attempt) {  // ~5s; FSEvents has latency/coalescing
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         auto events = fw.poll_changes();
         for (auto& e : events) {

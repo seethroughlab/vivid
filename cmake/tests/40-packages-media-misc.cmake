@@ -299,6 +299,12 @@ add_executable(test_file_watcher
 target_include_directories(test_file_watcher PRIVATE src tests)
 target_link_libraries(test_file_watcher PRIVATE vivid_runtime_testlib)
 add_test(NAME test_file_watcher COMMAND test_file_watcher WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+# Real-FS integration test against macOS FSEvents (via efsw). Under `ctest -j`
+# the FSEvents dispatch thread is CPU-starved by competing tests, delaying event
+# delivery (flaky asserts) and stalling stream teardown (the 150s timeout we hit).
+# RUN_SERIAL gives it the machine to itself so events deliver promptly; TIMEOUT
+# bounds it as a backstop.
+set_tests_properties(test_file_watcher PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 
 # HotReloader queueing unit tests (no compiler invocation; package callback path)
 add_executable(test_hot_reloader_queue
@@ -629,6 +635,13 @@ add_dependencies(test_team_workflow_regression test_op_v1)
 add_test(NAME test_team_workflow_regression
     COMMAND test_team_workflow_regression ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# These two tests both clear+recreate the local package-discovery root
+# (cwd/packages = build dir/packages, hardcoded in package_manager_discovery.cpp).
+# Under `ctest -j` they race — one wipes the other's linked package mid-test.
+# Serialize them on a shared resource lock so they never run concurrently.
+set_tests_properties(test_undo_mutation_types test_team_workflow_regression
+    PROPERTIES RESOURCE_LOCK "vivid_local_packages_root")
 
 # builtin_operators unit tests (no dylib, no GPU)
 add_executable(test_builtin_operators

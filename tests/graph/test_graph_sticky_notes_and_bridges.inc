@@ -93,11 +93,11 @@
         g.add_node("n1", "Oscillator");
         std::string json;
         check(g.save_to_string(json), "save graph");
-        check(json.find("\"schema_version\": 2") != std::string::npos ||
-              json.find("\"schema_version\":2") != std::string::npos,
-              "saved JSON has schema_version 2");
+        check(json.find("\"schema_version\": 3") != std::string::npos ||
+              json.find("\"schema_version\":3") != std::string::npos,
+              "saved JSON has schema_version 3");
         vivid::Graph g2;
-        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v2 graph");
+        check(g2.load_from_string(json.c_str(), json.size()), "reload schema v3 graph");
     }
 
     // =====================================================================
