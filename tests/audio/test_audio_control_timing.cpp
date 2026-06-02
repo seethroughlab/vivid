@@ -1,5 +1,6 @@
 #include "runtime/operators/operator_loader.h"
 #include "operator_api/note_types.h"
+#include "operator_api/metronome_sync.h"
 
 #include <cmath>
 #include <cstdio>
@@ -162,6 +163,11 @@ static void test_phase_to_midi_midblock_wrap(const std::string& build_dir) {
     if (!inst) return;
 
     auto params = default_params(loader.descriptor());
+    // This test exercises external-clock block-start sampling, so opt into the
+    // external beat_phase input (operators default to metronome since the
+    // transport-lock change in 17aa940d).
+    set_param_by_name(params, loader.descriptor(), "clock_mode",
+                      static_cast<float>(vivid::kClockModeSyncedExternal));
     AudioTestBuffers tb(1, 0, 1);
     tb.ctx.param_values = params.data();
     tb.inputs[0] = {0.70f, 0.80f, 0.90f, 0.05f, 0.10f, 0.20f, 0.30f, 0.40f};
@@ -271,7 +277,8 @@ static void test_euclidean_block_start_snapshot(const std::string& build_dir) {
     params[1] = 8.0f;  // steps
     params[2] = 0.0f;  // rotation
     params[3] = 0.5f;  // gate_length
-    params[4] = 5.0f;  // rate = 1/32 -> multiplier 8
+    params[4] = 5.0f;  // sync_division = 1/32 -> multiplier 8
+    params[5] = static_cast<float>(vivid::kClockModeSyncedExternal);  // external clock (default is metronome)
 
     AudioTestBuffers tb(1, 3);
     tb.ctx.param_values = params.data();
