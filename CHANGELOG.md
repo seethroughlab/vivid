@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Work toward alpha.3. Centers on a unified timing/transport vocabulary across all
+time-driven operators, VST3 instrument hosting and presets, and editor/authoring
+ergonomics.
+
+### Timing & Transport
+
+- **Unified `clock_mode` vocabulary.** All time-driven operators consolidated onto
+  one timing vocabulary, replacing the per-operator rate/sync parameter sprawl.
+- **Bar-lock to global transport.** Looping MidiClips and the DrumSequencer grid
+  now lock to the global transport so loops stay phase-aligned with the bar.
+- **Domain by ports, not cadence.** Operators are classified by their port types
+  rather than their execution cadence for discovery and routing.
+
+### Plugin Hosting
+
+- **VST3 instruments.** Instrument preset support added to the runtime and MCP
+  (discovery, metadata, `.vstpreset`/program loading).
+- **VST3 silence fix.** Instruments now activate the event bus and set the output
+  bus arrangement, fixing cases where a loaded instrument produced no audio.
+
+### Operators — New & Changed
+
+- **Polyphonic synths.** Synth audio output collapsed to a single lane so multiple
+  voices mix correctly into downstream audio.
+- **Delay / PingPongDelay.** Added tempo-synced delay time.
+- **Mixer.** Channel-strip inspector backed by a new input-connection ABI that
+  exposes connected-input names.
+- **SP404.** Added discovery metadata.
+
+### Editor & UI
+
+- **Double-click opens the operator editor.** Double-clicking a node now opens its
+  editor window when the operator defines one (e.g. MIDI Clip, Drum Sequencer)
+  instead of cloning it. Clone is now an explicit right-click context-menu action
+  available for all clonable nodes.
+- **Node rename.** `node_id` is now editable from the inspector, with an atomic
+  reference sweep across the graph.
+
+### MCP & Developer Tooling
+
+- MCP composition cookbook plus authoring-doc gap-fills (tempo tool, scene/preset
+  gotchas, authoring guide).
+- Large-output ergonomics for spectrum analysis and VST3 listings.
+- MidiClip and Mixer now self-document in `operator_docs`.
+- `connect` warns when an address names a non-existent port.
+- Session cue paths.
+
+### Site
+
+- Site deploy migrated from GitHub Pages to Cloudflare Pages.
+- Download button added to the home-page header nav.
+
+### Fixed
+
+- Restored a green test suite: fixed pre-existing failures in
+  `test_audio_control_timing`, `test_state_machine` beat-advance, and four other
+  suites.
+- Prevented `test_ui_screenshot_smoke` from hanging on DPI-triggered surface
+  failure.
+
 ## [0.1.0-alpha.2] - 2026-05-26
 
 Second alpha release. Approximately five weeks after alpha.1, this release
