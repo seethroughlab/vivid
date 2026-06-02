@@ -434,7 +434,7 @@ struct MsegAudio : MSEG, vivid::AudioProcessable {
             vivid::MetronomeTransport sample_metronome =
                 vivid::metronome_transport_sample(metronome, i, ctx->sample_rate);
             float phase_in = vivid::resolve_clock_phase(
-                clock_source.int_value(), vivid::audio_scalar_sample(ctx, 1, i), sample_metronome);
+                clock_mode.int_value(), vivid::audio_scalar_sample(ctx, 1, i), sample_metronome);
             compute(gate_in, phase_in, sample_dt);
             ctx->output_buffers[0][i] = current_value_ * amplitude.value;
         }

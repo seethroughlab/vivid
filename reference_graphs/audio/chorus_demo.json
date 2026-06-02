@@ -44,7 +44,7 @@
         "chorus": {
             "type": "Chorus",
             "params": {
-                "rate": 0.8,
+                "frequency": 0.8,
                 "depth": 0.6,
                 "voices": 4,
                 "mix": 0.6
@@ -68,7 +68,7 @@
         },
         {
             "from": "lfo/value",
-            "to": "chorus/rate_cv"
+            "to": "chorus/freq_cv"
         },
         {
             "from": "chorus/output",

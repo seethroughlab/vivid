@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
         auto params = make_params(desc, {
             {"hits", 4.0f}, {"steps", 4.0f}, {"rotation", 0.0f},
             {"gate_length", 0.5f}, {"rate", 2.0f},
-            {"clock_source", 0.0f},
+            {"clock_mode", 0.0f},
             {"note", 36.0f}, {"velocity", 100.0f},
         });
         h.ctx.param_values = params.data();
@@ -225,7 +225,7 @@ int main(int argc, char** argv) {
         Harness h;
         auto params = make_params(desc, {
             {"hits", 0.0f}, {"steps", 8.0f}, {"rate", 2.0f},
-            {"clock_source", 0.0f},
+            {"clock_mode", 0.0f},
         });
         h.ctx.param_values = params.data();
         void* inst = loader.create_instance();

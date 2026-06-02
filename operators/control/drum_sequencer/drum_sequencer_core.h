@@ -28,7 +28,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = false;
 
     // Param index layout:
-    // [0]=steps  [1]=swing  [2]=clock_source  [3]=midi_channel
+    // [0]=steps  [1]=swing  [2]=clock_mode  [3]=midi_channel
     // [4..9]=kick_note, snare_note, hat_note, oh_note, clap_note, tom_note
     // [10..25]=kick_0..15  [26..41]=snare_0..15  [42..57]=hat_0..15
     // [58..73]=oh_0..15    [74..89]=clap_0..15   [90..105]=tom_0..15
@@ -39,7 +39,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
 
     vivid::Param<int>   steps {"steps",  16, 1, 16};
     vivid::Param<float> swing {"swing",  0.0f, 0.0f, 0.5f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
     vivid::Param<int>   bar_sync    {"bar_sync",    0, {"off","1 bar","2 bar","4 bar","8 bar"}};
 
     // MIDI note number per drum track (indices 2..7)
@@ -514,7 +514,7 @@ protected:
     int prev_step_ = -1;
     float phase_offset_ = 0.0f;
     bool prev_reset_ = false;
-    int prev_clock_source_ = -1;
+    int prev_clock_mode_ = -1;
     int64_t prev_phrase_idx_ = 0;
     bool phrase_initialized_ = false;
 

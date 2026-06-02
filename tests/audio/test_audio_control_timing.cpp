@@ -201,7 +201,7 @@ static void test_step_seq_block_start_snapshot(const std::string& build_dir) {
     set_param_by_name(params, desc, "steps", 4.0f);
     set_param_by_name(params, desc, "step_value_0", 0.2f);
     set_param_by_name(params, desc, "step_value_2", 0.8f);
-    set_param_by_name(params, desc, "rate_mode", 1.0f);
+    set_param_by_name(params, desc, "clock_mode", 1.0f);
     set_param_by_name(params, desc, "frequency", 1.0f);
     set_param_by_name(params, desc, "sync_division", 2.0f);
     set_param_by_name(params, desc, "glide", 0.0f);
@@ -237,7 +237,7 @@ static void test_step_seq_metronome_snapshot(const std::string& build_dir) {
     set_param_by_name(params, desc, "steps", 4.0f);
     set_param_by_name(params, desc, "step_value_0", 0.2f);
     set_param_by_name(params, desc, "step_value_2", 0.8f);
-    set_param_by_name(params, desc, "rate_mode", 2.0f);
+    set_param_by_name(params, desc, "clock_mode", 2.0f);
     set_param_by_name(params, desc, "sync_division", 2.0f);
     set_param_by_name(params, desc, "amplitude", 1.0f);
     set_param_by_name(params, desc, "polarity", 1.0f);

@@ -83,7 +83,7 @@ void AudioClip::collect_params(std::vector<vivid::ParamBase*>& out) {
     out.push_back(&speed);
     out.push_back(&pitch);
     out.push_back(&file_bpm);
-    out.push_back(&rate_mode);
+    out.push_back(&clock_mode);
     out.push_back(&stretch);
     out.push_back(&clip_start);
     out.push_back(&clip_end);
@@ -118,7 +118,7 @@ void AudioClip::collect_ports(std::vector<VividPortDescriptor>& out) {
     out.push_back({"stop",       VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,
                    VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
     out.push_back({"beat_phase", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,
-                   VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+                   VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
     out.push_back({"slice_index", VIVID_PORT_SCALAR,      VIVID_PORT_INPUT,
                    VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
     out.push_back({"audio_out",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT,
@@ -273,7 +273,7 @@ void AudioClip::process_audio(const VividAudioContext* ctx) {
     const float   p_speed  = speed.value;
     const float   p_pitch  = pitch.value;
     const float   p_fbpm   = (file_bpm.value > 0.0f) ? file_bpm.value : state->detected_bpm;
-    const int     p_rmode  = rate_mode.int_value();
+    const int     p_rmode  = clock_mode.int_value();
     const int     p_wmode  = warp_mode.int_value();
     const bool    p_stretch= (stretch.int_value() != 0) && p_wmode != 2;
     const bool    p_warp   = warp_enabled.int_value() != 0 && state->warp_points.size() >= 2;
@@ -437,7 +437,7 @@ void AudioClip::process_audio(const VividAudioContext* ctx) {
     }
 
     // ---- Sync mode: phase-locked to metronome, loop length intrinsic to clip ----
-    if (p_rmode == vivid::kRateModeMetronome) {
+    if (p_rmode == vivid::kClockModeMetronome) {
         auto silence = [&]() {
             std::memset(out_L, 0, N * sizeof(float));
             std::memset(out_R, 0, N * sizeof(float));
@@ -553,7 +553,7 @@ void AudioClip::process_audio(const VividAudioContext* ctx) {
     }
 
     // External mode: beat_phase[s] scrubs the clip region per sample
-    if (p_rmode == vivid::kRateModeExternal) {
+    if (p_rmode == vivid::kClockModeExternal) {
         const float* bp = ctx->input_buffers[2];
         if (ctx->output_buffers[2]) std::memset(ctx->output_buffers[2], 0, N * sizeof(float));
         const double total_beats = p_warp ? audio_clip_ed::warp_total_beats(state->warp_points) : 1.0;

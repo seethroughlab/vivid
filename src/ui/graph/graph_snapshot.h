@@ -125,6 +125,7 @@ struct PortInfo {
     uint16_t    repeat_group_idx = 0;
 
     std::string description;  // human-readable tooltip shown on port hover
+    std::string semantic_tag; // e.g. "beat_phase", "gate", "trigger" (empty if unset)
 };
 
 // Owned copy of operator metadata

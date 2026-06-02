@@ -1,6 +1,7 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "shared/timing/clock_block.h"
 #include "operator_api/draw_ui_helpers.h"
 #include "operator_api/editor_ui.h"
 #include "operator_api/editor_keys.h"
@@ -48,12 +49,12 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     // --- Core parameters ---
     vivid::Param<int>   mode        {"mode",        0, {"Up","Down","UpDown","DownUp","Random","Order","Converge","Diverge","RandomNoRepeat","OrderDown"}};
     vivid::Param<int>   octaves     {"octaves",     1, 1, 4};
-    vivid::Param<int>   rate        {"rate",        3, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
+    vivid::Param<int>   sync_division        {"sync_division",        3, vivid::metronome_division_labels()};
     vivid::Param<float> gate_length {"gate_length", 0.8f, 0.01f, 1.0f};
     vivid::Param<float> swing       {"swing",       0.0f, 0.0f, 1.0f};
     vivid::Param<bool>  latch       {"latch",       false};
     vivid::Param<int>   mod_steps   {"mod_steps",   8, 1, 16};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     // --- Per-step velocity modifiers (legacy 0..7 + new 8..15) ---
     vivid::Param<float> vel_0 {"vel_0", 1.0f, 0.0f, 1.0f};
@@ -144,12 +145,13 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     ArpeggiatorCore() {
         vivid::description(mode, "Arpeggiation pattern: Up, Down, UpDown, Random, Converge, etc");
         vivid::description(octaves, "Number of octaves to span above the input notes");
-        vivid::description(rate, "Clock subdivision for arp step timing");
+        vivid::description(sync_division, "Clock subdivision for arp step timing");
+        vivid::wire_clock_visibility_synced(sync_division, clock_mode);
         vivid::description(gate_length, "Fraction of each step during which the note sounds");
         vivid::description(swing, "Timing offset between even and odd steps, 0 = straight");
         vivid::description(latch, "Keep playing the pattern after all input gates go low");
         vivid::description(mod_steps, "Number of active steps in the velocity/transpose modulation cycle");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         vivid::description(vel_0, "Velocity multiplier for modulation step 1");
         vivid::description(vel_1, "Velocity multiplier for modulation step 2");
         vivid::description(vel_2, "Velocity multiplier for modulation step 3");
@@ -172,12 +174,12 @@ struct ArpeggiatorCore : vivid::OperatorBase {
     // Param indices:
     //  0       = mode
     //  1       = octaves
-    //  2       = rate
+    //  2       = sync_division
     //  3       = gate_length
     //  4       = swing
     //  5       = latch
     //  6       = mod_steps
-    //  7       = clock_source
+    //  7       = clock_mode
     //  8..15   = vel_0..vel_7
     //  16..23  = tr_0..tr_7
     //  24      = midi_channel
@@ -194,12 +196,12 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         // load without migration. New params append past index 24.
         out.push_back(&mode);         // 0
         out.push_back(&octaves);      // 1
-        out.push_back(&rate);         // 2
+        out.push_back(&sync_division);         // 2
         out.push_back(&gate_length);  // 3
         out.push_back(&swing);        // 4
         out.push_back(&latch);        // 5
         out.push_back(&mod_steps);    // 6
-        out.push_back(&clock_source); // 7
+        out.push_back(&clock_mode); // 7
 
         for (int i = 0; i < 8; ++i) {
             display_hint(*vel_params_[i], VIVID_DISPLAY_HIDDEN);
@@ -233,7 +235,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});   // [0]
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});   // [0]
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in", VIVID_PORT_INPUT, VividNoteBuffer));  // [1]
         // Outputs
         out.push_back({"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});  // [0]
@@ -249,7 +251,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
                  void** custom_outputs, uint32_t custom_output_count) {
         int m = mode.int_value();
         int oct = octaves.int_value();
-        int r = rate.int_value();
+        int r = sync_division.int_value();
         float gl = gate_length.value;
         float sw = swing.value;
         bool latch_on = latch.bool_value();
@@ -376,7 +378,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         // Reset step offset when notes transition from 0 to >0
         if (has_notes && !prev_had_notes_) {
             float total_beats = static_cast<float>(beat_count_) + beat_phase;
-            step_offset_ = static_cast<int>(std::floor(total_beats * kMultipliers[r]));
+            step_offset_ = static_cast<int>(std::floor(total_beats / vivid::sync_cycle_beats(r)));
             arp_direction_ = 1;
             last_selected_step_ = -1;
             last_selected_pool_ = -1;
@@ -394,7 +396,7 @@ struct ArpeggiatorCore : vivid::OperatorBase {
         }
 
         // Rate multiplier
-        float multiplier = kMultipliers[r];
+        float multiplier = (1.0f / vivid::sync_cycle_beats(r));
 
         // Calculate arp phase from cumulative beats
         float total_beats = static_cast<float>(beat_count_) + beat_phase;
@@ -569,7 +571,6 @@ struct ArpeggiatorCore : vivid::OperatorBase {
 
 
 protected:
-    static constexpr float kMultipliers[] = {0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 1.5f, 3.0f, 6.0f};
 
     // Beat tracking
     float prev_phase_ = 0.0f;

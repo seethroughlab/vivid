@@ -186,10 +186,10 @@ int main() {
         drum.song_mode.value = 1.0f;
         // Start on the external clock so the switch below is a genuine change
         // (the param default is metronome, so setting it to metronome is a no-op).
-        drum.clock_source.value = 0.0f;  // external
-        drive(drum, params, 0.5f / 4.0f);  // settle prev_clock_source_ = external
+        drum.clock_mode.value = 0.0f;  // external
+        drive(drum, params, 0.5f / 4.0f);  // settle prev_clock_mode_ = external
         drum.force_song_pos(3);     // pretend we're on D
-        drum.clock_source.value = 1.0f;  // → metronome: the change triggers the reset
+        drum.clock_mode.value = 1.0f;  // → metronome: the change triggers the reset
 
         auto r = drive(drum, params, 0.5f / 4.0f);
         check(r.current_pattern == 0,

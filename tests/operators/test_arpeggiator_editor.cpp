@@ -75,7 +75,7 @@ struct EditorHarness {
         // Top-level controls with sensible defaults.
         params[ae::kModeIndex]       = 0.0f;   // Up
         params[ae::kOctavesIndex]    = 1.0f;
-        params[ae::kRateIndex]       = 3.0f;   // 1/8
+        params[ae::kSyncDivisionIndex]       = 3.0f;   // 1/8
         params[ae::kGateLengthIndex] = 0.8f;
         params[ae::kModStepsIndex]   = 8.0f;
         params[ae::kMidiChannelIndex]= 1.0f;
@@ -160,7 +160,7 @@ struct ArpHarness {
     ArpHarness() : params(73, 0.0f) {
         params[ae::kModeIndex]       = 0.0f;   // Up
         params[ae::kOctavesIndex]    = 1.0f;
-        params[ae::kRateIndex]       = 2.0f;   // 1/4
+        params[ae::kSyncDivisionIndex]       = 2.0f;   // 1/4
         params[ae::kGateLengthIndex] = 0.8f;
         params[ae::kModStepsIndex]   = 8.0f;
         for (int i = 0; i < 16; ++i) {
@@ -348,7 +348,7 @@ int main() {
         std::vector<float> params(73, 0.0f);
         params[ae::kModeIndex]       = 0.0f;   // Up
         params[ae::kOctavesIndex]    = 1.0f;
-        params[ae::kRateIndex]       = 2.0f;   // 1/4
+        params[ae::kSyncDivisionIndex]       = 2.0f;   // 1/4
         params[ae::kGateLengthIndex] = 0.8f;
         params[ae::kModStepsIndex]   = 8.0f;
         for (int i = 0; i < 16; ++i) {
@@ -378,7 +378,7 @@ int main() {
         std::vector<float> params(73, 0.0f);
         params[ae::kModeIndex]       = 0.0f;
         params[ae::kOctavesIndex]    = 1.0f;
-        params[ae::kRateIndex]       = 2.0f;
+        params[ae::kSyncDivisionIndex]       = 2.0f;
         params[ae::kGateLengthIndex] = 0.8f;
         params[ae::kModStepsIndex]   = 8.0f;
         for (int i = 0; i < 16; ++i) {
@@ -416,7 +416,7 @@ int main() {
         std::vector<float> params(73, 0.0f);
         params[ae::kModeIndex]       = 0.0f;
         params[ae::kOctavesIndex]    = 1.0f;
-        params[ae::kRateIndex]       = 2.0f;
+        params[ae::kSyncDivisionIndex]       = 2.0f;
         params[ae::kGateLengthIndex] = 0.8f;
         params[ae::kModStepsIndex]   = 8.0f;
         for (int i = 0; i < 16; ++i) {

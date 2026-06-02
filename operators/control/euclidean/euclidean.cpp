@@ -16,7 +16,7 @@ struct Euclidean : EuclideanCore, vivid::AudioProcessable {
         float local_out[3] = {};
         const auto m = vivid::metronome_transport(ctx);
         float beat_phase = vivid::resolve_clock_phase(
-            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), m);
+            clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), m);
         compute(beat_phase, m.beats_elapsed, m.beats_per_bar,
                 ctx->param_values, ctx->output_lanes, local_out,
                 ctx->custom_outputs, ctx->custom_output_count);

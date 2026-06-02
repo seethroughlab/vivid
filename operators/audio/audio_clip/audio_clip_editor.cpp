@@ -21,7 +21,7 @@ enum PI {
     kSpeed      = 6,
     kPitch      = 7,
     kFileBpm    = 8,
-    kRateMode   = 9,
+    kClockMode   = 9,
     kStretch    = 10,
     kClipStart  = 11,
     kClipEnd    = 12,
@@ -61,7 +61,7 @@ constexpr float kPad        = 6.0f;    // side panel internal padding
 constexpr float kRowH       = 18.0f;   // side panel row height
 constexpr float kGap        = 3.0f;    // side panel row gap
 
-static const char* kRateModeLabels[] = {"free", "ext", "sync"};
+static const char* kClockModeLabels[] = {"internal", "ext", "metro"};
 static const char* kWarpModeLabels[] = {"complex", "beats", "repitch"};
 static const char* kLaunchModeLabels[] = {"trigger", "gate", "toggle", "repeat"};
 static const char* kLaunchQuantizeLabels[] = {"instant", "beat", "bar", "4bar"};
@@ -106,7 +106,7 @@ void AudioClip::draw_editor(VividEditorContext* ctx) {
     const float eff_ls    = eff_loop.start;
     const float eff_le    = eff_loop.end;
     const bool  p_stretch = pv(ed::kStretch) > 0.5f;
-    const int   p_rmode   = static_cast<int>(pv(ed::kRateMode) + 0.5f);
+    const int   p_rmode   = static_cast<int>(pv(ed::kClockMode) + 0.5f);
     const bool  p_warp    = pv(ed::kWarpEnabled) > 0.5f;
     const int   p_wmode   = static_cast<int>(pv(ed::kWarpMode) + 0.5f);
     const bool  p_show_trans = pv(ed::kShowTransients) > 0.5f;
@@ -815,8 +815,8 @@ void AudioClip::draw_editor(VividEditorContext* ctx) {
         {
             // rate_mode radio
             Rect r = row();
-            auto rr = ui_radio(*ctx, r, ed::kRateModeLabels, 3, p_rmode);
-            if (rr.clicked) set_p("rate_mode", static_cast<float>(rr.value));
+            auto rr = ui_radio(*ctx, r, ed::kClockModeLabels, 3, p_rmode);
+            if (rr.clicked) set_p("clock_mode", static_cast<float>(rr.value));
         }
         {
             Rect r = row();

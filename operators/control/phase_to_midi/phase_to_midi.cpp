@@ -13,7 +13,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
 
     vivid::Param<int>   note    {"note",     60,  0, 127};
     vivid::Param<float> velocity{"velocity", 100.0f, 0.0f, 127.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     float prev_phase_ = 0.0f;
     VividNoteBuffer notes_buf_ = {};
@@ -26,17 +26,17 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_tag(velocity, "midi_velocity");
         vivid::semantic_shape(velocity, "scalar");
         vivid::description(velocity, "MIDI velocity of the emitted note, 0 to 127");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&note);
         out.push_back(&velocity);
-        out.push_back(&clock_source);
+        out.push_back(&clock_mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
@@ -48,7 +48,7 @@ struct PhaseToMidi : vivid::OperatorBase, vivid::AudioProcessable {
             vivid::MetronomeTransport sample_metronome =
                 vivid::metronome_transport_sample(metronome, i, ctx->sample_rate);
             float phase = vivid::resolve_clock_phase(
-                clock_source.int_value(), vivid::audio_scalar_sample(ctx, 0, i), sample_metronome);
+                clock_mode.int_value(), vivid::audio_scalar_sample(ctx, 0, i), sample_metronome);
             float delta = phase - prev_phase_;
             prev_phase_ = phase;
 

@@ -166,8 +166,8 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
     // Timbre channel — bipolar by default (timbre swings around the
     // upstream value), 0..1 amount range.
     vivid::Param<float> timbre_amount       {"timbre_amount",       0.0f, 0.0f, 1.0f};
-    vivid::Param<int>   timbre_rate_mode    {"timbre_rate_mode",    vivid::kRateModeFree,
-                                             vivid::rate_mode_labels()};
+    vivid::Param<int>   timbre_clock_mode    {"timbre_clock_mode",    vivid::kClockModeInternal,
+                                             vivid::clock_mode_full_labels()};
     vivid::Param<float> timbre_rate_hz      {"timbre_rate_hz",      0.5f, 0.01f, 20.0f};
     vivid::Param<int>   timbre_sync_division{"timbre_sync_division", 2,
                                              vivid::metronome_division_labels()};
@@ -181,8 +181,8 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 
     // Pressure channel — unipolar default (pressure is naturally 0..1).
     vivid::Param<float> pressure_amount       {"pressure_amount",       0.0f, 0.0f, 1.0f};
-    vivid::Param<int>   pressure_rate_mode    {"pressure_rate_mode",    vivid::kRateModeFree,
-                                               vivid::rate_mode_labels()};
+    vivid::Param<int>   pressure_clock_mode    {"pressure_clock_mode",    vivid::kClockModeInternal,
+                                               vivid::clock_mode_full_labels()};
     vivid::Param<float> pressure_rate_hz      {"pressure_rate_hz",      0.5f, 0.01f, 20.0f};
     vivid::Param<int>   pressure_sync_division{"pressure_sync_division", 2,
                                                vivid::metronome_division_labels()};
@@ -196,8 +196,8 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 
     // Pitch bend channel — bipolar default, depth in semitones (0..12).
     vivid::Param<float> pitch_bend_amount        {"pitch_bend_amount",        0.0f, 0.0f, 12.0f};
-    vivid::Param<int>   pitch_bend_rate_mode     {"pitch_bend_rate_mode",     vivid::kRateModeFree,
-                                                  vivid::rate_mode_labels()};
+    vivid::Param<int>   pitch_bend_clock_mode     {"pitch_bend_clock_mode",     vivid::kClockModeInternal,
+                                                  vivid::clock_mode_full_labels()};
     vivid::Param<float> pitch_bend_rate_hz       {"pitch_bend_rate_hz",       5.0f, 0.01f, 20.0f};
     vivid::Param<int>   pitch_bend_sync_division {"pitch_bend_sync_division", 2,
                                                   vivid::metronome_division_labels()};
@@ -218,7 +218,7 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 
     NoteModulator() {
         param_group(timbre_amount,        "Timbre");
-        param_group(timbre_rate_mode,     "Timbre");
+        param_group(timbre_clock_mode,     "Timbre");
         param_group(timbre_rate_hz,       "Timbre");
         param_group(timbre_sync_division, "Timbre");
         param_group(timbre_waveform,      "Timbre");
@@ -229,7 +229,7 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
         param_group(timbre_mode,          "Timbre");
 
         param_group(pressure_amount,        "Pressure");
-        param_group(pressure_rate_mode,     "Pressure");
+        param_group(pressure_clock_mode,     "Pressure");
         param_group(pressure_rate_hz,       "Pressure");
         param_group(pressure_sync_division, "Pressure");
         param_group(pressure_waveform,      "Pressure");
@@ -240,7 +240,7 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
         param_group(pressure_mode,          "Pressure");
 
         param_group(pitch_bend_amount,        "PitchBend");
-        param_group(pitch_bend_rate_mode,     "PitchBend");
+        param_group(pitch_bend_clock_mode,     "PitchBend");
         param_group(pitch_bend_rate_hz,       "PitchBend");
         param_group(pitch_bend_sync_division, "PitchBend");
         param_group(pitch_bend_waveform,      "PitchBend");
@@ -269,38 +269,38 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
             "0 = all simultaneous notes share LFO phase. 1 = fully decorrelated per note_id.");
         vivid::description(timbre_mode,
             "add: output = upstream + modulator. replace: modulator overrides upstream.");
-        vivid::description(timbre_rate_mode,
+        vivid::description(timbre_clock_mode,
             "free = internal Hz, external = drive from beat_phase input, metronome = sync to graph transport.");
         vivid::description(timbre_sync_division,
-            "Musical note length used when rate_mode = metronome.");
-        vivid::description(pressure_rate_mode,
+            "Musical note length used when clock_mode = metronome.");
+        vivid::description(pressure_clock_mode,
             "free = internal Hz, external = drive from beat_phase input, metronome = sync to graph transport.");
-        vivid::description(pitch_bend_rate_mode,
+        vivid::description(pitch_bend_clock_mode,
             "free = internal Hz, external = drive from beat_phase input, metronome = sync to graph transport.");
 
         // Hide rate_hz when locked to metronome; show sync_division only then.
-        vivid::visible_when_ne(timbre_rate_hz,        timbre_rate_mode,     vivid::kRateModeMetronome);
-        vivid::visible_when_eq(timbre_sync_division,  timbre_rate_mode,     vivid::kRateModeMetronome);
-        vivid::visible_when_ne(pressure_rate_hz,      pressure_rate_mode,   vivid::kRateModeMetronome);
-        vivid::visible_when_eq(pressure_sync_division, pressure_rate_mode,  vivid::kRateModeMetronome);
-        vivid::visible_when_ne(pitch_bend_rate_hz,    pitch_bend_rate_mode, vivid::kRateModeMetronome);
-        vivid::visible_when_eq(pitch_bend_sync_division, pitch_bend_rate_mode, vivid::kRateModeMetronome);
+        vivid::visible_when_ne(timbre_rate_hz,        timbre_clock_mode,     vivid::kClockModeMetronome);
+        vivid::visible_when_eq(timbre_sync_division,  timbre_clock_mode,     vivid::kClockModeMetronome);
+        vivid::visible_when_ne(pressure_rate_hz,      pressure_clock_mode,   vivid::kClockModeMetronome);
+        vivid::visible_when_eq(pressure_sync_division, pressure_clock_mode,  vivid::kClockModeMetronome);
+        vivid::visible_when_ne(pitch_bend_rate_hz,    pitch_bend_clock_mode, vivid::kClockModeMetronome);
+        vivid::visible_when_eq(pitch_bend_sync_division, pitch_bend_clock_mode, vivid::kClockModeMetronome);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&timbre_amount);        out.push_back(&timbre_rate_mode);
+        out.push_back(&timbre_amount);        out.push_back(&timbre_clock_mode);
         out.push_back(&timbre_rate_hz);       out.push_back(&timbre_sync_division);
         out.push_back(&timbre_waveform);      out.push_back(&timbre_phase_offset);
         out.push_back(&timbre_phase_random);  out.push_back(&timbre_polarity);
         out.push_back(&timbre_attack_ms);     out.push_back(&timbre_mode);
 
-        out.push_back(&pressure_amount);        out.push_back(&pressure_rate_mode);
+        out.push_back(&pressure_amount);        out.push_back(&pressure_clock_mode);
         out.push_back(&pressure_rate_hz);       out.push_back(&pressure_sync_division);
         out.push_back(&pressure_waveform);      out.push_back(&pressure_phase_offset);
         out.push_back(&pressure_phase_random);  out.push_back(&pressure_polarity);
         out.push_back(&pressure_attack_ms);     out.push_back(&pressure_mode);
 
-        out.push_back(&pitch_bend_amount);        out.push_back(&pitch_bend_rate_mode);
+        out.push_back(&pitch_bend_amount);        out.push_back(&pitch_bend_clock_mode);
         out.push_back(&pitch_bend_rate_hz);       out.push_back(&pitch_bend_sync_division);
         out.push_back(&pitch_bend_waveform);      out.push_back(&pitch_bend_phase_offset);
         out.push_back(&pitch_bend_phase_random);  out.push_back(&pitch_bend_polarity);
@@ -309,12 +309,12 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 
     // Port indices: notes_in=0 (custom_ref), beat_phase=1 (scalar) for inputs.
     // Output: notes_out=0 (custom_ref). beat_phase is optional — used only
-    // when any channel has rate_mode = external.
+    // when any channel has clock_mode = external.
     static constexpr uint32_t kBeatPhasePortIdx = 1;
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_in",  VIVID_PORT_INPUT,  VividNoteBuffer)); // [0]
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});                   // [1]
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});                   // [1]
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 
@@ -322,7 +322,7 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
     // by-value (small struct) for the inner-loop call.
     struct ChannelParamSnapshot {
         float amount;
-        int   rate_mode;
+        int   clock_mode;
         float rate_hz;
         int   sync_division;
         int   waveform;
@@ -337,24 +337,24 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
         switch (c) {
             case kChannelTimbre:
                 return {timbre_amount.value,
-                        timbre_rate_mode.int_value(), timbre_rate_hz.value,
+                        timbre_clock_mode.int_value(), timbre_rate_hz.value,
                         timbre_sync_division.int_value(), timbre_waveform.int_value(),
                         timbre_phase_offset.value, timbre_phase_random.value,
                         timbre_polarity.int_value(), timbre_attack_ms.value, timbre_mode.int_value()};
             case kChannelPressure:
                 return {pressure_amount.value,
-                        pressure_rate_mode.int_value(), pressure_rate_hz.value,
+                        pressure_clock_mode.int_value(), pressure_rate_hz.value,
                         pressure_sync_division.int_value(), pressure_waveform.int_value(),
                         pressure_phase_offset.value, pressure_phase_random.value,
                         pressure_polarity.int_value(), pressure_attack_ms.value, pressure_mode.int_value()};
             case kChannelPitchBend:
                 return {pitch_bend_amount.value,
-                        pitch_bend_rate_mode.int_value(), pitch_bend_rate_hz.value,
+                        pitch_bend_clock_mode.int_value(), pitch_bend_rate_hz.value,
                         pitch_bend_sync_division.int_value(), pitch_bend_waveform.int_value(),
                         pitch_bend_phase_offset.value, pitch_bend_phase_random.value,
                         pitch_bend_polarity.int_value(), pitch_bend_attack_ms.value, pitch_bend_mode.int_value()};
             default:
-                return {0.0f, vivid::kRateModeFree, 0.5f, 2, 0, 0.0f, 0.0f, 0, 0.0f, 0};
+                return {0.0f, vivid::kClockModeInternal, 0.5f, 2, 0, 0.0f, 0.0f, 0, 0.0f, 0};
         }
     }
 
@@ -425,7 +425,7 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
             static_cast<float>(ctx->buffer_size) / static_cast<float>(ctx->sample_rate);
 
         // Pull the graph metronome and external beat_phase scalar once per
-        // call. Used per-channel based on rate_mode. beat_phase_in is read
+        // call. Used per-channel based on clock_mode. beat_phase_in is read
         // at block start because the modulator advances at block rate.
         const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
         const float beat_phase_in = vivid::audio_scalar_block_start(ctx, kBeatPhasePortIdx);
@@ -442,23 +442,23 @@ struct NoteModulator : vivid::OperatorBase, vivid::AudioProcessable {
 
                 ChannelState& st = slot_state_[slot][c];
 
-                // Compute phase from whichever source the rate_mode picks.
+                // Compute phase from whichever source the clock_mode picks.
                 // Per-note phase_random_offset is layered on top in all
                 // modes so simultaneous notes can still be decorrelated
                 // even when the global metronome makes the base phase
                 // shared across voices.
                 double base_phase;
-                switch (p.rate_mode) {
-                    case vivid::kRateModeMetronome:
+                switch (p.clock_mode) {
+                    case vivid::kClockModeMetronome:
                         base_phase = vivid::cycle_phase_from_total_beats(
                             metronome.beats_elapsed, p.sync_division, /*phase_offset=*/0.0);
                         break;
-                    case vivid::kRateModeExternal:
+                    case vivid::kClockModeExternal:
                         base_phase = std::fmod(
                             static_cast<double>(beat_phase_in) * static_cast<double>(p.rate_hz), 1.0);
                         if (base_phase < 0.0) base_phase += 1.0;
                         break;
-                    case vivid::kRateModeFree:
+                    case vivid::kClockModeInternal:
                     default:
                         st.phase_accum += static_cast<double>(p.rate_hz) * static_cast<double>(dt_per_block);
                         st.phase_accum -= std::floor(st.phase_accum);

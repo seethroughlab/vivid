@@ -15,14 +15,14 @@ void ClockCore::draw_thumbnail(const VividThumbnailContext* ctx) {
     float beat_phase = (ctx->output_count > 0) ? std::clamp(ctx->output_values[0], 0.0f, 1.0f) : 0.0f;
     float bar_phase = (ctx->output_count > 2) ? std::clamp(ctx->output_values[2], 0.0f, 1.0f) : beat_phase;
     int beats = (ctx->param_count > 1) ? std::clamp(static_cast<int>(ctx->param_values[1]), 1, 16) : 4;
-    int rate_mode = (ctx->param_count > 2) ? static_cast<int>(ctx->param_values[2]) : 0;
+    int clock_mode = (ctx->param_count > 2) ? static_cast<int>(ctx->param_values[2]) : 0;
     int current_beat = std::clamp(static_cast<int>(bar_phase * static_cast<float>(beats)), 0, beats - 1);
 
     vivid::draw_plot::draw_thumb_background(d, o, w, h);
 
     char bpm_label[16];
     float bpm_value = (ctx->param_count > 0) ? ctx->param_values[0] : 120.0f;
-    if (rate_mode == 1) {
+    if (clock_mode == 1) {
         std::snprintf(bpm_label, sizeof(bpm_label), "SYNC");
     } else {
         std::snprintf(bpm_label, sizeof(bpm_label), "%.0f BPM", bpm_value);

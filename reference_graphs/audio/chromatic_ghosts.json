@@ -75,7 +75,7 @@
         "euclid_bass": {
             "type": "Euclidean",
             "params": {
-                "rate": 2.0,
+                "sync_division": 2,
                 "hits": 3.0,
                 "steps": 8.0,
                 "rotation": 11.0,
@@ -89,7 +89,7 @@
         "euclid_lead": {
             "type": "Euclidean",
             "params": {
-                "rate": 2.0,
+                "sync_division": 2,
                 "hits": 3.0,
                 "steps": 17.0,
                 "rotation": 0.0,
@@ -103,7 +103,7 @@
         "euclid_noise": {
             "type": "Euclidean",
             "params": {
-                "rate": 4.0,
+                "sync_division": 4,
                 "hits": 6.0,
                 "steps": 11.0,
                 "rotation": 5.0,

@@ -33,7 +33,7 @@ struct Lfo : LFO, vivid::AudioProcessable {
                 std::fmod(static_cast<double>(sample_metronome.beat_phase) + beat_offset, 1.0));
             ctx->output_buffers[0][i] = compute_one_sample(
                 s, frequency.value, amplitude.value, offset.value,
-                waveform.int_value(), rate_mode.int_value(), sync_division.int_value(),
+                waveform.int_value(), clock_mode.int_value(), sync_division.int_value(),
                 polarity.int_value(), distribution.int_value(),
                 seed.int_value(), static_cast<float>(phase_offset.value),
                 fade_in.value,

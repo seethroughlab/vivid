@@ -10,12 +10,21 @@
 
 namespace vivid {
 
-constexpr int kClockSourceExternal = 0;
-constexpr int kClockSourceMetronome = 1;
+// ── Canonical timing vocabulary ─────────────────────────────────────────
+//
+// Every time-driven operator selects its clock with a single `clock_mode`
+// param. There are two label sets: the "full" set for operators with a
+// meaningful internal clock (a frequency/rate param), and the "synced" set
+// for operators that only make sense driven by an external or metronome
+// clock. Numeric values are stable so saved-graph param ints never need
+// remapping when an operator switches to this vocabulary.
+constexpr int kClockModeInternal  = 0;  // own frequency / time
+constexpr int kClockModeExternal  = 1;  // beat_phase input port
+constexpr int kClockModeMetronome = 2;  // global metronome + sync_division
 
-constexpr int kRateModeFree = 0;
-constexpr int kRateModeExternal = 1;
-constexpr int kRateModeMetronome = 2;
+// For the 2-option "synced" shape (no internal clock):
+constexpr int kClockModeSyncedExternal  = 0;  // beat_phase input port
+constexpr int kClockModeSyncedMetronome = 1;  // global metronome
 
 struct MetronomeTransport {
     float bpm = 120.0f;
@@ -30,12 +39,20 @@ struct MetronomeTransport {
 // after VividGpuContext is fully defined.
 MetronomeTransport metronome_transport(const VividGpuContext* ctx);
 
-inline std::vector<std::string> rate_mode_labels() {
-    return {"free", "external", "metronome"};
+// Canonical mode-selector labels. The "full" set is for operators with an
+// internal clock; the "synced" set is for operators that only sync.
+inline std::vector<std::string> clock_mode_full_labels() {
+    return {"internal", "external", "metronome"};
 }
 
-inline std::vector<std::string> clock_source_labels() {
+inline std::vector<std::string> clock_mode_synced_labels() {
     return {"external", "metronome"};
+}
+
+// For operators that are self-clocked or metronome-locked but take no external
+// clock input (e.g. Delay, Clock): {internal=0, metronome=1}.
+inline std::vector<std::string> clock_mode_tempo_labels() {
+    return {"internal", "metronome"};
 }
 
 inline std::vector<std::string> metronome_division_labels() {
@@ -118,19 +135,20 @@ inline double advance_external_total_beats(float external_phase, float& prev_pha
     return static_cast<double>(beat_count) + static_cast<double>(clamped_phase);
 }
 
-inline float resolve_clock_phase(int source_mode,
+// `clock_mode` for synced-shape operators: external=0, metronome=1.
+inline float resolve_clock_phase(int clock_mode,
                                  float external_phase,
                                  const MetronomeTransport& metronome) {
-    if (source_mode == kClockSourceMetronome) {
+    if (clock_mode == kClockModeSyncedMetronome) {
         return metronome.beat_phase;
     }
     return external_phase;
 }
 
-inline float resolve_bar_phase(int source_mode,
+inline float resolve_bar_phase(int clock_mode,
                                float external_bar_phase,
                                const MetronomeTransport& metronome) {
-    if (source_mode == kClockSourceMetronome) {
+    if (clock_mode == kClockModeSyncedMetronome) {
         return metronome.bar_phase;
     }
     return external_bar_phase;

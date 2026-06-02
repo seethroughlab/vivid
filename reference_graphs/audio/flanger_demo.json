@@ -44,7 +44,7 @@
         "flanger": {
             "type": "Flanger",
             "params": {
-                "rate": 0.3,
+                "frequency": 0.3,
                 "depth": 0.8,
                 "feedback": 0.7,
                 "mix": 0.6
@@ -68,7 +68,7 @@
         },
         {
             "from": "lfo/value",
-            "to": "flanger/rate_cv"
+            "to": "flanger/freq_cv"
         },
         {
             "from": "flanger/output",

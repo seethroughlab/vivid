@@ -1,5 +1,6 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "shared/timing/clock_block.h"
 #include "operator_api/audio_dsp.h"
 
 #include <cmath>
@@ -59,8 +60,8 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Flanger";
     static constexpr bool kTimeDependent = false;
 
-    vivid::Param<float> rate    {"rate",      0.25f, 0.01f, 10.0f};
-    vivid::Param<int>   rate_mode{"rate_mode", 0, vivid::rate_mode_labels()};
+    vivid::Param<float> frequency    {"frequency",      0.25f, 0.01f, 10.0f};
+    vivid::Param<int>   clock_mode{"clock_mode", 0, vivid::clock_mode_full_labels()};
     vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<float> depth   {"depth",     0.7f,  0.0f,   1.0f};
     vivid::Param<float> feedback{"feedback",  0.5f, -0.95f,  0.95f};
@@ -79,13 +80,14 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     float dc_y1_[kMaxChannels] = {};
 
     Flanger() {
-        vivid::semantic_tag(rate, "frequency_hz");
-        vivid::semantic_shape(rate, "scalar");
-        vivid::semantic_unit(rate, "Hz");
-        vivid::display_hint(rate, VIVID_DISPLAY_KNOB);
-        vivid::description(rate, "Speed of the LFO sweep in Hz");
-        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
-        vivid::description(sync_division, "Musical note length used when the flanger rate follows a clock");
+        vivid::semantic_tag(frequency, "frequency_hz");
+        vivid::semantic_shape(frequency, "scalar");
+        vivid::semantic_unit(frequency, "Hz");
+        vivid::display_hint(frequency, VIVID_DISPLAY_KNOB);
+        vivid::description(frequency, "Speed of the LFO sweep in Hz");
+        vivid::description(clock_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(sync_division, "Musical note length used when the flanger frequency follows a clock");
+        vivid::wire_clock_visibility(frequency, sync_division, clock_mode);
 
         vivid::semantic_tag(depth, "probability_01");
         vivid::semantic_shape(depth, "scalar");
@@ -105,8 +107,8 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
-        out.push_back(&rate);
-        out.push_back(&rate_mode);
+        out.push_back(&frequency);
+        out.push_back(&clock_mode);
         out.push_back(&sync_division);
         out.push_back(&depth);
         out.push_back(&feedback);
@@ -116,8 +118,8 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",   VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
         out.push_back({"output",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f});
-        out.push_back({"rate_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        out.push_back({"freq_cv", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         vivid::append_analysis_ports(out);
     }
 
@@ -143,9 +145,9 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
         if (nch > kMaxChannels) nch = kMaxChannels;
         uint32_t frames = ctx->buffer_size;
 
-        float rate_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
-        const int mode = rate_mode.int_value();
-        float mod_rate = rate.value + rate_cv_val;
+        float freq_cv_val = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
+        const int mode = clock_mode.int_value();
+        float mod_rate = frequency.value + freq_cv_val;
         if (mod_rate < 0.01f) mod_rate = 0.01f;
         if (mod_rate > 10.0f) mod_rate = 10.0f;
 
@@ -165,11 +167,11 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
 
         for (uint32_t i = 0; i < frames; i++) {
             double phase = phase_;
-            if (mode == vivid::kRateModeMetronome) {
+            if (mode == vivid::kClockModeMetronome) {
                 phase = vivid::cycle_phase_from_total_beats(
                     metronome.beats_elapsed + static_cast<double>(i) * metronome_beats_per_sample,
                     sync_division.int_value());
-            } else if (mode == vivid::kRateModeExternal) {
+            } else if (mode == vivid::kClockModeExternal) {
                 float external_phase = ctx->input_buffers[2] ? ctx->input_buffers[2][i] : 0.0f;
                 const double total_beats = vivid::advance_external_total_beats(
                     external_phase, prev_external_phase_, external_beat_count_);
@@ -178,7 +180,7 @@ struct Flanger : vivid::OperatorBase, vivid::AudioProcessable {
 
             // Sine LFO [0,1] range — shared across channels
             float lfo = static_cast<float>(audio_dsp::waveform(phase, 0)) * 0.5f + 0.5f;
-            if (mode == vivid::kRateModeFree) {
+            if (mode == vivid::kClockModeInternal) {
                 phase_ += mod_rate * inv_sr;
                 if (phase_ >= 1.0) phase_ -= 1.0;
             }

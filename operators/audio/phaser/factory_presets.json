@@ -2,23 +2,53 @@
   "presets": [
     {
       "name": "Classic Sweep",
-      "params": { "rate": 0.3, "depth": 0.6, "stages": 1, "feedback": 0.4, "mix": 0.5 }
+      "params": {
+        "frequency": 0.3,
+        "depth": 0.6,
+        "stages": 1,
+        "feedback": 0.4,
+        "mix": 0.5
+      }
     },
     {
       "name": "Deep Space",
-      "params": { "rate": 0.05, "depth": 1.0, "stages": 4, "feedback": 0.7, "mix": 0.6 }
+      "params": {
+        "frequency": 0.05,
+        "depth": 1.0,
+        "stages": 4,
+        "feedback": 0.7,
+        "mix": 0.6
+      }
     },
     {
       "name": "Barber Pole",
-      "params": { "rate": 0.8, "depth": 0.5, "stages": 5, "feedback": 0.5, "mix": 0.45 }
+      "params": {
+        "frequency": 0.8,
+        "depth": 0.5,
+        "stages": 5,
+        "feedback": 0.5,
+        "mix": 0.45
+      }
     },
     {
       "name": "Subtle Motion",
-      "params": { "rate": 0.15, "depth": 0.3, "stages": 0, "feedback": 0.2, "mix": 0.3 }
+      "params": {
+        "frequency": 0.15,
+        "depth": 0.3,
+        "stages": 0,
+        "feedback": 0.2,
+        "mix": 0.3
+      }
     },
     {
       "name": "Resonant Sweep",
-      "params": { "rate": 0.2, "depth": 0.8, "stages": 3, "feedback": 0.9, "mix": 0.55 }
+      "params": {
+        "frequency": 0.2,
+        "depth": 0.8,
+        "stages": 3,
+        "feedback": 0.9,
+        "mix": 0.55
+      }
     }
   ]
 }

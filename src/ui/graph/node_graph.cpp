@@ -443,7 +443,17 @@ void NodeGraphUI::recompute_ports(NodeRect& rect, const NodeSnapshot& ns) {
             }
         }
         float dy = port_start_dy + pi * kLineH + kLineH * 0.5f;
-        rect.inputs.push_back({port_name, dy, false});
+        NodeRect::TimingKind timing = NodeRect::TimingKind::None;
+        if (port_info) {
+            const std::string& tag = port_info->semantic_tag;
+            if (tag == "beat_phase" || tag == "bar_phase" || tag == "clock")
+                timing = NodeRect::TimingKind::Clock;
+            else if (tag == "trigger")
+                timing = NodeRect::TimingKind::Trigger;
+            else if (tag == "gate")
+                timing = NodeRect::TimingKind::Gate;
+        }
+        rect.inputs.push_back({port_name, dy, false, timing});
         ++pi;
     }
 

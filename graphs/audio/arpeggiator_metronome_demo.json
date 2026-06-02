@@ -32,7 +32,7 @@
         "vel_1": 0.5,
         "tr_3": 0.0,
         "vel_0": 1.0,
-        "clock_source": 1.0,
+        "clock_mode": 1.0,
         "swing": 0.0,
         "tr_1": 0.0,
         "mod_steps": 4.0,
@@ -42,7 +42,7 @@
         "gate_length": 0.6,
         "mode": 0.0,
         "vel_2": 0.7,
-        "rate": 3.0,
+        "sync_division": 3,
         "octaves": 2.0
       },
       "layout": {
@@ -91,7 +91,7 @@
         "ext_0": 1.0,
         "degree_3": 0.0,
         "degree_0": 0.0,
-        "clock_source": 1.0,
+        "clock_mode": 1.0,
         "beats_per_step": 4.0
       },
       "layout": {

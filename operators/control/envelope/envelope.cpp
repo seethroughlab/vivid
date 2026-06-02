@@ -48,7 +48,7 @@ struct EnvelopeAudio : Envelope, vivid::AudioProcessable {
                 vivid::MetronomeTransport sample_metronome =
                     vivid::metronome_transport_sample(metronome, i, ctx->sample_rate);
                 float phase_in = vivid::resolve_clock_phase(
-                    clock_source.int_value(), vivid::audio_scalar_sample(ctx, 2, i), sample_metronome);
+                    clock_mode.int_value(), vivid::audio_scalar_sample(ctx, 2, i), sample_metronome);
                 advance_triggers(s, gate_in, phase_in);
                 advance_adsr(s, sample_dt, attack.value, decay.value,
                              sustain.value, release.value, curve.int_value());
@@ -86,7 +86,7 @@ struct EnvelopeAudio : Envelope, vivid::AudioProcessable {
                 vivid::MetronomeTransport sample_metronome =
                     vivid::metronome_transport_sample(metronome, i, ctx->sample_rate);
                 float phase_in = vivid::resolve_clock_phase(
-                    clock_source.int_value(), vivid::audio_scalar_sample(ctx, 2, i), sample_metronome);
+                    clock_mode.int_value(), vivid::audio_scalar_sample(ctx, 2, i), sample_metronome);
                 advance_triggers(s, gate_val, phase_in);
                 advance_adsr(s, sample_dt, attack.value, decay.value,
                              sustain.value, release.value, curve.int_value());

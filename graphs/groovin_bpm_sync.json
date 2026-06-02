@@ -21,7 +21,7 @@
             "params": {
                 "auto_play": 1.0,
                 "volume": 0.6,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "file_bpm": 72.0,
                 "warp_points": "",
                 "file": "../assets/audio/GROOVIN__72_drum_loops_heavy_chains.wav"
@@ -36,7 +36,7 @@
             "params": {
                 "auto_play": 1.0,
                 "volume": 0.6,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "file_bpm": 84.0,
                 "warp_points": "",
                 "file": "../assets/audio/GROOVIN__84_drum_loops_chillin_.wav"
@@ -51,7 +51,7 @@
             "params": {
                 "auto_play": 1.0,
                 "volume": 0.6,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "file_bpm": 98.0,
                 "warp_points": "",
                 "file": "../assets/audio/GROOVIN__98_drum_loops_break_it.wav"
@@ -66,7 +66,7 @@
             "params": {
                 "auto_play": 1.0,
                 "volume": 0.6,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "file_bpm": 140.0,
                 "warp_points": "",
                 "file": "../assets/audio/GROOVIN__140_drum_loops_linear_backbeat.wav"

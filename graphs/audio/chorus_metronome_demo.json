@@ -48,7 +48,7 @@
             "params": {
                 "frequency": 1.0,
                 "waveform": 2,
-                "rate_mode": 2,
+                "clock_mode": 2,
                 "sync_division": 2,
                 "polarity": 1,
                 "amplitude": 0.78,
@@ -63,8 +63,8 @@
         "chorus": {
             "type": "Chorus",
             "params": {
-                "rate": 0.8,
-                "rate_mode": 2,
+                "frequency": 0.8,
+                "clock_mode": 2,
                 "sync_division": 0,
                 "depth": 1.0,
                 "voices": 6,

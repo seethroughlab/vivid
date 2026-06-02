@@ -22,20 +22,20 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
-    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int> clock_mode {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     Alternate() {
         vivid::description(cycle, "How many beats before advancing to the next input");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&cycle);
-        out.push_back(&clock_source);
+        out.push_back(&clock_mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"input_0",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  0});
         out.push_back({"input_1",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  1});
         out.push_back({"input_2",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr, 0, "input",  2});
@@ -58,7 +58,7 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         float beat_phase = vivid::resolve_clock_phase(
-            clock_source.int_value(), ctx->input_values[0], vivid::metronome_transport(ctx));
+            clock_mode.int_value(), ctx->input_values[0], vivid::metronome_transport(ctx));
         compute(beat_phase, ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
     }
 

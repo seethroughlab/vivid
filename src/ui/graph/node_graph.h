@@ -58,7 +58,8 @@ struct NodeRect {
     uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
-    struct PortPos { std::string name; float dy; bool is_param = false; };
+    enum class TimingKind : uint8_t { None, Clock, Trigger, Gate };
+    struct PortPos { std::string name; float dy; bool is_param = false; TimingKind timing = TimingKind::None; };
     std::vector<PortPos> inputs, outputs;
     // Multi-output expand affordance
     bool     outputs_expandable  = false;

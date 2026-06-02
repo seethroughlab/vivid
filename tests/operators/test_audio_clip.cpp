@@ -134,7 +134,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 0.0f;
         h.op.loop.value = 1.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeExternal);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeExternal);
         for (uint32_t i = 0; i < h.N; ++i)
             h.beat[i] = static_cast<float>(i) / static_cast<float>(h.N - 1);
 
@@ -157,7 +157,7 @@ int main() {
         h.op.stretch.value = 0.0f;
         h.op.loop.value = 1.0f;
         h.op.reverse.value = 1.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeExternal);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeExternal);
         for (uint32_t i = 0; i < h.N; ++i)
             h.beat[i] = static_cast<float>(i) / static_cast<float>(h.N - 1);
 
@@ -176,7 +176,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 0.0f;
         h.op.loop.value = 1.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeFree);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeInternal);
         h.op.process_audio(&h.ctx);
         check(std::fabs(h.pos.front()) < 1e-6f, "free mode position starts at current playhead");
         check(h.pos[1] > h.pos[0], "free mode position advances per sample");
@@ -191,7 +191,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 0.0f;
         h.op.loop.value = 0.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeFree);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeInternal);
         h.op.process_audio(&h.ctx);
         check(all_done_zero_except_last(h.done), "done pulse is isolated to final sample");
         check(h.done.back() == 1.0f, "non-looping completion emits done pulse");
@@ -205,7 +205,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 0.0f;
         h.op.loop.value = 1.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeFree);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeInternal);
         h.op.process_audio(&h.ctx);
         check(h.pos.back() > 0.02f && h.pos.back() < 0.04f,
               "44.1k source is resampled into the 48k runtime domain");
@@ -220,7 +220,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 1.0f;
         h.op.loop.value = 0.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeFree);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeInternal);
 
         float total_energy = 0.0f;
         bool saw_done = false;
@@ -242,7 +242,7 @@ int main() {
         h.load(path);
         h.op.stretch.value = 1.0f;
         h.op.loop.value = 0.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeFree);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeInternal);
 
         h.op.process_audio(&h.ctx);
         const bool first_block_done = h.done.back() == 1.0f;
@@ -451,7 +451,7 @@ int main() {
         h.op.stretch.value = 0.0f;
         h.op.warp_enabled.value = 1.0f;
         h.op.file_bpm.value = 120.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeMetronome);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeMetronome);
         h.ctx.metronome_beats_elapsed = 1.5;
         h.op.process_audio(&h.ctx);
         check(h.audio.front() > 0.30f && h.audio.front() < 0.45f,
@@ -471,7 +471,7 @@ int main() {
         h.op.stretch.value = 0.0f;
         h.op.warp_enabled.value = 1.0f;
         h.op.file_bpm.value = 0.0f;
-        h.op.rate_mode.value = static_cast<float>(vivid::kRateModeMetronome);
+        h.op.clock_mode.value = static_cast<float>(vivid::kClockModeMetronome);
         h.ctx.metronome_beats_elapsed = 1.5;
         h.op.process_audio(&h.ctx);
         check(h.audio.front() > 0.30f && h.audio.front() < 0.45f,

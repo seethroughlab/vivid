@@ -53,7 +53,7 @@ static void chord_display_name(char* buf, int buf_size,
  * note stream on `notes_out` plus scalar convenience signals for the first
  * chord tone.
  *
- * @input beat_phase Optional beat phase override (0-1 sawtooth). When unconnected, syncs to the graph metronome via clock_source.
+ * @input beat_phase Optional beat phase override (0-1 sawtooth). When unconnected, syncs to the graph metronome via clock_mode.
  * @output note First note of the current chord as a scalar convenience output.
  * @output vel First velocity of the current chord as a scalar convenience output.
  * @output gate First gate of the current chord as a scalar convenience output.
@@ -110,7 +110,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
     vivid::Param<int>   ext_7 {"ext_7", 0, {"Triad","7th","Add9"}};
 
     vivid::Param<int> midi_channel {"midi_channel", 1, 1, 16};
-    vivid::Param<int> clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int> clock_mode {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     // Internal state
     int beat_count_ = 0;
@@ -161,7 +161,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
         vivid::description(beats_per_step, "How many beats each chord is held");
         vivid::description(gate_length, "Fraction of each step where the gate is high (0-1)");
         vivid::description(velocity, "MIDI velocity for all chord notes (0-1)");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
 
         vivid::description(degree_0, "Scale degree for step 1");
         vivid::description(degree_1, "Scale degree for step 2");
@@ -220,7 +220,7 @@ struct ChordProgressionCore : vivid::OperatorBase {
             out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
 
         out.push_back(&midi_channel); // 31
-        out.push_back(&clock_source); // 32
+        out.push_back(&clock_mode); // 32
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {

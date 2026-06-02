@@ -17,7 +17,7 @@ int main() {
     check(ps::param_name_for(15) == "val_15", "step 15 → val_15");
     check(ps::param_index_for(0) == 1,       "val_0 at descriptor index 1");
     check(ps::param_index_for(15) == 16,     "val_15 at descriptor index 16");
-    check(ps::kRateIndex        == 17,       "rate at 17");
+    check(ps::kSyncDivisionIndex        == 17,       "rate at 17");
     check(ps::kGateLengthIndex  == 18,       "gate_length at 18");
     check(ps::kProbabilityIndex == 19,       "probability at 19");
 

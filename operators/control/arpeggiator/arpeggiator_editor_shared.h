@@ -27,12 +27,12 @@ inline constexpr int kMaxSteps = 16;
 // start at 25.
 inline constexpr int kModeIndex         = 0;
 inline constexpr int kOctavesIndex      = 1;
-inline constexpr int kRateIndex         = 2;
+inline constexpr int kSyncDivisionIndex         = 2;
 inline constexpr int kGateLengthIndex   = 3;
 inline constexpr int kSwingIndex        = 4;
 inline constexpr int kLatchIndex        = 5;
 inline constexpr int kModStepsIndex     = 6;
-inline constexpr int kClockSourceIndex  = 7;
+inline constexpr int kClockModeIndex  = 7;
 
 inline constexpr int kVelBase_0_7   = 8;   // vel_0..vel_7 at 8..15
 inline constexpr int kTrBase_0_7    = 16;  // tr_0..tr_7  at 16..23

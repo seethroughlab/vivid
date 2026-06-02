@@ -288,7 +288,7 @@ int main() {
         VividLaneOutput lane_dummy{};
 
         // Step 0 tick — kick fires. Start at phase 0 so the first-frame
-        // clock_source reset lands phase_offset_ at 0 and later phases map
+        // clock_mode reset lands phase_offset_ at 0 and later phases map
         // to the intended steps without drift.
         drum.compute(0.0f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 7);

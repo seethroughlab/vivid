@@ -404,9 +404,34 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             float dot_alpha = p.is_param ? kParamDotAlpha : 1.0f;
             if (port_hov) { dot_scale *= kPortHoverScale; dot_alpha = kPortHoverAlpha; }
             float sd = s_dot * dot_scale;
-            tr.draw_rect(spx - sd, spy - sd * 0.5f,
-                         sd, sd,
-                         dcol[0], dcol[1], dcol[2], dot_alpha);
+            // Timing input ports get a distinct accent-tinted glyph so users can
+            // see at a glance which inputs are clock/trigger/gate signals:
+            //   Clock (beat_phase) -> triangle, Trigger -> ring, Gate -> filled disc.
+            switch (p.timing) {
+                case NodeRect::TimingKind::Clock:
+                    tr.draw_tri(spx - sd, spy - sd * 0.5f,
+                                spx - sd, spy + sd * 0.5f,
+                                spx,      spy,
+                                style_.accent[0], style_.accent[1], style_.accent[2], dot_alpha);
+                    break;
+                case NodeRect::TimingKind::Trigger: {
+                    float cr = sd * 0.5f;
+                    float th = sd * 0.22f; if (th < 1.0f) th = 1.0f;
+                    tr.draw_circle(spx - cr, spy, cr, th,
+                                   style_.accent[0], style_.accent[1], style_.accent[2], dot_alpha);
+                    break;
+                }
+                case NodeRect::TimingKind::Gate: {
+                    float cr = sd * 0.5f;
+                    tr.draw_circle(spx - cr, spy, cr, cr,
+                                   style_.accent[0], style_.accent[1], style_.accent[2], dot_alpha);
+                    break;
+                }
+                default:
+                    tr.draw_rect(spx - sd, spy - sd * 0.5f, sd, sd,
+                                 dcol[0], dcol[1], dcol[2], dot_alpha);
+                    break;
+            }
             tr.draw_text(spx + g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2],
                          port_hov ? 1.0f : (p.is_param ? kParamDotAlpha : 1.0f), zoom_);

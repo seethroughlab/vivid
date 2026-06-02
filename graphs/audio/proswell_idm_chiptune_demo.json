@@ -4,7 +4,7 @@
   "meta": {
     "id": "proswell_idm_chiptune_demo",
     "title": "Proswell-style IDM/Chiptune Sketch",
-    "description": "A short IDM-meets-chiptune sketch in A minor. The DrumSequencer runs in **song mode** with four distinct sections (A=intro / B=verse / C=chorus / D=break-fill), each held for 4 bars before auto-advancing \u2014 a 16-bar arrangement. Chord pad cycles Am \u2014 F \u2014 C \u2014 G under a square sub bass; a Tracker channel carries the lead melody with pitch wobble (pb) and a pressure climax. Demonstrates the Phase 4 Tracker expression authoring + Phase 5 universal pressure/timbre wiring.",
+    "description": "A short IDM-meets-chiptune sketch in A minor. The DrumSequencer runs in **song mode** with four distinct sections (A=intro / B=verse / C=chorus / D=break-fill), each held for 4 bars before auto-advancing — a 16-bar arrangement. Chord pad cycles Am — F — C — G under a square sub bass; a Tracker channel carries the lead melody with pitch wobble (pb) and a pressure climax. Demonstrates the Phase 4 Tracker expression authoring + Phase 5 universal pressure/timbre wiring.",
     "tags": [
       "idm",
       "chiptune",
@@ -373,7 +373,7 @@
       "type": "Tracker",
       "params": {
         "speed": 6.0,
-        "rate": 4.0,
+        "sync_division": 4,
         "pattern_data": "{\"v\":2,\"arrangement\":[0],\"patterns\":[{\"rows\":32,\"expr_mask\":3,\"cells\":[{\"row\":0,\"channel\":0,\"note\":76,\"velocity\":95,\"pr\":0},{\"row\":3,\"channel\":0,\"pr\":9000},{\"row\":4,\"channel\":0,\"note\":79,\"velocity\":100},{\"row\":6,\"channel\":0,\"note\":81,\"velocity\":92},{\"row\":7,\"channel\":0,\"note\":79,\"velocity\":88},{\"row\":8,\"channel\":0,\"note\":77,\"velocity\":100,\"pb\":0},{\"row\":9,\"channel\":0,\"pb\":200},{\"row\":10,\"channel\":0,\"pb\":-200},{\"row\":11,\"channel\":0,\"pb\":0},{\"row\":12,\"channel\":0,\"note\":81,\"velocity\":95},{\"row\":14,\"channel\":0,\"note\":84,\"velocity\":90},{\"row\":15,\"channel\":0,\"note\":81,\"velocity\":88},{\"row\":16,\"channel\":0,\"note\":84,\"velocity\":100},{\"row\":20,\"channel\":0,\"note\":76,\"velocity\":95},{\"row\":22,\"channel\":0,\"note\":79,\"velocity\":92},{\"row\":23,\"channel\":0,\"note\":76,\"velocity\":88,\"pr\":0},{\"row\":24,\"channel\":0,\"note\":74,\"velocity\":100},{\"row\":28,\"channel\":0,\"note\":71,\"velocity\":95,\"pr\":18000},{\"row\":30,\"channel\":0,\"note\":69,\"velocity\":100},{\"row\":31,\"channel\":0,\"pr\":0}]}]}"
       },
       "layout": {
@@ -472,7 +472,7 @@
   "sticky_notes": [
     {
       "id": "intro_note",
-      "text": "**Proswell-style IDM/chiptune** \u2014 A minor, 92 BPM.\n\n**Drums** (song mode, 4\u00d74-bar sections):\n  A = intro \u00b7 B = verse \u00b7 C = chorus \u00b7 D = break-fill\n**Chord pad**: ChordProgression Am-F-C-G into WavetableLayer.\n**Bass**: NotePattern walks roots into SubOsc square -1 oct.\n**Lead**: Tracker pattern with pb wobble + pressure swell into AnalogOsc Pulse.\n\nOpen the DrumSequencer editor \u2014 the section picker shows A/B/C/D.",
+      "text": "**Proswell-style IDM/chiptune** — A minor, 92 BPM.\n\n**Drums** (song mode, 4×4-bar sections):\n  A = intro · B = verse · C = chorus · D = break-fill\n**Chord pad**: ChordProgression Am-F-C-G into WavetableLayer.\n**Bass**: NotePattern walks roots into SubOsc square -1 oct.\n**Lead**: Tracker pattern with pb wobble + pressure swell into AnalogOsc Pulse.\n\nOpen the DrumSequencer editor — the section picker shows A/B/C/D.",
       "x": -418.42853,
       "y": 363.9538,
       "width": 360.0,

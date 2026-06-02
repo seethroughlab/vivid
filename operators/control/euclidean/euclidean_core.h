@@ -3,6 +3,7 @@
 #include "operator_api/metronome_sync.h"
 #include "operator_api/note_types.h"
 #include "operator_api/operator.h"
+#include "shared/timing/clock_block.h"
 #include "operator_api/type_id.h"
 #include "operator_api/editor_ui.h"
 #include "operator_api/editor_keys.h"
@@ -31,8 +32,8 @@ struct EuclideanCore : vivid::OperatorBase {
     vivid::Param<int>   steps       {"steps",       8, 1, 32};
     vivid::Param<int>   rotation    {"rotation",    0, 0, 31};
     vivid::Param<float> gate_length {"gate_length", 0.5f, 0.01f, 1.0f};
-    vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   sync_division        {"sync_division",        2, vivid::metronome_division_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
     vivid::Param<int>   bar_sync    {"bar_sync",    0, {"off","1 bar","2 bar","4 bar","8 bar"}};
     vivid::Param<int>   note        {"note",        36, 0, 127};
     vivid::Param<int>   velocity    {"velocity",    100, 1, 127};
@@ -54,10 +55,11 @@ struct EuclideanCore : vivid::OperatorBase {
         vivid::semantic_shape(gate_length, "scalar");
         vivid::description(gate_length, "Fraction of each step during which the gate stays high");
 
-        vivid::description(rate, "Clock subdivision for step timing");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(sync_division, "Clock subdivision for step timing");
+        vivid::wire_clock_visibility_synced(sync_division, clock_mode);
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         vivid::description(bar_sync,
-            "Restart pattern at the top of every Nth bar (only when clock_source = metronome).");
+            "Restart pattern at the top of every Nth bar (only when clock_mode = metronome).");
 
         vivid::semantic_tag(note, "midi_note");
         vivid::semantic_shape(note, "int");
@@ -73,15 +75,15 @@ struct EuclideanCore : vivid::OperatorBase {
         out.push_back(&steps);       // 1
         out.push_back(&rotation);    // 2
         out.push_back(&gate_length); // 3
-        out.push_back(&rate);        // 4
-        out.push_back(&clock_source);// 5
+        out.push_back(&sync_division);        // 4
+        out.push_back(&clock_mode);// 5
         out.push_back(&bar_sync);    // 6
         out.push_back(&note);        // 7
         out.push_back(&velocity);    // 8
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR,     VIVID_PORT_INPUT});   // in[0]
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});   // in[0]
         out.push_back({"trigger",    VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // out[0]
         out.push_back({"gate",       VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // out[1]
         out.push_back({"step",       VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // out[2]
@@ -99,7 +101,7 @@ struct EuclideanCore : vivid::OperatorBase {
         int n   = std::clamp(static_cast<int>(params[1]), 1, 32);
         int rot = std::clamp(static_cast<int>(params[2]), 0, 31);
         float gl = params[3];
-        int r   = std::clamp(static_cast<int>(params[4]), 0, 8);
+        int r   = std::clamp(static_cast<int>(params[4]), 0, 11);
         int cs  = static_cast<int>(params[5]);
         int sync_idx = std::clamp(static_cast<int>(params[6]), 0, 4);
         int midi_note = std::clamp(static_cast<int>(params[7]), 0, 127);
@@ -115,7 +117,7 @@ struct EuclideanCore : vivid::OperatorBase {
         // Phrase reset: when synced to the graph metronome, snap the internal
         // beat counter back to 0 at the start of each N-bar phrase so the
         // pattern always restarts at step 0 on phrase boundaries.
-        if (sync_idx > 0 && cs == vivid::kClockSourceMetronome) {
+        if (sync_idx > 0 && cs == vivid::kClockModeSyncedMetronome) {
             static constexpr int kSyncBars[] = {0, 1, 2, 4, 8};
             const int bpb = std::max(1, beats_per_bar);
             const double phrase_beats = static_cast<double>(bpb) * kSyncBars[sync_idx];
@@ -134,7 +136,7 @@ struct EuclideanCore : vivid::OperatorBase {
         if (delta < -0.5f) beat_count_++;
         prev_phase_ = beat_phase;
 
-        float multiplier = kMultipliers[r];
+        float multiplier = (1.0f / vivid::sync_cycle_beats(r));
         float total_beats = static_cast<float>(beat_count_) + beat_phase;
         float scaled_phase = total_beats * multiplier;
 
@@ -201,9 +203,6 @@ struct EuclideanCore : vivid::OperatorBase {
     const int* current_pattern() const { return pattern_; }
 
 private:
-    static constexpr float kMultipliers[] = {
-        0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 1.5f, 3.0f, 6.0f
-    };
 
     float prev_phase_ = 0.0f;
     int beat_count_ = 0;

@@ -1,14 +1,16 @@
 #include "tracker_core.h"
+#include "shared/timing/clock_block.h"
 #include <algorithm>
 #include <cmath>
 #include <functional>
 
 TrackerCore::TrackerCore() {
-    vivid::description(rate, "Step rate relative to the beat clock");
+    vivid::description(sync_division, "Step rate relative to the beat clock");
+    vivid::wire_clock_visibility_synced(sync_division, clock_mode);
     vivid::description(speed, "Number of rows advanced per beat tick, 1 to 16");
     vivid::description(base_channel, "Starting MIDI channel for track output, 1 to 16");
     vivid::description(channel_mode, "Single sends all tracks on base_channel; Multi assigns one channel per track");
-    vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+    vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     vivid::description(edit_pattern, "Index of the pattern currently shown in the editor");
     vivid::description(edit_channel, "Index of the track/channel currently focused in the editor");
     vivid::description(mute_mask, "Bitmask of muted tracks (bit 0 = track 1)");
@@ -21,11 +23,11 @@ TrackerCore::TrackerCore() {
 }
 
 void TrackerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
-    out.push_back(&rate);
+    out.push_back(&sync_division);
     out.push_back(&speed);
     out.push_back(&base_channel);
     out.push_back(&channel_mode);
-    out.push_back(&clock_source);
+    out.push_back(&clock_mode);
     display_hint(edit_pattern, VIVID_DISPLAY_HIDDEN);
     display_hint(edit_channel, VIVID_DISPLAY_HIDDEN);
     display_hint(mute_mask, VIVID_DISPLAY_HIDDEN);
@@ -37,8 +39,8 @@ void TrackerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
 }
 
 void TrackerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
-    out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-    out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+    out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
+    out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
     out.push_back({"row", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"pattern", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     out.push_back({"order", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
@@ -51,7 +53,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
     float beat_phase = input_values[0];
     bool reset_signal = input_values[1] > 0.5f;
 
-    int r = std::clamp(static_cast<int>(params[0]), 0, 8);
+    int r = std::clamp(static_cast<int>(params[0]), 0, 11);
     int spd = std::clamp(static_cast<int>(params[1]), 1, 16);
     int base_ch = std::clamp(static_cast<int>(params[2]), 1, 16) - 1;
     int ch_mode = std::clamp(static_cast<int>(params[3]), 0, 1);
@@ -65,7 +67,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
         current_tick_ = 0;
         beat_count_ = 0;
         prev_global_tick_ = static_cast<int>(std::floor(
-            beat_phase * kMultipliers[r] * static_cast<float>(spd)));
+            beat_phase / vivid::sync_cycle_beats(r) * static_cast<float>(spd)));
         prev_phase_ = beat_phase;
         for (auto& ch : channels_) {
             ch = tracker::ChannelState{};
@@ -78,7 +80,7 @@ void TrackerCore::compute(const float* input_values, const float* params,
     prev_phase_ = beat_phase;
 
     float total_beats = static_cast<float>(beat_count_) + beat_phase;
-    float scaled = total_beats * kMultipliers[r];
+    float scaled = total_beats / vivid::sync_cycle_beats(r);
     int global_tick = static_cast<int>(std::floor(scaled * spd));
 
     notes_buf_.count = 0;

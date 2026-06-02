@@ -42,7 +42,7 @@
             "type": "LfoFr",
             "params": {
                 "waveform": 2.0,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "sync_division": 4.0,
                 "offset": 330.0,
                 "amplitude": 110.0
@@ -56,7 +56,7 @@
             "type": "LfoFr",
             "params": {
                 "offset": 0.35,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "polarity": 1.0,
                 "waveform": 1.0,
                 "sync_division": 3.0,

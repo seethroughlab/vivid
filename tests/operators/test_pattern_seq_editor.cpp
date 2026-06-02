@@ -61,7 +61,7 @@ struct EditorHarness {
 
     EditorHarness() : params(22, 0.0f), outputs(4, 0.0f) {
         params[ps::kStepsIndex]       = 8.0f;
-        params[ps::kRateIndex]        = 2.0f;
+        params[ps::kSyncDivisionIndex]        = 2.0f;
         params[ps::kGateLengthIndex]  = 0.8f;
         params[ps::kProbabilityIndex] = 1.0f;
         // val_N default 0 already from the zeroed vector.

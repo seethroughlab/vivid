@@ -74,7 +74,7 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<int>   filter     {"filter",        0, {"Off", "LowPass", "HighPass"}};
     vivid::Param<float> filter_freq{"filter_freq", 3000.0f, 200.0f, 16000.0f};
     vivid::Param<float> mix        {"mix",           0.4f,  0.0f,    1.0f};
-    vivid::Param<int>   sync         {"sync",          0, {"Free", "Tempo Sync"}};
+    vivid::Param<int>   clock_mode   {"clock_mode",    0, vivid::clock_mode_tempo_labels()};
     vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
 
     DelayLine     delay_L_, delay_R_;
@@ -117,7 +117,7 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::display_hint(mix, VIVID_DISPLAY_KNOB);
         vivid::description(mix, "Blend between dry input and delayed signal");
 
-        vivid::description(sync, "Free uses the time knob (ms); Tempo Sync locks the "
+        vivid::description(clock_mode, "internal uses the time knob (ms); metronome locks the "
                                  "delay time to the graph tempo at the chosen note division");
         vivid::description(sync_division, "Musical note length for the delay time when "
                                           "Tempo Sync is on (e.g. 1/8, dotted 1/8)");
@@ -130,7 +130,7 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&filter);
         out.push_back(&filter_freq);
         out.push_back(&mix);
-        out.push_back(&sync);
+        out.push_back(&clock_mode);
         out.push_back(&sync_division);
     }
 
@@ -189,7 +189,7 @@ struct PingPongDelay : vivid::OperatorBase, vivid::AudioProcessable {
         // note division; Free uses the time knob plus its CV input. Clamped to
         // the 10ms..2s range the delay buffer supports.
         float t;
-        if (sync.int_value() != 0) {
+        if (clock_mode.int_value() != vivid::kClockModeInternal) {
             const float bpm = ctx->metronome_bpm > 0.0f ? ctx->metronome_bpm : 120.0f;
             t = vivid::sync_cycle_beats(sync_division.int_value()) * 60000.0f / bpm;
         } else {

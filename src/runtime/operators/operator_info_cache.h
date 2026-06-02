@@ -172,6 +172,7 @@ public:
             pi.repeat_group     = desc->ports[i].repeat_group ? desc->ports[i].repeat_group : "";
             pi.repeat_group_idx = desc->ports[i].repeat_group_idx;
             pi.description      = desc->ports[i].description ? desc->ports[i].description : "";
+            pi.semantic_tag     = desc->ports[i].semantic_tag ? desc->ports[i].semantic_tag : "";
         }
 
         // Only check shader/user status for fully-loaded operators

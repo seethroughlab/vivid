@@ -44,8 +44,8 @@ struct Macro : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "gate"});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 

@@ -162,7 +162,7 @@
                 "hat_12": 1.0,
                 "hat_10": 1.0,
                 "hat_0": 1.0,
-                "clock_source": 1.0
+                "clock_mode": 1.0
             },
             "layout": {
                 "x": -150.0,

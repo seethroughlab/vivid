@@ -6,9 +6,9 @@
 DrumSequencerCore::DrumSequencerCore() {
     vivid::description(steps, "Number of active steps in the pattern (1-16)");
     vivid::description(swing, "Swing amount, shifts even steps later (0 = straight, 0.5 = heavy triplet)");
-    vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+    vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     vivid::description(bar_sync,
-        "Restart pattern at the top of every Nth bar (only when clock_source = metronome).");
+        "Restart pattern at the top of every Nth bar (only when clock_mode = metronome).");
 
     vivid::description(kick_note, "MIDI note number for the kick drum");
     vivid::description(snare_note, "MIDI note number for the snare drum");
@@ -99,7 +99,7 @@ DrumSequencerCore::DrumSequencerCore() {
 void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
     out.push_back(&steps);        // 0
     out.push_back(&swing);        // 1
-    out.push_back(&clock_source); // 2
+    out.push_back(&clock_mode); // 2
     out.push_back(&midi_channel); // 3
 
     // Hide note/grid/mod params — rendered by custom inspector
@@ -318,15 +318,15 @@ void DrumSequencerCore::collect_params(std::vector<vivid::ParamBase*>& out) {
         out[i]->display_hint = VIVID_DISPLAY_HIDDEN;
 
     // song_mode is visible in the inspector — it's a low-density toggle that
-    // belongs alongside steps/swing/clock_source. Index = kSongModeIndex.
+    // belongs alongside steps/swing/clock_mode. Index = kSongModeIndex.
     out.push_back(&song_mode);
     // bars_per_pattern at kBarsPerPatternIndex. Visible.
     out.push_back(&bars_per_pattern);
 }
 
 void DrumSequencerCore::collect_ports(std::vector<VividPortDescriptor>& out) {
-    out.push_back({"beat_phase",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-    out.push_back({"reset",           VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+    out.push_back({"beat_phase",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
+    out.push_back({"reset",           VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
     out.push_back({"step",            VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     // current_pattern: which pattern (0..3) is currently playing. Useful for
     // syncing visuals to the song's section transitions.
@@ -357,15 +357,15 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     // Reset phase when clock source changes so the pattern restarts immediately.
     // Also rewinds the song-mode position to A — a clock-source switch is
     // a clean "start over" boundary.
-    int cs = clock_source.int_value();
-    if (cs != prev_clock_source_) {
+    int cs = clock_mode.int_value();
+    if (cs != prev_clock_mode_) {
         // Transport-lock: on the metronome clock, anchor the grid to the bar
         // (phase_offset_ = 0) so step 0 lands on the bar downbeat and the
         // pattern stays bar-aligned with transport-locked MidiClips regardless
         // of when the sequencer started. External clock keeps the legacy
         // "capture the current phase" behavior (the phase is user-driven there).
-        phase_offset_ = (cs == vivid::kClockSourceMetronome) ? 0.0f : phase;
-        prev_clock_source_ = cs;
+        phase_offset_ = (cs == vivid::kClockModeSyncedMetronome) ? 0.0f : phase;
+        prev_clock_mode_ = cs;
         song_pos_ = 0;
         wraps_in_section_ = 0;
     }
@@ -377,7 +377,7 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     // re-aligns with the top of the phrase. Phrase-sync resets fold into
     // `reset` below, so they also rewind song_pos_.
     int sync_idx = std::clamp(bar_sync.int_value(), 0, 4);
-    if (sync_idx > 0 && cs == vivid::kClockSourceMetronome) {
+    if (sync_idx > 0 && cs == vivid::kClockModeSyncedMetronome) {
         static constexpr int kSyncBars[] = {0, 1, 2, 4, 8};
         const int bpb = std::max(1, beats_per_bar);
         const double phrase_beats = static_cast<double>(bpb) * kSyncBars[sync_idx];
@@ -393,7 +393,7 @@ void DrumSequencerCore::compute(float phase, float reset_in,
     // metronome clock, re-anchor to the bar (transport-lock); on the external
     // clock, capture the current phase as the offset (legacy behavior).
     if (reset && !prev_reset_) {
-        phase_offset_ = (cs == vivid::kClockSourceMetronome) ? 0.0f : phase;
+        phase_offset_ = (cs == vivid::kClockModeSyncedMetronome) ? 0.0f : phase;
         song_pos_ = 0;
         wraps_in_section_ = 0;
     }

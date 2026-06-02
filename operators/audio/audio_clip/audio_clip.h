@@ -39,8 +39,8 @@ struct AudioClip : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> speed      {"speed",      1.0f, 0.1f, 8.0f};
     vivid::Param<float> pitch      {"pitch",      0.0f, -24.0f, 24.0f};
     vivid::Param<float> file_bpm   {"file_bpm",   0.0f, 0.0f, 300.0f};
-    vivid::Param<int>   rate_mode  {"rate_mode",  vivid::kRateModeFree,
-                                    vivid::rate_mode_labels()};
+    vivid::Param<int>   clock_mode  {"clock_mode",  vivid::kClockModeInternal,
+                                    vivid::clock_mode_full_labels()};
     vivid::Param<int>   stretch    {"stretch",    1, {"off", "on"}};
     vivid::Param<float> clip_start {"clip_start", 0.0f, 0.0f, 1.0f};
     vivid::Param<float> clip_end   {"clip_end",   1.0f, 0.0f, 1.0f};
@@ -69,8 +69,8 @@ struct AudioClip : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(volume,     "Output gain (0–2)");
         vivid::description(speed,      "Playback speed multiplier (free rate mode only)");
         vivid::description(pitch,      "Pitch shift in semitones, independent of speed (stretch=on only)");
-        vivid::description(file_bpm,   "Native BPM of the source file; required for rate_mode=metronome");
-        vivid::description(rate_mode,  "free: use speed param  |  external: beat_phase port scrubs position per-sample  |  metronome: sync to graph metronome via file_bpm");
+        vivid::description(file_bpm,   "Native BPM of the source file; required for clock_mode=metronome");
+        vivid::description(clock_mode,  "free: use speed param  |  external: beat_phase port scrubs position per-sample  |  metronome: sync to graph metronome via file_bpm");
         vivid::description(stretch,    "on: pitch-preserving time stretch  |  off: tape/vinyl (pitch follows speed)");
         vivid::description(clip_start, "Normalized source input boundary (0–1); playback starts here");
         vivid::description(clip_end,   "Normalized source output boundary (0–1); non-looping playback ends here");
@@ -86,6 +86,8 @@ struct AudioClip : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(loop_crossfade_ms, "Equal-power crossfade at loop wrap points");
         vivid::description(slice_mode, "off/transients/manual/even16 slice selection for play-triggered regions");
         vivid::description(slice_index, "Active slice index (0-based); used when no slice_index port is connected");
+        vivid::visible_when_eq(speed, clock_mode, vivid::kClockModeInternal);
+        vivid::visible_when_eq(file_bpm, clock_mode, vivid::kClockModeMetronome);
     }
 
     // ---- Waveform display data (main-thread only) ----

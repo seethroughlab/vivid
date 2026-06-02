@@ -34,10 +34,10 @@ struct TestContext {
     static constexpr uint32_t kSampleRate = 44100;
 
     float input[kFrames]      = {};
-    float rate_cv[kFrames]    = {};
+    float freq_cv[kFrames]    = {};
     float beat_phase[kFrames] = {};
     float output[kFrames]     = {};
-    float* input_bufs[3]      = {input, rate_cv, beat_phase};
+    float* input_bufs[3]      = {input, freq_cv, beat_phase};
     float* output_bufs[1]     = {output};
 
     VividAudioContext ctx{};
@@ -60,7 +60,7 @@ struct TestContext {
     }
 
     void clear_inputs() {
-        std::memset(rate_cv, 0, sizeof(rate_cv));
+        std::memset(freq_cv, 0, sizeof(freq_cv));
         std::memset(beat_phase, 0, sizeof(beat_phase));
     }
 
@@ -101,17 +101,17 @@ static void test_operator(const std::string& staging, const OpInfo& info) {
     check(static_cast<int>(desc->port_count) == info.expected_port_count,
           "port_count matches");
 
-    // Verify port names: input, output, rate_cv
-    bool has_input = false, has_output = false, has_rate_cv = false, has_beat_phase = false;
+    // Verify port names: input, output, freq_cv
+    bool has_input = false, has_output = false, has_freq_cv = false, has_beat_phase = false;
     for (uint32_t p = 0; p < desc->port_count; p++) {
         if (std::strcmp(desc->ports[p].name, "input") == 0)   has_input = true;
         if (std::strcmp(desc->ports[p].name, "output") == 0)  has_output = true;
-        if (std::strcmp(desc->ports[p].name, "rate_cv") == 0) has_rate_cv = true;
+        if (std::strcmp(desc->ports[p].name, "freq_cv") == 0) has_freq_cv = true;
         if (std::strcmp(desc->ports[p].name, "beat_phase") == 0) has_beat_phase = true;
     }
     check(has_input, "has input port");
     check(has_output, "has output port");
-    check(has_rate_cv, "has rate_cv port");
+    check(has_freq_cv, "has freq_cv port");
     check(has_beat_phase, "has beat_phase port");
 
     // Verify all float params have VIVID_DISPLAY_KNOB hint
@@ -267,8 +267,8 @@ static void test_metronome_sync_ignores_free_rate(const std::string& staging,
     int sync_div_idx = -1;
     int mix_idx = -1;
     for (uint32_t p = 0; p < desc->param_count; ++p) {
-        if (std::strcmp(desc->params[p].name, "rate") == 0) rate_idx = static_cast<int>(p);
-        if (std::strcmp(desc->params[p].name, "rate_mode") == 0) rate_mode_idx = static_cast<int>(p);
+        if (std::strcmp(desc->params[p].name, "frequency") == 0) rate_idx = static_cast<int>(p);
+        if (std::strcmp(desc->params[p].name, "clock_mode") == 0) rate_mode_idx = static_cast<int>(p);
         if (std::strcmp(desc->params[p].name, "sync_division") == 0) sync_div_idx = static_cast<int>(p);
         if (std::strcmp(desc->params[p].name, "mix") == 0) mix_idx = static_cast<int>(p);
     }

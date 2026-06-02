@@ -18,7 +18,7 @@
  * @input gate Gate signal. Rising edges start the ADSR and falling edges trigger release.
  * @input beat_phase External 0-1 beat ramp. A wrap retriggers the envelope globally.
  * @output value The computed envelope value after amplitude and offset are applied.
- * @tip To retrigger rhythmically, set clock_source=metronome (default) or connect beat_phase from a Clock for a custom tempo.
+ * @tip To retrigger rhythmically, set clock_mode=metronome (default) or connect beat_phase from a Clock for a custom tempo.
  * @tip In polyphonic graphs, drive gate from NoteBreakout/voice_gates and lane_ids from NoteBreakout/voice_ids so each lane gets its own ADSR state.
  * @recipe NoteBreakout/voice_gates -> Envelope/gate; NoteBreakout/voice_ids -> Envelope/lane_ids -> VoiceMixer/amp_env_audio
  * @recipe Envelope/value -> Filter/cutoff_mod with NoteBreakout/voice_freqs -> Filter/frequencies
@@ -43,7 +43,7 @@ struct Envelope : vivid::OperatorBase {
     vivid::Param<float> amplitude{"amplitude", 1.0f,   0.0f,   10.0f};
     vivid::Param<float> offset   {"offset",    0.0f,   0.0f,   10.0f};
     vivid::Param<int>   curve    {"curve",     1,      {"linear", "exponential", "logarithmic"}};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     enum Stage : uint8_t { IDLE, ATTACK, DECAY, SUSTAIN, RELEASE };
 
@@ -99,7 +99,7 @@ struct Envelope : vivid::OperatorBase {
         vivid::description(offset, "Constant value added to the envelope output");
 
         vivid::description(curve, "Envelope shape: linear, exponential, or logarithmic");
-        vivid::description(clock_source, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
     }
 
     ~Envelope() override;
@@ -139,7 +139,7 @@ struct Envelope : vivid::OperatorBase {
         out.push_back(&amplitude); // 4
         out.push_back(&offset);    // 5
         out.push_back(&curve);     // 6  (normal dropdown, not part of ADSR widget)
-        out.push_back(&clock_source); // 7
+        out.push_back(&clock_mode); // 7
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -285,7 +285,7 @@ struct Envelope : vivid::OperatorBase {
     void process_frame(const VividFrameContext* ctx) {
         float gate_in  = ctx->input_values[0];
         float phase_in = vivid::resolve_clock_phase(
-            clock_source.int_value(), ctx->input_values[2], vivid::metronome_transport(ctx));
+            clock_mode.int_value(), ctx->input_values[2], vivid::metronome_transport(ctx));
         float dt = static_cast<float>(ctx->delta_time);
 
         LaneState& s = ctx->lane_state_fn

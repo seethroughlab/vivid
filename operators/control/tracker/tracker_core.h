@@ -26,11 +26,11 @@ struct TrackerCore : vivid::OperatorBase {
 
     // Param indices: rate=0, speed=1, base_channel=2, channel_mode=3,
     //   edit_pattern=4, edit_channel=5, mute_mask=6, pattern_data=7
-    vivid::Param<int>   rate          {"rate",          2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
+    vivid::Param<int>   sync_division          {"sync_division",          2, vivid::metronome_division_labels()};
     vivid::Param<int>   speed         {"speed",         6, 1, 16};
     vivid::Param<int>   base_channel  {"base_channel",  1, 1, 16};
     vivid::Param<int>   channel_mode  {"channel_mode",  0, {"Single","Multi"}};
-    vivid::Param<int>   clock_source  {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode  {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
     vivid::Param<int>   edit_pattern  {"edit_pattern",  0, 0, 63};
     vivid::Param<int>   edit_channel  {"edit_channel",  0, 0, 7};
     vivid::Param<int>   mute_mask     {"mute_mask",     0, 0, 255};
@@ -81,9 +81,6 @@ struct TrackerCore : vivid::OperatorBase {
     ::vivid::tracker_editor::RowClipboard editor_row_clipboard_{};
 
 protected:
-    static constexpr float kMultipliers[] = {
-        0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 1.5f, 3.0f, 6.0f
-    };
 
     tracker::TrackerSong song_;
     tracker::ChannelState channels_[tracker::MAX_CHANNELS] = {};

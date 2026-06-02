@@ -55,7 +55,7 @@ struct NotePatternCore : vivid::OperatorBase {
     vivid::Param<float> gate_length  {"gate_length",    0.8f, 0.01f, 1.0f};
     vivid::Param<float> velocity     {"velocity",       0.8f, 0.0f, 1.0f};
     vivid::Param<int>   midi_channel {"midi_channel",   1, 1, 16};
-    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     NotePatternCore() {
         vivid::description(steps, "Number of active chord steps in the sequence, 1 to 8");
@@ -80,7 +80,7 @@ struct NotePatternCore : vivid::OperatorBase {
         vivid::description(gate_length, "Fraction of each step where notes are held, 0 to 1");
         vivid::description(velocity, "MIDI velocity for all chord notes, 0 to 1");
         vivid::description(midi_channel, "MIDI channel for chord output, 1 to 16");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
     }
 
     // Internal state
@@ -122,11 +122,11 @@ struct NotePatternCore : vivid::OperatorBase {
         out.push_back(&gate_length);
         out.push_back(&velocity);
         out.push_back(&midi_channel);
-        out.push_back(&clock_source);
+        out.push_back(&clock_mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"note", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"vel", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"gate", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});

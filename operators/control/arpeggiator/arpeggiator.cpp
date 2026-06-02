@@ -14,7 +14,7 @@ struct Arpeggiator : ArpeggiatorCore, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         float local_out[4] = {};
         float beat_phase = vivid::resolve_clock_phase(
-            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
+            clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         const VividNoteBuffer* notes_in = nullptr;
         if (ctx->custom_inputs && ctx->custom_input_count > 0)
             notes_in = static_cast<const VividNoteBuffer*>(ctx->custom_inputs[0]);

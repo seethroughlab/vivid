@@ -2,23 +2,48 @@
   "presets": [
     {
       "name": "Jet Sweep",
-      "params": { "rate": 0.15, "depth": 0.9, "feedback": 0.8, "mix": 0.6 }
+      "params": {
+        "frequency": 0.15,
+        "depth": 0.9,
+        "feedback": 0.8,
+        "mix": 0.6
+      }
     },
     {
       "name": "Metallic",
-      "params": { "rate": 0.5, "depth": 0.6, "feedback": -0.7, "mix": 0.55 }
+      "params": {
+        "frequency": 0.5,
+        "depth": 0.6,
+        "feedback": -0.7,
+        "mix": 0.55
+      }
     },
     {
       "name": "Gentle Flange",
-      "params": { "rate": 0.2, "depth": 0.3, "feedback": 0.3, "mix": 0.35 }
+      "params": {
+        "frequency": 0.2,
+        "depth": 0.3,
+        "feedback": 0.3,
+        "mix": 0.35
+      }
     },
     {
       "name": "Through Zero",
-      "params": { "rate": 0.1, "depth": 1.0, "feedback": 0.0, "mix": 0.7 }
+      "params": {
+        "frequency": 0.1,
+        "depth": 1.0,
+        "feedback": 0.0,
+        "mix": 0.7
+      }
     },
     {
       "name": "Robot Voice",
-      "params": { "rate": 5.0, "depth": 0.8, "feedback": 0.85, "mix": 0.5 }
+      "params": {
+        "frequency": 5.0,
+        "depth": 0.8,
+        "feedback": 0.85,
+        "mix": 0.5
+      }
     }
   ]
 }

@@ -30,7 +30,7 @@
             "params": {
                 "sync_division": 0.0,
                 "bpm": 80.0,
-                "rate_mode": 1.0
+                "clock_mode": 1.0
             },
             "layout": {
                 "x": -14.925781,
@@ -56,7 +56,7 @@
             "type": "Envelope",
             "params": {
                 "sustain": 0.0,
-                "clock_source": 1.0,
+                "clock_mode": 1.0,
                 "attack": 0.0,
                 "release": 0.05,
                 "decay": 0.0369204,

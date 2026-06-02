@@ -43,7 +43,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> dur_5       {"dur_5", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_6       {"dur_6", 4.0f, 0.0f, 256.0f};
     vivid::Param<float> dur_7       {"dur_7", 4.0f, 0.0f, 256.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
     vivid::Param<int>   force_state {"force_state",  -1, -1, 7};
 
     StateMachine() {
@@ -63,7 +63,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(dur_5, "Duration of state 6 in bars");
         vivid::description(dur_6, "Duration of state 7 in bars");
         vivid::description(dur_7, "Duration of state 8 in bars");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         force_state.display_hint = VIVID_DISPLAY_HIDDEN;
     }
 
@@ -100,15 +100,15 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back(&dur_5);          // 13
         out.push_back(&dur_6);          // 14
         out.push_back(&dur_7);          // 15
-        out.push_back(&clock_source);   // 16
+        out.push_back(&clock_mode);   // 16
         out.push_back(&force_state);    // 17
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Inputs (indexed 0-3)
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"trigger",    VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"reset",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"reset",      VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
         out.push_back({"signal",     VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         // Outputs (indexed 0-5)
         out.push_back({"state",    VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
@@ -122,7 +122,7 @@ struct StateMachine : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         // 1. Read inputs (scalar ports delivered as audio buffers)
         float beat_phase = vivid::resolve_clock_phase(
-            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
+            clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         float trigger_in = vivid::audio_scalar_block_start(ctx, 1);
         float reset_in   = vivid::audio_scalar_block_start(ctx, 2);
         float signal_in  = vivid::audio_scalar_block_start(ctx, 3);

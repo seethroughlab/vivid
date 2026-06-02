@@ -1,6 +1,7 @@
 #pragma once
 #include "operator_api/metronome_sync.h"
 #include "operator_api/operator.h"
+#include "shared/timing/clock_block.h"
 #include "operator_api/editor_ui.h"
 #include "operator_api/editor_keys.h"
 #include "operator_api/note_types.h"
@@ -23,10 +24,10 @@ struct PatternSeqCore : vivid::OperatorBase {
     static constexpr bool kTimeDependent = true;
 
     vivid::Param<int>   steps       {"steps",       8, 1, 16};
-    vivid::Param<int>   rate        {"rate",        2, {"1/1","1/2","1/4","1/8","1/16","1/32","1/4T","1/8T","1/16T"}};
+    vivid::Param<int>   sync_division        {"sync_division",        2, vivid::metronome_division_labels()};
     vivid::Param<float> gate_length {"gate_length", 0.8f, 0.01f, 1.0f};
     vivid::Param<float> probability {"probability", 1.0f, 0.0f, 1.0f};
-    vivid::Param<int>   clock_source{"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode{"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
     vivid::Param<float> val_0  {"val_0",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_1  {"val_1",  0.0f, -10000.0f, 10000.0f};
     vivid::Param<float> val_2  {"val_2",  0.0f, -10000.0f, 10000.0f};
@@ -47,10 +48,11 @@ struct PatternSeqCore : vivid::OperatorBase {
 
     PatternSeqCore() {
         vivid::description(steps, "Number of active steps in the sequence, 1 to 16");
-        vivid::description(rate, "Step rate relative to the beat clock");
+        vivid::description(sync_division, "Step rate relative to the beat clock");
+        vivid::wire_clock_visibility_synced(sync_division, clock_mode);
         vivid::description(gate_length, "Fraction of each step where the gate stays high, 0 to 1");
         vivid::description(probability, "Chance each step fires, 0 = never, 1 = always");
-        vivid::description(clock_source, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat timing comes from the external beat_phase input or the graph metronome");
         vivid::description(val_0, "Value output when step 1 is active");
         vivid::description(val_1, "Value output when step 2 is active");
         vivid::description(val_2, "Value output when step 3 is active");
@@ -87,10 +89,10 @@ struct PatternSeqCore : vivid::OperatorBase {
         }
 
         // Top-level controls remain in the inspector for quick scrubs.
-        out.push_back(&rate);         // 17
+        out.push_back(&sync_division);         // 17
         out.push_back(&gate_length);  // 18
         out.push_back(&probability);  // 19
-        out.push_back(&clock_source); // 20
+        out.push_back(&clock_mode); // 20
         out.push_back(&midi_channel); // 21
     }
 
@@ -111,7 +113,7 @@ struct PatternSeqCore : vivid::OperatorBase {
     EditorClipboard editor_clipboard_{};
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"value",      VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"trigger",    VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
@@ -122,9 +124,9 @@ struct PatternSeqCore : vivid::OperatorBase {
 
     void compute(float beat_phase, const float* params, float* output_values,
                  VividLaneOutput* out_spreads, void** custom_outputs, uint32_t custom_output_count) {
-        // Param layout: steps=0, val_0..val_15=1..16, rate=17, gate_length=18, probability=19, clock_source=20, midi_channel=21
+        // Param layout: steps=0, val_0..val_15=1..16, sync_division=17, gate_length=18, probability=19, clock_mode=20, midi_channel=21
         int n   = std::clamp(static_cast<int>(params[0]), 1, 16);
-        int r   = std::clamp(static_cast<int>(params[17]), 0, 8);
+        int r   = std::clamp(static_cast<int>(params[17]), 0, 11);
         float gl = params[18];
         float prob = params[19];
 
@@ -132,7 +134,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         if (delta < -0.5f) beat_count_++;
         prev_phase_ = beat_phase;
 
-        float multiplier = kMultipliers[r];
+        float multiplier = (1.0f / vivid::sync_cycle_beats(r));
         float total_beats = static_cast<float>(beat_count_) + beat_phase;
         float scaled_phase = total_beats * multiplier;
 
@@ -196,9 +198,6 @@ struct PatternSeqCore : vivid::OperatorBase {
     }
 
 protected:
-    static constexpr float kMultipliers[] = {
-        0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 1.5f, 3.0f, 6.0f
-    };
 
     float prev_phase_ = 0.0f;
     int beat_count_ = 0;

@@ -71,7 +71,7 @@ struct EditorHarness {
         params[2] = 0.0f;   // rotation
         params[3] = 0.5f;   // gate_length
         params[4] = 2.0f;   // rate = 1/4
-        params[5] = 0.0f;   // clock_source = external
+        params[5] = 0.0f;   // clock_mode = external
         params[6] = 0.0f;   // bar_sync = off
 
         ctx.surface_width  = 820.0f;

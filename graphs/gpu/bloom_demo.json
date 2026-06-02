@@ -42,7 +42,7 @@
             "params": {
                 "sync_division": 0.0,
                 "offset": 0.0,
-                "rate_mode": 2.0,
+                "clock_mode": 2.0,
                 "frequency": 0.1,
                 "amplitude": 3.14
             },

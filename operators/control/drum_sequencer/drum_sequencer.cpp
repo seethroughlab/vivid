@@ -9,7 +9,7 @@ struct DrumSequencer : DrumSequencerCore, vivid::AudioProcessable {
         float local_out[2] = {};
         const auto m = vivid::metronome_transport(ctx);
         float beat_phase = vivid::resolve_bar_phase(
-            clock_source.int_value(), vivid::audio_scalar_block_start(ctx, 0), m);
+            clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), m);
         float reset = vivid::audio_scalar_block_start(ctx, 1);
         compute(beat_phase, reset, m.beats_elapsed, m.beats_per_bar,
                 ctx->param_values,

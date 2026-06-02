@@ -33,7 +33,7 @@ struct MSEG : vivid::OperatorBase {
     vivid::Param<int>   loop_start   {"loop_start",   0,    0, 15};
     vivid::Param<int>   loop_end     {"loop_end",     3,    1, 15};
     vivid::Param<float> amplitude    {"amplitude",    1.0f, 0.0f, 10.0f};
-    vivid::Param<int>   clock_source {"clock_source", vivid::kClockSourceMetronome, vivid::clock_source_labels()};
+    vivid::Param<int>   clock_mode {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};
 
     // --- Hidden params: breakpoint data ---
     // pt_time_0..15, pt_value_0..15, pt_curve_0..14
@@ -86,7 +86,7 @@ struct MSEG : vivid::OperatorBase {
         vivid::semantic_shape(amplitude, "scalar");
         vivid::semantic_intent(amplitude, "env_amount");
         vivid::description(amplitude, "Scales the entire envelope output");
-        vivid::description(clock_source, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
+        vivid::description(clock_mode, "Choose whether beat retrigger timing comes from the external beat_phase input or the graph metronome");
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
@@ -113,12 +113,12 @@ struct MSEG : vivid::OperatorBase {
             display_hint(pt_curve[i], VIVID_DISPLAY_HIDDEN);
             out.push_back(&pt_curve[i]);
         }
-        out.push_back(&clock_source);
+        out.push_back(&clock_mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"gate",       VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "gate"});
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
         out.push_back({"value",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
@@ -152,7 +152,7 @@ struct MSEG : vivid::OperatorBase {
 
     void process_frame(const VividFrameContext* ctx) {
         float phase_in = vivid::resolve_clock_phase(
-            clock_source.int_value(), ctx->input_values[1], vivid::metronome_transport(ctx));
+            clock_mode.int_value(), ctx->input_values[1], vivid::metronome_transport(ctx));
         compute(ctx->input_values[0], phase_in, static_cast<float>(ctx->delta_time));
         ctx->output_values[0] = current_value_ * amplitude.value;
     }

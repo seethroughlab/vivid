@@ -53,7 +53,7 @@ struct Harness {
         ctx.custom_outputs      = custom_outputs;
         ctx.custom_output_count = 1;
         // Default metronome state (sane bar-locked defaults). Tests that
-        // exercise metronome rate_mode override these.
+        // exercise metronome clock_mode override these.
         ctx.metronome_bpm           = 120.0f;
         ctx.metronome_beats_per_bar = 4;
         ctx.metronome_beats_elapsed = 0.0;
@@ -328,7 +328,7 @@ int main(int argc, char** argv) {
     }
 
     // Param-index lookups for the new tempo-sync params.
-    int idx_t_rate_mode      = param_index(desc, "timbre_rate_mode");
+    int idx_t_clock_mode      = param_index(desc, "timbre_clock_mode");
     int idx_t_sync_division  = param_index(desc, "timbre_sync_division");
     int idx_t_phase_random   = idx_t_rand;  // alias for readability below
     int idx_t_polarity       = param_index(desc, "timbre_polarity");
@@ -342,7 +342,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "\n--- free-mode regression ---\n");
         for (uint32_t p = 0; p < desc->param_count; ++p) params[p] = desc->params[p].default_value;
         params[idx_t_amount]      = 0.5f;
-        params[idx_t_rate_mode]   = static_cast<float>(vivid::kRateModeFree);
+        params[idx_t_clock_mode]   = static_cast<float>(vivid::kClockModeInternal);
         params[idx_t_phase_random]= 1.0f;
         params[idx_t_attack]      = 0.0f;
         params[idx_t_polarity]    = 0.0f;  // bipolar
@@ -382,14 +382,14 @@ int main(int argc, char** argv) {
     }
 
     // ── Test 6: metronome lockstep ────────────────────────────────
-    // Two NOTE_ONs with distinct note_ids, metronome rate_mode,
+    // Two NOTE_ONs with distinct note_ids, metronome clock_mode,
     // phase_random=0. Both notes must emit identical timbre values —
     // proves the global metronome phase source.
     {
         std::fprintf(stderr, "\n--- metronome lockstep ---\n");
         for (uint32_t p = 0; p < desc->param_count; ++p) params[p] = desc->params[p].default_value;
         params[idx_t_amount]       = 0.5f;
-        params[idx_t_rate_mode]    = static_cast<float>(vivid::kRateModeMetronome);
+        params[idx_t_clock_mode]    = static_cast<float>(vivid::kClockModeMetronome);
         params[idx_t_sync_division]= 2.0f;   // 1/4
         params[idx_t_phase_random] = 0.0f;
         params[idx_t_attack]       = 0.0f;
@@ -431,7 +431,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "\n--- metronome + phase_random ---\n");
         for (uint32_t p = 0; p < desc->param_count; ++p) params[p] = desc->params[p].default_value;
         params[idx_t_amount]       = 0.5f;
-        params[idx_t_rate_mode]    = static_cast<float>(vivid::kRateModeMetronome);
+        params[idx_t_clock_mode]    = static_cast<float>(vivid::kClockModeMetronome);
         params[idx_t_sync_division]= 2.0f;
         params[idx_t_phase_random] = 1.0f;
         params[idx_t_attack]       = 0.0f;

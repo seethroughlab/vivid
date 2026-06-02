@@ -53,7 +53,7 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> time    {"time",     250.0f, 0.0f, 2000.0f};
     vivid::Param<float> feedback{"feedback",   0.3f, 0.0f,    0.99f};
     vivid::Param<float> mix     {"mix",        0.5f, 0.0f,    1.0f};
-    vivid::Param<int>   sync         {"sync",          0, {"Free", "Tempo Sync"}};
+    vivid::Param<int>   clock_mode   {"clock_mode",    0, vivid::clock_mode_tempo_labels()};
     vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
 
     static constexpr uint32_t kMaxChannels = 2;
@@ -80,17 +80,19 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::semantic_intent(mix, "wet_mix");
         vivid::description(mix, "Dry/wet blend (0 = dry, 1 = fully delayed)");
 
-        vivid::description(sync, "Free uses the time knob (ms); Tempo Sync locks the "
+        vivid::description(clock_mode, "internal uses the time knob (ms); metronome locks the "
                                  "delay time to the graph tempo at the chosen note division");
         vivid::description(sync_division, "Musical note length for the delay time when "
                                           "Tempo Sync is on (e.g. 1/8, dotted 1/8)");
+        vivid::visible_when_eq(time, clock_mode, vivid::kClockModeInternal);
+        vivid::visible_when_eq(sync_division, clock_mode, vivid::kClockModeSyncedMetronome);
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&time);
         out.push_back(&feedback);
         out.push_back(&mix);
-        out.push_back(&sync);
+        out.push_back(&clock_mode);
         out.push_back(&sync_division);
     }
 
@@ -124,7 +126,7 @@ struct Delay : vivid::OperatorBase, vivid::AudioProcessable {
         // clamp below caps it to the 2-second buffer (a slow-tempo whole note
         // can exceed it).
         float delay_ms = time.value;
-        if (sync.int_value() != 0) {
+        if (clock_mode.int_value() != vivid::kClockModeInternal) {
             const float bpm = ctx->metronome_bpm > 0.0f ? ctx->metronome_bpm : 120.0f;
             delay_ms = vivid::sync_cycle_beats(sync_division.int_value()) * 60000.0f / bpm;
         }

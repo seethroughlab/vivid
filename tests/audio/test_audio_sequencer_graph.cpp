@@ -237,7 +237,7 @@ int main(int argc, char* argv[]) {
             "seq": {
                 "type": "DrumSequencer",
                 "params": {
-                    "clock_source": 1,
+                    "clock_mode": 1,
                     "kick_0": 1.0,
                     "kick_4": 1.0,
                     "kick_8": 1.0,

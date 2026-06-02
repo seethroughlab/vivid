@@ -57,7 +57,7 @@
       "params": {
         "mode": 0,
         "octaves": 2,
-        "rate": 3,
+        "sync_division": 3,
         "gate_length": 0.6,
         "swing": 0.0,
         "latch": false,

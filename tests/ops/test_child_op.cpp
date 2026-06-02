@@ -137,7 +137,7 @@ static void test_metronome_sync() {
     lfo.set_param("amplitude", 1.0f);
     lfo.set_param("offset", 0.0f);
     lfo.set_param("waveform", 0.0f);       // sine
-    lfo.set_param("rate_mode", 2.0f);      // metronome
+    lfo.set_param("clock_mode", 2.0f);      // metronome
     lfo.set_param("sync_division", 2.0f);  // quarter notes
 
     auto ctx0 = make_ctx(0.0, 1.0 / 60.0, 0);

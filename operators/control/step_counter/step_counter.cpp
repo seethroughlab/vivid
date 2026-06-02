@@ -22,7 +22,7 @@ struct StepCounter : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"trigger", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"modulus", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
-        out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
+        out.push_back({"reset", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});
         out.push_back({"index", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"wrapped", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }

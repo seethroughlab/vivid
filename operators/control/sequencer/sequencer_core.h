@@ -75,7 +75,7 @@ struct SequencerCore : vivid::OperatorBase {
     }};
 
     // --- Clock and output shaping ---
-    vivid::Param<int>   rate_mode      {"rate_mode",      vivid::kRateModeMetronome, vivid::rate_mode_labels()};
+    vivid::Param<int>   clock_mode      {"clock_mode",      vivid::kClockModeMetronome, vivid::clock_mode_full_labels()};
     vivid::Param<float> frequency      {"frequency",      1.0f, 0.01f, 20.0f};
     vivid::Param<int>   sync_division  {"sync_division",  2, vivid::metronome_division_labels()};
     vivid::Param<float> glide          {"glide",          0.0f, 0.0f, 1.0f};
@@ -110,12 +110,12 @@ struct SequencerCore : vivid::OperatorBase {
         vivid::semantic_shape(frequency, "scalar");
         vivid::semantic_unit(frequency, "Hz");
         vivid::description(frequency, "Cycle rate in Hz (free mode) or beat multiplier (external sync mode)");
-        vivid::visible_when_ne(frequency, rate_mode, vivid::kRateModeMetronome);
+        vivid::visible_when_ne(frequency, clock_mode, vivid::kClockModeMetronome);
 
-        vivid::description(rate_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
+        vivid::description(clock_mode, "Free runs internally, follows an external beat_phase input, or locks to the graph metronome");
 
-        vivid::description(sync_division, "Musical note length used when rate_mode is metronome");
-        vivid::visible_when_eq(sync_division, rate_mode, vivid::kRateModeMetronome);
+        vivid::description(sync_division, "Musical note length used when clock_mode is metronome");
+        vivid::visible_when_eq(sync_division, clock_mode, vivid::kClockModeMetronome);
 
         vivid::semantic_tag(glide, "probability_01");
         vivid::semantic_shape(glide, "scalar");
@@ -163,7 +163,7 @@ struct SequencerCore : vivid::OperatorBase {
         }
 
         // Normal params
-        out.push_back(&rate_mode);
+        out.push_back(&clock_mode);
         out.push_back(&frequency);
         out.push_back(&sync_division);
         out.push_back(&glide);
@@ -175,9 +175,9 @@ struct SequencerCore : vivid::OperatorBase {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // Scalar inputs (keep existing order for backward compat)
-        out.push_back({"beat_phase", VIVID_PORT_SCALAR,     VIVID_PORT_INPUT});   // 0
-        out.push_back({"reset",      VIVID_PORT_SCALAR,     VIVID_PORT_INPUT});   // 1
-        out.push_back({"gate",       VIVID_PORT_SCALAR,     VIVID_PORT_INPUT});   // 2
+        out.push_back({"beat_phase", VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});   // 0
+        out.push_back({"reset",      VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});   // 1
+        out.push_back({"gate",       VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "gate"});   // 2
         // Lane-array inputs (external mode)
         out.push_back({"values",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // 0
         out.push_back({"probs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // 1
@@ -216,16 +216,16 @@ struct SequencerCore : vivid::OperatorBase {
         }
 
         // Phase computation
-        int mode = rate_mode.int_value();
+        int mode = clock_mode.int_value();
         float freq = frequency.value;
         double phase;
-        if (mode == vivid::kRateModeMetronome) {
+        if (mode == vivid::kClockModeMetronome) {
             // Each step lasts one sync_division; full cycle = num_steps * division_beats
             int ns_metro = std::clamp(steps.int_value(), 1, kMaxSteps);
             double step_beats = static_cast<double>(vivid::sync_cycle_beats(sync_division.int_value()));
             double cycle_beats = static_cast<double>(ns_metro) * step_beats;
             phase = (cycle_beats > 0.0) ? std::fmod(metronome.beats_elapsed / cycle_beats, 1.0) : 0.0;
-        } else if (mode == vivid::kRateModeExternal) {
+        } else if (mode == vivid::kClockModeExternal) {
             phase = std::fmod(static_cast<double>(beat_phase_in) * static_cast<double>(freq), 1.0);
             if (phase < 0.0) phase += 1.0;
         } else {

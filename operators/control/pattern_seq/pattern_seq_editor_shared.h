@@ -16,7 +16,7 @@ inline constexpr float kValueMax =  10000.0f;
 // rate at 17, gate_length at 18, probability at 19.
 inline constexpr int kStepsIndex       = 0;
 inline constexpr int kValueBase        = 1;   // val_0 .. val_15 at 1..16
-inline constexpr int kRateIndex        = 17;
+inline constexpr int kSyncDivisionIndex        = 17;
 inline constexpr int kGateLengthIndex  = 18;
 inline constexpr int kProbabilityIndex = 19;
 inline constexpr int kStepOutputIndex  = 3;   // output_values[3] = step

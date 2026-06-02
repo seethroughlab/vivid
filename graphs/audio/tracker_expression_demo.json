@@ -3,8 +3,8 @@
   "vivid_version": "0.1.0",
   "meta": {
     "id": "tracker_expression_demo",
-    "title": "Tracker Expression \u2014 pitch_bend, pressure, timbre",
-    "description": "Phase 4 demo. A short Tracker pattern with three expression lanes enabled (pitch_bend, pressure, timbre) drives a WavetableLayer voice. The pattern walks C4 \u2192 E4 \u2192 G4 \u2192 C5 with \u00b16-semi pitch wobble, a pressure swell that peaks on row 4, and a timbre sweep into the final ringing voice. Demonstrates the full Phase 4 surface end-to-end: native PITCH_BEND/PRESSURE/TIMBRE events on the wire, slot.pressure modulating amplitude, slot.timbre modulating wavetable position.",
+    "title": "Tracker Expression — pitch_bend, pressure, timbre",
+    "description": "Phase 4 demo. A short Tracker pattern with three expression lanes enabled (pitch_bend, pressure, timbre) drives a WavetableLayer voice. The pattern walks C4 → E4 → G4 → C5 with ±6-semi pitch wobble, a pressure swell that peaks on row 4, and a timbre sweep into the final ringing voice. Demonstrates the full Phase 4 surface end-to-end: native PITCH_BEND/PRESSURE/TIMBRE events on the wire, slot.pressure modulating amplitude, slot.timbre modulating wavetable position.",
     "tags": [
       "audio",
       "tracker",
@@ -43,7 +43,7 @@
     "tracker": {
       "type": "Tracker",
       "params": {
-        "rate": 4,
+        "sync_division": 4,
         "speed": 6,
         "pattern_data": "{\"v\":2,\"arrangement\":[0],\"patterns\":[{\"rows\":8,\"expr_mask\":7,\"cells\":[{\"row\":0,\"channel\":0,\"note\":60,\"velocity\":100,\"pb\":0,\"pr\":0,\"tb\":0},{\"row\":2,\"channel\":0,\"note\":64,\"velocity\":100,\"pb\":4128},{\"row\":4,\"channel\":0,\"note\":67,\"velocity\":100,\"pb\":-4128,\"pr\":16319},{\"row\":6,\"channel\":0,\"note\":72,\"velocity\":100,\"pb\":0},{\"row\":7,\"channel\":0,\"pr\":0,\"tb\":12336}]}]}"
       },

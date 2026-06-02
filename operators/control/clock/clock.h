@@ -32,7 +32,7 @@ struct ClockCore : vivid::OperatorBase {
 
     vivid::Param<float> bpm{"bpm", 120.0f, 1.0f, 300.0f};
     vivid::Param<int>   beats_per_bar{"beats_per_bar", 4, 1, 16};
-    vivid::Param<int>   rate_mode{"rate_mode", 0, {"free", "sync"}};
+    vivid::Param<int>   clock_mode{"clock_mode", 0, vivid::clock_mode_tempo_labels()};
     vivid::Param<int>   sync_division{"sync_division", 2, vivid::metronome_division_labels()};
     vivid::Param<float> phase_offset{"phase_offset", 0.0f, 0.0f, 1.0f};
     double phase_ = 0.0;
@@ -55,9 +55,12 @@ struct ClockCore : vivid::OperatorBase {
         vivid::semantic_unit(bpm, "bpm");
         vivid::description(bpm, "Tempo in beats per minute");
         vivid::description(beats_per_bar, "Number of beats in each bar when the clock is free-running");
-        vivid::description(rate_mode, "Clock source: free-running local tempo or synced to the graph metronome");
+        vivid::description(clock_mode, "Clock source: free-running local tempo or synced to the graph metronome");
         vivid::description(sync_division, "Musical note length when syncing to the graph metronome");
         vivid::description(phase_offset, "Phase offset applied after free or synced timing is computed");
+        vivid::visible_when_eq(bpm, clock_mode, vivid::kClockModeInternal);
+        vivid::visible_when_eq(beats_per_bar, clock_mode, vivid::kClockModeInternal);
+        vivid::visible_when_eq(sync_division, clock_mode, vivid::kClockModeSyncedMetronome);
     }
 
     ~ClockCore() override = default;
@@ -66,7 +69,7 @@ struct ClockCore : vivid::OperatorBase {
         out.push_back(&bpm);
         out.push_back(&beats_per_bar);
         vivid::display_hint(phase_offset, VIVID_DISPLAY_KNOB);
-        out.push_back(&rate_mode);
+        out.push_back(&clock_mode);
         out.push_back(&sync_division);
         out.push_back(&phase_offset);
     }
@@ -84,7 +87,7 @@ struct ClockCore : vivid::OperatorBase {
 
     // Advance phase by delta_time seconds and write the 4 output values.
     void advance(double delta_time, const MetronomeSample& metronome, float* out4) {
-        const int mode = rate_mode.int_value();
+        const int mode = clock_mode.int_value();
         const double offset = static_cast<double>(phase_offset.value);
         if (mode == 1) {
             const double cycle_beats = static_cast<double>(sync_cycle_beats(sync_division.int_value()));
