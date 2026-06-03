@@ -183,6 +183,12 @@ public:
                                      const std::string& name) {}
     virtual void session_remove_clip(const std::string& track_id, const std::string& clip_id) {}
     virtual void session_update_clip(const std::string& track_id, const std::string& clip_id) {}
+    // Edit one stored value inside a clip in place (clip inspector).
+    virtual void session_update_clip_param(const std::string& track_id, const std::string& clip_id,
+                                           const std::string& node_id, const std::string& param,
+                                           float value) {}
+    virtual void session_update_clip_bypass(const std::string& track_id, const std::string& clip_id,
+                                            const std::string& node_id, bool bypassed) {}
     virtual void session_set_scene_assignment(const std::string& scene_id,
                                                const std::string& track_id,
                                                const std::string& clip_id) {}

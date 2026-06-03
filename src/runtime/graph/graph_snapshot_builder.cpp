@@ -653,8 +653,18 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         ts.id   = track.id;
         ts.name = track.name;
         ts.owned_node_ids = track.owned_node_ids;
-        for (const auto& clip : track.clips)
-            ts.clips.push_back({clip.id, clip.name});
+        for (const auto& clip : track.clips) {
+            auto& cs = ts.clips.emplace_back();
+            cs.id = clip.id;
+            cs.name = clip.name;
+            cs.params = clip.params;
+            cs.string_params = clip.string_params;
+            cs.bypass = clip.bypass;
+            if (clip.transition_override && clip.transition_override->fade) {
+                cs.has_fade = true;
+                cs.fade_bars = clip.transition_override->duration_bars;
+            }
+        }
         if (runtime_api) {
             ts.active_clip_id = runtime_api->active_clip(track.id);
             ts.queued_clip_id = runtime_api->queued_clip_for(track.id);

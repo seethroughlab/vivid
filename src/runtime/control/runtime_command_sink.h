@@ -224,6 +224,17 @@ public:
         auto r = api_.update_clip(track_id, clip_id);
         if (r.ok) capture_undo_snapshot();
     }
+    void session_update_clip_param(const std::string& track_id, const std::string& clip_id,
+                                   const std::string& node_id, const std::string& param,
+                                   float value) override {
+        auto r = api_.update_clip_param(track_id, clip_id, node_id, param, value);
+        if (r.ok) capture_undo_snapshot();
+    }
+    void session_update_clip_bypass(const std::string& track_id, const std::string& clip_id,
+                                    const std::string& node_id, bool bypassed) override {
+        auto r = api_.update_clip_bypass(track_id, clip_id, node_id, bypassed);
+        if (r.ok) capture_undo_snapshot();
+    }
     void session_set_scene_assignment(const std::string& scene_id,
                                        const std::string& track_id,
                                        const std::string& clip_id) override {

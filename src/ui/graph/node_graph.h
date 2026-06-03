@@ -150,7 +150,8 @@ public:
             || inspector_.wants_keyboard();
     }
     bool wire_inspector_visible() const;
-    bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible(); }
+    bool has_clip_selection() const { return !selected_clip_id_.empty(); }
+    bool has_selection() const { return !selected_node_ids_.empty() || wire_inspector_visible() || has_clip_selection(); }
     bool has_single_selection() const { return selected_node_ids_.size() == 1; }
     const std::string& single_selected_id() const { assert(!selected_node_ids_.empty()); return *selected_node_ids_.begin(); }
 
@@ -364,6 +365,7 @@ private:
     void draw_graph(Renderer2D& tr);
     void draw_connections(Renderer2D& tr);
     void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
+    void draw_clip_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
     void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
@@ -613,6 +615,10 @@ private:
     bool snap_valid_ = false;
     MouseState mouse_;
     std::unordered_set<std::string> selected_node_ids_;
+    // Selected session clip for the clip inspector (empty = none). Mutually
+    // exclusive with node selection — opening a clip clears node selection.
+    std::string selected_clip_track_;
+    std::string selected_clip_id_;
     int selected_wire_idx_ = -1;  // index into snap_.connections, or -1
     std::vector<NodeRect> node_rects_;
     // Sized to snap_.connections.size(); true at indices of back-edges

@@ -350,6 +350,12 @@ struct AudioHotNodeSnapshot {
 struct SessionClipSnap {
     std::string id;
     std::string name;
+    // Stored snapshot contents — populated so the clip inspector can show/edit them.
+    std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
+    std::unordered_map<std::string, bool> bypass;
+    bool has_fade = false;
+    float fade_bars = 0.0f;
 };
 
 struct SessionTrackSnap {

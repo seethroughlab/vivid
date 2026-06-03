@@ -232,10 +232,14 @@ void NodeGraphUI::handle_left_click() {
                         }
                     } else if (session_ctx_menu_idx_ == 3) {
                         // Clip cell context menu
-                        if (cr.action == 0) {  // Update Clip
+                        if (cr.action == 0) {  // Open Clip (show in inspector)
+                            selected_clip_track_ = session_ctx_cell_track_id_;
+                            selected_clip_id_    = session_ctx_cell_clip_id_;
+                            selected_node_ids_.clear();  // clip inspector takes the panel
+                        } else if (cr.action == 1) {  // Update Clip
                             commands_.session_update_clip(session_ctx_cell_track_id_,
                                                           session_ctx_cell_clip_id_);
-                        } else if (cr.action == 1) {  // Rename Clip
+                        } else if (cr.action == 2) {  // Rename Clip
                             session_edit_type_ = 2;
                             session_edit_id_       = session_ctx_cell_clip_id_;
                             session_edit_track_id_ = session_ctx_cell_track_id_;
@@ -247,10 +251,10 @@ void NodeGraphUI::handle_left_click() {
                             }
                             text_edit_.select_all(static_cast<int>(session_edit_buffer_.size()));
                             session_editing_name_ = true;
-                        } else if (cr.action == 2) {  // Remove Clip
+                        } else if (cr.action == 3) {  // Remove Clip
                             commands_.session_remove_clip(session_ctx_cell_track_id_,
                                                           session_ctx_cell_clip_id_);
-                        } else if (cr.action == 3) {  // Clear from Scene
+                        } else if (cr.action == 4) {  // Clear from Scene
                             commands_.session_clear_scene_assignment(session_ctx_cell_scene_id_,
                                                                       session_ctx_cell_track_id_);
                         }

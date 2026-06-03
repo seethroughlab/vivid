@@ -832,6 +832,14 @@ std::string dispatch(const std::string& method, const std::string& body,
             else
                 result = command_result_to_json(api.set_quantize_clock(root["node_id"].get<std::string>()));
         }
+    } else if (method == "set_launch_quantize") {
+        if (!root_valid) { result = json_err("invalid JSON body"); }
+        else {
+            if (!root.contains("mode") || !root["mode"].is_string())
+                result = json_err("missing 'mode'");
+            else
+                result = command_result_to_json(api.set_launch_quantize(root["mode"].get<std::string>()));
+        }
     } else if (method == "set_graph_metronome") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
@@ -1078,6 +1086,32 @@ std::string dispatch(const std::string& method, const std::string& body,
         else
             result = command_result_to_json(
                 api.update_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+    } else if (method == "update_clip_param") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                 !root.contains("node_id") || !root["node_id"].is_string())
+            result = json_err("missing 'track_id', 'clip_id', or 'node_id'");
+        else {
+            const std::string track = root["track_id"].get<std::string>();
+            const std::string clip  = root["clip_id"].get<std::string>();
+            const std::string node  = root["node_id"].get<std::string>();
+            if (root.contains("bypassed") && root["bypassed"].is_boolean())
+                result = command_result_to_json(
+                    api.update_clip_bypass(track, clip, node, root["bypassed"].get<bool>()));
+            else if (root.contains("string_value") && root["string_value"].is_string() &&
+                     root.contains("param") && root["param"].is_string())
+                result = command_result_to_json(
+                    api.update_clip_string_param(track, clip, node, root["param"].get<std::string>(),
+                                                 root["string_value"].get<std::string>()));
+            else if (root.contains("value") && root["value"].is_number() &&
+                     root.contains("param") && root["param"].is_string())
+                result = command_result_to_json(
+                    api.update_clip_param(track, clip, node, root["param"].get<std::string>(),
+                                          static_cast<float>(root["value"].get<double>())));
+            else
+                result = json_err("need 'param'+'value', 'param'+'string_value', or 'bypassed'");
+        }
     } else if (method == "rename_clip") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||

@@ -116,6 +116,7 @@ public:
 
     // --- Quantize / Metronome ---
     CommandResult set_quantize_clock(const std::string& node_id);
+    CommandResult set_launch_quantize(const std::string& mode);
     CommandResult set_graph_metronome(float bpm, int beats_per_bar);
     GraphMetronomeSample current_metronome_sample() const;
 
@@ -169,6 +170,16 @@ public:
     CommandResult save_clip(const std::string& track_id, const std::string& name,
                             bool activate = false);
     CommandResult update_clip(const std::string& track_id, const std::string& clip_id);
+    // Edit a single stored value inside a clip in place (for the clip inspector /
+    // tweaking a saved snapshot without re-capturing live state).
+    CommandResult update_clip_param(const std::string& track_id, const std::string& clip_id,
+                                    const std::string& node_id, const std::string& param,
+                                    float value);
+    CommandResult update_clip_string_param(const std::string& track_id, const std::string& clip_id,
+                                           const std::string& node_id, const std::string& param,
+                                           const std::string& value);
+    CommandResult update_clip_bypass(const std::string& track_id, const std::string& clip_id,
+                                     const std::string& node_id, bool bypassed);
     CommandResult rename_clip(const std::string& track_id, const std::string& clip_id,
                                const std::string& new_name);
     CommandResult remove_clip(const std::string& track_id, const std::string& clip_id);

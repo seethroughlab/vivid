@@ -1958,7 +1958,11 @@ async def get_session_view_guide() -> str:
             "queue_clip": "Apply at a beat boundary (instant/beat/bar/4bar)",
             "queue_scene": "Fire all scene assignments at a beat boundary (instant/beat/bar/4bar)",
         },
-        "quantize_modes": ["instant", "beat", "bar", "4bar"],
+        "quantize_modes": ["default", "instant", "beat", "bar", "4bar"],
+        "launch_quantize_default": "queue_clip/queue_scene default to 'default', which uses the "
+                                   "graph's saved session-wide launch quantize (set via "
+                                   "set_launch_quantize, persisted with the graph). Pass an explicit "
+                                   "mode to override for one launch.",
         "legacy_advanced_tools": {
             "note": "StateMachine-based clip launcher still works for existing graphs. Whole-graph Variations were removed in schema v2 — use Tracks/Clips instead.",
             "tools": ["add_clip_track", "ensure_state_mapping", "queue_state_transition",
@@ -2019,7 +2023,8 @@ async def get_authoring_guide() -> str:
                                     "with no graph) then load_graph — launching directly with a graph "
                                     "right after a full rebuild can crash via a stale hot-reload dylib.",
             "tempo_vs_quantize": "set_graph_metronome = global BPM. set_quantize_clock = clip/scene "
-                                 "launch quantization only. They are unrelated.",
+                                 "launch timing source. set_launch_quantize = the saved session-wide "
+                                 "default launch grid (instant/beat/bar/4bar). All three are unrelated.",
             "large_outputs": "analyze_audio_spectrum, list_vst3_params and unfiltered list_vst3_presets "
                              "can be very large — narrow with filters/args.",
         },
@@ -2123,6 +2128,31 @@ async def update_clip(track_id: str, clip_id: str) -> str:
 
 
 @mcp.tool()
+async def update_clip_param(track_id: str, clip_id: str, node_id: str,
+                            param: str = "", value: float | None = None,
+                            string_value: str | None = None,
+                            bypassed: bool | None = None) -> str:
+    """Edit ONE stored value inside a clip in place, without re-capturing live state.
+
+    Tweak a saved snapshot directly (the clip-inspector data path). Provide exactly one of:
+      - param + value        : a numeric param (e.g. node_id='lp', param='cutoff', value=2400)
+      - param + string_value : a string param (e.g. a MidiClip 'pattern_data' JSON)
+      - bypassed             : a node's bypass state in the clip (param ignored)
+    Use inspect_clip to see the clip's stored values first.
+    """
+    body = {"track_id": track_id, "clip_id": clip_id, "node_id": node_id}
+    if bypassed is not None:
+        body["bypassed"] = bypassed
+    elif string_value is not None:
+        body["param"] = param
+        body["string_value"] = string_value
+    elif value is not None:
+        body["param"] = param
+        body["value"] = value
+    return await _post("update_clip_param", body)
+
+
+@mcp.tool()
 async def rename_clip(track_id: str, clip_id: str, name: str) -> str:
     """Rename a clip."""
     return await _post("rename_clip", {"track_id": track_id, "clip_id": clip_id, "name": name})
@@ -2151,11 +2181,12 @@ async def launch_clip(track_id: str, clip_id: str) -> str:
 
 
 @mcp.tool()
-async def queue_clip(track_id: str, clip_id: str, quantize: str = "instant",
+async def queue_clip(track_id: str, clip_id: str, quantize: str = "default",
                      fade_bars: float = 0.0) -> str:
     """Queue a clip launch at a beat boundary.
 
-    quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
+    quantize: 'default' (use the graph's saved session default — see set_launch_quantize),
+    'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
     A new queue_clip for the same track replaces any existing queued launch for that track.
     fade_bars > 0 ramps numeric params from their current values to the clip's over that many
     bars (string params + bypass switch at the start of the fade); 0 = instant cut.
@@ -2234,13 +2265,14 @@ async def clear_scene_assignment(scene_id: str, track_id: str) -> str:
 
 
 @mcp.tool()
-async def queue_scene(scene_id: str, quantize: str = "instant", fade_bars: float = 0.0) -> str:
+async def queue_scene(scene_id: str, quantize: str = "default", fade_bars: float = 0.0) -> str:
     """Queue a scene launch at a beat boundary.
 
     Fires all track→clip assignments in the scene simultaneously. Tracks marked
     leave_unchanged are skipped. Unassigned tracks are untouched.
 
-    quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
+    quantize: 'default' (use the graph's saved session default — see set_launch_quantize),
+    'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
     A new queue_scene replaces any previously queued scene.
     fade_bars > 0 ramps numeric params from current to the scene's clip values over that many
     bars (string params + bypass switch at the start); 0 = instant cut.
@@ -5648,6 +5680,24 @@ async def set_quantize_clock(node_id: str) -> str:
         node_id: ID of a Clock node whose beat_phase output drives launch quantization
     """
     return await _post("set_quantize_clock", {"node_id": node_id})
+
+
+@mcp.tool()
+async def set_launch_quantize(mode: str = "instant") -> str:
+    """Set the graph's session-wide DEFAULT clip/scene launch quantize, saved with the graph.
+
+    This is the value queue_clip/queue_scene use when called with quantize='default' (their
+    default). It persists in the saved graph file and is restored on load, so a performer's
+    preferred launch grid survives across sessions. An explicit quantize on a queue_* call
+    still overrides this default for that one launch.
+
+    Distinct from set_quantize_clock (the timing SOURCE node) and set_graph_metronome (the
+    global tempo). This only sets the default launch GRID.
+
+    Args:
+        mode: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar)
+    """
+    return await _post("set_launch_quantize", {"mode": mode})
 
 
 @mcp.tool()

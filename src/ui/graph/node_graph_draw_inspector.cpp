@@ -110,6 +110,83 @@ static ParamConnectionInfo find_param_connection(const GraphSnapshot& snap,
     return info;
 }
 
+void NodeGraphUI::draw_clip_inspector(Renderer2D& tr, uint32_t /*w*/, uint32_t h) {
+    const auto* track = snap_.session.find_track(selected_clip_track_);
+    const SessionClipSnap* clip = nullptr;
+    if (track) {
+        for (const auto& c : track->clips)
+            if (c.id == selected_clip_id_) { clip = &c; break; }
+    }
+    if (!clip) { selected_clip_track_.clear(); selected_clip_id_.clear(); return; }
+
+    const float insp_x = inspector_x();
+    const float pad = kInspPadX;
+    tr.draw_rect(insp_x, 0, kInspectorW, static_cast<float>(h),
+                 style_.inspector_bg[0], style_.inspector_bg[1], style_.inspector_bg[2], 0.95f);
+    tr.draw_rect(insp_x, 0, 2, static_cast<float>(h),
+                 style_.separator[0], style_.separator[1], style_.separator[2]);
+
+    const float px = insp_x + pad;
+    float py = 14.0f;
+    tr.draw_text(px, py, ("Clip:  " + clip->name).c_str(),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.05f);
+    py += 20.0f;
+    tr.draw_text(px, py, ("Track: " + track->name).c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
+    py += 16.0f;
+    tr.draw_text(px, py, "Right-click the cell to launch \xC2\xB7 edit values via MCP update_clip_param",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.72f);
+    py += 16.0f;
+    if (clip->has_fade) {
+        char fb[48]; std::snprintf(fb, sizeof(fb), "Fade: %.2g bars on launch", clip->fade_bars);
+        tr.draw_text(px, py, fb, style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
+        py += 16.0f;
+    }
+    py += 6.0f;
+    tr.draw_rect(px, py, kInspectorW - pad * 2.0f, 1.0f,
+                 style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
+    py += 10.0f;
+
+    for (const auto& node_id : track->owned_node_ids) {
+        const auto pit = clip->params.find(node_id);
+        const auto sit = clip->string_params.find(node_id);
+        const auto bit = clip->bypass.find(node_id);
+        const bool has_any = pit != clip->params.end() || sit != clip->string_params.end() ||
+                             bit != clip->bypass.end();
+        if (!has_any) continue;
+
+        tr.draw_text(px, py, node_id.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.95f);
+        py += 16.0f;
+        if (bit != clip->bypass.end()) {
+            tr.draw_text(px + 10.0f, py, bit->second ? "bypassed = on" : "bypassed = off",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+            py += 14.0f;
+        }
+        if (pit != clip->params.end()) {
+            for (const auto& [pname, pval] : pit->second) {
+                char line[160];
+                std::snprintf(line, sizeof(line), "%s = %.4g", pname.c_str(),
+                              static_cast<double>(pval));
+                tr.draw_text(px + 10.0f, py, line,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                py += 13.0f;
+            }
+        }
+        if (sit != clip->string_params.end()) {
+            for (const auto& [pname, pval] : sit->second) {
+                std::string v = pval;
+                if (v.size() > 38) v = v.substr(0, 38) + "\xE2\x80\xA6";
+                tr.draw_text(px + 10.0f, py, (pname + " = \"" + v + "\"").c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                py += 13.0f;
+            }
+        }
+        py += 8.0f;
+    }
+    inspector_.insp_content_h = py;
+}
+
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     inspector_.slider_rects.clear();
     inspector_.xy_pad_rects.clear();
@@ -257,7 +334,14 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
         return;
     }
 
-    if (selected_node_ids_.empty()) return;
+    if (selected_node_ids_.empty()) {
+        // A selected session clip takes the panel when no node/wire is selected.
+        if (has_clip_selection()) { draw_clip_inspector(tr, w, h); return; }
+        return;
+    }
+    // A node is selected → it owns the inspector; drop any clip selection.
+    selected_clip_track_.clear();
+    selected_clip_id_.clear();
 
     // Inspector background + separator (drawn outside clip rect)
     float insp_x = inspector_x();

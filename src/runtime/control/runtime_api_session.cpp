@@ -253,6 +253,35 @@ CommandResult RuntimeAPI::update_clip(const std::string& track_id, const std::st
     return {true, clip_id};
 }
 
+CommandResult RuntimeAPI::update_clip_param(const std::string& track_id, const std::string& clip_id,
+                                            const std::string& node_id, const std::string& param,
+                                            float value) {
+    auto* c = graph_.find_clip(track_id, clip_id);
+    if (!c) return {false, "unknown clip '" + clip_id + "' on track '" + track_id + "'"};
+    c->params[node_id][param] = value;
+    mark_graph_dirty();
+    return {true, clip_id};
+}
+
+CommandResult RuntimeAPI::update_clip_string_param(const std::string& track_id, const std::string& clip_id,
+                                                   const std::string& node_id, const std::string& param,
+                                                   const std::string& value) {
+    auto* c = graph_.find_clip(track_id, clip_id);
+    if (!c) return {false, "unknown clip '" + clip_id + "' on track '" + track_id + "'"};
+    c->string_params[node_id][param] = value;
+    mark_graph_dirty();
+    return {true, clip_id};
+}
+
+CommandResult RuntimeAPI::update_clip_bypass(const std::string& track_id, const std::string& clip_id,
+                                             const std::string& node_id, bool bypassed) {
+    auto* c = graph_.find_clip(track_id, clip_id);
+    if (!c) return {false, "unknown clip '" + clip_id + "' on track '" + track_id + "'"};
+    c->bypass[node_id] = bypassed;
+    mark_graph_dirty();
+    return {true, clip_id};
+}
+
 CommandResult RuntimeAPI::rename_clip(const std::string& track_id, const std::string& clip_id,
                                         const std::string& new_name) {
     if (!graph_.rename_clip(track_id, clip_id, new_name))
@@ -644,18 +673,22 @@ CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::str
     if (!clip)
         return {false, "unknown clip '" + clip_id + "'"};
 
-    if (quantize == "instant") {
+    // "default" (or empty) falls back to the graph's session-wide launch quantize.
+    const std::string q = (quantize == "default" || quantize.empty())
+                          ? graph_.launch_quantize() : quantize;
+
+    if (q == "instant") {
         apply_clip_params(track_id, *clip, fade_bars);
         active_clips_[track_id] = clip_id;
         graph_.set_active_clip(track_id, clip_id);
         mark_graph_dirty();
         return {true, clip_id};
     }
-    if (quantize != "beat" && quantize != "bar" &&
-        quantize != "4bar" && quantize != "four_bar")
-        return {false, "unknown quantize mode '" + quantize + "'"};
+    if (q != "beat" && q != "bar" &&
+        q != "4bar" && q != "four_bar")
+        return {false, "unknown quantize mode '" + q + "'"};
 
-    const int64_t target = compute_quantize_target_beat(quantize);
+    const int64_t target = compute_quantize_target_beat(q);
     // replace any existing pending for this track
     pending_clip_launches_.erase(
         std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
@@ -671,17 +704,21 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
     if (!graph_.find_scene(scene_id))
         return {false, "unknown scene '" + scene_id + "'"};
 
-    if (quantize == "instant") {
+    // "default" (or empty) falls back to the graph's session-wide launch quantize.
+    const std::string q = (quantize == "default" || quantize.empty())
+                          ? graph_.launch_quantize() : quantize;
+
+    if (q == "instant") {
         queued_cue_path_id_.clear();
         queued_cue_step_id_.clear();
         fire_scene(scene_id, fade_bars);
         return {true, scene_id};
     }
-    if (quantize != "beat" && quantize != "bar" &&
-        quantize != "4bar" && quantize != "four_bar")
-        return {false, "unknown quantize mode '" + quantize + "'"};
+    if (q != "beat" && q != "bar" &&
+        q != "4bar" && q != "four_bar")
+        return {false, "unknown quantize mode '" + q + "'"};
 
-    const int64_t target = compute_quantize_target_beat(quantize);
+    const int64_t target = compute_quantize_target_beat(q);
     pending_scene_launch_ = {scene_id, target, {}, {}, fade_bars};
     queued_cue_path_id_.clear();
     queued_cue_step_id_.clear();
