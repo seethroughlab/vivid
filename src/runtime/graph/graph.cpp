@@ -480,6 +480,11 @@ bool Graph::parse_doc(const nlohmann::json& root) {
                                 }
                             }
                         }
+                        auto cbypass = cval.find("bypass");
+                        if (cbypass != cval.end() && cbypass->is_object()) {
+                            for (auto& [nid, bv] : cbypass->items())
+                                if (bv.is_boolean()) clip.bypass[nid] = bv.get<bool>();
+                        }
                         track.clips.push_back(std::move(clip));
                     }
                 }
@@ -1093,7 +1098,8 @@ bool Graph::unassign_nodes_from_track(const std::string& track_id, const std::ve
 
 std::string Graph::save_clip(const std::string& track_id, std::string name,
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params) {
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params,
+    std::unordered_map<std::string, bool> bypass) {
     auto* t = find_track(track_id);
     if (!t) return {};
     SessionClipDef clip;
@@ -1101,17 +1107,20 @@ std::string Graph::save_clip(const std::string& track_id, std::string name,
     clip.name = std::move(name);
     clip.params = std::move(params);
     clip.string_params = std::move(string_params);
+    clip.bypass = std::move(bypass);
     t->clips.push_back(std::move(clip));
     return t->clips.back().id;
 }
 
 bool Graph::update_clip(const std::string& track_id, const std::string& clip_id,
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params) {
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params,
+    std::unordered_map<std::string, bool> bypass) {
     auto* c = find_clip(track_id, clip_id);
     if (!c) return false;
     c->params = std::move(params);
     c->string_params = std::move(string_params);
+    c->bypass = std::move(bypass);
     return true;
 }
 
@@ -1886,6 +1895,12 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
                         p_obj[nid] = std::move(n_obj);
                     }
                     c_obj["params"] = std::move(p_obj);
+                }
+                if (!clip.bypass.empty()) {
+                    nlohmann::ordered_json b_obj = nlohmann::ordered_json::object();
+                    for (const auto& [nid, bv] : clip.bypass)
+                        b_obj[nid] = bv;
+                    c_obj["bypass"] = std::move(b_obj);
                 }
                 clips_arr.push_back(std::move(c_obj));
             }

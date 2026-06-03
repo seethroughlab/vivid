@@ -122,8 +122,9 @@ struct MidiMappingDef {
     float range_max = 1.0f;
 };
 
-// Reserved for future crossfade support — parsed and round-tripped but not consulted by
-// apply_clip_params / launch_clip / fire_scene. All launches are currently instant (cut).
+// Fade-on-launch transition. When fade is set, apply_clip_params ramps numeric params
+// toward the clip's values over duration_bars instead of cutting (an explicit fade_bars
+// passed to queue_scene/queue_clip overrides this per launch).
 struct SessionTransitionDef {
     bool fade = false;
     float duration_bars = 0.0f;
@@ -132,10 +133,13 @@ struct SessionTransitionDef {
 struct SessionClipDef {
     std::string id;    // stable, generated (e.g. "c_a3f1b2c4")
     std::string name;  // display label only
-    std::optional<SessionTransitionDef> transition_override; // reserved — not yet consulted at launch
+    std::optional<SessionTransitionDef> transition_override; // fade-on-launch override for this clip
     // ParamSet: node_id -> param_name -> value
     std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
+    // Per-node bypass state captured with the clip (node_id -> bypassed). Restored
+    // on launch so a clip can flip an effect in/out per scene (e.g. an outro crusher).
+    std::unordered_map<std::string, bool> bypass;
 };
 
 struct SessionTrackDef {
@@ -348,10 +352,12 @@ public:
     bool unassign_nodes_from_track(const std::string& track_id, const std::vector<std::string>& node_ids);
     std::string save_clip(const std::string& track_id, std::string name,
                           std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
-                          std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params);
+                          std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params,
+                          std::unordered_map<std::string, bool> bypass = {});
     bool update_clip(const std::string& track_id, const std::string& clip_id,
                      std::unordered_map<std::string, std::unordered_map<std::string, float>> params,
-                     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params);
+                     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params,
+                     std::unordered_map<std::string, bool> bypass = {});
     bool rename_clip(const std::string& track_id, const std::string& clip_id, std::string new_name);
     bool remove_clip(const std::string& track_id, const std::string& clip_id);
     bool move_clip(const std::string& track_id, const std::string& clip_id, int to_index);

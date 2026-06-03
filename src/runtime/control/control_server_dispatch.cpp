@@ -1063,9 +1063,13 @@ std::string dispatch(const std::string& method, const std::string& body,
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||
                  !root.contains("name") || !root["name"].is_string())
             result = json_err("missing 'track_id' or 'name'");
-        else
+        else {
+            const bool activate = root.contains("activate") &&
+                root["activate"].is_boolean() && root["activate"].get<bool>();
             result = command_result_to_json(
-                api.save_clip(root["track_id"].get<std::string>(), root["name"].get<std::string>()));
+                api.save_clip(root["track_id"].get<std::string>(),
+                              root["name"].get<std::string>(), activate));
+        }
     } else if (method == "update_clip") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||
@@ -1118,6 +1122,19 @@ std::string dispatch(const std::string& method, const std::string& body,
             result = json_err("missing 'name'");
         else
             result = command_result_to_json(api.save_scene(root["name"].get<std::string>()));
+    } else if (method == "save_scene_from_clips") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("name") || !root["name"].is_string() ||
+                 !root.contains("assignments") || !root["assignments"].is_object())
+            result = json_err("missing 'name' or 'assignments' (object of track_id->clip_id)");
+        else {
+            std::vector<std::pair<std::string, std::string>> assignments;
+            for (auto& [track_id, clip_id] : root["assignments"].items())
+                if (clip_id.is_string())
+                    assignments.emplace_back(track_id, clip_id.get<std::string>());
+            result = command_result_to_json(
+                api.save_scene_from_clips(root["name"].get<std::string>(), assignments));
+        }
     } else if (method == "update_scene") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("scene_id") || !root["scene_id"].is_string())
@@ -1279,20 +1296,26 @@ std::string dispatch(const std::string& method, const std::string& body,
                  !root.contains("clip_id")  || !root["clip_id"].is_string() ||
                  !root.contains("quantize") || !root["quantize"].is_string())
             result = json_err("missing 'track_id', 'clip_id', or 'quantize'");
-        else
+        else {
+            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
+                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
             result = command_result_to_json(
                 api.queue_clip(root["track_id"].get<std::string>(),
                                 root["clip_id"].get<std::string>(),
-                                root["quantize"].get<std::string>()));
+                                root["quantize"].get<std::string>(), fade_bars));
+        }
     } else if (method == "queue_scene") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
                  !root.contains("quantize") || !root["quantize"].is_string())
             result = json_err("missing 'scene_id' or 'quantize'");
-        else
+        else {
+            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
+                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
             result = command_result_to_json(
                 api.queue_scene(root["scene_id"].get<std::string>(),
-                                 root["quantize"].get<std::string>()));
+                                 root["quantize"].get<std::string>(), fade_bars));
+        }
     } else if (method == "inspect_clip") {
         if (!root_valid) result = json_err("invalid JSON body");
         else result = handle_inspect_clip(graph,

@@ -46,21 +46,15 @@ bool string_param_is_wired(const CompiledGraph& cg, uint32_t node_idx, uint32_t 
 // Private helpers
 // ---------------------------------------------------------------------------
 
-std::pair<
-    std::unordered_map<std::string, std::unordered_map<std::string, float>>,
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
->
+RuntimeAPI::ClipCapture
 RuntimeAPI::capture_clip_params(const std::string& track_id) {
     core_.update_audio_sources(0.0);
-    using P = std::unordered_map<std::string, std::unordered_map<std::string, float>>;
-    using S = std::unordered_map<std::string, std::unordered_map<std::string, std::string>>;
-    P params;
-    S string_params;
+    ClipCapture out;
 
     const auto* track = graph_.find_track(track_id);
-    if (!track) return {};
+    if (!track) return out;
     const auto* cg = core_.compiled_graph();
-    if (!cg) return {};
+    if (!cg) return out;
 
     for (const auto& node_id : track->owned_node_ids) {
         const uint32_t nidx = node_index_of(*cg, node_id);
@@ -75,24 +69,43 @@ RuntimeAPI::capture_clip_params(const std::string& track_id) {
         for (const auto& [name, idx] : cn.param_indices) {
             if (cn.param_lock_flags[idx] & PARAM_LOCK_WIRES) continue;
             if (float_param_is_wired(*cg, nidx, idx)) continue;
-            params[node_id][name] = cn.param_values[idx];
+            out.params[node_id][name] = cn.param_values[idx];
         }
 
         for (const auto& [name, idx] : cn.file_param_indices) {
             if (string_param_is_wired(*cg, nidx, idx)) continue;
-            string_params[node_id][name] =
+            out.string_params[node_id][name] =
                 to_persisted_string_value(cn, name, cn.file_param_storage[idx]);
         }
+
+        // Per-node bypass state (so a clip can flip an effect in/out per scene).
+        if (const auto* ndef = graph_.find_node(node_id))
+            out.bypass[node_id] = ndef->bypassed;
     }
 
-    return {std::move(params), std::move(string_params)};
+    return out;
 }
 
-void RuntimeAPI::apply_clip_params(const std::string& track_id, const SessionClipDef& clip) {
+void RuntimeAPI::apply_clip_params(const std::string& track_id, const SessionClipDef& clip,
+                                   float fade_bars) {
     const auto* track = graph_.find_track(track_id);
     if (!track) return;
     auto* cg = core_.compiled_graph();
     if (!cg) return;
+
+    // Resolve the effective fade: explicit fade_bars wins, else the clip's own
+    // transition override (the modeled-but-formerly-unused SessionTransitionDef).
+    float eff_fade = fade_bars;
+    if (eff_fade <= 0.0f && clip.transition_override && clip.transition_override->fade)
+        eff_fade = clip.transition_override->duration_bars;
+    double ramp_start_beat = 0.0, ramp_end_beat = 0.0;
+    const bool do_fade = eff_fade > 0.0f;
+    if (do_fade) {
+        const auto m = current_metronome_sample();
+        const int bpb = std::max(1, m.beats_per_bar);
+        ramp_start_beat = m.beats_elapsed;
+        ramp_end_beat = ramp_start_beat + static_cast<double>(eff_fade) * bpb;
+    }
 
     for (const auto& node_id : track->owned_node_ids) {
         auto* cn = cg->find_node(node_id);
@@ -104,12 +117,35 @@ void RuntimeAPI::apply_clip_params(const std::string& track_id, const SessionCli
         }
         auto* ndef = graph_.find_node(node_id);
 
+        // Bypass switches at the start of the launch (not ramped).
+        auto b_it = clip.bypass.find(node_id);
+        if (b_it != clip.bypass.end()) {
+            const bool bypassed = b_it->second;
+            if (ndef) ndef->bypassed = bypassed;
+            cn->bypassed = bypassed;
+            cn->dirty = true;
+        }
+
         auto p_it = clip.params.find(node_id);
         if (p_it != clip.params.end()) {
             for (const auto& [pname, pval] : p_it->second) {
                 auto pi = cn->param_indices.find(pname);
                 if (pi == cn->param_indices.end()) continue;
                 if (cn->param_lock_flags[pi->second] & PARAM_LOCK_PRESETS) continue;
+                if (do_fade) {
+                    // Persist the destination immediately; ramp the live value.
+                    const float start = cn->param_values[pi->second];
+                    if (std::fabs(start - pval) > 1e-9f) {
+                        // Replace any in-flight ramp for this exact param.
+                        active_ramps_.erase(std::remove_if(active_ramps_.begin(), active_ramps_.end(),
+                            [&](const ParamRamp& r){ return r.node_id == node_id && r.param_name == pname; }),
+                            active_ramps_.end());
+                        active_ramps_.push_back({node_id, pname, start, pval,
+                                                 ramp_start_beat, ramp_end_beat});
+                    }
+                    if (ndef) ndef->params[pname] = pval;
+                    continue;
+                }
                 cn->param_values[pi->second] = pval;
                 cn->dirty = true;
                 if (ndef) ndef->params[pname] = pval;
@@ -186,13 +222,19 @@ CommandResult RuntimeAPI::unassign_nodes_from_track(const std::string& track_id,
 // Clip CRUD + launch
 // ---------------------------------------------------------------------------
 
-CommandResult RuntimeAPI::save_clip(const std::string& track_id, const std::string& name) {
+CommandResult RuntimeAPI::save_clip(const std::string& track_id, const std::string& name,
+                                    bool activate) {
     if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
     if (!graph_.find_track(track_id))
         return {false, "unknown track '" + track_id + "'"};
-    auto [params, string_params] = capture_clip_params(track_id);
-    std::string cid = graph_.save_clip(track_id, name, std::move(params), std::move(string_params));
+    auto cap = capture_clip_params(track_id);
+    std::string cid = graph_.save_clip(track_id, name, std::move(cap.params),
+                                       std::move(cap.string_params), std::move(cap.bypass));
     if (cid.empty()) return {false, "save_clip failed"};
+    if (activate) {
+        active_clips_[track_id] = cid;
+        graph_.set_active_clip(track_id, cid);
+    }
     mark_graph_dirty();
     return {true, cid};
 }
@@ -203,8 +245,9 @@ CommandResult RuntimeAPI::update_clip(const std::string& track_id, const std::st
         return {false, "unknown track '" + track_id + "'"};
     if (!graph_.find_clip(track_id, clip_id))
         return {false, "unknown clip '" + clip_id + "'"};
-    auto [params, string_params] = capture_clip_params(track_id);
-    if (!graph_.update_clip(track_id, clip_id, std::move(params), std::move(string_params)))
+    auto cap = capture_clip_params(track_id);
+    if (!graph_.update_clip(track_id, clip_id, std::move(cap.params),
+                            std::move(cap.string_params), std::move(cap.bypass)))
         return {false, "update_clip failed"};
     mark_graph_dirty();
     return {true, clip_id};
@@ -266,6 +309,24 @@ CommandResult RuntimeAPI::save_scene(const std::string& name) {
     std::string scene_id = graph_.save_scene(name);
     if (scene_id.empty()) return {false, "save_scene failed"};
     for (const auto& [track_id, clip_id] : active_clips_)
+        graph_.set_scene_assignment(scene_id, track_id, clip_id);
+    mark_graph_dirty();
+    return {true, scene_id};
+}
+
+CommandResult RuntimeAPI::save_scene_from_clips(
+        const std::string& name,
+        const std::vector<std::pair<std::string, std::string>>& assignments) {
+    // Validate every (track, clip) up front so a bad arg doesn't leave a half-built scene.
+    for (const auto& [track_id, clip_id] : assignments) {
+        if (!graph_.find_track(track_id))
+            return {false, "unknown track '" + track_id + "'"};
+        if (!graph_.find_clip(track_id, clip_id))
+            return {false, "unknown clip '" + clip_id + "' on track '" + track_id + "'"};
+    }
+    std::string scene_id = graph_.save_scene(name);
+    if (scene_id.empty()) return {false, "save_scene failed"};
+    for (const auto& [track_id, clip_id] : assignments)
         graph_.set_scene_assignment(scene_id, track_id, clip_id);
     mark_graph_dirty();
     return {true, scene_id};
@@ -517,14 +578,18 @@ int64_t RuntimeAPI::compute_quantize_target_beat(const std::string& quantize) co
     return current_beat + 1; // fallback: next beat
 }
 
-bool RuntimeAPI::fire_scene(const std::string& scene_id) {
+bool RuntimeAPI::fire_scene(const std::string& scene_id, float fade_bars) {
     const auto* scene = graph_.find_scene(scene_id);
     if (!scene) {
         std::fprintf(stderr, "[session] fire_scene: scene '%s' not found — skipped\n",
                      scene_id.c_str());
         return false;
     }
-    for (const auto& [track_id, clip_id] : scene->assignments) {
+    // Copy assignments before applying so nothing held across the apply loop can
+    // be invalidated by a concurrent session edit.
+    std::vector<std::pair<std::string, std::string>> assignments(
+        scene->assignments.begin(), scene->assignments.end());
+    for (const auto& [track_id, clip_id] : assignments) {
         const auto* clip = graph_.find_clip(track_id, clip_id);
         if (!clip) {
             std::fprintf(stderr,
@@ -532,7 +597,7 @@ bool RuntimeAPI::fire_scene(const std::string& scene_id) {
                 clip_id.c_str(), track_id.c_str());
             continue;
         }
-        apply_clip_params(track_id, *clip);
+        apply_clip_params(track_id, *clip, fade_bars);
         active_clips_[track_id] = clip_id;
         graph_.set_active_clip(track_id, clip_id);
     }
@@ -541,7 +606,9 @@ bool RuntimeAPI::fire_scene(const std::string& scene_id) {
     pending_clip_launches_.erase(
         std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
                        [&](const PendingClipLaunch& p) {
-                           return scene->assignments.count(p.track_id) > 0;
+                           for (const auto& a : assignments)
+                               if (a.first == p.track_id) return true;
+                           return false;
                        }),
         pending_clip_launches_.end());
     return true;
@@ -569,7 +636,7 @@ void RuntimeAPI::mark_cue_step_fired(const std::string& path_id, const std::stri
 // ---------------------------------------------------------------------------
 
 CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::string& clip_id,
-                                      const std::string& quantize) {
+                                      const std::string& quantize, float fade_bars) {
     if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
     if (!graph_.find_track(track_id))
         return {false, "unknown track '" + track_id + "'"};
@@ -578,7 +645,7 @@ CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::str
         return {false, "unknown clip '" + clip_id + "'"};
 
     if (quantize == "instant") {
-        apply_clip_params(track_id, *clip);
+        apply_clip_params(track_id, *clip, fade_bars);
         active_clips_[track_id] = clip_id;
         graph_.set_active_clip(track_id, clip_id);
         mark_graph_dirty();
@@ -594,11 +661,12 @@ CommandResult RuntimeAPI::queue_clip(const std::string& track_id, const std::str
         std::remove_if(pending_clip_launches_.begin(), pending_clip_launches_.end(),
                        [&](const PendingClipLaunch& p) { return p.track_id == track_id; }),
         pending_clip_launches_.end());
-    pending_clip_launches_.push_back({track_id, clip_id, target});
+    pending_clip_launches_.push_back({track_id, clip_id, target, fade_bars});
     return {true, clip_id};
 }
 
-CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::string& quantize) {
+CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::string& quantize,
+                                      float fade_bars) {
     if (!core_.compiled_graph()) return {false, kNoCompiledGraph};
     if (!graph_.find_scene(scene_id))
         return {false, "unknown scene '" + scene_id + "'"};
@@ -606,7 +674,7 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
     if (quantize == "instant") {
         queued_cue_path_id_.clear();
         queued_cue_step_id_.clear();
-        fire_scene(scene_id);
+        fire_scene(scene_id, fade_bars);
         return {true, scene_id};
     }
     if (quantize != "beat" && quantize != "bar" &&
@@ -614,7 +682,7 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
         return {false, "unknown quantize mode '" + quantize + "'"};
 
     const int64_t target = compute_quantize_target_beat(quantize);
-    pending_scene_launch_ = {scene_id, target, {}, {}};
+    pending_scene_launch_ = {scene_id, target, {}, {}, fade_bars};
     queued_cue_path_id_.clear();
     queued_cue_step_id_.clear();
     return {true, scene_id};
@@ -625,6 +693,9 @@ CommandResult RuntimeAPI::queue_scene(const std::string& scene_id, const std::st
 // ---------------------------------------------------------------------------
 
 void RuntimeAPI::tick_quantized_clip_scene_launches() {
+    // Fades advance every frame, independent of any pending quantized launch.
+    tick_param_ramps();
+
     if (!pending_scene_launch_ && pending_clip_launches_.empty() &&
         cue_follow_target_beat_index_ < 0)
         return;
@@ -636,7 +707,7 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
     if (pending_scene_launch_ && current_beat >= pending_scene_launch_->target_beat_index) {
         const auto cue_path_id = pending_scene_launch_->cue_path_id;
         const auto cue_step_id = pending_scene_launch_->cue_step_id;
-        if (fire_scene(pending_scene_launch_->scene_id) &&
+        if (fire_scene(pending_scene_launch_->scene_id, pending_scene_launch_->fade_bars) &&
             !cue_path_id.empty() && !cue_step_id.empty()) {
             mark_cue_step_fired(cue_path_id, cue_step_id);
         }
@@ -647,7 +718,7 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
         if (current_beat >= p.target_beat_index) {
             const auto* clip = graph_.find_clip(p.track_id, p.clip_id);
             if (clip) {
-                apply_clip_params(p.track_id, *clip);
+                apply_clip_params(p.track_id, *clip, p.fade_bars);
                 active_clips_[p.track_id] = p.clip_id;
                 graph_.set_active_clip(p.track_id, p.clip_id);
             } else {
@@ -675,6 +746,35 @@ void RuntimeAPI::tick_quantized_clip_scene_launches() {
         const std::string path_id = active_cue_path_id_;
         advance_cue_path(path_id, "instant");
     }
+}
+
+void RuntimeAPI::tick_param_ramps() {
+    if (active_ramps_.empty()) return;
+    auto* cg = core_.compiled_graph();
+    if (!cg) { active_ramps_.clear(); return; }
+    const double now = current_metronome_sample().beats_elapsed;
+
+    for (auto& r : active_ramps_) {
+        auto* cn = cg->find_node(r.node_id);
+        if (!cn) { r.end_beat = -1.0; continue; }  // node gone → drop
+        auto pi = cn->param_indices.find(r.param_name);
+        if (pi == cn->param_indices.end()) { r.end_beat = -1.0; continue; }
+        const double span = r.end_beat - r.start_beat;
+        float t = (span > 1e-9) ? static_cast<float>((now - r.start_beat) / span) : 1.0f;
+        if (t < 0.0f) t = 0.0f;
+        if (t >= 1.0f) {
+            cn->param_values[pi->second] = r.target;
+            r.end_beat = -1.0;  // complete → drop below
+        } else {
+            cn->param_values[pi->second] = r.start + (r.target - r.start) * t;
+        }
+        cn->dirty = true;
+    }
+    // The persisted destination already lives in NodeDef.params (set at launch),
+    // so ramps only touch live audio state — no need to mark the graph dirty here.
+    active_ramps_.erase(std::remove_if(active_ramps_.begin(), active_ramps_.end(),
+        [](const ParamRamp& r){ return r.end_beat < 0.0; }),
+        active_ramps_.end());
 }
 
 // ---------------------------------------------------------------------------

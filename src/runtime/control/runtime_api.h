@@ -164,7 +164,10 @@ public:
                                              const std::vector<std::string>& node_ids);
 
     // --- Session: Clip CRUD + launch ---
-    CommandResult save_clip(const std::string& track_id, const std::string& name);
+    // activate=true also makes the new clip the track's active clip (so a
+    // subsequent save_scene / save_scene_from_clips captures it).
+    CommandResult save_clip(const std::string& track_id, const std::string& name,
+                            bool activate = false);
     CommandResult update_clip(const std::string& track_id, const std::string& clip_id);
     CommandResult rename_clip(const std::string& track_id, const std::string& clip_id,
                                const std::string& new_name);
@@ -177,6 +180,11 @@ public:
 
     // --- Session: Scene CRUD ---
     CommandResult save_scene(const std::string& name);
+    // Atomically create a scene with explicit track->clip assignments — no need
+    // to activate clips first (avoids the save_clip->launch_clip->save_scene dance).
+    CommandResult save_scene_from_clips(
+        const std::string& name,
+        const std::vector<std::pair<std::string, std::string>>& assignments);
     CommandResult update_scene(const std::string& scene_id);
     CommandResult rename_scene(const std::string& scene_id, const std::string& new_name);
     CommandResult remove_scene(const std::string& scene_id);
@@ -209,11 +217,15 @@ public:
     CommandResult stop_cue_path(const std::string& path_id);
 
     // --- Session: Quantized launch ---
+    // fade_bars > 0 ramps numeric params from their current values to the clip's
+    // values over that many bars instead of cutting (string params + bypass switch
+    // at the start of the fade). 0 = instant cut.
     CommandResult queue_clip(const std::string& track_id, const std::string& clip_id,
-                              const std::string& quantize);
-    CommandResult queue_scene(const std::string& scene_id, const std::string& quantize);
+                              const std::string& quantize, float fade_bars = 0.0f);
+    CommandResult queue_scene(const std::string& scene_id, const std::string& quantize,
+                              float fade_bars = 0.0f);
 
-    // Per-tick: fire pending clip/scene launches at beat boundary
+    // Per-tick: fire pending clip/scene launches at beat boundary, advance fades
     void tick_quantized_clip_scene_launches();
 
     // Accessors for snapshot (Phase 4)
@@ -353,6 +365,7 @@ private:
         std::string track_id;
         std::string clip_id;
         int64_t target_beat_index = 0;
+        float fade_bars = 0.0f;
     };
     std::vector<PendingClipLaunch> pending_clip_launches_;
 
@@ -362,8 +375,23 @@ private:
         int64_t target_beat_index = 0;
         std::string cue_path_id;
         std::string cue_step_id;
+        float fade_bars = 0.0f;
     };
     std::optional<PendingSceneLaunch> pending_scene_launch_;
+
+    // Active parameter fades (set by faded clip/scene launches). Each ramps one
+    // node param from `start` to `target` between the two metronome beat marks;
+    // advanced by tick_param_ramps() each frame and removed when complete.
+    struct ParamRamp {
+        std::string node_id;
+        std::string param_name;
+        float       start = 0.0f;
+        float       target = 0.0f;
+        double      start_beat = 0.0;
+        double      end_beat = 0.0;
+    };
+    std::vector<ParamRamp> active_ramps_;
+    void tick_param_ramps();
 
     std::string active_cue_path_id_;
     std::string active_cue_step_id_;
@@ -372,12 +400,16 @@ private:
     int64_t cue_follow_target_beat_index_ = -1;
 
     // Session clip capture/apply — used by save_clip, update_clip, launch_clip, queue_clip
-    std::pair<
-        std::unordered_map<std::string, std::unordered_map<std::string, float>>,
-        std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
-    > capture_clip_params(const std::string& track_id);
-    void apply_clip_params(const std::string& track_id, const SessionClipDef& clip);
-    bool fire_scene(const std::string& scene_id);
+    struct ClipCapture {
+        std::unordered_map<std::string, std::unordered_map<std::string, float>> params;
+        std::unordered_map<std::string, std::unordered_map<std::string, std::string>> string_params;
+        std::unordered_map<std::string, bool> bypass;
+    };
+    ClipCapture capture_clip_params(const std::string& track_id);
+    // fade_bars > 0 ramps numeric params toward the clip values over that many bars.
+    void apply_clip_params(const std::string& track_id, const SessionClipDef& clip,
+                           float fade_bars = 0.0f);
+    bool fire_scene(const std::string& scene_id, float fade_bars = 0.0f);
     void mark_cue_step_fired(const std::string& path_id, const std::string& step_id);
     int64_t compute_quantize_target_beat(const std::string& quantize) const;
 

@@ -2265,12 +2265,17 @@ std::string handle_inspect_clip(const Graph& graph,
         string_params_obj[node_id] = std::move(nsp);
     }
 
+    nlohmann::json bypass_obj = nlohmann::json::object();
+    for (const auto& [node_id, bypassed] : clip->bypass)
+        bypass_obj[node_id] = bypassed;
+
     nlohmann::json result = nlohmann::json::object();
     result["id"]           = clip->id;
     result["name"]         = clip->name;
     result["track_id"]     = track_id;
     result["params"]       = std::move(params_obj);
     result["string_params"] = std::move(string_params_obj);
+    result["bypass"]       = std::move(bypass_obj);
     return result.dump();
 }
 

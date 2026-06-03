@@ -2102,15 +2102,18 @@ async def unassign_nodes_from_track(track_id: str, node_ids: list[str]) -> str:
 
 
 @mcp.tool()
-async def save_clip(track_id: str, name: str) -> str:
-    """Capture current param state of the track's owned nodes as a new clip. Returns clip_id.
+async def save_clip(track_id: str, name: str, activate: bool = False) -> str:
+    """Capture current param state (+ per-node bypass) of the track's owned nodes as a new clip. Returns clip_id.
 
-    NOTE: saving a clip does NOT make it active. To build a scene from clips you must either
-    launch_clip() each desired clip first (so save_scene captures it), or — simpler and
-    order-independent — assign clips explicitly with set_scene_assignment(scene, track, clip).
-    Wire-driven params and params with PARAM_LOCK_WIRES are excluded from the capture.
+    Captures float params, string params, AND each owned node's bypass state (so a clip can
+    flip an effect in/out per scene). Wire-driven params and params with PARAM_LOCK_WIRES are
+    excluded.
+
+    activate=True also makes the new clip the track's active clip — so save_clip(activate=True)
+    on each track followed by save_scene() builds a scene without the launch dance. (Even simpler:
+    save_scene_from_clips(name, {track: clip}) assigns clips atomically.)
     """
-    return await _post("save_clip", {"track_id": track_id, "name": name})
+    return await _post("save_clip", {"track_id": track_id, "name": name, "activate": activate})
 
 
 @mcp.tool()
@@ -2148,25 +2151,41 @@ async def launch_clip(track_id: str, clip_id: str) -> str:
 
 
 @mcp.tool()
-async def queue_clip(track_id: str, clip_id: str, quantize: str = "instant") -> str:
+async def queue_clip(track_id: str, clip_id: str, quantize: str = "instant",
+                     fade_bars: float = 0.0) -> str:
     """Queue a clip launch at a beat boundary.
 
     quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
     A new queue_clip for the same track replaces any existing queued launch for that track.
+    fade_bars > 0 ramps numeric params from their current values to the clip's over that many
+    bars (string params + bypass switch at the start of the fade); 0 = instant cut.
     """
-    return await _post("queue_clip", {"track_id": track_id, "clip_id": clip_id, "quantize": quantize})
+    return await _post("queue_clip", {"track_id": track_id, "clip_id": clip_id,
+                                       "quantize": quantize, "fade_bars": fade_bars})
 
 
 @mcp.tool()
 async def save_scene(name: str) -> str:
     """Capture the CURRENTLY ACTIVE clips as a new scene. Returns scene_id.
 
-    Captures only each track's active_clip. Because save_clip does NOT activate the clip it
-    saves, calling save_clip then save_scene yields an EMPTY or partial scene. To build a scene
-    reliably: create it (save_scene once), then assign each track's clip with
-    set_scene_assignment(scene_id, track_id, clip_id) — or launch_clip each desired clip first.
+    Captures only each track's active_clip. Because save_clip does NOT activate by default,
+    save_clip then save_scene yields an EMPTY/partial scene. PREFER save_scene_from_clips() to
+    build a scene from explicit clip ids in one atomic call.
     """
     return await _post("save_scene", {"name": name})
+
+
+@mcp.tool()
+async def save_scene_from_clips(name: str, assignments: dict) -> str:
+    """Atomically create a scene with explicit track->clip assignments. Returns scene_id.
+
+    The clean way to author a scene: pass {track_id: clip_id, ...} and the scene is created with
+    those assignments in one call — no need to activate clips first or chain set_scene_assignment.
+    Every (track, clip) is validated up front; an unknown id fails without creating a half-scene.
+
+    e.g. save_scene_from_clips("Drop", {"tr_chords": "c_1", "tr_drums": "c_2", "tr_master": "c_3"})
+    """
+    return await _post("save_scene_from_clips", {"name": name, "assignments": assignments})
 
 
 @mcp.tool()
@@ -2215,7 +2234,7 @@ async def clear_scene_assignment(scene_id: str, track_id: str) -> str:
 
 
 @mcp.tool()
-async def queue_scene(scene_id: str, quantize: str = "instant") -> str:
+async def queue_scene(scene_id: str, quantize: str = "instant", fade_bars: float = 0.0) -> str:
     """Queue a scene launch at a beat boundary.
 
     Fires all track→clip assignments in the scene simultaneously. Tracks marked
@@ -2223,8 +2242,11 @@ async def queue_scene(scene_id: str, quantize: str = "instant") -> str:
 
     quantize: 'instant' (apply now), 'beat' (next beat), 'bar' (next bar), '4bar' (next 4-bar).
     A new queue_scene replaces any previously queued scene.
+    fade_bars > 0 ramps numeric params from current to the scene's clip values over that many
+    bars (string params + bypass switch at the start); 0 = instant cut.
     """
-    return await _post("queue_scene", {"scene_id": scene_id, "quantize": quantize})
+    return await _post("queue_scene", {"scene_id": scene_id, "quantize": quantize,
+                                       "fade_bars": fade_bars})
 
 
 # ---------------------------------------------------------------------------
