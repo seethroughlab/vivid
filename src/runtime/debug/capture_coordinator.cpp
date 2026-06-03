@@ -1060,13 +1060,20 @@ void CaptureCoordinator::complete_active_interface_capture(uint32_t width, uint3
         }
 
         if (response.empty()) {
-            std::string b64 = base64_encode(png_data.data(), png_data.size());
-            response = R"({"ok":true,"width":)" + std::to_string(width) +
-                       R"(,"height":)" + std::to_string(height) +
-                       R"(,"png_base64":")" + b64 + "\"";
-            if (!saved_path.empty())
-                response += R"(,"path":")" + json_escape(saved_path) + "\"";
-            response += "}";
+            if (!saved_path.empty()) {
+                // The PNG was written to disk; return only the path. Omitting the
+                // inline base64 keeps the response small (a full-frame PNG easily
+                // exceeds MCP tool-result token limits) and skips the encode cost.
+                response = R"({"ok":true,"width":)" + std::to_string(width) +
+                           R"(,"height":)" + std::to_string(height) +
+                           R"(,"path":")" + json_escape(saved_path) + "\"}";
+            } else {
+                // No save_path: deliver the image inline as base64.
+                std::string b64 = base64_encode(png_data.data(), png_data.size());
+                response = R"({"ok":true,"width":)" + std::to_string(width) +
+                           R"(,"height":)" + std::to_string(height) +
+                           R"(,"png_base64":")" + b64 + "\"}";
+            }
         }
     }
 

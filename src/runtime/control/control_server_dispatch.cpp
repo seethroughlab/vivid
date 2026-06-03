@@ -511,9 +511,9 @@ std::string dispatch(const std::string& method, const std::string& body,
                 out["ok"]        = true;
                 out["width"]     = w;
                 out["height"]    = h;
-                out["png_base64"] = base64_encode_bytes(png.data(), png.size());
                 // Optional save_path: write PNG bytes to disk on the runtime
                 // machine. Matches capture_interface's convention.
+                bool saved = false;
                 if (root.contains("save_path") && root["save_path"].is_string()) {
                     const std::string save_path = root["save_path"].get<std::string>();
                     if (!save_path.empty() && is_safe_capture_image_path(save_path)) {
@@ -521,10 +521,20 @@ std::string dispatch(const std::string& method, const std::string& body,
                         if (ofs.is_open()) {
                             ofs.write(reinterpret_cast<const char*>(png.data()),
                                       static_cast<std::streamsize>(png.size()));
-                            if (ofs.good()) out["save_path"] = save_path;
+                            if (ofs.good()) {
+                                out["path"] = save_path;
+                                saved = true;
+                            }
                         }
                     }
                 }
+                // When the PNG was written to disk, return only the path: omitting
+                // the inline base64 keeps the response small (a full surface PNG
+                // easily exceeds MCP tool-result token limits). If no save_path was
+                // given (or the write failed), deliver the image inline as a
+                // graceful fallback so the caller still gets the frame.
+                if (!saved)
+                    out["png_base64"] = base64_encode_bytes(png.data(), png.size());
                 result = out.dump();
             }
         }

@@ -3015,9 +3015,16 @@ async def capture_interface(node_id: str = "",
                             ensure_ui_visible: bool = True) -> str:
     """Capture the full running Vivid interface from the live runtime instance.
 
+    Returns {ok, width, height, png_base64} normally. If save_path is provided
+    (absolute path ending in .png), the PNG is written to that path on the runtime
+    machine and the response is {ok, width, height, path} INSTEAD — the inline
+    png_base64 is omitted (a full-frame PNG exceeds MCP tool-result token limits),
+    so Read the file at `path` to view the image.
+
     Args:
         node_id: Optional node id to select before capture so the inspector is visible
-        save_path: Optional absolute PNG path to also write on the runtime machine
+        save_path: Optional absolute PNG path to write on the runtime machine; when set,
+            the response returns `path` instead of inline `png_base64`
         ensure_ui_visible: Force the graph UI visible before capture
     """
     body = {
@@ -3125,14 +3132,16 @@ async def editor_inject_event(
 async def capture_editor(node_id: str, save_path: str = "") -> str:
     """Capture the editor window's current rendered surface as PNG.
 
-    Returns {ok, width, height, png_base64}. If save_path is provided (absolute
-    path ending in .png), also writes the decoded PNG to that path on the
-    runtime machine so an LLM caller can Read it directly. Response shape
-    matches capture_interface.
+    Returns {ok, width, height, png_base64} normally. If save_path is provided
+    (absolute path ending in .png), the PNG is written to that path on the runtime
+    machine and the response is {ok, width, height, path} INSTEAD — the inline
+    png_base64 is omitted to stay under MCP tool-result token limits, so Read the
+    file at `path` to view it. Response shape matches capture_interface.
 
     Args:
         node_id: Target editor's node id.
-        save_path: Optional absolute PNG path to also write on the runtime machine.
+        save_path: Optional absolute PNG path to write on the runtime machine; when set,
+            the response returns `path` instead of inline `png_base64`.
     """
     body: dict = {"node_id": node_id}
     if save_path:
