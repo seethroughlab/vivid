@@ -49,6 +49,14 @@ typedef struct VividThumbnailContext {
     const char*        operator_error_msg;
 
     VividDrawAPI       draw;  // 2D draw API (optional — check draw.opaque before use)
+
+    // Which input ports are actually connected (bit i = input port ordinal i has
+    // an upstream wire), resolved by the host from the compiled graph's edge list.
+    // This is the authoritative connectivity signal — the audio/frame contexts
+    // intentionally do not carry it (disconnected ports still get zero buffers).
+    // Bits beyond 32 ports are not represented; operators with more inputs should
+    // treat that as a non-issue (no current operator exceeds 32 input ports).
+    uint32_t           connected_input_mask;
 } VividThumbnailContext;
 
 #ifdef __cplusplus

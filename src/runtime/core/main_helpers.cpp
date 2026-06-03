@@ -524,6 +524,17 @@ void draw_custom_thumbnails(const vivid::RuntimeCore& runtime,
         tctx.operator_errored = 0;
         tctx.operator_error_msg = nullptr;
 
+        // Authoritative input connectivity, resolved from the compiled graph's
+        // edge list (the audio/frame contexts don't carry it). Lets variable-input
+        // operators (e.g. Mixer) draw exactly their connected channels.
+        const uint32_t node_idx = static_cast<uint32_t>(&cn - cg_thumb->nodes.data());
+        uint32_t connected_mask = 0;
+        for (const auto& e : cg_thumb->edges) {
+            if (e.to_node == node_idx && !e.targets_param && e.to_port < 32)
+                connected_mask |= (1u << e.to_port);
+        }
+        tctx.connected_input_mask = connected_mask;
+
         // Populate 2D draw API if thumbnail renderer is available
         if (thumb_draw_renderer)
             vivid::ui::populate_draw_api(tctx.draw, *thumb_draw_renderer);

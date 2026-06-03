@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/thumbnail.h"
 #include "operator_api/draw_ui_helpers.h"
+#include "operator_api/draw_plot_helpers.h"
 #include "operator_api/editor_ui.h"
 #include <atomic>
 #include <cmath>
@@ -101,13 +102,14 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
     std::atomic<float> in_meter_[kMaxInputs];
     float              meter_env_[kMaxInputs] = {};
 
-    WGPURenderPipeline thumb_pipeline_ = nullptr;
-    WGPUBindGroup thumb_bind_group_ = nullptr;
-    WGPUBindGroupLayout thumb_bind_layout_ = nullptr;
-    WGPUBuffer thumb_uniform_buf_ = nullptr;
-    WGPUShaderModule thumb_shader_ = nullptr;
-    WGPUPipelineLayout thumb_pipe_layout_ = nullptr;
-    WGPUTextureFormat thumb_pipeline_format_ = WGPUTextureFormat_Undefined;
+    // Post-mix output peak, written on the audio thread and read on the UI
+    // thread by the live thumbnail (see draw_thumbnail). out_env_ is the
+    // audio-thread-private envelope-follower scratch. (Which inputs are
+    // connected is supplied to the thumbnail by the host via
+    // VividThumbnailContext::connected_input_mask — not derivable here, since
+    // disconnected ports still receive zero-filled buffers.)
+    std::atomic<float>    out_meter_{0.0f};
+    float                 out_env_ = 0.0f;
 
     Mixer() {
         for (int i = 0; i < kMaxInputs; ++i) {
@@ -236,6 +238,17 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
                 }
             }
         }
+
+        // Post-mix output peak, same per-block envelope falloff as the inputs.
+        float out_peak = 0.0f;
+        for (uint32_t s = 0; s < 2 * n; ++s) {
+            const float m = std::fabs(out_l[s]);
+            if (m > out_peak) out_peak = m;
+        }
+        float oenv = out_env_ * 0.80f;
+        if (out_peak > oenv) oenv = out_peak;
+        out_env_ = oenv;
+        out_meter_.store(oenv, std::memory_order_relaxed);
     }
 
     // Channel-strip inspector: one row per CONNECTED input, labeled by the
@@ -546,114 +559,82 @@ struct Mixer : vivid::OperatorBase, vivid::AudioProcessable {
         }
     }
 
+    // Live thumbnail: one mini level meter per CONNECTED input (lit by the
+    // pre-gain peak the audio thread publishes into in_meter_), plus a brighter
+    // OUT meter for the summed bus. The strip adapts to the connected count, so
+    // the node face reads like a tiny mixing console rather than a fixed icon.
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
-        if (!ctx) return;
-        if (!thumb_pipeline_ || thumb_pipeline_format_ != ctx->thumbnail_format) {
-            rebuild_thumb_pipeline(ctx);
-        }
-        if (!thumb_pipeline_ || !thumb_bind_group_ || !thumb_uniform_buf_) {
-            vivid_report_thumbnail_error(ctx, "mixer thumbnail pipeline init failed");
+        if (!ctx || !ctx->draw.opaque) return;
+        auto& d = const_cast<VividDrawAPI&>(ctx->draw);
+        void* o = d.opaque;
+
+        const float w = static_cast<float>(ctx->thumbnail_logical_width
+                                               ? ctx->thumbnail_logical_width  : ctx->thumbnail_width);
+        const float h = static_cast<float>(ctx->thumbnail_logical_height
+                                               ? ctx->thumbnail_logical_height : ctx->thumbnail_height);
+
+        vivid::draw_plot::draw_thumb_background(d, o, w, h);
+
+        // Connected channels (ascending), from the host-resolved graph topology.
+        const uint32_t mask = ctx->connected_input_mask;
+        int chans[kMaxInputs];
+        int n = 0;
+        for (int i = 0; i < kMaxInputs; ++i)
+            if (mask & (1u << i)) chans[n++] = i;
+
+        if (n == 0) {
+            vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, "no inputs",
+                                               {0.45f, 0.50f, 0.58f, 0.9f}, 0.8f);
             return;
         }
 
-        struct Uniforms { float pad[4]; } u{};
-        wgpuQueueWriteBuffer(ctx->queue, thumb_uniform_buf_, 0, &u, sizeof(u));
-        vivid::thumbnail::run_pass(ctx, thumb_pipeline_, thumb_bind_group_, "Mixer Thumb Pass");
-    }
+        char hdr[16];
+        std::snprintf(hdr, sizeof(hdr), "%d ch", n);
+        vivid::draw_plot::draw_thumb_label(d, o, 6.0f, 4.0f, hdr,
+                                           {0.45f, 0.55f, 0.65f, 0.95f}, 0.8f);
 
-    ~Mixer() override {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
-    }
+        const float pad     = 6.0f;
+        const float bar_top = 18.0f;
+        const float bar_h   = std::max(4.0f, (h - pad) - bar_top);
 
-private:
-    void rebuild_thumb_pipeline(const VividThumbnailContext* ctx) {
-        vivid::gpu::release(thumb_pipeline_);
-        vivid::gpu::release(thumb_bind_group_);
-        vivid::gpu::release(thumb_bind_layout_);
-        vivid::gpu::release(thumb_uniform_buf_);
-        vivid::gpu::release(thumb_shader_);
-        vivid::gpu::release(thumb_pipe_layout_);
+        // Reserve a wider right-hand slot for the OUT (sum) meter; the input
+        // strip fills the remainder, one column per connected channel.
+        const float out_w       = std::max(10.0f, w * 0.16f);
+        const float out_x       = w - pad - out_w;
+        const float arrow_w     = 8.0f;
+        const float strip_left  = pad;
+        const float strip_right = out_x - arrow_w;
+        const float avail       = std::max(1.0f, strip_right - strip_left);
+        const float col_w       = avail / static_cast<float>(n);
 
-        static const char* kThumbFragment = R"(
-struct Uniforms {
-    data: vec4f,
-};
+        const VividColor track {0.16f, 0.16f, 0.19f, 0.8f};
+        const VividColor low   {0.31f, 0.75f, 0.39f, 0.86f};
+        const VividColor high  {0.86f, 0.31f, 0.24f, 0.86f};
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
+        for (int k = 0; k < n; ++k) {
+            const float lvl = std::clamp(
+                in_meter_[chans[k]].load(std::memory_order_relaxed), 0.0f, 1.0f);
+            const float cx = strip_left + static_cast<float>(k) * col_w;
+            const float bw = std::max(2.0f, col_w - 2.0f);
+            vivid::draw_plot::draw_scalar_meter(d, o, cx, bar_top, bw, bar_h,
+                                                lvl, track, low, high, 1.5f);
+        }
 
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+        // Convergence cue: a small triangle pointing into the OUT meter.
+        if (d.draw_tri) {
+            const float ay = bar_top + bar_h * 0.5f;
+            d.draw_tri(o, strip_right + 1.0f, ay - 4.0f,
+                       strip_right + 1.0f, ay + 4.0f,
+                       out_x - 1.0f, ay, {0.55f, 0.62f, 0.72f, 0.8f});
+        }
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    let fs = fullscreenTriangle(vertexIndex, true);
-    var out: VertexOutput;
-    out.position = fs.position;
-    out.uv = fs.uv;
-    return out;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let uv = input.uv;
-    let bg = vec4f(18.0/255.0, 20.0/255.0, 23.0/255.0, 230.0/255.0);
-    let dim_col = vec4f(80.0/255.0, 100.0/255.0, 140.0/255.0, 160.0/255.0);
-    let bright_col = vec4f(160.0/255.0, 200.0/255.0, 240.0/255.0, 230.0/255.0);
-
-    // 4 input lines converging to single output
-    let x = uv.x;
-    let y = uv.y;
-
-    // Input positions (left side, spread vertically)
-    let in_y0 = 0.15;
-    let in_y1 = 0.38;
-    let in_y2 = 0.62;
-    let in_y3 = 0.85;
-    let out_y = 0.5;  // output at center
-
-    // Quadratic interpolation from input to output
-    let t = x * x;  // quadratic ease
-    let line0 = in_y0 + (out_y - in_y0) * t;
-    let line1 = in_y1 + (out_y - in_y1) * t;
-    let line2 = in_y2 + (out_y - in_y2) * t;
-    let line3 = in_y3 + (out_y - in_y3) * t;
-
-    let thickness = 0.018;
-
-    // Check each input line (dim)
-    if (abs(y - line0) < thickness) { return dim_col; }
-    if (abs(y - line1) < thickness) { return dim_col; }
-    if (abs(y - line2) < thickness) { return dim_col; }
-    if (abs(y - line3) < thickness) { return dim_col; }
-
-    // Output line on right side (bright, only after convergence)
-    if (x > 0.85 && abs(y - out_y) < thickness * 1.5) {
-        return bright_col;
-    }
-
-    return bg;
-}
-)";
-
-        thumb_shader_ = vivid::thumbnail::create_shader(ctx->device, kThumbFragment, "Mixer Thumb Shader");
-        thumb_uniform_buf_ =
-            vivid::thumbnail::create_uniform_buffer(ctx->device, sizeof(float) * 4, "Mixer Thumb Uniforms");
-        thumb_bind_layout_ =
-            vivid::thumbnail::create_uniform_bind_layout(ctx->device, sizeof(float) * 4, "Mixer Thumb BGL");
-        thumb_pipe_layout_ =
-            vivid::thumbnail::create_pipeline_layout(ctx->device, thumb_bind_layout_, "Mixer Thumb Layout");
-        thumb_bind_group_ = vivid::thumbnail::create_uniform_bind_group(
-            ctx->device, thumb_bind_layout_, thumb_uniform_buf_, sizeof(float) * 4, "Mixer Thumb BG");
-        thumb_pipeline_ = vivid::thumbnail::create_pipeline(
-            ctx->device, thumb_shader_, thumb_pipe_layout_, ctx->thumbnail_format, "Mixer Thumb Pipeline");
-        thumb_pipeline_format_ = ctx->thumbnail_format;
+        // OUT (sum) meter — brighter palette than the per-input strips.
+        const float out_lvl = std::clamp(
+            out_meter_.load(std::memory_order_relaxed), 0.0f, 1.0f);
+        const VividColor out_low {0.36f, 0.66f, 0.95f, 0.92f};
+        const VividColor out_high{0.92f, 0.42f, 0.95f, 0.92f};
+        vivid::draw_plot::draw_scalar_meter(d, o, out_x, bar_top, out_w, bar_h,
+                                            out_lvl, track, out_low, out_high, 1.5f);
     }
 };
 

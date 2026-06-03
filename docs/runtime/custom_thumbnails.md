@@ -67,6 +67,14 @@ The thumbnail hook renders into a runtime-owned thumbnail target. Important fiel
   - `source_output_width`
   - `source_output_height`
   - `input_texture_views`
+- topology:
+  - `connected_input_mask` — bit `i` set when input port ordinal `i` has an upstream
+    wire (resolved by the host from the compiled graph's edge list; covers the first
+    32 input ports). This is the authoritative connectivity signal for thumbnails —
+    the audio/frame contexts deliberately do not carry it, and a disconnected input
+    still receives a zero-filled buffer, so buffer presence does **not** indicate a
+    connection. Variable-input operators (e.g. `Mixer`) use this to draw exactly
+    their connected channels.
 
 Rules:
 
