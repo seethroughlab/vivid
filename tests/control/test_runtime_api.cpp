@@ -953,6 +953,39 @@ int main(int argc, char* argv[]) {
         check(r.ok, "set_quantize_clock a ok");
     }
 
+    // --- Test set_launch_quantize + serialization round-trip ---
+    std::fprintf(stderr, "\n--- set_launch_quantize ---\n");
+    {
+        check(vivid::Graph().launch_quantize() == "instant",
+              "launch_quantize defaults to instant");
+
+        auto bad = api.set_launch_quantize("nonsense");
+        check(!bad.ok, "set_launch_quantize rejects invalid mode");
+        check(graph.launch_quantize() == "instant",
+              "invalid mode leaves launch_quantize unchanged");
+
+        auto ok = api.set_launch_quantize("bar");
+        check(ok.ok, "set_launch_quantize bar ok");
+        check(graph.launch_quantize() == "bar", "graph launch_quantize is bar");
+
+        // Round-trips through save/load.
+        std::string json;
+        check(graph.save_to_string(json), "serialize graph with launch_quantize");
+        check(json.find("launch_quantize") != std::string::npos,
+              "non-default launch_quantize written to JSON");
+        vivid::Graph g2;
+        check(g2.load_from_json_doc(nlohmann::json::parse(json), false, true),
+              "reload serialized graph");
+        check(g2.launch_quantize() == "bar", "launch_quantize survives round-trip");
+
+        // Default value is omitted from the file and parses back as instant.
+        api.set_launch_quantize("instant");
+        std::string json_default;
+        check(graph.save_to_string(json_default), "serialize default launch_quantize");
+        check(json_default.find("launch_quantize") == std::string::npos,
+              "default launch_quantize omitted from JSON");
+    }
+
     // "recall after node removal" variation test removed in Phase 1
     // (RuntimeAPI variation methods removed).
 
@@ -1465,6 +1498,37 @@ int main(int argc, char* argv[]) {
         api.tick_quantized_clip_scene_launches();
         check(api.queued_clip_for(tid).empty(), "clip fired and cleared from queue");
         check(api.active_clip(tid) == chorus_cid, "chorus now active after fire");
+    }
+
+    // --- session: queue_clip 'default' resolves to session launch_quantize ---
+    // (queue is clean here: the prior beat-aligned block fired and cleared its launch.)
+    std::fprintf(stderr, "\n--- session: queue_clip default quantize ---\n");
+    {
+        std::string tid = graph.session().tracks[0].id;
+        std::string verse_cid = graph.find_track(tid)->clips[0].id;
+
+        // With a session default of 'instant', 'default' applies immediately.
+        check(api.set_launch_quantize("instant").ok, "set launch_quantize instant");
+        auto r1 = api.queue_clip(tid, verse_cid, "default");
+        check(r1.ok, "queue_clip default (instant) ok");
+        check(api.queued_clip_for(tid).empty(), "default resolves to 'instant' -> applied now");
+        check(api.active_clip(tid) == verse_cid, "default-instant launch made clip active");
+
+        // With a session default of 'bar', launching with 'default' queues (does not fire now).
+        std::string chorus_cid = graph.find_track(tid)->clips.back().id;
+        check(api.set_launch_quantize("bar").ok, "set launch_quantize bar");
+        runtime.tick(0.0, 0.0, 201);  // reset transport near beat 0
+        auto r2 = api.queue_clip(tid, chorus_cid, "default");
+        check(r2.ok, "queue_clip default (bar) ok");
+        check(api.queued_clip_for(tid) == chorus_cid,
+              "default resolves to 'bar' -> clip queued, not instant");
+
+        // Fire and clear the pending launch so it doesn't bleed into later tests,
+        // then restore the session default to its original value.
+        runtime.tick(400.0, 0.0, 202);
+        api.tick_quantized_clip_scene_launches();
+        check(api.queued_clip_for(tid).empty(), "default-bar launch fired and cleared");
+        check(api.set_launch_quantize("instant").ok, "restore launch_quantize instant");
     }
 
     // --- session: queue_scene instant ---

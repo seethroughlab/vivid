@@ -620,6 +620,14 @@ bool Graph::parse_doc(const nlohmann::json& root) {
     if (qc_it != root.end() && qc_it->is_string())
         quantize_clock_node_ = qc_it->get<std::string>();
 
+    // Parse session-wide default launch quantize mode
+    auto lq_it = root.find("launch_quantize");
+    if (lq_it != root.end() && lq_it->is_string()) {
+        std::string m = lq_it->get<std::string>();
+        if (m == "instant" || m == "beat" || m == "bar" || m == "4bar")
+            launch_quantize_ = m;
+    }
+
     // Parse graph metronome
     auto met_it = root.find("metronome");
     if (met_it != root.end() && met_it->is_object()) {
@@ -1743,6 +1751,8 @@ static nlohmann::ordered_json build_graph_json_doc(const Graph& graph) {
 
     if (!graph.quantize_clock_node().empty())
         root["quantize_clock"] = graph.quantize_clock_node();
+    if (graph.launch_quantize() != "instant")
+        root["launch_quantize"] = graph.launch_quantize();
     if (graph.metronome().bpm != 120.0f || graph.metronome().beats_per_bar != 4) {
         nlohmann::ordered_json met_obj = nlohmann::ordered_json::object();
         met_obj["bpm"] = clean_float(graph.metronome().bpm);

@@ -67,6 +67,15 @@ CommandResult RuntimeAPI::set_quantize_clock(const std::string& node_id) {
     return {true, "quantize clock set to '" + node_id + "' (deprecated; graph metronome now drives quantized switching)"};
 }
 
+CommandResult RuntimeAPI::set_launch_quantize(const std::string& mode) {
+    if (mode != "instant" && mode != "beat" && mode != "bar" && mode != "4bar")
+        return {false, "invalid launch quantize mode '" + mode +
+                       "' (expected instant/beat/bar/4bar)"};
+    graph_.set_launch_quantize(mode);
+    mark_graph_dirty();
+    return {true, "launch quantize set to '" + mode + "'"};
+}
+
 CommandResult RuntimeAPI::set_graph_metronome(float bpm, int beats_per_bar) {
     GraphMetronomeDef metronome = graph_.metronome();
     metronome.bpm = std::max(1.0f, std::min(300.0f, bpm));

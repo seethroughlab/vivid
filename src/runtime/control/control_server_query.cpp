@@ -780,6 +780,7 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
         metro["beats_per_bar"] = metronome.beats_per_bar;
         if (!graph.quantize_clock_node().empty())
             metro["legacy_quantize_clock"] = graph.quantize_clock_node();
+        metro["launch_quantize"] = graph.launch_quantize();
         result["metronome"] = std::move(metro);
     }
 
@@ -2223,6 +2224,7 @@ std::string handle_inspect_session(const Graph& graph, const RuntimeAPI& runtime
     result["cue_paths"]         = std::move(cue_paths_arr);
     result["queued_scene"]      = qsid;
     result["queued_scene_name"] = qsname;
+    result["launch_quantize"]   = graph.launch_quantize();
     result["active_cue_path"]   = runtime_api.active_cue_path_id();
     result["active_cue_step"]   = runtime_api.active_cue_step_id();
     result["queued_cue_path"]   = runtime_api.queued_cue_path_id();

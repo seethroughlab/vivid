@@ -392,6 +392,10 @@ public:
 
     const std::string& quantize_clock_node() const { return quantize_clock_node_; }
     void set_quantize_clock_node(const std::string& node_id) { quantize_clock_node_ = node_id; }
+    // Session-wide default launch quantize mode ("instant"/"beat"/"bar"/"4bar").
+    // Used when a clip/scene is launched without an explicit override.
+    const std::string& launch_quantize() const { return launch_quantize_; }
+    void set_launch_quantize(const std::string& mode) { launch_quantize_ = mode; }
     const GraphMetronomeDef& metronome() const { return metronome_; }
     void set_metronome(const GraphMetronomeDef& metronome) { metronome_ = metronome; }
     void set_metronome(float bpm, int beats_per_bar) {
@@ -484,6 +488,7 @@ private:
     std::vector<MidiMappingDef> midi_mappings_;
     SessionDef session_;
     std::string quantize_clock_node_;
+    std::string launch_quantize_ = "instant";  // graph-level: default clip/scene launch quantize
     std::string gen_session_id(std::string_view prefix);
     GraphMetronomeDef metronome_;
     std::string source_path_;
