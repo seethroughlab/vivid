@@ -635,12 +635,46 @@ void NodeGraphUI::draw_workspace_header(Renderer2D& tr) {
     draw_right_button(T("snap", "Snap"), 1, true);
 
     {
-        const float blink_size = 8.0f;
-        const float blink_y = btn_y + (kPerfBtnH - blink_size) * 0.5f;
-        const float alpha = 0.28f + 0.62f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase);
-        tr.draw_rounded_rect(left_x, blink_y, blink_size, blink_size, 4.0f,
-                             style_.accent[0], style_.accent[1], style_.accent[2], alpha);
-        left_x += blink_size + 8.0f;
+        // Beat-pip row: one pip per beat in the bar. The active beat pulses; the
+        // downbeat (beat 1) is larger and accent-colored. The pip count equals the
+        // time-signature numerator, so the row reshapes for 3/4, 7/8, etc.
+        const int beats = std::max(1, snap_.metronome_beats_per_bar);
+        int cur = static_cast<int>(std::floor(snap_.metronome_bar_phase * beats));
+        cur = std::max(0, std::min(beats - 1, cur));
+
+        // Tighten spacing for large meters so the row stays bounded before the BPM
+        // pill and doesn't shove it off-screen.
+        const float beat_d     = beats > 8 ? 4.0f : 5.0f;   // regular pip diameter
+        const float downbeat_d = beats > 8 ? 6.0f : 7.0f;   // downbeat pip diameter
+        const float gap        = beats > 8 ? 3.0f : 4.0f;
+
+        // Brightness envelope for the active pip, matching the prior flash idiom.
+        const float pulse = 0.30f + 0.70f * std::max(0.0f, 1.0f - snap_.metronome_beat_phase);
+        const float row_cy = btn_y + kPerfBtnH * 0.5f;
+
+        float px = left_x;
+        for (int i = 0; i < beats; ++i) {
+            const bool is_down = (i == 0);
+            const bool is_cur  = (i == cur);
+            const float d = is_down ? downbeat_d : beat_d;
+            const float py = row_cy - d * 0.5f;
+            if (is_cur) {
+                // Active beat: filled, pulsing. Downbeat keeps the accent color.
+                const float a = is_down ? pulse : (0.20f + 0.80f * pulse);
+                tr.draw_rounded_rect(px, py, d, d, d * 0.5f,
+                                     style_.accent[0], style_.accent[1], style_.accent[2], a);
+            } else if (is_down) {
+                // Idle downbeat: dim accent fill so beat 1 is always distinguishable.
+                tr.draw_rounded_rect(px, py, d, d, d * 0.5f,
+                                     style_.accent[0], style_.accent[1], style_.accent[2], 0.45f);
+            } else {
+                // Idle beat: dim outline.
+                tr.draw_circle(px + d * 0.5f, row_cy, d * 0.5f, 1.0f,
+                               kDimText[0], kDimText[1], kDimText[2], 0.55f);
+            }
+            px += d + gap;
+        }
+        left_x = px - gap + 8.0f;
     }
 
     {
