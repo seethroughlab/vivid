@@ -98,7 +98,11 @@ struct Params {
     star_factor: f32,
     color_gain: f32,     // Color=Image: brightness boost for the birth color
     emit_threshold: f32, // Image emit: luma-key cutoff (0 = emit by raw brightness)
-    _pad3: u32,
+    emit_flow: u32,      // Image emit: 1 = spawn velocity from the flow vector (emit_mask RG)
+    flow_strength: f32,  // scales the decoded flow into spawn velocity
+    _pad4: u32,
+    _pad5: u32,
+    _pad6: u32,
 }
 
 // Matches CPU-side InstanceData2D (48 bytes):
@@ -296,21 +300,32 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
                     pos = vec2f(gx, gy);
                     vel = vec2f(rand_float(s2) - 0.5, rand_float(s3) - 0.5) * params.speed;
                 } else {                      // Image (brightness-weighted)
+                    let mdims  = vec2f(textureDimensions(emit_tex));
+                    let maspect = mdims.x / mdims.y;
                     var rs = s0;
                     var found = false;
+                    var win_rg = vec2f(0.5);  // encoded flow vector at the winning sample
                     for (var t = 0u; t < 16u; t = t + 1u) {
                         let u = rand_float(rs); rs = pcg_hash(rs);
                         let v = rand_float(rs); rs = pcg_hash(rs);
                         let uv = vec2f(u, v);
-                        let lum    = img_luma(emit_load_uv(uv).rgb);
+                        let s      = emit_load_uv(uv);
+                        // Flow mode keys "where" on the magnitude channel (B); else luma.
+                        let lum    = select(img_luma(s.rgb), s.b, params.emit_flow == 1u);
                         let masked = max(lum - params.emit_threshold, 0.0) / max(1.0 - params.emit_threshold, 0.001);
                         let br     = masked * params.emit_gain;
                         let r = rand_float(rs); rs = pcg_hash(rs);
-                        if (r < br) { pos = uv_to_ndc(uv); found = true; break; }
+                        if (r < br) { pos = uv_to_ndc(uv); win_rg = s.rg; found = true; break; }
                     }
                     img_spawn_ok = found;   // no bright pixel found -> suppress, don't pile at center
-                    let a = rand_float(s3) * 6.28318530718;
-                    vel = vec2f(cos(a), sin(a)) * params.speed * 0.3;
+                    if (params.emit_flow == 1u) {
+                        // Spawn velocity along the decoded motion vector (Y-flip + aspect to screen space).
+                        let f = (win_rg - vec2f(0.5)) * 2.0;
+                        vel = vec2f(f.x * maspect, -f.y) * params.flow_strength;
+                    } else {
+                        let a = rand_float(s3) * 6.28318530718;
+                        vel = vec2f(cos(a), sin(a)) * params.speed * 0.3;
+                    }
                 }
                 p.lifetime = select(0.0, params.lifetime * (0.8 + 0.4 * rand_float(s2)), img_spawn_ok);
             }
@@ -324,6 +339,19 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
     } else {
         // ---- Universal forces ----------------------------------------------
         p.velocity.y += params.gravity * params.dt;
+
+        // Continuous flow steering: while a particle is over a moving region of the
+        // emit_mask, keep pushing it along that region's flow vector (not just at birth).
+        if (params.emit_flow == 1u) {
+            let fdims   = vec2f(textureDimensions(emit_tex));
+            let faspect = fdims.x / fdims.y;
+            let fuv     = vec2f(p.position.x / faspect, p.position.y) * vec2f(0.5, -0.5) + vec2f(0.5);
+            let fs      = emit_load_uv(fuv);
+            if (fs.b > 0.02) {
+                let ff = (fs.rg - vec2f(0.5)) * 2.0;
+                p.velocity += vec2f(ff.x * faspect, -ff.y) * params.flow_strength * params.dt * 6.0;
+            }
+        }
 
         let fm = params.force_mode;
         if (fm == 0u) {
@@ -532,9 +560,13 @@ struct ParamsData {
     float    star_factor;       // 208
     float    color_gain;        // 212  Color=Image: brightness boost for the birth color
     float    emit_threshold;    // 216  Image emit: luma-key cutoff (0 = emit by raw brightness)
-    uint32_t _pad3;             // 220
+    uint32_t emit_flow;         // 220  Image emit: 1 = spawn velocity from the flow vector (emit_mask RG)
+    float    flow_strength;     // 224  scales the decoded flow into spawn velocity
+    uint32_t _pad4;             // 228
+    uint32_t _pad5;             // 232
+    uint32_t _pad6;             // 236
 };
-static_assert(sizeof(ParamsData) == 224, "ParamsData must be 224 bytes");
+static_assert(sizeof(ParamsData) == 240, "ParamsData must be 240 bytes");
 
 // ---------------------------------------------------------------------------
 // Particles2D operator
@@ -647,6 +679,8 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   grid_rows      {"grid_rows",      10, 1, 64};
     vivid::Param<float> emit_gain      {"emit_gain",      1.0f,  0.0f, 8.0f};
     vivid::Param<float> emit_threshold {"emit_threshold", 0.0f,  0.0f, 1.0f};
+    vivid::Param<int>   emit_flow      {"emit_flow",      0, {"Off", "On"}};
+    vivid::Param<float> flow_strength  {"flow_strength",  0.4f,  0.0f, 3.0f};
 
     // Image attraction force
     vivid::Param<float> attract_strength  {"attract_strength",  1.0f, 0.0f, 5.0f};
@@ -751,6 +785,10 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::description(emit_gain, "Emit=Image: brightness multiplier for where particles are born (needs the texture input)");
         vivid::param_group(emit_threshold, "Emission");
         vivid::description(emit_threshold, "Emit=Image: luma-key cutoff — only pixels brighter than this emit, so particles clearly come from the bright areas (0 = emit by raw brightness)");
+        vivid::param_group(emit_flow, "Emission");
+        vivid::description(emit_flow, "Emit=Image: with a Motion(Flow) mask on emit_mask, give each particle an initial velocity along the motion direction (keys 'where' on the magnitude channel)");
+        vivid::param_group(flow_strength, "Emission");
+        vivid::description(flow_strength, "How strongly the flow vector drives the spawn velocity");
         vivid::visible_when_eq(emit_x,         emit_shape, {0, 1, 2});
         vivid::visible_when_eq(emit_y,         emit_shape, {0, 1, 2});
         vivid::visible_when_eq(ring_radius,    emit_shape, {2});
@@ -759,6 +797,8 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::visible_when_eq(grid_rows,      emit_shape, {3});
         vivid::visible_when_eq(emit_gain,      emit_shape, {4});
         vivid::visible_when_eq(emit_threshold, emit_shape, {4});
+        vivid::visible_when_eq(emit_flow,      emit_shape, {4});
+        vivid::visible_when_eq(flow_strength,  emit_flow,  {1});
 
         // -- Image attraction force (force_mode = Image) ----------------------
         vivid::param_group(attract_strength,  "Image Force");
@@ -824,6 +864,8 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&grid_rows);
         out.push_back(&emit_gain);
         out.push_back(&emit_threshold);
+        out.push_back(&emit_flow);
+        out.push_back(&flow_strength);
         out.push_back(&attract_strength);
         out.push_back(&attract_threshold);
         out.push_back(&grad_step);
@@ -973,6 +1015,8 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         params.grid_rows         = static_cast<uint32_t>(grid_rows.int_value());
         params.emit_gain         = emit_gain.value;
         params.emit_threshold    = emit_threshold.value;
+        params.emit_flow         = static_cast<uint32_t>(emit_flow.int_value());
+        params.flow_strength     = flow_strength.value;
         params.attract_strength  = attract_strength.value;
         params.attract_threshold = attract_threshold.value;
         params.grad_step         = grad_step.value;

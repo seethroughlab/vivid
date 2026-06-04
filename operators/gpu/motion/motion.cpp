@@ -19,7 +19,11 @@ struct Uniforms {
     gain: f32,
     threshold: f32,
     decay: f32,
-    _pad: f32,
+    flow_scale: f32,
+    mode: u32,        // 0 = Magnitude, 1 = Flow (RG = vector, B = magnitude)
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 };
 
 struct VertexOutput {
@@ -48,18 +52,41 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let curr = textureSample(inputTex, texSampler, input.uv).rgb;
     let prev = textureSample(prevTex,  texSampler, input.uv).rgb;
-    let acc  = textureSample(accumTex, texSampler, input.uv).r;
-    let diff = max(abs(luma(curr) - luma(prev)) * uniforms.gain - uniforms.threshold, 0.0);
-    let m = clamp(max(diff, acc * uniforms.decay), 0.0, 1.0);
+    let a    = textureSample(accumTex, texSampler, input.uv);    // .b = prev magnitude, .rg = prev encoded flow
+    let It   = luma(curr) - luma(prev);                         // temporal change
+    let diff = max(abs(It) * uniforms.gain - uniforms.threshold, 0.0);
+    let m    = clamp(max(diff, a.b * uniforms.decay), 0.0, 1.0); // magnitude is stored in B (both modes)
+
+    if (uniforms.mode == 1u) {
+        // Gradient / brightness-constancy "normal" flow: flow = -It * grad / |grad|^2.
+        let texel = 1.0 / vec2f(textureDimensions(inputTex));
+        let gx = luma(textureSample(inputTex, texSampler, input.uv + vec2f(texel.x, 0.0)).rgb)
+               - luma(textureSample(inputTex, texSampler, input.uv - vec2f(texel.x, 0.0)).rgb);
+        let gy = luma(textureSample(inputTex, texSampler, input.uv + vec2f(0.0, texel.y)).rgb)
+               - luma(textureSample(inputTex, texSampler, input.uv - vec2f(0.0, texel.y)).rgb);
+        let grad   = vec2f(gx, gy);
+        let f_inst = clamp(-It * grad / (dot(grad, grad) + 1e-4) * uniforms.flow_scale, vec2f(-1.0), vec2f(1.0));
+        // Smear the flow vector through the decaying magnitude band so particles
+        // spawning anywhere in the band inherit a coherent direction (not just the 1px edge).
+        let a_flow = a.rg * 2.0 - vec2f(1.0);
+        var flow = f_inst;
+        if (length(a_flow) * uniforms.decay > length(f_inst)) { flow = a_flow * uniforms.decay; }
+        let flow_out = select(vec2f(0.0), flow, m > 0.02);     // zero flow where there's no motion
+        return vec4f(flow_out * 0.5 + vec2f(0.5), m, 1.0);     // RG = flow vector, B = magnitude
+    }
     return vec4f(m, m, m, 1.0);
 }
 )";
 
 struct MotionUniforms {
-    float gain;
-    float threshold;
-    float decay;
-    float _pad;
+    float    gain;
+    float    threshold;
+    float    decay;
+    float    flow_scale;
+    uint32_t mode;
+    uint32_t _pad0;
+    uint32_t _pad1;
+    uint32_t _pad2;
 };
 
 /**
@@ -81,20 +108,27 @@ struct Motion : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr std::array<const char*, 5> kKeywords =
         {"motion", "difference", "optical flow", "frame diff", "temporal"};
 
+    vivid::Param<int>   mode      {"mode",      0, {"Magnitude", "Flow"}};
     vivid::Param<float> gain      {"gain",      8.0f,  0.0f, 32.0f};
     vivid::Param<float> threshold {"threshold", 0.04f, 0.0f, 1.0f};
     vivid::Param<float> decay     {"decay",     0.85f, 0.0f, 0.99f};
+    vivid::Param<float> flow_scale {"flow_scale", 20.0f, 1.0f, 100.0f};
 
     Motion() {
+        vivid::description(mode, "Magnitude = grayscale motion mask; Flow = RG carries the motion vector (for Particles2D emit_flow), B the magnitude");
         vivid::description(gain, "Motion sensitivity — multiplies the frame-to-frame luminance change");
         vivid::description(threshold, "Cutoff below which motion is treated as zero (kills sensor noise)");
         vivid::description(decay, "How long motion lingers each frame, 0 = pure 1-frame difference");
+        vivid::description(flow_scale, "Flow mode: how strongly raw flow maps into the encoded vector range");
+        vivid::visible_when_eq(flow_scale, mode, {1});
     }
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&mode);
         out.push_back(&gain);
         out.push_back(&threshold);
         out.push_back(&decay);
+        out.push_back(&flow_scale);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -124,9 +158,11 @@ struct Motion : vivid::OperatorBase, vivid::GpuProcessable {
         }
 
         MotionUniforms u{};
-        u.gain      = gain.value;
-        u.threshold = threshold.value;
-        u.decay     = decay.value;
+        u.gain       = gain.value;
+        u.threshold  = threshold.value;
+        u.decay      = decay.value;
+        u.flow_scale = flow_scale.value;
+        u.mode       = static_cast<uint32_t>(mode.int_value());
         wgpuQueueWriteBuffer(ctx->queue, uniform_buf_, 0, &u, sizeof(u));
 
         if (input_view != cached_input_tex_ || bind_group_dirty_) {
