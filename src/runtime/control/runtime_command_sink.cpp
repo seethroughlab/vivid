@@ -306,6 +306,9 @@ void RuntimeCommandSink::start_recording(const std::string& path, const std::str
 }
 
 bool RuntimeCommandSink::undo() {
+    // A still-open group would otherwise have its pending edits skipped by history
+    // navigation — close it cleanly first.
+    if (undo_group_depth_ > 0) force_close_undo_group();
     std::string snapshot_json;
     if (!undo_manager_.undo(snapshot_json)) return false;
     if (!has_gpu_ops_ || !has_audio_) return false;
@@ -324,6 +327,7 @@ bool RuntimeCommandSink::undo() {
 }
 
 bool RuntimeCommandSink::redo() {
+    if (undo_group_depth_ > 0) force_close_undo_group();
     std::string snapshot_json;
     if (!undo_manager_.redo(snapshot_json)) return false;
     if (!has_gpu_ops_ || !has_audio_) return false;
@@ -341,8 +345,50 @@ bool RuntimeCommandSink::redo() {
     return false;
 }
 
-void RuntimeCommandSink::capture_undo_snapshot(const std::string& coalesce_key) {
+void RuntimeCommandSink::begin_undo_group(const std::string& label) {
+    if (undo_group_depth_ == 0) {
+        // A fresh group must not time-coalesce with whatever edit preceded it.
+        last_coalesce_key_.clear();
+        // Remember the label so the snapshot captured at end (or force-close) can
+        // describe the whole action, e.g. "Clear pattern".
+        undo_group_label_ = label;
+    }
+    ++undo_group_depth_;
+}
+
+void RuntimeCommandSink::end_undo_group() {
+    if (undo_group_depth_ == 0) return;  // unbalanced end — ignore
+    if (--undo_group_depth_ == 0) {
+        // Depth is now 0, so this capture pushes one distinct, non-coalescing entry
+        // recording the whole group's post-action state.
+        last_coalesce_key_.clear();
+        capture_undo_snapshot("", undo_group_label_);
+        undo_group_label_.clear();
+    }
+}
+
+void RuntimeCommandSink::force_close_undo_group() {
+    undo_group_depth_ = 0;
+    last_coalesce_key_.clear();
+    capture_undo_snapshot("", undo_group_label_);  // depth is 0, so this pushes normally
+    undo_group_label_.clear();
+}
+
+void RuntimeCommandSink::capture_undo_snapshot(const std::string& coalesce_key,
+                                               const std::string& label) {
     if (!graph_) return;
+    if (undo_group_depth_ > 0) {
+        if (!coalesce_key.empty()) {
+            // Fine-grained edit (param/rename/layout/bypass) inside an open group —
+            // fold it in; the snapshot is captured once at end_undo_group().
+            return;
+        }
+        // An empty key means a structural change (topology mutation, history reset)
+        // reached us mid-group. Don't silently absorb it: force-close the group so
+        // the structural edit lands as its own clean boundary.
+        force_close_undo_group();
+        return;
+    }
     auto now = std::chrono::steady_clock::now();
     bool replace_top = false;
     if (!coalesce_key.empty() && !last_coalesce_key_.empty() && coalesce_key == last_coalesce_key_) {
@@ -351,7 +397,7 @@ void RuntimeCommandSink::capture_undo_snapshot(const std::string& coalesce_key) 
     }
     std::string json;
     if (!graph_->save_to_string(json)) return;
-    undo_manager_.push(std::move(json), replace_top);
+    undo_manager_.push(std::move(json), replace_top, label);
     if (coalesce_key.empty()) {
         last_coalesce_key_.clear();
     } else {

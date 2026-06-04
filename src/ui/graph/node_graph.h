@@ -163,6 +163,15 @@ public:
     void toggle_session_grid();
     void toggle_midi_map_mode();
     void delete_selected();
+
+    // Undo/redo bridge for the native menu — mirrors the keyboard Cmd+Z path
+    // (node_graph_input.cpp) but exposes the sink, which is otherwise private.
+    void trigger_undo() { commands_.undo(); }
+    void trigger_redo() { commands_.redo(); }
+    bool can_undo() const { return commands_.can_undo(); }
+    bool can_redo() const { return commands_.can_redo(); }
+    std::string undo_label() const { return commands_.peek_undo_label(); }
+    std::string redo_label() const { return commands_.peek_redo_label(); }
     void open_chooser();  // centers chooser in visible graph area
     bool graph_position_for_screen(float sx, float sy, float& gx, float& gy) const;
     void graph_center_position(float& gx, float& gy) const;
@@ -643,6 +652,9 @@ private:
 
     // Node drag state
     int dragging_node_idx_ = -1;
+    // True while a param-driving inspector gesture (slider/mod/xy/rich/color) is
+    // bracketed into a single undo group. See update() drag pass.
+    bool param_gesture_active_ = false;
     float drag_offset_x_ = 0, drag_offset_y_ = 0;
 
     // Group drag state

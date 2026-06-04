@@ -26,11 +26,11 @@ public:
     explicit RuntimeCommandSink(vivid::RuntimeAPI& api) : api_(api) {}
     void set_param(const std::string& node_id, const std::string& param, float value) override {
         auto r = api_.set_param(node_id, param, value);
-        if (r.ok) capture_undo_snapshot("param:" + node_id + "/" + param);
+        if (r.ok) capture_undo_snapshot("param:" + node_id + "/" + param, "Change " + param);
     }
     void add_node(const std::string& type, const std::string& id) override {
         auto r = api_.add_node(type, id);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Add node");
     }
     bool try_add_node(const std::string& type, const std::string& id,
                       std::string* error = nullptr) override {
@@ -39,17 +39,17 @@ public:
             if (error) *error = r.message;
             return false;
         }
-        capture_undo_snapshot();
+        capture_undo_snapshot("", "Add node");
         if (error) error->clear();
         return true;
     }
     void remove_node(const std::string& id) override {
         auto r = api_.remove_node(id);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Delete node");
     }
     void rename_node(const std::string& old_id, const std::string& new_id) override {
         auto r = api_.rename_node(old_id, new_id);
-        if (r.ok) capture_undo_snapshot("rename:" + old_id);
+        if (r.ok) capture_undo_snapshot("rename:" + old_id, "Rename node");
     }
     bool try_rename_node(const std::string& old_id, const std::string& new_id,
                          std::string* error = nullptr) override {
@@ -58,13 +58,13 @@ public:
             if (error) *error = r.message;
             return false;
         }
-        capture_undo_snapshot("rename:" + old_id);
+        capture_undo_snapshot("rename:" + old_id, "Rename node");
         if (error) error->clear();
         return true;
     }
     void connect(const std::string& from, const std::string& to) override {
         auto r = api_.connect(from, to);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Connect");
     }
     bool try_connect(const std::string& from, const std::string& to,
                      std::string* error = nullptr) override {
@@ -73,13 +73,13 @@ public:
             if (error) *error = r.message;
             return false;
         }
-        capture_undo_snapshot();
+        capture_undo_snapshot("", "Connect");
         if (error) error->clear();
         return true;
     }
     void disconnect(const std::string& from, const std::string& to) override {
         auto r = api_.disconnect(from, to);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Disconnect");
     }
     bool try_disconnect(const std::string& from, const std::string& to,
                         std::string* error = nullptr) override {
@@ -88,7 +88,7 @@ public:
             if (error) *error = r.message;
             return false;
         }
-        capture_undo_snapshot();
+        capture_undo_snapshot("", "Disconnect");
         if (error) error->clear();
         return true;
     }
@@ -97,25 +97,25 @@ public:
                               float to_min, float to_max,
                               bool clamp, uint8_t curve = 0) override {
         auto r = api_.set_connection_remap(from, to, from_min, from_max, to_min, to_max, clamp, curve);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Remap connection");
     }
     void set_node_layout(const std::string& node_id, float x, float y) override {
         auto r = api_.set_node_layout(node_id, x, y);
-        if (r.ok) capture_undo_snapshot("layout:" + node_id);
+        if (r.ok) capture_undo_snapshot("layout:" + node_id, "Move node");
     }
     void set_resolution(const std::string& node_id, uint32_t w, uint32_t h) override {
         auto r = api_.set_resolution(node_id, w, h);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Set resolution");
     }
     void set_node_bypassed(const std::string& node_id, bool bypassed) override {
         auto r = api_.set_node_bypassed(node_id, bypassed);
-        if (r.ok) capture_undo_snapshot("bypass:" + node_id);
+        if (r.ok) capture_undo_snapshot("bypass:" + node_id, "Toggle bypass");
     }
     bool try_set_node_bypassed(const std::string& node_id, bool bypassed,
                                std::string* error = nullptr) override {
         auto r = api_.set_node_bypassed(node_id, bypassed);
         if (r.ok) {
-            capture_undo_snapshot("bypass:" + node_id);
+            capture_undo_snapshot("bypass:" + node_id, "Toggle bypass");
             if (error) error->clear();
             return true;
         }
@@ -125,22 +125,22 @@ public:
     void add_midi_mapping(const std::string& node_id, const std::string& param,
                           int cc, int channel, float range_min, float range_max) override {
         auto r = api_.add_midi_mapping(node_id, param, cc, channel, range_min, range_max);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Add MIDI mapping");
     }
     void remove_midi_mapping(const std::string& node_id, const std::string& param) override {
         auto r = api_.remove_midi_mapping(node_id, param);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Remove MIDI mapping");
     }
     void update_midi_mapping(const std::string& node_id, const std::string& param,
                              float range_min, float range_max) override {
         auto r = api_.update_midi_mapping(node_id, param, range_min, range_max);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Update MIDI mapping");
     }
 
     void set_string_param(const std::string& node_id, const std::string& param,
                           const std::string& value) override {
         auto r = api_.set_string_param(node_id, param, value);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Change " + param);
     }
     bool get_string_param_for_copy(const std::string& node_id,
                                    const std::string& param,
@@ -341,7 +341,7 @@ public:
                                 const std::string& polarity, const std::string& curve,
                                 std::string* error = nullptr) override {
         auto r = api_.add_mod_assignment(node_id, source, destination, amount, polarity, curve);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Add modulation");
         if (error) *error = r.ok ? std::string() : r.message;
         return r.ok;
     }
@@ -354,7 +354,7 @@ public:
                                    const std::string& source, const std::string& destination,
                                    std::string* error = nullptr) override {
         auto r = api_.remove_mod_assignment(node_id, source, destination);
-        if (r.ok) capture_undo_snapshot();
+        if (r.ok) capture_undo_snapshot("", "Remove modulation");
         if (error) *error = r.ok ? std::string() : r.message;
         return r.ok;
     }
@@ -369,7 +369,8 @@ public:
                                    float amount, const std::string& polarity, const std::string& curve,
                                    std::string* error = nullptr) override {
         auto r = api_.update_mod_assignment(node_id, source, destination, amount, polarity, curve);
-        if (r.ok) capture_undo_snapshot("mod_amount:" + node_id + "/" + source + "/" + destination);
+        if (r.ok) capture_undo_snapshot("mod_amount:" + node_id + "/" + source + "/" + destination,
+                                        "Adjust modulation");
         if (error) *error = r.ok ? std::string() : r.message;
         return r.ok;
     }
@@ -394,6 +395,12 @@ public:
 
     bool can_undo() const override { return undo_manager_.canUndo(); }
     bool can_redo() const override { return undo_manager_.canRedo(); }
+
+    void begin_undo_group(const std::string& label) override;
+    void end_undo_group() override;
+
+    std::string peek_undo_label() const override { return undo_manager_.peekUndoLabel(); }
+    std::string peek_redo_label() const override { return undo_manager_.peekRedoLabel(); }
 
     void set_capture_coordinator(vivid::CaptureCoordinator* cc) { capture_coordinator_ = cc; }
     void set_runtime_flags(bool* has_gpu_ops, bool* has_audio) {
@@ -431,7 +438,15 @@ public:
     }
 
 private:
-    void capture_undo_snapshot(const std::string& coalesce_key = "");
+    // coalesce_key drives the 300 ms time-coalescing fallback; label is the
+    // human-readable description stored with the snapshot for undo/redo surfaces.
+    void capture_undo_snapshot(const std::string& coalesce_key = "",
+                               const std::string& label = "");
+
+    // Force-close any open undo group: capture one snapshot and reset depth.
+    // Called from undo/redo and topology mutators so an unbalanced group can't
+    // leave the undo stack inconsistent.
+    void force_close_undo_group();
 
     std::string project_shader_dir() const;
     std::string make_unique_shader_operator_name(const std::string& base_name) const;
@@ -456,6 +471,8 @@ private:
     vivid::UndoManager undo_manager_;
     std::string last_coalesce_key_;
     std::chrono::steady_clock::time_point last_coalesce_time_{};
+    int undo_group_depth_ = 0;
+    std::string undo_group_label_;
     vivid::CaptureCoordinator* capture_coordinator_ = nullptr;
     bool* has_gpu_ops_ = nullptr;
     bool* has_audio_ = nullptr;

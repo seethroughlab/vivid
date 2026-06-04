@@ -28,6 +28,8 @@ struct MenuCallbacks {
     std::function<void()> on_check_system_requirements;
 
     // Edit menu
+    std::function<void()> on_undo;
+    std::function<void()> on_redo;
     std::function<void()> on_delete_selected;
     std::function<void()> on_edit_meta;
 
@@ -57,6 +59,10 @@ struct MenuCallbacks {
     std::function<bool()> can_edit_meta;
     std::function<bool()> has_graph_path;
     std::function<bool()> is_auto_check_updates;
+    std::function<bool()> can_undo;
+    std::function<bool()> can_redo;
+    std::function<std::string()> undo_label;  // e.g. "Clear pattern" ("" if none)
+    std::function<std::string()> redo_label;
 
     // Recent files
     std::function<void(const std::string&)> on_open_recent;

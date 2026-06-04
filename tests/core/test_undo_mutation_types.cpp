@@ -374,6 +374,72 @@ int main(int argc, char* argv[]) {
         hr.stop();
     }
 
+    // 11) Undo grouping: deterministic single-entry groups + force-close safety.
+    {
+        check(graph.load_from_string(R"({
+  "nodes": {
+    "a": { "type": "TestOp", "params": { "scale": 4.0 } },
+    "b": { "type": "TestOp", "params": { "scale": 1.0 } }
+  },
+  "connections": []
+})"), "load graph for undo grouping test");
+        check(runtime.build(graph, registry), "rebuild runtime for undo grouping test");
+        sink.reset_undo_history();
+        check(!sink.can_undo(), "grouping baseline has no undo");
+
+        // (a) A bulk action across DISTINCT params collapses to ONE undo entry.
+        sink.begin_undo_group("bulk");
+        sink.set_param("a", "scale", 7.0f);
+        sink.set_param("b", "scale", 8.0f);
+        check(!sink.can_undo(), "no undo entry is pushed while a group is open");
+        check(graph.find_node("a")->params["scale"] == 7.0f, "in-group edit applies live to a");
+        sink.end_undo_group();
+        check(sink.can_undo(), "closing a group produces exactly one undo entry");
+        check(sink.peek_undo_label() == "bulk", "group entry carries the begin_undo_group label");
+        check(sink.undo(), "single undo reverts the whole group");
+        check(sink.peek_redo_label() == "bulk", "redo label matches the group after undo");
+        check(graph.find_node("a")->params["scale"] == 4.0f, "group undo restored a");
+        check(graph.find_node("b")->params["scale"] == 1.0f, "group undo restored b");
+        check(sink.redo(), "redo re-applies the whole group");
+        check(graph.find_node("a")->params["scale"] == 7.0f, "group redo restored a");
+        check(graph.find_node("b")->params["scale"] == 8.0f, "group redo restored b");
+
+        // (b) Force-close: undo() while a group is open captures the pending state
+        // as its own entry, then navigates history.
+        sink.begin_undo_group("interrupted");
+        sink.set_param("a", "scale", 9.0f);
+        check(sink.undo(), "undo mid-group force-closes then navigates");
+        check(graph.find_node("a")->params["scale"] == 7.0f, "mid-group undo landed on pre-group state");
+        check(sink.redo(), "redo returns the force-closed in-progress state");
+        check(graph.find_node("a")->params["scale"] == 9.0f, "force-closed group was captured as a=9");
+
+        // (c) Force-close: a topology mutation mid-group resets depth and keeps the
+        // undo stack consistent — no swallowed structural edit, no stuck group.
+        sink.set_param("a", "scale", 4.0f);   // establish a known baseline...
+        sink.reset_undo_history();             // ...captured as the history baseline
+        sink.begin_undo_group("topo-interrupt");
+        sink.set_param("a", "scale", 5.0f);
+        sink.add_node("TestOp", "g_topo");
+        settle_topology(api, has_gpu_ops, has_audio);
+        check(graph.find_node("g_topo") != nullptr, "topology mutation mid-group applied");
+        sink.end_undo_group();  // unbalanced end after force-close must be a no-op
+        sink.set_param("a", "scale", 6.0f);
+        check(sink.undo(), "undo reverts the post-force-close param edit");
+        check(graph.find_node("a")->params["scale"] == 5.0f, "a restored to the force-close boundary (5)");
+        check(graph.find_node("g_topo") != nullptr, "force-closed topology entry still present");
+        check(sink.undo(), "undo reverts the force-closed group/topology entry");
+        check(graph.find_node("g_topo") == nullptr, "topology change reverted by group-boundary undo");
+        check(graph.find_node("a")->params["scale"] == 4.0f, "a restored to the pre-group baseline");
+
+        // (d) Ungrouped single mutators carry their own per-action label.
+        sink.reset_undo_history();
+        sink.add_node("TestOp", "g_label");
+        settle_topology(api, has_gpu_ops, has_audio);
+        check(sink.peek_undo_label() == "Add node", "add_node labels its undo entry");
+        sink.set_param("a", "scale", 2.0f);
+        check(sink.peek_undo_label() == "Change scale", "set_param labels its undo entry");
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
                  failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;

@@ -23,6 +23,8 @@ enum MenuTag : NSInteger {
     kMenuTagReportIssue,
     kMenuTagCheckSystemRequirements,
     // Edit
+    kMenuTagUndo,
+    kMenuTagRedo,
     kMenuTagDeleteSelected,
     kMenuTagEditMeta,
     // View
@@ -76,6 +78,8 @@ enum MenuTag : NSInteger {
         case kMenuTagCheckSystemRequirements:
             if (_callbacks.on_check_system_requirements) _callbacks.on_check_system_requirements();
             break;
+        case kMenuTagUndo:              if (_callbacks.on_undo) _callbacks.on_undo(); break;
+        case kMenuTagRedo:              if (_callbacks.on_redo) _callbacks.on_redo(); break;
         case kMenuTagDeleteSelected:    if (_callbacks.on_delete_selected) _callbacks.on_delete_selected(); break;
         case kMenuTagEditMeta:          if (_callbacks.on_edit_meta) _callbacks.on_edit_meta(); break;
         case kMenuTagToggleUI:          if (_callbacks.on_toggle_ui) _callbacks.on_toggle_ui(); break;
@@ -103,6 +107,25 @@ enum MenuTag : NSInteger {
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     switch (item.tag) {
+        case kMenuTagUndo: {
+            // Title reflects the next undoable action, e.g. "Undo Clear pattern".
+            NSString* base = [NSString stringWithUTF8String:
+                vivid::ui::I18n::instance().get("menu_undo", "Undo")];
+            std::string label = _callbacks.undo_label ? _callbacks.undo_label() : std::string();
+            item.title = label.empty()
+                ? base
+                : [NSString stringWithFormat:@"%@ %s", base, label.c_str()];
+            return (_callbacks.can_undo && _callbacks.can_undo()) ? YES : NO;
+        }
+        case kMenuTagRedo: {
+            NSString* base = [NSString stringWithUTF8String:
+                vivid::ui::I18n::instance().get("menu_redo", "Redo")];
+            std::string label = _callbacks.redo_label ? _callbacks.redo_label() : std::string();
+            item.title = label.empty()
+                ? base
+                : [NSString stringWithFormat:@"%@ %s", base, label.c_str()];
+            return (_callbacks.can_redo && _callbacks.can_redo()) ? YES : NO;
+        }
         case kMenuTagOpenGraphFolder:
             return _callbacks.has_graph_path ? _callbacks.has_graph_path() : NO;
         case kMenuTagDeleteSelected:
@@ -349,6 +372,28 @@ void macos_setup_menu(const MenuCallbacks& callbacks) {
 
         // --- Create "Edit" menu and insert at index 2 ---
         NSMenu* editMenu = [[NSMenu alloc] initWithTitle:ns_localized("menu_edit", "Edit")];
+
+        // Undo / Redo are deliberately click-only (no Cmd+Z key equivalent): a native
+        // key equivalent would intercept Cmd+Z globally and break the app's contextual
+        // undo (sticky notes, editor windows) handled in node_graph_input. Titles are
+        // updated dynamically in validateMenuItem ("Undo Clear pattern").
+        NSMenuItem* undoItem = [[NSMenuItem alloc]
+            initWithTitle:ns_localized("menu_undo", "Undo")
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        undoItem.target = sDelegate;
+        undoItem.tag = kMenuTagUndo;
+        [editMenu addItem:undoItem];
+
+        NSMenuItem* redoItem = [[NSMenuItem alloc]
+            initWithTitle:ns_localized("menu_redo", "Redo")
+                   action:@selector(menuAction:)
+            keyEquivalent:@""];
+        redoItem.target = sDelegate;
+        redoItem.tag = kMenuTagRedo;
+        [editMenu addItem:redoItem];
+
+        [editMenu addItem:[NSMenuItem separatorItem]];
 
         NSMenuItem* deleteItem = [[NSMenuItem alloc]
             initWithTitle:ns_localized("menu_delete_selected", "Delete Selected")

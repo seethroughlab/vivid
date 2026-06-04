@@ -441,6 +441,14 @@ static void insp_set_string_param(void* o, const char* p, const char* v) {
     auto* c = static_cast<InspCmdCtx*>(o);
     c->sink->set_string_param(c->node_id, p, v);
 }
+static void insp_begin_undo_group(void* o, const char* label) {
+    auto* c = static_cast<InspCmdCtx*>(o);
+    c->sink->begin_undo_group(label ? label : "");
+}
+static void insp_end_undo_group(void* o) {
+    auto* c = static_cast<InspCmdCtx*>(o);
+    c->sink->end_undo_group();
+}
 
 void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node,
                                         float px, float& py) {
@@ -464,6 +472,8 @@ void NodeGraphUI::draw_custom_inspector(Renderer2D& tr, const NodeSnapshot& node
     ctx.commands.opaque = &cmd_ctx;
     ctx.commands.set_param = insp_set_param;
     ctx.commands.set_string_param = insp_set_string_param;
+    ctx.commands.begin_undo_group = insp_begin_undo_group;
+    ctx.commands.end_undo_group = insp_end_undo_group;
 
     // Theme
     ctx.theme.bg = to_vc(style_.inspector_bg);

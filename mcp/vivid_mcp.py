@@ -5289,13 +5289,20 @@ async def get_project_dependency_status(graph_path: str) -> str:
 
 @mcp.tool()
 async def undo() -> str:
-    """Undo the last graph mutation made through MCP/control-server commands."""
+    """Undo the last graph mutation made through MCP/control-server commands.
+
+    The response includes an ``undid`` field naming the action that was reverted
+    (e.g. "Add node"), so you can confirm what changed.
+    """
     return await _post("undo")
 
 
 @mcp.tool()
 async def redo() -> str:
-    """Redo the last undone graph mutation made through MCP/control-server commands."""
+    """Redo the last undone graph mutation made through MCP/control-server commands.
+
+    The response includes a ``redid`` field naming the action that was re-applied.
+    """
     return await _post("redo")
 
 

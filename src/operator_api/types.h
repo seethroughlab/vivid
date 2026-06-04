@@ -528,6 +528,11 @@ typedef struct VividInspectorCommandAPI {
     void* opaque;  // scoped to node_id by the core
     void (*set_param)(void*, const char* param_name, float value);
     void (*set_string_param)(void*, const char* param_name, const char* value);
+    // Bracket a multi-param action into a single deterministic undo entry.
+    // All set_param/set_string_param calls between begin/end coalesce to one
+    // snapshot captured at end. Calls may nest. label is for future history UI.
+    void (*begin_undo_group)(void*, const char* label);
+    void (*end_undo_group)(void*);
 } VividInspectorCommandAPI;
 
 typedef struct VividInspectorTheme {

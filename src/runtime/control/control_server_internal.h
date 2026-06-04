@@ -768,6 +768,19 @@ inline bool is_undo_tracked_method(const std::string& method) {
            // stop_cue_path are real-time performance commands — not undo-tracked
 }
 
+// Human-readable label for a method, stored with its undo snapshot so /undo and
+// /redo can report what they reverted ("Add node"). Generic transform: underscores
+// to spaces, leading capital — covers every tracked method without a hand map.
+inline std::string undo_label_for_method(const std::string& method) {
+    if (method.empty()) return {};
+    std::string out = method;
+    for (auto& c : out) {
+        if (c == '_') c = ' ';
+    }
+    if (out[0] >= 'a' && out[0] <= 'z') out[0] = static_cast<char>(out[0] - 32);
+    return out;
+}
+
 // ---------------------------------------------------------------------------
 // Command handlers
 // ---------------------------------------------------------------------------

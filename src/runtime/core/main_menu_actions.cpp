@@ -237,6 +237,12 @@ void setup_macos_menu(MainAppContext& ctx,
         }
     };
 
+    menu_cbs.on_undo = [&ctx]() { ctx.graph_ui.trigger_undo(); };
+    menu_cbs.on_redo = [&ctx]() { ctx.graph_ui.trigger_redo(); };
+    menu_cbs.can_undo = [&ctx]() { return ctx.graph_ui.can_undo(); };
+    menu_cbs.can_redo = [&ctx]() { return ctx.graph_ui.can_redo(); };
+    menu_cbs.undo_label = [&ctx]() { return ctx.graph_ui.undo_label(); };
+    menu_cbs.redo_label = [&ctx]() { return ctx.graph_ui.redo_label(); };
     menu_cbs.on_delete_selected = [&ctx]() { ctx.graph_ui.delete_selected(); };
     menu_cbs.on_edit_meta = [&ctx]() {
         if (ctx.graph.source_path().empty()) return;

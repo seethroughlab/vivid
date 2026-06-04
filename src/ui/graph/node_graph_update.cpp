@@ -202,13 +202,45 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     update_box_select();
     update_wire_drag();
     update_scrollbar_drag();
-    update_slider_drag();
     update_transport_bpm_drag();
     update_session_resize_drag();
+
+    // Bracket every param-driving inspector gesture into ONE deterministic undo
+    // entry, independent of frame timing. on_mouse_button (input) runs before this
+    // update pass, so the active flag is already set on the first drag frame — the
+    // group opens before any set_param escapes it. The matching release frame still
+    // has the flag set on entry and clears it inside the drag fn, so the gesture
+    // ends exactly on release. RuntimeCommandSink force-closes as a safety net.
+    auto param_gesture_active = [&]() {
+        return inspector_.active_slider_idx >= 0 ||
+               inspector_.modulation_amount_dragging ||
+               inspector_.active_xy_pad_idx >= 0 ||
+               inspector_.surface.has_active() ||
+               inspector_.color_dragging_sv || inspector_.color_dragging_hue;
+    };
+    if (param_gesture_active() && !param_gesture_active_) {
+        // Label the gesture by what it adjusts so undo surfaces read well.
+        std::string gesture_label = "Adjust parameter";
+        if (inspector_.active_slider_idx >= 0 &&
+            !inspector_.active_slider_param_name.empty()) {
+            gesture_label = "Adjust " + inspector_.active_slider_param_name;
+        } else if (inspector_.color_dragging_sv || inspector_.color_dragging_hue) {
+            gesture_label = "Adjust color";
+        } else if (inspector_.modulation_amount_dragging) {
+            gesture_label = "Adjust modulation";
+        }
+        commands_.begin_undo_group(gesture_label);
+    }
+    update_slider_drag();
     update_modulation_drag();
     update_xy_pad_drag();
     update_rich_inspector_drag();
     update_color_drag();
+    const bool gesture_still_active = param_gesture_active();
+    if (param_gesture_active_ && !gesture_still_active) {
+        commands_.end_undo_group();
+    }
+    param_gesture_active_ = gesture_still_active;
     update_patch_drag();
     update_chooser_hover();
     update_param_picker();   // may consume left_clicked

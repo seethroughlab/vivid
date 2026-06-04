@@ -739,6 +739,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
 
         // MCP undo/redo are handled here so they can use control-server history.
         if (req.method == "undo") {
+            // Peek the label before undo() moves the cursor.
+            std::string undid_label = impl_->undo_history.peekUndoLabel();
             std::string snapshot_json;
             if (!impl_->undo_history.undo(snapshot_json)) {
                 req.promise.set_value(json_err("nothing to undo"));
@@ -756,7 +758,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                 req.promise.set_value(json_err("undo failed: " + r.message));
                 continue;
             }
-            req.promise.set_value(command_result_to_json(r));
+            req.promise.set_value(nlohmann::json{
+                {"ok", true}, {"message", r.message}, {"undid", undid_label}}.dump());
             continue;
         }
         if (req.method == "new_graph") {
@@ -780,6 +783,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
             continue;
         }
         if (req.method == "redo") {
+            // Peek the label before redo() moves the cursor.
+            std::string redid_label = impl_->undo_history.peekRedoLabel();
             std::string snapshot_json;
             if (!impl_->undo_history.redo(snapshot_json)) {
                 req.promise.set_value(json_err("nothing to redo"));
@@ -797,7 +802,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
                 req.promise.set_value(json_err("redo failed: " + r.message));
                 continue;
             }
-            req.promise.set_value(command_result_to_json(r));
+            req.promise.set_value(nlohmann::json{
+                {"ok", true}, {"message", r.message}, {"redid", redid_label}}.dump());
             continue;
         }
 
@@ -834,7 +840,8 @@ void ControlServer::process_requests(RuntimeAPI& api, Graph& graph,
             }
             std::string current_json;
             if (graph.save_to_string(current_json)) {
-                impl_->undo_history.push(std::move(current_json));
+                impl_->undo_history.push(std::move(current_json), false,
+                                         undo_label_for_method(req.method));
             }
         }
 

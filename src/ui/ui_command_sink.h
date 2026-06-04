@@ -174,6 +174,18 @@ public:
     virtual bool can_undo() const { return false; }
     virtual bool can_redo() const { return false; }
 
+    // Undo grouping: bracket a gesture or bulk action into one deterministic undo
+    // entry. Snapshots are suppressed while a group is open and one is captured at
+    // the matching end. Calls may nest. Defaults are no-ops for headless/test sinks.
+    virtual void begin_undo_group(const std::string& label) {}
+    virtual void end_undo_group() {}
+
+    // Human-readable description of the action that the next undo()/redo() would
+    // affect (e.g. "Clear pattern"), for menu titles and command responses. Empty
+    // when unavailable. Default empty for sinks without history.
+    virtual std::string peek_undo_label() const { return {}; }
+    virtual std::string peek_redo_label() const { return {}; }
+
     // Session Track/Clip/Scene operations (defaults are no-ops for headless/test sinks)
     virtual void session_create_track(const std::string& name) {}
     virtual void session_rename_track(const std::string& track_id, const std::string& name) {}

@@ -51,6 +51,18 @@ void ed_set_string_param(void* opaque, const char* param_name, const char* value
     ctx->sink->set_string_param(ctx->node_id, param_name, value ? value : "");
 }
 
+void ed_begin_undo_group(void* opaque, const char* label) {
+    auto* ctx = static_cast<EdCmdCtx*>(opaque);
+    if (!ctx || !ctx->sink) return;
+    ctx->sink->begin_undo_group(label ? label : "");
+}
+
+void ed_end_undo_group(void* opaque) {
+    auto* ctx = static_cast<EdCmdCtx*>(opaque);
+    if (!ctx || !ctx->sink) return;
+    ctx->sink->end_undo_group();
+}
+
 // (HostCtx + make_host_api live in runtime/core/editor_window_host_api.{h,cpp}
 // so tests can exercise them without linking the manager.)
 
@@ -746,6 +758,8 @@ void EditorWindowManager::tick(double time) {
         ctx.commands.opaque = &cmd_ctx;
         ctx.commands.set_param = ed_set_param;
         ctx.commands.set_string_param = ed_set_string_param;
+        ctx.commands.begin_undo_group = ed_begin_undo_group;
+        ctx.commands.end_undo_group = ed_end_undo_group;
         ctx.theme = impl_->theme_provider ? impl_->theme_provider() : VividInspectorTheme{};
 
         ctx.param_values  = node->param_values.data();

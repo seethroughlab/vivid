@@ -75,6 +75,17 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
         if (ctx->commands.set_param)
             ctx->commands.set_param(ctx->commands.opaque, name, v);
     };
+    // Bracket a multi-cell action into ONE deterministic undo entry. Without this,
+    // each set_param across the selection produces its own undo step. Null-guarded
+    // for hosts predating the v4 ABI.
+    auto begin_group = [&](const char* label) {
+        if (ctx->commands.begin_undo_group)
+            ctx->commands.begin_undo_group(ctx->commands.opaque, label);
+    };
+    auto end_group = [&]() {
+        if (ctx->commands.end_undo_group)
+            ctx->commands.end_undo_group(ctx->commands.opaque);
+    };
     auto set_lane = [&](de::LaneKind lane, std::size_t drum, int step, float v) {
         set_named(de::param_name_for(lane, drum, step).c_str(), v);
     };
@@ -147,11 +158,14 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
             static_cast<std::size_t>(editor_cursor_drum_), editor_cursor_step_);
         const float cur = get_param(cidx, 0.0f);
         const float target = (cur > 0.5f) ? 0.0f : 1.0f;
+        begin_group("Toggle triggers");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(trigger_lane, dd, ss, target);
         });
+        end_group();
     };
     auto clear_selection_values = [&]() {
+        begin_group("Clear pattern");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(de::LaneKind::Pattern,     dd, ss, 0.0f);
             set_lane(de::LaneKind::PatternB,    dd, ss, 0.0f);
@@ -160,30 +174,73 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
             set_lane(de::LaneKind::Probability, dd, ss, 1.0f);
             set_lane(de::LaneKind::Roll,        dd, ss, 1.0f);
         });
+        end_group();
+    };
+    // Randomize the selection in one undo group. The RNG is a pure hash of each
+    // cell's indices folded with that cell's current Pattern/ModA values — no wall
+    // clock or global rand(), so it is reproducible and testable, yet successive
+    // presses evolve because the inputs change.
+    auto randomize_selection_values = [&]() {
+        auto mix = [](uint32_t x) {
+            x ^= x >> 16; x *= 0x7feb352dU;
+            x ^= x >> 15; x *= 0x846ca68bU;
+            x ^= x >> 16; return x;
+        };
+        begin_group("Randomize");
+        for_each_selected([&](std::size_t dd, int ss) {
+            const float cur_p  = get_param(de::param_index_for(
+                de::LaneKind::Pattern, dd, ss), 0.0f);
+            const float cur_ma = get_param(de::param_index_for(
+                de::LaneKind::ModA, dd, ss), 0.5f);
+            uint32_t base = mix(static_cast<uint32_t>(dd) * 73856093u ^
+                                static_cast<uint32_t>(ss) * 19349663u ^
+                                static_cast<uint32_t>(cur_p  * 1009.0f) * 83492791u ^
+                                static_cast<uint32_t>(cur_ma * 1009.0f) * 2654435761u);
+            auto rnd01 = [&](uint32_t k) {
+                return static_cast<float>(mix(base + k) & 0xffffffu) /
+                       static_cast<float>(0xffffffu);
+            };
+            set_lane(de::LaneKind::Pattern,     dd, ss, rnd01(0) < 0.5f ? 1.0f : 0.0f);
+            set_lane(de::LaneKind::PatternB,    dd, ss, rnd01(1) < 0.5f ? 1.0f : 0.0f);
+            set_lane(de::LaneKind::ModA,        dd, ss, rnd01(2));
+            set_lane(de::LaneKind::ModB,        dd, ss, rnd01(3));
+            set_lane(de::LaneKind::Probability, dd, ss, 0.5f + 0.5f * rnd01(4));
+            set_lane(de::LaneKind::Roll,        dd, ss,
+                     static_cast<float>(1u + (mix(base + 5u) % 4u)));
+        });
+        end_group();
     };
     auto set_roll_selection = [&](int rc) {
         const float v = static_cast<float>(std::clamp(rc, 1, 4));
+        begin_group("Set roll");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(de::LaneKind::Roll, dd, ss, v);
         });
+        end_group();
     };
     auto set_probability_selection = [&](float p) {
         p = std::clamp(p, 0.0f, 1.0f);
+        begin_group("Set probability");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(de::LaneKind::Probability, dd, ss, p);
         });
+        end_group();
     };
     auto set_velocity_selection = [&](float v) {
         v = std::clamp(v, 0.0f, 1.0f);
+        begin_group("Set velocity");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(de::LaneKind::ModA, dd, ss, v);
         });
+        end_group();
     };
     auto set_mod_b_selection = [&](float v) {
         v = std::clamp(v, 0.0f, 1.0f);
+        begin_group("Set mod B");
         for_each_selected([&](std::size_t dd, int ss) {
             set_lane(de::LaneKind::ModB, dd, ss, v);
         });
+        end_group();
     };
 
     // ------------------------------------------------------------
@@ -260,6 +317,8 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
             toggle_trigger_selection();
         } else if (e.key == ek::kSpace) {
             clear_selection_values();
+        } else if (e.key == ek::kR && !cmd_or_ctrl) {
+            randomize_selection_values();
         } else if (e.key >= (ek::k0 + 1) && e.key <= (ek::k0 + 4)) {
             // Roll shortcut: 1/2/3/4 set ratchet count across the selection.
             set_roll_selection(ek::digit_value(e.key));
@@ -284,9 +343,11 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
             de::copy_selection(ctx->param_values, ctx->param_count,
                                editor_selection_, &selection_clipboard_);
         } else if (e.key == ek::kV && cmd_or_ctrl) {
+            begin_group("Paste");
             de::paste_selection(ctx->commands, selection_clipboard_,
                                 static_cast<std::size_t>(editor_selection_.row_lo),
                                 editor_selection_.col_lo);
+            end_group();
         }
     }
 
@@ -348,7 +409,7 @@ void DrumSequencerCore::draw_editor(VividEditorContext* ctx) {
     // button row is wide enough to collide with the hint string.
     if (d.draw_text) {
         const char* hints =
-            "Enter=trigger  Space=clear  1-4=roll  P<digit>=prob  S=song  Shift+Arrow=extend  Cmd+C/V";
+            "Enter=trigger  Space=clear  R=random  1-4=roll  P<digit>=prob  S=song  Shift+Arrow=extend  Cmd+C/V";
         const float hints_scale = 0.75f;
         const float hints_w = d.text_width
             ? d.text_width(o, hints, hints_scale) : 420.0f;
