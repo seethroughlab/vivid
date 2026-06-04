@@ -217,7 +217,8 @@ add_vivid_operator(render_2d         operators/gpu/render_2d/render_2d.cpp CODEG
 add_vivid_operator(instance_grid_2d  operators/gpu/instance_grid_2d/instance_grid_2d.cpp CODEGEN EXTRA_LIBS webgpu)
 add_vivid_operator(instancer_2d      operators/gpu/instancer_2d/instancer_2d.cpp CODEGEN        EXTRA_LIBS webgpu)
 add_vivid_operator(transform_2d      operators/gpu/transform_2d/transform_2d.cpp CODEGEN        EXTRA_LIBS webgpu)
-add_vivid_operator(particles_2d      operators/gpu/particles_2d/particles_2d.cpp CODEGEN        EXTRA_LIBS webgpu)
+add_vivid_operator(particles_2d      operators/gpu/particles_2d/particles_2d.cpp CODEGEN        EXTRA_LIBS webgpu
+                   FACTORY_PRESETS operators/gpu/particles_2d/factory_presets.json)
 add_vivid_operator(flocking_2d       operators/gpu/flocking_2d/flocking_2d.cpp CODEGEN          EXTRA_LIBS webgpu)
 add_vivid_operator(instance_noise_2d operators/gpu/instance_noise_2d/instance_noise_2d.cpp CODEGEN EXTRA_LIBS webgpu)
 add_vivid_operator(instances_from_lanes_2d operators/gpu/instances_from_lanes_2d/instances_from_lanes_2d.cpp CODEGEN EXTRA_LIBS webgpu)
@@ -310,6 +311,7 @@ add_vivid_operator(bloom                operators/gpu/bloom/bloom.cpp CODEGEN   
                    FACTORY_PRESETS operators/gpu/bloom/factory_presets.json)
 add_vivid_operator(feedback             operators/gpu/feedback/feedback.cpp CODEGEN                       EXTRA_LIBS webgpu
                    FACTORY_PRESETS operators/gpu/feedback/factory_presets.json)
+add_vivid_operator(motion                operators/gpu/motion/motion.cpp CODEGEN                           EXTRA_LIBS webgpu)
 add_vivid_operator(metaball              operators/gpu/metaball/metaball.cpp CODEGEN                       EXTRA_LIBS webgpu)
 add_vivid_operator(shape_field           operators/gpu/shape_field/shape_field.cpp CODEGEN                EXTRA_LIBS webgpu vivid_embeddable_op_support)
 add_vivid_operator(trails                operators/gpu/trails/trails.cpp CODEGEN                           EXTRA_LIBS webgpu vivid_embeddable_op_support)
@@ -431,6 +433,61 @@ else()
         "  \"movie_file\": { \"sources\": [\"operators/gpu/movie_file/movie_file.cpp\"], \"extra_libs\": [\"webgpu\"], \"include_dirs\": [\"deps/stb\"] }")
 endif()
 set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS movie_file)
+
+# --- Video Sampler (bank of clips, instant index switch) ---
+vivid_codegen_for(video_sampler operators/gpu/video_sampler/video_sampler.cpp)
+if(APPLE)
+    add_library(video_sampler MODULE
+        ${VIVID_CODEGEN_OUTPUT_video_sampler}
+        operators/shared/movie_decode/decoder_factory.cpp
+        operators/shared/movie_decode/texture_upload.cpp
+        operators/shared/movie_decode/metal_frame_upload.mm
+        operators/shared/movie_decode/placeholder_frame.cpp
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/hap_decoder.mm
+        operators/shared/movie_decode/codec_probe.mm
+        deps/hap/hap.c
+    )
+    target_link_libraries(video_sampler PRIVATE
+        vivid_operator_api webgpu snappy movie_session
+        "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework Foundation" "-framework QuartzCore" "-framework Metal" "-framework IOSurface"
+    )
+    set_source_files_properties(
+        operators/shared/movie_decode/avf_decoder.mm
+        operators/shared/movie_decode/metal_frame_upload.mm
+        operators/shared/movie_decode/hap_decoder.mm
+        operators/shared/movie_decode/codec_probe.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_library(video_sampler MODULE ${VIVID_CODEGEN_OUTPUT_video_sampler})
+    target_link_libraries(video_sampler PRIVATE vivid_operator_api webgpu)
+endif()
+set_target_properties(video_sampler PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}"
+    BUILD_RPATH "@loader_path/../Frameworks"
+    INSTALL_RPATH "@loader_path/../Frameworks")
+target_include_directories(video_sampler PRIVATE
+    ${CMAKE_SOURCE_DIR}/deps/hap
+    ${CMAKE_CURRENT_BINARY_DIR}
+)
+if(APPLE)
+    add_custom_command(TARGET video_sampler POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:video_sampler>
+            $<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns/
+        COMMENT "Updating video_sampler in Vivid.app bundle"
+    )
+endif()
+if(APPLE)
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"video_sampler\": { \"sources\": [\"operators/gpu/video_sampler/video_sampler.cpp\", \"operators/shared/movie_decode/decoder_factory.cpp\", \"operators/shared/movie_decode/texture_upload.cpp\", \"operators/shared/movie_decode/metal_frame_upload.mm\", \"operators/shared/movie_decode/placeholder_frame.cpp\", \"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\", \"deps/hap/hap.c\"], \"extra_libs\": [\"webgpu\", \"snappy\"], \"frameworks\": [\"AVFoundation\", \"AVFAudio\", \"CoreMedia\", \"CoreVideo\", \"Foundation\", \"QuartzCore\", \"Metal\", \"IOSurface\"], \"objc_arc\": [\"operators/shared/movie_decode/avf_decoder.mm\", \"operators/shared/movie_decode/metal_frame_upload.mm\", \"operators/shared/movie_decode/hap_decoder.mm\", \"operators/shared/movie_decode/codec_probe.mm\"], \"include_dirs\": [\"deps/hap\"] }")
+else()
+    set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_MANIFEST
+        "  \"video_sampler\": { \"sources\": [\"operators/gpu/video_sampler/video_sampler.cpp\"], \"extra_libs\": [\"webgpu\"] }")
+endif()
+set_property(GLOBAL APPEND PROPERTY VIVID_OPERATOR_TARGETS video_sampler)
 
 # --- Webcam In (live camera capture) ---
 vivid_codegen_for(webcam_in operators/gpu/webcam_in/webcam_in.cpp)
