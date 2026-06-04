@@ -324,6 +324,14 @@ void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
     }
 
     auto ready = hr.poll_ready();
+    // Before re-instantiating any operator, flush live operator write-backs
+    // (e.g. VST3/CLAP/AU plugin_state — including a GUI-loaded preset) into
+    // file_param_storage so reload_operator's state preservation carries the
+    // CURRENT state, not a stale throttled snapshot. Mirrors the flush in
+    // RuntimeAPI::save_as / capture_*_runtime_state. Only runs when an actual
+    // reload is pending, so there's no per-frame cost.
+    if (!ready.empty())
+        runtime.update_audio_sources(0.0);
     for (const auto& result : ready) {
         // Cache for runtime_health (Phase 8a). Always store, even on success,
         // so a previous failure stops looking like the current state once a
