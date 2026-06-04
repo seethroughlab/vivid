@@ -14,6 +14,29 @@
 
 namespace vivid::ui {
 
+// Stable hue for a lane-set id (provenance coloring): wires/ports that share a
+// lane_set_id carry the same multiplicity identity and get the same tint.
+// Returns false for ids that don't get a tint (0 = scalar, 1 = default/single set).
+inline bool lane_set_color(uint32_t lane_set_id, float& r, float& g, float& b) {
+    if (lane_set_id <= 1u) return false;
+    const float h = std::fmod(static_cast<float>(lane_set_id) * 0.6180339887f, 1.0f); // golden ratio
+    const float s = 0.62f, v = 1.0f;
+    const float i = std::floor(h * 6.0f);
+    const float f = h * 6.0f - i;
+    const float p = v * (1.0f - s);
+    const float q = v * (1.0f - s * f);
+    const float t = v * (1.0f - s * (1.0f - f));
+    switch (static_cast<int>(i) % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        default: r = v; g = p; b = q; break;
+    }
+    return true;
+}
+
 // --- Chooser search scoring (v2) ---
 //
 // Multi-tier ranker over OperatorInfo::SearchHaystack. Tiers, high -> low:

@@ -136,6 +136,18 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
             a = (hov || sel) ? 1.0f : 0.9f;
         }
 
+        // Lane-set provenance: tint multi-lane wires by their lane_set_id so wires
+        // carrying the same multiplicity identity read as one family.
+        if (!c.invalid && c.lane_count > 1) {
+            float lr, lg, lb;
+            if (lane_set_color(c.lane_set_id, lr, lg, lb)) {
+                const float mix = 0.55f;   // blend the env accent toward the lane-set hue
+                cr = std::min(1.0f, (cr * (1.0f - mix) + lr * mix) * brightness);
+                cg = std::min(1.0f, (cg * (1.0f - mix) + lg * mix) * brightness);
+                cb = std::min(1.0f, (cb * (1.0f - mix) + lb * mix) * brightness);
+            }
+        }
+
         bool is_param_wire = c.from_is_param || c.to_is_param;
         bool is_back_edge = (ci >= 0 && static_cast<size_t>(ci) < back_edge_mask_.size() &&
                              back_edge_mask_[ci]);

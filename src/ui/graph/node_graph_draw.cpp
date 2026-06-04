@@ -42,6 +42,13 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         for (const auto& nid : snap_.session.tracks[ti].owned_node_ids)
             node_track_idx[nid] = ti;
 
+    // Per-frame output-port → lane_set_id (from outgoing connections) so multi-lane
+    // output ports can be tinted by the same provenance hue as their wires.
+    std::unordered_map<std::string, uint32_t> out_port_lane_set;
+    for (const auto& c : snap_.connections)
+        if (c.lane_count > 1 && c.lane_set_id > 1 && !c.from_is_param)
+            out_port_lane_set.emplace(c.from_node + "\x1f" + c.from_port, c.lane_set_id);
+
     for (size_t i = 0; i < node_rects_.size(); ++i) {
         const auto& r = node_rects_[i];
         bool selected = selected_node_ids_.count(r.node_id) > 0;
@@ -446,12 +453,35 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
             float dot_alpha = p.is_param ? kParamDotAlpha : 1.0f;
             if (port_hov) { dot_scale *= kPortHoverScale; dot_alpha = kPortHoverAlpha; }
             float sd = s_dot * dot_scale;
-            tr.draw_rect(spx, spy - sd * 0.5f,
-                         sd, sd,
-                         dcol[0], dcol[1], dcol[2], dot_alpha);
+            // Lane count for this output port (materialized) + provenance hue.
+            size_t lane_n = 0;
+            uint32_t lset = 0;
+            if (sn && !p.is_param) {
+                auto pit = sn->output_port_indices.find(p.name);
+                if (pit != sn->output_port_indices.end()) {
+                    uint32_t pidx = pit->second;
+                    if (pidx < sn->output_lanes.size())             lane_n = sn->output_lanes[pidx].size();
+                    else if (pidx < sn->output_string_lanes.size()) lane_n = sn->output_string_lanes[pidx].size();
+                }
+                auto lit = out_port_lane_set.find(r.node_id + "\x1f" + p.name);
+                if (lit != out_port_lane_set.end()) lset = lit->second;
+            }
+            float pr = dcol[0], pg = dcol[1], pb = dcol[2];
+            float lr, lg, lb;
+            const bool tinted = (lane_n > 1) && lane_set_color(lset, lr, lg, lb);
+            if (tinted) { const float m = 0.6f; pr = dcol[0]*(1-m)+lr*m; pg = dcol[1]*(1-m)+lg*m; pb = dcol[2]*(1-m)+lb*m; }
+            tr.draw_rect(spx, spy - sd * 0.5f, sd, sd, pr, pg, pb, dot_alpha);
             float lw = tr.text_width(p.name.c_str(), zoom_);
             tr.draw_text(spx - lw - g_to_s(4), spy - s_line_h * 0.5f, p.name.c_str(),
                          style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], dot_alpha, zoom_);
+            // "×N" badge on multi-lane output ports — shows where multiplicity originates.
+            if (lane_n > 1) {
+                char nb[16]; std::snprintf(nb, sizeof(nb), "\xc3\x97%zu", lane_n);
+                const float br = tinted ? lr : style_.dim_text[0];
+                const float bg = tinted ? lg : style_.dim_text[1];
+                const float bb = tinted ? lb : style_.dim_text[2];
+                tr.draw_text(spx + g_to_s(3), spy - s_line_h * 0.5f, nb, br, bg, bb, 0.75f * dot_alpha, zoom_);
+            }
         }
 
         // Expand/collapse affordance row for nodes with >3 outputs

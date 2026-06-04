@@ -585,6 +585,8 @@ void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
     if (sel_node->is_module_instance) {
         draw_inspector_performance(tr, *sel_node, px, py);
     }
+    // --- Voice lifecycle section (poly synths with voice breakouts) ---
+    draw_inspector_voices(tr, *sel_node, px, py);
     // --- Technical section ---
     {
         bool has_resolution = sel_node->is_gpu && sel_node->gpu_tex_width > 0;

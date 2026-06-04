@@ -416,6 +416,7 @@ private:
     void draw_inspector_state_presets(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_modulation(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_performance(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
+    void draw_inspector_voices(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_chooser(Renderer2D& tr);
     void draw_chooser_map(Renderer2D& tr, float px, float py, float pw, float ph);
     void draw_preview_wire(Renderer2D& tr);

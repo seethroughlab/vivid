@@ -860,6 +860,58 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
 
     auto sections = build_inspector_output_sections(node, snap_.connections);
 
+    // Look up the lane-set provenance hue for an output port (for sparkline tint).
+    auto port_lane_hue = [&](const std::string& name, float& r, float& g, float& b) -> bool {
+        for (const auto& c : snap_.connections)
+            if (c.lane_count > 1 && c.lane_set_id > 1 && !c.from_is_param &&
+                c.from_node == node.node_id && c.from_port == name)
+                return lane_set_color(c.lane_set_id, r, g, b);
+        return false;
+    };
+
+    // Mini bar plot of a whole lane array, normalized to its own min/max.
+    auto draw_lane_sparkline = [&](const std::vector<float>& lv, const std::string& name) {
+        float vmin = lv[0], vmax = lv[0];
+        for (float v : lv) { vmin = std::min(vmin, v); vmax = std::max(vmax, v); }
+
+        // Summary line: name ×N  min..max
+        std::string summary = name + " \xc3\x97" + std::to_string(lv.size()) + "  " +
+                              format_float(vmin) + "\xe2\x80\xa6" + format_float(vmax);
+        summary = truncate_text(tr, summary, panel_w, 0.8f);
+        tr.draw_text(px, py, summary.c_str(),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.8f);
+        py += kLineH;
+
+        // Bar plot — one bar per lane, binned (averaged) if there are more lanes than pixels.
+        const float plot_h   = 22.0f;
+        const float bar_step = 2.0f;  // 1px bar + 1px gap
+        size_t max_bars = std::max<size_t>(1, static_cast<size_t>(panel_w / bar_step));
+        size_t n_bars   = std::min(lv.size(), max_bars);
+        const float span = (vmax > vmin) ? (vmax - vmin) : 1.0f;
+
+        float hr, hg, hb;
+        const bool tinted = port_lane_hue(name, hr, hg, hb);
+        if (!tinted) { hr = style_.accent[0]; hg = style_.accent[1]; hb = style_.accent[2]; }
+
+        // Track background.
+        tr.draw_rect(px, py, n_bars * bar_step, plot_h,
+                     style_.input_field_bg[0], style_.input_field_bg[1], style_.input_field_bg[2], 0.5f);
+        for (size_t bi = 0; bi < n_bars; ++bi) {
+            // Average the lanes that fall in this bar's bin.
+            size_t lo = (bi * lv.size()) / n_bars;
+            size_t hi = ((bi + 1) * lv.size()) / n_bars;
+            if (hi <= lo) hi = lo + 1;
+            float acc = 0.0f;
+            for (size_t j = lo; j < hi && j < lv.size(); ++j) acc += lv[j];
+            float avg = acc / static_cast<float>(hi - lo);
+            float t = (avg - vmin) / span;           // 0..1
+            float bh = std::max(1.0f, t * plot_h);
+            float bx = px + bi * bar_step;
+            tr.draw_rect(bx, py + (plot_h - bh), 1.0f, bh, hr, hg, hb, 0.9f);
+        }
+        py += plot_h + 4.0f;
+    };
+
     auto draw_output_line = [&](uint32_t idx, const std::string& name) {
         constexpr size_t kMaxLaneValues = 8;
         std::string line;
@@ -874,6 +926,9 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
             if (sp.size() > kMaxLaneValues) vals += " \xe2\x80\xa6";
             vals += "]";
             line = name + " \xc3\x97" + std::to_string(sp.size()) + "  " + vals;
+        } else if (idx < node.output_lanes.size() && node.output_lanes[idx].size() > 1) {
+            draw_lane_sparkline(node.output_lanes[idx], name);
+            return;
         } else if (idx < node.output_lanes.size() && !node.output_lanes[idx].empty()) {
             const auto& lv = node.output_lanes[idx];
             std::string vals = "[";
@@ -915,6 +970,86 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
             draw_output_line(idx, name);
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Voice lifecycle section — live strip of a poly synth's active voices
+// ---------------------------------------------------------------------------
+
+namespace {
+// Nearest equal-tempered note name (A4 = 440 Hz) for a frequency in Hz.
+std::string note_name_from_freq(float hz) {
+    if (hz <= 0.0f) return "\xe2\x80\x93";  // en dash
+    int midi = static_cast<int>(std::lround(69.0 + 12.0 * std::log2(hz / 440.0)));
+    static const char* kNames[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    int oct = midi / 12 - 1;
+    int pc  = ((midi % 12) + 12) % 12;
+    return std::string(kNames[pc]) + std::to_string(oct);
+}
+}  // namespace
+
+void NodeGraphUI::draw_inspector_voices(Renderer2D& tr, const NodeSnapshot& node,
+                                        float px, float& py) {
+    // Only nodes that publish voice breakouts (poly synths) have a voice strip.
+    auto git = node.output_port_indices.find("voice_gates");
+    if (git == node.output_port_indices.end()) return;
+    if (git->second >= node.output_lanes.size()) return;
+    const auto& gates = node.output_lanes[git->second];
+
+    // Aligned companion lanes (best-effort — same lane set as gates).
+    const std::vector<float>* freqs = nullptr;
+    const std::vector<float>* vels  = nullptr;
+    if (auto it = node.output_port_indices.find("voice_freqs");
+        it != node.output_port_indices.end() && it->second < node.output_lanes.size())
+        freqs = &node.output_lanes[it->second];
+    if (auto it = node.output_port_indices.find("voice_velocities");
+        it != node.output_port_indices.end() && it->second < node.output_lanes.size())
+        vels = &node.output_lanes[it->second];
+
+    draw_section_separator(tr, px, py, kInspContentW, T("voices", "Voices"));
+
+    const size_t n = gates.size();
+    if (n == 0) {
+        tr.draw_text(px, py, T("voices_idle", "\xe2\x80\x94 no active voices \xe2\x80\x94"),
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f, 0.8f);
+        py += kLineH;
+        return;
+    }
+
+    int held = 0, releasing = 0;
+    for (float g : gates) (g > 0.5f ? held : releasing)++;
+    std::string summary = std::to_string(held) + " held";
+    if (releasing) summary += ", " + std::to_string(releasing) + " releasing";
+    tr.draw_text(px, py, summary.c_str(),
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 1.0f, 0.8f);
+    py += kLineH;
+
+    // One cell per active voice, wrapping across rows. Held = green, releasing =
+    // amber; cell brightness/alpha is velocity-shaded; label is the note name.
+    const float cell_w = 42.0f, cell_h = 24.0f, gap = 4.0f;
+    const float panel_w = kInspContentW;
+    const size_t per_row = std::max<size_t>(1, static_cast<size_t>((panel_w + gap) / (cell_w + gap)));
+    float row_y = py;
+    for (size_t i = 0; i < n; ++i) {
+        size_t col = i % per_row;
+        if (col == 0 && i > 0) row_y += cell_h + gap;
+        float cx = px + col * (cell_w + gap);
+
+        bool is_held = gates[i] > 0.5f;
+        float vel = (vels && i < vels->size()) ? std::clamp((*vels)[i], 0.0f, 1.0f) : 1.0f;
+        float shade = 0.45f + 0.55f * vel;
+        float r = is_held ? 0.30f : 0.85f;
+        float g = is_held ? 0.85f : 0.55f;
+        float b = is_held ? 0.45f : 0.20f;
+        tr.draw_rect(cx, row_y, cell_w, cell_h, r * shade, g * shade, b * shade, 0.85f);
+
+        std::string label = (freqs && i < freqs->size()) ? note_name_from_freq((*freqs)[i])
+                                                          : std::string("\xe2\x80\x93");
+        float lw = tr.text_width(label.c_str(), 0.8f);
+        tr.draw_text(cx + (cell_w - lw) * 0.5f, row_y + 5.0f, label.c_str(),
+                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.0f, 0.8f);
+    }
+    py = row_y + cell_h + 6.0f;
 }
 
 // ---------------------------------------------------------------------------
