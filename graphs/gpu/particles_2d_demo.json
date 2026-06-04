@@ -1,69 +1,140 @@
 {
-    "schema_version": 1,
-    "vivid_version": "0.1.0",
-    "meta": {
-        "id": "particles_2d_demo",
-        "title": "GPU Particles (2D)",
-        "description": "Compute-shader particle simulator — thousands of additive embers rise, curl through noise, and fall under gravity. Demonstrates the GPU-driven source of the 2D drawable pipeline.",
-        "tags": ["demo", "particles", "compute", "instancing", "2d"],
-        "difficulty": "beginner",
-        "domains": ["gpu"],
-        "requires_packages": [],
-        "featured_rank": 50,
-        "estimated_minutes": 2,
-        "content_kind": "example",
-        "category": "instancing",
-        "family": "2D drawable pipeline",
-        "role": "creative",
-        "playability": "self_playing"
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "particles_2d_demo",
+    "title": "GPU Particles (2D)",
+    "description": "Compute-shader particle simulator \u2014 thousands of additive embers rise, curl through noise, and fall under gravity. Demonstrates the GPU-driven source of the 2D drawable pipeline.",
+    "tags": [
+      "demo",
+      "particles",
+      "compute",
+      "instancing",
+      "2d"
+    ],
+    "difficulty": "beginner",
+    "domains": [
+      "gpu"
+    ],
+    "requires_packages": [],
+    "featured_rank": 50,
+    "estimated_minutes": 2,
+    "content_kind": "example",
+    "category": "instancing",
+    "family": "2D drawable pipeline",
+    "role": "creative",
+    "playability": "self_playing"
+  },
+  "nodes": {
+    "particles": {
+      "type": "Particles2D",
+      "params": {
+        "count": 20000.0,
+        "emission_rate": 4000.0,
+        "lifetime": 2.5,
+        "speed": 0.4,
+        "gravity": -0.3,
+        "spread": 25.0,
+        "drag": 0.2,
+        "curl_strength": 1.8,
+        "noise_scale": 2.0,
+        "noise_speed": 0.4,
+        "noise_octaves": 2.0,
+        "size": 0.012,
+        "softness": 0.6,
+        "bounds": 2.0,
+        "r": 1.0,
+        "g": 0.55,
+        "b": 0.2,
+        "a": 0.8
+      },
+      "layout": {
+        "x": 30.0,
+        "y": 200.0
+      }
     },
-    "nodes": {
-        "particles": {
-            "type": "Particles2D",
-            "params": {
-                "count": 20000.0,
-                "emission_rate": 5000.0,
-                "lifetime": 3.0,
-                "speed": 0.4,
-                "gravity": -0.3,
-                "spread": 60.0,
-                "drag": 0.2,
-                "curl_strength": 1.8,
-                "noise_scale": 2.0,
-                "noise_speed": 0.4,
-                "noise_octaves": 2.0,
-                "size": 0.012,
-                "softness": 0.6,
-                "bounds": 2.0,
-                "r": 1.0,
-                "g": 0.55,
-                "b": 0.2,
-                "a": 0.8
-            },
-            "layout": { "x": 30.0, "y": 200.0 }
-        },
-        "render": {
-            "type": "Render2D",
-            "params": {
-                "bg_r": 0.0,
-                "bg_g": 0.0,
-                "bg_b": 0.02,
-                "bg_a": 1.0
-            },
-            "layout": { "x": 300.0, "y": 200.0 }
-        },
-        "bloom": {
-            "type": "Bloom",
-            "layout": { "x": 560.0, "y": 200.0 }
-        },
-        "vout": {
-            "type": "video_out",
-            "layout": { "x": 800.0, "y": 200.0 }
-        }
+    "render": {
+      "type": "Render2D",
+      "params": {
+        "bg_r": 0.0,
+        "bg_g": 0.0,
+        "bg_b": 0.02,
+        "bg_a": 1.0
+      },
+      "layout": {
+        "x": 300.0,
+        "y": 200.0
+      }
     },
-    "connections": [
-        { "from": "particles/drawable", "to": "render/drawable" },
-        { "from": "render/texture",     "to": "bloom/input" },
-        { "from": "bloom/texture",      "to": "vout/input" }
-    ]
+    "bloom": {
+      "type": "Bloom",
+      "layout": {
+        "x": 560.0,
+        "y": 200.0
+      }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": {
+        "x": 800.0,
+        "y": 200.0
+      }
+    },
+    "lfo_x": {
+      "type": "Lfo",
+      "params": {
+        "frequency": 0.13,
+        "amplitude": 1.0
+      },
+      "layout": {
+        "x": -360.0,
+        "y": -40.0
+      }
+    },
+    "lfo_y": {
+      "type": "Lfo",
+      "params": {
+        "frequency": 0.19,
+        "amplitude": 1.0
+      },
+      "layout": {
+        "x": -360.0,
+        "y": 120.0
+      }
+    }
+  },
+  "connections": [
+    {
+      "from": "particles/drawable",
+      "to": "render/drawable"
+    },
+    {
+      "from": "render/texture",
+      "to": "bloom/input"
+    },
+    {
+      "from": "bloom/texture",
+      "to": "vout/input"
+    },
+    {
+      "from": "lfo_x/value",
+      "to": "particles/emit_x",
+      "from_min": 0.0,
+      "from_max": 1.0,
+      "to_min": -0.7,
+      "to_max": 0.7,
+      "clamp": true,
+      "bridge": "hold"
+    },
+    {
+      "from": "lfo_y/value",
+      "to": "particles/emit_y",
+      "from_min": 0.0,
+      "from_max": 1.0,
+      "to_min": -0.7,
+      "to_max": 0.7,
+      "clamp": true,
+      "bridge": "hold"
+    }
+  ]
 }
