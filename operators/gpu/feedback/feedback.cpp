@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -147,8 +148,13 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"input",    VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        // Signal modulation inputs — added on top of the param value each frame;
+        // wire an audio signal here to drive the feedback with the music.
+        // Disconnected = 0 = no effect. (input index 1, 2.)
+        out.push_back({"zoom_mod", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"mix_mod",  VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"texture",  VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -174,13 +180,17 @@ struct Feedback : vivid::OperatorBase, vivid::GpuProcessable {
             cached_height_ = ctx->output_height;
         }
 
-        // Write uniforms once per frame
+        // Write uniforms once per frame. Scalar mod inputs (input_values[1],[2])
+        // add to the base param so a wired signal modulates on top of the
+        // slider/clip value; disconnected inputs read 0.
+        const float zoom_mod = ctx->input_values ? ctx->input_values[1] : 0.0f;
+        const float mix_mod  = ctx->input_values ? ctx->input_values[2] : 0.0f;
         FeedbackUniforms u{};
         u.decay      = decay.value;
-        u.mix_val    = mix.value;
+        u.mix_val    = std::clamp(mix.value + mix_mod, 0.0f, 1.0f);
         u.offset_x   = offset_x.value;
         u.offset_y   = offset_y.value;
-        u.zoom       = zoom.value;
+        u.zoom       = std::max(0.01f, zoom.value + zoom_mod);
         u.rotate_rad    = rotate.value * (3.14159265358979323846f / 180.0f);
         u.scale_from_x  = scale_from_x.value;
         u.scale_from_y  = scale_from_y.value;

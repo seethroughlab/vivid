@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -238,8 +239,13 @@ struct Bloom : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
-        out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
+        out.push_back({"input",         VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        // Signal modulation inputs — added on top of the param value each frame.
+        // Wire an audio analysis signal (e.g. a kick envelope) here to pulse the
+        // glow with the music. Disconnected = 0 = no effect. (input index 1, 2.)
+        out.push_back({"intensity_mod", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"threshold_mod", VIVID_PORT_SCALAR,  VIVID_PORT_INPUT});
+        out.push_back({"texture",       VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 
     void process_gpu(const VividGpuContext* ctx) override {
@@ -265,10 +271,14 @@ struct Bloom : vivid::OperatorBase, vivid::GpuProcessable {
             cached_height_ = ctx->output_height;
         }
 
-        // Write uniforms once per frame
+        // Write uniforms once per frame. Scalar mod inputs (input_values[1],[2])
+        // add to the base param so a wired signal modulates on top of the
+        // slider/clip value; disconnected inputs read 0.
+        const float intensity_mod = ctx->input_values ? ctx->input_values[1] : 0.0f;
+        const float threshold_mod = ctx->input_values ? ctx->input_values[2] : 0.0f;
         BloomUniforms u{};
-        u.threshold = threshold.value;
-        u.intensity = intensity.value;
+        u.threshold = std::max(0.0f, threshold.value + threshold_mod);
+        u.intensity = std::max(0.0f, intensity.value + intensity_mod);
         u.radius    = radius.value;
         u.texel_w   = 1.0f / static_cast<float>(ctx->output_width);
         u.texel_h   = 1.0f / static_cast<float>(ctx->output_height);
