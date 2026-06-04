@@ -9,6 +9,21 @@ namespace vivid {
 
 struct WgslOperatorConfig;
 
+// Result of comparing an already-loaded operator descriptor against a candidate
+// replacement during hot reload.
+//   Compatible        — in-place reload is safe; no recompile needed.
+//   RecompileRequired — layout (params/ports/gpu) is unchanged, but lane_behavior
+//                       and/or strategy_independent differ, so the dylib can be
+//                       swapped but the graph must be recompiled to re-run the
+//                       lane-set propagation and execution-strategy planner.
+//   Incompatible      — param/port/gpu layout changed; reject the swap.
+enum class HotReloadCompat { Compatible, RecompileRequired, Incompatible };
+
+// Classify a hot-reload descriptor change. See HotReloadCompat. Exposed (rather
+// than file-local) so it can be unit-tested directly.
+HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
+                                    const VividOperatorDescriptor* new_desc);
+
 class OperatorLoader {
 public:
     struct LastError {
@@ -78,6 +93,12 @@ public:
     bool is_shader_operator() const { return dd_config_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
 
+    // True if the most recent successful load() swapped in a dylib whose
+    // descriptor changed in a way that requires a full graph recompile to take
+    // effect correctly (see HotReloadCompat::RecompileRequired). The reload
+    // driver checks this and calls RuntimeAPI::request_recompile().
+    bool reload_required_recompile() const { return reload_required_recompile_; }
+
 private:
     void set_last_error(std::string code, std::string message);
     void clear_last_error();
@@ -115,6 +136,7 @@ private:
     std::string registration_mode_ = "unknown";
     const VividGeneratedUniformLayout* generated_uniform_layout_ = nullptr;
     LastError last_error_{};
+    bool reload_required_recompile_ = false;
 };
 
 } // namespace vivid

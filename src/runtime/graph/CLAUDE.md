@@ -48,6 +48,8 @@ This directory contains the graph compiler and both execution engines. It transf
 
 Topology changes always trigger a full recompile. The `CompiledGraph` is never mutated during execution — it is shared read-only between both executors.
 
+Hot reload (`graph_compiler_reload.cpp`) reuses the existing `CompiledGraph` in place and does **not** re-run lane-set propagation (Pass 2.6) or the execution-strategy planner. To keep lane metadata correct, an operator reload whose descriptor changes `lane_behavior` or `strategy_independent` is classified `HotReloadCompat::RecompileRequired` (`operator_loader.cpp`), and the reload driver (`main_helpers.cpp`) calls `RuntimeAPI::request_recompile()` so the next frame rebuilds from the `Graph` with the new descriptor. Param/port/GPU-layout changes remain rejected as hot-reload-incompatible.
+
 ### Frame Executor
 
 `FrameExecutor::tick()` walks `frame_order` (the topo-sorted frame-cadence nodes) once per frame. For each node it sets up the lane context, copies wire values from upstream outputs to downstream inputs, calls `process_frame()` or `process_gpu()`, and propagates lane data. GPU nodes are dispatched via a callback to the GPU context.

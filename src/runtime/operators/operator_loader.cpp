@@ -61,16 +61,34 @@ bool hot_reload_port_layout_compatible(const VividOperatorDescriptor* old_desc,
     return true;
 }
 
-bool hot_reload_descriptor_compatible(const VividOperatorDescriptor* old_desc,
-                                      const VividOperatorDescriptor* new_desc) {
-    if (!old_desc || !new_desc) return true;
-    if (old_desc->has_process_gpu != new_desc->has_process_gpu) return false;
-    if (!hot_reload_param_layout_compatible(old_desc, new_desc)) return false;
-    if (!hot_reload_port_layout_compatible(old_desc, new_desc)) return false;
-    if (old_desc->lane_behavior != new_desc->lane_behavior) return false;
-    return true;
-}
 } // namespace
+
+// Free function (non-anonymous) so it is unit-testable. Calls the file-local
+// layout helpers above.
+HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
+                                    const VividOperatorDescriptor* new_desc) {
+    if (!old_desc || !new_desc) return HotReloadCompat::Compatible;
+
+    // Hard layout changes cannot be reconciled by a recompile alone (they can
+    // drop connections / remap params): reject the swap.
+    if (old_desc->has_process_gpu != new_desc->has_process_gpu)
+        return HotReloadCompat::Incompatible;
+    if (!hot_reload_param_layout_compatible(old_desc, new_desc))
+        return HotReloadCompat::Incompatible;
+    if (!hot_reload_port_layout_compatible(old_desc, new_desc))
+        return HotReloadCompat::Incompatible;
+
+    // Layout is identical, but lane behavior and/or execution-strategy opt-in
+    // changed. These feed the lane-set propagation pass (Pass 2.6) and the
+    // execution-strategy planner, which the in-place reload does NOT re-run —
+    // so a full recompile is required for the change to take effect correctly.
+    if (old_desc->lane_behavior != new_desc->lane_behavior)
+        return HotReloadCompat::RecompileRequired;
+    if (old_desc->strategy_independent != new_desc->strategy_independent)
+        return HotReloadCompat::RecompileRequired;
+
+    return HotReloadCompat::Compatible;
+}
 
 void OperatorLoader::set_last_error(std::string code, std::string message) {
     last_error_.code = std::move(code);
@@ -201,6 +219,7 @@ OperatorLoader& OperatorLoader::operator=(OperatorLoader&& other) noexcept {
 
 bool OperatorLoader::load(const char* path) {
     clear_last_error();
+    reload_required_recompile_ = false;
 
     // Attempt to open the new dylib before touching current state (atomic swap).
     void* new_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -288,15 +307,19 @@ bool OperatorLoader::load(const char* path) {
         dlclose(new_handle);
         return false;
     }
-    if (!hot_reload_descriptor_compatible(current_desc, new_desc)) {
+    const HotReloadCompat compat = classify_hot_reload(current_desc, new_desc);
+    if (compat == HotReloadCompat::Incompatible) {
         set_last_error("hot_reload_incompatible_descriptor",
-                       "descriptor shape changed incompatibly; rebuild graph/runtime instead");
+                       "param/port/gpu layout changed incompatibly; rebuild graph/runtime instead");
         std::fprintf(stderr,
-                     "[vivid] Hot-reload rejected: descriptor shape changed incompatibly; "
+                     "[vivid] Hot-reload rejected: param/port/gpu layout changed incompatibly; "
                      "rebuild graph/runtime instead.\n");
         dlclose(new_handle);
         return false;
     }
+    // Defer recording the recompile requirement until the swap below actually
+    // succeeds, so a later failure leaves the flag clear.
+    const bool recompile_after_swap = (compat == HotReloadCompat::RecompileRequired);
 
     // Pre-register custom port types before committing the loader swap. This
     // preserves the previous loader on registration failure.
@@ -364,6 +387,7 @@ bool OperatorLoader::load(const char* path) {
     inject_midi_fn_ = reinterpret_cast<VividInjectMidiFn>(dlsym(new_handle, "vivid_op_inject_midi"));
     registration_mode_ = candidate_mode;
     clear_last_error();
+    reload_required_recompile_ = recompile_after_swap;
     return true;
 }
 

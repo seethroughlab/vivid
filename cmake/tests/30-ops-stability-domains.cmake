@@ -967,6 +967,14 @@ target_link_libraries(test_frame_lane_lifting PRIVATE
 add_dependencies(test_frame_lane_lifting lane_source_op lane_sink_op lane_frame_op identity_lane_source_op repeat envelope lfo)
 add_test(NAME test_frame_lane_lifting COMMAND test_frame_lane_lifting WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+add_executable(test_gpu_lane_promotion
+    tests/lanes/test_gpu_lane_promotion.cpp
+)
+target_include_directories(test_gpu_lane_promotion PRIVATE src tests)
+target_link_libraries(test_gpu_lane_promotion PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_gpu_lane_promotion COMMAND test_gpu_lane_promotion WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_lane_breadth
     tests/lanes/test_lane_breadth.cpp
 )

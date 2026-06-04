@@ -17,8 +17,11 @@ namespace vivid {
 
 class LaneBufferPool {
 public:
-    explicit LaneBufferPool(uint32_t buffer_capacity = 1024)
-        : buffer_capacity_(buffer_capacity) {}
+    // growable: when true, buffers acquired from this pool may grow past
+    // buffer_capacity on resize() (frame-thread pools only — never the audio
+    // bridge, which must stay no-alloc).
+    explicit LaneBufferPool(uint32_t buffer_capacity = 1024, bool growable = false)
+        : buffer_capacity_(buffer_capacity), growable_(growable) {}
 
     // Acquire a mutable buffer. Returns a raw pointer — caller wraps in
     // LaneBufferRef after writing. Buffer data is NOT zeroed; caller must
@@ -33,6 +36,7 @@ public:
         // Allocate new (frame thread only).
         auto& ptr = all_buffers_.emplace_back(std::make_unique<LaneBuffer>(buffer_capacity_));
         ptr->pool_owned = true;
+        ptr->allow_grow = growable_;
         return ptr.get();
     }
 
@@ -55,6 +59,7 @@ public:
         for (uint32_t i = 0; i < count; ++i) {
             auto& ptr = all_buffers_.emplace_back(std::make_unique<LaneBuffer>(buffer_capacity_));
             ptr->pool_owned = true;
+            ptr->allow_grow = growable_;
             free_list_.push_back(ptr.get());
         }
     }
@@ -76,6 +81,7 @@ private:
     }
 
     uint32_t buffer_capacity_;
+    bool growable_ = false;
     std::vector<std::unique_ptr<LaneBuffer>> all_buffers_;
     std::vector<LaneBuffer*> free_list_;
 };
