@@ -88,21 +88,27 @@ inline WGPUShaderModule create_shader_checked(WGPUDevice device, const char* fra
 }
 
 // ---------------------------------------------------------------------------
-// Helper: create a fullscreen render pipeline (vs_main + fs_main)
+// Helper: create a fullscreen render pipeline with N color targets (MRT).
+// `formats[i]` is the WGPUTextureFormat of color attachment i; the fragment
+// shader must emit one @location(i) output per target. count==1 is the common
+// single-target case.
 // ---------------------------------------------------------------------------
-inline WGPURenderPipeline create_pipeline(WGPUDevice device, WGPUShaderModule shader,
-                                           WGPUPipelineLayout layout,
-                                           WGPUTextureFormat format,
-                                           const char* label) {
-    WGPUColorTargetState color_target{};
-    color_target.format = format;
-    color_target.writeMask = WGPUColorWriteMask_All;
+inline WGPURenderPipeline create_pipeline_mrt(WGPUDevice device, WGPUShaderModule shader,
+                                              WGPUPipelineLayout layout,
+                                              const WGPUTextureFormat* formats,
+                                              uint32_t count,
+                                              const char* label) {
+    std::vector<WGPUColorTargetState> color_targets(count, WGPUColorTargetState{});
+    for (uint32_t i = 0; i < count; ++i) {
+        color_targets[i].format = formats[i];
+        color_targets[i].writeMask = WGPUColorWriteMask_All;
+    }
 
     WGPUFragmentState fragment{};
     fragment.module = shader;
     fragment.entryPoint = vivid_sv("fs_main");
-    fragment.targetCount = 1;
-    fragment.targets = &color_target;
+    fragment.targetCount = count;
+    fragment.targets = color_targets.data();
 
     WGPURenderPipelineDescriptor rp_desc{};
     rp_desc.label = vivid_sv(label);
@@ -121,24 +127,40 @@ inline WGPURenderPipeline create_pipeline(WGPUDevice device, WGPUShaderModule sh
 }
 
 // ---------------------------------------------------------------------------
-// Helper: run a fullscreen render pass (clear + draw 3 vertices)
+// Helper: create a fullscreen render pipeline (vs_main + fs_main), single target.
 // ---------------------------------------------------------------------------
-inline void run_pass(WGPUCommandEncoder encoder, WGPURenderPipeline pipeline,
-                     WGPUBindGroup bind_group, WGPUTextureView target,
-                     const char* label,
-                     WGPUColor clear = WGPUColor{0, 0, 0, 1}) {
-    if (!target) return;
-    WGPURenderPassColorAttachment color_att{};
-    color_att.view = target;
-    color_att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-    color_att.loadOp = WGPULoadOp_Clear;
-    color_att.storeOp = WGPUStoreOp_Store;
-    color_att.clearValue = clear;
+inline WGPURenderPipeline create_pipeline(WGPUDevice device, WGPUShaderModule shader,
+                                           WGPUPipelineLayout layout,
+                                           WGPUTextureFormat format,
+                                           const char* label) {
+    return create_pipeline_mrt(device, shader, layout, &format, 1, label);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: run a fullscreen render pass with N color attachments (MRT).
+// `targets[i]`/`clears[i]` describe color attachment i (all cleared then stored).
+// All attachments must share size and sample count. count==1 is the common case.
+// ---------------------------------------------------------------------------
+inline void run_pass_mrt(WGPUCommandEncoder encoder, WGPURenderPipeline pipeline,
+                         WGPUBindGroup bind_group,
+                         const WGPUTextureView* targets, uint32_t count,
+                         const WGPUColor* clears, const char* label) {
+    if (count == 0 || !targets) return;
+    for (uint32_t i = 0; i < count; ++i) if (!targets[i]) return;
+
+    std::vector<WGPURenderPassColorAttachment> color_atts(count, WGPURenderPassColorAttachment{});
+    for (uint32_t i = 0; i < count; ++i) {
+        color_atts[i].view = targets[i];
+        color_atts[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        color_atts[i].loadOp = WGPULoadOp_Clear;
+        color_atts[i].storeOp = WGPUStoreOp_Store;
+        color_atts[i].clearValue = clears ? clears[i] : WGPUColor{0, 0, 0, 1};
+    }
 
     WGPURenderPassDescriptor rp_desc{};
     rp_desc.label = vivid_sv(label);
-    rp_desc.colorAttachmentCount = 1;
-    rp_desc.colorAttachments = &color_att;
+    rp_desc.colorAttachmentCount = count;
+    rp_desc.colorAttachments = color_atts.data();
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
     wgpuRenderPassEncoderSetPipeline(pass, pipeline);
@@ -146,6 +168,16 @@ inline void run_pass(WGPUCommandEncoder encoder, WGPURenderPipeline pipeline,
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: run a fullscreen render pass (clear + draw 3 vertices), single target.
+// ---------------------------------------------------------------------------
+inline void run_pass(WGPUCommandEncoder encoder, WGPURenderPipeline pipeline,
+                     WGPUBindGroup bind_group, WGPUTextureView target,
+                     const char* label,
+                     WGPUColor clear = WGPUColor{0, 0, 0, 1}) {
+    run_pass_mrt(encoder, pipeline, bind_group, &target, 1, &clear, label);
 }
 
 // ---------------------------------------------------------------------------

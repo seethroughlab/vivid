@@ -119,6 +119,7 @@ struct InstanceData {
 @group(0) @binding(4) var<storage, read_write> counter: atomic<u32>;
 @group(0) @binding(5) var img: texture_2d<f32>;
 @group(0) @binding(6) var emit_tex: texture_2d<f32>;
+@group(0) @binding(7) var flow_tex: texture_2d<f32>;  // signed motion vector (RG), 0 if disconnected
 
 // Sample the input image at an NDC position (-1..1). Compute shaders can't use
 // textureSample, so we textureLoad at the nearest texel. Y is flipped so the
@@ -148,6 +149,14 @@ fn emit_load_uv(uv: vec2f) -> vec4f {
     let dims = vec2f(textureDimensions(emit_tex));
     let tc = vec2i(clamp(uv * dims, vec2f(0.0), dims - vec2f(1.0)));
     return textureLoad(emit_tex, tc, 0);
+}
+
+// Signed motion-vector field (binding 7). Disconnected -> bound to the 1x1 black
+// fallback, so .rg reads (0,0) = no flow. Carries raw signed flow (no encoding).
+fn flow_load_uv(uv: vec2f) -> vec2f {
+    let dims = vec2f(textureDimensions(flow_tex));
+    let tc = vec2i(clamp(uv * dims, vec2f(0.0), dims - vec2f(1.0)));
+    return textureLoad(flow_tex, tc, 0).rg;
 }
 
 // Inverse of img_sample's NDC<->UV mapping (UV (0..1) -> NDC (-1..1)). Texel row 0
@@ -304,24 +313,23 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
                     let maspect = mdims.x / mdims.y;
                     var rs = s0;
                     var found = false;
-                    var win_rg = vec2f(0.5);  // encoded flow vector at the winning sample
+                    var win_flow = vec2f(0.0);  // raw signed flow vector at the winning sample
                     for (var t = 0u; t < 16u; t = t + 1u) {
                         let u = rand_float(rs); rs = pcg_hash(rs);
                         let v = rand_float(rs); rs = pcg_hash(rs);
                         let uv = vec2f(u, v);
                         let s      = emit_load_uv(uv);
-                        // Flow mode keys "where" on the magnitude channel (B); else luma.
-                        let lum    = select(img_luma(s.rgb), s.b, params.emit_flow == 1u);
+                        // Flow mode keys "where" on the magnitude (grayscale mask); else luma.
+                        let lum    = select(img_luma(s.rgb), s.r, params.emit_flow == 1u);
                         let masked = max(lum - params.emit_threshold, 0.0) / max(1.0 - params.emit_threshold, 0.001);
                         let br     = masked * params.emit_gain;
                         let r = rand_float(rs); rs = pcg_hash(rs);
-                        if (r < br) { pos = uv_to_ndc(uv); win_rg = s.rg; found = true; break; }
+                        if (r < br) { pos = uv_to_ndc(uv); win_flow = flow_load_uv(uv); found = true; break; }
                     }
                     img_spawn_ok = found;   // no bright pixel found -> suppress, don't pile at center
                     if (params.emit_flow == 1u) {
-                        // Spawn velocity along the decoded motion vector (Y-flip + aspect to screen space).
-                        let f = (win_rg - vec2f(0.5)) * 2.0;
-                        vel = vec2f(f.x * maspect, -f.y) * params.flow_strength;
+                        // Spawn velocity along the raw motion vector (Y-flip + aspect to screen space).
+                        vel = vec2f(win_flow.x * maspect, -win_flow.y) * params.flow_strength;
                     } else {
                         let a = rand_float(s3) * 6.28318530718;
                         vel = vec2f(cos(a), sin(a)) * params.speed * 0.3;
@@ -393,13 +401,13 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
                 }
             }
         } else if (fm == 3u) {
-            // Flow: steer along the motion vector sampled from emit_mask (Motion in Flow mode).
+            // Flow: steer along the motion vector (Motion's flow_vector output), gated by
+            // the magnitude mask on emit_mask (Motion's primary output).
             let fdims   = vec2f(textureDimensions(emit_tex));
             let faspect = fdims.x / fdims.y;
             let fuv     = vec2f(p.position.x / faspect, p.position.y) * vec2f(0.5, -0.5) + vec2f(0.5);
-            let fs      = emit_load_uv(fuv);
-            if (fs.b > 0.02) {                       // only where there is motion magnitude
-                let ff = (fs.rg - vec2f(0.5)) * 2.0;
+            if (emit_load_uv(fuv).r > 0.02) {        // only where there is motion magnitude
+                let ff = flow_load_uv(fuv);          // raw signed flow
                 p.velocity += vec2f(ff.x * faspect, -ff.y) * params.flow_force * params.dt;
             }
         }
@@ -784,7 +792,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(emit_threshold, "Emission");
         vivid::description(emit_threshold, "Emit=Image: luma-key cutoff — only pixels brighter than this emit, so particles clearly come from the bright areas (0 = emit by raw brightness)");
         vivid::param_group(emit_flow, "Emission");
-        vivid::description(emit_flow, "Emit=Image: with a Motion(Flow) mask on emit_mask, give each particle an initial velocity along the motion direction (keys 'where' on the magnitude channel)");
+        vivid::description(emit_flow, "Emit=Image: wire Motion(Flow)'s flow_vector into flow_vector (and its magnitude into emit_mask) to give each particle an initial velocity along the motion direction");
         vivid::param_group(flow_strength, "Emission");
         vivid::description(flow_strength, "How strongly the flow vector drives the spawn velocity");
         vivid::visible_when_eq(emit_x,         emit_shape, {0, 1, 2});
@@ -810,7 +818,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
 
         // -- Flow steering (force_mode = Flow) --------------------------------
         vivid::param_group(flow_force, "Flow Force");
-        vivid::description(flow_force, "Force=Flow: continuously steer particles along the motion vector from a Motion(Flow) mask on emit_mask");
+        vivid::description(flow_force, "Force=Flow: continuously steer particles along Motion(Flow)'s flow_vector (gated by the magnitude on emit_mask)");
         vivid::visible_when_eq(flow_force, force_mode, {3});
 
         // -- Flock (force_mode = Flock) ---------------------------------------
@@ -917,6 +925,9 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         // Emit=Image). Disconnected = treated as black (those modes no-op).
         out.push_back({"texture",   VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
         out.push_back({"emit_mask", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
+        // Signed motion-vector field (e.g. Motion's flow_vector output) for
+        // emit_flow / Force=Flow. Disconnected -> zero flow.
+        out.push_back({"flow_vector", VIVID_PORT_TEXTURE, VIVID_PORT_INPUT});
         out.push_back(vivid::gpu::drawable_port("drawable", VIVID_PORT_OUTPUT));
     }
 
@@ -964,10 +975,15 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         WGPUTextureView mask = (ctx->input_texture_views && ctx->input_texture_count >= 2 &&
                                 ctx->input_texture_views[1])
                                ? ctx->input_texture_views[1] : img;
-        if (img != cached_input_tex_ || mask != cached_mask_tex_) {
-            rebuild_bind_groups(ctx, img, mask);
+        // Flow vector = 3rd texture input; disconnected -> 1x1 black fallback (zero flow).
+        WGPUTextureView flow = (ctx->input_texture_views && ctx->input_texture_count >= 3 &&
+                                ctx->input_texture_views[2])
+                               ? ctx->input_texture_views[2] : fallback_view_;
+        if (img != cached_input_tex_ || mask != cached_mask_tex_ || flow != cached_flow_tex_) {
+            rebuild_bind_groups(ctx, img, mask, flow);
             cached_input_tex_ = img;
             cached_mask_tex_  = mask;
+            cached_flow_tex_  = flow;
         }
 
         float dt = static_cast<float>(ctx->delta_time);
@@ -1111,6 +1127,7 @@ private:
     WGPUTextureView fallback_view_    = nullptr;
     WGPUTextureView cached_input_tex_ = nullptr;
     WGPUTextureView cached_mask_tex_  = nullptr;
+    WGPUTextureView cached_flow_tex_  = nullptr;
     uint64_t        particle_bytes_   = 0;
 
     uint32_t current_count_     = 0;
@@ -1180,8 +1197,8 @@ private:
             return;
         }
 
-        // Bind group layout: 7 entries (5 buffers + color texture + emit_mask texture).
-        WGPUBindGroupLayoutEntry entries[7]{};
+        // Bind group layout: 8 entries (5 buffers + color + emit_mask + flow_vector textures).
+        WGPUBindGroupLayoutEntry entries[8]{};
         entries[0].binding = 0;
         entries[0].visibility = WGPUShaderStage_Compute;
         entries[0].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
@@ -1209,10 +1226,15 @@ private:
         entries[6].texture.sampleType    = WGPUTextureSampleType_Float;
         entries[6].texture.viewDimension = WGPUTextureViewDimension_2D;
         entries[6].texture.multisampled  = false;
+        entries[7].binding = 7;
+        entries[7].visibility = WGPUShaderStage_Compute;
+        entries[7].texture.sampleType    = WGPUTextureSampleType_Float;
+        entries[7].texture.viewDimension = WGPUTextureViewDimension_2D;
+        entries[7].texture.multisampled  = false;
 
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label      = vivid_sv("Particles2D BGL");
-        bgl_desc.entryCount = 7;
+        bgl_desc.entryCount = 8;
         bgl_desc.entries    = entries;
         compute_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
 
@@ -1237,18 +1259,19 @@ private:
         create_fallback(gpu);
         cached_input_tex_ = fallback_view_;
         cached_mask_tex_  = fallback_view_;
-        rebuild_bind_groups(gpu, fallback_view_, fallback_view_);
+        cached_flow_tex_  = fallback_view_;
+        rebuild_bind_groups(gpu, fallback_view_, fallback_view_, fallback_view_);
     }
 
     void create_bind_group(const VividGpuContext* gpu,
                             WGPUBuffer read_buf, WGPUBuffer write_buf,
                             uint64_t particle_bytes, WGPUTextureView img_view,
-                            WGPUTextureView mask_view,
+                            WGPUTextureView mask_view, WGPUTextureView flow_view,
                             WGPUBindGroup* out_bg, const char* label) {
         uint64_t instance_bytes = static_cast<uint64_t>(current_count_) * kInstanceRecordBytes;
         if (instance_bytes < kInstanceRecordBytes) instance_bytes = kInstanceRecordBytes;
 
-        WGPUBindGroupEntry entries[7]{};
+        WGPUBindGroupEntry entries[8]{};
         entries[0].binding = 0;
         entries[0].buffer  = read_buf;
         entries[0].size    = particle_bytes;
@@ -1268,11 +1291,13 @@ private:
         entries[5].textureView = img_view;
         entries[6].binding     = 6;
         entries[6].textureView = mask_view;
+        entries[7].binding     = 7;
+        entries[7].textureView = flow_view;
 
         WGPUBindGroupDescriptor desc{};
         desc.label      = vivid_sv(label);
         desc.layout     = compute_bgl_;
-        desc.entryCount = 7;
+        desc.entryCount = 8;
         desc.entries    = entries;
         *out_bg = wgpuDeviceCreateBindGroup(gpu->device, &desc);
     }
@@ -1309,13 +1334,13 @@ private:
 
     // Rebuild both ping-pong bind groups with the given color + emit-mask textures.
     void rebuild_bind_groups(const VividGpuContext* gpu, WGPUTextureView img_view,
-                             WGPUTextureView mask_view) {
+                             WGPUTextureView mask_view, WGPUTextureView flow_view) {
         vivid::gpu::release(bind_group_a_);
         vivid::gpu::release(bind_group_b_);
         create_bind_group(gpu, particle_buf_a_, particle_buf_b_, particle_bytes_,
-                          img_view, mask_view, &bind_group_a_, "Particles2D BG A");
+                          img_view, mask_view, flow_view, &bind_group_a_, "Particles2D BG A");
         create_bind_group(gpu, particle_buf_b_, particle_buf_a_, particle_bytes_,
-                          img_view, mask_view, &bind_group_b_, "Particles2D BG B");
+                          img_view, mask_view, flow_view, &bind_group_b_, "Particles2D BG B");
     }
 };
 

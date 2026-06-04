@@ -336,6 +336,10 @@ struct GpuNodeState {
     std::vector<int32_t>         aux_texture_output_port_indices;
     std::vector<WGPUTexture>     aux_gpu_textures;
     std::vector<WGPUTextureView> aux_gpu_texture_views;
+    // Per-aux declared format (VividTextureFormat enum), index-aligned with
+    // aux_texture_output_port_indices. Resolved to a WGPUTextureFormat at
+    // allocation time (VIVID_TEXFMT_DEFAULT → the node's offscreen format).
+    std::vector<uint32_t>        aux_texture_format_hints;
 
     bool has_texture_output = false;
     bool shader_error = false;

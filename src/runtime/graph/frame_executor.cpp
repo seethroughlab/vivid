@@ -491,6 +491,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                                             ? nullptr : operators_src_dir_.c_str();
             gpu_ctx.aux_output_texture_views = cn.gpu->aux_gpu_texture_views.empty()
                 ? nullptr : cn.gpu->aux_gpu_texture_views.data();
+            gpu_ctx.aux_output_textures = cn.gpu->aux_gpu_textures.empty()
+                ? nullptr : cn.gpu->aux_gpu_textures.data();
             gpu_ctx.aux_output_texture_count =
                 static_cast<uint32_t>(cn.gpu->aux_gpu_texture_views.size());
 
@@ -842,6 +844,21 @@ int FrameExecutor::find_effective_gpu_sink(const CompiledGraph& cg) const {
     return find_gpu_sink(cg);
 }
 
+// Map a VividTextureFormat hint to a concrete WGPUTextureFormat.
+// VIVID_TEXFMT_DEFAULT (0) inherits the node's primary/offscreen format.
+static WGPUTextureFormat resolve_texfmt(uint32_t hint, WGPUTextureFormat default_fmt) {
+    switch (hint) {
+        case VIVID_TEXFMT_RGBA8_UNORM: return WGPUTextureFormat_RGBA8Unorm;
+        case VIVID_TEXFMT_RGBA16F:     return WGPUTextureFormat_RGBA16Float;
+        case VIVID_TEXFMT_RG16F:       return WGPUTextureFormat_RG16Float;
+        case VIVID_TEXFMT_RG32F:       return WGPUTextureFormat_RG32Float;
+        case VIVID_TEXFMT_R16F:        return WGPUTextureFormat_R16Float;
+        case VIVID_TEXFMT_R32F:        return WGPUTextureFormat_R32Float;
+        case VIVID_TEXFMT_DEFAULT:
+        default:                       return default_fmt;
+    }
+}
+
 void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
                                           uint32_t default_w, uint32_t default_h,
                                           WGPUTextureFormat format,
@@ -862,8 +879,10 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
         // Retire existing primary textures (released after a grace period).
         if (cn.gpu->texture_view) { batch.views.push_back(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
         if (cn.gpu->texture) { batch.textures.push_back(cn.gpu->texture); cn.gpu->texture = nullptr; }
-        for (auto& v : cn.gpu->aux_gpu_texture_views) v = nullptr;
-        for (auto& t : cn.gpu->aux_gpu_textures)      t = nullptr;
+        // Retire previous aux textures the same way (a draining command buffer may
+        // still reference their views) rather than dropping the handles.
+        for (auto& v : cn.gpu->aux_gpu_texture_views) { if (v) batch.views.push_back(v); v = nullptr; }
+        for (auto& t : cn.gpu->aux_gpu_textures)      { if (t) batch.textures.push_back(t); t = nullptr; }
 
         // GPU sinks and scene-only nodes don't produce their own textures
         cn.gpu->tex_inherited = false;
@@ -940,6 +959,54 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
 
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
                      w, h, cn.node_id.c_str());
+
+        // Allocate auxiliary output textures (2nd+ TEXTURE output ports) at their
+        // declared format and the same size as the primary. Vectors are sized
+        // during compilation and just nulled above; index-assign into them here.
+        for (size_t ai = 0; ai < cn.gpu->aux_texture_output_port_indices.size(); ++ai) {
+            WGPUTextureFormat aux_fmt = resolve_texfmt(
+                ai < cn.gpu->aux_texture_format_hints.size()
+                    ? cn.gpu->aux_texture_format_hints[ai] : VIVID_TEXFMT_DEFAULT,
+                format);
+
+            WGPUTextureDescriptor aux_desc{};
+            std::string aux_label = "Node Aux Texture [" + cn.node_id + "#" + std::to_string(ai) + "]";
+            aux_desc.label = to_sv(aux_label.c_str());
+            aux_desc.size = { w, h, 1 };
+            aux_desc.mipLevelCount = 1;
+            aux_desc.sampleCount = 1;
+            aux_desc.dimension = WGPUTextureDimension_2D;
+            aux_desc.format = aux_fmt;
+            aux_desc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding
+                           | WGPUTextureUsage_CopySrc | WGPUTextureUsage_CopyDst | extra_usage;
+            WGPUTexture aux_tex = wgpuDeviceCreateTexture(device, &aux_desc);
+            if (!aux_tex) {
+                std::fprintf(stderr, "[vivid] GPU aux texture alloc failed for node '%s' aux %zu\n",
+                             cn.node_id.c_str(), ai);
+                continue;
+            }
+
+            WGPUTextureViewDescriptor aux_view_desc{};
+            std::string aux_view_label = "Node Aux View [" + cn.node_id + "#" + std::to_string(ai) + "]";
+            aux_view_desc.label = to_sv(aux_view_label.c_str());
+            aux_view_desc.format = aux_fmt;
+            aux_view_desc.dimension = WGPUTextureViewDimension_2D;
+            aux_view_desc.baseMipLevel = 0;
+            aux_view_desc.mipLevelCount = 1;
+            aux_view_desc.baseArrayLayer = 0;
+            aux_view_desc.arrayLayerCount = 1;
+            aux_view_desc.aspect = WGPUTextureAspect_All;
+            WGPUTextureView aux_view = wgpuTextureCreateView(aux_tex, &aux_view_desc);
+            if (!aux_view) {
+                std::fprintf(stderr, "[vivid] GPU aux texture view creation failed for node '%s' aux %zu\n",
+                             cn.node_id.c_str(), ai);
+                wgpuTextureRelease(aux_tex);
+                continue;
+            }
+
+            cn.gpu->aux_gpu_textures[ai]      = aux_tex;
+            cn.gpu->aux_gpu_texture_views[ai] = aux_view;
+        }
     }
 
     if (!batch.textures.empty() || !batch.views.empty())

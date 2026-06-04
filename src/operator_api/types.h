@@ -8,7 +8,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 3u  /* v3: VividOperatorDescriptor.{display_name,keywords,summary} */
+#define VIVID_OPERATOR_ABI_VERSION 5u  /* v5: VividPortDescriptor.gpu_texture_format (typed texture outputs); v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -82,6 +82,19 @@ typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
 
+// GPU texture format for a TEXTURE output port. DEFAULT inherits the node's
+// primary/offscreen format (RGBA16Float). Other values let an operator declare
+// a secondary output at a different precision/channel count (e.g. RG16F for an
+// optical-flow vector field). The runtime maps these to WGPUTextureFormat.
+typedef uint32_t VividTextureFormat;
+#define VIVID_TEXFMT_DEFAULT     0u  // inherit the node's primary/offscreen format
+#define VIVID_TEXFMT_RGBA8_UNORM 1u
+#define VIVID_TEXFMT_RGBA16F     2u
+#define VIVID_TEXFMT_RG16F       3u
+#define VIVID_TEXFMT_RG32F       4u
+#define VIVID_TEXFMT_R16F        5u
+#define VIVID_TEXFMT_R32F        6u
+
 
 
 // ---------------------------------------------------------------------------
@@ -148,6 +161,13 @@ typedef struct VividPortDescriptor {
     // repeat-group metadata (for variadic port patterns)
     const char*        repeat_group     = nullptr; // NULL = standalone; non-NULL = group name (e.g. "layer")
     uint16_t           repeat_group_idx = 0;       // 0-based index within the repeat group
+
+    // Texture format for TEXTURE output ports. 0 (VIVID_TEXFMT_DEFAULT) inherits
+    // the node's primary/offscreen format. Ignored for inputs and non-texture ports.
+    // To set this, use a fully-designated initializer (C++ forbids mixing positional
+    // and designated init), e.g. {.name="flow", .type=VIVID_PORT_TEXTURE,
+    // .direction=VIVID_PORT_OUTPUT, .gpu_texture_format=VIVID_TEXFMT_RG16F}.
+    VividTextureFormat gpu_texture_format = 0;
 } VividPortDescriptor;
 
 

@@ -212,6 +212,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.gpu->aux_texture_output_port_indices.clear();
         cn.gpu->aux_gpu_textures.clear();
         cn.gpu->aux_gpu_texture_views.clear();
+        cn.gpu->aux_texture_format_hints.clear();
     }
 
     uint32_t input_idx = 0, out_idx = 0, gpu_tex_out_count = 0;
@@ -242,6 +243,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                             cn.gpu->aux_texture_output_port_indices.push_back(static_cast<int32_t>(out_idx));
                             cn.gpu->aux_gpu_textures.push_back(nullptr);
                             cn.gpu->aux_gpu_texture_views.push_back(nullptr);
+                            cn.gpu->aux_texture_format_hints.push_back(desc->ports[i].gpu_texture_format);
                         }
                         ++gpu_tex_out_count;
                     }

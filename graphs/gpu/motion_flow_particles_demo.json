@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "vivid_version": "0.1.0",
+  "meta": {
+    "id": "motion_flow_particles_demo",
+    "title": "Motion Flow → Particles",
+    "description": "Animated noise feeds Motion in Flow mode. Its dedicated flow_vector output (a float-precision optical-flow field on a separate texture port) steers a particle field, while the magnitude output keys where particles spawn. Demonstrates typed multi-output textures.",
+    "tags": ["demo", "motion", "optical-flow", "particles", "2d"],
+    "difficulty": "intermediate",
+    "domains": ["gpu"],
+    "requires_packages": [],
+    "featured_rank": 60,
+    "estimated_minutes": 2,
+    "content_kind": "example",
+    "category": "instancing",
+    "family": "2D drawable pipeline",
+    "role": "creative",
+    "playability": "self_playing"
+  },
+  "nodes": {
+    "noise": {
+      "type": "NoiseTexture",
+      "params": {
+        "scale": 3.0,
+        "speed": 0.6,
+        "octaves": 3.0,
+        "noise_type": 0.0,
+        "channels": 0.0
+      },
+      "layout": { "x": -360.0, "y": 200.0 }
+    },
+    "motion": {
+      "type": "Motion",
+      "params": {
+        "mode": 1.0,
+        "gain": 22.0,
+        "threshold": 0.02,
+        "decay": 0.88,
+        "flow_scale": 30.0
+      },
+      "layout": { "x": -80.0, "y": 200.0 }
+    },
+    "particles": {
+      "type": "Particles2D",
+      "params": {
+        "count": 24000.0,
+        "emission_rate": 9000.0,
+        "lifetime": 2.4,
+        "emit_shape": 4.0,
+        "emit_gain": 6.0,
+        "emit_threshold": 0.05,
+        "emit_flow": 1.0,
+        "flow_strength": 1.0,
+        "force_mode": 3.0,
+        "flow_force": 14.0,
+        "color_mode": 0.0,
+        "drag": 0.08,
+        "size": 0.011,
+        "softness": 0.6,
+        "bounds": 2.0,
+        "r": 0.4,
+        "g": 0.8,
+        "b": 1.0,
+        "a": 0.85
+      },
+      "layout": { "x": 220.0, "y": 200.0 }
+    },
+    "prender": {
+      "type": "Render2D",
+      "params": { "bg_r": 0.0, "bg_g": 0.0, "bg_b": 0.02, "bg_a": 1.0 },
+      "layout": { "x": 500.0, "y": 200.0 }
+    },
+    "bloom": {
+      "type": "Bloom",
+      "layout": { "x": 740.0, "y": 200.0 }
+    },
+    "vout": {
+      "type": "video_out",
+      "layout": { "x": 960.0, "y": 200.0 }
+    }
+  },
+  "connections": [
+    { "from": "noise/texture", "to": "motion/input" },
+    { "from": "noise/texture", "to": "particles/texture" },
+    { "from": "motion/texture", "to": "particles/emit_mask" },
+    { "from": "motion/flow_vector", "to": "particles/flow_vector" },
+    { "from": "particles/drawable", "to": "prender/drawable" },
+    { "from": "prender/texture", "to": "bloom/input" },
+    { "from": "bloom/texture", "to": "vout/input" }
+  ]
+}

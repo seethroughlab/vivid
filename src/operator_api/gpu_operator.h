@@ -41,7 +41,10 @@ struct VividGpuContext {
     uint32_t           output_height;
     WGPUTextureFormat  output_format;
     // Auxiliary texture outputs (2nd, 3rd... GPU_TEXTURE output ports), runtime-allocated.
+    // aux_output_textures holds the raw handles parallel to aux_output_texture_views
+    // (needed for texture-to-texture copies, e.g. an operator's own history buffers).
     WGPUTextureView*   aux_output_texture_views;
+    WGPUTexture*       aux_output_textures;
     uint32_t           aux_output_texture_count;
 
     // Texture inputs (one per GPU_TEXTURE input port, nullptr if disconnected)
