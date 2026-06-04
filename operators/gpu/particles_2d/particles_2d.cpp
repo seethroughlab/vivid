@@ -62,7 +62,7 @@ struct Params {
     // Mode selectors (see C++ enums). 0 = the legacy/default behavior.
     population: u32,     // 0 Stream, 1 Fixed
     emit_shape: u32,     // 0 Cone, 1 Point, 2 Ring, 3 Grid, 4 Image
-    force_mode: u32,     // 0 Field, 1 Flock, 2 Image
+    force_mode: u32,     // 0 Field, 1 Flock, 2 Image, 3 Flow
     color_mode: u32,     // 0 Solid, 1 Velocity, 2 Age, 3 Image
     render_shape: u32,   // 0 Circle, 1 Polygon, 2 Aligned, 3 Sprite
     blend: u32,          // 0 Additive, 1 Alpha
@@ -100,7 +100,7 @@ struct Params {
     emit_threshold: f32, // Image emit: luma-key cutoff (0 = emit by raw brightness)
     emit_flow: u32,      // Image emit: 1 = spawn velocity from the flow vector (emit_mask RG)
     flow_strength: f32,  // scales the decoded flow into spawn velocity
-    _pad4: u32,
+    flow_force: f32,     // force_mode=Flow: continuous steering gain toward the flow vector
     _pad5: u32,
     _pad6: u32,
 }
@@ -340,19 +340,6 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
         // ---- Universal forces ----------------------------------------------
         p.velocity.y += params.gravity * params.dt;
 
-        // Continuous flow steering: while a particle is over a moving region of the
-        // emit_mask, keep pushing it along that region's flow vector (not just at birth).
-        if (params.emit_flow == 1u) {
-            let fdims   = vec2f(textureDimensions(emit_tex));
-            let faspect = fdims.x / fdims.y;
-            let fuv     = vec2f(p.position.x / faspect, p.position.y) * vec2f(0.5, -0.5) + vec2f(0.5);
-            let fs      = emit_load_uv(fuv);
-            if (fs.b > 0.02) {
-                let ff = (fs.rg - vec2f(0.5)) * 2.0;
-                p.velocity += vec2f(ff.x * faspect, -ff.y) * params.flow_strength * params.dt * 6.0;
-            }
-        }
-
         let fm = params.force_mode;
         if (fm == 0u) {
             // Field: curl noise.
@@ -386,7 +373,7 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
             if (an > 0.0) { steer += (ali / an - p.velocity) * params.alignment; }
             if (cn > 0.0) { steer += (coh / cn - p.position) * params.cohesion; }
             p.velocity += steer * params.dt;
-        } else {
+        } else if (fm == 2u) {
             // Image: climb the luminance gradient toward bright pixels.
             if (params.attract_strength > 0.0) {
                 let dims = vec2f(textureDimensions(img));
@@ -404,6 +391,16 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
                         p.velocity += (g / gl) * params.attract_strength * params.dt;
                     }
                 }
+            }
+        } else if (fm == 3u) {
+            // Flow: steer along the motion vector sampled from emit_mask (Motion in Flow mode).
+            let fdims   = vec2f(textureDimensions(emit_tex));
+            let faspect = fdims.x / fdims.y;
+            let fuv     = vec2f(p.position.x / faspect, p.position.y) * vec2f(0.5, -0.5) + vec2f(0.5);
+            let fs      = emit_load_uv(fuv);
+            if (fs.b > 0.02) {                       // only where there is motion magnitude
+                let ff = (fs.rg - vec2f(0.5)) * 2.0;
+                p.velocity += vec2f(ff.x * faspect, -ff.y) * params.flow_force * params.dt;
             }
         }
 
@@ -524,7 +521,7 @@ struct ParamsData {
     uint32_t learning_mode;   //  80
     uint32_t population;      //  84  0 Stream, 1 Fixed
     uint32_t emit_shape;     //  88  0 Cone, 1 Point, 2 Ring, 3 Grid, 4 Image
-    uint32_t force_mode;     //  92  0 Field, 1 Flock, 2 Image
+    uint32_t force_mode;     //  92  0 Field, 1 Flock, 2 Image, 3 Flow
     uint32_t color_mode;     //  96  0 Solid, 1 Velocity, 2 Age, 3 Image
     uint32_t render_shape;   // 100  0 Circle, 1 Polygon, 2 Aligned, 3 Sprite
     uint32_t blend;          // 104  0 Additive, 1 Alpha
@@ -562,7 +559,7 @@ struct ParamsData {
     float    emit_threshold;    // 216  Image emit: luma-key cutoff (0 = emit by raw brightness)
     uint32_t emit_flow;         // 220  Image emit: 1 = spawn velocity from the flow vector (emit_mask RG)
     float    flow_strength;     // 224  scales the decoded flow into spawn velocity
-    uint32_t _pad4;             // 228
+    float    flow_force;        // 228  force_mode=Flow: continuous steering gain
     uint32_t _pad5;             // 232
     uint32_t _pad6;             // 236
 };
@@ -661,7 +658,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
     // later build phases; today only the index-0 path is implemented.
     vivid::Param<int> population    {"population",    0, {"Stream", "Fixed"}};
     vivid::Param<int> emit_shape    {"emit_shape",    0, {"Cone", "Point", "Ring", "Grid", "Image"}};
-    vivid::Param<int> force_mode    {"force_mode",    0, {"Field", "Flock", "Image"}};
+    vivid::Param<int> force_mode    {"force_mode",    0, {"Field", "Flock", "Image", "Flow"}};
     vivid::Param<int> color_mode    {"color_mode",    0, {"Solid", "Velocity", "Age", "Image"}};
     vivid::Param<int> render_shape  {"render_shape",  0, {"Circle", "Polygon", "Aligned", "Sprite"}};
     vivid::Param<int> blend         {"blend",         0, {"Additive", "Alpha"}};
@@ -681,6 +678,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> emit_threshold {"emit_threshold", 0.0f,  0.0f, 1.0f};
     vivid::Param<int>   emit_flow      {"emit_flow",      0, {"Off", "On"}};
     vivid::Param<float> flow_strength  {"flow_strength",  0.4f,  0.0f, 3.0f};
+    vivid::Param<float> flow_force     {"flow_force",     6.0f,  0.0f, 30.0f};
 
     // Image attraction force
     vivid::Param<float> attract_strength  {"attract_strength",  1.0f, 0.0f, 5.0f};
@@ -810,6 +808,11 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::visible_when_eq(attract_threshold, force_mode, {2});
         vivid::visible_when_eq(grad_step,         force_mode, {2});
 
+        // -- Flow steering (force_mode = Flow) --------------------------------
+        vivid::param_group(flow_force, "Flow Force");
+        vivid::description(flow_force, "Force=Flow: continuously steer particles along the motion vector from a Motion(Flow) mask on emit_mask");
+        vivid::visible_when_eq(flow_force, force_mode, {3});
+
         // -- Flock (force_mode = Flock) ---------------------------------------
         vivid::param_group(view_radius, "Flock");
         vivid::param_group(sep_radius,  "Flock");
@@ -866,6 +869,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&emit_threshold);
         out.push_back(&emit_flow);
         out.push_back(&flow_strength);
+        out.push_back(&flow_force);
         out.push_back(&attract_strength);
         out.push_back(&attract_threshold);
         out.push_back(&grad_step);
@@ -1017,6 +1021,7 @@ struct Particles2D : vivid::OperatorBase, vivid::GpuProcessable {
         params.emit_threshold    = emit_threshold.value;
         params.emit_flow         = static_cast<uint32_t>(emit_flow.int_value());
         params.flow_strength     = flow_strength.value;
+        params.flow_force        = flow_force.value;
         params.attract_strength  = attract_strength.value;
         params.attract_threshold = attract_threshold.value;
         params.grad_step         = grad_step.value;
