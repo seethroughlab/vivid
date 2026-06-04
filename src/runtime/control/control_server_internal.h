@@ -599,6 +599,18 @@ inline std::string connect_port_issue(OperatorRegistry& registry,
     }
     if (exact_match) return {};
 
+    // A connection may target (or source) a PARAMETER directly rather than a
+    // port: a control/signal → param edge drives that param every frame
+    // (a targets_param edge, applied by the executor) — a first-class feature,
+    // NOT a dropped connection. If the address names a real param, it's valid;
+    // don't emit the "dropped at compile" warning.
+    if (desc->params) {
+        for (uint32_t i = 0; i < desc->param_count; ++i) {
+            if (desc->params[i].name && port == desc->params[i].name)
+                return {};
+        }
+    }
+
     std::string msg = "port '" + node->id + "/" + port + "' is not "
         + (want_output ? "an output" : "an input")
         + " of operator '" + node->type + "'";
