@@ -37,6 +37,9 @@ cmake_install.cmake
 compile_commands.json
 Makefile
 
+# Cloudflare Pages / Wrangler local build cache
+.wrangler/
+
 # Node modules (for VS Code extension)
 extension/node_modules/
 extension/native/node_modules/
