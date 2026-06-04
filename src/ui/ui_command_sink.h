@@ -181,6 +181,8 @@ public:
     virtual void session_save_clip(const std::string& track_id, const std::string& name) {}
     virtual void session_rename_clip(const std::string& track_id, const std::string& clip_id,
                                      const std::string& name) {}
+    virtual void session_set_clip_fade(const std::string& track_id, const std::string& clip_id,
+                                       float fade_bars) {}
     virtual void session_remove_clip(const std::string& track_id, const std::string& clip_id) {}
     virtual void session_update_clip(const std::string& track_id, const std::string& clip_id) {}
     // Edit one stored value inside a clip in place (clip inspector).

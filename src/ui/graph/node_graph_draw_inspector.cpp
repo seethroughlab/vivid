@@ -127,58 +127,91 @@ void NodeGraphUI::draw_clip_inspector(Renderer2D& tr, uint32_t /*w*/, uint32_t h
                  style_.separator[0], style_.separator[1], style_.separator[2]);
 
     const float px = insp_x + pad;
+    const float panel_w = kInspectorW - pad * 2.0f;
     float py = 14.0f;
     tr.draw_text(px, py, ("Clip:  " + clip->name).c_str(),
                  style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 1.05f);
     py += 20.0f;
     tr.draw_text(px, py, ("Track: " + track->name).c_str(),
                  style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.85f);
-    py += 16.0f;
-    tr.draw_text(px, py, "Right-click the cell to launch \xC2\xB7 edit values via MCP update_clip_param",
-                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.72f);
-    py += 16.0f;
+    py += 18.0f;
     if (clip->has_fade) {
         char fb[48]; std::snprintf(fb, sizeof(fb), "Fade: %.2g bars on launch", clip->fade_bars);
         tr.draw_text(px, py, fb, style_.accent[0], style_.accent[1], style_.accent[2], 0.85f);
-        py += 16.0f;
+        py += 18.0f;
     }
-    py += 6.0f;
-    tr.draw_rect(px, py, kInspectorW - pad * 2.0f, 1.0f,
-                 style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
-    py += 10.0f;
 
+    // Header actions: Launch (make this clip's values live) / Update from live (re-capture).
+    {
+        const float bh = 22.0f;
+        auto draw_btn = [&](float bx, float bw, const char* label, int action, bool enabled) {
+            const bool hov = enabled && mouse_.x >= bx && mouse_.x <= bx + bw &&
+                             mouse_.y >= py && mouse_.y <= py + bh;
+            tr.draw_rect(bx, py, bw, bh, style_.accent[0], style_.accent[1], style_.accent[2],
+                         enabled ? (hov ? 0.35f : 0.18f) : 0.07f);
+            const auto& tc = enabled ? style_.bright_text : style_.dim_text;
+            tr.draw_text(bx + 8.0f, py + 4.0f, label, tc[0], tc[1], tc[2], 0.85f);
+            if (enabled) clip_header_btn_rects_.push_back({bx, py, bw, bh, action});
+        };
+        draw_btn(px, 78.0f, "Launch", 0, true);
+        draw_btn(px + 86.0f, panel_w - 86.0f, "Update from live", 1, track->dirty);
+        py += bh + 10.0f;
+    }
+
+    tr.draw_rect(px, py, panel_w, 1.0f,
+                 style_.separator[0], style_.separator[1], style_.separator[2], 0.6f);
+    py += 8.0f;
+    tr.draw_text(px, py, "Nodes \xE2\x80\x94 click a row to edit live, then Update",
+                 style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.72f);
+    py += 18.0f;
+
+    // Navigable owning-node rows (click -> select the node, opening its real inspector).
     for (const auto& node_id : track->owned_node_ids) {
         const auto pit = clip->params.find(node_id);
         const auto sit = clip->string_params.find(node_id);
         const auto bit = clip->bypass.find(node_id);
-        const bool has_any = pit != clip->params.end() || sit != clip->string_params.end() ||
-                             bit != clip->bypass.end();
-        if (!has_any) continue;
+        const size_t nval = (pit != clip->params.end() ? pit->second.size() : 0) +
+                            (sit != clip->string_params.end() ? sit->second.size() : 0) +
+                            (bit != clip->bypass.end() ? 1u : 0u);
 
+        const float row_h = 18.0f;
+        const bool row_hov = mouse_.x >= px && mouse_.x <= px + panel_w &&
+                             mouse_.y >= py - 2.0f && mouse_.y <= py - 2.0f + row_h;
+        if (row_hov)
+            tr.draw_rect(px - 2.0f, py - 2.0f, panel_w + 4.0f, row_h,
+                         style_.accent[0], style_.accent[1], style_.accent[2], 0.14f);
         tr.draw_text(px, py, node_id.c_str(),
                      style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.95f);
-        py += 16.0f;
+        char sb[48];
+        if (nval) std::snprintf(sb, sizeof(sb), "%zu val%s  edit \xE2\x96\xB8", nval, nval == 1 ? "" : "s");
+        else      std::snprintf(sb, sizeof(sb), "edit \xE2\x96\xB8");
+        const float sw = tr.text_width(sb);
+        tr.draw_text(px + panel_w - sw, py, sb,
+                     style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.78f);
+        clip_node_link_rects_.push_back({px - 2.0f, py - 2.0f, panel_w + 4.0f, row_h, node_id});
+        py += row_h;
+
+        // Dim read-out of the stored values, kept for reference.
         if (bit != clip->bypass.end()) {
-            tr.draw_text(px + 10.0f, py, bit->second ? "bypassed = on" : "bypassed = off",
-                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
-            py += 14.0f;
+            tr.draw_text(px + 12.0f, py, bit->second ? "bypassed = on" : "bypassed = off",
+                         style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
+            py += 13.0f;
         }
         if (pit != clip->params.end()) {
             for (const auto& [pname, pval] : pit->second) {
                 char line[160];
-                std::snprintf(line, sizeof(line), "%s = %.4g", pname.c_str(),
-                              static_cast<double>(pval));
-                tr.draw_text(px + 10.0f, py, line,
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                std::snprintf(line, sizeof(line), "%s = %.4g", pname.c_str(), static_cast<double>(pval));
+                tr.draw_text(px + 12.0f, py, line,
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
                 py += 13.0f;
             }
         }
         if (sit != clip->string_params.end()) {
             for (const auto& [pname, pval] : sit->second) {
                 std::string v = pval;
-                if (v.size() > 38) v = v.substr(0, 38) + "\xE2\x80\xA6";
-                tr.draw_text(px + 10.0f, py, (pname + " = \"" + v + "\"").c_str(),
-                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.8f);
+                if (v.size() > 34) v = v.substr(0, 34) + "\xE2\x80\xA6";
+                tr.draw_text(px + 12.0f, py, (pname + " = \"" + v + "\"").c_str(),
+                             style_.dim_text[0], style_.dim_text[1], style_.dim_text[2], 0.7f);
                 py += 13.0f;
             }
         }
@@ -187,7 +220,45 @@ void NodeGraphUI::draw_clip_inspector(Renderer2D& tr, uint32_t /*w*/, uint32_t h
     inspector_.insp_content_h = py;
 }
 
+// Footer chip shown over the node inspector while editing a node that was opened
+// from a clip — lets you re-capture into that clip or jump back to it.
+void NodeGraphUI::draw_clip_breadcrumb(Renderer2D& tr, uint32_t /*w*/, uint32_t h) {
+    if (clip_return_clip_.empty() || selected_node_ids_.size() != 1) return;
+    const auto* rtrack = snap_.session.find_track(clip_return_track_);
+    if (!rtrack) { clip_return_track_.clear(); clip_return_clip_.clear(); return; }
+    const std::string& sel = *selected_node_ids_.begin();
+    bool owned = false;
+    for (const auto& nid : rtrack->owned_node_ids) if (nid == sel) { owned = true; break; }
+    if (!owned) return;   // selected something outside the clip's track — hide the chip
+    std::string clip_name = clip_return_clip_;
+    for (const auto& c : rtrack->clips) if (c.id == clip_return_clip_) { clip_name = c.name; break; }
+
+    const float insp_x = inspector_x();
+    const float pad = kInspPadX;
+    const float fh = 26.0f;
+    const float fy = static_cast<float>(h) - fh;
+    tr.draw_rect(insp_x, fy, kInspectorW, fh, style_.accent[0], style_.accent[1], style_.accent[2], 0.16f);
+    tr.draw_rect(insp_x, fy, kInspectorW, 1.0f, style_.separator[0], style_.separator[1], style_.separator[2], 0.7f);
+
+    std::string back = "\xE2\x86\x90 " + clip_name;   // ← <clip name>
+    const float backw = tr.text_width(back.c_str());
+    tr.draw_text(insp_x + pad, fy + 7.0f, back.c_str(),
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.9f);
+    clip_header_btn_rects_.push_back({insp_x + pad - 2.0f, fy, backw + 10.0f, fh, 2});  // back
+
+    const char* ub = "Update Clip";
+    const float ubw = tr.text_width(ub) + 16.0f;
+    const float ubx = insp_x + kInspectorW - pad - ubw;
+    const bool uhov = mouse_.x >= ubx && mouse_.x <= ubx + ubw && mouse_.y >= fy + 3.0f && mouse_.y <= fy + fh - 3.0f;
+    tr.draw_rect(ubx, fy + 3.0f, ubw, fh - 6.0f, style_.accent[0], style_.accent[1], style_.accent[2], uhov ? 0.42f : 0.26f);
+    tr.draw_text(ubx + 8.0f, fy + 7.0f, ub,
+                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2], 0.85f);
+    clip_header_btn_rects_.push_back({ubx, fy + 3.0f, ubw, fh - 6.0f, 3});  // update + return
+}
+
 void NodeGraphUI::draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h) {
+    clip_node_link_rects_.clear();
+    clip_header_btn_rects_.clear();
     inspector_.slider_rects.clear();
     inspector_.xy_pad_rects.clear();
     inspector_.xy_toggle_rects.clear();

@@ -165,6 +165,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
         0x25B4, // ▴ up triangle
         0x25B8, // ▸ right triangle
         0x25BE, // ▾ down triangle
+        0x2713, // ✓ check mark
         0x2715, // ✕ multiplication x
     };
 

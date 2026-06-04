@@ -869,6 +869,7 @@ void NodeGraphUI::draw_sticky_notes(Renderer2D& tr) {
 void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
     session_button_rects_.clear();
     session_ctx_menu_rects_.clear();
+    session_ctx_submenu_rects_.clear();
     session_track_rects_.clear();
     session_scene_rects_.clear();
     session_cell_rects_.clear();
@@ -1311,13 +1312,13 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
         // session_ctx_menu_idx_: 1=track ctx, 2=scene ctx
         const char* track_labels[]      = { "Rename", "Assign Selected", "Remove" };
         const char* scene_labels[]      = { "Rename", "Update", "Remove", "Add to Cue" };
-        const char* clip_cell_labels[]  = { "Open Clip", "Update Clip", "Rename Clip", "Remove Clip", "Clear from Scene" };
+        const char* clip_cell_labels[]  = { "Open Clip", "Update Clip", "Rename Clip", "Remove Clip", "Clear from Scene", "Set Fade            ▸" };
         const char* empty_cell_labels[] = { "Assign Active Clip" };
         const char** ctx_labels;
         int item_count;
         if      (session_ctx_menu_idx_ == 1) { ctx_labels = track_labels;      item_count = 3; }
         else if (session_ctx_menu_idx_ == 2) { ctx_labels = scene_labels;      item_count = 4; }
-        else if (session_ctx_menu_idx_ == 3) { ctx_labels = clip_cell_labels;  item_count = 5; }
+        else if (session_ctx_menu_idx_ == 3) { ctx_labels = clip_cell_labels;  item_count = 6; }
         else                                 { ctx_labels = empty_cell_labels; item_count = 1; }
 
         const float menu_w = kSessionCtxMenuW;
@@ -1339,6 +1340,49 @@ void NodeGraphUI::draw_session_grid(Renderer2D& tr) {
             tr.draw_text(menu_x + 10.0f, iy + 3.0f, ctx_labels[ci],
                          style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
             session_ctx_menu_rects_.push_back({menu_x, iy, menu_w, kSessionCtxMenuItemH, ci});
+        }
+
+        // "Set Fade ▸" flyout — shown while hovering the parent row (index 5) or the flyout itself.
+        if (session_ctx_menu_idx_ == 3) {
+            const float parent_iy = menu_y + 2.0f + 5.0f * kSessionCtxMenuItemH;
+            const bool hover_parent = mouse_.x >= menu_x && mouse_.x <= menu_x + menu_w &&
+                                      mouse_.y >= parent_iy && mouse_.y <= parent_iy + kSessionCtxMenuItemH;
+            const char* fade_labels[] = { "Off", "1 bar", "2 bar", "4 bar" };
+            const float fade_values[] = { 0.0f, 1.0f, 2.0f, 4.0f };
+            const int   fade_count    = 4;
+            const float sub_w = menu_w;
+            const float sub_h = fade_count * kSessionCtxMenuItemH + 4.0f;
+            float sub_x = menu_x + menu_w - 2.0f;                 // flyout to the right
+            if (sub_x + sub_w > strip_w) sub_x = menu_x - sub_w + 2.0f;  // flip left if no room
+            float sub_y = parent_iy;
+            if (sub_y + sub_h > static_cast<float>(win_h_)) sub_y = static_cast<float>(win_h_) - sub_h;
+            const bool hover_sub = mouse_.x >= sub_x && mouse_.x <= sub_x + sub_w &&
+                                   mouse_.y >= sub_y && mouse_.y <= sub_y + sub_h;
+            if (hover_parent || hover_sub) {
+                // Current fade (for the checkmark), read from the snapshot.
+                float cur_fade = 0.0f;
+                if (const auto* ts = snap_.session.find_track(session_ctx_cell_track_id_)) {
+                    for (const auto& c : ts->clips)
+                        if (c.id == session_ctx_cell_clip_id_) { if (c.has_fade) cur_fade = c.fade_bars; break; }
+                }
+                draw_popup_bg(tr, style_, sub_x, sub_y, sub_w, sub_h);
+                for (int fi = 0; fi < fade_count; ++fi) {
+                    const float fy = sub_y + 2.0f + fi * kSessionCtxMenuItemH;
+                    const bool fhov = mouse_.x >= sub_x && mouse_.x <= sub_x + sub_w &&
+                                      mouse_.y >= fy && mouse_.y <= fy + kSessionCtxMenuItemH;
+                    if (fhov) {
+                        tr.draw_rect(sub_x + 2.0f, fy, sub_w - 4.0f, kSessionCtxMenuItemH,
+                                     style_.accent[0], style_.accent[1], style_.accent[2], 0.2f);
+                    }
+                    if (std::fabs(cur_fade - fade_values[fi]) < 0.01f) {
+                        tr.draw_text(sub_x + 6.0f, fy + 3.0f, "\xE2\x9C\x93",  // ✓
+                                     style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                    }
+                    tr.draw_text(sub_x + 22.0f, fy + 3.0f, fade_labels[fi],
+                                 style_.bright_text[0], style_.bright_text[1], style_.bright_text[2]);
+                    session_ctx_submenu_rects_.push_back({sub_x, fy, sub_w, kSessionCtxMenuItemH, fi});
+                }
+            }
         }
     }
 }

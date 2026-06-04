@@ -52,6 +52,9 @@ void NodeGraphUI::draw_overlays(Renderer2D& tr) {
     // Inspector — drawn in overlay pass so it paints over GPU thumbnails
     draw_inspector(tr, win_w_, win_h_);
 
+    // "← Clip" breadcrumb footer when editing a node we jumped to from a clip (on top of the inspector).
+    draw_clip_breadcrumb(tr, win_w_, win_h_);
+
     // Error tooltip — drawn after inspector so it appears above GPU thumbnails
     draw_node_error_tooltip(tr);
 

@@ -191,6 +191,20 @@ void NodeGraphUI::handle_left_click() {
     if (session_grid_open_ && mouse_.y >= session_strip_top()) {
         // Context menu dispatch
         if (session_ctx_menu_open_) {
+            // "Set Fade" flyout click — checked first; its rects sit outside the main
+            // menu, so otherwise the click below would read as "clicked outside → close".
+            for (const auto& sr : session_ctx_submenu_rects_) {
+                if (mouse_.x >= sr.x && mouse_.x <= sr.x + sr.w &&
+                    mouse_.y >= sr.y && mouse_.y <= sr.y + sr.h) {
+                    const float bars[] = { 0.0f, 1.0f, 2.0f, 4.0f };
+                    int t = sr.action; if (t < 0 || t > 3) t = 0;
+                    commands_.session_set_clip_fade(session_ctx_cell_track_id_,
+                                                    session_ctx_cell_clip_id_, bars[t]);
+                    session_ctx_menu_open_ = false;
+                    mouse_.left_clicked = false;
+                    return;
+                }
+            }
             for (const auto& cr : session_ctx_menu_rects_) {
                 if (mouse_.x >= cr.x && mouse_.x <= cr.x + cr.w &&
                     mouse_.y >= cr.y && mouse_.y <= cr.y + cr.h) {
@@ -257,6 +271,9 @@ void NodeGraphUI::handle_left_click() {
                         } else if (cr.action == 4) {  // Clear from Scene
                             commands_.session_clear_scene_assignment(session_ctx_cell_scene_id_,
                                                                       session_ctx_cell_track_id_);
+                        } else if (cr.action == 5) {  // Set Fade ▸ (hover flyout) — keep menu open
+                            mouse_.left_clicked = false;
+                            return;
                         }
                     } else if (session_ctx_menu_idx_ == 4) {
                         // Empty cell context menu

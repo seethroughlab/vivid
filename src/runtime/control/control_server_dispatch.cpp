@@ -1133,6 +1133,17 @@ std::string dispatch(const std::string& method, const std::string& body,
                 api.rename_clip(root["track_id"].get<std::string>(),
                                 root["clip_id"].get<std::string>(),
                                 root["name"].get<std::string>()));
+    } else if (method == "set_clip_fade") {
+        if (!root_valid) result = json_err("invalid JSON body");
+        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                 !root.contains("fade_bars") || !root["fade_bars"].is_number())
+            result = json_err("missing 'track_id', 'clip_id', or 'fade_bars'");
+        else
+            result = command_result_to_json(
+                api.set_clip_fade(root["track_id"].get<std::string>(),
+                                  root["clip_id"].get<std::string>(),
+                                  root["fade_bars"].get<float>()));
     } else if (method == "remove_clip") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||

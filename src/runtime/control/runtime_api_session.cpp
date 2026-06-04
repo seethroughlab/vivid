@@ -290,6 +290,16 @@ CommandResult RuntimeAPI::rename_clip(const std::string& track_id, const std::st
     return {true, clip_id};
 }
 
+CommandResult RuntimeAPI::set_clip_fade(const std::string& track_id, const std::string& clip_id,
+                                        float fade_bars) {
+    auto* c = graph_.find_clip(track_id, clip_id);
+    if (!c) return {false, "unknown clip '" + clip_id + "'"};
+    if (fade_bars > 0.0f) c->transition_override = SessionTransitionDef{true, fade_bars};
+    else                  c->transition_override.reset();   // 0 / negative = instant cut
+    mark_graph_dirty();
+    return {true, clip_id};
+}
+
 CommandResult RuntimeAPI::remove_clip(const std::string& track_id, const std::string& clip_id) {
     if (!graph_.remove_clip(track_id, clip_id))
         return {false, "unknown clip '" + clip_id + "'"};

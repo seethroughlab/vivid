@@ -366,6 +366,7 @@ private:
     void draw_connections(Renderer2D& tr);
     void draw_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
     void draw_clip_inspector(Renderer2D& tr, uint32_t w, uint32_t h);
+    void draw_clip_breadcrumb(Renderer2D& tr, uint32_t w, uint32_t h);
     void draw_inspector_header(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_inspector_params(Renderer2D& tr, const NodeSnapshot& node, float px, float& py);
     void draw_one_inspector_param(Renderer2D& tr, const NodeSnapshot& node,
@@ -871,6 +872,14 @@ private:
     std::vector<SessionButtonRect> session_button_rects_;
     struct SessionCtxMenuRect { float x, y, w, h; int action; }; // action: 0=Rename, 1=Duplicate, 2=Delete, 3=Branch From
     std::vector<SessionCtxMenuRect> session_ctx_menu_rects_;
+    // "Set Fade" flyout off the clip context menu; action = fade tier (0=Off,1,2,3 -> 0/1/2/4 bars).
+    std::vector<SessionCtxMenuRect> session_ctx_submenu_rects_;
+    // Clip inspector "link to live inspector" affordances (rebuilt each frame).
+    struct ClipLinkRect { float x, y, w, h; std::string node_id; };
+    std::vector<ClipLinkRect> clip_node_link_rects_;        // owning-node rows -> jump to node
+    std::vector<SessionCtxMenuRect> clip_header_btn_rects_; // action: 0=Launch,1=Update,2=Back,3=UpdateReturn
+    // Breadcrumb: when jumping from a clip to one of its nodes, remember the clip to return to.
+    std::string clip_return_track_, clip_return_clip_;
     struct Rect2 { float x = 0, y = 0, w = 0, h = 0; };
     struct SessionTrackColRect {
         float x, y, w, h;

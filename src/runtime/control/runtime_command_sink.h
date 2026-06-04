@@ -216,6 +216,11 @@ public:
         auto r = api_.rename_clip(track_id, clip_id, name);
         if (r.ok) capture_undo_snapshot();
     }
+    void session_set_clip_fade(const std::string& track_id, const std::string& clip_id,
+                               float fade_bars) override {
+        auto r = api_.set_clip_fade(track_id, clip_id, fade_bars);
+        if (r.ok) capture_undo_snapshot();
+    }
     void session_remove_clip(const std::string& track_id, const std::string& clip_id) override {
         auto r = api_.remove_clip(track_id, clip_id);
         if (r.ok) capture_undo_snapshot();

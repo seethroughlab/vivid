@@ -2278,6 +2278,8 @@ std::string handle_inspect_clip(const Graph& graph,
     result["params"]       = std::move(params_obj);
     result["string_params"] = std::move(string_params_obj);
     result["bypass"]       = std::move(bypass_obj);
+    result["fade_bars"]    = (clip->transition_override && clip->transition_override->fade)
+                             ? static_cast<double>(clip->transition_override->duration_bars) : 0.0;
     return result.dump();
 }
 

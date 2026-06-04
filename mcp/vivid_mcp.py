@@ -2159,6 +2159,20 @@ async def rename_clip(track_id: str, clip_id: str, name: str) -> str:
 
 
 @mcp.tool()
+async def set_clip_fade(track_id: str, clip_id: str, fade_bars: float) -> str:
+    """Set a clip's launch-fade duration, in bars.
+
+    When > 0, launching the clip (from the grid or a scene) ramps its numeric params
+    from their current values to the clip's stored values over fade_bars instead of
+    cutting instantly — a per-clip property, so a pad can swell while a drum cuts.
+    fade_bars = 0 clears the override (instant cut). Stored in the clip's
+    transition_override and persisted across save/load. inspect_clip reports fade_bars.
+    """
+    return await _post("set_clip_fade",
+                       {"track_id": track_id, "clip_id": clip_id, "fade_bars": fade_bars})
+
+
+@mcp.tool()
 async def remove_clip(track_id: str, clip_id: str) -> str:
     """Remove a clip from a track."""
     return await _post("remove_clip", {"track_id": track_id, "clip_id": clip_id})

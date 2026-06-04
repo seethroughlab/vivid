@@ -201,6 +201,38 @@ bool NodeGraphUI::handle_dropdown_click() {
 }
 
 bool NodeGraphUI::handle_inspector_click() {
+    // --- Clip inspector "link to live inspector" affordances ---
+    for (const auto& b : clip_header_btn_rects_) {
+        if (mouse_.x < b.x || mouse_.x > b.x + b.w || mouse_.y < b.y || mouse_.y > b.y + b.h) continue;
+        if (b.action == 0) {            // Launch (clip inspector)
+            static const char* q_modes[] = {"instant", "beat", "bar", "4bar"};
+            commands_.session_queue_clip(selected_clip_track_, selected_clip_id_,
+                                         q_modes[std::clamp(session_quantize_mode_, 0, 3)]);
+        } else if (b.action == 1) {     // Update from live (clip inspector)
+            commands_.session_update_clip(selected_clip_track_, selected_clip_id_);
+        } else if (b.action == 2 || b.action == 3) {  // breadcrumb: back / update+return
+            if (b.action == 3)
+                commands_.session_update_clip(clip_return_track_, clip_return_clip_);
+            selected_clip_track_ = clip_return_track_;
+            selected_clip_id_    = clip_return_clip_;
+            selected_node_ids_.clear();
+            clip_return_track_.clear();
+            clip_return_clip_.clear();
+        }
+        mouse_.left_clicked = false;
+        return true;
+    }
+    for (const auto& r : clip_node_link_rects_) {
+        if (mouse_.x < r.x || mouse_.x > r.x + r.w || mouse_.y < r.y || mouse_.y > r.y + r.h) continue;
+        // Jump to the node's live inspector; remember the clip to return to.
+        clip_return_track_ = selected_clip_track_;
+        clip_return_clip_  = selected_clip_id_;
+        selected_node_ids_.clear();
+        selected_node_ids_.insert(r.node_id);   // draw_inspector clears selected_clip_* next frame
+        mouse_.left_clicked = false;
+        return true;
+    }
+
     // --- Color popup click handling (overlays everything) ---
     if (inspector_.color_popup_open) {
         float pad = kColorPopupPad;

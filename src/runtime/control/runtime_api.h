@@ -182,6 +182,10 @@ public:
                                      const std::string& node_id, bool bypassed);
     CommandResult rename_clip(const std::string& track_id, const std::string& clip_id,
                                const std::string& new_name);
+    // Set a clip's launch-fade override. fade_bars > 0 fades params over that many
+    // bars on launch; <= 0 clears the override (instant cut).
+    CommandResult set_clip_fade(const std::string& track_id, const std::string& clip_id,
+                                float fade_bars);
     CommandResult remove_clip(const std::string& track_id, const std::string& clip_id);
     CommandResult move_clip(const std::string& track_id, const std::string& clip_id, int to_index);
     CommandResult launch_clip(const std::string& track_id, const std::string& clip_id);
