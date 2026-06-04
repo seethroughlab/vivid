@@ -5,6 +5,7 @@
 #include "shared/vst3_host/vst3_scanner.h"
 #include "shared/plugin_ui/plugin_picker.h"
 #include "shared/plugin_common/direct_param_queue.h"
+#include "shared/plugin_common/macro_bank.h"
 #ifdef __APPLE__
 #include "shared/vst3_host/vst3_plugin_window.h"
 #endif
@@ -20,7 +21,8 @@
 //
 // Parameters visible in the inspector:
 //   plugin_name   — display key (plugin name from CFBundleName / bundle stem)
-//   macro_0..7    — float 0-1, each mapped to a VST3 param by name via macro_N_id
+//   macro_<n>     — float 0-1, each mapped to a VST3 param by name via macro_<n>_id
+//                   (variadic MacroBank, see shared/plugin_common/macro_bank.h)
 //
 // Plugin state is serialized via IComponent::getState/setState and stored in
 // plugin_state (base64, hidden). Parameters are VST3-normalized [0,1].
@@ -42,22 +44,10 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     // --- Params ---
     vivid::Param<vivid::TextValue> plugin_name {"plugin_name"};
 
-    vivid::Param<float>            macro_0 {"macro_0", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_0_id {"macro_0_id"};
-    vivid::Param<float>            macro_1 {"macro_1", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_1_id {"macro_1_id"};
-    vivid::Param<float>            macro_2 {"macro_2", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_2_id {"macro_2_id"};
-    vivid::Param<float>            macro_3 {"macro_3", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_3_id {"macro_3_id"};
-    vivid::Param<float>            macro_4 {"macro_4", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_4_id {"macro_4_id"};
-    vivid::Param<float>            macro_5 {"macro_5", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_5_id {"macro_5_id"};
-    vivid::Param<float>            macro_6 {"macro_6", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_6_id {"macro_6_id"};
-    vivid::Param<float>            macro_7 {"macro_7", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_7_id {"macro_7_id"};
+    // Variadic macro bank — see shared/plugin_common/macro_bank.h.
+    static constexpr Steinberg::Vst::ParamID kInvalidParamID
+        = static_cast<Steinberg::Vst::ParamID>(-1);
+    MacroBank<Steinberg::Vst::ParamID, kInvalidParamID> bank_;
 
     vivid::Param<vivid::TextValue> plugin_state       {"plugin_state"};
     vivid::Param<vivid::TextValue> vst3_params_       {"_vst3_params"};
@@ -74,14 +64,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_name);
-        out.push_back(&macro_0); out.push_back(&macro_0_id);
-        out.push_back(&macro_1); out.push_back(&macro_1_id);
-        out.push_back(&macro_2); out.push_back(&macro_2_id);
-        out.push_back(&macro_3); out.push_back(&macro_3_id);
-        out.push_back(&macro_4); out.push_back(&macro_4_id);
-        out.push_back(&macro_5); out.push_back(&macro_5_id);
-        out.push_back(&macro_6); out.push_back(&macro_6_id);
-        out.push_back(&macro_7); out.push_back(&macro_7_id);
+        bank_.collect(out);
         out.push_back(&plugin_state);
         out.push_back(&vst3_params_);
         out.push_back(&direct_params_);
@@ -101,20 +84,6 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     std::atomic<Vst3Handle*> pending_ {nullptr};
     std::atomic<Vst3Handle*> dying_   {nullptr};
     std::atomic<Vst3Handle*> dying2_  {nullptr};
-
-    // --- Per-macro resolved VST3 param ID cache ---
-    // Both threads access macro_map_: main thread writes in update_macro_map(),
-    // audio thread reads+writes last_sent in build_macro_events(). Use atomics.
-    struct MacroEntry {
-        std::atomic<Steinberg::Vst::ParamID> id        {static_cast<Steinberg::Vst::ParamID>(-1)};
-        std::atomic<float>                   last_sent {-1.f};
-    };
-    static constexpr Steinberg::Vst::ParamID kInvalidParamID
-        = static_cast<Steinberg::Vst::ParamID>(-1);
-    MacroEntry macro_map_[8];
-
-    vivid::Param<float>*            macro_float_[8];
-    vivid::Param<vivid::TextValue>* macro_id_[8];
 
     // --- Plugin GUI window (main thread only) ---
 #ifdef __APPLE__
@@ -168,39 +137,13 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     // -----------------------------------------------------------------------
 
     Vst3Instrument() {
-        macro_float_[0] = &macro_0; macro_id_[0] = &macro_0_id;
-        macro_float_[1] = &macro_1; macro_id_[1] = &macro_1_id;
-        macro_float_[2] = &macro_2; macro_id_[2] = &macro_2_id;
-        macro_float_[3] = &macro_3; macro_id_[3] = &macro_3_id;
-        macro_float_[4] = &macro_4; macro_id_[4] = &macro_4_id;
-        macro_float_[5] = &macro_5; macro_id_[5] = &macro_5_id;
-        macro_float_[6] = &macro_6; macro_id_[6] = &macro_6_id;
-        macro_float_[7] = &macro_7; macro_id_[7] = &macro_7_id;
+        bank_.init_params();
 
         vivid::description(plugin_name,  "VST3 plugin to load (\"Name [Vendor]\" from list_vst3_plugins)");
         vivid::display_hint(plugin_name, VIVID_DISPLAY_HIDDEN);
-        vivid::description(macro_0, "Macro 0 value (0-1 normalized), mapped to the VST3 param named in macro_0_id");
-        vivid::description(macro_0_id, "VST3 parameter name for macro 0");
-        vivid::description(macro_1, "Macro 1 value (0-1)");
-        vivid::description(macro_1_id, "VST3 parameter name for macro 1");
-        vivid::description(macro_2, "Macro 2 value (0-1)");
-        vivid::description(macro_2_id, "VST3 parameter name for macro 2");
-        vivid::description(macro_3, "Macro 3 value (0-1)");
-        vivid::description(macro_3_id, "VST3 parameter name for macro 3");
-        vivid::description(macro_4, "Macro 4 value (0-1)");
-        vivid::description(macro_4_id, "VST3 parameter name for macro 4");
-        vivid::description(macro_5, "Macro 5 value (0-1)");
-        vivid::description(macro_5_id, "VST3 parameter name for macro 5");
-        vivid::description(macro_6, "Macro 6 value (0-1)");
-        vivid::description(macro_6_id, "VST3 parameter name for macro 6");
-        vivid::description(macro_7, "Macro 7 value (0-1)");
-        vivid::description(macro_7_id, "VST3 parameter name for macro 7");
-        // Float sliders drawn manually; id strings must NOT be hidden so the
-        // snapshot includes them (hidden params are stripped from file_param_values,
-        // causing _vivid_sync_params to clobber str_value back to "" each frame).
-        // VIVID_INSPECTOR_FULL_MODE suppresses the auto-rendered controls section.
-        for (int i = 0; i < 8; ++i)
-            vivid::display_hint(*macro_float_[i], VIVID_DISPLAY_HIDDEN);
+        // Macro float sliders are drawn manually (VIVID_INSPECTOR_FULL_MODE suppresses the
+        // auto-rendered controls); MacroBank::init_params hides the knobs and keeps the id
+        // strings visible so the snapshot includes them.
         vivid::display_hint(plugin_state,   VIVID_DISPLAY_HIDDEN);  // authored state — persisted
         // Runtime-computed catalogs / scratch command inputs — recomputed live,
         // never written to the saved graph (would bloat it by hundreds of KB).
@@ -297,7 +240,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         if (gui_win_) { vst3_plugin_window_close(gui_win_); gui_win_ = nullptr; }
 #endif
 
-        for (auto& m : macro_map_) { m.id = kInvalidParamID; m.last_sent = -1.f; }
+        bank_.reset();
 
         // Clear direct params so stale IDs aren't applied to the incoming plugin.
         direct_params_.str_value.clear();
@@ -368,21 +311,14 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void update_macro_map() {
         auto* act = active_.load(std::memory_order_acquire);
-        if (!act || act->params.empty()) return;
-
-        for (int i = 0; i < 8; ++i) {
-            const std::string& name = macro_id_[i]->str_value;
-            if (name.empty()) { macro_map_[i].id.store(kInvalidParamID, std::memory_order_relaxed); continue; }
-            if (macro_map_[i].id.load(std::memory_order_relaxed) != kInvalidParamID) continue;
-
+        const bool have_params = act && !act->params.empty();
+        bank_.update([&](const std::string& name, Steinberg::Vst::ParamID& out_id, auto&) {
+            if (!have_params) return false;
             for (const auto& p : act->params) {
-                if (p.name == name) {
-                    macro_map_[i].last_sent.store(-1.f, std::memory_order_relaxed);
-                    macro_map_[i].id.store(p.id, std::memory_order_release);
-                    break;
-                }
+                if (p.name == name) { out_id = p.id; return true; }
             }
-        }
+            return false;
+        });
     }
 
     void refresh_vst3_params_json() {
@@ -685,18 +621,10 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void build_macro_events() {
-        const float vals[8] = {
-            macro_0.value, macro_1.value, macro_2.value, macro_3.value,
-            macro_4.value, macro_5.value, macro_6.value, macro_7.value,
-        };
-        for (int i = 0; i < 8; ++i) {
-            const auto id = macro_map_[i].id.load(std::memory_order_acquire);
-            if (id == kInvalidParamID) continue;
-            const float last = macro_map_[i].last_sent.load(std::memory_order_relaxed);
-            if (std::fabs(vals[i] - last) < 1e-6f) continue;
-            macro_map_[i].last_sent.store(vals[i], std::memory_order_relaxed);
-            param_changes_.add(id, static_cast<Steinberg::Vst::ParamValue>(vals[i]));
-        }
+        // VST3 params are already normalized [0,1]; no rescale needed.
+        bank_.emit_changes([&](Steinberg::Vst::ParamID id, float v, const auto&) {
+            param_changes_.add(id, static_cast<Steinberg::Vst::ParamValue>(v));
+        });
         // Drain unlimited direct-param queue (written by set_vst3_param MCP tool)
         DirectParamQueue::Entry e;
         while (direct_q_.pop(e))
@@ -812,19 +740,19 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         bool any_empty = false;
-        for (int i = 0; i < 8; ++i) {
-            if (macro_id_[i]->str_value.empty()) { any_empty = true; continue; }
+        for (int i = 0; i < kMaxMacros; ++i) {
+            if (bank_.slots_[i].id.str_value.empty()) { any_empty = true; continue; }
 
             const float row_y = y;
-            const std::string& name = macro_id_[i]->str_value;
-            float val = macro_float_[i]->value;
+            const std::string& name = bank_.slots_[i].id.str_value;
+            float val = bank_.slots_[i].knob.value;
 
             // Native value + units via VST3 controller
             double native = static_cast<double>(val);
             std::string units_str;
             auto pid = kInvalidParamID;
             if (vctl) {
-                pid = macro_map_[i].id.load(std::memory_order_acquire);
+                pid = bank_.entries_[i].id.load(std::memory_order_acquire);
                 if (pid != kInvalidParamID) {
                     native = vctl->normalizedParamToPlain(pid,
                                  static_cast<Steinberg::Vst::ParamValue>(val));
@@ -852,7 +780,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (m.left_clicked && over_sli) drag_macro_ = i;
             if (drag_macro_ == i && m.left_down) {
                 val = std::clamp((m.x - sli_x) / sli_w, 0.f, 1.f);
-                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, val);
+                ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, val);
             }
             draw_meter(d, o, sli_x, row_y + (kRowH - 8.f) * 0.5f, sli_w, 8.f,
                        val, th.slider_fill, th.slider_track, MeterOrientation::Horizontal, 2.f);
@@ -875,7 +803,7 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
                                  ? static_cast<float>(vctl->plainParamToNormalized(pid, typed))
                                  : typed;
                     norm = std::clamp(norm, 0.f, 1.f);
-                    ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, norm);
+                    ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, norm);
                     text_field_.close();
                 }
                 if (m.left_clicked && !over_val) text_field_.close();
@@ -897,8 +825,8 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
                 d.draw_text(o, x_btn + (kXW - lh) * 0.5f, row_y + (kRowH - lh) * 0.5f,
                             "x", xcol, 0.85f);
             if (m.left_clicked && over_x) {
-                ctx->commands.set_string_param(ctx->commands.opaque, macro_id_[i]->name, "");
-                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, 0.f);
+                ctx->commands.set_string_param(ctx->commands.opaque, bank_.slots_[i].id.name, "");
+                ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, 0.f);
             }
 
             y += kRowH + 2.f;
@@ -912,14 +840,11 @@ struct Vst3Instrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (!was_add_open && add_picker_state_.open)
                 picker_state_.open = false;
             if (picked >= 0) {
-                for (int j = 0; j < 8; ++j) {
-                    if (macro_id_[j]->str_value.empty()) {
-                        ctx->commands.set_string_param(ctx->commands.opaque,
-                                                       macro_id_[j]->name,
-                                                       param_names_cache_[picked].c_str());
-                        break;
-                    }
-                }
+                int slot = bank_.first_empty();
+                if (slot >= 0)
+                    ctx->commands.set_string_param(ctx->commands.opaque,
+                                                   bank_.slots_[slot].id.name,
+                                                   param_names_cache_[picked].c_str());
             }
         }
 

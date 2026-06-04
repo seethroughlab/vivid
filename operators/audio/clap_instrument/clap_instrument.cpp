@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/note_types.h"
 #include "shared/plugin_common/direct_param_queue.h"
+#include "shared/plugin_common/macro_bank.h"
 #include "operator_api/type_id.h"
 #include "shared/clap_host/clap_host_common.h"
 #include "shared/clap_host/clap_scanner.h"
@@ -18,7 +19,8 @@
 // Parameters visible in the inspector:
 //   plugin_path  — path to the .clap bundle
 //   plugin_id    — CLAP plugin id within the bundle (blank = first plugin)
-//   macro_0..7   — float 0-1, each mapped to a CLAP param by name via macro_0_id..7_id
+//   macro_<n>    — float 0-1, each mapped to a CLAP param by name via macro_<n>_id
+//                  (variadic MacroBank, see shared/plugin_common/macro_bank.h)
 //
 // Plugin GUI is opened via Cmd+E / Open Editor button.
 //
@@ -40,22 +42,8 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<vivid::FilePath>  plugin_path {"plugin_path"};
     vivid::Param<vivid::TextValue> plugin_id   {"plugin_id"};
 
-    vivid::Param<float>            macro_0 {"macro_0", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_0_id {"macro_0_id"};
-    vivid::Param<float>            macro_1 {"macro_1", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_1_id {"macro_1_id"};
-    vivid::Param<float>            macro_2 {"macro_2", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_2_id {"macro_2_id"};
-    vivid::Param<float>            macro_3 {"macro_3", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_3_id {"macro_3_id"};
-    vivid::Param<float>            macro_4 {"macro_4", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_4_id {"macro_4_id"};
-    vivid::Param<float>            macro_5 {"macro_5", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_5_id {"macro_5_id"};
-    vivid::Param<float>            macro_6 {"macro_6", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_6_id {"macro_6_id"};
-    vivid::Param<float>            macro_7 {"macro_7", 0.f, 0.f, 1.f};
-    vivid::Param<vivid::TextValue> macro_7_id {"macro_7_id"};
+    // Variadic macro bank — see shared/plugin_common/macro_bank.h.
+    MacroBank<clap_id, CLAP_INVALID_ID> bank_;
 
     // Opaque plugin state, base64-encoded, persisted in graph JSON.
     // Not shown in the inspector; updated automatically by save_state().
@@ -69,14 +57,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&plugin_path);
         out.push_back(&plugin_id);
-        out.push_back(&macro_0); out.push_back(&macro_0_id);
-        out.push_back(&macro_1); out.push_back(&macro_1_id);
-        out.push_back(&macro_2); out.push_back(&macro_2_id);
-        out.push_back(&macro_3); out.push_back(&macro_3_id);
-        out.push_back(&macro_4); out.push_back(&macro_4_id);
-        out.push_back(&macro_5); out.push_back(&macro_5_id);
-        out.push_back(&macro_6); out.push_back(&macro_6_id);
-        out.push_back(&macro_7); out.push_back(&macro_7_id);
+        bank_.collect(out);
         out.push_back(&plugin_state);
         out.push_back(&clap_params_);
         out.push_back(&direct_params_);
@@ -118,21 +99,6 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     DirectParamQueue direct_q_;
     std::string      last_direct_params_;
 
-    // --- Per-macro resolved CLAP param ID & range cache ---
-    // id and last_sent are atomic: audio thread reads id (acquire) and
-    // reads/writes last_sent in build_macro_events(); main thread writes both.
-    struct MacroEntry {
-        std::atomic<clap_id> id      {CLAP_INVALID_ID};
-        double               min_val = 0.0;
-        double               max_val = 1.0;
-        std::atomic<float>   last_sent {-1.f};
-    };
-    MacroEntry macro_map_[8];
-
-    // Macro param accessors (indexed 0-7)
-    vivid::Param<float>*            macro_float_[8];
-    vivid::Param<vivid::TextValue>* macro_id_[8];
-
     // --- Per-frame event list (audio thread only) ---
     EventList in_events_;
 
@@ -141,14 +107,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     // -----------------------------------------------------------------------
     CLAPInstrument() {
-        macro_float_[0] = &macro_0; macro_id_[0] = &macro_0_id;
-        macro_float_[1] = &macro_1; macro_id_[1] = &macro_1_id;
-        macro_float_[2] = &macro_2; macro_id_[2] = &macro_2_id;
-        macro_float_[3] = &macro_3; macro_id_[3] = &macro_3_id;
-        macro_float_[4] = &macro_4; macro_id_[4] = &macro_4_id;
-        macro_float_[5] = &macro_5; macro_id_[5] = &macro_5_id;
-        macro_float_[6] = &macro_6; macro_id_[6] = &macro_6_id;
-        macro_float_[7] = &macro_7; macro_id_[7] = &macro_7_id;
+        bank_.init_params();
 
         std::memset(&host_desc_, 0, sizeof(host_desc_));
         host_desc_.clap_version  = CLAP_VERSION;
@@ -166,30 +125,9 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         vivid::description(plugin_id,   "Plugin ID within bundle (blank = first plugin)");
         vivid::display_hint(plugin_path, VIVID_DISPLAY_HIDDEN);
         vivid::display_hint(plugin_id,   VIVID_DISPLAY_HIDDEN);
-        vivid::description(macro_0, "Macro 0 value (0-1), mapped to the CLAP param named in macro_0_id");
-        vivid::description(macro_0_id, "CLAP parameter name for macro 0");
-        vivid::description(macro_1, "Macro 1 value (0-1)");
-        vivid::description(macro_1_id, "CLAP parameter name for macro 1");
-        vivid::description(macro_2, "Macro 2 value (0-1)");
-        vivid::description(macro_2_id, "CLAP parameter name for macro 2");
-        vivid::description(macro_3, "Macro 3 value (0-1)");
-        vivid::description(macro_3_id, "CLAP parameter name for macro 3");
-        vivid::description(macro_4, "Macro 4 value (0-1)");
-        vivid::description(macro_4_id, "CLAP parameter name for macro 4");
-        vivid::description(macro_5, "Macro 5 value (0-1)");
-        vivid::description(macro_5_id, "CLAP parameter name for macro 5");
-        vivid::description(macro_6, "Macro 6 value (0-1)");
-        vivid::description(macro_6_id, "CLAP parameter name for macro 6");
-        vivid::description(macro_7, "Macro 7 value (0-1)");
-        vivid::description(macro_7_id, "CLAP parameter name for macro 7");
-        vivid::display_hint(macro_0, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_1, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_2, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_3, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_4, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_5, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_6, VIVID_DISPLAY_HIDDEN);
-        vivid::display_hint(macro_7, VIVID_DISPLAY_HIDDEN);
+        // Macro float sliders are drawn manually (VIVID_INSPECTOR_FULL_MODE suppresses the
+        // auto-rendered controls); MacroBank::init_params hides the knobs and keeps the id
+        // strings visible so the snapshot includes them.
         vivid::display_hint(plugin_state,    VIVID_DISPLAY_HIDDEN);  // authored state — persisted
         // Runtime-computed list / scratch input — recomputed live, not saved to disk.
         vivid::transient_param(clap_params_);
@@ -281,10 +219,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 #endif
 
         // Clear macro map and direct params — stale IDs must not reach the new plugin
-        for (auto& m : macro_map_) {
-            m.id.store(CLAP_INVALID_ID, std::memory_order_release);
-            m.last_sent.store(-1.f, std::memory_order_relaxed);
-        }
+        bank_.reset();
         direct_params_.str_value.clear();
         last_direct_params_.clear();
 
@@ -397,26 +332,19 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
 
     void update_macro_map() {
         auto* act = active_.load(std::memory_order_acquire);
-        if (!act || act->params.empty()) return;
-
-        for (int i = 0; i < 8; ++i) {
-            const std::string& name = macro_id_[i]->str_value;
-            if (name.empty()) {
-                macro_map_[i].id.store(CLAP_INVALID_ID, std::memory_order_release);
-                continue;
-            }
-            if (macro_map_[i].id.load(std::memory_order_relaxed) != CLAP_INVALID_ID) continue;
-
+        const bool have_params = act && !act->params.empty();
+        bank_.update([&](const std::string& name, clap_id& out_id, auto& e) {
+            if (!have_params) return false;
             for (auto& p : act->params) {
                 if (std::strncmp(p.name, name.c_str(), CLAP_NAME_SIZE) == 0) {
-                    macro_map_[i].min_val = p.min_val;
-                    macro_map_[i].max_val = p.max_val;
-                    macro_map_[i].last_sent.store(-1.f, std::memory_order_relaxed);
-                    macro_map_[i].id.store(p.id, std::memory_order_release);
-                    break;
+                    e.min_val = p.min_val;
+                    e.max_val = p.max_val;
+                    out_id    = p.id;
+                    return true;
                 }
             }
-        }
+            return false;
+        });
     }
 
     void process_direct_params() {
@@ -574,28 +502,17 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void build_macro_events(const VividAudioContext* /*ctx*/) {
-        const float vals[8] = {
-            macro_0.value, macro_1.value, macro_2.value, macro_3.value,
-            macro_4.value, macro_5.value, macro_6.value, macro_7.value,
-        };
-        for (int i = 0; i < 8; ++i) {
-            auto id = macro_map_[i].id.load(std::memory_order_acquire);
-            if (id == CLAP_INVALID_ID) continue;
-            float prev = macro_map_[i].last_sent.load(std::memory_order_relaxed);
-            if (std::fabs(vals[i] - prev) < 1e-6f) continue;
-            macro_map_[i].last_sent.store(vals[i], std::memory_order_relaxed);
+        bank_.emit_changes([&](clap_id id, float v, const auto& e) {
+            double scaled = e.min_val + static_cast<double>(v) * (e.max_val - e.min_val);
 
-            double scaled = macro_map_[i].min_val +
-                static_cast<double>(vals[i]) * (macro_map_[i].max_val - macro_map_[i].min_val);
-
-            clap_event_param_value_t e{};
-            e.header     = { sizeof(e), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
-            e.param_id   = id;
-            e.cookie     = nullptr;
-            e.note_id    = -1;  e.port_index = -1;  e.channel = -1;  e.key = -1;
-            e.value      = scaled;
-            in_events_.push(e);
-        }
+            clap_event_param_value_t ev{};
+            ev.header     = { sizeof(ev), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+            ev.param_id   = id;
+            ev.cookie     = nullptr;
+            ev.note_id    = -1;  ev.port_index = -1;  ev.channel = -1;  ev.key = -1;
+            ev.value      = scaled;
+            in_events_.push(ev);
+        });
 
         // Drain direct-param queue (MCP-sourced, normalized → native)
         {
@@ -791,23 +708,24 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         bool any_empty = false;
-        for (int i = 0; i < 8; ++i) {
-            if (macro_id_[i]->str_value.empty()) { any_empty = true; continue; }
+        for (int i = 0; i < kMaxMacros; ++i) {
+            if (bank_.slots_[i].id.str_value.empty()) { any_empty = true; continue; }
 
             const float row_y = y;
-            float val = macro_float_[i]->value;
+            float val = bank_.slots_[i].knob.value;
+            const auto& entry = bank_.entries_[i];
 
             // Native value (CLAP: linear rescale via cached range; no units)
             double native = static_cast<double>(val);
-            if (macro_map_[i].id != CLAP_INVALID_ID)
-                native = macro_map_[i].min_val + val * (macro_map_[i].max_val - macro_map_[i].min_val);
+            if (entry.id.load(std::memory_order_acquire) != CLAP_INVALID_ID)
+                native = entry.min_val + val * (entry.max_val - entry.min_val);
             char val_buf[32];
             std::snprintf(val_buf, sizeof(val_buf), "%.3g", native);
 
             // Param name — clipped
             if (d.push_clip_rect) d.push_clip_rect(o, x, row_y, nam_w, kRowH);
             if (d.draw_text)      d.draw_text(o, x, row_y + (kRowH - lh) * 0.5f,
-                                              macro_id_[i]->str_value.c_str(), th.bright_text, 0.85f);
+                                              bank_.slots_[i].id.str_value.c_str(), th.bright_text, 0.85f);
             if (d.pop_clip_rect)  d.pop_clip_rect(o);
 
             // Slider
@@ -816,7 +734,7 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (m.left_clicked && over_sli) drag_macro_ = i;
             if (drag_macro_ == i && m.left_down) {
                 val = std::clamp((m.x - sli_x) / sli_w, 0.f, 1.f);
-                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, val);
+                ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, val);
             }
             draw_meter(d, o, sli_x, row_y + (kRowH - 8.f) * 0.5f, sli_w, 8.f,
                        val, th.slider_fill, th.slider_track, MeterOrientation::Horizontal, 2.f);
@@ -835,12 +753,12 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (editing_this) {
                 if (text_confirmed) {
                     float typed = text_field_.parsed_value(static_cast<float>(native));
-                    double range = macro_map_[i].max_val - macro_map_[i].min_val;
+                    double range = entry.max_val - entry.min_val;
                     float norm   = range > 1e-9
-                                 ? static_cast<float>((typed - macro_map_[i].min_val) / range)
+                                 ? static_cast<float>((typed - entry.min_val) / range)
                                  : 0.f;
                     norm = std::clamp(norm, 0.f, 1.f);
-                    ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, norm);
+                    ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, norm);
                     text_field_.close();
                 }
                 if (m.left_clicked && !over_val) text_field_.close();
@@ -862,8 +780,8 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
                 d.draw_text(o, x_btn + (kXW - lh) * 0.5f, row_y + (kRowH - lh) * 0.5f,
                             "x", xcol, 0.85f);
             if (m.left_clicked && over_x) {
-                ctx->commands.set_string_param(ctx->commands.opaque, macro_id_[i]->name, "");
-                ctx->commands.set_param(ctx->commands.opaque, macro_float_[i]->name, 0.f);
+                ctx->commands.set_string_param(ctx->commands.opaque, bank_.slots_[i].id.name, "");
+                ctx->commands.set_param(ctx->commands.opaque, bank_.slots_[i].knob.name, 0.f);
             }
 
             y += kRowH + 2.f;
@@ -877,14 +795,11 @@ struct CLAPInstrument : vivid::OperatorBase, vivid::AudioProcessable {
             if (!was_add_open && add_picker_state_.open)
                 picker_state_.open = false;
             if (picked >= 0) {
-                for (int j = 0; j < 8; ++j) {
-                    if (macro_id_[j]->str_value.empty()) {
-                        ctx->commands.set_string_param(ctx->commands.opaque,
-                                                       macro_id_[j]->name,
-                                                       param_names_cache_[picked].c_str());
-                        break;
-                    }
-                }
+                int slot = bank_.first_empty();
+                if (slot >= 0)
+                    ctx->commands.set_string_param(ctx->commands.opaque,
+                                                   bank_.slots_[slot].id.name,
+                                                   param_names_cache_[picked].c_str());
             }
         }
 
