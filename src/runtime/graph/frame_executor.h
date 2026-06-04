@@ -58,6 +58,11 @@ public:
     // Lifecycle — release GPU textures and flush device.
     void shutdown_gpu(CompiledGraph& cg);
 
+    // Release any GPU textures queued for deferred destruction whose grace
+    // period has elapsed. Safe to call once per frame. Also flushes everything
+    // immediately when force=true (shutdown / device teardown).
+    void drain_deferred_gpu_releases(bool force = false);
+
     // Per-node lane state context for LoopBased frame operators.
     using NodeLaneCtx = ExecutorLaneCtx;
 
@@ -67,6 +72,22 @@ private:
     bool needs_gpu_realloc_ = false;
     bool analysis_enabled_ = true;
     WGPUDevice gpu_device_ = nullptr;
+
+    // Deferred GPU texture destruction. When a topology change or resize forces
+    // allocate_gpu_textures() to reallocate per-node textures, the OLD textures
+    // may still be referenced by a command buffer that the GPU has not finished
+    // executing (wgpu-native encodes Metal render passes lazily at
+    // CommandEncoderFinish, and submitted buffers drain asynchronously). Freeing
+    // them immediately can leave a render-pass color attachment pointing at a
+    // destroyed Metal texture -> EXC_BAD_ACCESS at submit. We hold them for a
+    // few frames so the GPU is guaranteed done before release.
+    struct DeferredGpuRelease {
+        int frames_remaining = 0;
+        std::vector<WGPUTexture> textures;
+        std::vector<WGPUTextureView> views;
+    };
+    std::vector<DeferredGpuRelease> deferred_gpu_releases_;
+    static constexpr int kGpuReleaseGraceFrames = 3;
     std::string operators_src_dir_;
 
     // Lane state service for LoopBased frame operators.

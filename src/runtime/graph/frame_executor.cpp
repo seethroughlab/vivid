@@ -27,6 +27,10 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                          uint64_t frame, void* gpu_state,
                          PostNodeFn on_gpu_node,
                          const VividInputState* input) {
+    // Release any retired GPU textures whose grace period has elapsed. Done at
+    // the top of the frame, before any new command buffer is recorded.
+    drain_deferred_gpu_releases();
+
     // Reset per-tick flags
     for (auto& cn : cg.nodes) cn.processed_this_tick = false;
 
@@ -844,14 +848,20 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
                                           WGPUTextureUsage extra_usage) {
     gpu_device_ = device;
 
+    // Queue the previous generation of per-node textures for deferred release
+    // rather than freeing them inline: a command buffer recorded last frame may
+    // still be draining on the GPU and reference these views (see header note).
+    DeferredGpuRelease batch;
+    batch.frames_remaining = kGpuReleaseGraceFrames;
+
     // Iterate nodes in topological order (they're already sorted)
     for (uint32_t ni = 0; ni < static_cast<uint32_t>(cg.nodes.size()); ++ni) {
         auto& cn = cg.nodes[ni];
         if (!cn.is_gpu()) continue;
 
-        // Release existing primary textures.
-        if (cn.gpu->texture_view) { wgpuTextureViewRelease(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
-        if (cn.gpu->texture) { wgpuTextureRelease(cn.gpu->texture); cn.gpu->texture = nullptr; }
+        // Retire existing primary textures (released after a grace period).
+        if (cn.gpu->texture_view) { batch.views.push_back(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
+        if (cn.gpu->texture) { batch.textures.push_back(cn.gpu->texture); cn.gpu->texture = nullptr; }
         for (auto& v : cn.gpu->aux_gpu_texture_views) v = nullptr;
         for (auto& t : cn.gpu->aux_gpu_textures)      t = nullptr;
 
@@ -931,6 +941,26 @@ void FrameExecutor::allocate_gpu_textures(CompiledGraph& cg, WGPUDevice device,
         std::fprintf(stderr, "[vivid] Allocated %ux%u texture for node '%s'\n",
                      w, h, cn.node_id.c_str());
     }
+
+    if (!batch.textures.empty() || !batch.views.empty())
+        deferred_gpu_releases_.push_back(std::move(batch));
+}
+
+void FrameExecutor::drain_deferred_gpu_releases(bool force) {
+    for (auto& d : deferred_gpu_releases_) {
+        if (force) d.frames_remaining = 0;
+        else --d.frames_remaining;
+        if (d.frames_remaining <= 0) {
+            for (auto v : d.views)    if (v) wgpuTextureViewRelease(v);
+            for (auto t : d.textures) if (t) wgpuTextureRelease(t);
+            d.views.clear();
+            d.textures.clear();
+        }
+    }
+    deferred_gpu_releases_.erase(
+        std::remove_if(deferred_gpu_releases_.begin(), deferred_gpu_releases_.end(),
+                       [](const DeferredGpuRelease& d) { return d.frames_remaining <= 0; }),
+        deferred_gpu_releases_.end());
 }
 
 bool FrameExecutor::has_gpu_operators(const CompiledGraph& cg) const {
@@ -974,6 +1004,19 @@ WGPUTexture FrameExecutor::gpu_sink_source_texture(const CompiledGraph& cg, int 
 }
 
 void FrameExecutor::shutdown_gpu(CompiledGraph& cg) {
+    // Drain the GPU FIRST. A previously-submitted command buffer may still be
+    // executing and referencing these node textures (wgpu encodes Metal render
+    // passes lazily at CommandEncoderFinish and runs submits asynchronously).
+    // Freeing the textures while that buffer is in flight leaves a render-pass
+    // color attachment pointing at a destroyed Metal texture -> EXC_BAD_ACCESS.
+    // This is the recompile path (apply_pending -> core shutdown) where the
+    // crash was observed when adding a node to a live, rendering graph.
+    if (gpu_device_) {
+        wgpuDevicePoll(gpu_device_, true, nullptr);
+    }
+
+    // GPU is now idle — safe to release everything immediately.
+    drain_deferred_gpu_releases(/*force=*/true);
     for (auto& cn : cg.nodes) {
         if (!cn.gpu) continue;
         if (cn.gpu->texture_view) { wgpuTextureViewRelease(cn.gpu->texture_view); cn.gpu->texture_view = nullptr; }
@@ -982,10 +1025,7 @@ void FrameExecutor::shutdown_gpu(CompiledGraph& cg) {
         for (auto& t : cn.gpu->aux_gpu_textures)      t = nullptr;
     }
 
-    if (gpu_device_) {
-        wgpuDevicePoll(gpu_device_, true, nullptr);
-        gpu_device_ = nullptr;
-    }
+    gpu_device_ = nullptr;
 }
 
 } // namespace vivid
