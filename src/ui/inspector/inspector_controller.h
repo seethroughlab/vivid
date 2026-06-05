@@ -19,6 +19,18 @@ public:
     using CustomInspectorCallback = std::function<void(
         const std::string& node_id, VividInspectorContext* ctx)>;
 
+    // True while any param-driving inspector gesture is in progress (slider,
+    // modulation, xy-pad, custom surface, or color drag). Centralizes the
+    // predicate that brackets a gesture into a single undo group, so adding a
+    // new param-widget type only needs to extend this one place. (audit 08-F7)
+    bool param_gesture_active() const {
+        return active_slider_idx >= 0 ||
+               modulation_amount_dragging ||
+               active_xy_pad_idx >= 0 ||
+               surface.has_active() ||
+               color_dragging_sv || color_dragging_hue;
+    }
+
     struct InspectorRect { float x, y, w, h; std::string node_id; std::string param_name; };
     struct XYPadRect { float x, y, w, h; std::string node_id; std::string param_x, param_y; };
     struct XYToggleRect { float x, y, w, h; std::string node_id; std::string param_x; };

@@ -211,13 +211,9 @@ void NodeGraphUI::update(const GraphSnapshot& snapshot) {
     // group opens before any set_param escapes it. The matching release frame still
     // has the flag set on entry and clears it inside the drag fn, so the gesture
     // ends exactly on release. RuntimeCommandSink force-closes as a safety net.
-    auto param_gesture_active = [&]() {
-        return inspector_.active_slider_idx >= 0 ||
-               inspector_.modulation_amount_dragging ||
-               inspector_.active_xy_pad_idx >= 0 ||
-               inspector_.surface.has_active() ||
-               inspector_.color_dragging_sv || inspector_.color_dragging_hue;
-    };
+    // Centralized predicate (audit 08-F7): adding a new param-widget type only
+    // requires extending InspectorController::param_gesture_active().
+    auto param_gesture_active = [&]() { return inspector_.param_gesture_active(); };
     if (param_gesture_active() && !param_gesture_active_) {
         // Label the gesture by what it adjusts so undo surfaces read well.
         std::string gesture_label = "Adjust parameter";
@@ -523,6 +519,12 @@ void NodeGraphUI::check_relayout() {
     } else if (cur_nodes < last_node_count_) {
         prune_node_rects();
     } else if (cur_conns != last_conn_count_ || show_param_wires_ != last_show_param_wires_) {
+        // A deleted connection shifts the indices of surviving wires in the
+        // rebuilt snapshot, so a previously-selected wire index now points at a
+        // different wire — clear it rather than highlight/edit the wrong one.
+        // (audit 08-F1) Additions append, so growth leaves existing indices valid.
+        if (cur_conns < last_conn_count_)
+            selected_wire_idx_ = -1;
         // Connection changed or param wire visibility toggled —
         // recompute ports and heights for all nodes
         std::unordered_map<std::string, size_t> rect_by_id;
