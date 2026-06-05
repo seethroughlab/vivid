@@ -67,6 +67,8 @@ public:
     void stop_recording_tap();
     uint64_t available_recorded_samples() const;
     uint64_t pop_recorded_samples(float* dst, uint64_t max_samples);
+    // Number of recording-tap chunks dropped because the ring filled. (audit 05-F6)
+    uint32_t recording_overrun_count() const;
 
     // Analysis toggle (main thread)
     void set_analysis_enabled(bool enabled);

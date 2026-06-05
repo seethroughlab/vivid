@@ -76,8 +76,18 @@ void SystemMidiListener::midi_callback(double /*timestamp*/,
     float value = static_cast<float>((*message)[2]) / 127.0f;
 
     auto* self = static_cast<SystemMidiListener*>(user_data);
-    std::lock_guard<std::mutex> lock(self->mutex_);
-    self->event_buffer_.push_back({channel, cc, value});
+    // Never let an exception escape the RtMidi callback (would crash its thread),
+    // and never let the buffer grow without bound if the frame thread stalls.
+    try {
+        std::lock_guard<std::mutex> lock(self->mutex_);
+        if (self->event_buffer_.size() >= kMaxBufferedCcEvents) {
+            ++self->dropped_cc_events_;
+            return;
+        }
+        self->event_buffer_.push_back({channel, cc, value});
+    } catch (...) {
+        // Drop the event rather than propagate (e.g. bad_alloc).
+    }
 }
 
 std::vector<MidiCCEvent> SystemMidiListener::drain_cc_events() {

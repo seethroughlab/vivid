@@ -348,6 +348,11 @@ uint64_t AudioEngine::pop_recorded_samples(float* dst, uint64_t max_samples) {
     return 0;
 }
 
+uint32_t AudioEngine::recording_overrun_count() const {
+    if (audio_executor_) return audio_executor_->recording_overrun_count();
+    return 0;
+}
+
 void AudioEngine::set_analysis_enabled(bool enabled) {
     if (audio_executor_) audio_executor_->set_analysis_enabled(enabled);
 }

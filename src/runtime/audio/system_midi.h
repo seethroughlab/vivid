@@ -41,7 +41,17 @@ public:
     // Enumerate available MIDI input ports.
     std::vector<std::string> port_names() const;
 
+    // Count of incoming CC events dropped because the buffer hit its cap before
+    // the next drain (only reachable under pathological flooding). (audit 05-F10)
+    uint64_t dropped_cc_events() const { return dropped_cc_events_; }
+
 private:
+    // Hard cap on the callback buffer. drain_cc_events() runs every frame
+    // (~60 Hz) and swaps the buffer empty, so this is only reached if the frame
+    // thread stalls while CC floods — at which point we drop new events rather
+    // than grow without bound.
+    static constexpr size_t kMaxBufferedCcEvents = 4096;
+
     static void midi_callback(double timestamp, std::vector<unsigned char>* message, void* user_data);
 
     // One RtMidiIn per open port (RtMidi limitation: one port per instance)
@@ -53,6 +63,7 @@ private:
     // Callback thread pushes here (shared across all inputs)
     std::mutex mutex_;
     std::vector<MidiCCEvent> event_buffer_;
+    uint64_t dropped_cc_events_ = 0;  // bumped when event_buffer_ hits the cap
 
     // Main-thread state (no lock needed after drain)
     std::array<std::array<float, 128>, 16> cc_state_{};

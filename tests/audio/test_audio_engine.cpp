@@ -11,6 +11,7 @@
 #include <thread>
 #include <filesystem>
 #include <string>
+#include <vector>
 #include "test_helpers.h"
 
 int main(int argc, char* argv[]) {
@@ -153,6 +154,25 @@ int main(int argc, char* argv[]) {
         check(audio_engine.audio_node_index("dst") >= 0, "index for dst exists");
         check(audio_engine.audio_node_index("ctrl") == -1, "ctrl is not an audio node");
         check(audio_engine.audio_node_index("nonexistent") == -1, "nonexistent returns -1");
+    }
+
+    // --- Test 6.5: recording-tap overrun is counted (audit 05-F6) ---
+    // Enable the tap and process audio without ever draining it; once the ring
+    // fills, dropped chunks must bump the (now public) overrun counter.
+    std::fprintf(stderr, "\n--- recording tap overrun count ---\n");
+    {
+        check(audio_engine.recording_overrun_count() == 0, "overrun count starts at 0");
+        audio_engine.start_recording_tap();
+        std::vector<float> buf(1024 * 2, 0.0f);
+        // Ring is 60 s @ 48 kHz stereo (~2.88M frames); 1024-frame blocks reach
+        // overrun in ~2800 iterations. Cap well above that; break once seen.
+        bool overran = false;
+        for (int i = 0; i < 4000 && !overran; ++i) {
+            audio_engine.process_audio_for_test(buf.data(), 1024);
+            overran = audio_engine.recording_overrun_count() > 0;
+        }
+        check(overran, "recording_overrun_count() > 0 after filling the ring undrained");
+        audio_engine.stop_recording_tap();
     }
 
     // --- Test 7: shutdown ---
