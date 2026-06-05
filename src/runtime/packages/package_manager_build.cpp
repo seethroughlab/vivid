@@ -117,6 +117,16 @@ bool PackageManager::compile_package(const std::string& pkg_dir, InstallResult& 
                 configure_opts.argv.push_back("-DVIVID_HIGHWAY_LIBRARY=" + hwy_library);
         }
 #endif
+        // WebGPU paths for GPU package operators (vivid_package_operator GPU flag).
+        // Resolved with the same helper the clang++ package path uses.
+        {
+            PackageCompiler::WebgpuPaths w =
+                PackageCompiler::managed_webgpu_paths(src_dir, vivid_build);
+            if (!w.include_dir.empty())
+                configure_opts.argv.push_back("-DVIVID_WEBGPU_INCLUDE_DIR=" + w.include_dir);
+            if (!w.lib_dir.empty())
+                configure_opts.argv.push_back("-DVIVID_WEBGPU_LIB_DIR=" + w.lib_dir);
+        }
         std::fprintf(stderr, "[vivid] PackageManager: cmake configure %s\n", compile_pkg_dir.c_str());
 
         ProcessRunResult configure_result;

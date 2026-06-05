@@ -153,6 +153,7 @@ For CMake-based packages, the core package tooling configures package builds wit
 - `VIVID_SRC_DIR`
 - `VIVID_BUILD_DIR`
 - `VIVID_PLUGIN_SUFFIX`
+- `VIVID_WEBGPU_INCLUDE_DIR` / `VIVID_WEBGPU_LIB_DIR` — WebGPU (wgpu-native) paths, used by the `GPU` flag
 - `VIVID_DRAGONBOX_INCLUDE_DIR`
 - `VIVID_DRAGONBOX_LIBRARY`
 - `VIVID_HIGHWAY_INCLUDE_DIR` when the core build has Highway enabled
@@ -162,6 +163,41 @@ For CMake-based packages, the core package tooling configures package builds wit
 those exported variables for implementation details such as graph/runtime test wiring or SIMD
 kernels, but package/operator public APIs must not expose `dragonbox` or `Highway` types or
 require package-local vendoring of those libraries.
+
+### CMake-Based Packages (`vivid_package_operator`)
+
+A package can build its operators with plain clang++ (the default — drop in a `.cpp` and the
+package manager compiles it) **or** with its own `CMakeLists.txt`. The CMake path is for packages
+that need cmake's flexibility (multiple targets, extra deps). It uses the
+`cmake/VividPackageSupport.cmake` module and the `vivid_package_operator()` macro, which runs
+`operator_codegen` and builds the operator dylib the same way the core build does. The package
+manager injects the `VIVID_*` variables above; you don't set them yourself.
+
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_package LANGUAGES CXX)
+
+include("${VIVID_CMAKE_MODULES_DIR}/VividPackageSupport.cmake")
+
+# Control/audio operator:
+vivid_package_operator(my_op operators/control/my_op/my_op.cpp)
+
+# GPU operator (inherits GpuProcessable / WgslFilterBase / includes webgpu.h):
+vivid_package_operator(my_fx operators/gpu/my_fx/my_fx.cpp GPU)
+```
+
+- `name` is the cmake target + dylib name (match the operator dir).
+- The `GPU` flag links wgpu-native and adds the WebGPU include dir (from `VIVID_WEBGPU_*`); it is
+  **required** for any operator that touches WebGPU — without it the dylib fails to resolve WebGPU
+  symbols at load.
+- `EXTRA_LIBS` adds further link libraries (rarely needed).
+- Codegen scans the `source` file for the operator class — exactly one `OperatorBase`/`WgslFilterBase`
+  subclass per file (same rule as seed operators). No `VIVID_REGISTER` is needed on this path.
+
+> The `single-operator` / `multi-operator` package templates currently use a hand-rolled
+> `add_library` instead of `vivid_package_operator` (and rely on the legacy `VIVID_REGISTER` macro).
+> New CMake packages should prefer `vivid_package_operator`, which gets codegen, v3 metadata, and the
+> managed dependency wiring for free.
 
 ### Compile All
 ```cpp

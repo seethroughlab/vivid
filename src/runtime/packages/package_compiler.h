@@ -34,6 +34,17 @@ public:
     static std::string managed_highway_include_dir();
     static std::string managed_highway_library_path();
 
+    // Resolve the WebGPU (wgpu-native) include dir + library dir for GPU package
+    // operators, preferring host runtime locations over a stale _deps copy.
+    // Either field is empty if not found. Shared by the clang++ and cmake
+    // package build paths so both link GPU operators identically.
+    struct WebgpuPaths {
+        std::string include_dir;  // dir containing webgpu/webgpu.h
+        std::string lib_dir;      // dir containing libwgpu_native.{dylib,so}
+    };
+    static WebgpuPaths managed_webgpu_paths(const std::string& vivid_src_dir,
+                                            const std::string& vivid_build_dir);
+
     // Compile a single operator from a package.
     // operator_rel_path: relative within package, e.g. "audio/drum_kick"
     // needs_gpu: if true, adds Dawn include paths and framework linkage
