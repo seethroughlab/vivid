@@ -464,6 +464,7 @@ struct TestOp : vivid::OperatorBase, vivid::FrameProcessable {
 
 #include "test_control_server_client_perception.inc"
 #include "test_control_server_client_graph_ops.inc"
+#include "test_control_server_client_dispatch_shape.inc"
 #include "test_control_server_client_package_ops.inc"
 #include "test_control_server_client_tail.inc"
 

@@ -117,6 +117,8 @@ add_executable(vivid
     src/runtime/assets/asset_library_import.cpp
     src/runtime/control/control_server.cpp
     src/runtime/control/control_server_query.cpp
+    src/runtime/control/control_server_query_source.cpp
+    src/runtime/control/control_server_query_packages.cpp
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_checks.cpp
     src/runtime/control/control_server_assets.cpp
