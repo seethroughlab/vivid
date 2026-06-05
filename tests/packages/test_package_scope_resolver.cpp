@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
         auto pkgs = pm.list();
         check(find_pkg(pkgs, "scope_uninstall_pkg", p), "scope_uninstall_pkg resolved");
         check(p.source_scope == "local", "scope_uninstall_pkg initially resolved from local");
-        check(pm.uninstall("scope_uninstall_pkg"), "uninstall removes user-scope package entry");
+        check(pm.uninstall("scope_uninstall_pkg").success, "uninstall removes user-scope package entry");
         check(!fs::exists(user_uninstall_pkg), "user-scope package directory removed by uninstall");
         auto pkgs_after = pm.list();
         check(find_pkg(pkgs_after, "scope_uninstall_pkg", p),

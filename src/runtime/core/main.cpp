@@ -118,10 +118,6 @@ static constexpr uint32_t kThumbW = 140;
 static constexpr uint32_t kThumbH = 88;
 static constexpr uint32_t kThumbSupersample = 2;
 
-// Default GPU texture resolution for nodes without explicit size
-static constexpr uint32_t kDefaultTexW = 1280;
-static constexpr uint32_t kDefaultTexH = 720;
-
 using vivid::to_sv;
 using namespace vivid;
 
@@ -903,14 +899,17 @@ int main(int argc, char* argv[]) {
             }
             return 1;
         } else if (uninstall_cmd->parsed()) {
-            const bool ok = pm.uninstall(uninstall_name);
+            const auto rm = pm.uninstall(uninstall_name);
+            const bool ok = rm.success;
             if (cli_json)
-                return emit_json(ok ? json_ok_msg("uninstalled") : json_err("failed to uninstall package"));
+                return emit_json(ok ? json_ok_msg("uninstalled")
+                                    : json_err(rm.error.empty() ? "failed to uninstall package" : rm.error));
             if (ok) {
                 std::fprintf(stderr, "Uninstalled %s\n", uninstall_name.c_str());
                 return 0;
             }
-            std::fprintf(stderr, "Failed to uninstall %s\n", uninstall_name.c_str());
+            std::fprintf(stderr, "Failed to uninstall %s: %s\n", uninstall_name.c_str(),
+                         rm.error.empty() ? "unknown error" : rm.error.c_str());
             return 1;
         } else if (list_pkg_cmd->parsed()) {
             if (cli_json)
@@ -970,14 +969,17 @@ int main(int argc, char* argv[]) {
             }
             return 1;
         } else if (unlink_cmd->parsed()) {
-            const bool ok = pm.unlink(unlink_name);
+            const auto rm = pm.unlink(unlink_name);
+            const bool ok = rm.success;
             if (cli_json)
-                return emit_json(ok ? json_ok_msg("unlinked") : json_err("failed to unlink package"));
+                return emit_json(ok ? json_ok_msg("unlinked")
+                                    : json_err(rm.error.empty() ? "failed to unlink package" : rm.error));
             if (ok) {
                 std::fprintf(stderr, "Unlinked %s\n", unlink_name.c_str());
                 return 0;
             }
-            std::fprintf(stderr, "Failed to unlink %s\n", unlink_name.c_str());
+            std::fprintf(stderr, "Failed to unlink %s: %s\n", unlink_name.c_str(),
+                         rm.error.empty() ? "unknown error" : rm.error.c_str());
             return 1;
         } else if (rebuild_cmd->parsed()) {
             auto result = pm.rebuild(rebuild_name);
@@ -1755,7 +1757,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
 
     // Allocate per-node GPU textures
     if (has_gpu_ops) {
-        runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+        runtime.allocate_gpu_textures(gpu.device(), mi::kDefaultTexW, mi::kDefaultTexH, kOffscreenFormat);
     }
     int video_out_idx = has_gpu_ops ? runtime.find_effective_gpu_sink() : -1;
 
@@ -2897,7 +2899,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
             runtime_api.apply_pending(has_gpu_ops, has_audio);
             // Re-allocate per-node GPU textures after topology change
             if (has_gpu_ops) {
-                runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+                runtime.allocate_gpu_textures(gpu.device(), mi::kDefaultTexW, mi::kDefaultTexH, kOffscreenFormat);
             }
             video_out_idx = has_gpu_ops ? runtime.find_effective_gpu_sink() : -1;
             capture_coordinator.set_audio_engine(has_audio ? &audio_engine : nullptr);
@@ -2913,7 +2915,7 @@ fn logo_edges(p: vec2f, time: f32) -> vec2f {
         if (runtime_api.needs_gpu_realloc() || runtime.needs_gpu_realloc()) {
             runtime_api.clear_gpu_realloc();
             runtime.clear_gpu_realloc();
-            runtime.allocate_gpu_textures(gpu.device(), kDefaultTexW, kDefaultTexH, kOffscreenFormat);
+            runtime.allocate_gpu_textures(gpu.device(), mi::kDefaultTexW, mi::kDefaultTexH, kOffscreenFormat);
             video_out_idx = has_gpu_ops ? runtime.find_effective_gpu_sink() : -1;
         }
         if (!graph_loaded && runtime.compiled_graph() && !runtime.compiled_graph()->nodes.empty()) {

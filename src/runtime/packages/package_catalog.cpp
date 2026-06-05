@@ -110,13 +110,13 @@ InstallResult PackageCatalog::install(const std::string& name) {
     return result;
 }
 
-bool PackageCatalog::uninstall(const std::string& name) {
-    bool ok = pm_.uninstall(name);
-    if (ok) {
+InstallResult PackageCatalog::uninstall(const std::string& name) {
+    InstallResult result = pm_.uninstall(name);
+    if (result.success) {
         std::lock_guard<std::mutex> lock(mutex_);
         merge_with_installed();
     }
-    return ok;
+    return result;
 }
 
 // ---------------------------------------------------------------------------

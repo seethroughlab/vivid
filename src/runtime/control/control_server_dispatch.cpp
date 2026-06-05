@@ -1597,7 +1597,9 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                     std::string snapshot_error;
                     if (!capture_live_graph_snapshot(c.graph, snapshot_json, snapshot_error)) {
                         return json_err(snapshot_error);
-                    } else if (c.package_manager->uninstall(root["name"].get<std::string>())) {
+                    }
+                    auto rm = c.package_manager->uninstall(root["name"].get<std::string>());
+                    if (rm.success) {
                         c.source_docs.invalidate_package(root["name"].get<std::string>());
                         auto rr = c.api.apply_snapshot_json(snapshot_json, c.has_gpu_ops, c.has_audio);
                         if (!rr.ok)
@@ -1605,7 +1607,7 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                         else
                             return json_ok_msg("uninstalled");
                     } else {
-                        return json_err("failed to uninstall package");
+                        return json_err(rm.error.empty() ? "failed to uninstall package" : rm.error);
                     }
                 }
             }
@@ -1664,7 +1666,9 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                     std::string snapshot_error;
                     if (!capture_live_graph_snapshot(c.graph, snapshot_json, snapshot_error)) {
                         return json_err(snapshot_error);
-                    } else if (c.package_manager->unlink(root["name"].get<std::string>())) {
+                    }
+                    auto rm = c.package_manager->unlink(root["name"].get<std::string>());
+                    if (rm.success) {
                         c.source_docs.invalidate_package(root["name"].get<std::string>());
                         auto rr = c.api.apply_snapshot_json(snapshot_json, c.has_gpu_ops, c.has_audio);
                         if (!rr.ok)
@@ -1672,7 +1676,7 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                         else
                             return json_ok_msg("unlinked");
                     } else {
-                        return json_err("failed to unlink package");
+                        return json_err(rm.error.empty() ? "failed to unlink package" : rm.error);
                     }
                 }
             }
