@@ -103,6 +103,15 @@ bool RuntimeCore::prepare_build(const Graph& graph, OperatorRegistry& registry,
 }
 
 void RuntimeCore::adopt_prepared_build(PreparedBuild prepared) {
+    // Postcondition guard (audit 03-R2-F4): a valid PreparedBuild has a non-null
+    // compiled_graph (prepare_build() returns false on compile failure). Defend
+    // against a misused/empty PreparedBuild — a logged no-op beats dereferencing
+    // a null compiled_graph below.
+    if (!prepared.compiled_graph) {
+        std::fprintf(stderr, "[vivid] RuntimeCore::adopt_prepared_build: null compiled_graph "
+                             "— ignoring (prepare_build() must succeed first)\n");
+        return;
+    }
     solo_node_idx_ = -1;
     solo_active_set_.clear();
     graph_base_dir_ = std::move(prepared.graph_base_dir);

@@ -1,11 +1,21 @@
 # Audit 03: Runtime Core & Hot Reload
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-04 (verify-gated; 10 candidates → 2 confirmed, 8 dismissed)
+**Status:** Re-audited (maintainability) 2026-06-05 (verify-gated; 9 candidates → 5 confirmed, 4 dismissed). Prior correctness pass retained below; Round-2 maintainability section at end.
 
 ## Purpose
 
 Audit the application lifecycle, `RuntimeCore` orchestration, hot reload, crash recovery, settings, undo, and file-watching paths for state ownership and reliability risks.
+
+## Re-Audit Mandate
+
+The prior pass should be treated as a correctness/robustness audit, not a complete code-quality audit.
+Run this audit again with equal weight on maintainability: structure, duplication, ownership boundaries,
+API clarity, dependency direction, and ease of future change.
+
+Do not mark the audit complete until every checklist item is annotated as `[x]` done, `[~]` partially
+covered, or `[ ]` intentionally deferred with a short note. Findings must include both confirmed defects
+and structural risks that make future defects likely.
 
 ## Scope
 
@@ -42,8 +52,21 @@ Audit the application lifecycle, `RuntimeCore` orchestration, hot reload, crash 
 - [ ] Review tests that claim to cover the subsystem.
 - [ ] Check docs/code/test contract drift.
 - [ ] Identify correctness, robustness, and maintainability findings.
+- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [ ] Check dependency direction and public/private API boundaries.
+- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
 - [ ] Record findings with severity, category, evidence, and recommendation.
 - [ ] Propose immediate, near-term, and backlog follow-up work.
+
+## Required Maintainability Review
+
+- [x] Map runtime lifecycle responsibilities and identify files/classes/functions that own too many of them. → `main()`'s `tick_frame` lambda is 953 lines (03-R2-F6); otherwise `main.cpp` is reasonably split into `main_helpers`/`main_async_graph`/`main_menu_actions`/`main_package_browser` TUs.
+- [x] Look for duplicated reload, build, crash recovery, settings, undo, file-watch, and UI-bridge logic. → post-build init duplicated across `rebuild_live_runtime_from_graph` vs `adopt_prepared_graph` (03-R2-F2, the headline).
+- [x] Check whether `RuntimeCore` has a clear boundary from main-loop/UI helper code. → **clean** — the RuntimeCore/caller split (caller owns audio lifecycle, RuntimeCore owns graph/bridge) is intentional (03-R2-F3 refuted).
+- [x] Check whether lifecycle APIs expose implementation detail or make invalid states easy to create. → `PreparedBuild::compiled_graph` postcondition is implicit/unguarded (03-R2-F4); `adopt_prepared_build` audio-shutdown contract is header-undocumented (03-R2-F1).
+- [x] Identify code that is correct today but fragile under likely reload, async-load, package, or audio-device changes. → the duplicated GPU-sizing + audio-lifecycle sequence (03-R2-F2); device-switch race was refuted (single-threaded tick, 03-R2-F8).
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -169,3 +192,90 @@ refutation — see FileWatcher in Test Gaps):
   defects — `RuntimeCore` owns core execution state; `main_*` helpers own UI logic. Current = preferred.)*
 - [x] Test gaps include realistic reload and failure scenarios.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Re-Audit Mandate (round 1 was correctness-focused). **9 candidates
+→ 5 confirmed (1 Medium, 4 Low), 4 dismissed.** *(The first finder run under-delivered — 1 finding, never
+read `main.cpp`; re-run with an explicit "read the big files" directive produced the real sweep.)* The
+`RuntimeCore` ↔ caller boundary is **clean** (the split is intentional — the caller owns audio lifecycle,
+RuntimeCore owns graph/bridge), and `main.cpp` is reasonably partitioned across `main_*` TUs. The verify
+pass refuted 4 candidates: a "hardcoded 1280×720" that is the `kDefaultTexW/H` constants used everywhere
+(03-R2-F5), a device-switch "race" in single-threaded synchronous tick code (03-R2-F8, the finder even
+cited a non-existent line), and two "undocumented invariant" claims that are already documented in code
+(03-R2-F3/F7).
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 03-R2-F2 | Medium | Maintainability | Post-build init is **duplicated** between `rebuild_live_runtime_from_graph` and `adopt_prepared_graph` — a ~16-line identical tail (GPU texture alloc w/ `kDefaultTexW/H`, audio engine shutdown→build→start, capture-coordinator wiring) plus a duplicated prologue; only the `build()` vs `adopt_prepared_build()` call differs | `src/runtime/core/main_async_graph.cpp:360-394` & `396-429` |
+| 03-R2-F6 | Low | Maintainability | `main()`'s `tick_frame` lambda is **953 lines** (2579–3532) — the entire per-frame body (window/display state, async-transaction polling, capture/analysis, surface present, UI render) inlined as one lambda | `src/runtime/core/main.cpp:2579-3532` |
+| 03-R2-F4 | Low | Maintainability | `PreparedBuild::compiled_graph` postcondition (must be non-null) is implicit + undocumented; `adopt_prepared_build` dereferences it unguarded (`*compiled_graph_`) whereas `tick()` null-checks | `runtime_core.h:38-42`; `runtime_core.cpp:105-137` |
+| 03-R2-F1 | Low | Docs | `adopt_prepared_build()` header omits the audio-engine-shutdown contract (it's in `runtime_core.md` but not the header doxygen); callers do it correctly but the API doesn't state it | `src/runtime/core/runtime_core.h:58` |
+| 03-R2-F9 | Low | Test gap | No tests for async-adoption lifecycle error/edge cases (null `PreparedBuild`, adoption-order, concurrent `prepare_build`, failed `audio_engine.build()` aftermath) — only the happy path (Test 1b) | `tests/control/test_runtime_core.cpp` |
+
+> All findings are **non-lane** (runtime lifecycle) → fixable normally (not deferred into the lane-value
+> clean-break). 03-R2-F4 filed Medium → **Low** (callers are correct; the gap is a missing guard/doc, not a
+> live defect).
+
+### Evidence & Recommendation
+
+**03-R2-F2 — duplicated post-build init** (Medium, Maintainability — *the headline*)
+- *Evidence:* `rebuild_live_runtime_from_graph` (360-394) and `adopt_prepared_graph` (396-429) share a
+  byte-identical (modulo brace style) post-build tail — `graph_loaded` from `compiled_graph()` (377 vs 413),
+  `has_gpu_ops` + `allocate_gpu_textures(device, kDefaultTexW, kDefaultTexH, RGBA16Float)` +
+  `find_effective_gpu_sink` (378-384 vs 414-420), audio `shutdown→build→start` gated on `has_audio_operators`
+  (386-390 vs 422-425), `capture_coordinator.set_audio_engine` (392 vs 427) — and a duplicated prologue
+  (audio shutdown / `runtime.shutdown()` / `thumb_cache.clear()`). The only real divergence is
+  `runtime.build(graph, registry)` (368) vs `runtime.adopt_prepared_build(std::move(prepared))` (408).
+- *Impact:* the dangerous GPU-sizing + audio-lifecycle sequence must be kept in sync across two functions; a
+  future change to one (and not the other) is a latent state/lifecycle bug.
+- *Recommendation (refactor candidate):* extract `post_build_init(MainAppContext&, …)` taking the
+  already-built/adopted state; the rebuild path keeps its build-failure cleanup (369-374) and the adopt path
+  its `ctx.graph = std::move(next_graph)` + optional metronome reset (407-411). Behavior-neutral.
+
+**03-R2-F6 — `tick_frame` 953-line lambda** (Low, Maintainability)
+- *Evidence:* `auto tick_frame = [&]() -> bool {` at 2579 closes at 3532 — one ~953-line lambda owning the
+  full frame body; the next lambda (`poll_events`) starts at 3535. The phases are already comment-delimited
+  inside it (test injection, hot-reload poll, pre/post audio sync, tick, UI render, surface present).
+- *Impact:* the per-frame orchestration is hard to navigate/modify; phase ordering invariants are inline.
+- *Recommendation:* extract the comment-delimited phases into named `tick_*` helper lambdas/functions
+  (member or file-local). **Priority low** (it works and is sectioned) — lower than 03-R2-F2.
+
+**03-R2-F4 / 03-R2-F1 — lifecycle API contracts** (Low)
+- *Recommendation:* add an early guard + doxygen postcondition to `adopt_prepared_build` (`PreparedBuild`
+  must carry a non-null `compiled_graph`) and a one-line audio-shutdown-contract note on the header. Tiny,
+  safe.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **Extract `post_build_init()`** (03-R2-F2) — **priority medium, payoff high.** Removes the
+   keep-in-sync hazard on the GPU/audio lifecycle sequence; behavior-neutral; small.
+2. **Decompose `tick_frame`** (03-R2-F6) — priority low/medium, payoff medium. Behavior-neutral but touches
+   the main loop; sequence after #1.
+3. **`adopt_prepared_build` guard + doc** (03-R2-F4 + 03-R2-F1) — priority low, payoff low (safety/clarity).
+
+### Test Gaps (refactor-safety)
+- Async-adoption error/edge cases (03-R2-F9): null `PreparedBuild`, adoption order, concurrent
+  `prepare_build`, failed `audio_engine.build()` recovery — would guard the 03-R2-F2 extraction.
+
+### Dismissed (verification-refuted)
+- **03-R2-F3** (adoption logic "split" between RuntimeCore and callers) — refuted: the split is intentional
+  and documented (RuntimeCore doesn't own AudioEngine; caller owns audio lifecycle). Not a smear.
+- **03-R2-F5** (hardcoded 1280×720 GPU texture size) — refuted: 1280×720 are `kDefaultTexW/kDefaultTexH`
+  (`main.cpp:122-123`) used at every allocate site; not a magic number.
+- **03-R2-F7** (post_tick audio-sync order not self-evident) — refuted: already documented at
+  `main.cpp:3231-3236`.
+- **03-R2-F8** (device-switch audio rebuild not guarded by `graph_transaction_active`) — refuted: the
+  per-frame tick is single-threaded synchronous; no race. (Finder cited a non-existent line 3879.)
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (03-R2-F2/F4/F1/F9):** extracted `teardown_live_runtime()` + `finalize_live_runtime()`
+  in `main_async_graph.cpp` (both functions now share them; behavior-neutral); added a null-`compiled_graph`
+  guard + postcondition doc to `RuntimeCore::adopt_prepared_build` and an audio-shutdown-contract note on its
+  header; added `test_runtime_core` Test 1c (null-`PreparedBuild` adopt is a guarded no-op). Build + tests
+  green.
+- **Deferred — backlog (03-R2-F6):** decompose the 953-line `tick_frame` lambda into phase helpers — a large
+  main-loop refactor, Low priority, already comment-sectioned; its own focused effort (orthogonal to the
+  lane-value clean-break, so it survives). Also backlog: the harder async-adoption error tests from 03-R2-F9
+  (concurrent `prepare_build`, device-switch race — need threading/device harness).
