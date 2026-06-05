@@ -94,6 +94,16 @@ so params that exist in the new descriptor retain their values. New params get t
 Hot reload only supports descriptor-compatible edits. Port layout changes or incompatible parameter
 shape changes are rejected explicitly rather than partially reusing the previous runtime metadata.
 
+### Lane / strategy descriptor changes → full recompile
+
+`classify_hot_reload()` (`operator_loader.cpp`) returns three outcomes: `Compatible` (in-place reload),
+`Incompatible` (rejected, as above), and `RecompileRequired`. A change to `lane_behavior` or
+`strategy_independent` is `RecompileRequired`: the in-place reload would leave lane-set provenance
+(Pass 2.6) and the execution-strategy planner stale, so the reload driver instead calls
+`RuntimeAPI::request_recompile()` (`main_helpers.cpp`), and the next frame rebuilds the whole graph from
+the `Graph` model with the new descriptor. This is the post-Audit-01 behavior — the edit still applies
+live, just via a full recompile rather than an in-place swap. See `src/runtime/graph/CLAUDE.md`.
+
 ## `AudioEngine::reload_operator()`
 
 Same pattern, but for `AudioNodeState` entries.
