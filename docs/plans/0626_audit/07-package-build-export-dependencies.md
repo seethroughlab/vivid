@@ -1,11 +1,21 @@
 # Audit 07: Package, Build, Export & Dependencies
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-05 (verify-gated; 9 candidates → 2 confirmed, 7 dismissed)
+**Status:** Round-1 audited 2026-06-05 (verify-gated; 9 candidates → 2 confirmed, 7 dismissed). Round-2 maintainability re-audit 2026-06-05 (5 candidates → 2 confirmed, 3 dismissed) — section at end.
 
 ## Purpose
 
 Audit the package lifecycle, CMake build structure, standalone export pipeline, and dependency management for reproducibility, boundary clarity, and developer-loop reliability.
+
+## Strong Audit Mandate
+
+This audit must include a full code-quality pass, not only a correctness/robustness pass. Give equal
+weight to maintainability: structure, duplication, ownership boundaries, API clarity, dependency
+direction, and ease of future change.
+
+Do not mark the audit complete until every checklist item is annotated as `[x]` done, `[~]` partially
+covered, or `[ ]` intentionally deferred with a short note. Findings must include both confirmed defects
+and structural risks that make future defects likely.
 
 ## Scope
 
@@ -44,8 +54,21 @@ Audit the package lifecycle, CMake build structure, standalone export pipeline, 
 - [ ] Review tests that claim to cover the subsystem.
 - [ ] Check docs/code/test contract drift.
 - [ ] Identify correctness, robustness, and maintainability findings.
+- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [ ] Check dependency direction and public/private API boundaries.
+- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
 - [ ] Record findings with severity, category, evidence, and recommendation.
 - [ ] Propose immediate, near-term, and backlog follow-up work.
+
+## Required Maintainability Review
+
+- [x] Map package manager, compiler, CMake, export, dependency, test-partition, and artifact responsibilities. → `package_manager` is well-split (`_discovery`/`_install`/`_build`/`_manifest`); `project_lockfile.cpp` (parse/serialize/generate/verify) and `export_pipeline.cpp` (linear codegen→build→copy) are cohesive.
+- [x] Look for duplicated manifest parsing, build argument construction, dependency lookup, diagnostics, and artifact staging logic. → no real duplication. Manifest parsing is single-sourced (the compiler's from-manifest overload is test-covered, not dead); arch-pinning is two necessarily-different build paths (clang vs cmake); lockfile *consumes* discovery's `resolve_packages()` rather than re-implementing it.
+- [x] Check whether package APIs are coherent across install, link, rebuild, uninstall, export, and tests. → **one gap (07-R2-F2):** `install/link/rebuild` return rich `InstallResult`; `uninstall/unlink` return bare `bool` (stderr-only errors).
+- [x] Check whether build-system code makes dependency direction explicit and reproducible. → yes — lockfile pinning is explicit (version/commit/source kind); version classification centralized in `classify_version_delta`.
+- [x] Identify code that is correct today but fragile under likely package, sibling-repo, export, or cross-platform changes. → arch-pinning is correct but **untested** (07-R2-F5).
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -172,3 +195,57 @@ Seven candidates were refuted — notably **four** that claimed missing tests wh
   source ✅; artifacts in CMAKE_BINARY_DIR ✅; one minor `.gitignore`-guidance gap noted.)*
 - [x] Test partition gaps include commands needed to reproduce failures.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Re-Audit Mandate. **5 candidates → 2 confirmed (1 Medium, 1 Low),
+3 dismissed.** Low yield — the subsystem is **well-decomposed and well-factored**: `package_manager` is
+already split into `_discovery`/`_install`/`_build`/`_manifest`; `project_lockfile.cpp` (741) and
+`export_pipeline.cpp` (686) are large but **cohesive** (lockfile = parse/serialize/generate/verify phases;
+export = a linear codegen→build→copy data-flow pipeline); dependency direction is explicit (lockfile pinning
++ centralized `classify_version_delta`). The verify pass refuted every "duplication" candidate as either a
+necessarily-separate path or a consumer of the single source.
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 07-R2-F2 | Medium | Maintainability | **Inconsistent error-reporting API:** `install`/`link`/`rebuild` return rich `InstallResult` (`error_code`+`error`), but `uninstall`/`unlink` return bare `bool` (failures only `fprintf`'d to stderr). Callers can't distinguish "not found" from "permission denied". | `package_manager.h:122-134`; `package_manager_install.cpp:329-375` (unlink), `:440-498` (uninstall) |
+| 07-R2-F5 | Low | Test gap | The arch-pinning logic (clang `-arch`, cmake `-DCMAKE_OSX_ARCHITECTURES`) that prevents Rosetta dylib/host mismatch is **not directly tested**. | `package_compiler.cpp:45-58`; `package_manager_build.cpp:93-99` |
+
+### Evidence & Recommendation
+**07-R2-F2** (Medium) — *Evidence:* `package_manager.h` — `install()` (122) / `link()` (128) / `rebuild()`
+(134) → `InstallResult` (struct with `error_code`+`error`); `uninstall()` (125) / `unlink()` (131) → `bool`.
+*Recommendation (refactor candidate):* return `InstallResult` (or a slim `RemoveResult`) from
+`uninstall`/`unlink` and propagate structured errors to the control-server/UI callers (no logic change — a
+return-type expansion). **Priority medium, payoff medium, low-risk.**
+
+**07-R2-F5** (Low) — *Recommendation:* a unit test that captures the process-invocation args
+(`ProcessRunOptions`) and asserts `-arch`/`CMAKE_OSX_ARCHITECTURES` matches the runtime's compile-time arch.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **Align `uninstall`/`unlink` to `InstallResult`** (07-R2-F2) — priority medium, payoff medium, low-risk
+   (return-type expansion + a few call sites).
+2. **Arch-pinning invocation test** (07-R2-F5) — priority low, payoff low (locks in a cross-platform-fragile
+   invariant).
+
+### Dismissed (verification-refuted)
+- **Unused manifest-reparse overload** (`package_compiler.cpp:566-609`) — refuted: NOT dead code. The 0-arg
+  `compile_all(package_dir)` overload is exercised by an active test (`test_package_compiler.cpp:125`, "Compile
+  all from manifest"); deleting it would break that test. Documented convenience API.
+- **Arch-pinning duplication** (clang vs cmake) — refuted: two **necessarily-different** build paths
+  (`-arch arm64` for the clang operator-compile vs `-DCMAKE_OSX_ARCHITECTURES=arm64` for the cmake package
+  build), in different architectural layers; no feasible shared helper.
+- **Manifest error-case + GPU-flag test gaps** — refuted: actually tested
+  (`test_package_manager.cpp:697-741` operator-name path-traversal; `:388` generates a CMakeLists calling
+  `vivid_package_operator(... GPU)`). The recon's "untested" claims were wrong.
+- (Also confirmed clean: `project_lockfile.cpp` cohesive; `export_pipeline.cpp` a genuine linear pipeline;
+  dependency-lookup is single-sourced — lockfile consumes `resolve_packages()`.)
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (07-R2-F2):** `uninstall`/`unlink` now return `InstallResult` (stable `error_code`:
+  `package_not_found`/`not_linked`/`remove_failed`); the structured reason is propagated to the
+  control-server `uninstall_package`/`unlink_package` handlers (→ MCP), `PackageCatalog::uninstall` (widened
+  to match its `install()`), and the package-browser/CLI callers. Pure return-type expansion; package suite +
+  control dispatch-shape guard pass. Merged (`adff0582`).
+- **Backlog:** 07-R2-F5 (arch-pinning invocation test).
