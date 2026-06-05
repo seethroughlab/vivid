@@ -71,289 +71,7 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
 
     std::string result;
 
-    if (method == "update_clip_param") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
-                 !root.contains("node_id") || !root["node_id"].is_string())
-            result = json_err("missing 'track_id', 'clip_id', or 'node_id'");
-        else {
-            const std::string track = root["track_id"].get<std::string>();
-            const std::string clip  = root["clip_id"].get<std::string>();
-            const std::string node  = root["node_id"].get<std::string>();
-            if (root.contains("bypassed") && root["bypassed"].is_boolean())
-                result = command_result_to_json(
-                    api.update_clip_bypass(track, clip, node, root["bypassed"].get<bool>()));
-            else if (root.contains("string_value") && root["string_value"].is_string() &&
-                     root.contains("param") && root["param"].is_string())
-                result = command_result_to_json(
-                    api.update_clip_string_param(track, clip, node, root["param"].get<std::string>(),
-                                                 root["string_value"].get<std::string>()));
-            else if (root.contains("value") && root["value"].is_number() &&
-                     root.contains("param") && root["param"].is_string())
-                result = command_result_to_json(
-                    api.update_clip_param(track, clip, node, root["param"].get<std::string>(),
-                                          static_cast<float>(root["value"].get<double>())));
-            else
-                result = json_err("need 'param'+'value', 'param'+'string_value', or 'bypassed'");
-        }
-    } else if (method == "rename_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
-                 !root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'track_id', 'clip_id', or 'name'");
-        else
-            result = command_result_to_json(
-                api.rename_clip(root["track_id"].get<std::string>(),
-                                root["clip_id"].get<std::string>(),
-                                root["name"].get<std::string>()));
-    } else if (method == "set_clip_fade") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
-                 !root.contains("fade_bars") || !root["fade_bars"].is_number())
-            result = json_err("missing 'track_id', 'clip_id', or 'fade_bars'");
-        else
-            result = command_result_to_json(
-                api.set_clip_fade(root["track_id"].get<std::string>(),
-                                  root["clip_id"].get<std::string>(),
-                                  root["fade_bars"].get<float>()));
-    } else if (method == "remove_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string())
-            result = json_err("missing 'track_id' or 'clip_id'");
-        else
-            result = command_result_to_json(
-                api.remove_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
-    } else if (method == "move_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string() ||
-                 !root.contains("to_index") || !root["to_index"].is_number_integer())
-            result = json_err("missing 'track_id', 'clip_id', or 'to_index'");
-        else
-            result = command_result_to_json(
-                api.move_clip(root["track_id"].get<std::string>(),
-                              root["clip_id"].get<std::string>(),
-                              root["to_index"].get<int>()));
-    } else if (method == "launch_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string())
-            result = json_err("missing 'track_id' or 'clip_id'");
-        else
-            result = command_result_to_json(
-                api.launch_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
-    } else if (method == "save_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'name'");
-        else
-            result = command_result_to_json(api.save_scene(root["name"].get<std::string>()));
-    } else if (method == "save_scene_from_clips") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("name") || !root["name"].is_string() ||
-                 !root.contains("assignments") || !root["assignments"].is_object())
-            result = json_err("missing 'name' or 'assignments' (object of track_id->clip_id)");
-        else {
-            std::vector<std::pair<std::string, std::string>> assignments;
-            for (auto& [track_id, clip_id] : root["assignments"].items())
-                if (clip_id.is_string())
-                    assignments.emplace_back(track_id, clip_id.get<std::string>());
-            result = command_result_to_json(
-                api.save_scene_from_clips(root["name"].get<std::string>(), assignments));
-        }
-    } else if (method == "update_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string())
-            result = json_err("missing 'scene_id'");
-        else
-            result = command_result_to_json(api.update_scene(root["scene_id"].get<std::string>()));
-    } else if (method == "rename_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("new_name") || !root["new_name"].is_string())
-            result = json_err("missing 'scene_id' or 'new_name'");
-        else
-            result = command_result_to_json(
-                api.rename_scene(root["scene_id"].get<std::string>(), root["new_name"].get<std::string>()));
-    } else if (method == "remove_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string())
-            result = json_err("missing 'scene_id'");
-        else
-            result = command_result_to_json(api.remove_scene(root["scene_id"].get<std::string>()));
-    } else if (method == "move_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("to_index") || !root["to_index"].is_number_integer())
-            result = json_err("missing 'scene_id' or 'to_index'");
-        else
-            result = command_result_to_json(
-                api.move_scene(root["scene_id"].get<std::string>(), root["to_index"].get<int>()));
-    } else if (method == "set_scene_assignment") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id")  || !root["clip_id"].is_string())
-            result = json_err("missing 'scene_id', 'track_id', or 'clip_id'");
-        else
-            result = command_result_to_json(
-                api.set_scene_assignment(root["scene_id"].get<std::string>(),
-                                          root["track_id"].get<std::string>(),
-                                          root["clip_id"].get<std::string>()));
-    } else if (method == "set_scene_leave_unchanged") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("track_id") || !root["track_id"].is_string())
-            result = json_err("missing 'scene_id' or 'track_id'");
-        else
-            result = command_result_to_json(
-                api.set_scene_leave_unchanged(root["scene_id"].get<std::string>(),
-                                               root["track_id"].get<std::string>()));
-    } else if (method == "clear_scene_assignment") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("track_id") || !root["track_id"].is_string())
-            result = json_err("missing 'scene_id' or 'track_id'");
-        else
-            result = command_result_to_json(
-                api.clear_scene_assignment(root["scene_id"].get<std::string>(),
-                                            root["track_id"].get<std::string>()));
-    } else if (method == "create_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'name'");
-        else
-            result = command_result_to_json(api.create_cue_path(root["name"].get<std::string>()));
-    } else if (method == "rename_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'path_id' or 'name'");
-        else
-            result = command_result_to_json(
-                api.rename_cue_path(root["path_id"].get<std::string>(),
-                                    root["name"].get<std::string>()));
-    } else if (method == "remove_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string())
-            result = json_err("missing 'path_id'");
-        else
-            result = command_result_to_json(
-                api.remove_cue_path(root["path_id"].get<std::string>()));
-    } else if (method == "move_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("to_index") || !root["to_index"].is_number_integer())
-            result = json_err("missing 'path_id' or 'to_index'");
-        else
-            result = command_result_to_json(
-                api.move_cue_path(root["path_id"].get<std::string>(),
-                                  root["to_index"].get<int>()));
-    } else if (method == "add_cue_step") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("scene_id") || !root["scene_id"].is_string())
-            result = json_err("missing 'path_id' or 'scene_id'");
-        else
-            result = command_result_to_json(
-                api.add_cue_step(root["path_id"].get<std::string>(),
-                                 root["scene_id"].get<std::string>(),
-                                 root.value("index", -1)));
-    } else if (method == "remove_cue_step") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("step_id") || !root["step_id"].is_string())
-            result = json_err("missing 'path_id' or 'step_id'");
-        else
-            result = command_result_to_json(
-                api.remove_cue_step(root["path_id"].get<std::string>(),
-                                    root["step_id"].get<std::string>()));
-    } else if (method == "move_cue_step") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("step_id") || !root["step_id"].is_string() ||
-                 !root.contains("to_index") || !root["to_index"].is_number_integer())
-            result = json_err("missing 'path_id', 'step_id', or 'to_index'");
-        else
-            result = command_result_to_json(
-                api.move_cue_step(root["path_id"].get<std::string>(),
-                                  root["step_id"].get<std::string>(),
-                                  root["to_index"].get<int>()));
-    } else if (method == "set_cue_step_advance") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("step_id") || !root["step_id"].is_string() ||
-                 !root.contains("advance_mode") || !root["advance_mode"].is_string())
-            result = json_err("missing 'path_id', 'step_id', or 'advance_mode'");
-        else
-            result = command_result_to_json(
-                api.set_cue_step_advance(root["path_id"].get<std::string>(),
-                                         root["step_id"].get<std::string>(),
-                                         root["advance_mode"].get<std::string>(),
-                                         root.value("bars", 0)));
-    } else if (method == "launch_cue_step") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("step_id") || !root["step_id"].is_string() ||
-                 !root.contains("quantize") || !root["quantize"].is_string())
-            result = json_err("missing 'path_id', 'step_id', or 'quantize'");
-        else
-            result = command_result_to_json(
-                api.launch_cue_step(root["path_id"].get<std::string>(),
-                                    root["step_id"].get<std::string>(),
-                                    root["quantize"].get<std::string>()));
-    } else if (method == "advance_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("path_id") || !root["path_id"].is_string() ||
-                 !root.contains("quantize") || !root["quantize"].is_string())
-            result = json_err("missing 'path_id' or 'quantize'");
-        else
-            result = command_result_to_json(
-                api.advance_cue_path(root["path_id"].get<std::string>(),
-                                     root["quantize"].get<std::string>()));
-    } else if (method == "stop_cue_path") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else
-            result = command_result_to_json(
-                api.stop_cue_path(root.value("path_id", std::string{})));
-    } else if (method == "queue_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id")  || !root["clip_id"].is_string() ||
-                 !root.contains("quantize") || !root["quantize"].is_string())
-            result = json_err("missing 'track_id', 'clip_id', or 'quantize'");
-        else {
-            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
-                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
-            result = command_result_to_json(
-                api.queue_clip(root["track_id"].get<std::string>(),
-                                root["clip_id"].get<std::string>(),
-                                root["quantize"].get<std::string>(), fade_bars));
-        }
-    } else if (method == "queue_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
-                 !root.contains("quantize") || !root["quantize"].is_string())
-            result = json_err("missing 'scene_id' or 'quantize'");
-        else {
-            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
-                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
-            result = command_result_to_json(
-                api.queue_scene(root["scene_id"].get<std::string>(),
-                                 root["quantize"].get<std::string>(), fade_bars));
-        }
-    } else if (method == "inspect_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_inspect_clip(graph,
-            root.value("track_id", ""), root.value("clip_id", ""));
-    } else if (method == "inspect_scene") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_inspect_scene(graph, api, root.value("scene_id", ""));
-    } else if (method == "rescan_operators") {
+    if (method == "rescan_operators") {
         result = [&]() -> std::string {
             int newly = registry.rescan();
             nlohmann::json j;
@@ -867,6 +585,318 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
 // until migrated. Each handler is a non-capturing lambda (→ function pointer).
 static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
     static const std::unordered_map<std::string, DispatchHandler> kHandlers = {
+        // --- Session: clips, scenes, cue paths (audit 04-R2) ---
+        {"update_clip_param", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                !root.contains("node_id") || !root["node_id"].is_string())
+                return json_err("missing 'track_id', 'clip_id', or 'node_id'");
+            const std::string track = root["track_id"].get<std::string>();
+            const std::string clip  = root["clip_id"].get<std::string>();
+            const std::string node  = root["node_id"].get<std::string>();
+            if (root.contains("bypassed") && root["bypassed"].is_boolean())
+                return command_result_to_json(
+                    c.api.update_clip_bypass(track, clip, node, root["bypassed"].get<bool>()));
+            else if (root.contains("string_value") && root["string_value"].is_string() &&
+                     root.contains("param") && root["param"].is_string())
+                return command_result_to_json(
+                    c.api.update_clip_string_param(track, clip, node, root["param"].get<std::string>(),
+                                                 root["string_value"].get<std::string>()));
+            else if (root.contains("value") && root["value"].is_number() &&
+                     root.contains("param") && root["param"].is_string())
+                return command_result_to_json(
+                    c.api.update_clip_param(track, clip, node, root["param"].get<std::string>(),
+                                          static_cast<float>(root["value"].get<double>())));
+            else
+                return json_err("need 'param'+'value', 'param'+'string_value', or 'bypassed'");
+        }},
+        {"rename_clip", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'track_id', 'clip_id', or 'name'");
+            return command_result_to_json(
+                c.api.rename_clip(root["track_id"].get<std::string>(),
+                                root["clip_id"].get<std::string>(),
+                                root["name"].get<std::string>()));
+        }},
+        {"set_clip_fade", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                !root.contains("fade_bars") || !root["fade_bars"].is_number())
+                return json_err("missing 'track_id', 'clip_id', or 'fade_bars'");
+            return command_result_to_json(
+                c.api.set_clip_fade(root["track_id"].get<std::string>(),
+                                  root["clip_id"].get<std::string>(),
+                                  root["fade_bars"].get<float>()));
+        }},
+        {"remove_clip", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string())
+                return json_err("missing 'track_id' or 'clip_id'");
+            return command_result_to_json(
+                c.api.remove_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+        }},
+        {"move_clip", [](DispatchContext& c, const std::string&,
+                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
+                return json_err("missing 'track_id', 'clip_id', or 'to_index'");
+            return command_result_to_json(
+                c.api.move_clip(root["track_id"].get<std::string>(),
+                              root["clip_id"].get<std::string>(),
+                              root["to_index"].get<int>()));
+        }},
+        {"launch_clip", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string())
+                return json_err("missing 'track_id' or 'clip_id'");
+            return command_result_to_json(
+                c.api.launch_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
+        }},
+        {"save_scene", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'name'");
+            return command_result_to_json(c.api.save_scene(root["name"].get<std::string>()));
+        }},
+        {"save_scene_from_clips", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("name") || !root["name"].is_string() ||
+                !root.contains("assignments") || !root["assignments"].is_object())
+                return json_err("missing 'name' or 'assignments' (object of track_id->clip_id)");
+            std::vector<std::pair<std::string, std::string>> assignments;
+            for (auto& [track_id, clip_id] : root["assignments"].items())
+                if (clip_id.is_string())
+                    assignments.emplace_back(track_id, clip_id.get<std::string>());
+            return command_result_to_json(
+                c.api.save_scene_from_clips(root["name"].get<std::string>(), assignments));
+        }},
+        {"update_scene", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string())
+                return json_err("missing 'scene_id'");
+            return command_result_to_json(c.api.update_scene(root["scene_id"].get<std::string>()));
+        }},
+        {"rename_scene", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("new_name") || !root["new_name"].is_string())
+                return json_err("missing 'scene_id' or 'new_name'");
+            return command_result_to_json(
+                c.api.rename_scene(root["scene_id"].get<std::string>(), root["new_name"].get<std::string>()));
+        }},
+        {"remove_scene", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string())
+                return json_err("missing 'scene_id'");
+            return command_result_to_json(c.api.remove_scene(root["scene_id"].get<std::string>()));
+        }},
+        {"move_scene", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
+                return json_err("missing 'scene_id' or 'to_index'");
+            return command_result_to_json(
+                c.api.move_scene(root["scene_id"].get<std::string>(), root["to_index"].get<int>()));
+        }},
+        {"set_scene_assignment", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id")  || !root["clip_id"].is_string())
+                return json_err("missing 'scene_id', 'track_id', or 'clip_id'");
+            return command_result_to_json(
+                c.api.set_scene_assignment(root["scene_id"].get<std::string>(),
+                                          root["track_id"].get<std::string>(),
+                                          root["clip_id"].get<std::string>()));
+        }},
+        {"set_scene_leave_unchanged", [](DispatchContext& c, const std::string&,
+                                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("track_id") || !root["track_id"].is_string())
+                return json_err("missing 'scene_id' or 'track_id'");
+            return command_result_to_json(
+                c.api.set_scene_leave_unchanged(root["scene_id"].get<std::string>(),
+                                               root["track_id"].get<std::string>()));
+        }},
+        {"clear_scene_assignment", [](DispatchContext& c, const std::string&,
+                                      const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("track_id") || !root["track_id"].is_string())
+                return json_err("missing 'scene_id' or 'track_id'");
+            return command_result_to_json(
+                c.api.clear_scene_assignment(root["scene_id"].get<std::string>(),
+                                            root["track_id"].get<std::string>()));
+        }},
+        {"create_cue_path", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'name'");
+            return command_result_to_json(c.api.create_cue_path(root["name"].get<std::string>()));
+        }},
+        {"rename_cue_path", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'path_id' or 'name'");
+            return command_result_to_json(
+                c.api.rename_cue_path(root["path_id"].get<std::string>(),
+                                    root["name"].get<std::string>()));
+        }},
+        {"remove_cue_path", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string())
+                return json_err("missing 'path_id'");
+            return command_result_to_json(
+                c.api.remove_cue_path(root["path_id"].get<std::string>()));
+        }},
+        {"move_cue_path", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
+                return json_err("missing 'path_id' or 'to_index'");
+            return command_result_to_json(
+                c.api.move_cue_path(root["path_id"].get<std::string>(),
+                                  root["to_index"].get<int>()));
+        }},
+        {"add_cue_step", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("scene_id") || !root["scene_id"].is_string())
+                return json_err("missing 'path_id' or 'scene_id'");
+            return command_result_to_json(
+                c.api.add_cue_step(root["path_id"].get<std::string>(),
+                                 root["scene_id"].get<std::string>(),
+                                 root.value("index", -1)));
+        }},
+        {"remove_cue_step", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("step_id") || !root["step_id"].is_string())
+                return json_err("missing 'path_id' or 'step_id'");
+            return command_result_to_json(
+                c.api.remove_cue_step(root["path_id"].get<std::string>(),
+                                    root["step_id"].get<std::string>()));
+        }},
+        {"move_cue_step", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("step_id") || !root["step_id"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
+                return json_err("missing 'path_id', 'step_id', or 'to_index'");
+            return command_result_to_json(
+                c.api.move_cue_step(root["path_id"].get<std::string>(),
+                                  root["step_id"].get<std::string>(),
+                                  root["to_index"].get<int>()));
+        }},
+        {"set_cue_step_advance", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("step_id") || !root["step_id"].is_string() ||
+                !root.contains("advance_mode") || !root["advance_mode"].is_string())
+                return json_err("missing 'path_id', 'step_id', or 'advance_mode'");
+            return command_result_to_json(
+                c.api.set_cue_step_advance(root["path_id"].get<std::string>(),
+                                         root["step_id"].get<std::string>(),
+                                         root["advance_mode"].get<std::string>(),
+                                         root.value("bars", 0)));
+        }},
+        {"launch_cue_step", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("step_id") || !root["step_id"].is_string() ||
+                !root.contains("quantize") || !root["quantize"].is_string())
+                return json_err("missing 'path_id', 'step_id', or 'quantize'");
+            return command_result_to_json(
+                c.api.launch_cue_step(root["path_id"].get<std::string>(),
+                                    root["step_id"].get<std::string>(),
+                                    root["quantize"].get<std::string>()));
+        }},
+        {"advance_cue_path", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path_id") || !root["path_id"].is_string() ||
+                !root.contains("quantize") || !root["quantize"].is_string())
+                return json_err("missing 'path_id' or 'quantize'");
+            return command_result_to_json(
+                c.api.advance_cue_path(root["path_id"].get<std::string>(),
+                                     root["quantize"].get<std::string>()));
+        }},
+        {"stop_cue_path", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return command_result_to_json(
+                c.api.stop_cue_path(root.value("path_id", std::string{})));
+        }},
+        {"queue_clip", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id")  || !root["clip_id"].is_string() ||
+                !root.contains("quantize") || !root["quantize"].is_string())
+                return json_err("missing 'track_id', 'clip_id', or 'quantize'");
+            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
+                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
+            return command_result_to_json(
+                c.api.queue_clip(root["track_id"].get<std::string>(),
+                                root["clip_id"].get<std::string>(),
+                                root["quantize"].get<std::string>(), fade_bars));
+        }},
+        {"queue_scene", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("scene_id") || !root["scene_id"].is_string() ||
+                !root.contains("quantize") || !root["quantize"].is_string())
+                return json_err("missing 'scene_id' or 'quantize'");
+            const float fade_bars = root.contains("fade_bars") && root["fade_bars"].is_number()
+                ? static_cast<float>(root["fade_bars"].get<double>()) : 0.0f;
+            return command_result_to_json(
+                c.api.queue_scene(root["scene_id"].get<std::string>(),
+                                 root["quantize"].get<std::string>(), fade_bars));
+        }},
+        {"inspect_clip", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_inspect_clip(c.graph,
+                root.value("track_id", ""), root.value("clip_id", ""));
+        }},
+        {"inspect_scene", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_inspect_scene(c.graph, c.api, root.value("scene_id", ""));
+        }},
+
         {"inspect_session", [](DispatchContext& c, const std::string&,
                                const nlohmann::json&, bool) -> std::string {
             return handle_inspect_session(c.graph, c.api);
