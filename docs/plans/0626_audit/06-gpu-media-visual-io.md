@@ -1,11 +1,21 @@
 # Audit 06: GPU, Media & Visual I/O
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-05 (verify-gated; 10 candidates → 3 confirmed, 7 dismissed)
+**Status:** Re-audited (maintainability) 2026-06-05 (verify-gated; 5 candidates → 4 confirmed, 1 dismissed). Prior correctness pass retained below; Round-2 maintainability section at end.
 
 ## Purpose
 
 Audit GPU runtime services and visual media paths for resource lifetime, shader contract, platform interop, capture/readback, and media decode robustness risks.
+
+## Re-Audit Mandate
+
+The prior pass should be treated as a correctness/robustness audit, not a complete code-quality audit.
+Run this audit again with equal weight on maintainability: structure, duplication, ownership boundaries,
+API clarity, dependency direction, and ease of future change.
+
+Do not mark the audit complete until every checklist item is annotated as `[x]` done, `[~]` partially
+covered, or `[ ]` intentionally deferred with a short note. Findings must include both confirmed defects
+and structural risks that make future defects likely.
 
 ## Scope
 
@@ -43,8 +53,21 @@ Audit GPU runtime services and visual media paths for resource lifetime, shader 
 - [ ] Review tests that claim to cover the subsystem.
 - [ ] Check docs/code/test contract drift.
 - [ ] Identify correctness, robustness, and maintainability findings.
+- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [ ] Check dependency direction and public/private API boundaries.
+- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
 - [ ] Record findings with severity, category, evidence, and recommendation.
 - [ ] Propose immediate, near-term, and backlog follow-up work.
+
+## Required Maintainability Review
+
+- [x] Map GPU context, frame execution, media decode, texture upload, readback, and platform-I/O responsibilities. → `src/runtime/gpu/` helpers + media-decode pipeline are coherent/well-factored; the only structural issue is duplicated operator placeholder logic.
+- [x] Look for duplicated resource lifecycle, shader-layout, media diagnostic, placeholder, and platform-stub logic. → **the 1×1 fallback/placeholder texture is duplicated across 9 GPU ops** (06-R2-F1). Pipeline/bind-group "duplication" was refuted — per-operator-necessary, not factorable.
+- [x] Check whether GPU/media APIs expose implementation detail or force operators to duplicate runtime behavior. → `movie_file.cpp` reaches **concrete decoder types** (`HAPDecoder*`/`AVFDecoder*`) for methods missing from the abstract `VideoDecoder` interface (06-R2-F3); `gpu_common.h` helpers under-documented on when to use vs hand-roll (06-R2-F5).
+- [x] Check whether macOS-specific behavior is isolated from cross-platform abstractions. → mostly yes (Syphon correctly stubbed); **WebcamIn has no non-macOS stub** for `enumerate_cameras()` → blocks cross-platform compile (06-R2-F4).
+- [x] Identify code that is correct today but fragile under likely GPU-output, media-codec, readback, or platform changes. → the 9× fallback-texture copies + the decoder-cast abstraction break; GPU lane-promotion is **deferred** to the lane-value clean-break.
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -194,3 +217,88 @@ Seven candidates were refuted — notably both "High" findings:
 - [x] Media and GPU findings are separated when their fixes belong to different owners.
 - [x] Platform-specific risks are labeled as macOS-only or cross-platform blockers.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Re-Audit Mandate (round 1 found the subsystem clean on
+correctness/resource-lifetime). **5 candidates → 4 confirmed (2 Medium, 2 Low), 1 dismissed.** The
+`src/runtime/gpu/` helpers and the media-decode pipeline (factory → AVF/HAP → texture_upload →
+queue/worker/transport) are **coherent and well-factored**; `particles_2d` is a justified unified modular
+operator (not a god-file); and the broad "operators hand-roll pipelines" claim was correctly **not** a
+finding (per-operator non-standard layouts are necessary, not duplication). The verify pass refuted the
+`movie_file.cpp` "god-file" claim — it's actually decomposed into internal classes
+(`MovieFileSession`/`MovieFileRing`/`MovieFileFillThread`), and several cited line ranges were wrong.
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 06-R2-F1 | Medium | Maintainability | The **1×1 fallback/placeholder texture creation** (for a disconnected input) is duplicated across **9 GPU operators** — same 3-step pattern (`WGPUTextureDescriptor` 1×1 → view → `wgpuQueueWriteTexture` of zero); no `gpu_common.h` helper | `bloom.cpp:386`, `trails.cpp:562`, `composite.cpp:455`, `particles_2d.cpp:1306`, `feedback.cpp:271`, `mesh_warp.cpp:374`, `lut_apply.cpp:386`, `scopes.cpp:468`, `motion.cpp:275` |
+| 06-R2-F3 | Medium | Maintainability | `movie_file.cpp` **breaks the `VideoDecoder` abstraction** — `static_cast<HAPDecoder*>`/`<AVFDecoder*>` to call methods absent from the interface (`video_decoder.h:20-56`) | `movie_file.cpp:732,752,830,993,1006,1025,1039` |
+| 06-R2-F4 | Low | Robustness | **WebcamIn has no non-macOS stub** — `enumerate_cameras()` is defined only in `avf_capture.mm`, so non-macOS builds fail to link (unlike Syphon's `syphon_in_stub.cpp`) | `webcam_in.cpp:108`; `avf_capture.mm:339`; `capture_source.h:15` |
+| 06-R2-F5 | Low | Docs | `gpu_common.h` `create_standard_bind_layout/group` doc describes the layout's shape but not **when to use it vs hand-roll** (so operators over-hand-roll) | `gpu_common.h:217-281` |
+
+> 06-R2-F1 nuance: the 9 copies are the same *structural* pattern but not byte-identical — the 8 effect ops
+> use `gpu->output_format` (RGBA16Float, transparent zero, 8-byte rows); `particles_2d` uses RGBA8Unorm /
+> opaque black / 4-byte rows. So the extracted helper must **parameterize format + fill-value + row stride**.
+> All findings are **non-lane** (GPU lane-promotion is deferred to the clean-break).
+
+### Evidence & Recommendation
+
+**06-R2-F1 — fallback-texture duplication ×9** (Medium, Maintainability — *the cheap, high-value fix*)
+- *Evidence:* each op has a private `create_fallback(const VividGpuContext*)` doing the identical
+  descriptor→view→write-zero sequence (verified across all 9). `gpu_common.h` has buffer/sampler/texture
+  factories but no fallback-texture helper.
+- *Recommendation (refactor candidate):* add
+  `create_fallback_texture(WGPUDevice, WGPUQueue, WGPUTextureFormat, bool opaque_black = false)` →
+  texture+view to `gpu_common.h`, parameterizing format + fill + stride; migrate the 9 ops.
+  **Priority medium, payoff high, low-risk** — guarded by the existing GPU output tests (a disconnected
+  input still renders the same), plus a small unit test of the helper.
+
+**06-R2-F3 — `movie_file` decoder-abstraction break** (Medium, Maintainability)
+- *Evidence:* `video_decoder.h:20-56` declares the abstract interface (open/close/decode_frame/pixel_data/…);
+  `movie_file.cpp` `static_cast`s to `HAPDecoder*`/`AVFDecoder*` (7 sites) to call concrete-only methods
+  (`make_decoded_frame`, AVF pixel-buffer helpers). The operator therefore knows each codec's concrete type.
+- *Recommendation:* lift the needed operations onto `VideoDecoder` as virtuals (implemented by HAP/AVF) and
+  drop the casts. **Priority medium, payoff medium** — restores the boundary; moderate (interface + 2
+  decoders + the operator). Some AVF/HAP-specific scheduling may legitimately stay concrete — scope to the
+  genuinely-shared operations.
+
+**06-R2-F4 / F5 — small platform/doc items** (Low) — add an `enumerate_cameras()` non-macOS stub (build
+includes it off-macOS, `avf_capture.mm` on macOS); expand the `gpu_common.h` helper doc with a "use this for
+simple fragment ops; hand-roll for compute/multi-pass" note.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **`create_fallback_texture()` helper + migrate 9 ops** (06-R2-F1) — **priority medium, payoff high,
+   low-risk.** The clear win; behavior-neutral, test-guarded.
+2. **Lift `movie_file`'s concrete decoder ops onto `VideoDecoder`** (06-R2-F3) — priority medium, payoff
+   medium; restores the abstraction.
+3. **WebcamIn non-macOS stub** (06-R2-F4) — priority low, payoff low (cross-platform compile).
+4. **`gpu_common.h` helper "when to use" doc** (06-R2-F5) — trivial.
+
+### Test Gaps (refactor-safety)
+- Fallback-texture behavior (would unit-test the extracted helper); decoder-factory routing (HAP vs AVF by
+  codec); the 17 metadata/telemetry ports. (Round-1 06-F5/F6 GPU-dependent test gaps remain deferred.)
+
+### Dismissed (verification-refuted)
+- **06-R2-F2** (`movie_file.cpp` 1412-line "god-file" mixing 7 concerns) — refuted: the file **is** large
+  but **already decomposed** into internal classes (`MovieFileSession`, `MovieFileRing`,
+  `MovieFileFillThread`) that separate the concerns; several cited line ranges were wrong. "Needs
+  decomposition" over-reaches — the structure is reasonable for a media operator.
+
+### Out of scope (lane-value clean-break)
+- GPU lane-promotion (`kGpuLanePromotionThreshold`, `lane_input_gpu_promoted`, `lane_buffer_gpu`,
+  `VividGpuContext.input_lane_gpu_*`) is rewritten by the queued clean-break (Phase 4) — not audited here.
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (06-R2-F1/F4/F5):** extracted `vivid::gpu::create_fallback_texture(device, queue,
+  format, opaque_black)` into `gpu_common.h` and migrated all 9 ops (net −142 lines; behavior-neutral,
+  parity-proven by `test_gpu_operators`/`test_gpu_correctness`/`test_demo_graphs`); guarded WebcamIn's
+  `enumerate_cameras()` call with `#ifdef __APPLE__` (non-macOS link fix); documented the `gpu_common.h`
+  bind-layout helpers' when-to-use. Merged (`674e886b`).
+- **Deferred — backlog (06-R2-F3, with rationale):** `movie_file.cpp`'s concrete `HAPDecoder*`/`AVFDecoder*`
+  casts reflect a **genuine sync-vs-async decode-model difference** (`make_decoded_frame` is HAP-only;
+  `read_pixel_buffers_until`/`acquire_pixel_buffer` are AVF-only). Hoisting them onto `VideoDecoder` would
+  make it a **fat interface** — worse than the honest casts. A clean fix needs a sync/async decode-model
+  abstraction (moderate redesign). Documented the intentional split in `movie_file.cpp`; the redesign is
+  deferred. Also backlog: the fallback-texture / decoder-routing / telemetry-port unit tests.
