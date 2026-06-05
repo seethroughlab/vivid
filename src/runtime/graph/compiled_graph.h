@@ -502,6 +502,11 @@ struct CompiledNode {
     bool missing_operator = false;
     std::string missing_operator_reason;  // "not_found", "not_built", "abi_mismatch", "load_failed"
     std::string missing_operator_detail;  // human-readable explanation
+    // Verbose, multi-line, user-facing message synthesized once at compile time
+    // (audit 01-R2-F3). UI-only — the GraphSnapshot copies it into error_message
+    // instead of re-deriving it from the registry every frame. Structured callers
+    // (control server, lockfile) use missing_operator_reason/_detail, not this.
+    std::string missing_operator_ui_message;
 
     // ── Lane metadata (populated by compiler Pass 2.6) ────────────────────
     LaneBehavior lane_behavior = LaneBehavior::Pointwise;

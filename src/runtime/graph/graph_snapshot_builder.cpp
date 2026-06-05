@@ -128,36 +128,12 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.missing_operator = cn.missing_operator;
         sn.disabled_by_safe_mode = (cn.missing_operator_reason == "disabled");
         sn.quarantined           = (cn.missing_operator_reason == "quarantined");
-        if (cn.missing_operator && sn.disabled_by_safe_mode) {
-            // Safe-mode disabled: overrides the generic missing-operator message
-            // with the crash-recovery explanation.  Detail mirrors what the
-            // compiler set in Pass 1.
-            sn.error_message = cn.missing_operator_detail.empty()
-                ? std::string("Disabled by safe mode (crash recovery).")
-                : cn.missing_operator_detail;
-        } else if (cn.missing_operator && sn.quarantined) {
-            sn.error_message = cn.missing_operator_detail.empty()
-                ? std::string("Quarantined after repeated crashes.")
-                : cn.missing_operator_detail;
-        } else if (cn.missing_operator) {
-            // Try to find the specific package with an ABI mismatch for this operator
-            std::string pkg_name;
-            for (const auto& d : registry.abi_mismatch_diagnostics()) {
-                if (d.plugin_name == sn.type_name) { pkg_name = d.package_name; break; }
-            }
-            if (!pkg_name.empty()) {
-                sn.error_message = "\"" + sn.type_name + "\" failed to load (ABI mismatch).\n"
-                    "Package '" + pkg_name + "' may need rebuild.\n"
-                    "Run: vivid rebuild " + pkg_name;
-            } else if (registry.has_abi_mismatch_diagnostics()) {
-                sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
-                    "ABI mismatch detected \xe2\x80\x94 plugins were built against a different Vivid version.\n"
-                    "Run 'vivid rebuild <package>' to recompile, then reload.";
-            } else {
-                sn.error_message = "Operator \"" + sn.type_name + "\" not found.\n"
-                    "The package providing this operator may not be installed or linked.\n"
-                    "Install/link the package, then reload the graph.";
-            }
+        if (cn.missing_operator) {
+            // The verbose UI message is synthesized once at compile time
+            // (audit 01-R2-F3); copy it instead of re-deriving it from the
+            // registry on every frame. Structured callers still read
+            // missing_operator_reason / _detail.
+            sn.error_message = cn.missing_operator_ui_message;
         }
 
         // Solo state

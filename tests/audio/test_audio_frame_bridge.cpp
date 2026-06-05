@@ -4,6 +4,7 @@
 // and set_solo_active_set() using mock CompiledGraphs.
 
 #include "runtime/audio/audio_frame_bridge.h"
+#include "runtime/graph/graph_compiler_internal.h"  // kDefaultLaneCapacity
 #include <cstdio>
 #include <cstring>
 #include <memory>
@@ -554,6 +555,48 @@ static void test_push_lane_preserves_lane_set_id() {
           "lane_set_id = 42 preserved through snapshot");
 }
 
+// audit 01-R2-F7: a lane array longer than the fixed bridge slot capacity must
+// be clamped (not overflow the slot) and counted via lane_overflow_count().
+static void test_push_lane_clamps_overflow() {
+    std::fprintf(stderr, "\n--- push_to_audio: oversized lane array clamped + counted (01-R2-F7) ---\n");
+
+    auto cg = make_audio_graph({
+        {"gen",  0, 0, 1, 0, 0, false},
+        {"osc",  1, 1, 1, 0, 0, false},
+    });
+    cg->nodes[0].active_cadence = vivid::Cadence::Frame;
+    cg->audio_order = {1};
+
+    // gen outputs a lane array LONGER than the 1024-element bridge slot capacity.
+    constexpr uint32_t kCap  = vivid::graph_compiler_internal::kDefaultLaneCapacity;
+    constexpr uint32_t kOver = kCap + 500;  // 1524
+    static vivid::LaneBuffer big_buf(kOver);
+    for (uint32_t i = 0; i < kOver; ++i) big_buf.data[i] = static_cast<float>(i);
+    big_buf.committed_length = kOver;
+    cg->nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&big_buf);
+
+    vivid::CompiledEdge edge{};
+    edge.from_node = 0;
+    edge.from_port = 0;
+    edge.to_node = 1;
+    edge.to_port = 0;
+    edge.transport = vivid::EdgeTransport::Snapshot;
+    edge.data_type = VIVID_PORT_LANE_ARRAY;
+    cg->edges.push_back(edge);
+    cg->frame_to_audio_edges.push_back(0);
+
+    vivid::AudioFrameBridge bridge;
+    bridge.build(*cg);
+    check(bridge.lane_overflow_count() == 0, "overflow count starts at 0");
+
+    bridge.push_to_audio(*cg);
+
+    const auto& snap = bridge.active_params();
+    check(snap.lane_inputs[0][0].capacity == kCap, "bridge slot capacity is 1024");
+    check(snap.lane_inputs[0][0].length == kCap, "oversized lane clamped to slot capacity");
+    check(bridge.lane_overflow_count() == 1, "overflow counter incremented once");
+}
+
 int main() {
     std::fprintf(stderr, "=== test_audio_frame_bridge ===\n");
 
@@ -573,6 +616,7 @@ int main() {
     // test_bridge_zero_value_passthrough removed when explicit bridge semantics became the
     // only frame/audio delivery path.
     test_push_lane_preserves_lane_set_id();
+    test_push_lane_clamps_overflow();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);
     return failures > 0 ? 1 : 0;

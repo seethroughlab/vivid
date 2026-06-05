@@ -305,13 +305,17 @@ caller friction; a "missing" `is_scalar()` accessor that **already exists** at `
   ~258→9 lines, extracted `process_lifted_audio_node` / `process_loopbased_audio_node` /
   `process_normal_audio_node` / `populate_audio_context` (F4 collapses the triplicated VividAudioContext
   init). Committed on `audit-01-maint-fixes`.
-- **Deferred — backlog (with rationale):**
-  - **01-R2-F3** (precompute missing-op UI message): narrow Low DRY nit — the per-frame re-derivation only
-    fires for *missing/errored* nodes (not a hot path), and the proper fix must keep the structured
-    `missing_operator_reason` enum (widely consumed by control_server/project_lockfile). Worth doing, low
-    priority.
-  - **01-R2-F7** (compile-time bridge lane-capacity guard): robustness, not maintainability; the >1024
-    overflow is already surfaced via `runtime_health` (verifier downgraded to Low), and a guard is a
-    feature-add (new diagnostic / growable slot), not a behavior-neutral refactor.
-  - Refactor-safety test gaps (lane-state across recompile/bridge; strategy stability) + graph.md /
-    ARCHITECTURE.md doc updates.
+- **DONE 2026-06-05 (01-R2-F3):** the verbose missing-operator UI message is now synthesized once in the
+  compiler (Pass 1, `synth_missing_operator_message()` in `graph_compiler.cpp`) and stored in
+  `CompiledNode::missing_operator_ui_message`; `GraphSnapshotBuilder` copies it instead of re-deriving it
+  from the registry every frame. The structured `missing_operator_reason`/`_detail` fields are unchanged (6
+  consumers preserved). `project_lockfile.cpp` also sets the field on its post-compile `locked_unavailable`
+  path — incidentally surfacing the lockfile reason instead of a generic "not found" string for locked nodes.
+- **DONE 2026-06-05 (01-R2-F7):** the compiler now emits a compile-time warning for any cross-cadence
+  bridge edge whose *statically-known* `lane_count` exceeds `kDefaultLaneCapacity` (1024); added
+  `test_push_lane_clamps_overflow` (in `test_audio_frame_bridge.cpp`) locking the runtime clamp +
+  `lane_overflow_count()` behavior. **Out of scope (future):** per-port-sized / growable bridge slots —
+  an RT-path change that wouldn't help the runtime-dynamic (polyphonic) case, where the count reads ≤1 at
+  compile time and the existing `runtime_health` warning remains the backstop.
+- **Backlog:** refactor-safety test gaps (lane-state across recompile/bridge; strategy stability) + graph.md
+  / ARCHITECTURE.md doc updates.
