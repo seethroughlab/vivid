@@ -1,7 +1,7 @@
 # Audit 09: Seed Operators & Shared Libraries
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-05 (verify-gated; 9 candidates → 3 confirmed, 6 dismissed)
+**Status:** Round-1 audited 2026-06-05 (verify-gated; 9 candidates → 3 confirmed, 6 dismissed). Round-2 maintainability re-audit 2026-06-05 (3 candidates → 3 confirmed, all Low) — section at end.
 
 ## Purpose
 
@@ -63,12 +63,12 @@ and structural risks that make future defects likely.
 
 ## Required Maintainability Review
 
-- [ ] Map per-domain operator responsibilities and identify operator families with duplicated implementation patterns.
-- [ ] Look for duplicated DSP, editor, preset, lane, reset, metadata, plugin, movie, sequencer, and parameter-handling logic.
-- [ ] Check whether shared libraries have clear ownership and avoid leaking one operator's assumptions into another.
-- [ ] Check whether operators follow reusable conventions that make future LLM-generated operators easier.
-- [ ] Identify code that is correct today but fragile under likely lane, preset, plugin, editor, or domain-expansion changes.
-- [ ] Produce refactor candidates with priority and expected payoff, separate from bug fixes.
+- [x] Map per-domain operator responsibilities and identify operator families with duplicated implementation patterns. → the note/sequencer family is well-factored; the only remaining duplication is **editor-window boilerplate** across the 4 grid editors.
+- [x] Look for duplicated DSP, editor, preset, lane, reset, metadata, plugin, movie, sequencer, and parameter-handling logic. → editor beat-separator/playhead draw is duplicated ×4 (09-R2-F1); note-emission, step-advance, MIDI-parse are **shared or genuinely per-operator** (not duplication).
+- [x] Check whether shared libraries have clear ownership and avoid leaking one operator's assumptions into another. → **clean**: `tracker_data.h`/`arpeggiator_patterns.h`/`drum_sequencer_layout.h` are single-owner; `note_helpers.h`/`note_id_counter.h`/`voice_breakouts.h` are assumption-free shared utilities.
+- [x] Check whether operators follow reusable conventions that make future LLM-generated operators easier. → **yes**: consistent `Param<T>` / `collect_params`/`collect_ports` / `<Name>Core` / ChildOp `_embeddable.cpp` / lane-behavior declarations; uniform `factory_presets.json`.
+- [x] Identify code that is correct today but fragile under likely lane, preset, plugin, editor, or domain-expansion changes. → editor styling lives in 4 copies (09-R2-F1); a new grid-editor will copy-paste the pattern. Lane behavior is **deferred** to the lane-value clean-break.
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -199,3 +199,48 @@ Six candidates were refuted (4 were maintainability/docs claims contradicted by 
 - [x] Test gaps identify which operators or operator families need coverage.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog. *(+ refactor candidates listed
   separately from bug fixes per the mandate.)*
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Strong Audit Mandate. **3 candidates → 3 confirmed (all Low), 0
+dismissed.** Low yield — the seed-operator layer is **well-factored**: note-emission is 100% shared
+(`note_helpers.h` / `note_id_counter.h`, adopted by every note emitter — no hand-rolling); the
+`shared/sequencer/` modules have **clean single-owner ownership** (no cross-operator leaks); step-advance and
+MIDI-parse are genuinely **per-operator-semantic** (not duplication); the ChildOp `_embeddable.cpp`
+convention, `factory_presets.json` shape, and authoring conventions (`Param<T>`/`collect_params`/`<Name>Core`)
+are consistent and LLM-friendly. All findings cluster in the **editor-window boilerplate**, and all are
+explicitly **low-ROI** (the grid editors already share `ui_step_grid`/`GridState`/`draw_ui_helpers`/
+`editor_keys`/`Selection`; only ~15–20% per-file boilerplate remains, the other ~80% is operator-specific
+rendering).
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 09-R2-F1 | Low | Maintainability | The **beat-separator** (every-4-steps loop) + **playhead column-highlight** draw is duplicated across the 4 grid editors (minor alpha/style variance) | `drum_sequencer_editor.cpp:436-451`, `sequencer_editor.cpp:285-302`, `pattern_seq_editor.cpp:294-308`, `arpeggiator_editor.cpp:392-399` |
+| 09-R2-F2 | Low | Maintainability | Piano-roll coord helpers (`pitch_from_y`/`y_from_pitch`/`beat_from_x`) are file-local `static` in `midi_clip_editor` — **single adopter** (audio_clip is a waveform editor, not piano-roll) | `midi_clip_editor.cpp:55-68` |
+| 09-R2-F3 | Low | Test gap | Editor tests are per-operator happy-path; **no cross-editor meta-test** would catch a regression if the shared beat-separator/playhead helper (F1) were extracted | `tests/operators/test_{drum_sequencer,sequencer,pattern_seq,arpeggiator}_editor.cpp` |
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **`draw_beat_separators()` + playhead helper** (09-R2-F1) — **priority low, payoff low.** Extract a small
+   inline helper (in `src/operator_api/editor_ui/`) taking grid rect + step count + style; migrate the 4
+   editors. Marginal ROI (~15-20 lines/editor); do only when touching editor styling. If done, pair with the
+   F3 cross-editor meta-test.
+2. **Piano-roll coord helpers** (09-R2-F2) — **no action now**; extract only if a 2nd piano-roll operator
+   arrives (single adopter today).
+
+### Dismissed (verification-refuted)
+- None this round. The recon was accurate and the finder appropriately scoped F1 as low-ROI rather than
+  inflating it. (Confirmed clean and **not** filed: note-emission sharing, shared-module ownership,
+  step-advance per-operator semantics, MIDI-parse, ChildOp convention, preset structure, authoring
+  conventions.)
+
+### Out of scope
+- Round-1 09-F1 (base64 triplication) is **already fixed** (`plugin_common/base64.h`). Round-1 09-F5
+  (preset content-validation test) + 09-F6 (Envelope scalar-fallback test) remain backlog test gaps.
+- Lane behavior (the lane-heavy control ops) is **deferred** to the queued lane-value clean-break.
+
+## Round-2 Follow-up
+- **Backlog (all low-priority):** 09-R2-F1 (`draw_beat_separators` helper, when touching editor styling) +
+  09-R2-F3 (its cross-editor meta-test); 09-R2-F2 is no-action. Nothing cheap-and-urgent — the family is
+  clean.
