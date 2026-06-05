@@ -743,262 +743,12 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Check for lane-lifted processing
             auto lift_it = node_to_lift_group_.find(ni);
             if (lift_it != node_to_lift_group_.end()) {
-                // ── Lane-lifted: deinterleave → per-lane process → interleave ──
                 auto& group = lane_lift_groups_[lift_it->second];
-                uint32_t lanes = group.lane_count;
-                node_lane_count = lanes;
-
-                // Deinterleave: extract lane c from multi-lane buffers into per-lane mono buffers
-                for (uint32_t c = 0; c < lanes; ++c) {
-                    for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                        if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
-                            const float* mc = a.buffers_in[p].data() + c * buffer_size_;
-                            std::memcpy(group.per_lane_inputs[c][p].data(), mc, chunk * sizeof(float));
-                        } else {
-                            // Non-audio ports: broadcast same data to all lanes
-                            std::memcpy(group.per_lane_inputs[c][p].data(),
-                                        a.buffers_in[p].data(), chunk * sizeof(float));
-                        }
-                    }
-                }
-
-                // Process each lane instance
-                for (uint32_t c = 0; c < lanes; ++c) {
-                    VividAudioContext ctx{};
-                    ctx.time = node_time;
-                    ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
-                    ctx.frame = audio_frame_ + frames_written;
-                    ctx.node_id = cn.node_id.c_str();
-                    ctx.param_values = a.audio_local_params.data();
-                    ctx.input_buffers = group.per_lane_in_ptrs[c].data();
-                    ctx.output_buffers = group.per_lane_out_ptrs[c].data();
-                    ctx.buffer_size = chunk;
-                    ctx.sample_rate = sample_rate_;
-                    ctx.input_channel_counts = nullptr;  // mono view
-                    ctx.output_channel_counts = nullptr;
-                    ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-                    ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
-                    ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
-                    ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
-                    ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
-                    ctx.custom_outputs = a.custom_output_ptrs.empty() ? nullptr : a.custom_output_ptrs.data();
-                    ctx.custom_output_count = a.custom_output_count;
-                    ctx.shared_handles = vivid::shared_handle_service();
-                    ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
-                    ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
-                    ctx.lane_count = lanes;
-                    ctx.lane_index = c;
-                    ctx.lane_set_id = group.lane_set_id;
-                    ctx.lane_id = group.lane_ids[c];
-                    ctx.lane_state_fn = lane_state_fn_bridge;
-                    ctx.lane_state_service = &node_lane_contexts_[ni_ord];
-                    ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
-                    ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
-                    populate_metronome_context(ctx, metronome);
-                    // Note: allocate/retire use lane_state_ directly (not per-node context)
-
-                    auto process_start = AudioClock::now();
-                    try {
-                        vivid::CrashGuard guard(cn.node_id.c_str());
-                        cn.loader->process_audio(group.instances[c], &ctx);
-                    } catch (const std::exception& ex) {
-                        cn.errored = true;
-                        std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
-                        a.error_message[sizeof(a.error_message) - 1] = '\0';
-                    } catch (...) {
-                        cn.errored = true;
-                        std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
-                    }
-                    node_process_us += elapsed_us(process_start, AudioClock::now());
-                }
-
-                if (cn.errored) {
-                    for (auto& buf : a.buffers_out)
-                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
-                } else {
-                    // Interleave: copy per-lane mono output back into multi-lane output buffers.
-                    for (uint32_t c = 0; c < lanes; ++c) {
-                        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                            if (p < cn.output_port_types.size() &&
-                                (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
-                                 cn.output_port_types[p] == VIVID_PORT_SCALAR)) {
-                                float* mc = a.buffers_out[p].data() + c * buffer_size_;
-                                std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
-                            }
-                        }
-                    }
-                }
+                process_lifted_audio_node(cn, a, group, node_time, chunk, frames_written, ni_ord, metronome, node_process_us, node_lane_count);
             } else if (cn.audio && cn.audio->execution_strategy == LaneExecutionStrategy::LoopBased) {
-                // ── LoopBased: single instance, runtime-driven loop over lanes ──
-                // Discover lane count from lane inputs at runtime.
-                uint32_t loop_lanes = 0;
-                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
-                    if (cn.c_in_lane_views[p].length > loop_lanes)
-                        loop_lanes = cn.c_in_lane_views[p].length;
-                }
-                uint32_t max_ll = graph_->max_loop_lanes;
-                if (loop_lanes > max_ll) {
-                    std::fprintf(stderr, "[vivid] LoopBased node '%s': lane count %u exceeds max %u, clamping\n",
-                                 cn.node_id.c_str(), loop_lanes, max_ll);
-                    loop_lanes = max_ll;
-                }
-                node_lane_count = loop_lanes;
-
-                if (loop_lanes > 0) {
-                    // Read identity-bearing lane_ids (pre-allocated scratch).
-                    auto* loop_lane_ids = loop_lane_ids_scratch_.data();
-                    int32_t lid_port = a.lane_id_port;
-                    bool has_identity_ids = false;
-                    if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lane_views.size()) {
-                        const auto& lid_sp = cn.c_in_lane_views[lid_port];
-                        if (lid_sp.length >= loop_lanes) {
-                            for (uint32_t c = 0; c < loop_lanes; ++c)
-                                loop_lane_ids[c] = static_cast<uint32_t>(lid_sp.data[c]);
-                            has_identity_ids = true;
-                        }
-                    }
-                    if (!has_identity_ids) {
-                        for (uint32_t c = 0; c < loop_lanes; ++c)
-                            loop_lane_ids[c] = c + 1;  // derived positional IDs
-                    }
-
-                    // Per-lane mono buffer pointers (pre-allocated scratch)
-                    auto* loop_in_ptrs = loop_in_ptrs_scratch_.data();
-                    auto* loop_out_ptrs = loop_out_ptrs_scratch_.data();
-
-                    for (uint32_t c = 0; c < loop_lanes; ++c) {
-                        // Set up per-lane buffer pointers (slice into pre-allocated buffers)
-                        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-                            if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
-                                loop_in_ptrs[p] = a.buffers_in[p].data() + c * buffer_size_;
-                            } else {
-                                loop_in_ptrs[p] = a.buffers_in[p].data();  // broadcast non-audio
-                            }
-                        }
-                        for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                            loop_out_ptrs[p] = a.buffers_out[p].data() + c * buffer_size_;
-
-                        VividAudioContext ctx{};
-                        ctx.time = node_time;
-                        ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
-                        ctx.frame = audio_frame_ + frames_written;
-                        ctx.node_id = cn.node_id.c_str();
-                        ctx.param_values = a.audio_local_params.data();
-                        ctx.input_buffers = loop_in_ptrs;
-                        ctx.output_buffers = loop_out_ptrs;
-                        ctx.buffer_size = chunk;
-                        ctx.sample_rate = sample_rate_;
-                        ctx.input_channel_counts = nullptr;  // mono view
-                        ctx.output_channel_counts = nullptr;
-                        ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-                        ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
-                        ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
-                        ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
-                        ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
-                        ctx.custom_outputs = a.custom_output_ptrs.empty() ? nullptr : a.custom_output_ptrs.data();
-                        ctx.custom_output_count = a.custom_output_count;
-                        ctx.shared_handles = vivid::shared_handle_service();
-                        ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
-                        ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
-                        ctx.lane_count = loop_lanes;
-                        ctx.lane_index = c;
-                        ctx.lane_set_id = cn.audio->lane_lift_set_id;
-                        ctx.lane_id = loop_lane_ids[c];
-                        ctx.lane_state_fn = lane_state_fn_bridge;
-                        ctx.lane_state_service = &node_lane_contexts_[ni_ord];
-                        ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
-                        ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
-                        populate_metronome_context(ctx, metronome);
-
-                        auto process_start = AudioClock::now();
-                        try {
-                            vivid::CrashGuard guard(cn.node_id.c_str());
-                            cn.loader->process_audio(audio_instance, &ctx);
-                        } catch (const std::exception& ex) {
-                            cn.errored = true;
-                            std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
-                            a.error_message[sizeof(a.error_message) - 1] = '\0';
-                        } catch (...) {
-                            cn.errored = true;
-                            std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
-                        }
-                        node_process_us += elapsed_us(process_start, AudioClock::now());
-                    }
-
-                    if (cn.errored) {
-                        for (auto& buf : a.buffers_out)
-                            std::memset(buf.data(), 0, buf.size() * sizeof(float));
-                    }
-
-                    // Collect per-lane SIGNAL output values into output_lanes.
-                    // Dual-cadence operators write audio buffers on SIGNAL ports;
-                    // extract the last sample per lane so frame-side inspection
-                    // and analysis snapshots see correct per-lane values.
-                    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                        if (p < cn.output_port_types.size() &&
-                            cn.output_port_types[p] == VIVID_PORT_SCALAR &&
-                            p < cn.out_lane_bufs.size() &&
-                            loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size())) {
-                            cn.out_lane_bufs[p].committed_length = loop_lanes;
-                            for (uint32_t c = 0; c < loop_lanes; ++c) {
-                                float* lane_buf = a.buffers_out[p].data() + c * buffer_size_;
-                                cn.out_lane_bufs[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
-                            }
-                        }
-                    }
-                }
+                process_loopbased_audio_node(cn, a, audio_instance, node_time, chunk, frames_written, ni_ord, metronome, node_process_us, node_lane_count);
             } else {
-                // ── Normal (non-lifted) processing ──
-                node_lane_count = 1;
-                VividAudioContext ctx{};
-                ctx.time = node_time;
-                ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
-                ctx.frame = audio_frame_ + frames_written;
-                ctx.node_id = cn.node_id.c_str();
-                ctx.param_values = a.audio_local_params.data();
-                ctx.input_buffers = a.in_ptrs.data();
-                ctx.output_buffers = a.out_ptrs.data();
-                ctx.buffer_size = chunk;
-                ctx.sample_rate = sample_rate_;
-                ctx.input_channel_counts = a.input_channel_counts.data();
-                ctx.output_channel_counts = a.output_channel_counts.data();
-                ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-                ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
-                ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
-                ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
-                ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
-                ctx.custom_outputs = a.custom_output_ptrs.empty() ? nullptr : a.custom_output_ptrs.data();
-                ctx.custom_output_count = a.custom_output_count;
-                ctx.shared_handles = vivid::shared_handle_service();
-                ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
-                ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
-                ctx.lane_count = 1;
-                ctx.lane_index = 0;
-                ctx.lane_set_id = 0;
-                ctx.lane_id = 0;
-                ctx.lane_state_fn = lane_state_fn_bridge;
-                ctx.lane_state_service = &node_lane_contexts_[ni_ord];
-                ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
-                ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
-                populate_metronome_context(ctx, metronome);
-
-                auto process_start = AudioClock::now();
-                try {
-                    vivid::CrashGuard guard(cn.node_id.c_str());
-                    cn.loader->process_audio(audio_instance, &ctx);
-                } catch (const std::exception& ex) {
-                    cn.errored = true;
-                    std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
-                    a.error_message[sizeof(a.error_message) - 1] = '\0';
-                    for (auto& buf : a.buffers_out)
-                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
-                } catch (...) {
-                    cn.errored = true;
-                    std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
-                    for (auto& buf : a.buffers_out)
-                        std::memset(buf.data(), 0, buf.size() * sizeof(float));
-                }
-                node_process_us += elapsed_us(process_start, AudioClock::now());
+                process_normal_audio_node(cn, a, audio_instance, node_time, chunk, frames_written, ni_ord, metronome, node_process_us, node_lane_count);
             }
 
             // Publish output lane refs
@@ -1238,6 +988,252 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
     bridge_->publish_analysis();
 
     audio_frame_ += frame_count;
+}
+
+// ---------------------------------------------------------------------------
+// Per-node dispatch helpers — extracted from audio_callback() (Finding
+// 01-R2-F2/F4). Pure code moves: same operations, same order, no allocation,
+// locking, or blocking introduced.
+// ---------------------------------------------------------------------------
+
+// Set the VividAudioContext fields identical across the lifted/loop/normal
+// paths. Callers fill input/output_buffers, channel_counts, and lane_*.
+void AudioExecutor::populate_audio_context(VividAudioContext& ctx, CompiledNode& cn, AudioNodeState& a,
+                                           double node_time, uint32_t chunk, uint32_t frames_written,
+                                           uint32_t ni_ord, const GraphMetronomeSample& metronome) {
+    ctx.time = node_time;
+    ctx.delta_time = static_cast<double>(chunk) / sample_rate_;
+    ctx.frame = audio_frame_ + frames_written;
+    ctx.node_id = cn.node_id.c_str();
+    ctx.param_values = a.audio_local_params.data();
+    ctx.buffer_size = chunk;
+    ctx.sample_rate = sample_rate_;
+    ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
+    ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
+    ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
+    ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
+    ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
+    ctx.custom_outputs = a.custom_output_ptrs.empty() ? nullptr : a.custom_output_ptrs.data();
+    ctx.custom_output_count = a.custom_output_count;
+    ctx.shared_handles = vivid::shared_handle_service();
+    ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
+    ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
+    ctx.lane_state_fn = lane_state_fn_bridge;
+    ctx.lane_state_service = &node_lane_contexts_[ni_ord];
+    ctx.allocate_lane_id_fn = allocate_lane_id_fn_bridge;
+    ctx.retire_lane_id_fn = retire_lane_id_fn_bridge;
+    populate_metronome_context(ctx, metronome);
+}
+
+// Lane-lifted dispatch: deinterleave → per-lane process_audio() → interleave.
+void AudioExecutor::process_lifted_audio_node(CompiledNode& cn, AudioNodeState& a, LaneLiftGroup& group,
+                                              double node_time, uint32_t chunk, uint32_t frames_written,
+                                              uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                              uint32_t& node_process_us, uint32_t& node_lane_count) {
+    // ── Lane-lifted: deinterleave → per-lane process → interleave ──
+    uint32_t lanes = group.lane_count;
+    node_lane_count = lanes;
+
+    // Deinterleave: extract lane c from multi-lane buffers into per-lane mono buffers
+    for (uint32_t c = 0; c < lanes; ++c) {
+        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+            if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
+                const float* mc = a.buffers_in[p].data() + c * buffer_size_;
+                std::memcpy(group.per_lane_inputs[c][p].data(), mc, chunk * sizeof(float));
+            } else {
+                // Non-audio ports: broadcast same data to all lanes
+                std::memcpy(group.per_lane_inputs[c][p].data(),
+                            a.buffers_in[p].data(), chunk * sizeof(float));
+            }
+        }
+    }
+
+    // Process each lane instance
+    for (uint32_t c = 0; c < lanes; ++c) {
+        VividAudioContext ctx{};
+        populate_audio_context(ctx, cn, a, node_time, chunk, frames_written, ni_ord, metronome);
+        ctx.input_buffers = group.per_lane_in_ptrs[c].data();
+        ctx.output_buffers = group.per_lane_out_ptrs[c].data();
+        ctx.input_channel_counts = nullptr;  // mono view
+        ctx.output_channel_counts = nullptr;
+        ctx.lane_count = lanes;
+        ctx.lane_index = c;
+        ctx.lane_set_id = group.lane_set_id;
+        ctx.lane_id = group.lane_ids[c];
+        // Note: allocate/retire use lane_state_ directly (not per-node context)
+
+        auto process_start = AudioClock::now();
+        try {
+            vivid::CrashGuard guard(cn.node_id.c_str());
+            cn.loader->process_audio(group.instances[c], &ctx);
+        } catch (const std::exception& ex) {
+            cn.errored = true;
+            std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
+            a.error_message[sizeof(a.error_message) - 1] = '\0';
+        } catch (...) {
+            cn.errored = true;
+            std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
+        }
+        node_process_us += elapsed_us(process_start, AudioClock::now());
+    }
+
+    if (cn.errored) {
+        for (auto& buf : a.buffers_out)
+            std::memset(buf.data(), 0, buf.size() * sizeof(float));
+    } else {
+        // Interleave: copy per-lane mono output back into multi-lane output buffers.
+        for (uint32_t c = 0; c < lanes; ++c) {
+            for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                if (p < cn.output_port_types.size() &&
+                    (cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER ||
+                     cn.output_port_types[p] == VIVID_PORT_SCALAR)) {
+                    float* mc = a.buffers_out[p].data() + c * buffer_size_;
+                    std::memcpy(mc, group.per_lane_outputs[c][p].data(), chunk * sizeof(float));
+                }
+            }
+        }
+    }
+}
+
+// LoopBased dispatch: single instance, runtime-driven loop over lanes.
+void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
+                                                 double node_time, uint32_t chunk, uint32_t frames_written,
+                                                 uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                                 uint32_t& node_process_us, uint32_t& node_lane_count) {
+    // ── LoopBased: single instance, runtime-driven loop over lanes ──
+    // Discover lane count from lane inputs at runtime.
+    uint32_t loop_lanes = 0;
+    for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
+        if (cn.c_in_lane_views[p].length > loop_lanes)
+            loop_lanes = cn.c_in_lane_views[p].length;
+    }
+    uint32_t max_ll = graph_->max_loop_lanes;
+    if (loop_lanes > max_ll) {
+        std::fprintf(stderr, "[vivid] LoopBased node '%s': lane count %u exceeds max %u, clamping\n",
+                     cn.node_id.c_str(), loop_lanes, max_ll);
+        loop_lanes = max_ll;
+    }
+    node_lane_count = loop_lanes;
+
+    if (loop_lanes > 0) {
+        // Read identity-bearing lane_ids (pre-allocated scratch).
+        auto* loop_lane_ids = loop_lane_ids_scratch_.data();
+        int32_t lid_port = a.lane_id_port;
+        bool has_identity_ids = false;
+        if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lane_views.size()) {
+            const auto& lid_sp = cn.c_in_lane_views[lid_port];
+            if (lid_sp.length >= loop_lanes) {
+                for (uint32_t c = 0; c < loop_lanes; ++c)
+                    loop_lane_ids[c] = static_cast<uint32_t>(lid_sp.data[c]);
+                has_identity_ids = true;
+            }
+        }
+        if (!has_identity_ids) {
+            for (uint32_t c = 0; c < loop_lanes; ++c)
+                loop_lane_ids[c] = c + 1;  // derived positional IDs
+        }
+
+        // Per-lane mono buffer pointers (pre-allocated scratch)
+        auto* loop_in_ptrs = loop_in_ptrs_scratch_.data();
+        auto* loop_out_ptrs = loop_out_ptrs_scratch_.data();
+
+        for (uint32_t c = 0; c < loop_lanes; ++c) {
+            // Set up per-lane buffer pointers (slice into pre-allocated buffers)
+            for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+                if (p < cn.input_port_types.size() && cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER) {
+                    loop_in_ptrs[p] = a.buffers_in[p].data() + c * buffer_size_;
+                } else {
+                    loop_in_ptrs[p] = a.buffers_in[p].data();  // broadcast non-audio
+                }
+            }
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                loop_out_ptrs[p] = a.buffers_out[p].data() + c * buffer_size_;
+
+            VividAudioContext ctx{};
+            populate_audio_context(ctx, cn, a, node_time, chunk, frames_written, ni_ord, metronome);
+            ctx.input_buffers = loop_in_ptrs;
+            ctx.output_buffers = loop_out_ptrs;
+            ctx.input_channel_counts = nullptr;  // mono view
+            ctx.output_channel_counts = nullptr;
+            ctx.lane_count = loop_lanes;
+            ctx.lane_index = c;
+            ctx.lane_set_id = cn.audio->lane_lift_set_id;
+            ctx.lane_id = loop_lane_ids[c];
+
+            auto process_start = AudioClock::now();
+            try {
+                vivid::CrashGuard guard(cn.node_id.c_str());
+                cn.loader->process_audio(audio_instance, &ctx);
+            } catch (const std::exception& ex) {
+                cn.errored = true;
+                std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
+                a.error_message[sizeof(a.error_message) - 1] = '\0';
+            } catch (...) {
+                cn.errored = true;
+                std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
+            }
+            node_process_us += elapsed_us(process_start, AudioClock::now());
+        }
+
+        if (cn.errored) {
+            for (auto& buf : a.buffers_out)
+                std::memset(buf.data(), 0, buf.size() * sizeof(float));
+        }
+
+        // Collect per-lane SIGNAL output values into output_lanes.
+        // Dual-cadence operators write audio buffers on SIGNAL ports;
+        // extract the last sample per lane so frame-side inspection
+        // and analysis snapshots see correct per-lane values.
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            if (p < cn.output_port_types.size() &&
+                cn.output_port_types[p] == VIVID_PORT_SCALAR &&
+                p < cn.out_lane_bufs.size() &&
+                loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size())) {
+                cn.out_lane_bufs[p].committed_length = loop_lanes;
+                for (uint32_t c = 0; c < loop_lanes; ++c) {
+                    float* lane_buf = a.buffers_out[p].data() + c * buffer_size_;
+                    cn.out_lane_bufs[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
+                }
+            }
+        }
+    }
+}
+
+// Normal (non-lifted) dispatch: a single process_audio() call.
+void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
+                                              double node_time, uint32_t chunk, uint32_t frames_written,
+                                              uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                              uint32_t& node_process_us, uint32_t& node_lane_count) {
+    // ── Normal (non-lifted) processing ──
+    node_lane_count = 1;
+    VividAudioContext ctx{};
+    populate_audio_context(ctx, cn, a, node_time, chunk, frames_written, ni_ord, metronome);
+    ctx.input_buffers = a.in_ptrs.data();
+    ctx.output_buffers = a.out_ptrs.data();
+    ctx.input_channel_counts = a.input_channel_counts.data();
+    ctx.output_channel_counts = a.output_channel_counts.data();
+    ctx.lane_count = 1;
+    ctx.lane_index = 0;
+    ctx.lane_set_id = 0;
+    ctx.lane_id = 0;
+
+    auto process_start = AudioClock::now();
+    try {
+        vivid::CrashGuard guard(cn.node_id.c_str());
+        cn.loader->process_audio(audio_instance, &ctx);
+    } catch (const std::exception& ex) {
+        cn.errored = true;
+        std::strncpy(a.error_message, ex.what(), sizeof(a.error_message) - 1);
+        a.error_message[sizeof(a.error_message) - 1] = '\0';
+        for (auto& buf : a.buffers_out)
+            std::memset(buf.data(), 0, buf.size() * sizeof(float));
+    } catch (...) {
+        cn.errored = true;
+        std::strncpy(a.error_message, "unknown exception", sizeof(a.error_message) - 1);
+        for (auto& buf : a.buffers_out)
+            std::memset(buf.data(), 0, buf.size() * sizeof(float));
+    }
+    node_process_us += elapsed_us(process_start, AudioClock::now());
 }
 
 // Recording tap methods

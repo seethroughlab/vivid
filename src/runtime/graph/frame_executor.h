@@ -67,6 +67,39 @@ public:
     using NodeLaneCtx = ExecutorLaneCtx;
 
 private:
+    // tick() per-node helpers — extracted from the monolithic tick() loop so the
+    // hard lane-propagation and dispatch logic is isolated and unit-reachable.
+    // All operate on the current node; behavior is identical to the inlined code.
+
+    // Copy upstream outputs into cn's inputs across frame_direct_edges: scalar
+    // (with remap), string, string-lane, file-param, and lane-aware ref
+    // propagation with copy-on-write merge and scalar→lane lifting.
+    void propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode& cn, uint32_t ni);
+
+    // Set the VividFrameContext fields that are identical between the LoopBased
+    // per-lane path and the normal control path. Callers fill input/output_values
+    // and the lane_* fields afterward (those differ per path).
+    void populate_frame_context(VividFrameContext& ctx, CompiledNode& cn,
+                                double time, double delta_time, uint64_t frame,
+                                const GraphMetronomeSample& metronome,
+                                const VividInputState* input);
+
+    // GPU node dispatch: build VividGpuContext, resolve texture/custom inputs,
+    // call process_gpu(), and apply preferred-size realloc requests.
+    void process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32_t ni, void* gpu_state,
+                          double time, double delta_time, uint64_t frame,
+                          const GraphMetronomeSample& metronome, const VividInputState* input);
+
+    // LoopBased frame processing: per-lane loop over the operator's process_frame().
+    void process_loopbased_node(CompiledNode& cn, uint32_t fi_ord,
+                                double time, double delta_time, uint64_t frame,
+                                const GraphMetronomeSample& metronome, const VividInputState* input);
+
+    // Normal (non-lifted) control processing: a single process_frame() call.
+    void process_control_node(CompiledNode& cn,
+                              double time, double delta_time, uint64_t frame,
+                              const GraphMetronomeSample& metronome, const VividInputState* input);
+
     int solo_node_idx_ = -1;
     std::vector<bool> solo_active_set_;
     bool needs_gpu_realloc_ = false;

@@ -1,11 +1,21 @@
 # Audit 01: Graph Execution & Lanes
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-04 (verify-gated; 10 candidates → 4 confirmed, 6 dismissed)
+**Status:** Re-audited (maintainability) 2026-06-05 (verify-gated; 8 candidates → 5 confirmed, 3 dismissed). Prior correctness pass retained below; Round-2 maintainability section at end.
 
 ## Purpose
 
 Audit the graph compiler and execution model for correctness risks in topology compilation, lane propagation, executor behavior, and cross-cadence state transfer.
+
+## Re-Audit Mandate
+
+The prior pass should be treated as a correctness/robustness audit, not a complete code-quality audit.
+Run this audit again with equal weight on maintainability: structure, duplication, ownership boundaries,
+API clarity, dependency direction, and ease of future change.
+
+Do not mark the audit complete until every checklist item is annotated as `[x]` done, `[~]` partially
+covered, or `[ ]` intentionally deferred with a short note. Findings must include both confirmed defects
+and structural risks that make future defects likely.
 
 ## Scope
 
@@ -42,8 +52,21 @@ Audit the graph compiler and execution model for correctness risks in topology c
 - [ ] Review tests that claim to cover the subsystem.
 - [ ] Check docs/code/test contract drift.
 - [ ] Identify correctness, robustness, and maintainability findings.
+- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [ ] Check dependency direction and public/private API boundaries.
+- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
 - [ ] Record findings with severity, category, evidence, and recommendation.
 - [ ] Propose immediate, near-term, and backlog follow-up work.
+
+## Required Maintainability Review
+
+- [x] Map the main responsibilities in this subsystem and identify files/classes/functions that own too many of them. → `tick()` and `audio_callback()` monoliths (01-R2-F1/F2).
+- [x] Look for duplicated validation, routing, snapshot, lane, executor, and diagnostic logic. → missing-operator error overlap (01-R2-F3), context-field init dup (01-R2-F4).
+- [x] Check whether compiler/executor APIs expose implementation detail or force awkward callers. → no confirmed issue (F5 Options-struct and F8 build()-coupling both refuted; F6 lane_set_id already has `is_scalar()`).
+- [x] Check whether dependency direction matches the architecture docs. → correct (runtime→UI types one-way; no upward deps).
+- [x] Identify code that is correct today but fragile under likely future graph, lane, hot-reload, or cadence changes. → bridge >1024-lane truncation has no compile-time guard (01-R2-F7).
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -187,3 +210,108 @@ Six candidates were refuted by the verify pass and are **not** findings:
 - [x] Test gaps are listed separately from implementation findings.
 - [x] Docs that need updates are identified by path.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability/code-quality pass per the Re-Audit Mandate (round 1 above was
+correctness-focused). **8 candidates → 5 confirmed (2 Medium, 3 Low), 3 dismissed.** The headline is two
+**executor monoliths** the correctness pass didn't flag. Dependency direction is correct (runtime→UI
+one-way). The verify pass refuted 3 over-reaching candidates (a "conflated" `Options` struct with no real
+caller friction; a "missing" `is_scalar()` accessor that **already exists** at `lane_types.h:27`; a
+`build()` bridge-coupling that is actually used by `start()`/`process_audio_for_test()`).
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 01-R2-F1 | Medium | Maintainability | `FrameExecutor::tick()` is one ~800-line method (lines 38–842) owning per-tick init, 4-wire-type lane-aware propagation w/ COW, GPU dispatch, LoopBased per-lane processing, normal dispatch, and readback | `src/runtime/graph/frame_executor.cpp:38-842` |
+| 01-R2-F2 | Medium | Maintainability | `AudioExecutor::audio_callback()` is one ~700-line RT method (448–~1140) inlining lane-lift deinterleave→process→interleave, bypass, LoopBased + normal dispatch, and overrun diagnostics | `src/runtime/graph/audio_executor.cpp:448-~1140` |
+| 01-R2-F3 | Low | Maintainability | Snapshot builder re-derives ABI-mismatch/missing-operator diagnostics per-frame (re-queries `registry.abi_mismatch_diagnostics()`) instead of reusing the `CompiledNode` fields the compiler already computed | `graph_compiler.cpp:162-187` + `graph_snapshot_builder.cpp:125-160` |
+| 01-R2-F4 | Low | Maintainability | `VividFrameContext`/`VividAudioContext` ~25-field init is duplicated across **5 sites** (frame 626/691; audio 767/881/953); adding a context field needs N edits | `frame_executor.cpp:626-658,691-715`; `audio_executor.cpp:767-797,881-911,953-983` |
+| 01-R2-F7 | Low | Robustness | Audio→frame bridge silently **truncates** lane arrays >1024 (`kDefaultLaneCapacity`); no compile-time validation (the per-port-capacity override noted in `graph_compiler_internal.h` is unimplemented) | `snapshot_types.h:21-26`; `audio_frame_bridge.cpp:221`; `graph_compiler*.cpp` (no guard) |
+
+> 01-R2-F7 was filed Medium and **downgraded to Low**: the overflow is *not silent* — it surfaces a
+> Warning-severity runtime-health finding (`runtime_health.cpp:265-272`, exported in health JSON) plus a
+> rate-limited stderr line. Data is still clamp-truncated (real gap: no compile-time rejection / no slot
+> growth), but the ">1024 polyphonic voices on a bridge edge" threshold is extreme.
+
+### Evidence & Recommendation
+
+**01-R2-F1 / 01-R2-F2 — executor monoliths** (Medium, Maintainability)
+- *Evidence:* `tick()` is a single method 38→842 (next method `set_solo` at 844); `audio_callback()` a
+  single method from 448. Each interleaves the genuinely novel logic (lane propagation / lane-lifting)
+  with setup, dispatch, and readback in deeply nested conditionals. Telemetry is *already* extracted in
+  the audio path (`write_audio_node_telemetry` etc.), so that part of F2's recommendation is moot.
+- *Impact:* a lane-propagation or lane-strategy change must be made inside ~100-line nested blocks of
+  unrelated boilerplate (RT-critical in the audio case), raising regression/RT-safety risk; the
+  propagation logic has no separable entry point for unit testing.
+- *Recommendation (refactor candidate):* extract pure helpers with no behavior change —
+  `propagate_frame_direct_edges()`, `init_node_frame_context()` (frame) and `process_lifted_node()`,
+  `process_bypassed_node()` (audio). Prove parity with the existing graph/lane tests + a build.
+
+**01-R2-F3 — duplicated missing-operator diagnostic derivation** (Low)
+- *Evidence:* the compiler stores `missing_operator_reason`/`_detail` on `CompiledNode` (Pass 1); the
+  snapshot builder, rebuilt every frame, re-queries `abi_mismatch_diagnostics()` for the generic
+  abi/not-found branch rather than reusing those fields. *(Scope note: the `reason` enum is deliberately
+  structured and consumed by many call sites — `control_server_checks/query/dispatch`, `project_lockfile` —
+  so do NOT collapse it to a string; just have Pass 1 also stash the verbose UI message for reuse.)*
+- *Recommendation:* store the synthesized UI message on `CompiledNode` at compile time; snapshot builder
+  copies it. Low priority.
+
+**01-R2-F4 — context-field init duplication** (Low)
+- *Evidence:* 5 near-identical ~25-field assignment blocks. The shared metronome subset is *already*
+  factored (`populate_metronome_context()` template in `executor_common.h`).
+- *Recommendation:* per-executor `populate_frame_context()` / `populate_audio_context()` helpers for the
+  common field block (a single cross-executor template is impractical — different ctx struct types).
+  Low priority.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **Decompose `tick()` / `audio_callback()`** (01-R2-F1/F2) — **priority: medium, payoff: high.** Biggest
+   single maintainability win in the subsystem; isolates the hard lane logic, enables unit tests, lowers
+   RT-edit risk. Behavior-neutral extraction; guard with existing tests + targeted new ones.
+2. **`populate_{frame,audio}_context()` helpers** (01-R2-F4) — priority: low, payoff: medium. Removes the
+   "forgot a field" hazard; small, mechanical.
+3. **Precompute missing-operator UI message on `CompiledNode`** (01-R2-F3) — priority: low, payoff: low.
+4. **Compile-time bridge lane-capacity validation** (01-R2-F7) — priority: low, payoff: medium. A planner
+   check that rejects (or a growable `BridgeLaneSlot`) closes the truncation gap; pairs with a test.
+
+### Test Gaps (refactor-safety — would catch a bad executor decomposition)
+- Lane-state identity across the audio→frame bridge crossing, and across a full recompile (clear/remap).
+- Mixed-cadence lane propagation (audio polyphonic value → bridge → frame analysis consumer).
+- Bridge lane overflow (>1024) — rejection / graceful degradation.
+- Frame lane-execution strategy stability under a Pass-4 refactor (LoopBased vs Scalar not silently
+  downgraded). These lock in the contracts the F1/F2 extraction would touch.
+
+### Docs to Update
+- `docs/runtime/graph.md` — lane-identity-not-preserved-across-recompile note; bridge lane-capacity limit.
+- `src/runtime/graph/CLAUDE.md` / `docs/ARCHITECTURE.md` — spell out the Pass-4 sub-passes + "one
+  responsibility per pass" guidance.
+
+### Dismissed (verification-refuted)
+- **01-R2-F5** (`GraphCompiler::Options` conflates concerns) — refuted: GPU/audio fields have default
+  member initializers and there is a **single** `compile()` caller, so the claimed "must construct all
+  fields / update every call" friction doesn't exist; `disabled_node_ids` is legitimately compiler input.
+- **01-R2-F6** (lane_set_id has no accessor) — refuted: `LaneSet::is_scalar()` already exists
+  (`lane_types.h:27`) and is the dominant access pattern; executors don't read `edge.lane_set_id` directly.
+- **01-R2-F8** (`AudioExecutor::build()` bridge/metronome early-binding) — refuted: `bridge_`/`graph_` are
+  used by `start()`, `restart_device()`, and `process_audio_for_test()`; `wall_time` capture at build is
+  the intended metronome-anchor. Speculative split guarded on a non-roadmap hypothetical.
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (01-R2-F1/F2/F4):** decomposed both executor monoliths, behavior-neutral, parity-proven
+  (full audio + graph/lane suite, 66 tests, incl. `test_demo_graphs`). `FrameExecutor::tick()` ~800→~316
+  lines, extracted `propagate_frame_direct_edges` / `process_gpu_node` / `process_loopbased_node` /
+  `process_control_node` / `populate_frame_context`. `AudioExecutor::audio_callback()` per-node dispatch
+  ~258→9 lines, extracted `process_lifted_audio_node` / `process_loopbased_audio_node` /
+  `process_normal_audio_node` / `populate_audio_context` (F4 collapses the triplicated VividAudioContext
+  init). Committed on `audit-01-maint-fixes`.
+- **Deferred — backlog (with rationale):**
+  - **01-R2-F3** (precompute missing-op UI message): narrow Low DRY nit — the per-frame re-derivation only
+    fires for *missing/errored* nodes (not a hot path), and the proper fix must keep the structured
+    `missing_operator_reason` enum (widely consumed by control_server/project_lockfile). Worth doing, low
+    priority.
+  - **01-R2-F7** (compile-time bridge lane-capacity guard): robustness, not maintainability; the >1024
+    overflow is already surfaced via `runtime_health` (verifier downgraded to Low), and a guard is a
+    feature-add (new diagnostic / growable slot), not a behavior-neutral refactor.
+  - Refactor-safety test gaps (lane-state across recompile/bridge; strategy stability) + graph.md /
+    ARCHITECTURE.md doc updates.
