@@ -136,6 +136,35 @@ private:
     LaneStateService lane_state_;
     std::vector<NodeLaneCtx> node_lane_contexts_;  // indexed by audio_order position
 
+    // audio_callback() per-node dispatch helpers — extracted from the monolithic
+    // RT callback so the lane-lifting / loop / normal paths are isolated. Pure
+    // code moves: same operations, same order, no allocation/locking introduced.
+    // node_process_us / node_lane_count accumulate via reference (telemetry).
+
+    // Set the VividAudioContext fields identical across the lifted/loop/normal
+    // paths. Callers fill input/output_buffers, channel_counts, and lane_*.
+    void populate_audio_context(VividAudioContext& ctx, CompiledNode& cn, AudioNodeState& a,
+                                double node_time, uint32_t chunk, uint32_t frames_written,
+                                uint32_t ni_ord, const GraphMetronomeSample& metronome);
+
+    // Lane-lifted dispatch: deinterleave → per-lane process_audio() → interleave.
+    void process_lifted_audio_node(CompiledNode& cn, AudioNodeState& a, LaneLiftGroup& group,
+                                   double node_time, uint32_t chunk, uint32_t frames_written,
+                                   uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                   uint32_t& node_process_us, uint32_t& node_lane_count);
+
+    // LoopBased dispatch: single instance, runtime-driven loop over lanes.
+    void process_loopbased_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
+                                      double node_time, uint32_t chunk, uint32_t frames_written,
+                                      uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                      uint32_t& node_process_us, uint32_t& node_lane_count);
+
+    // Normal (non-lifted) dispatch: a single process_audio() call.
+    void process_normal_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
+                                   double node_time, uint32_t chunk, uint32_t frames_written,
+                                   uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                   uint32_t& node_process_us, uint32_t& node_lane_count);
+
     // Waveform ring buffers for analysis (per-channel)
     static constexpr uint32_t kMaxWaveformChannels = AnalysisSnapshot::kMaxWaveformChannels;
     std::vector<std::array<std::array<float, 1024>, kMaxWaveformChannels>> waveform_rings_;
