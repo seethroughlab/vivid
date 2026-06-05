@@ -71,495 +71,7 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
 
     std::string result;
 
-    if (method == "list_au_params") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            auto* cg = core.compiled_graph();
-            if (!cg) {
-                result = json_err("no compiled graph");
-            } else {
-                const std::string nid = root["node_id"].get<std::string>();
-                const auto* cn = cg->find_node(nid);
-                if (!cn) {
-                    result = json_err("unknown node '" + nid + "'");
-                } else {
-                    auto fi = cn->file_param_indices.find("_au_params");
-                    if (fi == cn->file_param_indices.end() ||
-                        fi->second >= cn->file_param_storage.size()) {
-                        result = json_err("node '" + nid + "' is not an AU operator");
-                    } else {
-                        const std::string& raw = cn->file_param_storage[fi->second];
-                        try {
-                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
-                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
-                        } catch (...) {
-                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
-                        }
-                    }
-                }
-            }
-        }
-
-    } else if (method == "list_vst3_plugins") {
-        runtime_vst3_scan_plugins();
-        const auto& plugins = runtime_vst3_get_plugins();
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto& p : plugins)
-            arr.push_back(nlohmann::json{{"name", p.key}});
-        result = nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
-
-    } else if (method == "list_vst3_params") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            auto* cg = core.compiled_graph();
-            if (!cg) {
-                result = json_err("no compiled graph");
-            } else {
-                const std::string nid = root["node_id"].get<std::string>();
-                const auto* cn = cg->find_node(nid);
-                if (!cn) {
-                    result = json_err("unknown node '" + nid + "'");
-                } else {
-                    auto fi = cn->file_param_indices.find("_vst3_params");
-                    if (fi == cn->file_param_indices.end() ||
-                        fi->second >= cn->file_param_storage.size()) {
-                        result = json_err("node '" + nid + "' is not a VST3 operator");
-                    } else {
-                        const std::string& raw = cn->file_param_storage[fi->second];
-                        try {
-                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
-                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
-                        } catch (...) {
-                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
-                        }
-                    }
-                }
-            }
-        }
-
-    } else if (method == "list_vst3_presets") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            auto* cg = core.compiled_graph();
-            if (!cg) {
-                result = json_err("no compiled graph");
-            } else {
-                const std::string nid = root["node_id"].get<std::string>();
-                const auto* cn = cg->find_node(nid);
-                if (!cn) {
-                    result = json_err("unknown node '" + nid + "'");
-                } else {
-                    auto fi = cn->file_param_indices.find("_vst3_presets");
-                    if (fi == cn->file_param_indices.end() ||
-                        fi->second >= cn->file_param_storage.size()) {
-                        result = json_err("node '" + nid + "' is not a VST3 operator");
-                    } else {
-                        const std::string& raw = cn->file_param_storage[fi->second];
-                        try {
-                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
-                            result = nlohmann::json{{"ok", true}, {"presets", arr}}.dump();
-                        } catch (...) {
-                            result = nlohmann::json{{"ok", true}, {"presets", nlohmann::json::array()}}.dump();
-                        }
-                    }
-                }
-            }
-        }
-
-    // --- Editor-window LLM-transparency endpoints ---
-    //
-    // The five methods below forward to EditorWindowManager's existing
-    // test-support surface so LLM workflows can open, close, drive, and
-    // visually inspect native operator editors. All of them no-op with
-    // a useful error if the control server wasn't wired to an
-    // EditorWindowManager (e.g. headless harnesses, the bridge-managed
-    // runtime spawned for automated tests).
-    } else if (method == "open_editor") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            const std::string node_id = root["node_id"].get<std::string>();
-            bool opened = editor_window_manager->open(node_id);
-            if (opened) result = json_ok_msg("editor opened for " + node_id);
-            else        result = json_err("no editor available for " + node_id);
-        }
-    } else if (method == "close_editor") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            editor_window_manager->close(root["node_id"].get<std::string>());
-            result = R"({"ok":true})";
-        }
-    } else if (method == "is_editor_open") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            bool open = editor_window_manager->is_open(root["node_id"].get<std::string>());
-            result = nlohmann::json{{"ok", true}, {"open", open}}.dump();
-        }
-    } else if (method == "editor_inject_event") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else if (!root.contains("type") || !root["type"].is_number_integer()) {
-            result = json_err("missing 'type' (integer 0..4)");
-        } else {
-            VividEditorEvent ev{};
-            ev.type      = static_cast<VividEditorEventType>(root["type"].get<int>());
-            ev.x         = root.value("x",         0.0f);
-            ev.y         = root.value("y",         0.0f);
-            ev.button    = root.value("button",    0);
-            ev.action    = root.value("action",    0);
-            ev.scroll_dx = root.value("scroll_dx", 0.0f);
-            ev.scroll_dy = root.value("scroll_dy", 0.0f);
-            ev.key       = root.value("key",       0);
-            ev.scancode  = root.value("scancode",  0);
-            ev.codepoint = root.value("codepoint", 0u);
-            ev.modifiers = root.value("modifiers", 0);
-            const std::string node_id = root["node_id"].get<std::string>();
-            bool ok = editor_window_manager->inject_event(node_id, ev);
-            if (ok) result = R"({"ok":true})";
-            else    result = json_err("no editor open for " + node_id);
-        }
-    } else if (method == "inspect_editor") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            const std::string node_id = root["node_id"].get<std::string>();
-            auto maybe_tree = editor_window_manager->capture_introspection(node_id);
-            if (!maybe_tree) {
-                result = json_err("no editor open (or no widgets drawn) for " + node_id);
-            } else {
-                // The captured buffer is already a JSON array string. Parse
-                // it back so we can embed it as `widgets` in a structured
-                // response (ok/node_id/widgets) rather than hand back raw
-                // text. Cheap for the sizes we're dealing with.
-                nlohmann::json out;
-                out["ok"] = true;
-                out["node_id"] = node_id;
-                try {
-                    out["widgets"] = nlohmann::json::parse(*maybe_tree);
-                } catch (const std::exception& e) {
-                    out["widgets"] = nlohmann::json::array();
-                    out["parse_error"] = e.what();
-                }
-                result = out.dump();
-            }
-        }
-    } else if (method == "capture_editor") {
-        if (!editor_window_manager) {
-            result = json_err("editor window manager unavailable");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            const std::string node_id = root["node_id"].get<std::string>();
-            auto maybe_png = editor_window_manager->capture_surface_png(node_id);
-            if (!maybe_png) {
-                result = json_err("no editor open (or capture failed) for " + node_id);
-            } else {
-                const auto& png = *maybe_png;
-                int w = 0, h = 0;
-                parse_png_dimensions(png.data(), png.size(), w, h);
-                nlohmann::json out;
-                out["ok"]        = true;
-                out["width"]     = w;
-                out["height"]    = h;
-                // Optional save_path: write PNG bytes to disk on the runtime
-                // machine. Matches capture_interface's convention.
-                bool saved = false;
-                if (root.contains("save_path") && root["save_path"].is_string()) {
-                    const std::string save_path = root["save_path"].get<std::string>();
-                    if (!save_path.empty() && is_safe_capture_image_path(save_path)) {
-                        std::ofstream ofs(save_path, std::ios::binary);
-                        if (ofs.is_open()) {
-                            ofs.write(reinterpret_cast<const char*>(png.data()),
-                                      static_cast<std::streamsize>(png.size()));
-                            if (ofs.good()) {
-                                out["path"] = save_path;
-                                saved = true;
-                            }
-                        }
-                    }
-                }
-                // When the PNG was written to disk, return only the path: omitting
-                // the inline base64 keeps the response small (a full surface PNG
-                // easily exceeds MCP tool-result token limits). If no save_path was
-                // given (or the write failed), deliver the image inline as a
-                // graceful fallback so the caller still gets the frame.
-                if (!saved)
-                    out["png_base64"] = base64_encode_bytes(png.data(), png.size());
-                result = out.dump();
-            }
-        }
-    } else if (method == "save_graph") {
-        // Annotate nodes with package provenance before saving
-        if (package_manager) {
-            auto packages = package_manager->list();
-            std::unordered_map<std::string, std::string> pkg_ver_map;
-            for (const auto& p : packages) pkg_ver_map[p.name] = p.version;
-            for (auto& node : graph.nodes_mut()) {
-                const auto* pkg = registry.package_for_type(node.type);
-                if (pkg) {
-                    node.pkg_name    = *pkg;
-                    node.pkg_version = pkg_ver_map.count(*pkg) ? pkg_ver_map[*pkg] : "";
-                }
-            }
-        }
-        if (root_valid && root.contains("path") && root["path"].is_string()) {
-            result = command_result_to_json(api.save_as(root["path"].get<std::string>()));
-        } else {
-            result = command_result_to_json(api.save());
-        }
-    } else if (method == "write_project_lockfile") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!package_manager) {
-            result = json_err("no package manager available");
-        } else {
-            const std::string graph_path  = root.value("graph_path", std::string());
-            const std::string output_path = root.value("output_path", std::string());
-            result = command_result_to_json(
-                api.write_project_lockfile(*package_manager, graph_path, output_path));
-        }
-    } else if (method == "verify_project_lockfile") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!package_manager) {
-            result = json_err("no package manager available");
-        } else {
-            const std::string graph_path    = root.value("graph_path", std::string());
-            const std::string lockfile_path = root.value("lockfile_path", std::string());
-            result = unwrap_status_to_json(
-                api.verify_project_lockfile(*package_manager, graph_path, lockfile_path));
-        }
-    } else if (method == "get_project_dependency_status") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else if (!package_manager) {
-            result = json_err("no package manager available");
-        } else {
-            const std::string graph_path = root.value("graph_path", std::string());
-            result = unwrap_status_to_json(
-                api.get_project_dependency_status(*package_manager, graph_path));
-        }
-    } else if (method == "load_graph") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("path") || !root["path"].is_string()) {
-                result = json_err("load_graph requires 'path' parameter");
-            } else {
-                const std::string lockfile_mode =
-                    root.value("lockfile_mode", std::string());
-                CommandResult cr = api.load_graph(
-                    root["path"].get<std::string>(),
-                    has_gpu_ops, has_audio, lockfile_mode);
-                if (!cr.ok) {
-                    result = json_err(cr.message);
-                } else {
-                    // Disambiguate has_audio=false: surface when the graph has
-                    // audio operators but the engine failed to start (e.g. device
-                    // lost), so clients don't read it as "no audio nodes". (04-F1)
-                    nlohmann::json resp = {{"ok", true}, {"message", cr.message}};
-                    if (core.has_audio_operators() && !has_audio)
-                        resp["audio_unavailable"] = true;
-                    result = resp.dump();
-                }
-            }
-        }
-    } else if (method == "get_last_crash") {
-        result = handle_get_last_crash(crash_recovery_manager);
-    } else if (method == "clear_last_crash") {
-        result = handle_clear_last_crash(crash_recovery_manager);
-    } else if (method == "load_graph_safe_mode") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            result = handle_load_graph_safe_mode(
-                root, crash_recovery_manager, core, api, has_gpu_ops, has_audio);
-        }
-    } else if (method == "set_resolution") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("width") || !root["width"].is_number() ||
-                !root.contains("height") || !root["height"].is_number())
-                result = json_err("missing 'node_id', 'width', or 'height'");
-            else
-                result = command_result_to_json(
-                    api.set_resolution(root["node_id"].get<std::string>(),
-                                       root["width"].get<uint32_t>(),
-                                       root["height"].get<uint32_t>()));
-        }
-    } else if (method == "set_node_layout") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("x") || !root["x"].is_number() ||
-                !root.contains("y") || !root["y"].is_number())
-                result = json_err("missing 'node_id', 'x', or 'y'");
-            else
-                result = command_result_to_json(
-                    api.set_node_layout(root["node_id"].get<std::string>(),
-                                        root["x"].get<float>(),
-                                        root["y"].get<float>()));
-        }
-    } else if (method == "set_node_bypassed") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("bypassed") || !root["bypassed"].is_boolean())
-                result = json_err("missing 'node_id' or 'bypassed' (bool)");
-            else
-                result = command_result_to_json(
-                    api.set_node_bypassed(root["node_id"].get<std::string>(),
-                                          root["bypassed"].get<bool>()));
-        }
-    } else if (method == "inspect") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else
-                result = command_result_to_json(api.inspect(root["node_id"].get<std::string>()));
-        }
-    } else if (method == "list_nodes") {
-        result = command_result_to_json(api.list_nodes());
-    } else if (method == "add_midi_mapping") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string() ||
-                !root.contains("cc") || !root["cc"].is_number() ||
-                !root.contains("channel") || !root["channel"].is_number() ||
-                !root.contains("range_min") || !root["range_min"].is_number() ||
-                !root.contains("range_max") || !root["range_max"].is_number())
-                result = json_err("missing or invalid params for add_midi_mapping");
-            else
-                result = command_result_to_json(
-                    api.add_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
-                                         root["cc"].get<int>(),
-                                         root["channel"].get<int>(),
-                                         root["range_min"].get<float>(),
-                                         root["range_max"].get<float>()));
-        }
-    } else if (method == "remove_midi_mapping") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string())
-                result = json_err("missing 'node_id' or 'param'");
-            else
-                result = command_result_to_json(
-                    api.remove_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>()));
-        }
-    } else if (method == "update_midi_mapping") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string() ||
-                !root.contains("range_min") || !root["range_min"].is_number() ||
-                !root.contains("range_max") || !root["range_max"].is_number())
-                result = json_err("missing or invalid params for update_midi_mapping");
-            else
-                result = command_result_to_json(
-                    api.update_midi_mapping(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
-                                            root["range_min"].get<float>(),
-                                            root["range_max"].get<float>()));
-        }
-    } else if (method == "add_mod_assignment") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("source") || !root["source"].is_string() ||
-                !root.contains("destination") || !root["destination"].is_string() ||
-                !root.contains("amount") || !root["amount"].is_number())
-                result = json_err("missing or invalid params for add_mod_assignment");
-            else {
-                std::string polarity = (root.contains("polarity") && root["polarity"].is_string())
-                    ? root["polarity"].get<std::string>() : "unipolar";
-                std::string curve = (root.contains("curve") && root["curve"].is_string())
-                    ? root["curve"].get<std::string>() : "linear";
-                result = command_result_to_json(
-                    api.add_mod_assignment(root["node_id"].get<std::string>(),
-                                           root["source"].get<std::string>(),
-                                           root["destination"].get<std::string>(),
-                                           root["amount"].get<float>(),
-                                           polarity, curve));
-            }
-        }
-    } else if (method == "remove_mod_assignment") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("source") || !root["source"].is_string() ||
-                !root.contains("destination") || !root["destination"].is_string())
-                result = json_err("missing 'node_id', 'source', or 'destination'");
-            else
-                result = command_result_to_json(
-                    api.remove_mod_assignment(root["node_id"].get<std::string>(),
-                                              root["source"].get<std::string>(),
-                                              root["destination"].get<std::string>()));
-        }
-    } else if (method == "update_mod_assignment") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("source") || !root["source"].is_string() ||
-                !root.contains("destination") || !root["destination"].is_string() ||
-                !root.contains("amount") || !root["amount"].is_number())
-                result = json_err("missing or invalid params for update_mod_assignment");
-            else {
-                std::string polarity = (root.contains("polarity") && root["polarity"].is_string())
-                    ? root["polarity"].get<std::string>() : "unipolar";
-                std::string curve = (root.contains("curve") && root["curve"].is_string())
-                    ? root["curve"].get<std::string>() : "linear";
-                result = command_result_to_json(
-                    api.update_mod_assignment(root["node_id"].get<std::string>(),
-                                              root["source"].get<std::string>(),
-                                              root["destination"].get<std::string>(),
-                                              root["amount"].get<float>(),
-                                              polarity, curve));
-            }
-        }
-    } else if (method == "list_mod_sources") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else {
-                auto r = api.list_mod_sources(root["node_id"].get<std::string>());
-                result = r.ok ? r.message : json_err(r.message);
-            }
-        }
-    } else if (method == "list_mod_destinations") {
+    if (method == "list_mod_destinations") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else {
             if (!root.contains("node_id") || !root["node_id"].is_string())
@@ -1989,6 +1501,382 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
 #else
             return nlohmann::json{{"ok", true}, {"plugins", nlohmann::json::array()}}.dump();
 #endif
+        }},
+
+        // --- Migrated batch 04-R2-R2 ---
+        {"list_au_params", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string nid, err;
+            if (!require_string(root, "node_id", nid, err)) return err;
+            auto* cg = c.core.compiled_graph();
+            if (!cg) return json_err("no compiled graph");
+            const auto* cn = cg->find_node(nid);
+            if (!cn) return json_err("unknown node '" + nid + "'");
+            auto fi = cn->file_param_indices.find("_au_params");
+            if (fi == cn->file_param_indices.end() ||
+                fi->second >= cn->file_param_storage.size())
+                return json_err("node '" + nid + "' is not an AU operator");
+            const std::string& raw = cn->file_param_storage[fi->second];
+            try {
+                auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                return nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+            } catch (...) {
+                return nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+            }
+        }},
+        {"list_vst3_plugins", [](DispatchContext&, const std::string&,
+                                 const nlohmann::json&, bool) -> std::string {
+            runtime_vst3_scan_plugins();
+            const auto& plugins = runtime_vst3_get_plugins();
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& p : plugins)
+                arr.push_back(nlohmann::json{{"name", p.key}});
+            return nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
+        }},
+        {"list_vst3_params", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string nid, err;
+            if (!require_string(root, "node_id", nid, err)) return err;
+            auto* cg = c.core.compiled_graph();
+            if (!cg) return json_err("no compiled graph");
+            const auto* cn = cg->find_node(nid);
+            if (!cn) return json_err("unknown node '" + nid + "'");
+            auto fi = cn->file_param_indices.find("_vst3_params");
+            if (fi == cn->file_param_indices.end() ||
+                fi->second >= cn->file_param_storage.size())
+                return json_err("node '" + nid + "' is not a VST3 operator");
+            const std::string& raw = cn->file_param_storage[fi->second];
+            try {
+                auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                return nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+            } catch (...) {
+                return nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+            }
+        }},
+        {"list_vst3_presets", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string nid, err;
+            if (!require_string(root, "node_id", nid, err)) return err;
+            auto* cg = c.core.compiled_graph();
+            if (!cg) return json_err("no compiled graph");
+            const auto* cn = cg->find_node(nid);
+            if (!cn) return json_err("unknown node '" + nid + "'");
+            auto fi = cn->file_param_indices.find("_vst3_presets");
+            if (fi == cn->file_param_indices.end() ||
+                fi->second >= cn->file_param_storage.size())
+                return json_err("node '" + nid + "' is not a VST3 operator");
+            const std::string& raw = cn->file_param_storage[fi->second];
+            try {
+                auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                return nlohmann::json{{"ok", true}, {"presets", arr}}.dump();
+            } catch (...) {
+                return nlohmann::json{{"ok", true}, {"presets", nlohmann::json::array()}}.dump();
+            }
+        }},
+        {"open_editor", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            bool opened = c.editor_window_manager->open(node_id);
+            if (opened) return json_ok_msg("editor opened for " + node_id);
+            return json_err("no editor available for " + node_id);
+        }},
+        {"close_editor", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            c.editor_window_manager->close(node_id);
+            return R"({"ok":true})";
+        }},
+        {"is_editor_open", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            bool open = c.editor_window_manager->is_open(node_id);
+            return nlohmann::json{{"ok", true}, {"open", open}}.dump();
+        }},
+        {"editor_inject_event", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            if (!root.contains("type") || !root["type"].is_number_integer())
+                return json_err("missing 'type' (integer 0..4)");
+            VividEditorEvent ev{};
+            ev.type      = static_cast<VividEditorEventType>(root["type"].get<int>());
+            ev.x         = root.value("x",         0.0f);
+            ev.y         = root.value("y",         0.0f);
+            ev.button    = root.value("button",    0);
+            ev.action    = root.value("action",    0);
+            ev.scroll_dx = root.value("scroll_dx", 0.0f);
+            ev.scroll_dy = root.value("scroll_dy", 0.0f);
+            ev.key       = root.value("key",       0);
+            ev.scancode  = root.value("scancode",  0);
+            ev.codepoint = root.value("codepoint", 0u);
+            ev.modifiers = root.value("modifiers", 0);
+            bool ok = c.editor_window_manager->inject_event(node_id, ev);
+            if (ok) return R"({"ok":true})";
+            return json_err("no editor open for " + node_id);
+        }},
+        {"inspect_editor", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            auto maybe_tree = c.editor_window_manager->capture_introspection(node_id);
+            if (!maybe_tree)
+                return json_err("no editor open (or no widgets drawn) for " + node_id);
+            nlohmann::json out;
+            out["ok"] = true;
+            out["node_id"] = node_id;
+            try {
+                out["widgets"] = nlohmann::json::parse(*maybe_tree);
+            } catch (const std::exception& e) {
+                out["widgets"] = nlohmann::json::array();
+                out["parse_error"] = e.what();
+            }
+            return out.dump();
+        }},
+        {"capture_editor", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.editor_window_manager) return json_err("editor window manager unavailable");
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            auto maybe_png = c.editor_window_manager->capture_surface_png(node_id);
+            if (!maybe_png)
+                return json_err("no editor open (or capture failed) for " + node_id);
+            const auto& png = *maybe_png;
+            int w = 0, h = 0;
+            parse_png_dimensions(png.data(), png.size(), w, h);
+            nlohmann::json out;
+            out["ok"]        = true;
+            out["width"]     = w;
+            out["height"]    = h;
+            bool saved = false;
+            if (root.contains("save_path") && root["save_path"].is_string()) {
+                const std::string save_path = root["save_path"].get<std::string>();
+                if (!save_path.empty() && is_safe_capture_image_path(save_path)) {
+                    std::ofstream ofs(save_path, std::ios::binary);
+                    if (ofs.is_open()) {
+                        ofs.write(reinterpret_cast<const char*>(png.data()),
+                                  static_cast<std::streamsize>(png.size()));
+                        if (ofs.good()) {
+                            out["path"] = save_path;
+                            saved = true;
+                        }
+                    }
+                }
+            }
+            if (!saved)
+                out["png_base64"] = base64_encode_bytes(png.data(), png.size());
+            return out.dump();
+        }},
+        {"save_graph", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            // Annotate nodes with package provenance before saving
+            if (c.package_manager) {
+                auto packages = c.package_manager->list();
+                std::unordered_map<std::string, std::string> pkg_ver_map;
+                for (const auto& p : packages) pkg_ver_map[p.name] = p.version;
+                for (auto& node : c.graph.nodes_mut()) {
+                    const auto* pkg = c.registry.package_for_type(node.type);
+                    if (pkg) {
+                        node.pkg_name    = *pkg;
+                        node.pkg_version = pkg_ver_map.count(*pkg) ? pkg_ver_map[*pkg] : "";
+                    }
+                }
+            }
+            if (root_valid && root.contains("path") && root["path"].is_string())
+                return command_result_to_json(c.api.save_as(root["path"].get<std::string>()));
+            return command_result_to_json(c.api.save());
+        }},
+        {"write_project_lockfile", [](DispatchContext& c, const std::string&,
+                                      const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!c.package_manager) return json_err("no package manager available");
+            const std::string graph_path  = root.value("graph_path", std::string());
+            const std::string output_path = root.value("output_path", std::string());
+            return command_result_to_json(
+                c.api.write_project_lockfile(*c.package_manager, graph_path, output_path));
+        }},
+        {"verify_project_lockfile", [](DispatchContext& c, const std::string&,
+                                       const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!c.package_manager) return json_err("no package manager available");
+            const std::string graph_path    = root.value("graph_path", std::string());
+            const std::string lockfile_path = root.value("lockfile_path", std::string());
+            return unwrap_status_to_json(
+                c.api.verify_project_lockfile(*c.package_manager, graph_path, lockfile_path));
+        }},
+        {"get_project_dependency_status", [](DispatchContext& c, const std::string&,
+                                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!c.package_manager) return json_err("no package manager available");
+            const std::string graph_path = root.value("graph_path", std::string());
+            return unwrap_status_to_json(
+                c.api.get_project_dependency_status(*c.package_manager, graph_path));
+        }},
+        {"load_graph", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("path") || !root["path"].is_string())
+                return json_err("load_graph requires 'path' parameter");
+            const std::string lockfile_mode =
+                root.value("lockfile_mode", std::string());
+            CommandResult cr = c.api.load_graph(
+                root["path"].get<std::string>(),
+                c.has_gpu_ops, c.has_audio, lockfile_mode);
+            if (!cr.ok)
+                return json_err(cr.message);
+            // Disambiguate has_audio=false: surface when the graph has
+            // audio operators but the engine failed to start (e.g. device
+            // lost), so clients don't read it as "no audio nodes". (04-F1)
+            nlohmann::json resp = {{"ok", true}, {"message", cr.message}};
+            if (c.core.has_audio_operators() && !c.has_audio)
+                resp["audio_unavailable"] = true;
+            return resp.dump();
+        }},
+        {"get_last_crash", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json&, bool) -> std::string {
+            return handle_get_last_crash(c.crash_recovery_manager);
+        }},
+        {"clear_last_crash", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json&, bool) -> std::string {
+            return handle_clear_last_crash(c.crash_recovery_manager);
+        }},
+        {"load_graph_safe_mode", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_load_graph_safe_mode(
+                root, c.crash_recovery_manager, c.core, c.api, c.has_gpu_ops, c.has_audio);
+        }},
+        {"set_resolution", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("width") || !root["width"].is_number() ||
+                !root.contains("height") || !root["height"].is_number())
+                return json_err("missing 'node_id', 'width', or 'height'");
+            return command_result_to_json(
+                c.api.set_resolution(root["node_id"].get<std::string>(),
+                                     root["width"].get<uint32_t>(),
+                                     root["height"].get<uint32_t>()));
+        }},
+        {"set_node_layout", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("x") || !root["x"].is_number() ||
+                !root.contains("y") || !root["y"].is_number())
+                return json_err("missing 'node_id', 'x', or 'y'");
+            return command_result_to_json(
+                c.api.set_node_layout(root["node_id"].get<std::string>(),
+                                      root["x"].get<float>(),
+                                      root["y"].get<float>()));
+        }},
+        {"set_node_bypassed", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            bool bypassed = false;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_bool(root, "bypassed", bypassed, err))
+                return err;
+            return command_result_to_json(c.api.set_node_bypassed(node_id, bypassed));
+        }},
+        {"inspect", [](DispatchContext& c, const std::string&,
+                       const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            return command_result_to_json(c.api.inspect(node_id));
+        }},
+        {"list_nodes", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json&, bool) -> std::string {
+            return command_result_to_json(c.api.list_nodes());
+        }},
+        {"remove_midi_mapping", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, err;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err))
+                return err;
+            return command_result_to_json(c.api.remove_midi_mapping(node_id, param));
+        }},
+        {"update_midi_mapping", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, err;
+            float range_min = 0.0f, range_max = 0.0f;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err) ||
+                !require_float(root, "range_min", range_min, err) ||
+                !require_float(root, "range_max", range_max, err))
+                return err;
+            return command_result_to_json(
+                c.api.update_midi_mapping(node_id, param, range_min, range_max));
+        }},
+        {"add_mod_assignment", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, source, destination, err;
+            float amount = 0.0f;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "source", source, err) ||
+                !require_string(root, "destination", destination, err) ||
+                !require_float(root, "amount", amount, err))
+                return err;
+            std::string polarity = optional_string(root, "polarity", "unipolar");
+            std::string curve = optional_string(root, "curve", "linear");
+            return command_result_to_json(
+                c.api.add_mod_assignment(node_id, source, destination, amount, polarity, curve));
+        }},
+        {"remove_mod_assignment", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, source, destination, err;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "source", source, err) ||
+                !require_string(root, "destination", destination, err))
+                return err;
+            return command_result_to_json(
+                c.api.remove_mod_assignment(node_id, source, destination));
+        }},
+        {"update_mod_assignment", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, source, destination, err;
+            float amount = 0.0f;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "source", source, err) ||
+                !require_string(root, "destination", destination, err) ||
+                !require_float(root, "amount", amount, err))
+                return err;
+            std::string polarity = optional_string(root, "polarity", "unipolar");
+            std::string curve = optional_string(root, "curve", "linear");
+            return command_result_to_json(
+                c.api.update_mod_assignment(node_id, source, destination, amount, polarity, curve));
+        }},
+        {"list_mod_sources", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            auto r = c.api.list_mod_sources(node_id);
+            return r.ok ? r.message : json_err(r.message);
         }},
     };
     return kHandlers;
