@@ -1228,6 +1228,12 @@ private:
             placeholder_active_ = false;
         } else {
             decoder_.reset();
+            // Surface the decoder's computed failure reason instead of discarding
+            // it — otherwise the user only sees a black placeholder with no cause.
+            // (audit 06-F3) Fuller surfacing (run_checks finding / MCP) is backlog.
+            std::fprintf(stderr, "[movie_file] load failed: %s\n",
+                         ready->diagnostics.empty() ? "unknown error"
+                                                    : ready->diagnostics.c_str());
             show_placeholder(gpu);
         }
     }
