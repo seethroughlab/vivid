@@ -40,6 +40,21 @@ The practical boundary is:
 - use the control server for commands that need a live graph, live runtime state, or the visible session
 - use one-shot CLI JSON queries for operator/package/docs/catalog lookup that does not need a running session
 
+### API-surface map
+
+A method can live in three places. This table shows the categories with representative examples (not
+exhaustive — the Endpoint Catalog below is authoritative for HTTP):
+
+| Surface | Reachable over raw HTTP? | MCP tool? | Examples |
+|---------|--------------------------|-----------|----------|
+| **HTTP + MCP wrapper** | Yes | Yes (1:1 bridge) | `add_node`, `connect`, `set_param`, `inspect_graph`, `load_graph`, `save_graph`, `capture_interface` |
+| **HTTP-only** | Yes | Not exposed as a tool | low-level/opdev query methods reused by the opdev bridge |
+| **MCP-only (Python aggregation / CLI one-shot)** | No (no live-runtime endpoint) | Yes | `list_types` / `operator_docs` (CLI one-shot, no runtime needed); `fetch_reference`, `analyze_*` perception tools (Python-native in the analysis bridge) |
+
+Rule of thumb: if a method needs a live graph/runtime/session it is an HTTP endpoint (and usually an MCP
+wrapper); static catalog/doc lookups and Python-native analysis are MCP-only. See `mcp/CLAUDE.md` for the
+per-bridge split (`vivid_mcp.py` / `vivid_opdev_mcp.py` / `vivid_analysis_mcp.py`).
+
 ## HTTP Protocol
 
 - **Method**: `POST /<method_name>`
@@ -260,12 +275,26 @@ server isn't wired to an `EditorWindowManager` (e.g. headless utility binaries).
 
 ## Buffered vs Immediate Commands
 
-`is_topology_command()` returns true for commands that must be applied via `apply_pending()`:
-`add_node`, `remove_node`, `connect`, `disconnect`,
-`set_connection_remap`, `set_param`, `set_string_param`, `set_resolution`, `set_node_layout`,
-MIDI/session/preset mutations, `load_graph`.
+All control-server requests are drained on the main thread (queue-and-drain), but graph mutations
+split into two timing classes:
 
-Non-topology commands (`inspect_graph`, `list_types`, etc.) can execute immediately on the main thread.
+- **Buffered (topology) commands** set `pending_topology_change_` in `RuntimeAPI`; the actual
+  recompile happens between frames via `apply_pending()`. These include `add_node`, `remove_node`,
+  `connect`, `disconnect`, `set_connection_remap`, `rename_node`, and the modulation-assignment
+  commands (`add_mod_assignment`, etc.). Their effect is **not** visible until the next
+  `apply_pending()`.
+- **Immediate commands** mutate the live `CompiledGraph` directly with no recompile. `set_param` and
+  `set_string_param` are immediate — they write straight to the compiled node's param values
+  (`RuntimeAPI::set_param`, `runtime_api_live.cpp`). They do **not** set `pending_topology_change_`
+  and do not require `apply_pending()`.
+
+> ⚠️ This matters for MCP/LLM clients: a freshly `add_node`'d node does **not** exist in the compiled
+> graph until `apply_pending()`, so an immediate `set_param` against it (before applying) fails with
+> "unknown node". The reliable pattern is: batch buffered mutations, call `apply_pending()` **once**,
+> then issue immediate `set_param` calls against the now-compiled nodes.
+
+Non-topology read-only commands (`inspect_graph`, `list_types`, etc.) execute immediately on the main
+thread.
 
 `inspect_graph` now also returns `result.meta` when the loaded graph carries graph-owned content
 metadata. This mirrors the persisted `GraphContentMeta` contract from `Graph::load()` / `save()`

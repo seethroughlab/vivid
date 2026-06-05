@@ -147,14 +147,29 @@ std::string dispatch(const std::string& method, const std::string& body,
                     {
                         std::string ffn, ffp, ttn, ttp;
                         nlohmann::json warns = nlohmann::json::array();
-                        if (split_addr_local(from_addr, ffn, ffp)) {
+                        bool from_ok = split_addr_local(from_addr, ffn, ffp);
+                        bool to_ok = split_addr_local(to_addr, ttn, ttp);
+                        if (from_ok) {
                             std::string w = connect_port_issue(
                                 registry, graph.find_node(ffn), ffp, /*want_output=*/true);
                             if (!w.empty()) warns.push_back(w);
                         }
-                        if (split_addr_local(to_addr, ttn, ttp)) {
+                        if (to_ok) {
                             std::string w = connect_port_issue(
                                 registry, graph.find_node(ttn), ttp, /*want_output=*/false);
+                            if (!w.empty()) warns.push_back(w);
+                        }
+                        // Type-compat warning: only when BOTH endpoints resolve to
+                        // real ports (params/name-issues are handled above). Mirrors
+                        // the compiler's drop conditions so it never false-warns on a
+                        // valid edge. (audit 04-F5)
+                        VividPortType ft, tt;
+                        if (from_ok && to_ok &&
+                            resolve_exact_port_type(registry, graph.find_node(ffn), ffp,
+                                                    /*want_output=*/true, ft) &&
+                            resolve_exact_port_type(registry, graph.find_node(ttn), ttp,
+                                                    /*want_output=*/false, tt)) {
+                            std::string w = connect_type_issue(ft, tt);
                             if (!w.empty()) warns.push_back(w);
                         }
                         if (!warns.empty()) resp["warnings"] = std::move(warns);
@@ -598,9 +613,20 @@ std::string dispatch(const std::string& method, const std::string& body,
             } else {
                 const std::string lockfile_mode =
                     root.value("lockfile_mode", std::string());
-                result = command_result_to_json(
-                    api.load_graph(root["path"].get<std::string>(),
-                                   has_gpu_ops, has_audio, lockfile_mode));
+                CommandResult cr = api.load_graph(
+                    root["path"].get<std::string>(),
+                    has_gpu_ops, has_audio, lockfile_mode);
+                if (!cr.ok) {
+                    result = json_err(cr.message);
+                } else {
+                    // Disambiguate has_audio=false: surface when the graph has
+                    // audio operators but the engine failed to start (e.g. device
+                    // lost), so clients don't read it as "no audio nodes". (04-F1)
+                    nlohmann::json resp = {{"ok", true}, {"message", cr.message}};
+                    if (core.has_audio_operators() && !has_audio)
+                        resp["audio_unavailable"] = true;
+                    result = resp.dump();
+                }
             }
         }
     } else if (method == "get_last_crash") {
