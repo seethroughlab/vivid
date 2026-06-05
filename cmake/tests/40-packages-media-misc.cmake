@@ -178,6 +178,17 @@ add_test(NAME test_operator_descriptor_hash
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_operator_descriptor_hash PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
 
+add_executable(test_operator_descriptor_validation
+    tests/operators/test_operator_descriptor_validation.cpp
+)
+target_include_directories(test_operator_descriptor_validation PRIVATE src tests)
+target_link_libraries(test_operator_descriptor_validation PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_operator_descriptor_validation
+    COMMAND test_operator_descriptor_validation
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_operator_descriptor_validation PROPERTIES LABELS "PACKAGE" TIMEOUT 15)
+
 # ExportPipeline strict-mode gate tests (Phase 7)
 # ExportPipeline lives in the `vivid` executable, not in vivid_runtime_testlib,
 # so the test target compiles export_pipeline.cpp directly (same pattern as

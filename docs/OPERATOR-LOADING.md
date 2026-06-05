@@ -9,6 +9,10 @@ Vivid operators are single-file C++ modules compiled against the `operator_api` 
 
 `operator_codegen` runs at build time and generates a companion `*_generated_registration.cpp` that exports the `extern "C"` entry points the runtime uses at the dylib boundary: `vivid_abi_version`, `vivid_descriptor`, `vivid_create`, `vivid_destroy`, and domain-specific dispatch functions. No registration call is needed in operator source files.
 
+## Descriptor Validation
+
+When a dylib loads, the runtime validates its descriptor before accepting it (`validate_descriptor()` in `operator_loader.cpp`). If anything is malformed — missing/duplicate param or port names, a `FILE`/`TEXT` param with no default string, a custom-transport port with no `type_name`, an invalid generated uniform layout, etc. — the load is **rejected**: the dylib is unloaded, `load()` fails, and the issue is reported via `OperatorLoader::last_error()` (and as structured `{code, message}` through the MCP `validate_operators` tool). Codegen-built operators normally pass; the checks guard hand-written or stale descriptors. See [docs/OPERATOR-DESCRIPTOR-VALIDATION.md](OPERATOR-DESCRIPTOR-VALIDATION.md) for every code and how to fix it.
+
 ## ABI Version: A Staleness Check
 
 `VIVID_OPERATOR_ABI_VERSION` (defined in `src/operator_api/types.h`) is a staleness detector, not a cross-version compatibility promise.
