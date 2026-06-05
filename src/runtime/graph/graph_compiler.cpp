@@ -11,6 +11,37 @@
 
 namespace vivid {
 
+// Synthesize the verbose, user-facing "missing operator" message once at compile
+// time (audit 01-R2-F3). This is exactly the text the GraphSnapshot used to
+// re-derive from the registry every frame; computing it here makes the compiler
+// the single source of truth. disabled/quarantined surface the classification
+// detail; every other reason maps to the ABI-mismatch / not-found guidance.
+static std::string synth_missing_operator_message(const std::string& reason,
+                                                   const std::string& detail,
+                                                   const std::string& type,
+                                                   OperatorRegistry& registry) {
+    if (reason == "disabled")
+        return detail.empty() ? "Disabled by safe mode (crash recovery)." : detail;
+    if (reason == "quarantined")
+        return detail.empty() ? "Quarantined after repeated crashes." : detail;
+    // Prefer a package-specific ABI-mismatch hint when one matches this type.
+    for (const auto& d : registry.abi_mismatch_diagnostics()) {
+        if (d.plugin_name == type) {
+            return "\"" + type + "\" failed to load (ABI mismatch).\n"
+                   "Package '" + d.package_name + "' may need rebuild.\n"
+                   "Run: vivid rebuild " + d.package_name;
+        }
+    }
+    if (registry.has_abi_mismatch_diagnostics()) {
+        return "Operator \"" + type + "\" not found.\n"
+               "ABI mismatch detected \xe2\x80\x94 plugins were built against a different Vivid version.\n"
+               "Run 'vivid rebuild <package>' to recompile, then reload.";
+    }
+    return "Operator \"" + type + "\" not found.\n"
+           "The package providing this operator may not be installed or linked.\n"
+           "Install/link the package, then reload the graph.";
+}
+
 // ---------------------------------------------------------------------------
 // GraphCompiler::compile()
 //
@@ -185,6 +216,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.missing_operator_reason = "not_found";
                 cn.missing_operator_detail = "No installed package provides operator '" + ndef.type + "'.";
             }
+            // Precompute the verbose UI message once (audit 01-R2-F3) so the
+            // per-frame snapshot builder no longer re-derives it.
+            cn.missing_operator_ui_message = synth_missing_operator_message(
+                cn.missing_operator_reason, cn.missing_operator_detail, ndef.type, registry);
 
             const auto& in_names = incoming_ports[ndef.id];
             const auto& out_names = outgoing_ports[ndef.id];
@@ -940,6 +975,29 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             else
                 cg->frame_to_audio_edges.push_back(ei);
         }
+    }
+
+    // Warn at compile time when a cross-cadence bridge edge carries a STATICALLY
+    // known lane count exceeding the fixed bridge slot capacity (audit 01-R2-F7).
+    // The AudioFrameBridge clamps oversized lanes at runtime and surfaces a
+    // runtime-health warning, but a statically-known overflow is a graph-shape
+    // problem worth flagging up front. Runtime-dynamic (polyphonic) counts read
+    // as <= 1 here, so they are not caught and continue to rely on the runtime
+    // diagnostic — growing/right-sizing bridge slots is a separate future change.
+    {
+        auto warn_oversized_bridge = [&](uint32_t ei) {
+            const auto& e = cg->edges[ei];
+            if (e.lane_count > graph_compiler_internal::kDefaultLaneCapacity) {
+                std::fprintf(stderr,
+                    "[vivid] GraphCompiler: bridge edge %s/%u -> %s/%u carries %u lanes, exceeding "
+                    "the bridge slot capacity %u — lane data will be clamped at runtime\n",
+                    cg->nodes[e.from_node].node_id.c_str(), e.from_port,
+                    cg->nodes[e.to_node].node_id.c_str(), e.to_port,
+                    e.lane_count, graph_compiler_internal::kDefaultLaneCapacity);
+            }
+        };
+        for (uint32_t ei : cg->frame_to_audio_edges) warn_oversized_bridge(ei);
+        for (uint32_t ei : cg->audio_to_frame_edges) warn_oversized_bridge(ei);
     }
 
     // ===================================================================

@@ -664,6 +664,11 @@ void apply_strict_mode_to_compiled_graph(const LockfileStatus& status,
         cn.missing_operator        = true;
         cn.missing_operator_reason = "locked_unavailable";
         if (cn.missing_operator_detail.empty()) cn.missing_operator_detail = detail;
+        // This path runs post-compile (the compiler never saw a missing op), so
+        // set the UI message here too (audit 01-R2-F3) — the snapshot builder now
+        // copies it verbatim. Surfaces the lockfile reason instead of a generic
+        // "not found" string.
+        cn.missing_operator_ui_message = cn.missing_operator_detail;
     };
 
     auto disable_nodes_in_package = [&](const std::string& pkg_name,
