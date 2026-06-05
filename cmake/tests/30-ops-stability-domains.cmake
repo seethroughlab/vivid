@@ -5,6 +5,14 @@ add_executable(test_operator_loader
 target_include_directories(test_operator_loader PRIVATE src tests)
 target_link_libraries(test_operator_loader PRIVATE vivid_runtime_testlib vivid_operator_api webgpu nlohmann_json::nlohmann_json)
 
+# Shared plugin base64 (vst3/clap/au hosts) — pure header unit test. (audit 09-F1)
+add_executable(test_plugin_base64
+    tests/operators/test_plugin_base64.cpp
+)
+target_include_directories(test_plugin_base64 PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_plugin_base64 PRIVATE vivid_operator_api)
+add_test(NAME test_plugin_base64 COMMAND test_plugin_base64 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # EditorWindowBookkeeping unit tests (pure-logic, no GPU/GLFW)
 add_executable(test_editor_window_manager
     tests/ops/test_editor_window_manager.cpp

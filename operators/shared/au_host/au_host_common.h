@@ -10,6 +10,7 @@
 
 #ifdef __APPLE__
 #include "operator_api/types.h"
+#include "shared/plugin_common/base64.h"
 #include "shared/au_host/au_scanner.h"
 
 #include <AudioToolbox/AudioToolbox.h>
@@ -26,59 +27,13 @@ namespace {
 // Base64 encode/decode (RFC 4648, standard alphabet) — same as clap_host_common.h
 // ---------------------------------------------------------------------------
 
-static const char kAUB64Table[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
+// Thin wrappers over the shared canonical base64 (operators/shared/plugin_common/
+// base64.h) — keep the host-local names so call sites are unchanged. (audit 09-F1)
 static std::string au_b64_encode(const uint8_t* data, size_t len) {
-    std::string out;
-    out.reserve(((len + 2) / 3) * 4);
-    for (size_t i = 0; i < len; i += 3) {
-        uint32_t n = static_cast<uint32_t>(data[i]) << 16;
-        if (i + 1 < len) n |= static_cast<uint32_t>(data[i + 1]) << 8;
-        if (i + 2 < len) n |= static_cast<uint32_t>(data[i + 2]);
-        out.push_back(kAUB64Table[(n >> 18) & 0x3F]);
-        out.push_back(kAUB64Table[(n >> 12) & 0x3F]);
-        out.push_back((i + 1 < len) ? kAUB64Table[(n >> 6) & 0x3F] : '=');
-        out.push_back((i + 2 < len) ? kAUB64Table[ n       & 0x3F] : '=');
-    }
-    return out;
+    return vivid::plugin_common::base64_encode(data, len);
 }
-
 static std::vector<uint8_t> au_b64_decode(const std::string& s) {
-    static const int8_t kDec[256] = {
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
-        52,53,54,55,56,57,58,59,60,61,-1,-1,-1, 0,-1,-1,
-        -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
-        15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
-        -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
-        41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-        -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
-    };
-    std::vector<uint8_t> out;
-    out.reserve((s.size() / 4) * 3);
-    uint32_t acc = 0;
-    int bits = 0;
-    for (unsigned char c : s) {
-        int v = kDec[c];
-        if (v < 0) continue;
-        acc = (acc << 6) | static_cast<uint32_t>(v);
-        bits += 6;
-        if (bits >= 8) {
-            bits -= 8;
-            out.push_back(static_cast<uint8_t>(acc >> bits));
-            acc &= (1u << bits) - 1u;
-        }
-    }
-    return out;
+    return vivid::plugin_common::base64_decode(s);
 }
 
 // ---------------------------------------------------------------------------
