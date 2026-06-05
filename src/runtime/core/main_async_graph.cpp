@@ -357,59 +357,22 @@ void annotate_graph_packages(vivid::Graph& graph,
     }
 }
 
-bool rebuild_live_runtime_from_graph(MainAppContext& ctx) {
+// Shared teardown before rebuilding/adopting a live runtime graph (audit 03-R2-F2):
+// stop the audio engine, tear down the runtime, and drop cached thumbnails.
+static void teardown_live_runtime(MainAppContext& ctx) {
     if (ctx.has_audio) {
         ctx.audio_engine.shutdown();
         ctx.has_audio = false;
     }
     ctx.runtime.shutdown();
     ctx.thumb_cache.clear();
-
-    if (!ctx.runtime.build(ctx.graph, ctx.registry)) {
-        std::fprintf(stderr, "[vivid] Runtime rebuild failed after registry refresh\n");
-        ctx.graph_loaded = false;
-        ctx.has_gpu_ops = false;
-        ctx.video_out_idx = -1;
-        ctx.capture_coordinator.set_audio_engine(nullptr);
-        return false;
-    }
-
-    ctx.graph_loaded = ctx.runtime.compiled_graph() && !ctx.runtime.compiled_graph()->nodes.empty();
-    ctx.has_gpu_ops = ctx.runtime.has_gpu_operators();
-    if (ctx.has_gpu_ops) {
-        ctx.runtime.allocate_gpu_textures(ctx.gpu.device(), 1280, 720, WGPUTextureFormat_RGBA16Float);
-        ctx.video_out_idx = ctx.runtime.find_effective_gpu_sink();
-    } else {
-        ctx.video_out_idx = -1;
-    }
-
-    if (ctx.runtime.has_audio_operators()) {
-        if (ctx.audio_engine.build(ctx.runtime) && ctx.audio_engine.start()) {
-            ctx.has_audio = true;
-        }
-    }
-
-    ctx.capture_coordinator.set_audio_engine(ctx.has_audio ? &ctx.audio_engine : nullptr);
-    return true;
 }
 
-bool adopt_prepared_graph(MainAppContext& ctx,
-                          vivid::Graph&& next_graph,
-                          vivid::RuntimeCore::PreparedBuild&& prepared_build,
-                          bool reset_live_metronome) {
-    if (ctx.has_audio) {
-        ctx.audio_engine.shutdown();
-        ctx.has_audio = false;
-    }
-    ctx.runtime.shutdown();
-    ctx.thumb_cache.clear();
-
-    ctx.graph = std::move(next_graph);
-    ctx.runtime.adopt_prepared_build(std::move(prepared_build));
-    if (reset_live_metronome) {
-        ctx.runtime.reset_live_metronome(ctx.graph.metronome(), ctx.runtime.last_tick_time());
-    }
-
+// Shared post-build initialization after a successful build()/adopt_prepared_build()
+// (audit 03-R2-F2): publish graph-loaded state, (re)allocate GPU textures and resolve
+// the video-out sink, then rebuild+start the audio engine when the graph has audio
+// operators, and point the capture coordinator at the live engine.
+static void finalize_live_runtime(MainAppContext& ctx) {
     ctx.graph_loaded = ctx.runtime.compiled_graph() && !ctx.runtime.compiled_graph()->nodes.empty();
     ctx.has_gpu_ops = ctx.runtime.has_gpu_operators();
     if (ctx.has_gpu_ops) {
@@ -425,6 +388,37 @@ bool adopt_prepared_graph(MainAppContext& ctx,
     }
 
     ctx.capture_coordinator.set_audio_engine(ctx.has_audio ? &ctx.audio_engine : nullptr);
+}
+
+bool rebuild_live_runtime_from_graph(MainAppContext& ctx) {
+    teardown_live_runtime(ctx);
+
+    if (!ctx.runtime.build(ctx.graph, ctx.registry)) {
+        std::fprintf(stderr, "[vivid] Runtime rebuild failed after registry refresh\n");
+        ctx.graph_loaded = false;
+        ctx.has_gpu_ops = false;
+        ctx.video_out_idx = -1;
+        ctx.capture_coordinator.set_audio_engine(nullptr);
+        return false;
+    }
+
+    finalize_live_runtime(ctx);
+    return true;
+}
+
+bool adopt_prepared_graph(MainAppContext& ctx,
+                          vivid::Graph&& next_graph,
+                          vivid::RuntimeCore::PreparedBuild&& prepared_build,
+                          bool reset_live_metronome) {
+    teardown_live_runtime(ctx);
+
+    ctx.graph = std::move(next_graph);
+    ctx.runtime.adopt_prepared_build(std::move(prepared_build));
+    if (reset_live_metronome) {
+        ctx.runtime.reset_live_metronome(ctx.graph.metronome(), ctx.runtime.last_tick_time());
+    }
+
+    finalize_live_runtime(ctx);
     return true;
 }
 

@@ -97,6 +97,31 @@ int main() {
     }
 
     // =====================================================================
+    // Test 1c: adopt_prepared_build with a null PreparedBuild is a guarded no-op
+    // (audit 03-R2-F4/F9) — must not crash and must leave the live graph intact.
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 1c: Null prepared-build adoption is a no-op ===\n");
+        vivid::Graph g;
+        g.add_node("a", "TestOp", {{"scale", 1.0f}});
+
+        vivid::RuntimeCore runtime;
+        check(runtime.build(g, registry), "build succeeds");
+        const auto* live_before = runtime.compiled_graph();
+        check(live_before != nullptr, "live graph present after build");
+
+        // Default-constructed PreparedBuild carries a null compiled_graph.
+        runtime.adopt_prepared_build(vivid::RuntimeCore::PreparedBuild{});
+
+        check(runtime.compiled_graph() == live_before,
+              "null adopt left the live compiled graph unchanged");
+        runtime.tick(0.0, 0.016, 0);  // still ticks without crashing
+        check(runtime.compiled_graph()->find_node("a") != nullptr,
+              "live graph still usable after null adopt");
+        runtime.shutdown();
+    }
+
+    // =====================================================================
     // Test 2: Diamond topology
     // a(TestOp,scale=3) → b(gain=2), a → c(gain=5), b→d/in, c→d/gain
     // a: output = 3*2 = 6

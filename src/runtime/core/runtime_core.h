@@ -35,6 +35,9 @@ public:
         bool bar_epoch_reset = false;
     };
 
+    // Result of prepare_build(). POSTCONDITION: compiled_graph is non-null iff
+    // prepare_build() returned true; adopt_prepared_build() is a no-op on a
+    // PreparedBuild with a null compiled_graph (audit 03-R2-F4).
     struct PreparedBuild {
         std::unique_ptr<CompiledGraph> compiled_graph;
         std::filesystem::path graph_base_dir;
@@ -55,6 +58,12 @@ public:
     // un-adopted PreparedBuild is freed by RAII. See docs/runtime/runtime_core.md.
     bool prepare_build(const Graph& graph, OperatorRegistry& registry,
                        PreparedBuild& out, std::string* error = nullptr) const;
+    // Swap in a prepared build (main thread, at a frame boundary). PRECONDITION:
+    // prepared.compiled_graph must be non-null (no-op + warning otherwise).
+    // AUDIO LIFECYCLE: the caller must shut down the AudioEngine first if it is
+    // running — RuntimeCore rebuilds the AudioFrameBridge here but does NOT own
+    // the AudioEngine, so the caller rebuilds/restarts it after adoption
+    // (see main_async_graph.cpp and docs/runtime/runtime_core.md). (audit 03-R2-F1)
     void adopt_prepared_build(PreparedBuild prepared);
     void tick(double time, double delta_time, uint64_t frame, void* gpu_state = nullptr,
               PostNodeFn on_gpu_node = nullptr,
