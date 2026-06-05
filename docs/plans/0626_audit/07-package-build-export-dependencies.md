@@ -127,10 +127,13 @@ Dismissed). Genuinely-missing coverage, with repro commands:
 
 **Immediate** — none. No correctness / reproducibility defect.
 
-**Near-term**
-- 07-F1: make `vivid_package_operator`'s `GPU` flag real (thread webgpu include/lib via cache vars), **or**
-  remove the dead flag — decide alongside the Audit-02 sibling migration (which needs cmake-path GPU support).
-- 07-F4: document the CMake package path in `package_system.md`.
+**Near-term** — ✅ **DONE 2026-06-05** (build + package tests green)
+- 07-F1: `vivid_package_operator`'s `GPU` flag is now real — extracted `PackageCompiler::managed_webgpu_paths()`
+  (shared with the clang++ path), the package manager threads `VIVID_WEBGPU_INCLUDE_DIR`/`VIVID_WEBGPU_LIB_DIR`,
+  and the cmake module adds the include + links `wgpu_native` under `GPU` (warns if paths absent).
+- 07-F4: documented the CMake package path — "CMake-Based Packages (`vivid_package_operator`)" section in
+  `package_system.md` (example CMakeLists, GPU/EXTRA_LIBS, injected `VIVID_*` vars) + expanded the cmake
+  module header.
 
 **Backlog**
 - Add the GPU-cmake-path + concurrent-op + >2-level-cycle + partial-rollback tests.
