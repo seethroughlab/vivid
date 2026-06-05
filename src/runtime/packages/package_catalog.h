@@ -60,8 +60,9 @@ public:
     // Install by catalog name → looks up URL, delegates to PackageManager.
     InstallResult install(const std::string& name);
 
-    // Uninstall by catalog name.
-    bool uninstall(const std::string& name);
+    // Uninstall by catalog name. Returns the PackageManager's InstallResult
+    // (mirrors install() above) so callers get structured error reporting.
+    InstallResult uninstall(const std::string& name);
 
 private:
     void fetch_thread_fn();

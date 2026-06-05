@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
         check(graph.save_to_string(snapshot_json), "save_to_string before unlink");
         audio_engine.shutdown();
         runtime.shutdown();
-        check(package_manager.unlink(package_name), "package_manager.unlink() succeeds");
+        check(package_manager.unlink(package_name).success, "package_manager.unlink() succeeds");
         std::fprintf(stderr, "  INFO: applying snapshot after unlink\n");
         auto apply_unlink = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
         check(apply_unlink.ok, "apply_snapshot_json after unlink succeeds");

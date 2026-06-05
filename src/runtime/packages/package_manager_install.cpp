@@ -326,19 +326,24 @@ InstallResult PackageManager::link(const std::string& path) {
     return result;
 }
 
-bool PackageManager::unlink(const std::string& name) {
+InstallResult PackageManager::unlink(const std::string& name) {
+    InstallResult result;
     std::string pkg_dir = packages_dir() + "/" + name;
 
     // Check for symlink first (is_symlink works even when target is gone)
     if (!std::filesystem::is_symlink(pkg_dir) && !std::filesystem::exists(pkg_dir)) {
         std::fprintf(stderr, "[vivid] PackageManager: package not found: %s\n", name.c_str());
-        return false;
+        result.error_code = "package_not_found";
+        result.error = "package not found: " + name;
+        return result;
     }
 
     if (!std::filesystem::is_symlink(pkg_dir)) {
         std::fprintf(stderr, "[vivid] PackageManager: '%s' is not a linked package (use uninstall instead)\n",
                      name.c_str());
-        return false;
+        result.error_code = "not_linked";
+        result.error = "'" + name + "' is not a linked package (use uninstall instead)";
+        return result;
     }
 
     // Unregister operators from registry (best-effort; error discarded)
@@ -366,12 +371,15 @@ bool PackageManager::unlink(const std::string& name) {
     if (ec) {
         std::fprintf(stderr, "[vivid] PackageManager: failed to remove symlink %s: %s\n",
                      pkg_dir.c_str(), ec.message().c_str());
-        return false;
+        result.error_code = "remove_failed";
+        result.error = "failed to remove symlink " + pkg_dir + ": " + ec.message();
+        return result;
     }
 
     std::fprintf(stderr, "[vivid] PackageManager: unlinked %s\n", name.c_str());
     notify_watchers_changed();
-    return true;
+    result.success = true;
+    return result;
 }
 
 InstallResult PackageManager::rebuild(const std::string& name) {
@@ -437,12 +445,15 @@ InstallResult PackageManager::rebuild(const std::string& name) {
     return result;
 }
 
-bool PackageManager::uninstall(const std::string& name) {
+InstallResult PackageManager::uninstall(const std::string& name) {
+    InstallResult result;
     std::string pkg_dir = packages_dir() + "/" + name;
 
     if (!std::filesystem::exists(pkg_dir)) {
         std::fprintf(stderr, "[vivid] PackageManager: package not found: %s\n", name.c_str());
-        return false;
+        result.error_code = "package_not_found";
+        result.error = "package not found: " + name;
+        return result;
     }
 
     // Warn if other installed packages depend on this one
@@ -491,12 +502,15 @@ bool PackageManager::uninstall(const std::string& name) {
     if (ec) {
         std::fprintf(stderr, "[vivid] PackageManager: failed to remove %s: %s\n",
                      pkg_dir.c_str(), ec.message().c_str());
-        return false;
+        result.error_code = "remove_failed";
+        result.error = "failed to remove " + pkg_dir + ": " + ec.message();
+        return result;
     }
 
     std::fprintf(stderr, "[vivid] PackageManager: uninstalled %s\n", name.c_str());
     notify_watchers_changed();
-    return true;
+    result.success = true;
+    return result;
 }
 
 } // namespace vivid

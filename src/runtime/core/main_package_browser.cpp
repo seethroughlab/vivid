@@ -145,9 +145,10 @@ void configure_package_browser(MainAppContext& ctx,
         if (!begin_action()) return false;
         if (state.action_thread.joinable()) state.action_thread.join();
         state.action_thread = std::thread([&ctx, &state, name]() {
-            bool ok = ctx.pkg_catalog.uninstall(name);
+            auto rm = ctx.pkg_catalog.uninstall(name);
+            bool ok = rm.success;
             std::lock_guard<std::mutex> lk(state.action_mutex);
-            state.action_error_msg = ok ? "" : "Failed to uninstall " + name;
+            state.action_error_msg = ok ? "" : (rm.error.empty() ? "Failed to uninstall " + name : rm.error);
             state.action_needs_refresh = ok;
             state.action_state = ok ? PackageBrowserState::ActionState::Done
                                     : PackageBrowserState::ActionState::Error;
@@ -158,9 +159,10 @@ void configure_package_browser(MainAppContext& ctx,
         if (!begin_action()) return false;
         if (state.action_thread.joinable()) state.action_thread.join();
         state.action_thread = std::thread([&ctx, &state, name]() {
-            bool ok = ctx.pkg_manager.unlink(name);
+            auto rm = ctx.pkg_manager.unlink(name);
+            bool ok = rm.success;
             std::lock_guard<std::mutex> lk(state.action_mutex);
-            state.action_error_msg = ok ? "" : "Failed to unlink " + name;
+            state.action_error_msg = ok ? "" : (rm.error.empty() ? "Failed to unlink " + name : rm.error);
             state.action_needs_refresh = ok;
             state.action_state = ok ? PackageBrowserState::ActionState::Done
                                     : PackageBrowserState::ActionState::Error;

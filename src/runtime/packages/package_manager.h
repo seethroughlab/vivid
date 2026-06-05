@@ -121,14 +121,17 @@ public:
     // Install from git URL or local path → clone/copy + compile + scan into registry
     InstallResult install(const std::string& url);
 
-    // Remove package directory and unregister operators
-    bool uninstall(const std::string& name);
+    // Remove package directory and unregister operators.
+    // Returns InstallResult for API consistency with install/link/rebuild; the
+    // install-specific fields (info/compile_results/installed_deps) are unused.
+    InstallResult uninstall(const std::string& name);
 
     // Symlink a local package for development (npm link-style)
     InstallResult link(const std::string& path);
 
-    // Remove a linked package symlink (never touches source)
-    bool unlink(const std::string& name);
+    // Remove a linked package symlink (never touches source). See uninstall()
+    // re: the unused install-specific InstallResult fields.
+    InstallResult unlink(const std::string& name);
 
     // Recompile operators for an installed or linked package
     InstallResult rebuild(const std::string& name);

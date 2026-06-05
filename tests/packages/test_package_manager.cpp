@@ -147,7 +147,7 @@ struct TestMgrOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     // --- Test 4: Uninstall ---
     std::fprintf(stderr, "\n--- Uninstall ---\n");
-    check(pm.uninstall("test-mgr-package"), "uninstall succeeds");
+    check(pm.uninstall("test-mgr-package").success, "uninstall succeeds");
     check(!fs::exists(pkg_install_dir), "package directory removed");
 
     // Verify operator is gone from registry
@@ -160,7 +160,7 @@ struct TestMgrOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     // --- Test 5: Uninstall non-existent ---
     std::fprintf(stderr, "\n--- Uninstall non-existent ---\n");
-    check(!pm.uninstall("nonexistent-package"), "uninstall of non-existent fails");
+    check(!pm.uninstall("nonexistent-package").success, "uninstall of non-existent fails");
 
     // --- Test 6: Install with bad manifest ---
     std::fprintf(stderr, "\n--- Install with bad manifest ---\n");
@@ -426,7 +426,7 @@ set_target_properties(test_cmake_op PROPERTIES
     check(found, "TestCmakeOp in registry after cmake install");
 
     // Uninstall cmake package
-    check(pm.uninstall("test-cmake-package"), "cmake package uninstall succeeds");
+    check(pm.uninstall("test-cmake-package").success, "cmake package uninstall succeeds");
     check(!fs::exists(cmake_install_dir), "cmake package directory removed");
 
     // --- Test 9: Transitive dependency installation ---
