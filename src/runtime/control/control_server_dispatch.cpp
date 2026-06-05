@@ -63,21 +63,6 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
                             const ControlServer* control_server,
                             CrashRecoveryManager* crash_recovery_manager,
                             EditorWindowManager* editor_window_manager) {
-    // Read-only queries (no body needed)
-    // inspect_graph accepts an optional "detail" field in the body -- handled below after body parsing.
-    if (method == "inspect_session") return handle_inspect_session(graph, api);
-    if (method == "introspect_nodes") return handle_introspect_nodes(graph, core, core.subgraph_modules());
-    if (method == "run_diagnostics")
-        return control_server_checks::handle_run_diagnostics(graph, core, registry, audio_engine, gpu_context, package_catalog, control_server);
-    if (method == "get_runtime_health")
-        return control_server_checks::handle_get_runtime_health(graph, core, registry, audio_engine, gpu_context, package_catalog, control_server);
-    if (method == "get_registry_diagnostics") return handle_get_registry_diagnostics(registry);
-    if (method == "get_graph_load_diagnostics") return handle_get_graph_load_diagnostics(graph);
-    if (method == "list_source_roots") return handle_list_source_roots(source_index);
-    if (method == "operator_map") return handle_operator_map(registry);
-    if (method == "validate_operators") return handle_validate_operators(registry);
-    if (method == "get_discovery_report") return handle_get_discovery_report(package_manager);
-
     // Parse body JSON (may be empty for some commands)
     nlohmann::json root;
     bool root_valid = false;
@@ -86,257 +71,7 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
 
     std::string result;
 
-    if (method == "inspect_graph") {
-        std::string detail = "full";
-        if (root_valid && root.contains("detail") && root["detail"].is_string())
-            detail = root["detail"].get<std::string>();
-        result = handle_inspect_graph(graph, core, core.subgraph_modules(), detail);
-    } else if (method == "list_types") {
-        result = handle_list_types(registry, package_manager, source_docs, root_valid ? root : nlohmann::json::object(), core.subgraph_modules());
-    } else if (method == "search_source") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_search_source(source_index, root);
-    } else if (method == "read_source_file") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_read_source_file(source_index, root);
-    } else if (method == "read_source_span") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_read_source_span(source_index, root);
-    } else if (method == "find_symbol") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_find_symbol(source_index, root);
-    } else if (method == "find_references") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_find_references(source_index, root);
-    } else if (method == "get_build_activity") {
-        result = handle_get_build_activity(build_console, root_valid ? root : nlohmann::json::object());
-    } else if (method == "explain_build_failure") {
-        result = handle_explain_build_failure(build_console, root_valid ? root : nlohmann::json::object());
-    } else if (method == "validate_checks") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = control_server_checks::handle_validate_checks(root);
-    } else if (method == "sample_node_outputs") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_sample_node_outputs(graph, core, root);
-    } else if (method == "run_checks") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = control_server_checks::handle_run_checks(graph, core, registry, root);
-    } else if (method == "add_node") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("type") || !root["type"].is_string() ||
-                !root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'type' or 'node_id'");
-            else
-                result = command_result_to_json(
-                    api.add_node(root["type"].get<std::string>(), root["node_id"].get<std::string>()));
-        }
-    } else if (method == "remove_node") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else
-                result = command_result_to_json(api.remove_node(root["node_id"].get<std::string>()));
-        }
-    } else if (method == "rename_node") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("old_id") || !root["old_id"].is_string() ||
-                !root.contains("new_id") || !root["new_id"].is_string())
-                result = json_err("missing 'old_id' or 'new_id'");
-            else
-                result = command_result_to_json(
-                    api.rename_node(root["old_id"].get<std::string>(),
-                                    root["new_id"].get<std::string>()));
-        }
-    } else if (method == "connect") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
-                !root.contains("to_addr") || !root["to_addr"].is_string())
-                result = json_err("missing 'from_addr' or 'to_addr'");
-            else {
-                const std::string from_addr = root["from_addr"].get<std::string>();
-                const std::string to_addr = root["to_addr"].get<std::string>();
-                const bool semantic_defaults = root.contains("semantic_defaults") &&
-                    root["semantic_defaults"].is_boolean() && root["semantic_defaults"].get<bool>();
-                const std::string bridge = (root.contains("bridge") && root["bridge"].is_string())
-                    ? root["bridge"].get<std::string>() : "";
-                CommandResult cr = api.connect(from_addr, to_addr, semantic_defaults, bridge);
-                if (!cr.ok) {
-                    result = json_err(cr.message);
-                } else {
-                    nlohmann::json resp = nlohmann::json::object();
-                    resp["ok"] = true;
-                    resp["message"] = cr.message;
-
-                    // Surface dropped-port mistakes immediately (e.g. connecting
-                    // to "mixer/input" instead of "mixer/input_0") instead of
-                    // letting them fail silently until get_graph_errors.
-                    {
-                        std::string ffn, ffp, ttn, ttp;
-                        nlohmann::json warns = nlohmann::json::array();
-                        bool from_ok = split_addr_local(from_addr, ffn, ffp);
-                        bool to_ok = split_addr_local(to_addr, ttn, ttp);
-                        if (from_ok) {
-                            std::string w = connect_port_issue(
-                                registry, graph.find_node(ffn), ffp, /*want_output=*/true);
-                            if (!w.empty()) warns.push_back(w);
-                        }
-                        if (to_ok) {
-                            std::string w = connect_port_issue(
-                                registry, graph.find_node(ttn), ttp, /*want_output=*/false);
-                            if (!w.empty()) warns.push_back(w);
-                        }
-                        // Type-compat warning: only when BOTH endpoints resolve to
-                        // real ports (params/name-issues are handled above). Mirrors
-                        // the compiler's drop conditions so it never false-warns on a
-                        // valid edge. (audit 04-F5)
-                        VividPortType ft, tt;
-                        if (from_ok && to_ok &&
-                            resolve_exact_port_type(registry, graph.find_node(ffn), ffp,
-                                                    /*want_output=*/true, ft) &&
-                            resolve_exact_port_type(registry, graph.find_node(ttn), ttp,
-                                                    /*want_output=*/false, tt)) {
-                            std::string w = connect_type_issue(ft, tt);
-                            if (!w.empty()) warns.push_back(w);
-                        }
-                        if (!warns.empty()) resp["warnings"] = std::move(warns);
-                    }
-
-                    bool inferred_applied = false;
-                    if (semantic_defaults) {
-                        const ConnectionDef* conn = find_connection_by_addr(graph, from_addr, to_addr);
-                        if (conn && conn->has_remap()) {
-                            inferred_applied = true;
-                            resp["inferred_remap"] = {
-                                {"from_min", conn->from_min}, {"from_max", conn->from_max},
-                                {"to_min", conn->to_min}, {"to_max", conn->to_max},
-                                {"clamp", conn->clamp}
-                            };
-                        }
-                    }
-                    resp["inferred_remap_applied"] = inferred_applied;
-                    result = resp.dump();
-                }
-            }
-        }
-    } else if (method == "disconnect") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
-                !root.contains("to_addr") || !root["to_addr"].is_string())
-                result = json_err("missing 'from_addr' or 'to_addr'");
-            else
-                result = command_result_to_json(
-                    api.disconnect(root["from_addr"].get<std::string>(), root["to_addr"].get<std::string>()));
-        }
-    } else if (method == "set_connection_remap") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("from_addr") || !root["from_addr"].is_string() ||
-                !root.contains("to_addr") || !root["to_addr"].is_string())
-                result = json_err("missing 'from_addr' or 'to_addr'");
-            else {
-                float fmin = root.contains("from_min") && root["from_min"].is_number() ? root["from_min"].get<float>() : 0.0f;
-                float fmax = root.contains("from_max") && root["from_max"].is_number() ? root["from_max"].get<float>() : 1.0f;
-                float tmin = root.contains("to_min") && root["to_min"].is_number() ? root["to_min"].get<float>() : 0.0f;
-                float tmax = root.contains("to_max") && root["to_max"].is_number() ? root["to_max"].get<float>() : 1.0f;
-                bool  cval = root.contains("clamp") && root["clamp"].is_boolean() ? root["clamp"].get<bool>() : false;
-                uint8_t curve = root.contains("curve") && root["curve"].is_number_unsigned()
-                    ? static_cast<uint8_t>(root["curve"].get<unsigned>()) : uint8_t(0);
-                result = command_result_to_json(
-                    api.set_connection_remap(root["from_addr"].get<std::string>(), root["to_addr"].get<std::string>(),
-                                              fmin, fmax, tmin, tmax, cval, curve));
-            }
-        }
-    } else if (method == "set_param") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string() ||
-                !root.contains("value") || !root["value"].is_number())
-                result = json_err("missing 'node_id', 'param', or 'value'");
-            else
-                result = command_result_to_json(
-                    api.set_param(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
-                                  root["value"].get<float>()));
-        }
-    } else if (method == "set_string_param") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string() ||
-                !root.contains("value") || !root["value"].is_string())
-                result = json_err("missing 'node_id', 'param', or 'value' (string)");
-            else
-                result = command_result_to_json(
-                    api.set_string_param(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
-                                         root["value"].get<std::string>()));
-        }
-    } else if (method == "get_param") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string())
-                result = json_err("missing 'node_id' or 'param'");
-            else {
-                auto r = api.get_param(root["node_id"].get<std::string>(), root["param"].get<std::string>());
-                if (r.ok) {
-                    float v = 0;
-                    try { v = std::stof(r.message); } catch (...) {}
-                    result = nlohmann::json{{"ok", true}, {"value", static_cast<double>(v)}}.dump();
-                } else {
-                    result = json_err(r.message);
-                }
-            }
-        }
-
-    } else if (method == "list_clap_params") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else if (!root.contains("node_id") || !root["node_id"].is_string()) {
-            result = json_err("missing 'node_id'");
-        } else {
-            auto* cg = core.compiled_graph();
-            if (!cg) {
-                result = json_err("no compiled graph");
-            } else {
-                const std::string nid = root["node_id"].get<std::string>();
-                const auto* cn = cg->find_node(nid);
-                if (!cn) {
-                    result = json_err("unknown node '" + nid + "'");
-                } else {
-                    auto fi = cn->file_param_indices.find("_clap_params");
-                    if (fi == cn->file_param_indices.end() ||
-                        fi->second >= cn->file_param_storage.size()) {
-                        result = json_err("node '" + nid + "' is not a CLAP operator");
-                    } else {
-                        const std::string& raw = cn->file_param_storage[fi->second];
-                        try {
-                            auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
-                            result = nlohmann::json{{"ok", true}, {"params", arr}}.dump();
-                        } catch (...) {
-                            result = nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
-                        }
-                    }
-                }
-            }
-        }
-
-    } else if (method == "list_au_plugins") {
-#ifdef __APPLE__
-        runtime_au_scan_plugins();
-        const auto& plugins = runtime_au_get_plugins();
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto& p : plugins)
-            arr.push_back(nlohmann::json{{"name", p.name}});
-        result = nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
-#else
-        result = nlohmann::json{{"ok", true}, {"plugins", nlohmann::json::array()}}.dump();
-#endif
-
-    } else if (method == "list_au_params") {
+    if (method == "list_au_params") {
         if (!root_valid) { result = json_err("invalid JSON body"); }
         else if (!root.contains("node_id") || !root["node_id"].is_string()) {
             result = json_err("missing 'node_id'");
@@ -1983,6 +1718,277 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                 return err;
             return command_result_to_json(
                 c.api.add_midi_mapping(node_id, param, cc, channel, range_min, range_max));
+        }},
+
+        // --- Read-only queries (no body needed) ---
+        {"introspect_nodes", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json&, bool) -> std::string {
+            return handle_introspect_nodes(c.graph, c.core, c.core.subgraph_modules());
+        }},
+        {"run_diagnostics", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json&, bool) -> std::string {
+            return control_server_checks::handle_run_diagnostics(c.graph, c.core, c.registry, c.audio_engine, c.gpu_context, c.package_catalog, c.control_server);
+        }},
+        {"get_runtime_health", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json&, bool) -> std::string {
+            return control_server_checks::handle_get_runtime_health(c.graph, c.core, c.registry, c.audio_engine, c.gpu_context, c.package_catalog, c.control_server);
+        }},
+        {"get_registry_diagnostics", [](DispatchContext& c, const std::string&,
+                                        const nlohmann::json&, bool) -> std::string {
+            return handle_get_registry_diagnostics(c.registry);
+        }},
+        {"get_graph_load_diagnostics", [](DispatchContext& c, const std::string&,
+                                          const nlohmann::json&, bool) -> std::string {
+            return handle_get_graph_load_diagnostics(c.graph);
+        }},
+        {"list_source_roots", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json&, bool) -> std::string {
+            return handle_list_source_roots(c.source_index);
+        }},
+        {"operator_map", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json&, bool) -> std::string {
+            return handle_operator_map(c.registry);
+        }},
+        {"validate_operators", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json&, bool) -> std::string {
+            return handle_validate_operators(c.registry);
+        }},
+        {"get_discovery_report", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json&, bool) -> std::string {
+            return handle_get_discovery_report(c.package_manager);
+        }},
+
+        // --- Body-parsing read-only queries ---
+        {"inspect_graph", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            std::string detail = "full";
+            if (root_valid && root.contains("detail") && root["detail"].is_string())
+                detail = root["detail"].get<std::string>();
+            return handle_inspect_graph(c.graph, c.core, c.core.subgraph_modules(), detail);
+        }},
+        {"list_types", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            return handle_list_types(c.registry, c.package_manager, c.source_docs, root_valid ? root : nlohmann::json::object(), c.core.subgraph_modules());
+        }},
+        {"search_source", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_search_source(c.source_index, root);
+        }},
+        {"read_source_file", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_read_source_file(c.source_index, root);
+        }},
+        {"read_source_span", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_read_source_span(c.source_index, root);
+        }},
+        {"find_symbol", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_find_symbol(c.source_index, root);
+        }},
+        {"find_references", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_find_references(c.source_index, root);
+        }},
+        {"get_build_activity", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json& root, bool root_valid) -> std::string {
+            return handle_get_build_activity(c.build_console, root_valid ? root : nlohmann::json::object());
+        }},
+        {"explain_build_failure", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            return handle_explain_build_failure(c.build_console, root_valid ? root : nlohmann::json::object());
+        }},
+        {"validate_checks", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return control_server_checks::handle_validate_checks(root);
+        }},
+        {"sample_node_outputs", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return handle_sample_node_outputs(c.graph, c.core, root);
+        }},
+        {"run_checks", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            return control_server_checks::handle_run_checks(c.graph, c.core, c.registry, root);
+        }},
+
+        // --- Topology + parameter mutations ---
+        {"rename_node", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string old_id, new_id, err;
+            if (!require_string(root, "old_id", old_id, err) ||
+                !require_string(root, "new_id", new_id, err))
+                return err;
+            return command_result_to_json(c.api.rename_node(old_id, new_id));
+        }},
+        {"connect", [](DispatchContext& c, const std::string&,
+                       const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string from_addr, to_addr, err;
+            if (!require_string(root, "from_addr", from_addr, err) ||
+                !require_string(root, "to_addr", to_addr, err))
+                return err;
+            const bool semantic_defaults = optional_bool(root, "semantic_defaults", false);
+            const std::string bridge = optional_string(root, "bridge", "");
+            CommandResult cr = c.api.connect(from_addr, to_addr, semantic_defaults, bridge);
+            if (!cr.ok)
+                return json_err(cr.message);
+            nlohmann::json resp = nlohmann::json::object();
+            resp["ok"] = true;
+            resp["message"] = cr.message;
+
+            // Surface dropped-port mistakes immediately (e.g. connecting
+            // to "mixer/input" instead of "mixer/input_0") instead of
+            // letting them fail silently until get_graph_errors.
+            {
+                std::string ffn, ffp, ttn, ttp;
+                nlohmann::json warns = nlohmann::json::array();
+                bool from_ok = split_addr_local(from_addr, ffn, ffp);
+                bool to_ok = split_addr_local(to_addr, ttn, ttp);
+                if (from_ok) {
+                    std::string w = connect_port_issue(
+                        c.registry, c.graph.find_node(ffn), ffp, /*want_output=*/true);
+                    if (!w.empty()) warns.push_back(w);
+                }
+                if (to_ok) {
+                    std::string w = connect_port_issue(
+                        c.registry, c.graph.find_node(ttn), ttp, /*want_output=*/false);
+                    if (!w.empty()) warns.push_back(w);
+                }
+                // Type-compat warning: only when BOTH endpoints resolve to
+                // real ports (params/name-issues are handled above). Mirrors
+                // the compiler's drop conditions so it never false-warns on a
+                // valid edge. (audit 04-F5)
+                VividPortType ft, tt;
+                if (from_ok && to_ok &&
+                    resolve_exact_port_type(c.registry, c.graph.find_node(ffn), ffp,
+                                            /*want_output=*/true, ft) &&
+                    resolve_exact_port_type(c.registry, c.graph.find_node(ttn), ttp,
+                                            /*want_output=*/false, tt)) {
+                    std::string w = connect_type_issue(ft, tt);
+                    if (!w.empty()) warns.push_back(w);
+                }
+                if (!warns.empty()) resp["warnings"] = std::move(warns);
+            }
+
+            bool inferred_applied = false;
+            if (semantic_defaults) {
+                const ConnectionDef* conn = find_connection_by_addr(c.graph, from_addr, to_addr);
+                if (conn && conn->has_remap()) {
+                    inferred_applied = true;
+                    resp["inferred_remap"] = {
+                        {"from_min", conn->from_min}, {"from_max", conn->from_max},
+                        {"to_min", conn->to_min}, {"to_max", conn->to_max},
+                        {"clamp", conn->clamp}
+                    };
+                }
+            }
+            resp["inferred_remap_applied"] = inferred_applied;
+            return resp.dump();
+        }},
+        {"disconnect", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string from_addr, to_addr, err;
+            if (!require_string(root, "from_addr", from_addr, err) ||
+                !require_string(root, "to_addr", to_addr, err))
+                return err;
+            return command_result_to_json(c.api.disconnect(from_addr, to_addr));
+        }},
+        {"set_connection_remap", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string from_addr, to_addr, err;
+            if (!require_string(root, "from_addr", from_addr, err) ||
+                !require_string(root, "to_addr", to_addr, err))
+                return err;
+            float fmin = optional_float(root, "from_min", 0.0f);
+            float fmax = optional_float(root, "from_max", 1.0f);
+            float tmin = optional_float(root, "to_min", 0.0f);
+            float tmax = optional_float(root, "to_max", 1.0f);
+            bool  cval = optional_bool(root, "clamp", false);
+            uint8_t curve = root.contains("curve") && root["curve"].is_number_unsigned()
+                ? static_cast<uint8_t>(root["curve"].get<unsigned>()) : uint8_t(0);
+            return command_result_to_json(
+                c.api.set_connection_remap(from_addr, to_addr, fmin, fmax, tmin, tmax, cval, curve));
+        }},
+        {"set_param", [](DispatchContext& c, const std::string&,
+                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, err;
+            float value = 0.0f;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err) ||
+                !require_float(root, "value", value, err))
+                return err;
+            return command_result_to_json(c.api.set_param(node_id, param, value));
+        }},
+        {"set_string_param", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, value, err;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err) ||
+                !require_string(root, "value", value, err))
+                return err;
+            return command_result_to_json(c.api.set_string_param(node_id, param, value));
+        }},
+        {"get_param", [](DispatchContext& c, const std::string&,
+                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, err;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err))
+                return err;
+            auto r = c.api.get_param(node_id, param);
+            if (r.ok) {
+                float v = 0;
+                try { v = std::stof(r.message); } catch (...) {}
+                return nlohmann::json{{"ok", true}, {"value", static_cast<double>(v)}}.dump();
+            }
+            return json_err(r.message);
+        }},
+        {"list_clap_params", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string nid, err;
+            if (!require_string(root, "node_id", nid, err)) return err;
+            auto* cg = c.core.compiled_graph();
+            if (!cg) return json_err("no compiled graph");
+            const auto* cn = cg->find_node(nid);
+            if (!cn) return json_err("unknown node '" + nid + "'");
+            auto fi = cn->file_param_indices.find("_clap_params");
+            if (fi == cn->file_param_indices.end() ||
+                fi->second >= cn->file_param_storage.size())
+                return json_err("node '" + nid + "' is not a CLAP operator");
+            const std::string& raw = cn->file_param_storage[fi->second];
+            try {
+                auto arr = nlohmann::json::parse(raw.empty() ? "[]" : raw);
+                return nlohmann::json{{"ok", true}, {"params", arr}}.dump();
+            } catch (...) {
+                return nlohmann::json{{"ok", true}, {"params", nlohmann::json::array()}}.dump();
+            }
+        }},
+        {"list_au_plugins", [](DispatchContext&, const std::string&,
+                               const nlohmann::json&, bool) -> std::string {
+#ifdef __APPLE__
+            runtime_au_scan_plugins();
+            const auto& plugins = runtime_au_get_plugins();
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& p : plugins)
+                arr.push_back(nlohmann::json{{"name", p.name}});
+            return nlohmann::json{{"ok", true}, {"plugins", arr}}.dump();
+#else
+            return nlohmann::json{{"ok", true}, {"plugins", nlohmann::json::array()}}.dump();
+#endif
         }},
     };
     return kHandlers;
