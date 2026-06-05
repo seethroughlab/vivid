@@ -71,335 +71,7 @@ static std::string dispatch_legacy(const std::string& method, const std::string&
 
     std::string result;
 
-    if (method == "list_mod_destinations") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else {
-                auto r = api.list_mod_destinations(root["node_id"].get<std::string>());
-                result = r.ok ? r.message : json_err(r.message);
-            }
-        }
-    } else if (method == "list_mod_assignments") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else {
-                auto r = api.list_mod_assignments(root["node_id"].get<std::string>());
-                result = r.ok ? r.message : json_err(r.message);
-            }
-        }
-    } else if (method == "get_graph_errors") {
-        nlohmann::json res = nlohmann::json::object();
-        nlohmann::json errs = nlohmann::json::array();
-        if (const auto* cg = core.compiled_graph()) {
-            for (const auto& cn : cg->nodes) {
-                if (!cn.errored && !cn.missing_operator) continue;
-                nlohmann::json err_obj = {
-                    {"node_id", cn.node_id},
-                    {"error", cn.missing_operator ? "missing operator" : cn.error_message},
-                    {"missing_operator", cn.missing_operator}
-                };
-                if (!cn.missing_operator_reason.empty())
-                    err_obj["reason"] = cn.missing_operator_reason;
-                if (!cn.missing_operator_detail.empty())
-                    err_obj["detail"] = cn.missing_operator_detail;
-                errs.push_back(std::move(err_obj));
-            }
-        }
-        nlohmann::json dropped = nlohmann::json::array();
-        if (const auto* cg = core.compiled_graph()) {
-            for (const auto& dc : cg->dropped_connections) {
-                dropped.push_back({
-                    {"from", dc.from_node + "/" + dc.from_port},
-                    {"to", dc.to_node + "/" + dc.to_port},
-                    {"reason", dc.reason}
-                });
-            }
-        }
-        res["errors"] = std::move(errs);
-        res["dropped_connections"] = std::move(dropped);
-        result = json_ok(std::move(res));
-    } else if (method == "queue_state_transition") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string())
-                result = json_err("missing 'sm_node'");
-            else if (!root.contains("state") || !root["state"].is_number_integer())
-                result = json_err("missing 'state'");
-            else {
-                std::string q = (root.contains("quantize") && root["quantize"].is_string())
-                    ? root["quantize"].get<std::string>() : "bar";
-                result = command_result_to_json(api.queue_state_transition(
-                    root["sm_node"].get<std::string>(),
-                    root["state"].get<int>(), q));
-            }
-        }
-    } else if (method == "set_quantize_clock") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else
-                result = command_result_to_json(api.set_quantize_clock(root["node_id"].get<std::string>()));
-        }
-    } else if (method == "set_launch_quantize") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("mode") || !root["mode"].is_string())
-                result = json_err("missing 'mode'");
-            else
-                result = command_result_to_json(api.set_launch_quantize(root["mode"].get<std::string>()));
-        }
-    } else if (method == "set_graph_metronome") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            const float bpm = (root.contains("bpm") && root["bpm"].is_number())
-                ? root["bpm"].get<float>() : 120.0f;
-            const int beats_per_bar = (root.contains("beats_per_bar") && root["beats_per_bar"].is_number_integer())
-                ? static_cast<int>(root["beats_per_bar"].get<int64_t>()) : 4;
-            result = command_result_to_json(api.set_graph_metronome(bpm, beats_per_bar));
-        }
-    } else if (method == "set_analysis") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("enabled") || !root["enabled"].is_boolean())
-                result = json_err("missing 'enabled' (boolean)");
-            else {
-                bool enabled = root["enabled"].get<bool>();
-                core.frame_executor().set_analysis_enabled(enabled);
-                if (audio_engine) audio_engine->set_analysis_enabled(enabled);
-                if (settings) settings->show_analysis = enabled;
-                result = json_ok_msg(enabled ? "analysis enabled" : "analysis disabled");
-            }
-        }
-    } else if (method == "save_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'node_id' or 'name'");
-            else {
-                // Optional curation metadata (JSON object) stored verbatim on the preset.
-                std::string metadata;
-                if (root.contains("metadata") && root["metadata"].is_object())
-                    metadata = root["metadata"].dump();
-                result = command_result_to_json(
-                    api.save_preset(root["node_id"].get<std::string>(),
-                                    root["name"].get<std::string>(), metadata));
-            }
-        }
-    } else if (method == "recall_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'node_id' or 'name'");
-            else
-                result = command_result_to_json(
-                    api.recall_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
-        }
-    } else if (method == "update_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'node_id' or 'name'");
-            else
-                result = command_result_to_json(
-                    api.update_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
-        }
-    } else if (method == "remove_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'node_id' or 'name'");
-            else
-                result = command_result_to_json(
-                    api.remove_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
-        }
-    } else if (method == "rename_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("old_name") || !root["old_name"].is_string() ||
-                !root.contains("new_name") || !root["new_name"].is_string())
-                result = json_err("missing 'node_id', 'old_name', or 'new_name'");
-            else
-                result = command_result_to_json(
-                    api.rename_preset(root["node_id"].get<std::string>(), root["old_name"].get<std::string>(),
-                                      root["new_name"].get<std::string>()));
-        }
-    } else if (method == "list_presets") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else
-                result = api.list_presets_json(root["node_id"].get<std::string>());
-        }
-    } else if (method == "list_factory_presets") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string())
-                result = json_err("missing 'node_id'");
-            else
-                result = command_result_to_json(api.list_factory_presets(root["node_id"].get<std::string>()));
-        }
-    } else if (method == "set_param_lock") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string() ||
-                !root.contains("flags") || !root["flags"].is_number())
-                result = json_err("missing 'node_id', 'param', or 'flags'");
-            else
-                result = command_result_to_json(
-                    api.set_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
-                                       static_cast<uint8_t>(root["flags"].get<int64_t>())));
-        }
-    } else if (method == "get_param_lock") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("node_id") || !root["node_id"].is_string() ||
-                !root.contains("param") || !root["param"].is_string())
-                result = json_err("missing 'node_id' or 'param'");
-            else
-                result = command_result_to_json(
-                    api.get_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>()));
-        }
-    } else if (method == "set_state_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
-                !root.contains("state_idx") || !root["state_idx"].is_number() ||
-                !root.contains("target_node") || !root["target_node"].is_string() ||
-                !root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'sm_node', 'state_idx', 'target_node', or 'name'");
-            else
-                result = command_result_to_json(
-                    api.set_state_preset(root["sm_node"].get<std::string>(),
-                                         root["state_idx"].get<int>(),
-                                         root["target_node"].get<std::string>(), root["name"].get<std::string>()));
-        }
-    } else if (method == "remove_state_preset") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
-                !root.contains("state_idx") || !root["state_idx"].is_number() ||
-                !root.contains("target_node") || !root["target_node"].is_string())
-                result = json_err("missing 'sm_node', 'state_idx', or 'target_node'");
-            else
-                result = command_result_to_json(
-                    api.remove_state_preset(root["sm_node"].get<std::string>(),
-                                            root["state_idx"].get<int>(),
-                                            root["target_node"].get<std::string>()));
-        }
-    } else if (method == "clear_state_presets") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string())
-                result = json_err("missing 'sm_node'");
-            else
-                result = command_result_to_json(
-                    api.clear_state_presets(root["sm_node"].get<std::string>()));
-        }
-    } else if (method == "ensure_state_mapping") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string())
-                result = json_err("missing 'sm_node'");
-            else
-                result = command_result_to_json(
-                    api.ensure_state_mapping(root["sm_node"].get<std::string>()));
-        }
-    } else if (method == "inspect_state_presets") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("sm_node") || !root["sm_node"].is_string())
-                result = json_err("missing 'sm_node'");
-            else
-                result = command_result_to_json(
-                    api.inspect_state_presets(root["sm_node"].get<std::string>()));
-        }
-    } else if (method == "create_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'name'");
-        else
-            result = command_result_to_json(api.create_track(root["name"].get<std::string>()));
-    } else if (method == "rename_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'track_id' or 'name'");
-        else
-            result = command_result_to_json(
-                api.rename_track(root["track_id"].get<std::string>(), root["name"].get<std::string>()));
-    } else if (method == "remove_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string())
-            result = json_err("missing 'track_id'");
-        else
-            result = command_result_to_json(api.remove_track(root["track_id"].get<std::string>()));
-    } else if (method == "move_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("to_index") || !root["to_index"].is_number_integer())
-            result = json_err("missing 'track_id' or 'to_index'");
-        else
-            result = command_result_to_json(
-                api.move_track(root["track_id"].get<std::string>(), root["to_index"].get<int>()));
-    } else if (method == "assign_nodes_to_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("node_ids") || !root["node_ids"].is_array())
-            result = json_err("missing 'track_id' or 'node_ids'");
-        else {
-            std::vector<std::string> ids;
-            for (const auto& v : root["node_ids"]) {
-                if (v.is_string()) ids.push_back(v.get<std::string>());
-            }
-            result = command_result_to_json(
-                api.assign_nodes_to_track(root["track_id"].get<std::string>(), ids));
-        }
-    } else if (method == "unassign_nodes_from_track") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("node_ids") || !root["node_ids"].is_array())
-            result = json_err("missing 'track_id' or 'node_ids'");
-        else {
-            std::vector<std::string> ids;
-            for (const auto& v : root["node_ids"]) {
-                if (v.is_string()) ids.push_back(v.get<std::string>());
-            }
-            result = command_result_to_json(
-                api.unassign_nodes_from_track(root["track_id"].get<std::string>(), ids));
-        }
-    } else if (method == "save_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("name") || !root["name"].is_string())
-            result = json_err("missing 'track_id' or 'name'");
-        else {
-            const bool activate = root.contains("activate") &&
-                root["activate"].is_boolean() && root["activate"].get<bool>();
-            result = command_result_to_json(
-                api.save_clip(root["track_id"].get<std::string>(),
-                              root["name"].get<std::string>(), activate));
-        }
-    } else if (method == "update_clip") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else if (!root.contains("track_id") || !root["track_id"].is_string() ||
-                 !root.contains("clip_id") || !root["clip_id"].is_string())
-            result = json_err("missing 'track_id' or 'clip_id'");
-        else
-            result = command_result_to_json(
-                api.update_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
-    } else if (method == "update_clip_param") {
+    if (method == "update_clip_param") {
         if (!root_valid) result = json_err("invalid JSON body");
         else if (!root.contains("track_id") || !root["track_id"].is_string() ||
                  !root.contains("clip_id") || !root["clip_id"].is_string() ||
@@ -1501,6 +1173,319 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
 #else
             return nlohmann::json{{"ok", true}, {"plugins", nlohmann::json::array()}}.dump();
 #endif
+        }},
+
+        // --- Migrated batch 04-R2-R2b ---
+        {"list_mod_destinations", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            auto r = c.api.list_mod_destinations(node_id);
+            return r.ok ? r.message : json_err(r.message);
+        }},
+        {"list_mod_assignments", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            auto r = c.api.list_mod_assignments(node_id);
+            return r.ok ? r.message : json_err(r.message);
+        }},
+        {"get_graph_errors", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json&, bool) -> std::string {
+            nlohmann::json res = nlohmann::json::object();
+            nlohmann::json errs = nlohmann::json::array();
+            if (const auto* cg = c.core.compiled_graph()) {
+                for (const auto& cn : cg->nodes) {
+                    if (!cn.errored && !cn.missing_operator) continue;
+                    nlohmann::json err_obj = {
+                        {"node_id", cn.node_id},
+                        {"error", cn.missing_operator ? "missing operator" : cn.error_message},
+                        {"missing_operator", cn.missing_operator}
+                    };
+                    if (!cn.missing_operator_reason.empty())
+                        err_obj["reason"] = cn.missing_operator_reason;
+                    if (!cn.missing_operator_detail.empty())
+                        err_obj["detail"] = cn.missing_operator_detail;
+                    errs.push_back(std::move(err_obj));
+                }
+            }
+            nlohmann::json dropped = nlohmann::json::array();
+            if (const auto* cg = c.core.compiled_graph()) {
+                for (const auto& dc : cg->dropped_connections) {
+                    dropped.push_back({
+                        {"from", dc.from_node + "/" + dc.from_port},
+                        {"to", dc.to_node + "/" + dc.to_port},
+                        {"reason", dc.reason}
+                    });
+                }
+            }
+            res["errors"] = std::move(errs);
+            res["dropped_connections"] = std::move(dropped);
+            return json_ok(std::move(res));
+        }},
+        {"queue_state_transition", [](DispatchContext& c, const std::string&,
+                                      const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                return json_err("missing 'sm_node'");
+            else if (!root.contains("state") || !root["state"].is_number_integer())
+                return json_err("missing 'state'");
+            std::string q = (root.contains("quantize") && root["quantize"].is_string())
+                ? root["quantize"].get<std::string>() : "bar";
+            return command_result_to_json(c.api.queue_state_transition(
+                root["sm_node"].get<std::string>(),
+                root["state"].get<int>(), q));
+        }},
+        {"set_quantize_clock", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            return command_result_to_json(c.api.set_quantize_clock(node_id));
+        }},
+        {"set_launch_quantize", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string mode, err;
+            if (!require_string(root, "mode", mode, err)) return err;
+            return command_result_to_json(c.api.set_launch_quantize(mode));
+        }},
+        {"set_graph_metronome", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            const float bpm = (root.contains("bpm") && root["bpm"].is_number())
+                ? root["bpm"].get<float>() : 120.0f;
+            const int beats_per_bar = (root.contains("beats_per_bar") && root["beats_per_bar"].is_number_integer())
+                ? static_cast<int>(root["beats_per_bar"].get<int64_t>()) : 4;
+            return command_result_to_json(c.api.set_graph_metronome(bpm, beats_per_bar));
+        }},
+        {"set_analysis", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("enabled") || !root["enabled"].is_boolean())
+                return json_err("missing 'enabled' (boolean)");
+            bool enabled = root["enabled"].get<bool>();
+            c.core.frame_executor().set_analysis_enabled(enabled);
+            if (c.audio_engine) c.audio_engine->set_analysis_enabled(enabled);
+            if (c.settings) c.settings->show_analysis = enabled;
+            return json_ok_msg(enabled ? "analysis enabled" : "analysis disabled");
+        }},
+        {"save_preset", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'node_id' or 'name'");
+            // Optional curation metadata (JSON object) stored verbatim on the preset.
+            std::string metadata;
+            if (root.contains("metadata") && root["metadata"].is_object())
+                metadata = root["metadata"].dump();
+            return command_result_to_json(
+                c.api.save_preset(root["node_id"].get<std::string>(),
+                                  root["name"].get<std::string>(), metadata));
+        }},
+        {"recall_preset", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'node_id' or 'name'");
+            return command_result_to_json(
+                c.api.recall_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
+        }},
+        {"update_preset", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'node_id' or 'name'");
+            return command_result_to_json(
+                c.api.update_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
+        }},
+        {"remove_preset", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'node_id' or 'name'");
+            return command_result_to_json(
+                c.api.remove_preset(root["node_id"].get<std::string>(), root["name"].get<std::string>()));
+        }},
+        {"rename_preset", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("old_name") || !root["old_name"].is_string() ||
+                !root.contains("new_name") || !root["new_name"].is_string())
+                return json_err("missing 'node_id', 'old_name', or 'new_name'");
+            return command_result_to_json(
+                c.api.rename_preset(root["node_id"].get<std::string>(), root["old_name"].get<std::string>(),
+                                    root["new_name"].get<std::string>()));
+        }},
+        {"list_presets", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            return c.api.list_presets_json(node_id);
+        }},
+        {"list_factory_presets", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            return command_result_to_json(c.api.list_factory_presets(node_id));
+        }},
+        {"set_param_lock", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string() ||
+                !root.contains("flags") || !root["flags"].is_number())
+                return json_err("missing 'node_id', 'param', or 'flags'");
+            return command_result_to_json(
+                c.api.set_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>(),
+                                     static_cast<uint8_t>(root["flags"].get<int64_t>())));
+        }},
+        {"get_param_lock", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("node_id") || !root["node_id"].is_string() ||
+                !root.contains("param") || !root["param"].is_string())
+                return json_err("missing 'node_id' or 'param'");
+            return command_result_to_json(
+                c.api.get_param_lock(root["node_id"].get<std::string>(), root["param"].get<std::string>()));
+        }},
+        {"set_state_preset", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
+                !root.contains("state_idx") || !root["state_idx"].is_number() ||
+                !root.contains("target_node") || !root["target_node"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'sm_node', 'state_idx', 'target_node', or 'name'");
+            return command_result_to_json(
+                c.api.set_state_preset(root["sm_node"].get<std::string>(),
+                                       root["state_idx"].get<int>(),
+                                       root["target_node"].get<std::string>(), root["name"].get<std::string>()));
+        }},
+        {"remove_state_preset", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("sm_node") || !root["sm_node"].is_string() ||
+                !root.contains("state_idx") || !root["state_idx"].is_number() ||
+                !root.contains("target_node") || !root["target_node"].is_string())
+                return json_err("missing 'sm_node', 'state_idx', or 'target_node'");
+            return command_result_to_json(
+                c.api.remove_state_preset(root["sm_node"].get<std::string>(),
+                                          root["state_idx"].get<int>(),
+                                          root["target_node"].get<std::string>()));
+        }},
+        {"clear_state_presets", [](DispatchContext& c, const std::string&,
+                                   const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string sm_node, err;
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                return json_err("missing 'sm_node'");
+            return command_result_to_json(
+                c.api.clear_state_presets(root["sm_node"].get<std::string>()));
+        }},
+        {"ensure_state_mapping", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                return json_err("missing 'sm_node'");
+            return command_result_to_json(
+                c.api.ensure_state_mapping(root["sm_node"].get<std::string>()));
+        }},
+        {"inspect_state_presets", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("sm_node") || !root["sm_node"].is_string())
+                return json_err("missing 'sm_node'");
+            return command_result_to_json(
+                c.api.inspect_state_presets(root["sm_node"].get<std::string>()));
+        }},
+        {"create_track", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'name'");
+            return command_result_to_json(c.api.create_track(root["name"].get<std::string>()));
+        }},
+        {"rename_track", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'track_id' or 'name'");
+            return command_result_to_json(
+                c.api.rename_track(root["track_id"].get<std::string>(), root["name"].get<std::string>()));
+        }},
+        {"remove_track", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string())
+                return json_err("missing 'track_id'");
+            return command_result_to_json(c.api.remove_track(root["track_id"].get<std::string>()));
+        }},
+        {"move_track", [](DispatchContext& c, const std::string&,
+                          const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("to_index") || !root["to_index"].is_number_integer())
+                return json_err("missing 'track_id' or 'to_index'");
+            return command_result_to_json(
+                c.api.move_track(root["track_id"].get<std::string>(), root["to_index"].get<int>()));
+        }},
+        {"assign_nodes_to_track", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("node_ids") || !root["node_ids"].is_array())
+                return json_err("missing 'track_id' or 'node_ids'");
+            std::vector<std::string> ids;
+            for (const auto& v : root["node_ids"]) {
+                if (v.is_string()) ids.push_back(v.get<std::string>());
+            }
+            return command_result_to_json(
+                c.api.assign_nodes_to_track(root["track_id"].get<std::string>(), ids));
+        }},
+        {"unassign_nodes_from_track", [](DispatchContext& c, const std::string&,
+                                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("node_ids") || !root["node_ids"].is_array())
+                return json_err("missing 'track_id' or 'node_ids'");
+            std::vector<std::string> ids;
+            for (const auto& v : root["node_ids"]) {
+                if (v.is_string()) ids.push_back(v.get<std::string>());
+            }
+            return command_result_to_json(
+                c.api.unassign_nodes_from_track(root["track_id"].get<std::string>(), ids));
+        }},
+        {"save_clip", [](DispatchContext& c, const std::string&,
+                         const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'track_id' or 'name'");
+            const bool activate = root.contains("activate") &&
+                root["activate"].is_boolean() && root["activate"].get<bool>();
+            return command_result_to_json(
+                c.api.save_clip(root["track_id"].get<std::string>(),
+                                root["name"].get<std::string>(), activate));
+        }},
+        {"update_clip", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            if (!root.contains("track_id") || !root["track_id"].is_string() ||
+                !root.contains("clip_id") || !root["clip_id"].is_string())
+                return json_err("missing 'track_id' or 'clip_id'");
+            return command_result_to_json(
+                c.api.update_clip(root["track_id"].get<std::string>(), root["clip_id"].get<std::string>()));
         }},
 
         // --- Migrated batch 04-R2-R2 ---
