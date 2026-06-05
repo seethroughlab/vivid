@@ -533,6 +533,77 @@ inline std::string unwrap_status_to_json(const CommandResult& r) {
     return out.dump();
 }
 
+// ---------------------------------------------------------------------------
+// Dispatch field-extraction helpers (audit 04-R2-F1)
+//
+// On failure each `require_*` sets `err` to a ready-to-return json_err naming
+// the offending field and returns false; on success it fills `out` and returns
+// true. Handlers do: `std::string err; if (!require_string(root,"x",x,err)) return err;`
+// The response envelope ({ok:false,"error":...}) is preserved; only the
+// per-field message text is standardized.
+// ---------------------------------------------------------------------------
+
+inline bool require_string(const nlohmann::json& root, const char* name,
+                           std::string& out, std::string& err) {
+    if (!root.contains(name) || !root[name].is_string()) {
+        err = json_err(std::string("missing or invalid string field '") + name + "'");
+        return false;
+    }
+    out = root[name].get<std::string>();
+    return true;
+}
+
+inline bool require_int(const nlohmann::json& root, const char* name,
+                        int& out, std::string& err) {
+    if (!root.contains(name) || !root[name].is_number()) {
+        err = json_err(std::string("missing or invalid numeric field '") + name + "'");
+        return false;
+    }
+    out = root[name].get<int>();
+    return true;
+}
+
+inline bool require_float(const nlohmann::json& root, const char* name,
+                          float& out, std::string& err) {
+    if (!root.contains(name) || !root[name].is_number()) {
+        err = json_err(std::string("missing or invalid numeric field '") + name + "'");
+        return false;
+    }
+    out = root[name].get<float>();
+    return true;
+}
+
+inline bool require_bool(const nlohmann::json& root, const char* name,
+                         bool& out, std::string& err) {
+    if (!root.contains(name) || !root[name].is_boolean()) {
+        err = json_err(std::string("missing or invalid boolean field '") + name + "'");
+        return false;
+    }
+    out = root[name].get<bool>();
+    return true;
+}
+
+inline std::string optional_string(const nlohmann::json& root, const char* name,
+                                   const std::string& dflt) {
+    return (root.contains(name) && root[name].is_string())
+        ? root[name].get<std::string>() : dflt;
+}
+
+inline float optional_float(const nlohmann::json& root, const char* name, float dflt) {
+    return (root.contains(name) && root[name].is_number())
+        ? root[name].get<float>() : dflt;
+}
+
+inline int optional_int(const nlohmann::json& root, const char* name, int dflt) {
+    return (root.contains(name) && root[name].is_number())
+        ? root[name].get<int>() : dflt;
+}
+
+inline bool optional_bool(const nlohmann::json& root, const char* name, bool dflt) {
+    return (root.contains(name) && root[name].is_boolean())
+        ? root[name].get<bool>() : dflt;
+}
+
 inline bool split_addr_local(const std::string& addr, std::string& node, std::string& port) {
     size_t slash = addr.find('/');
     if (slash == std::string::npos) return false;

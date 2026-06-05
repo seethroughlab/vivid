@@ -7,14 +7,44 @@
 
 namespace vivid {
 
-// dispatch() routes incoming control server requests by method name.
+// ---------------------------------------------------------------------------
+// DispatchContext + handler table (audit 04-R2-F2/F7)
 //
-// Read-only queries (inspect_graph, list_types, etc.) are checked first and
-// can execute without parsing the JSON body. Mutation handlers parse the body
-// and delegate to RuntimeAPI — they never modify Graph or RuntimeCore directly.
-// Topology-mutating commands (add_node, connect, etc.) set pending_topology_change_
-// in RuntimeAPI; the actual recompile happens between frames via apply_pending().
-std::string dispatch(const std::string& method, const std::string& body,
+// dispatch() routes by method name through a handler registry (kHandlers) built
+// once. Each handler is a non-capturing lambda taking the shared DispatchContext
+// (all runtime dependencies), the raw body, and the parsed root + validity flag.
+// Handlers never modify Graph/RuntimeCore directly — they go through RuntimeAPI;
+// topology-mutating commands set pending_topology_change_ (applied between frames
+// via apply_pending()). Methods not yet migrated fall through to dispatch_legacy.
+// ---------------------------------------------------------------------------
+struct DispatchContext {
+    RuntimeAPI& api;
+    Graph& graph;
+    RuntimeCore& core;
+    OperatorRegistry& registry;
+    bool& has_gpu_ops;
+    bool& has_audio;
+    HotReloader* hot_reloader;
+    const std::string& src_dir;
+    OperatorSourceDocs& source_docs;
+    SourceIndex& source_index;
+    PackageManager* package_manager;
+    PackageCompiler* package_compiler;
+    Settings* settings;
+    AudioEngine* audio_engine;
+    AssetLibrary* asset_library;
+    BuildConsole* build_console;
+    GpuContext* gpu_context;
+    PackageCatalog* package_catalog;
+    const ControlServer* control_server;
+    CrashRecoveryManager* crash_recovery_manager;
+    EditorWindowManager* editor_window_manager;
+};
+
+using DispatchHandler = std::string(*)(DispatchContext& c, const std::string& body,
+                                       const nlohmann::json& root, bool root_valid);
+
+static std::string dispatch_legacy(const std::string& method, const std::string& body,
                             RuntimeAPI& api, Graph& graph,
                             RuntimeCore& core, OperatorRegistry& registry,
                             bool& has_gpu_ops, bool& has_audio,
@@ -1911,6 +1941,91 @@ std::string dispatch(const std::string& method, const std::string& body,
     }
 
     return result;
+}
+
+// Method → handler registry (audit 04-R2-F1/F2/F7). Built once. Methods present
+// here are served from the table; everything else falls through to dispatch_legacy
+// until migrated. Each handler is a non-capturing lambda (→ function pointer).
+static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
+    static const std::unordered_map<std::string, DispatchHandler> kHandlers = {
+        {"inspect_session", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json&, bool) -> std::string {
+            return handle_inspect_session(c.graph, c.api);
+        }},
+        {"add_node", [](DispatchContext& c, const std::string&,
+                        const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string type, node_id, err;
+            if (!require_string(root, "type", type, err) ||
+                !require_string(root, "node_id", node_id, err))
+                return err;
+            return command_result_to_json(c.api.add_node(type, node_id));
+        }},
+        {"remove_node", [](DispatchContext& c, const std::string&,
+                           const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, err;
+            if (!require_string(root, "node_id", node_id, err)) return err;
+            return command_result_to_json(c.api.remove_node(node_id));
+        }},
+        {"add_midi_mapping", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            std::string node_id, param, err;
+            int cc = 0, channel = 0;
+            float range_min = 0.0f, range_max = 0.0f;
+            if (!require_string(root, "node_id", node_id, err) ||
+                !require_string(root, "param", param, err) ||
+                !require_int(root, "cc", cc, err) ||
+                !require_int(root, "channel", channel, err) ||
+                !require_float(root, "range_min", range_min, err) ||
+                !require_float(root, "range_max", range_max, err))
+                return err;
+            return command_result_to_json(
+                c.api.add_midi_mapping(node_id, param, cc, channel, range_min, range_max));
+        }},
+    };
+    return kHandlers;
+}
+
+std::string dispatch(const std::string& method, const std::string& body,
+                     RuntimeAPI& api, Graph& graph,
+                     RuntimeCore& core, OperatorRegistry& registry,
+                     bool& has_gpu_ops, bool& has_audio,
+                     HotReloader* hot_reloader,
+                     const std::string& src_dir,
+                     OperatorSourceDocs& source_docs,
+                     SourceIndex& source_index,
+                     PackageManager* package_manager,
+                     PackageCompiler* package_compiler,
+                     Settings* settings,
+                     AudioEngine* audio_engine,
+                     AssetLibrary* asset_library,
+                     BuildConsole* build_console,
+                     GpuContext* gpu_context,
+                     PackageCatalog* package_catalog,
+                     const ControlServer* control_server,
+                     CrashRecoveryManager* crash_recovery_manager,
+                     EditorWindowManager* editor_window_manager) {
+    DispatchContext c{api, graph, core, registry, has_gpu_ops, has_audio, hot_reloader, src_dir,
+                      source_docs, source_index, package_manager, package_compiler, settings,
+                      audio_engine, asset_library, build_console, gpu_context, package_catalog,
+                      control_server, crash_recovery_manager, editor_window_manager};
+
+    nlohmann::json root;
+    bool root_valid = false;
+    try { root = nlohmann::json::parse(body); root_valid = true; } catch (...) {}
+
+    auto it = handler_table().find(method);
+    if (it != handler_table().end())
+        return it->second(c, body, root, root_valid);
+
+    // Not yet migrated — fall through to the legacy if/else router.
+    return dispatch_legacy(method, body, api, graph, core, registry, has_gpu_ops, has_audio,
+                           hot_reloader, src_dir, source_docs, source_index, package_manager,
+                           package_compiler, settings, audio_engine, asset_library, build_console,
+                           gpu_context, package_catalog, control_server, crash_recovery_manager,
+                           editor_window_manager);
 }
 
 } // namespace vivid
