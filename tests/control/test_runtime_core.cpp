@@ -340,6 +340,42 @@ int main() {
         runtime.shutdown();
     }
 
+    // =====================================================================
+    // Test 10: Audio sample-rate change → rebuild applies the new rate
+    // (audit 03-F10) Covers the RuntimeCore side of the live device-switch
+    // recompile path: main.cpp consumes a pending session rate, calls
+    // set_audio_sample_rate(), then rebuilds from the Graph. A rebuild must
+    // pick up the new rate (CompiledGraph::audio_sample_rate).
+    // =====================================================================
+    {
+        std::fprintf(stderr, "\n=== Test 10: Audio sample-rate change → rebuild ===\n");
+        vivid::Graph g;
+        g.add_node("ctrl", "TestOp", {{"scale", 1.0f}});
+        g.add_node("audio", "AudioTestOp", {{"level", 0.5f}});
+
+        vivid::RuntimeCore runtime;
+        check(runtime.audio_sample_rate() == 48000, "default audio sample rate = 48000");
+
+        check(runtime.build(g, registry), "initial build succeeds");
+        check(runtime.compiled_graph()->audio_sample_rate == 48000,
+              "compiled graph defaults to 48000");
+
+        // Simulate a device switch to 44100: set the rate, then rebuild.
+        runtime.set_audio_sample_rate(44100);
+        check(runtime.audio_sample_rate() == 44100, "set_audio_sample_rate(44100) sticks");
+        check(runtime.build(g, registry), "rebuild after rate change succeeds");
+        check(runtime.compiled_graph()->audio_sample_rate == 44100,
+              "rebuild applies new rate (44100) to compiled graph");
+
+        // A second device switch (96000) must also propagate on rebuild.
+        runtime.set_audio_sample_rate(96000);
+        check(runtime.build(g, registry), "rebuild at 96000 succeeds");
+        check(runtime.compiled_graph()->audio_sample_rate == 96000,
+              "second rate change (96000) applies on rebuild");
+
+        runtime.shutdown();
+    }
+
     // --- Cleanup ---
     std::filesystem::remove_all(staging);
 

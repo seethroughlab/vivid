@@ -53,6 +53,21 @@ In both cases the worker thread prepares a candidate `CompiledGraph`, while the 
 the live runtime running until commit time. The commit step still owns audio shutdown/restart,
 GPU texture allocation, and any graph-identity bookkeeping.
 
+**Concurrency contract.** `prepare_build()` is `const` and compiles into a caller-owned
+`PreparedBuild`, but it is **not** thread-safe with respect to `adopt_prepared_build()` or `tick()`:
+
+- It reads shared `RuntimeCore` state (`subgraph_modules_`, `operators_src_dir_`, `safe_mode_`,
+  audio params) without locking, so **do not call `prepare_build()` while `tick()` or
+  `adopt_prepared_build()` is executing on another thread.** The supported pattern is: a worker
+  thread prepares while the main thread keeps ticking, and the main thread alone calls
+  `adopt_prepared_build()` at a frame boundary.
+- Only **one** prepared result should be in flight at a time per coordinator. There is no internal
+  queue or generation check — a stale `PreparedBuild` adopted after the live graph has otherwise
+  changed will simply replace it. The async coordinators enforce single-in-flight via their own
+  `begin`-rejection guards.
+- A prepared result that is never adopted is harmless: it is a self-contained owned value and is
+  freed by RAII (no runtime-side cleanup needed).
+
 Operator availability preparation is now expected to happen before `prepare_build()` via the
 shared `OperatorPreparationService`. That keeps async UI transactions and blocking runtime callers
 on the same deferred-load path instead of having each flow call `OperatorRegistry` directly.
