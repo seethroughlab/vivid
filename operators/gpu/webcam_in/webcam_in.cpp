@@ -105,7 +105,14 @@ struct WebcamIn : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::semantic_shape(fps, "enum");
         vivid::description(fps, "Target capture frame rate");
 
+        // enumerate_cameras() is defined only in avf_capture.mm (macOS). Off-macOS
+        // the build links webcam_in.cpp without it, so guard the call like
+        // create_avf_capture() above. (audit 06-R2-F4)
+#ifdef __APPLE__
         auto cameras = enumerate_cameras();
+#else
+        std::vector<CameraInfo> cameras;
+#endif
         if (cameras.empty()) {
             device_names_.push_back("No camera");
         } else {

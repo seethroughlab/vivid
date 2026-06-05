@@ -273,23 +273,9 @@ private:
     bool bind_group_dirty_  = true;
 
     void create_fallback(const VividGpuContext* gpu) {
-        WGPUTextureDescriptor td{};
-        td.label = vivid_sv("Motion Fallback");
-        td.size = {1, 1, 1};
-        td.mipLevelCount = 1; td.sampleCount = 1;
-        td.dimension = WGPUTextureDimension_2D;
-        td.format = gpu->output_format;
-        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        fallback_tex_ = wgpuDeviceCreateTexture(gpu->device, &td);
-        WGPUTextureViewDescriptor vd{};
-        vd.format = gpu->output_format; vd.dimension = WGPUTextureViewDimension_2D;
-        vd.mipLevelCount = 1; vd.arrayLayerCount = 1; vd.aspect = WGPUTextureAspect_All;
-        fallback_view_ = wgpuTextureCreateView(fallback_tex_, &vd);
-        const uint8_t zero[8] = {};
-        WGPUTexelCopyTextureInfo di{}; di.texture = fallback_tex_; di.aspect = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout ly{}; ly.bytesPerRow = 8; ly.rowsPerImage = 1;
-        WGPUExtent3D ext = {1, 1, 1};
-        wgpuQueueWriteTexture(gpu->queue, &di, zero, sizeof(zero), &ly, &ext);
+        auto fb = vivid::gpu::create_fallback_texture(gpu->device, gpu->queue, gpu->output_format);
+        fallback_tex_  = fb.texture;
+        fallback_view_ = fb.view;
     }
 
     void recreate_history(const VividGpuContext* gpu) {

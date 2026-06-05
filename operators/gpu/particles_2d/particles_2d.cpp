@@ -1305,31 +1305,10 @@ private:
     // Create the 1x1 black fallback texture (bound when `texture` is disconnected).
     void create_fallback(const VividGpuContext* gpu) {
         if (fallback_view_) return;
-        WGPUTextureDescriptor td{};
-        td.label = vivid_sv("Particles2D Fallback");
-        td.size = {1, 1, 1};
-        td.mipLevelCount = 1;
-        td.sampleCount = 1;
-        td.dimension = WGPUTextureDimension_2D;
-        td.format = WGPUTextureFormat_RGBA8Unorm;
-        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        fallback_tex_ = wgpuDeviceCreateTexture(gpu->device, &td);
-        WGPUTextureViewDescriptor vd{};
-        vd.format = WGPUTextureFormat_RGBA8Unorm;
-        vd.dimension = WGPUTextureViewDimension_2D;
-        vd.mipLevelCount = 1;
-        vd.arrayLayerCount = 1;
-        vd.aspect = WGPUTextureAspect_All;
-        fallback_view_ = wgpuTextureCreateView(fallback_tex_, &vd);
-        const uint8_t black[4] = {0, 0, 0, 255};
-        WGPUTexelCopyTextureInfo dst{};
-        dst.texture = fallback_tex_;
-        dst.aspect  = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout lay{};
-        lay.bytesPerRow  = 4;
-        lay.rowsPerImage = 1;
-        WGPUExtent3D ext = {1, 1, 1};
-        wgpuQueueWriteTexture(gpu->queue, &dst, black, 4, &lay, &ext);
+        auto fb = vivid::gpu::create_fallback_texture(
+            gpu->device, gpu->queue, WGPUTextureFormat_RGBA8Unorm, /*opaque_black=*/true);
+        fallback_tex_  = fb.texture;
+        fallback_view_ = fb.view;
     }
 
     // Rebuild both ping-pong bind groups with the given color + emit-mask textures.

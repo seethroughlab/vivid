@@ -560,35 +560,9 @@ private:
     // ── Fallback texture (1x1 black) ─────────────────────────────────
 
     void create_fallback(const VividGpuContext* gpu) {
-        WGPUTextureDescriptor td{};
-        td.label         = vivid_sv("Trails Fallback");
-        td.size          = { 1, 1, 1 };
-        td.mipLevelCount = 1;
-        td.sampleCount   = 1;
-        td.dimension     = WGPUTextureDimension_2D;
-        td.format        = gpu->output_format;
-        td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        fallback_tex_    = wgpuDeviceCreateTexture(gpu->device, &td);
-
-        WGPUTextureViewDescriptor vd{};
-        vd.format          = gpu->output_format;
-        vd.dimension       = WGPUTextureViewDimension_2D;
-        vd.mipLevelCount   = 1;
-        vd.arrayLayerCount = 1;
-        vd.aspect          = WGPUTextureAspect_All;
-        fallback_view_     = wgpuTextureCreateView(fallback_tex_, &vd);
-
-        const uint8_t zero[8] = {};
-        WGPUTexelCopyTextureInfo dest_info{};
-        dest_info.texture  = fallback_tex_;
-        dest_info.mipLevel = 0;
-        dest_info.origin   = {0, 0, 0};
-        dest_info.aspect   = WGPUTextureAspect_All;
-        WGPUTexelCopyBufferLayout layout{};
-        layout.bytesPerRow  = 8;
-        layout.rowsPerImage = 1;
-        WGPUExtent3D extent = {1, 1, 1};
-        wgpuQueueWriteTexture(gpu->queue, &dest_info, zero, sizeof(zero), &layout, &extent);
+        auto fb = vivid::gpu::create_fallback_texture(gpu->device, gpu->queue, gpu->output_format);
+        fallback_tex_  = fb.texture;
+        fallback_view_ = fb.view;
     }
 
     // ── Bind group rebuild ───────────────────────────────────────────
