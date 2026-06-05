@@ -64,6 +64,16 @@ CommandResult RuntimeAPI::reload(bool& has_gpu_ops, bool& has_audio) {
     return load_graph(path, has_gpu_ops, has_audio);
 }
 
+// NOTE: load_graph is intentionally NOT fully transactional w.r.t. the audio
+// engine. graph_.load() and core_.build() failures roll back via
+// restore_previous_state(); but if the graph rebuilds and only the audio engine
+// fails to start (e.g. the audio device is unavailable), we KEEP the loaded
+// graph rather than rolling back — a graph that renders without audio is more
+// useful than no graph. That partial state is surfaced, not hidden: the success
+// message carries an "audio engine unavailable" warning and the control-server
+// load_graph response sets `audio_unavailable:true`. Callers should treat
+// has_audio=false as ambiguous (no audio nodes OR engine unavailable) and check
+// the warning/flag to disambiguate.
 CommandResult RuntimeAPI::load_graph(const std::string& path,
                                      bool& has_gpu_ops,
                                      bool& has_audio,
@@ -202,7 +212,15 @@ CommandResult RuntimeAPI::load_graph(const std::string& path,
     preserve_undo_history_on_reload_ = false;
     reload_serial_++;
     capture_saved_snapshot();
-    return {true, "reloaded from " + path};
+
+    // Partial-load is non-fatal but must be visible: if the graph has audio
+    // operators but the engine isn't running, the load still succeeded — say so.
+    std::string msg = "reloaded from " + path;
+    if (core_.has_audio_operators() && !has_audio) {
+        msg += " (warning: audio engine unavailable — audio nodes are present "
+               "but not running; check the audio device)";
+    }
+    return {true, msg};
 }
 
 CommandResult RuntimeAPI::new_graph(bool& has_gpu_ops, bool& has_audio) {

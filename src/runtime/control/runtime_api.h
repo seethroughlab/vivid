@@ -334,8 +334,12 @@ private:
         std::string flat_node_id;
         std::string internal_param;
     };
+    // Resolves an exposed module param to its internal compiled node. On failure
+    // returns nullopt and, if `err` is non-null, sets a specific reason so callers
+    // don't collapse every failure into a misleading "unknown node". (audit 04-F8)
     std::optional<ResolvedModuleParam> resolve_module_param(
-        const std::string& node_id, const std::string& param);
+        const std::string& node_id, const std::string& param,
+        std::string* err = nullptr);
 
     Graph& graph_;
     RuntimeCore& core_;
