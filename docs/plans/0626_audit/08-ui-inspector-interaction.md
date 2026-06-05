@@ -1,7 +1,7 @@
 # Audit 08: UI, Inspector & Interaction
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-05 (verify-gated; 11 candidates → 4 confirmed, 7 dismissed)
+**Status:** Round-1 audited 2026-06-05 (verify-gated; 11 candidates → 4 confirmed, 7 dismissed). Round-2 maintainability re-audit 2026-06-05 (4 candidates → 4 confirmed, all Low) — section at end.
 
 ## Purpose
 
@@ -61,12 +61,12 @@ and structural risks that make future defects likely.
 
 ## Required Maintainability Review
 
-- [ ] Map graph editor, inspector, dialogs, rendering, input state, style, and command-sink responsibilities.
-- [ ] Look for duplicated layout, clipping, gesture, selection, undo-grouping, command, and snapshot-sync logic.
-- [ ] Check whether UI/runtime boundaries stay value-based and whether UI state has clear ownership.
-- [ ] Check whether interaction state machines are explicit enough to modify safely.
-- [ ] Identify code that is correct today but fragile under likely inspector-widget, snapshot, dialog, or input changes.
-- [ ] Produce refactor candidates with priority and expected payoff, separate from bug fixes.
+- [x] Map graph editor, inspector, dialogs, rendering, input state, style, and command-sink responsibilities. → `node_graph.cpp` (1980) is a coherent coordinator decomposed across 13 focused TUs (not a god-class); dialogs/rendering/style are cohesive single-concern.
+- [x] Look for duplicated layout, clipping, gesture, selection, undo-grouping, command, and snapshot-sync logic. → **the one real duplication is in the inspector** (6 draw-helpers copied across 3 TUs + deficient local `truncate_text` copies — 08-R2-F1/F2/F4). Hit-testing, gesture state, `lane_set_color()`, and `inspector_layout` are single-sourced.
+- [x] Check whether UI/runtime boundaries stay value-based and whether UI state has clear ownership. → clean: all mutations route through `UICommandSink`; `GraphSnapshot` is a per-frame read-only value copy; no reaching into runtime types.
+- [x] Check whether interaction state machines are explicit enough to modify safely. → yes — gesture/drag/selection state is explicit members; the param-gesture predicate is centralized (round-1 08-F7 fixed).
+- [x] Identify code that is correct today but fragile under likely inspector-widget, snapshot, dialog, or input changes. → the local `truncate_text` copies drop the canonical edge-case guards (08-R2-F2); lane-legibility rendering reads provenance via the snapshot (decoupled — survives the lane-value clean-break).
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -192,3 +192,54 @@ Seven candidates were refuted — notably all four Mediums:
 - [x] Runtime/UI boundary findings identify the correct destination layer. *(Boundaries clean; 08-F1
   destination = UI state.)*
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Re-Audit Mandate. **4 candidates → 4 confirmed (all Low), 0
+dismissed.** Low yield — the **graph editor is in good shape**: `node_graph.cpp` (1980) is a coherent
+coordinator decomposed across 13 focused TUs (not a god-class); hit-testing, gesture/selection state, and
+`lane_set_color()` are single-sourced; the UI↔runtime boundary is value-based (all mutations via
+`UICommandSink`, `GraphSnapshot` a per-frame read-only copy); `renderer_2d`/`theme_loader`/`inspector_layout`
+are cohesive; and round-1 08-F1 (wire-idx prune) + 08-F7 (param-gesture predicate) are already fixed. All
+findings cluster in **one place — the three inspector-draw TUs share copy-pasted helpers**.
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 08-R2-F1 | Low | Maintainability | **6 inspector draw-helpers are byte-identical static copies in all 3 inspector-draw TUs** (`build_semantic_hint`, `draw_inspector_card`, `draw_inspector_env_chip`, `draw_inspector_text_button`, `draw_inspector_left_accent`, `find_param_connection`) | `node_graph_draw_inspector.cpp:21-111`, `..._sections.cpp:19-119`, `..._params.cpp:20-120` |
+| 08-R2-F2 | Low | Robustness | The **local `truncate_text` copies** in sections + params **drop the canonical edge-case guards** (empty text, `max_w<=0`, ellipsis-only overflow) the `text_util.h` version has → can render an over-wide `"x…"` | `..._sections.cpp:43-50`, `..._params.cpp:44-51` vs `rendering/text_util.h:12-24` |
+| 08-R2-F4 | Low | Maintainability | sections + params **don't `#include` `text_util.h`** (so they fall back to the deficient local copies); `inspector.cpp` correctly includes it | `..._sections.cpp:1-11`, `..._params.cpp:1-12` |
+| 08-R2-F3 | Low | Maintainability | `dialog_manager_draw.cpp` repeats the scrim+panel+accent framing across 14 per-dialog functions — *optional* `draw_dialog_frame_base()` | `dialog_manager_draw.cpp:38-2296` |
+
+> F1/F2/F4 are one coherent fix (verified): extract the 6 helpers to a shared header included by all 3 TUs,
+> and migrate sections+params to the canonical `text_util.h::truncate_text` (deleting the deficient local
+> copies — which also fixes the F2 overflow edge case). Net code *reduction*, behavior-neutral except the
+> truncate edge case. Guarded by `test_ui_screenshot_smoke`. F3 is a low-payoff optional (the dispatcher is
+> clean, framing is tightly coupled per-dialog) — skip unless the frame style changes.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **Extract the 6 inspector draw-helpers to a shared header** + migrate `truncate_text` to canonical
+   (08-R2-F1/F2/F4) — **priority medium, payoff medium, low-risk.** Removes 12 redundant copies, fixes the
+   truncate edge case; screenshot-smoke-guarded.
+2. **`draw_dialog_frame_base()` helper** (08-R2-F3) — priority low, payoff low; optional.
+
+### Dismissed (verification-refuted)
+- None this round. (The graph editor, command-sink boundary, snapshot sync, renderer/theme, hit-test/gesture
+  unification were probed and confirmed **clean** — not filed as findings.)
+
+### Out of scope (lane-value clean-break)
+- Lane-legibility rendering (provenance wire color, ×N badges, sparklines) reads lane provenance via
+  `GraphSnapshot` fields — decoupled by the snapshot boundary; survives the queued lane-model rewrite.
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (08-R2-F1/F2/F4):** hoisted the 6 inspector draw-helpers + 2 structs into a shared
+  `node_graph_draw_inspector_helpers.h` (inline) and routed sections+params to the canonical
+  `text_util.h::truncate_text` (deleting the deficient local copies — fixes the F2 overflow). Net −170 lines.
+  Behavior-neutral; the deterministic inspector tests (`test_inspector_layout`, `test_ui_widget_interactions`,
+  `test_ui_screenshot_smoke_harness`) pass. Merged (`035a72dd`).
+  - *Test-infra note:* the GUI screenshot lanes `test_ui_screenshot_smoke_{env,smoke}` are **environmentally
+    flaky** — the first GUI window intermittently fails WebGPU surface-texture acquisition (`status 196609`,
+    300 frames → abort), ~1/3 of runs. Confirmed equally flaky on **clean master** (2/3 pass) and with this
+    change (2/3 pass) — not a regression. Re-run on failure or rely on the deterministic UI tests.
+- **Backlog (optional):** 08-R2-F3 (dialog-frame helper).
