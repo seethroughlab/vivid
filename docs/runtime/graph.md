@@ -223,7 +223,7 @@ Canonical lane values live in `CompiledNode::input_lane_refs` / `output_lane_ref
 
 GPU lane promotion: `plan_gpu_lane_promotion()` conservatively promotes lane arrays feeding GPU consumers above `kGpuLanePromotionThreshold` (256) to GPU storage-buffer backing, with lazy CPU→GPU upload cached per frame.
 
-Allocation policy: `CompiledGraph::max_lane_elements` (default 16,777,216) is the hard guard. `kDefaultLaneCapacity` (1024) is the default initial buffer size; frame-thread builders can grow beyond this up to `max_lane_elements`.
+Allocation policy: `kDefaultLaneCapacity` (1024) is the default initial pool-buffer size. The frame executor's `LaneBufferPool` is constructed **growable**, so remap/merge/normalization buffers that exceed the initial capacity grow on the frame thread (allocation is safe there) rather than silently truncating to an empty buffer. The audio bridge's lane slots stay no-alloc for real-time safety. `CompiledGraph::max_lane_elements` (default 16,777,216) is a nominal upper-bound field and is **not currently enforced** in the allocation path.
 
 ## Audio Lane Width Negotiation
 
@@ -246,5 +246,11 @@ voice state as notes churn.
 On the frame path, retired lane IDs are swept at the start of each `FrameExecutor::tick()`. On the
 audio path, retired lane IDs are swept at audio block boundaries before the next callback begins
 processing node state for that block.
+
+Lane IDs are either positional (rebuilt per-graph) or identity-bearing (the `identity_bearing`
+flag on a lane set, set by the compiler when an upstream operator emits explicit `lane_ids`), which
+keeps per-lane state stable across reordering/compaction within a running graph. Lane identity is
+**not** preserved across a full recompile: a topology change or graph reload re-runs the compiler
+and lane IDs are re-allocated from scratch, so per-lane persistent state does not survive a rebuild.
 
 In practice, this is what lets compiled module-internal chains like pointwise lane-aware audio → reduction mixer preserve per-voice audio through flattening and route it correctly into the reducer.

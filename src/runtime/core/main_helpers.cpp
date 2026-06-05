@@ -408,6 +408,19 @@ void poll_hot_reload(vivid::FileWatcher& fw, vivid::HotReloader& hr,
                 }
                 if (op_cache) op_cache->invalidate(tn);
                 std::fprintf(stderr, "[vivid] Hot-reload: %s reloaded successfully\n", tn.c_str());
+
+                // If the new descriptor changed its lane behavior or execution
+                // strategy (HotReloadCompat::RecompileRequired), the in-place
+                // reload left lane-set provenance / execution-strategy metadata
+                // stale. Trigger a full recompile so the change takes effect
+                // correctly (re-runs Pass 2.6 and the strategy planner).
+                if (OperatorLoader* ldr = registry.find_loaded(tn);
+                    ldr && ldr->reload_required_recompile()) {
+                    std::fprintf(stderr,
+                        "[vivid] Hot-reload: %s changed lane/strategy descriptor — "
+                        "requesting full recompile\n", tn.c_str());
+                    runtime_api.request_recompile();
+                }
             }
         } else {
             std::fprintf(stderr, "[vivid] Hot-reload: %s reload FAILED\n", tn.c_str());

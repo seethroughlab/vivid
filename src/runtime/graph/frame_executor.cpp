@@ -14,6 +14,19 @@
 
 namespace vivid {
 
+// One-shot diagnostic for a frame lane-pool allocation that failed to grow.
+// The frame pool is growable, so this is unreachable in practice; it guards
+// against a future regression silently truncating wide lanes to empty buffers.
+static void warn_lane_pool_resize_failed(const CompiledNode& cn, uint32_t port, uint32_t len) {
+    static bool warned = false;
+    if (warned) return;
+    warned = true;
+    std::fprintf(stderr,
+        "[vivid] frame_executor: lane buffer resize to %u failed at node '%s' port %u — "
+        "lane data dropped (this should not happen on the growable frame pool)\n",
+        len, cn.node_id.c_str(), port);
+}
+
 // tick() processes all frame-cadence nodes once per frame in topological order.
 //
 // Per-node steps: zero inputs → propagate upstream wire values (with lane
@@ -146,6 +159,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                                     for (uint32_t j = 0; j < len; ++j)
                                         dst[j] = e.apply_remap(src[j]);
                                     buf->commit(len);
+                                } else {
+                                    warn_lane_pool_resize_failed(cn, e.to_port, len);
                                 }
                                 dst_ref = LaneBufferRef(buf);
                             }
@@ -240,6 +255,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                             std::memcpy(dst, ref.data(), old_len * sizeof(float));
                             std::fill(dst + old_len, dst + max_lanes, fill);
                             buf->commit(max_lanes);
+                        } else {
+                            warn_lane_pool_resize_failed(cn, p, max_lanes);
                         }
                         ref = LaneBufferRef(buf);
                     }

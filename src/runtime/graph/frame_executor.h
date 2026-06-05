@@ -94,8 +94,10 @@ private:
     LaneStateService frame_lane_state_;
     std::vector<NodeLaneCtx> frame_lane_contexts_;
 
-    // Pool for lane buffer allocation during wire propagation.
-    LaneBufferPool lane_pool_;
+    // Pool for lane buffer allocation during wire propagation. Growable: the
+    // frame thread may allocate, so wide remapped/expanded lanes (>capacity)
+    // grow rather than silently truncating to an empty buffer.
+    LaneBufferPool lane_pool_{1024, /*growable=*/true};
 
 public:
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }

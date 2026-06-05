@@ -38,6 +38,10 @@ struct LaneBuffer {
     uint32_t lane_set_id = 0;
     std::atomic<uint32_t> ref_count{0};
     bool pool_owned = false;
+    // When true, resize() may grow the backing vector even for a pool-owned
+    // buffer. Set only for frame-thread pools (allocation is safe there);
+    // audio-thread pools leave this false to preserve no-alloc real-time safety.
+    bool allow_grow = false;
 
     // GPU storage-buffer backing (Phase 4). CpuOnly by default.
     LaneGpuBacking gpu_backing = LaneGpuBacking::CpuOnly;
@@ -58,6 +62,7 @@ struct LaneBuffer {
         , lane_set_id(o.lane_set_id)
         , ref_count(o.ref_count.load(std::memory_order_relaxed))
         , pool_owned(o.pool_owned)
+        , allow_grow(o.allow_grow)
         , gpu_backing(o.gpu_backing)
         , gpu_buffer(o.gpu_buffer)
         , gpu_buffer_capacity(o.gpu_buffer_capacity) {
@@ -75,6 +80,7 @@ struct LaneBuffer {
             lane_set_id = o.lane_set_id;
             ref_count.store(o.ref_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
             pool_owned = o.pool_owned;
+            allow_grow = o.allow_grow;
             gpu_backing = o.gpu_backing;
             gpu_buffer = o.gpu_buffer;
             gpu_buffer_capacity = o.gpu_buffer_capacity;
@@ -97,8 +103,8 @@ struct LaneBuffer {
     float* resize(uint32_t length) {
         if (length == 0) return data.data();
         if (length > static_cast<uint32_t>(data.size())) {
-            if (pool_owned) return nullptr; // audio-safe: no alloc
-            data.resize(length, 0.0f);      // frame-thread growth OK
+            if (pool_owned && !allow_grow) return nullptr; // audio-safe: no alloc
+            data.resize(length, 0.0f);                     // frame-thread growth OK
         }
         return data.data();
     }

@@ -83,6 +83,13 @@ add_dependencies(test_hot_reload test_op_v1 test_op_v2 test_op_incompatible_port
 add_test(NAME test_hot_reload COMMAND test_hot_reload WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_hot_reload PROPERTIES TIMEOUT 15)
 
+add_executable(test_hot_reload_classify
+    tests/core/test_hot_reload_classify.cpp
+)
+target_include_directories(test_hot_reload_classify PRIVATE src tests)
+target_link_libraries(test_hot_reload_classify PRIVATE vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_hot_reload_classify COMMAND test_hot_reload_classify WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_audio_hot_reload
     tests/audio/test_audio_hot_reload.cpp
 )

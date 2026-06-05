@@ -52,6 +52,13 @@ Helper semantics:
 The UI should not assume mutability or cross-frame identity beyond what the
 snapshot explicitly carries.
 
+`NodeSnapshot` does carry compiler-derived lane metadata that is cheap to copy:
+`lane_behavior` (Pointwise/Structural/Reduction/Kernel) and `active_cadence`.
+It deliberately does **not** carry the internal `LaneExecutionStrategy`
+(Scalar/InstancePerLane/LoopBased) — that is a compile/executor implementation
+detail, not part of the UI contract; consumers that need it query the compiled
+graph directly rather than the snapshot.
+
 ### 3. Package browser data is snapshot-backed
 
 Package-browser content shown in the UI is treated as a cached snapshot that
