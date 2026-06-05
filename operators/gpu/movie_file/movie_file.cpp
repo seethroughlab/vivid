@@ -721,7 +721,17 @@ struct MovieFile : vivid::OperatorBase, vivid::GpuProcessable, vivid::AudioProce
                 }
             }
 
-            // Decode: codec-specific submit to unified queue
+            // Decode: codec-specific submit to unified queue.
+            //
+            // The two decoders use fundamentally different decode MODELS, so the
+            // concrete static_cast<HAPDecoder*>/<AVFDecoder*> below are deliberate,
+            // not an accidental abstraction leak (audit 06-R2-F3): HAP is
+            // synchronous (decode_frame() → HAP-only make_decoded_frame()); AVF is
+            // asynchronous (request scheduling → AVF-only read_pixel_buffers_until /
+            // acquire_pixel_buffer). These methods exist on only one decoder each, so
+            // hoisting them onto the VideoDecoder interface would make it a fat
+            // interface (each decoder stubbing the other's model). A clean fix is a
+            // sync/async decode-model abstraction — deferred (see audit doc).
             frame_uploaded_ = false;
             auto t_decode_start = std::chrono::steady_clock::now();
 

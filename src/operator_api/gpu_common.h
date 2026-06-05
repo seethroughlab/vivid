@@ -213,6 +213,13 @@ inline WGPUSampler create_linear_sampler(WGPUDevice device, const char* label) {
 //   uniform(0) + sampler(1) + N float textures(2..N+1)
 //   Uniform is visible to Fragment by default; pass extra_uniform_visibility
 //   for additional stages (e.g. WGPUShaderStage_Vertex).
+//
+// Use this (+ create_standard_bind_group below) for SIMPLE fragment-shader
+// operators that fit the uniform + sampler + N-texture shape. Operators with
+// compute passes, multi-pass pipelines, storage buffers, or non-standard
+// binding orders (e.g. bloom's dual-texture pass, particles_2d's compute,
+// fluid's multi-pass) should hand-roll their own layout — that is expected, not
+// duplication.
 // ---------------------------------------------------------------------------
 inline WGPUBindGroupLayout create_standard_bind_layout(
     WGPUDevice device, uint32_t texture_count, const char* label,
@@ -317,6 +324,57 @@ inline WGPUTextureView create_texture_view(
     vd.arrayLayerCount = 1;
     vd.aspect          = WGPUTextureAspect_All;
     return wgpuTextureCreateView(texture, &vd);
+}
+
+// ---------------------------------------------------------------------------
+// Helper: 1×1 placeholder texture for a disconnected texture input (audit
+// 06-R2-F1). Returns the owned texture + a matching 2D view. The fill is
+// transparent black by default, or opaque black (RGB=0, A=max) when
+// `opaque_black` is set. Sized per format — RGBA8Unorm (4 B) and RGBA16Float
+// (8 B, the operator output format) are the cases Vivid operators use.
+// ---------------------------------------------------------------------------
+struct FallbackTexture {
+    WGPUTexture     texture = nullptr;
+    WGPUTextureView view    = nullptr;
+};
+
+inline FallbackTexture create_fallback_texture(
+    WGPUDevice device, WGPUQueue queue,
+    WGPUTextureFormat format, bool opaque_black = false) {
+
+    WGPUTextureDescriptor td{};
+    td.label         = vivid_sv("Fallback Texture");
+    td.size          = { 1, 1, 1 };
+    td.mipLevelCount = 1;
+    td.sampleCount   = 1;
+    td.dimension     = WGPUTextureDimension_2D;
+    td.format        = format;
+    td.usage         = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    WGPUTexture tex  = wgpuDeviceCreateTexture(device, &td);
+    WGPUTextureView view = create_texture_view(tex, format);
+
+    // One pixel, sized + filled per format.
+    uint8_t px[8] = {};
+    uint32_t bytes_per_pixel = 8;  // RGBA16Float default
+    if (format == WGPUTextureFormat_RGBA8Unorm) {
+        bytes_per_pixel = 4;
+        if (opaque_black) px[3] = 255;            // {0,0,0,255}
+    } else if (opaque_black) {
+        px[6] = 0x00; px[7] = 0x3C;               // RGBA16Float alpha = half-float 1.0 (0x3C00, LE)
+    }
+
+    WGPUTexelCopyTextureInfo dst{};
+    dst.texture  = tex;
+    dst.mipLevel = 0;
+    dst.origin   = { 0, 0, 0 };
+    dst.aspect   = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferLayout layout{};
+    layout.bytesPerRow  = bytes_per_pixel;
+    layout.rowsPerImage = 1;
+    WGPUExtent3D extent = { 1, 1, 1 };
+    wgpuQueueWriteTexture(queue, &dst, px, bytes_per_pixel, &layout, &extent);
+
+    return { tex, view };
 }
 
 // ---------------------------------------------------------------------------
