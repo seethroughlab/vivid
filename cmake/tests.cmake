@@ -15,6 +15,8 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/control/control_server_crash.cpp
     src/runtime/control/control_server_dispatch.cpp
     src/runtime/control/control_server_query.cpp
+    src/runtime/control/control_server_query_source.cpp
+    src/runtime/control/control_server_query_packages.cpp
     src/runtime/control/graph_file_io.cpp
     src/runtime/control/runtime_api.cpp
     src/runtime/control/runtime_api_live.cpp
