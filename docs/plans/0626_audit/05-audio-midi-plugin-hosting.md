@@ -1,11 +1,21 @@
 # Audit 05: Audio, MIDI & Plugin Hosting
 
 **Date:** 2026-06-26
-**Status:** Audited 2026-06-05 (verify-gated; 10 candidates → 6 confirmed, 4 dismissed)
+**Status:** Re-audited (maintainability) 2026-06-05 (verify-gated; 4 candidates → 2 confirmed, 2 dismissed). Prior correctness pass retained below; Round-2 maintainability section at end.
 
 ## Purpose
 
 Audit the audio runtime, MIDI integration, and native plugin-hosting paths for real-time safety, thread-boundary correctness, device lifecycle reliability, and plugin discovery risks.
+
+## Re-Audit Mandate
+
+The prior pass should be treated as a correctness/robustness audit, not a complete code-quality audit.
+Run this audit again with equal weight on maintainability: structure, duplication, ownership boundaries,
+API clarity, dependency direction, and ease of future change.
+
+Do not mark the audit complete until every checklist item is annotated as `[x]` done, `[~]` partially
+covered, or `[ ]` intentionally deferred with a short note. Findings must include both confirmed defects
+and structural risks that make future defects likely.
 
 ## Scope
 
@@ -43,8 +53,21 @@ Audit the audio runtime, MIDI integration, and native plugin-hosting paths for r
 - [ ] Review tests that claim to cover the subsystem.
 - [ ] Check docs/code/test contract drift.
 - [ ] Identify correctness, robustness, and maintainability findings.
+- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [ ] Check dependency direction and public/private API boundaries.
+- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
 - [ ] Record findings with severity, category, evidence, and recommendation.
 - [ ] Propose immediate, near-term, and backlog follow-up work.
+
+## Required Maintainability Review
+
+- [x] Map audio runtime, bridge, MIDI, device, plugin-host, and shared-DSP responsibilities. → engine/device/MIDI/bridge ownership is clean and focused.
+- [x] Look for duplicated host, scanner, state serialization, thread-boundary, diagnostic, and buffer-management logic. → the duplication is in the **plugin-instrument operators** (05-R2-F2), not the host headers (host-level dup is the known-deferred 05-F9; `clap_plugin_window.h` already shared — 05-R2-F1 refuted).
+- [x] Check every cross-thread public accessor for atomics, locks, or explicit single-thread ownership. → **clean** — consistent atomic acquire/release + documented ownership on bridge + engine + the operator triple-buffer.
+- [x] Check whether plugin-standard-specific code is separated from reusable host utilities. → reasonable: shared host headers + `plugin_common` (macro_bank/direct_param_queue/base64); the per-SDK glue lives in each operator (the 05-R2-F2 duplication).
+- [x] Identify code that is correct today but fragile under likely audio-device, MIDI-flood, plugin, or lane changes. → the 4× plugin-operator lifecycle (a swap/cleanup fix must be replicated 4 times — 05-R2-F2); the `dying2_` overflow is a deliberate documented tradeoff (05-R2-F4 refuted).
+- [x] Produce refactor candidates with priority and expected payoff, separate from bug fixes. → see Round-2 Refactor Candidates below.
 
 ## Findings
 
@@ -194,3 +217,82 @@ Four candidates were refuted:
   readers, miniaudio-synchronized device ops — noted per finding; bridge contract confirmed documented.)*
 - [x] Audio test gaps distinguish device-dependent and device-free coverage.
 - [x] Follow-up work is grouped into immediate, near-term, and backlog.
+
+---
+
+# Maintainability Re-Audit (Round 2) — 2026-06-05
+
+Verify-gated maintainability pass per the Re-Audit Mandate (round 1 found RT-safety clean). **4 candidates →
+2 confirmed (1 Medium, 1 Low), 2 dismissed.** Low yield, as expected — the audio runtime/engine/MIDI/device
+and the shared DSP libs are **clean and well-factored**, cross-thread accessors are consistent (atomic
+acquire/release + documented ownership), and the plugin-host-header duplication is the known-deferred 05-F9.
+The remaining maintainability story is the **plugin-instrument operators**. The verify pass refuted both Low
+candidates: the `clap_plugin_window.h` "duplicate" (clap_instrument **already** `#include`s the shared copy —
+`clap_instrument.cpp:10`) and a `dying2_` "handle leak" (a deliberate, documented don't-delete-on-the-audio-
+thread tradeoff).
+
+| ID | Severity | Category | Finding | Location |
+|----|----------|----------|---------|----------|
+| 05-R2-F2 | Medium | Maintainability | The **4 plugin-hosting operators duplicate** the triple-buffer plugin-swap (`active_/pending_/dying_/dying2_` atomics), the `main_thread_update` housekeeping (~40 LOC: cleanup dying → reload_if_changed → update_macro_map → refresh_*_params_json → process_direct_params → save_state), and the `process_audio` swap — ~90% textual match, no shared base | `vst3_instrument.cpp:83-86,180-232,496-528`; `clap_instrument.cpp:73-76,162-208,384-410`; `au_instrument.cpp:62-66,124-152,259-277`; `clap_effect.cpp:68-71,155-202,379-410` |
+| 05-R2-F3 | Low | Test gap | The plugin-operator lifecycle glue (triple-buffer swap ordering, `main_thread_update` cleanup, macro-map persistence, state round-trip, direct-param-queue thread-safety) is **untested** — only `test_plugin_base64` exists | `tests/operators/test_plugin_base64.cpp` (only); the 4 operators |
+
+> 05-R2-F2 is a real, well-evidenced duplication (au_instrument's own comment says *"triple-buffer, same
+> pattern as CLAPInstrument"*). But it's a **deferred-grade fix**: the factorable portion is real
+> (load/swap/cleanup), yet the SDK calls differ (VST3 `setProcessing` / CLAP `start/stop_processing` / AU
+> destructor), so a `PluginOperatorBase<HandleType>` needs **virtual hooks on the audio-thread swap path**
+> and there is **no real-plugin test harness** (CI has no installed plugins). 05-R2-F3 is the prerequisite
+> safety net.
+
+### Evidence & Recommendation
+
+**05-R2-F2 — plugin-operator lifecycle duplication** (Medium, Maintainability — *the headline; deferred-grade fix*)
+- *Evidence:* identical `active_/pending_/dying_/dying2_` atomic quad in all 4 ops (cited lines, verified);
+  `main_thread_update` opens with the same dying/dying2 exchange+cleanup, then the `audio_rate_seen_`
+  mismatch-reload block, then the same call sequence; `process_audio` does the same load-pending →
+  atomic-exchange-into-active → stop-old → move-to-dying swap. Differences are SDK-specific (the
+  processing-enable call + the destroy path).
+- *Impact:* a fix to swap ordering / cleanup semantics / macro-map timing must be replicated **4×** in
+  complex, non-obvious thread-handoff code — exactly where bugs hide.
+- *Recommendation (refactor candidate — DEFERRED):* a `PluginOperatorBase<HandleType>` (template/CRTP to
+  avoid audio-thread virtual dispatch where possible) encapsulating the triple-buffer lifecycle +
+  `main_thread_update` cleanup + `process_audio` swap, with hooks for the per-SDK `start/stop_processing` and
+  `destroy`. **Do it deliberately, gated by 05-R2-F3's mock-handle unit tests** — not a quick fix, and it
+  touches 4 critical audio operators.
+
+**05-R2-F3 — plugin-operator test gap** (Low, Test gap — *prerequisite for F2*)
+- *Recommendation:* a device-free unit test with **mock handles** exercising the triple-buffer transitions
+  (pending→active→dying, dying2 overflow), `main_thread_update` cleanup ordering, and direct-param-queue
+  main→audio delivery. Real-plugin integration is impractical (no installed plugins in CI) and out of scope.
+
+### Refactor Candidates (priority + payoff — separate from bug fixes)
+1. **`PluginOperatorBase<HandleType>`** (05-R2-F2) — priority medium, **payoff high but cost/risk high**:
+   removes ~90% duplication across 4 ops, but needs virtual/CRTP hooks on the RT swap path and a mock-handle
+   test suite first. **Sequence: 05-R2-F3 test harness → then the base.** Deferred-grade.
+2. **Mock-handle plugin-lifecycle unit tests** (05-R2-F3) — priority low, payoff medium; the standalone
+   first step that makes #1 safe.
+
+### Dismissed (verification-refuted)
+- **05-R2-F1** (`clap_plugin_window.h` duplicated in `clap_instrument/`) — refuted: `clap_instrument.cpp:10`
+  already `#include`s `"shared/clap_host/clap_plugin_window.h"`; the build uses the shared copy exclusively.
+  (A stale unused copy under `operators/audio/clap_instrument/` may exist and could be deleted for hygiene,
+  but it is **not an active duplication**.) *(Recon hypothesis — correctly killed.)*
+- **05-R2-F4** (`dying2_` overflow silently leaks a handle, VST3) — refuted: it's a **deliberate, documented
+  tradeoff** (`vst3_instrument.cpp:510-514` logs and accepts the rare leak rather than `delete` on the audio
+  thread — a third swap without an intervening main-thread tick). Intentional, not a defect.
+
+### Out of scope (lane-value clean-break)
+- `audio_frame_bridge.cpp` lane-lift / lane storage is rewritten by the queued lane-value clean-break
+  (Phase 5) — not audited for refactor here.
+
+## Round-2 Follow-up
+- **DONE 2026-06-05 (05-R2-F3):** extracted the triple-buffer swap/retire/reclaim mechanism verbatim into
+  `operators/shared/plugin_common/plugin_slot.h` (`PluginSlot<HandleT>` — atomics + `swap_in_pending` with
+  SDK-op callbacks + `reclaim`/`destroy_all`) and added `tests/operators/test_plugin_slot.cpp` (mock handle;
+  5 scenarios incl. the 3-retire overflow-leak + invalid-handle rejection). The 4 operators are **not yet
+  migrated** (zero RT-path risk) — this is the **safety net** that makes the F2 base extraction safe.
+  Merged (`54462d94`).
+- **Backlog — deferred-grade (05-R2-F2):** migrate the 4 plugin-hosting operators onto `PluginSlot<HandleT>`
+  (the `PluginOperatorBase` step), each swap/main-update block → `slot_.swap_in_pending(...)` /
+  `slot_.reclaim(...)` with the per-SDK lambdas. Now guarded by `test_plugin_slot`, but still a deliberate RT
+  refactor of 4 critical operators with no real-plugin CI test — do it carefully, one operator at a time.
+  Optional hygiene: delete the stale `operators/audio/clap_instrument/clap_plugin_window.h` copy.
