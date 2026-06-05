@@ -15,7 +15,8 @@ namespace vivid {
 // (all runtime dependencies), the raw body, and the parsed root + validity flag.
 // Handlers never modify Graph/RuntimeCore directly — they go through RuntimeAPI;
 // topology-mutating commands set pending_topology_change_ (applied between frames
-// via apply_pending()). Methods not yet migrated fall through to dispatch_legacy.
+// via apply_pending()). Every method is served from the handler table; unknown
+// methods return a json_err.
 // ---------------------------------------------------------------------------
 struct DispatchContext {
     RuntimeAPI& api;
@@ -44,545 +45,9 @@ struct DispatchContext {
 using DispatchHandler = std::string(*)(DispatchContext& c, const std::string& body,
                                        const nlohmann::json& root, bool root_valid);
 
-static std::string dispatch_legacy(const std::string& method, const std::string& body,
-                            RuntimeAPI& api, Graph& graph,
-                            RuntimeCore& core, OperatorRegistry& registry,
-                            bool& has_gpu_ops, bool& has_audio,
-                            HotReloader* hot_reloader,
-                            const std::string& src_dir,
-                            OperatorSourceDocs& source_docs,
-                            SourceIndex& source_index,
-                            PackageManager* package_manager,
-                            PackageCompiler* package_compiler,
-                            Settings* settings,
-                            AudioEngine* audio_engine,
-                            AssetLibrary* asset_library,
-                            BuildConsole* build_console,
-                            GpuContext* gpu_context,
-                            PackageCatalog* package_catalog,
-                            const ControlServer* control_server,
-                            CrashRecoveryManager* crash_recovery_manager,
-                            EditorWindowManager* editor_window_manager) {
-    // Parse body JSON (may be empty for some commands)
-    nlohmann::json root;
-    bool root_valid = false;
-    try { root = nlohmann::json::parse(body); root_valid = true; }
-    catch (...) {}
-
-    std::string result;
-
-    if (method == "rescan_operators") {
-        result = [&]() -> std::string {
-            int newly = registry.rescan();
-            nlohmann::json j;
-            j["ok"] = true;
-            j["newly_registered"] = newly;
-            return j.dump();
-        }();
-    } else if (method == "scaffold_operator") {
-        result = [&]() -> std::string {
-            if (src_dir.empty())
-                return json_err("scaffold_operator requires --src-dir");
-            if (!root_valid)
-                return json_err("invalid JSON body");
-
-            if (!root.contains("name") || !root["name"].is_string())
-                return json_err("missing 'name'");
-            if (!root.contains("kind") || !root["kind"].is_string())
-                return json_err("missing 'kind'");
-
-            std::string name = root["name"].get<std::string>();
-            std::string kind_str_val = root["kind"].get<std::string>();
-
-            VividOperatorKind kind;
-            if (kind_str_val == "control")      kind = VIVID_OP_CONTROL;
-            else if (kind_str_val == "audio")   kind = VIVID_OP_AUDIO;
-            else if (kind_str_val == "gpu")     kind = VIVID_OP_GPU;
-            else return json_err("kind must be 'control', 'audio', or 'gpu'");
-
-            // Optional variant (e.g. "child_op")
-            std::string variant;
-            if (root.contains("variant") && root["variant"].is_string())
-                variant = root["variant"].get<std::string>();
-
-            std::string destination = "auto";
-            if (root.contains("destination") && root["destination"].is_string())
-                destination = root["destination"].get<std::string>();
-
-            std::string err = OperatorCreator::validate_name(name, registry);
-            if (!err.empty()) return json_err(err);
-
-            std::vector<PackageInfo> packages =
-                package_manager ? package_manager->list() : std::vector<PackageInfo>{};
-
-            // For an explicit "project" destination with no workspace package
-            // yet, auto-create one beside the saved graph then route into it.
-            // Freshly-linked packages get source_scope = "user" (not
-            // "workspace"), so select_workspace_project_package would reject
-            // them; substituting the absolute path lets find_package_by_path
-            // match it in resolve_operator_destination.
-            //
-            // "auto" is intentionally excluded: when no project package exists
-            // resolve_operator_destination falls back to core with a warning,
-            // which is the desired behaviour for the auto destination.
-            const bool auto_core_mode = settings &&
-                settings->operator_clone_destination_mode == "core_explicit";
-            if (destination == "project" && !auto_core_mode && package_manager &&
-                !select_workspace_project_package(packages)) {
-                auto created = vivid::ensure_project_package(*package_manager, graph);
-                if (!created.first.empty()) {
-                    std::fprintf(stderr,
-                        "[vivid] Auto-created project package at %s for new operator '%s'\n",
-                        created.first.c_str(), name.c_str());
-                    packages = package_manager->list();
-                    destination = created.first;  // route to the new package by absolute path
-                }
-                // If creation failed (no saved graph etc.), fall through to
-                // resolve_operator_destination which will surface the
-                // appropriate warning / fallback to core.
-            }
-
-            OperatorDestination resolved;
-            std::string resolve_error;
-            if (!resolve_operator_destination(destination, src_dir, packages, settings,
-                                              resolved, resolve_error)) {
-                return json_err(resolve_error);
-            }
-            if (!resolved.warning.empty()) {
-                std::fprintf(stderr, "[vivid] %s\n", resolved.warning.c_str());
-            }
-
-            VividCreateOperatorRequest req;
-            req.name = name;
-            req.kind = kind;
-            req.variant = variant;
-            req.destination = destination;
-
-            auto parse_port_type = [&](const std::string& type_str, VividOperatorKind k, VividPortType& out) -> std::string {
-                if (k == VIVID_OP_CONTROL) {
-                    if      (type_str == "float")         out = VIVID_PORT_SCALAR;
-                    else if (type_str == "int")           out = VIVID_PORT_SCALAR;
-                    else if (type_str == "bool")          out = VIVID_PORT_SCALAR;
-                    else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
-                    else if (type_str == "string")        out = VIVID_PORT_STRING;
-                    else if (type_str == "string_lanes") out = VIVID_PORT_STRING_LANES;
-                    else return "unknown control port type '" + type_str + "'";
-                } else if (k == VIVID_OP_AUDIO) {
-                    if (type_str == "float") out = VIVID_PORT_AUDIO_BUFFER;
-                    else return "unknown audio port type '" + type_str + "'";
-                } else if (k == VIVID_OP_GPU) {
-                    if (type_str == "texture") out = VIVID_PORT_TEXTURE;
-                    else return "unknown GPU port type '" + type_str + "'";
-                }
-                return {};
-            };
-
-            auto parse_ports = [&](const char* key, VividPortDirection dir) -> std::string {
-                if (!root.contains(key)) return {};
-                const auto& arr = root[key];
-                if (!arr.is_array()) return std::string(key) + " must be an array";
-                for (size_t idx = 0; idx < arr.size(); ++idx) {
-                    const auto& elem = arr[idx];
-                    if (!elem.contains("name") || !elem["name"].is_string())
-                        return std::string(key) + "[" + std::to_string(idx) + "] missing 'name'";
-                    std::string ptype = "float";
-                    if (elem.contains("type") && elem["type"].is_string()) ptype = elem["type"].get<std::string>();
-                    VividPortType vt;
-                    std::string err = parse_port_type(ptype, kind, vt);
-                    if (!err.empty()) return err;
-                    req.ports.push_back({elem["name"].get<std::string>(), vt, dir});
-                }
-                return {};
-            };
-
-            std::string port_err = parse_ports("inputs", VIVID_PORT_INPUT);
-            if (!port_err.empty()) return json_err(port_err);
-            port_err = parse_ports("outputs", VIVID_PORT_OUTPUT);
-            if (!port_err.empty()) return json_err(port_err);
-
-            if (root.contains("params")) {
-                const auto& params_arr = root["params"];
-                if (!params_arr.is_array())
-                    return json_err("params must be an array");
-                for (size_t pidx = 0; pidx < params_arr.size(); ++pidx) {
-                    const auto& pelem = params_arr[pidx];
-                    if (!pelem.contains("name") || !pelem["name"].is_string())
-                        return json_err("params[" + std::to_string(pidx) + "] missing 'name'");
-                    VividParamSpec ps;
-                    ps.name = pelem["name"].get<std::string>();
-                    if (pelem.contains("type") && pelem["type"].is_string()) {
-                        std::string ts = pelem["type"].get<std::string>();
-                        if      (ts == "float") ps.type = VIVID_PARAM_FLOAT;
-                        else if (ts == "int")   ps.type = VIVID_PARAM_INT;
-                        else if (ts == "bool")  ps.type = VIVID_PARAM_BOOL;
-                        else if (ts == "file")  ps.type = VIVID_PARAM_FILE;
-                        else if (ts == "text")  ps.type = VIVID_PARAM_TEXT;
-                        else return json_err("unknown param type '" + ts + "'");
-                    }
-                    if (pelem.contains("default") && pelem["default"].is_number()) ps.default_value = pelem["default"].get<float>();
-                    if (pelem.contains("min") && pelem["min"].is_number()) ps.min_value = pelem["min"].get<float>();
-                    if (pelem.contains("max") && pelem["max"].is_number()) ps.max_value = pelem["max"].get<float>();
-                    if (pelem.contains("default_string") && pelem["default_string"].is_string()) ps.default_string = pelem["default_string"].get<std::string>();
-                    req.params.push_back(ps);
-                }
-            }
-
-            auto cr = OperatorCreator::create(req, resolved.root, resolved.package_layout);
-            if (!cr.success) return json_err(cr.error);
-
-            // A new .cpp was written into a package directory; poke the host
-            // so the file-watcher picks it up without waiting for the safety-net
-            // periodic rescan.
-            if (resolved.package_layout && package_manager)
-                package_manager->notify_watchers_changed();
-
-            if (hot_reloader) {
-                if (resolved.package_layout && !resolved.package_name.empty())
-                    hot_reloader->queue_rebuild("pkg:" + resolved.package_name + ":" + cr.target_name);
-                else
-                    hot_reloader->queue_rebuild(cr.target_name);
-            }
-
-            OperatorCreator::open_in_editor(cr.cpp_path);
-
-            nlohmann::json res = nlohmann::json::object();
-            res["cpp_path"] = cr.cpp_path;
-            res["target_name"] = cr.target_name;
-            res["destination_root"] = resolved.root;
-            res["destination_is_package"] = resolved.package_layout;
-            if (!resolved.package_name.empty())
-                res["destination_package"] = resolved.package_name;
-            if (!resolved.warning.empty())
-                res["destination_warning"] = resolved.warning;
-            return json_ok(std::move(res));
-        }();
-    } else if (method == "install_package") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("url") || !root["url"].is_string())
-                result = json_err("missing 'url'");
-            else {
-                auto ir = package_manager->install(root["url"].get<std::string>());
-                if (ir.success) {
-                    nlohmann::json res = nlohmann::json::object();
-                    res["name"] = ir.info.name;
-                    res["version"] = ir.info.version;
-                    if (!ir.info.vivid_core.empty())
-                        res["vivid_core"] = ir.info.vivid_core;
-                    res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
-                    result = json_ok(std::move(res));
-                    // Auto-reload graph if it has missing operators
-                    if (const auto* cg = core.compiled_graph()) {
-                        for (const auto& cn : cg->nodes) {
-                            if (cn.missing_operator) {
-                                auto rr = api.reload(has_gpu_ops, has_audio);
-                                if (!rr.ok) {
-                                    result = json_err("package installed but runtime refresh failed: " + rr.message);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    result = json_err(ir.error);
-                }
-            }
-        }
-    } else if (method == "uninstall_package") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string snapshot_json;
-                std::string snapshot_error;
-                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
-                    result = json_err(snapshot_error);
-                } else if (package_manager->uninstall(root["name"].get<std::string>())) {
-                    source_docs.invalidate_package(root["name"].get<std::string>());
-                    auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
-                    if (!rr.ok)
-                        result = json_err("package uninstalled but runtime refresh failed: " + rr.message);
-                    else
-                        result = json_ok_msg("uninstalled");
-                } else {
-                    result = json_err("failed to uninstall package");
-                }
-            }
-        }
-    } else if (method == "link_package") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("path") || !root["path"].is_string())
-                result = json_err("missing 'path'");
-            else {
-                auto ir = package_manager->link(root["path"].get<std::string>());
-                if (ir.success) {
-                    source_docs.invalidate_package(ir.info.name, ir.info.path);
-                    nlohmann::json res = nlohmann::json::object();
-                    res["name"] = ir.info.name;
-                    res["version"] = ir.info.version;
-                    if (!ir.info.vivid_core.empty())
-                        res["vivid_core"] = ir.info.vivid_core;
-                    res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
-                    res["linked"] = true;
-                    result = json_ok(std::move(res));
-                    // Auto-reload graph if it has missing operators
-                    if (const auto* cg = core.compiled_graph()) {
-                        for (const auto& cn : cg->nodes) {
-                            if (cn.missing_operator) {
-                                auto rr = api.reload(has_gpu_ops, has_audio);
-                                if (!rr.ok) {
-                                    result = json_err("package linked but runtime refresh failed: " + rr.message);
-                                }
-                                break;
-                            }
-                        }
-                    }
-                } else {
-                    result = json_err(ir.error);
-                }
-            }
-        }
-    } else if (method == "unlink_package") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string snapshot_json;
-                std::string snapshot_error;
-                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
-                    result = json_err(snapshot_error);
-                } else if (package_manager->unlink(root["name"].get<std::string>())) {
-                    source_docs.invalidate_package(root["name"].get<std::string>());
-                    auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
-                    if (!rr.ok)
-                        result = json_err("package unlinked but runtime refresh failed: " + rr.message);
-                    else
-                        result = json_ok_msg("unlinked");
-                } else {
-                    result = json_err("failed to unlink package");
-                }
-            }
-        }
-    } else if (method == "rebuild_package") {
-        if (!package_manager) {
-            result = json_err("package manager not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                const std::string pkg_name = root["name"].get<std::string>();
-                std::string snapshot_json;
-                std::string snapshot_error;
-                if (!capture_live_graph_snapshot(graph, snapshot_json, snapshot_error)) {
-                    result = json_err(snapshot_error);
-                } else {
-                    auto ir = package_manager->rebuild(pkg_name);
-                    if (ir.success) {
-                        source_docs.invalidate_package(pkg_name,
-                            package_manager->resolve_package_path(pkg_name));
-                        std::error_code build_ec;
-                        std::string pkg_path = package_manager->resolve_package_path(pkg_name);
-                        if (!pkg_path.empty()) {
-                            std::string build_root = std::filesystem::canonical(pkg_path, build_ec).string();
-                            if (build_ec || build_root.empty())
-                                build_root = pkg_path;
-                            registry.clear_deferred_probe_handles_for_dir(build_root + "/build");
-                        }
-                        auto rr = api.apply_snapshot_json(snapshot_json, has_gpu_ops, has_audio);
-                        if (!rr.ok) {
-                            result = json_err("package rebuilt but runtime refresh failed: " + rr.message);
-                        } else {
-                            core.tick(0.0, 0.016, 0);
-                            nlohmann::json res = {
-                                {"name", ir.info.name},
-                                {"operator_count", static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size())},
-                                {"linked", ir.info.linked}
-                            };
-                            result = json_ok(std::move(res));
-                        }
-                    } else {
-                        result = json_err(ir.error);
-                    }
-                }
-            }
-        }
-    } else if (method == "list_packages") {
-        result = handle_list_packages(package_manager);
-    } else if (method == "read_package_docs") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_read_package_docs(package_manager, root);
-    } else if (method == "list_package_examples") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_list_package_examples(package_manager, root);
-    } else if (method == "read_package_example") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_read_package_example(package_manager, root);
-    } else if (method == "operator_docs") {
-        if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            result = handle_operator_docs(registry, package_manager, source_docs, root, core.subgraph_modules());
-        }
-    } else if (method == "package_operator_docs") {
-        if (!root_valid) result = json_err("invalid JSON body");
-        else result = handle_package_operator_docs(registry, package_manager, source_docs, root);
-    } else if (method == "test_package") {
-        if (!package_manager || !package_compiler) {
-            result = json_err("package manager/compiler not available");
-        } else if (!root_valid) {
-            result = json_err("invalid JSON body");
-        } else {
-            if (!root.contains("name") || !root["name"].is_string())
-                result = json_err("missing 'name'");
-            else {
-                std::string name = root["name"].get<std::string>();
-                auto tr = run_package_tests(name, *package_manager,
-                                             *package_compiler, registry);
-                if (!tr.error.empty()) {
-                    result = json_err(tr.error);
-                } else {
-                    nlohmann::json res = nlohmann::json::object();
-                    res["package"] = tr.package_name;
-                    res["summary"] = {{"total", tr.total}, {"passed", tr.passed}, {"failed", tr.failed}, {"skipped", tr.skipped}};
-                    if (!tr.notes.empty()) res["notes"] = tr.notes;
-                    nlohmann::json tests_arr = nlohmann::json::array();
-                    for (const auto& t : tr.tests) {
-                        nlohmann::json obj = nlohmann::json::object();
-                        obj["name"] = t.name;
-                        obj["type"] = t.type;
-                        obj["status"] = t.status;
-                        if (!t.code.empty()) obj["code"] = t.code;
-                        if (!t.reason.empty()) obj["reason"] = t.reason;
-                        if (!t.output.empty()) obj["output"] = t.output;
-                        tests_arr.push_back(std::move(obj));
-                    }
-                    res["tests"] = std::move(tests_arr);
-                    result = json_ok(std::move(res));
-                }
-            }
-        }
-    } else if (method == "set_solo") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            std::string node_id_str;
-            if (root.contains("node_id") && root["node_id"].is_string())
-                node_id_str = root["node_id"].get<std::string>();
-            result = command_result_to_json(api.set_solo(node_id_str));
-        }
-    } else if (method == "get_solo") {
-        std::string solo_id = api.solo_node_id();
-        result = nlohmann::json{{"ok", true}, {"node_id", solo_id}, {"active", !solo_id.empty()}}.dump();
-    } else if (method == "add_sticky_note") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("text") || !root["text"].is_string() ||
-                !root.contains("x") || !root["x"].is_number() ||
-                !root.contains("y") || !root["y"].is_number())
-                result = json_err("missing 'text', 'x', or 'y'");
-            else {
-                StickyNoteDef note;
-                if (root.contains("id") && root["id"].is_string())
-                    note.id = root["id"].get<std::string>();
-                else
-                    note.id = "sticky_" + std::to_string(graph.sticky_notes().size() + 1);
-                note.text = root["text"].get<std::string>();
-                note.x = root["x"].get<float>();
-                note.y = root["y"].get<float>();
-                if (root.contains("width") && root["width"].is_number()) note.width = root["width"].get<float>();
-                if (root.contains("height") && root["height"].is_number()) note.height = root["height"].get<float>();
-                if (root.contains("color") && root["color"].is_number_integer()) note.color = root["color"].get<int>();
-                std::string assigned_id = note.id;
-                graph.add_sticky_note(std::move(note));
-                result = json_ok(nlohmann::json{{"id", assigned_id}});
-            }
-        }
-    } else if (method == "list_sticky_notes") {
-        nlohmann::json arr = nlohmann::json::array();
-        for (const auto& sn : graph.sticky_notes()) {
-            arr.push_back({
-                {"id", sn.id}, {"text", sn.text},
-                {"x", static_cast<double>(sn.x)}, {"y", static_cast<double>(sn.y)},
-                {"width", static_cast<double>(sn.width)}, {"height", static_cast<double>(sn.height)},
-                {"color", sn.color}
-            });
-        }
-        result = json_ok(std::move(arr));
-    } else if (method == "update_sticky_note") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("id") || !root["id"].is_string())
-                result = json_err("missing 'id'");
-            else {
-                auto* sn = graph.find_sticky_note(root["id"].get<std::string>());
-                if (!sn)
-                    result = json_err("sticky note not found");
-                else {
-                    if (root.contains("text") && root["text"].is_string()) sn->text = root["text"].get<std::string>();
-                    if (root.contains("x") && root["x"].is_number()) sn->x = root["x"].get<float>();
-                    if (root.contains("y") && root["y"].is_number()) sn->y = root["y"].get<float>();
-                    if (root.contains("width") && root["width"].is_number()) sn->width = root["width"].get<float>();
-                    if (root.contains("height") && root["height"].is_number()) sn->height = root["height"].get<float>();
-                    if (root.contains("color") && root["color"].is_number_integer()) sn->color = root["color"].get<int>();
-                    result = json_ok_msg("updated");
-                }
-            }
-        }
-    } else if (method == "remove_sticky_note") {
-        if (!root_valid) { result = json_err("invalid JSON body"); }
-        else {
-            if (!root.contains("id") || !root["id"].is_string())
-                result = json_err("missing 'id'");
-            else {
-                bool removed = graph.remove_sticky_note(root["id"].get<std::string>());
-                if (removed) result = json_ok_msg("removed");
-                else result = json_err("sticky note not found");
-            }
-        }
-    } else if (method == "list_assets") {
-        if (!asset_library) return json_err("asset library not available");
-        auto root = body.empty() ? nlohmann::json::object() : nlohmann::json::parse(body, nullptr, false);
-        if (root.is_discarded()) root = nlohmann::json::object();
-        result = handle_list_assets(*asset_library, root);
-    } else if (method == "inspect_asset") {
-        if (!asset_library) return json_err("asset library not available");
-        auto root = nlohmann::json::parse(body, nullptr, false);
-        if (root.is_discarded()) return json_err("invalid JSON body");
-        result = handle_inspect_asset(*asset_library, root);
-    } else if (method == "import_asset") {
-        if (!asset_library) return json_err("asset library not available");
-        auto root = nlohmann::json::parse(body, nullptr, false);
-        if (root.is_discarded()) return json_err("invalid JSON body");
-        result = handle_import_asset(*asset_library, root);
-    } else if (method == "refresh_assets") {
-        if (!asset_library) return json_err("asset library not available");
-        result = handle_refresh_assets(*asset_library);
-    } else {
-        result = json_err("unknown method '" + method + "'");
-    }
-
-    return result;
-}
-
-// Method → handler registry (audit 04-R2-F1/F2/F7). Built once. Methods present
-// here are served from the table; everything else falls through to dispatch_legacy
-// until migrated. Each handler is a non-capturing lambda (→ function pointer).
+// Method → handler registry (audit 04-R2-F1/F2/F7). Built once. Every method is
+// served from this table; unknown methods return a json_err. Each handler is a
+// non-capturing lambda (→ function pointer).
 static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
     static const std::unordered_map<std::string, DispatchHandler> kHandlers = {
         // --- Session: clips, scenes, cue paths (audit 04-R2) ---
@@ -1893,6 +1358,556 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
             auto r = c.api.list_mod_sources(node_id);
             return r.ok ? r.message : json_err(r.message);
         }},
+
+        // --- Migrated batch 04-R2-F1 (final: packages, scaffold, session/sticky, assets) ---
+        {"rescan_operators", [](DispatchContext& c, const std::string&,
+                                const nlohmann::json&, bool) -> std::string {
+            int newly = c.registry.rescan();
+            nlohmann::json j;
+            j["ok"] = true;
+            j["newly_registered"] = newly;
+            return j.dump();
+        }},
+        {"scaffold_operator", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (c.src_dir.empty())
+                return json_err("scaffold_operator requires --src-dir");
+            if (!root_valid)
+                return json_err("invalid JSON body");
+
+            if (!root.contains("name") || !root["name"].is_string())
+                return json_err("missing 'name'");
+            if (!root.contains("kind") || !root["kind"].is_string())
+                return json_err("missing 'kind'");
+
+            std::string name = root["name"].get<std::string>();
+            std::string kind_str_val = root["kind"].get<std::string>();
+
+            VividOperatorKind kind;
+            if (kind_str_val == "control")      kind = VIVID_OP_CONTROL;
+            else if (kind_str_val == "audio")   kind = VIVID_OP_AUDIO;
+            else if (kind_str_val == "gpu")     kind = VIVID_OP_GPU;
+            else return json_err("kind must be 'control', 'audio', or 'gpu'");
+
+            // Optional variant (e.g. "child_op")
+            std::string variant;
+            if (root.contains("variant") && root["variant"].is_string())
+                variant = root["variant"].get<std::string>();
+
+            std::string destination = "auto";
+            if (root.contains("destination") && root["destination"].is_string())
+                destination = root["destination"].get<std::string>();
+
+            std::string err = OperatorCreator::validate_name(name, c.registry);
+            if (!err.empty()) return json_err(err);
+
+            std::vector<PackageInfo> packages =
+                c.package_manager ? c.package_manager->list() : std::vector<PackageInfo>{};
+
+            // For an explicit "project" destination with no workspace package
+            // yet, auto-create one beside the saved graph then route into it.
+            // Freshly-linked packages get source_scope = "user" (not
+            // "workspace"), so select_workspace_project_package would reject
+            // them; substituting the absolute path lets find_package_by_path
+            // match it in resolve_operator_destination.
+            //
+            // "auto" is intentionally excluded: when no project package exists
+            // resolve_operator_destination falls back to core with a warning,
+            // which is the desired behaviour for the auto destination.
+            const bool auto_core_mode = c.settings &&
+                c.settings->operator_clone_destination_mode == "core_explicit";
+            if (destination == "project" && !auto_core_mode && c.package_manager &&
+                !select_workspace_project_package(packages)) {
+                auto created = vivid::ensure_project_package(*c.package_manager, c.graph);
+                if (!created.first.empty()) {
+                    std::fprintf(stderr,
+                        "[vivid] Auto-created project package at %s for new operator '%s'\n",
+                        created.first.c_str(), name.c_str());
+                    packages = c.package_manager->list();
+                    destination = created.first;  // route to the new package by absolute path
+                }
+                // If creation failed (no saved graph etc.), fall through to
+                // resolve_operator_destination which will surface the
+                // appropriate warning / fallback to core.
+            }
+
+            OperatorDestination resolved;
+            std::string resolve_error;
+            if (!resolve_operator_destination(destination, c.src_dir, packages, c.settings,
+                                              resolved, resolve_error)) {
+                return json_err(resolve_error);
+            }
+            if (!resolved.warning.empty()) {
+                std::fprintf(stderr, "[vivid] %s\n", resolved.warning.c_str());
+            }
+
+            VividCreateOperatorRequest req;
+            req.name = name;
+            req.kind = kind;
+            req.variant = variant;
+            req.destination = destination;
+
+            auto parse_port_type = [&](const std::string& type_str, VividOperatorKind k, VividPortType& out) -> std::string {
+                if (k == VIVID_OP_CONTROL) {
+                    if      (type_str == "float")         out = VIVID_PORT_SCALAR;
+                    else if (type_str == "int")           out = VIVID_PORT_SCALAR;
+                    else if (type_str == "bool")          out = VIVID_PORT_SCALAR;
+                    else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
+                    else if (type_str == "string")        out = VIVID_PORT_STRING;
+                    else if (type_str == "string_lanes") out = VIVID_PORT_STRING_LANES;
+                    else return "unknown control port type '" + type_str + "'";
+                } else if (k == VIVID_OP_AUDIO) {
+                    if (type_str == "float") out = VIVID_PORT_AUDIO_BUFFER;
+                    else return "unknown audio port type '" + type_str + "'";
+                } else if (k == VIVID_OP_GPU) {
+                    if (type_str == "texture") out = VIVID_PORT_TEXTURE;
+                    else return "unknown GPU port type '" + type_str + "'";
+                }
+                return {};
+            };
+
+            auto parse_ports = [&](const char* key, VividPortDirection dir) -> std::string {
+                if (!root.contains(key)) return {};
+                const auto& arr = root[key];
+                if (!arr.is_array()) return std::string(key) + " must be an array";
+                for (size_t idx = 0; idx < arr.size(); ++idx) {
+                    const auto& elem = arr[idx];
+                    if (!elem.contains("name") || !elem["name"].is_string())
+                        return std::string(key) + "[" + std::to_string(idx) + "] missing 'name'";
+                    std::string ptype = "float";
+                    if (elem.contains("type") && elem["type"].is_string()) ptype = elem["type"].get<std::string>();
+                    VividPortType vt;
+                    std::string perr = parse_port_type(ptype, kind, vt);
+                    if (!perr.empty()) return perr;
+                    req.ports.push_back({elem["name"].get<std::string>(), vt, dir});
+                }
+                return {};
+            };
+
+            std::string port_err = parse_ports("inputs", VIVID_PORT_INPUT);
+            if (!port_err.empty()) return json_err(port_err);
+            port_err = parse_ports("outputs", VIVID_PORT_OUTPUT);
+            if (!port_err.empty()) return json_err(port_err);
+
+            if (root.contains("params")) {
+                const auto& params_arr = root["params"];
+                if (!params_arr.is_array())
+                    return json_err("params must be an array");
+                for (size_t pidx = 0; pidx < params_arr.size(); ++pidx) {
+                    const auto& pelem = params_arr[pidx];
+                    if (!pelem.contains("name") || !pelem["name"].is_string())
+                        return json_err("params[" + std::to_string(pidx) + "] missing 'name'");
+                    VividParamSpec ps;
+                    ps.name = pelem["name"].get<std::string>();
+                    if (pelem.contains("type") && pelem["type"].is_string()) {
+                        std::string ts = pelem["type"].get<std::string>();
+                        if      (ts == "float") ps.type = VIVID_PARAM_FLOAT;
+                        else if (ts == "int")   ps.type = VIVID_PARAM_INT;
+                        else if (ts == "bool")  ps.type = VIVID_PARAM_BOOL;
+                        else if (ts == "file")  ps.type = VIVID_PARAM_FILE;
+                        else if (ts == "text")  ps.type = VIVID_PARAM_TEXT;
+                        else return json_err("unknown param type '" + ts + "'");
+                    }
+                    if (pelem.contains("default") && pelem["default"].is_number()) ps.default_value = pelem["default"].get<float>();
+                    if (pelem.contains("min") && pelem["min"].is_number()) ps.min_value = pelem["min"].get<float>();
+                    if (pelem.contains("max") && pelem["max"].is_number()) ps.max_value = pelem["max"].get<float>();
+                    if (pelem.contains("default_string") && pelem["default_string"].is_string()) ps.default_string = pelem["default_string"].get<std::string>();
+                    req.params.push_back(ps);
+                }
+            }
+
+            auto cr = OperatorCreator::create(req, resolved.root, resolved.package_layout);
+            if (!cr.success) return json_err(cr.error);
+
+            // A new .cpp was written into a package directory; poke the host
+            // so the file-watcher picks it up without waiting for the safety-net
+            // periodic rescan.
+            if (resolved.package_layout && c.package_manager)
+                c.package_manager->notify_watchers_changed();
+
+            if (c.hot_reloader) {
+                if (resolved.package_layout && !resolved.package_name.empty())
+                    c.hot_reloader->queue_rebuild("pkg:" + resolved.package_name + ":" + cr.target_name);
+                else
+                    c.hot_reloader->queue_rebuild(cr.target_name);
+            }
+
+            OperatorCreator::open_in_editor(cr.cpp_path);
+
+            nlohmann::json res = nlohmann::json::object();
+            res["cpp_path"] = cr.cpp_path;
+            res["target_name"] = cr.target_name;
+            res["destination_root"] = resolved.root;
+            res["destination_is_package"] = resolved.package_layout;
+            if (!resolved.package_name.empty())
+                res["destination_package"] = resolved.package_name;
+            if (!resolved.warning.empty())
+                res["destination_warning"] = resolved.warning;
+            return json_ok(std::move(res));
+        }},
+        {"install_package", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager) {
+                return json_err("package manager not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("url") || !root["url"].is_string())
+                    return json_err("missing 'url'");
+                else {
+                    auto ir = c.package_manager->install(root["url"].get<std::string>());
+                    if (ir.success) {
+                        nlohmann::json res = nlohmann::json::object();
+                        res["name"] = ir.info.name;
+                        res["version"] = ir.info.version;
+                        if (!ir.info.vivid_core.empty())
+                            res["vivid_core"] = ir.info.vivid_core;
+                        res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
+                        std::string result = json_ok(std::move(res));
+                        // Auto-reload graph if it has missing operators
+                        if (const auto* cg = c.core.compiled_graph()) {
+                            for (const auto& cn : cg->nodes) {
+                                if (cn.missing_operator) {
+                                    auto rr = c.api.reload(c.has_gpu_ops, c.has_audio);
+                                    if (!rr.ok) {
+                                        result = json_err("package installed but runtime refresh failed: " + rr.message);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        return result;
+                    } else {
+                        return json_err(ir.error);
+                    }
+                }
+            }
+        }},
+        {"uninstall_package", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager) {
+                return json_err("package manager not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("name") || !root["name"].is_string())
+                    return json_err("missing 'name'");
+                else {
+                    std::string snapshot_json;
+                    std::string snapshot_error;
+                    if (!capture_live_graph_snapshot(c.graph, snapshot_json, snapshot_error)) {
+                        return json_err(snapshot_error);
+                    } else if (c.package_manager->uninstall(root["name"].get<std::string>())) {
+                        c.source_docs.invalidate_package(root["name"].get<std::string>());
+                        auto rr = c.api.apply_snapshot_json(snapshot_json, c.has_gpu_ops, c.has_audio);
+                        if (!rr.ok)
+                            return json_err("package uninstalled but runtime refresh failed: " + rr.message);
+                        else
+                            return json_ok_msg("uninstalled");
+                    } else {
+                        return json_err("failed to uninstall package");
+                    }
+                }
+            }
+        }},
+        {"link_package", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager) {
+                return json_err("package manager not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("path") || !root["path"].is_string())
+                    return json_err("missing 'path'");
+                else {
+                    auto ir = c.package_manager->link(root["path"].get<std::string>());
+                    if (ir.success) {
+                        c.source_docs.invalidate_package(ir.info.name, ir.info.path);
+                        nlohmann::json res = nlohmann::json::object();
+                        res["name"] = ir.info.name;
+                        res["version"] = ir.info.version;
+                        if (!ir.info.vivid_core.empty())
+                            res["vivid_core"] = ir.info.vivid_core;
+                        res["operator_count"] = static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size());
+                        res["linked"] = true;
+                        std::string result = json_ok(std::move(res));
+                        // Auto-reload graph if it has missing operators
+                        if (const auto* cg = c.core.compiled_graph()) {
+                            for (const auto& cn : cg->nodes) {
+                                if (cn.missing_operator) {
+                                    auto rr = c.api.reload(c.has_gpu_ops, c.has_audio);
+                                    if (!rr.ok) {
+                                        result = json_err("package linked but runtime refresh failed: " + rr.message);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        return result;
+                    } else {
+                        return json_err(ir.error);
+                    }
+                }
+            }
+        }},
+        {"unlink_package", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager) {
+                return json_err("package manager not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("name") || !root["name"].is_string())
+                    return json_err("missing 'name'");
+                else {
+                    std::string snapshot_json;
+                    std::string snapshot_error;
+                    if (!capture_live_graph_snapshot(c.graph, snapshot_json, snapshot_error)) {
+                        return json_err(snapshot_error);
+                    } else if (c.package_manager->unlink(root["name"].get<std::string>())) {
+                        c.source_docs.invalidate_package(root["name"].get<std::string>());
+                        auto rr = c.api.apply_snapshot_json(snapshot_json, c.has_gpu_ops, c.has_audio);
+                        if (!rr.ok)
+                            return json_err("package unlinked but runtime refresh failed: " + rr.message);
+                        else
+                            return json_ok_msg("unlinked");
+                    } else {
+                        return json_err("failed to unlink package");
+                    }
+                }
+            }
+        }},
+        {"rebuild_package", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager) {
+                return json_err("package manager not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("name") || !root["name"].is_string())
+                    return json_err("missing 'name'");
+                else {
+                    const std::string pkg_name = root["name"].get<std::string>();
+                    std::string snapshot_json;
+                    std::string snapshot_error;
+                    if (!capture_live_graph_snapshot(c.graph, snapshot_json, snapshot_error)) {
+                        return json_err(snapshot_error);
+                    } else {
+                        auto ir = c.package_manager->rebuild(pkg_name);
+                        if (ir.success) {
+                            c.source_docs.invalidate_package(pkg_name,
+                                c.package_manager->resolve_package_path(pkg_name));
+                            std::error_code build_ec;
+                            std::string pkg_path = c.package_manager->resolve_package_path(pkg_name);
+                            if (!pkg_path.empty()) {
+                                std::string build_root = std::filesystem::canonical(pkg_path, build_ec).string();
+                                if (build_ec || build_root.empty())
+                                    build_root = pkg_path;
+                                c.registry.clear_deferred_probe_handles_for_dir(build_root + "/build");
+                            }
+                            auto rr = c.api.apply_snapshot_json(snapshot_json, c.has_gpu_ops, c.has_audio);
+                            if (!rr.ok) {
+                                return json_err("package rebuilt but runtime refresh failed: " + rr.message);
+                            } else {
+                                c.core.tick(0.0, 0.016, 0);
+                                nlohmann::json res = {
+                                    {"name", ir.info.name},
+                                    {"operator_count", static_cast<int64_t>(ir.info.operators.size() + ir.info.gpu_operators.size())},
+                                    {"linked", ir.info.linked}
+                                };
+                                return json_ok(std::move(res));
+                            }
+                        } else {
+                            return json_err(ir.error);
+                        }
+                    }
+                }
+            }
+        }},
+        {"list_packages", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json&, bool) -> std::string {
+            return handle_list_packages(c.package_manager);
+        }},
+        {"read_package_docs", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            else return handle_read_package_docs(c.package_manager, root);
+        }},
+        {"list_package_examples", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            else return handle_list_package_examples(c.package_manager, root);
+        }},
+        {"read_package_example", [](DispatchContext& c, const std::string&,
+                                    const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            else return handle_read_package_example(c.package_manager, root);
+        }},
+        {"operator_docs", [](DispatchContext& c, const std::string&,
+                             const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                return handle_operator_docs(c.registry, c.package_manager, c.source_docs, root, c.core.subgraph_modules());
+            }
+        }},
+        {"package_operator_docs", [](DispatchContext& c, const std::string&,
+                                     const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) return json_err("invalid JSON body");
+            else return handle_package_operator_docs(c.registry, c.package_manager, c.source_docs, root);
+        }},
+        {"test_package", [](DispatchContext& c, const std::string&,
+                            const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!c.package_manager || !c.package_compiler) {
+                return json_err("package manager/compiler not available");
+            } else if (!root_valid) {
+                return json_err("invalid JSON body");
+            } else {
+                if (!root.contains("name") || !root["name"].is_string())
+                    return json_err("missing 'name'");
+                else {
+                    std::string name = root["name"].get<std::string>();
+                    auto tr = run_package_tests(name, *c.package_manager,
+                                                 *c.package_compiler, c.registry);
+                    if (!tr.error.empty()) {
+                        return json_err(tr.error);
+                    } else {
+                        nlohmann::json res = nlohmann::json::object();
+                        res["package"] = tr.package_name;
+                        res["summary"] = {{"total", tr.total}, {"passed", tr.passed}, {"failed", tr.failed}, {"skipped", tr.skipped}};
+                        if (!tr.notes.empty()) res["notes"] = tr.notes;
+                        nlohmann::json tests_arr = nlohmann::json::array();
+                        for (const auto& t : tr.tests) {
+                            nlohmann::json obj = nlohmann::json::object();
+                            obj["name"] = t.name;
+                            obj["type"] = t.type;
+                            obj["status"] = t.status;
+                            if (!t.code.empty()) obj["code"] = t.code;
+                            if (!t.reason.empty()) obj["reason"] = t.reason;
+                            if (!t.output.empty()) obj["output"] = t.output;
+                            tests_arr.push_back(std::move(obj));
+                        }
+                        res["tests"] = std::move(tests_arr);
+                        return json_ok(std::move(res));
+                    }
+                }
+            }
+        }},
+        {"set_solo", [](DispatchContext& c, const std::string&,
+                        const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) { return json_err("invalid JSON body"); }
+            else {
+                std::string node_id_str;
+                if (root.contains("node_id") && root["node_id"].is_string())
+                    node_id_str = root["node_id"].get<std::string>();
+                return command_result_to_json(c.api.set_solo(node_id_str));
+            }
+        }},
+        {"get_solo", [](DispatchContext& c, const std::string&,
+                        const nlohmann::json&, bool) -> std::string {
+            std::string solo_id = c.api.solo_node_id();
+            return nlohmann::json{{"ok", true}, {"node_id", solo_id}, {"active", !solo_id.empty()}}.dump();
+        }},
+        {"add_sticky_note", [](DispatchContext& c, const std::string&,
+                               const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) { return json_err("invalid JSON body"); }
+            else {
+                if (!root.contains("text") || !root["text"].is_string() ||
+                    !root.contains("x") || !root["x"].is_number() ||
+                    !root.contains("y") || !root["y"].is_number())
+                    return json_err("missing 'text', 'x', or 'y'");
+                else {
+                    StickyNoteDef note;
+                    if (root.contains("id") && root["id"].is_string())
+                        note.id = root["id"].get<std::string>();
+                    else
+                        note.id = "sticky_" + std::to_string(c.graph.sticky_notes().size() + 1);
+                    note.text = root["text"].get<std::string>();
+                    note.x = root["x"].get<float>();
+                    note.y = root["y"].get<float>();
+                    if (root.contains("width") && root["width"].is_number()) note.width = root["width"].get<float>();
+                    if (root.contains("height") && root["height"].is_number()) note.height = root["height"].get<float>();
+                    if (root.contains("color") && root["color"].is_number_integer()) note.color = root["color"].get<int>();
+                    std::string assigned_id = note.id;
+                    c.graph.add_sticky_note(std::move(note));
+                    return json_ok(nlohmann::json{{"id", assigned_id}});
+                }
+            }
+        }},
+        {"list_sticky_notes", [](DispatchContext& c, const std::string&,
+                                 const nlohmann::json&, bool) -> std::string {
+            nlohmann::json arr = nlohmann::json::array();
+            for (const auto& sn : c.graph.sticky_notes()) {
+                arr.push_back({
+                    {"id", sn.id}, {"text", sn.text},
+                    {"x", static_cast<double>(sn.x)}, {"y", static_cast<double>(sn.y)},
+                    {"width", static_cast<double>(sn.width)}, {"height", static_cast<double>(sn.height)},
+                    {"color", sn.color}
+                });
+            }
+            return json_ok(std::move(arr));
+        }},
+        {"update_sticky_note", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) { return json_err("invalid JSON body"); }
+            else {
+                if (!root.contains("id") || !root["id"].is_string())
+                    return json_err("missing 'id'");
+                else {
+                    auto* sn = c.graph.find_sticky_note(root["id"].get<std::string>());
+                    if (!sn)
+                        return json_err("sticky note not found");
+                    else {
+                        if (root.contains("text") && root["text"].is_string()) sn->text = root["text"].get<std::string>();
+                        if (root.contains("x") && root["x"].is_number()) sn->x = root["x"].get<float>();
+                        if (root.contains("y") && root["y"].is_number()) sn->y = root["y"].get<float>();
+                        if (root.contains("width") && root["width"].is_number()) sn->width = root["width"].get<float>();
+                        if (root.contains("height") && root["height"].is_number()) sn->height = root["height"].get<float>();
+                        if (root.contains("color") && root["color"].is_number_integer()) sn->color = root["color"].get<int>();
+                        return json_ok_msg("updated");
+                    }
+                }
+            }
+        }},
+        {"remove_sticky_note", [](DispatchContext& c, const std::string&,
+                                  const nlohmann::json& root, bool root_valid) -> std::string {
+            if (!root_valid) { return json_err("invalid JSON body"); }
+            else {
+                if (!root.contains("id") || !root["id"].is_string())
+                    return json_err("missing 'id'");
+                else {
+                    bool removed = c.graph.remove_sticky_note(root["id"].get<std::string>());
+                    if (removed) return json_ok_msg("removed");
+                    else return json_err("sticky note not found");
+                }
+            }
+        }},
+        {"list_assets", [](DispatchContext& c, const std::string& body,
+                           const nlohmann::json&, bool) -> std::string {
+            if (!c.asset_library) return json_err("asset library not available");
+            auto root = body.empty() ? nlohmann::json::object() : nlohmann::json::parse(body, nullptr, false);
+            if (root.is_discarded()) root = nlohmann::json::object();
+            return handle_list_assets(*c.asset_library, root);
+        }},
+        {"inspect_asset", [](DispatchContext& c, const std::string& body,
+                             const nlohmann::json&, bool) -> std::string {
+            if (!c.asset_library) return json_err("asset library not available");
+            auto root = nlohmann::json::parse(body, nullptr, false);
+            if (root.is_discarded()) return json_err("invalid JSON body");
+            return handle_inspect_asset(*c.asset_library, root);
+        }},
+        {"import_asset", [](DispatchContext& c, const std::string& body,
+                            const nlohmann::json&, bool) -> std::string {
+            if (!c.asset_library) return json_err("asset library not available");
+            auto root = nlohmann::json::parse(body, nullptr, false);
+            if (root.is_discarded()) return json_err("invalid JSON body");
+            return handle_import_asset(*c.asset_library, root);
+        }},
+        {"refresh_assets", [](DispatchContext& c, const std::string&,
+                              const nlohmann::json&, bool) -> std::string {
+            if (!c.asset_library) return json_err("asset library not available");
+            return handle_refresh_assets(*c.asset_library);
+        }},
     };
     return kHandlers;
 }
@@ -1929,12 +1944,7 @@ std::string dispatch(const std::string& method, const std::string& body,
     if (it != handler_table().end())
         return it->second(c, body, root, root_valid);
 
-    // Not yet migrated — fall through to the legacy if/else router.
-    return dispatch_legacy(method, body, api, graph, core, registry, has_gpu_ops, has_audio,
-                           hot_reloader, src_dir, source_docs, source_index, package_manager,
-                           package_compiler, settings, audio_engine, asset_library, build_console,
-                           gpu_context, package_catalog, control_server, crash_recovery_manager,
-                           editor_window_manager);
+    return json_err("unknown method '" + method + "'");
 }
 
 } // namespace vivid
