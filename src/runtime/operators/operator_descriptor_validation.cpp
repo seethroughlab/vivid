@@ -20,23 +20,24 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
     const VividOperatorDescriptor* desc,
     const char* registration_mode,
     const VividGeneratedUniformLayout* uniform_layout) {
+    namespace vc = validation_codes;
     std::vector<DescriptorValidationIssue> issues;
     if (!desc) {
-        issues.push_back({"null_descriptor", "vivid_descriptor returned null"});
+        issues.push_back({vc::kNullDescriptor, "vivid_descriptor returned null"});
         return issues;
     }
 
     if (empty_cstr(desc->name)) {
-        issues.push_back({"missing_name", "descriptor name is missing or empty"});
+        issues.push_back({vc::kMissingName, "descriptor name is missing or empty"});
     }
     if (desc->param_count > 0 && desc->params == nullptr) {
-        issues.push_back({"null_params", "param_count is non-zero but params is null"});
+        issues.push_back({vc::kNullParams, "param_count is non-zero but params is null"});
     }
     if (desc->port_count > 0 && desc->ports == nullptr) {
-        issues.push_back({"null_ports", "port_count is non-zero but ports is null"});
+        issues.push_back({vc::kNullPorts, "port_count is non-zero but ports is null"});
     }
     if (!desc->has_process_audio && !desc->has_process_gpu && !desc->has_process_frame) {
-        issues.push_back({"missing_capability", "descriptor declares no execution capability"});
+        issues.push_back({vc::kMissingCapability, "descriptor declares no execution capability"});
     }
 
     std::unordered_set<std::string> param_names;
@@ -45,7 +46,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
             const auto& param = desc->params[i];
             if (empty_cstr(param.name)) {
                 issues.push_back({
-                    "param_missing_name",
+                    vc::kParamMissingName,
                     "param[" + std::to_string(i) + "] is missing a name"
                 });
                 continue;
@@ -53,20 +54,20 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
             const std::string name = safe_str(param.name);
             if (!param_names.insert(name).second) {
                 issues.push_back({
-                    "duplicate_param_name",
+                    vc::kDuplicateParamName,
                     "duplicate param name '" + name + "'"
                 });
             }
             if (param.choice_count > 0 && param.choice_labels == nullptr) {
                 issues.push_back({
-                    "param_missing_choice_labels",
+                    vc::kParamMissingChoiceLabels,
                     "param '" + name + "' has choice_count but null choice_labels"
                 });
             }
             if ((param.type == VIVID_PARAM_FILE || param.type == VIVID_PARAM_TEXT) &&
                 param.default_string == nullptr) {
                 issues.push_back({
-                    "param_missing_default_string",
+                    vc::kParamMissingDefaultString,
                     "param '" + name + "' is file/text but default_string is null"
                 });
             }
@@ -80,7 +81,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
             const auto& port = desc->ports[i];
             if (empty_cstr(port.name)) {
                 issues.push_back({
-                    "port_missing_name",
+                    vc::kPortMissingName,
                     "port[" + std::to_string(i) + "] is missing a name"
                 });
                 continue;
@@ -89,7 +90,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
             auto& set = port.direction == VIVID_PORT_OUTPUT ? output_ports : input_ports;
             if (!set.insert(name).second) {
                 issues.push_back({
-                    "duplicate_port_name",
+                    vc::kDuplicatePortName,
                     "duplicate " + std::string(port.direction == VIVID_PORT_OUTPUT ? "output" : "input") +
                         " port name '" + name + "'"
                 });
@@ -98,7 +99,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
                  port.transport == VIVID_PORT_TRANSPORT_CUSTOM_VALUE) &&
                 empty_cstr(port.type_name)) {
                 issues.push_back({
-                    "custom_port_missing_type_name",
+                    vc::kCustomPortMissingTypeName,
                     "custom port '" + name + "' is missing type_name"
                 });
             }
@@ -108,24 +109,24 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
     if (uniform_layout) {
         if (empty_cstr(uniform_layout->struct_name)) {
             issues.push_back({
-                "uniform_layout_missing_name",
+                vc::kUniformLayoutMissingName,
                 "generated uniform layout is missing a struct name"
             });
         }
         if (uniform_layout->byte_size == 0) {
             issues.push_back({
-                "uniform_layout_empty",
+                vc::kUniformLayoutEmpty,
                 "generated uniform layout has zero size"
             });
         } else if ((uniform_layout->byte_size % 16u) != 0u) {
             issues.push_back({
-                "uniform_layout_not_16_byte_aligned",
+                vc::kUniformLayoutNot16ByteAligned,
                 "generated uniform layout size must be a multiple of 16 bytes"
             });
         }
         if (uniform_layout->member_count > 0 && uniform_layout->members == nullptr) {
             issues.push_back({
-                "uniform_layout_missing_members",
+                vc::kUniformLayoutMissingMembers,
                 "generated uniform layout declares members but members is null"
             });
         }
@@ -137,7 +138,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
                 const auto& member = uniform_layout->members[i];
                 if (empty_cstr(member.name)) {
                     issues.push_back({
-                        "uniform_member_missing_name",
+                        vc::kUniformMemberMissingName,
                         "generated uniform member[" + std::to_string(i) + "] is missing a name"
                     });
                     continue;
@@ -145,37 +146,37 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
                 const std::string name = safe_str(member.name);
                 if (!uniform_names.insert(name).second) {
                     issues.push_back({
-                        "duplicate_uniform_member_name",
+                        vc::kDuplicateUniformMemberName,
                         "generated uniform layout has duplicate member '" + name + "'"
                     });
                 }
                 if (empty_cstr(member.wgsl_type)) {
                     issues.push_back({
-                        "uniform_member_missing_type",
+                        vc::kUniformMemberMissingType,
                         "generated uniform member '" + name + "' is missing a WGSL type"
                     });
                 }
                 if (member.size == 0) {
                     issues.push_back({
-                        "uniform_member_zero_size",
+                        vc::kUniformMemberZeroSize,
                         "generated uniform member '" + name + "' has zero size"
                     });
                 }
                 if (member.alignment == 0) {
                     issues.push_back({
-                        "uniform_member_zero_alignment",
+                        vc::kUniformMemberZeroAlignment,
                         "generated uniform member '" + name + "' has zero alignment"
                     });
                 }
                 if (have_previous && member.offset < previous_offset) {
                     issues.push_back({
-                        "uniform_member_out_of_order",
+                        vc::kUniformMemberOutOfOrder,
                         "generated uniform member '" + name + "' offsets are not monotonic"
                     });
                 }
                 if (member.offset + member.size > uniform_layout->byte_size) {
                     issues.push_back({
-                        "uniform_member_out_of_bounds",
+                        vc::kUniformMemberOutOfBounds,
                         "generated uniform member '" + name + "' exceeds the declared layout size"
                     });
                 }

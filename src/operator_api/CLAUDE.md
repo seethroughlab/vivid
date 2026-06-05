@@ -67,6 +67,10 @@ Operators are auto-registered by `operator_codegen` at build time. No explicit r
 
 `collect_params()` and `collect_ports()` on `OperatorBase` remain part of the instance lifecycle: `vivid_create()` calls `collect_params()` to build the ordered param-pointer table used by `_vivid_sync_params` at every process call. The static descriptor (names, defaults, ranges) is codegen-built; the param-pointer table is dynamic and instance-local.
 
+## Validation Contract
+
+Descriptors are validated at dylib load (`validate_descriptor()`); a malformed descriptor is rejected and the failure is reported via `last_error()` and the MCP `validate_operators` tool. Each issue carries a stable code (named constants in `vivid::validation_codes`, `src/runtime/operators/operator_descriptor_validation.h`). Every code and its fix is documented in [`docs/OPERATOR-DESCRIPTOR-VALIDATION.md`](../../docs/OPERATOR-DESCRIPTOR-VALIDATION.md). Codegen-built operators normally pass; the checks guard hand-written or stale descriptors.
+
 ## See Also
 
 - `docs/ARCHITECTURE.md` §5.7 — operator contract design and rationale
