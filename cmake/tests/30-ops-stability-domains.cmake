@@ -13,6 +13,16 @@ target_include_directories(test_plugin_base64 PRIVATE src tests ${CMAKE_SOURCE_D
 target_link_libraries(test_plugin_base64 PRIVATE vivid_operator_api)
 add_test(NAME test_plugin_base64 COMMAND test_plugin_base64 WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Shared plugin-handle triple-buffer swap (vst3/clap/au instrument + effect ops) —
+# device-free mock-handle unit test; safety net for the PluginOperatorBase
+# extraction. (audit 05-R2-F3)
+add_executable(test_plugin_slot
+    tests/operators/test_plugin_slot.cpp
+)
+target_include_directories(test_plugin_slot PRIVATE src tests ${CMAKE_SOURCE_DIR}/operators)
+target_link_libraries(test_plugin_slot PRIVATE vivid_operator_api)
+add_test(NAME test_plugin_slot COMMAND test_plugin_slot WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # EditorWindowBookkeeping unit tests (pure-logic, no GPU/GLFW)
 add_executable(test_editor_window_manager
     tests/ops/test_editor_window_manager.cpp
