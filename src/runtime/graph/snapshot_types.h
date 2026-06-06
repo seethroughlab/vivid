@@ -6,9 +6,11 @@
 // AudioEngine (thin facade exposing analysis reads).
 
 #include "operator_api/types.h"
+#include "runtime/graph/lane_types.h"  // ValueEnvelope (lane-value clean-break)
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -23,6 +25,29 @@ struct BridgeLaneSlot {
     uint32_t length = 0;         // current valid element count
     uint32_t capacity = 0;       // pre-allocated max
     uint32_t lane_set_id = 0;    // provenance metadata across cadence boundary
+};
+
+// Bridge value slot — the value-model successor to BridgeLaneSlot (lane-value
+// clean-break, Phase 3). Carries the full value envelope across the cadence
+// boundary instead of just a lane_set_id. Fixed-capacity flat-backed storage
+// (wired by the bridge at build); never grows on the audio thread. Additive:
+// defined here but not yet wired into push_to_audio/pull_from_audio (Phase 5).
+struct BridgeValueSlot {
+    float* data = nullptr;       // points into pre-allocated bridge storage
+    uint32_t length = 0;         // current valid element count
+    uint32_t capacity = 0;       // pre-allocated max (fixed)
+    ValueEnvelope envelope;      // type/multiplicity/identity/storage across the boundary
+
+    // Copy up to `capacity` floats; clamp on overflow (never grow — RT-safe).
+    // Returns true if the source overflowed (caller counts it in
+    // ValueHealthCounters::bridge_overflow — folds audit 01-R2-F7).
+    bool write_clamped(const float* src, uint32_t src_len) {
+        const uint32_t n = (src_len <= capacity) ? src_len : capacity;
+        if (data && src && n)
+            std::memcpy(data, src, static_cast<size_t>(n) * sizeof(float));
+        length = n;
+        return src_len > capacity;
+    }
 };
 
 struct CustomPortSnapshot {
