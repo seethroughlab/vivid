@@ -1,5 +1,6 @@
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/graph/graph_compiler_internal.h"
+#include "runtime/graph/value_output_adapter.h"  // make_value_output/make_string_value_output (Phase 4)
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/shared_handle_registry.h"
 #include "common/topo_sort.h"
@@ -280,6 +281,19 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.c_out_string_lane_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
+
+            // Value-model staging (Phase 4) — must mirror init_frame_state so the
+            // per-tick value-view loop is in-bounds for placeholder nodes too.
+            cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
+            cn.c_out_value_outputs.resize(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+                const VividPortType t = (p < cn.output_port_types.size())
+                    ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+                cn.c_out_value_outputs[p] =
+                    (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
+                        ? make_string_value_output(&cn.out_string_lane_bufs[p])
+                        : make_value_output(&cn.out_lane_bufs[p]);
+            }
 
             if (is_disabled) {
                 std::fprintf(stderr,
