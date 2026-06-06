@@ -155,6 +155,24 @@ Phase 3 is complete when frame/audio/bridge storage can represent scalar and man
 
 ### Phase 4: Frame Executor Migration
 
+**Phase 4a — ✅ DONE 2026-06-05 (frame value-view API, additive).** First execution-touching phase, kept
+additive + low-risk. `VividFrameContext` now exposes `values` (`VividValueView`) + `value_outputs`
+(`VividValueOutput`) — the value-model API — so control operators *can* consume/produce scalar-or-many values.
+In 4a the FLOAT value output is backed by the SAME `out_lane_bufs` LaneBuffer the lane path uses (via
+`value_output_adapter.h`), so a value-API operator's output flows downstream through the unchanged lane
+propagation and lane-API + value-API operators interoperate. Input value views alias the lane input data +
+the Pass-2.7 envelope. Proven by `ValueGainOp` (kMultiplicityBehavior=Map) + `test_frame_value_api` running
+through real frame execution (scalar + many). The lane path, all ~152 operators, and behavior are unchanged;
+23 value/lane/frame/graph/demo tests green.
+
+**Deferred to 4b/5/6/7:** string + custom value outputs (back `set_string`/custom via a `ValueArena`
+`ValueBuffer` — Phase 3's substrate gets its execution consumer); behavior-specific executor paths
+(Map/Reduce/Generate/Collect as distinct logic; identity through map/preserve — 4a runs the value API through
+the existing strategy/exec path); GPU value routing; audio executor + bridge (Phase 5); migrating the seed
+operators (Phase 6); removing `input_lane_refs`/lane views (Phase 7).
+
+Original Phase-4 spec:
+
 Move frame, control, and GPU execution onto the new value model.
 
 - Replace frame executor lane normalization with value preparation.

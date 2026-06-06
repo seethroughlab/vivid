@@ -1,13 +1,15 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phases 0–3 of the [lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done**.
-The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the descriptor/codegen/probing
-(ABI **6**); the compiler runs a **value-flow inference pass** (Pass 2.7) computing a `ValueEnvelope` per
-edge/port from `multiplicity_behavior`, proven equivalent to the lane sets
-(`CompiledGraph.value_flow_mismatches == 0`); and the runtime has a unified **value-storage substrate**
-(`ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot` + health counters). All three are **additive** —
-the lane system is **still the live execution path** (Phases 4–5 switch onto the substrate; Phase 7 removes
-lanes). This document is the target contract.
+**Status:** Phases 0–3 + Phase 4a of the [lane-value clean-break](../plans/lane-value-model-clean-break.md)
+are **done**. The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the
+descriptor/codegen/probing (ABI **6**); the compiler runs a **value-flow inference pass** (Pass 2.7) computing
+a `ValueEnvelope` per edge/port from `multiplicity_behavior`, proven equivalent to the lane sets
+(`CompiledGraph.value_flow_mismatches == 0`); the runtime has a unified **value-storage substrate**
+(`ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot` + health counters); and (Phase 4a)
+**`VividFrameContext` exposes `values`/`value_outputs`** so frame/control operators can consume/produce
+scalar-or-many values via the value API, backed by the existing lane transport (proven by `ValueGainOp`). All
+**additive** — the lane system is **still the live execution path** (Phase 4b/5 switch execution onto the
+substrate; Phase 7 removes lanes). This document is the target contract.
 
 Phase 0 is complete when every current lane surface has an explicit new-model target here and no
 naming/semantic decision is left to later phases.
