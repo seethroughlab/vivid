@@ -33,22 +33,23 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_lanes, ctx->param_values, ctx->output_values);
+        compute(ctx->values, ctx->param_values, ctx->output_values);
     }
 
 
 private:
-    void compute(const VividLaneView* in_lanes, const float* params,
+    void compute(const VividValueView* in_values, const float* params,
                  float* output_values) {
         if (!output_values) return;
-        if (!in_lanes || in_lanes[0].length == 0) {
+        uint32_t count = in_values ? vivid_value_count(&in_values[0]) : 0u;
+        const float* data = in_values ? vivid_value_floats(&in_values[0]) : nullptr;
+        if (count == 0 || !data) {
             output_values[0] = 0.0f;
             return;
         }
-        auto& in = in_lanes[0];
         uint32_t idx = std::clamp(static_cast<uint32_t>(params[0]),
-                                   0u, in.length - 1);
-        output_values[0] = in.data[idx];
+                                   0u, count - 1);
+        output_values[0] = data[idx];
     }
 };
 

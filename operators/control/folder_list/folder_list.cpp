@@ -118,13 +118,12 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
 
         if (should_refresh) refresh();
 
-        if (ctx->output_string_lanes) {
-            auto& out = ctx->output_string_lanes[0];
+        if (ctx->value_outputs) {
             uint32_t n = static_cast<uint32_t>(file_ptrs_.size());
-            if (out.resize(out.handle, n)) {
+            if (vivid_value_output_floats(&ctx->value_outputs[0], n)) {
                 for (uint32_t i = 0; i < n; ++i)
-                    out.set(out.handle, i, file_ptrs_[i]);
-                out.commit(out.handle, n);
+                    vivid_value_output_set_string(&ctx->value_outputs[0], i, file_ptrs_[i]);
+                vivid_value_output_commit(&ctx->value_outputs[0], n);
             }
         }
         if (ctx->output_values) ctx->output_values[1] = static_cast<float>(files_.size());

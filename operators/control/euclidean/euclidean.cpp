@@ -18,7 +18,7 @@ struct Euclidean : EuclideanCore, vivid::AudioProcessable {
         float beat_phase = vivid::resolve_clock_phase(
             clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), m);
         compute(beat_phase, m.beats_elapsed, m.beats_per_bar,
-                ctx->param_values, ctx->output_lanes, local_out,
+                ctx->param_values, ctx->value_outputs, local_out,
                 ctx->custom_outputs, ctx->custom_output_count);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 3; ++j)

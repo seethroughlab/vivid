@@ -219,21 +219,21 @@ struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
         float a_reso_cv_val   = ctx->input_buffers[3] ? ctx->input_buffers[3][0] : 0.0f;
         float b_reso_cv_val   = ctx->input_buffers[4] ? ctx->input_buffers[4][0] : 0.0f;
 
-        // Lane-array inputs (input_lanes: 0=a_cutoff_mod, 1=b_cutoff_mod, 2=frequencies)
+        // Lane-array inputs (values: 0=a_cutoff_mod, 1=b_cutoff_mod, 2=frequencies)
         float a_cutoff_mod_val = 0.0f;
         float b_cutoff_mod_val = 0.0f;
         float voice_freq = 0.0f;
-        if (ctx->input_lanes) {
+        if (ctx->values) {
             uint32_t ci = ctx->lane_index;
-            auto& a_mod_sp = ctx->input_lanes[0];
-            if (a_mod_sp.data && ci < a_mod_sp.length)
-                a_cutoff_mod_val = a_mod_sp.data[ci];
-            auto& b_mod_sp = ctx->input_lanes[1];
-            if (b_mod_sp.data && ci < b_mod_sp.length)
-                b_cutoff_mod_val = b_mod_sp.data[ci];
-            auto& freq_sp = ctx->input_lanes[2];
-            if (freq_sp.data && ci < freq_sp.length)
-                voice_freq = freq_sp.data[ci];
+            const float* a_mod_d = vivid_value_floats(&ctx->values[0]);
+            if (a_mod_d && ci < vivid_value_count(&ctx->values[0]))
+                a_cutoff_mod_val = a_mod_d[ci];
+            const float* b_mod_d = vivid_value_floats(&ctx->values[1]);
+            if (b_mod_d && ci < vivid_value_count(&ctx->values[1]))
+                b_cutoff_mod_val = b_mod_d[ci];
+            const float* freq_d = vivid_value_floats(&ctx->values[2]);
+            if (freq_d && ci < vivid_value_count(&ctx->values[2]))
+                voice_freq = freq_d[ci];
         }
 
         // Compute modulated cutoffs

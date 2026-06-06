@@ -52,13 +52,14 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        if (!ctx->input_lanes || !ctx->output_lanes) return;
+        if (!ctx->values || !ctx->value_outputs) return;
 
-        auto& in  = ctx->input_lanes[0];
-        auto& out = ctx->output_lanes[0];
+        const VividValueView* in = &ctx->values[0];
+        VividValueOutput*     out = &ctx->value_outputs[0];
 
-        if (in.length == 0) {
-            out.commit(out.handle, 0);
+        uint32_t in_count = vivid_value_count(in);
+        if (in_count == 0) {
+            vivid_value_output_commit(out, 0);
             return;
         }
 
@@ -68,13 +69,14 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
         float off = ctx->param_values[3];
         float prob = ctx->param_values[4];
 
-        uint32_t n = in.length;
-        float* buf = out.resize(out.handle, n);
+        uint32_t n = in_count;
+        const float* in_data = vivid_value_floats(in);
+        float* buf = vivid_value_output_floats(out, n);
         if (!buf) return;
 
         // Copy input to output buffer (we'll transform in-place in the output)
         for (uint32_t i = 0; i < n; ++i)
-            buf[i] = in.data[i];
+            buf[i] = in_data[i];
 
         // Transform order: reverse -> rotate -> scale -> offset -> probability
 
@@ -122,7 +124,7 @@ struct PatTransform : vivid::OperatorBase, vivid::FrameProcessable {
             }
         }
 
-        out.commit(out.handle, n);
+        vivid_value_output_commit(out, n);
 
         // Scalar fallback
         ctx->output_values[0] = (n > 0) ? buf[0] : 0.0f;

@@ -9,7 +9,7 @@ struct PatternSeq : PatternSeqCore, vivid::AudioProcessable {
         float beat_phase = vivid::resolve_clock_phase(
             clock_mode.int_value(), vivid::audio_scalar_block_start(ctx, 0), vivid::metronome_transport(ctx));
         compute(beat_phase, ctx->param_values, local_out,
-                ctx->output_lanes, ctx->custom_outputs, ctx->custom_output_count);
+                ctx->value_outputs, ctx->custom_outputs, ctx->custom_output_count);
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             for (int j = 0; j < 4; ++j)
                 ctx->output_buffers[j][i] = local_out[j];

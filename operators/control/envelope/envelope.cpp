@@ -14,21 +14,23 @@ struct EnvelopeAudio : Envelope, vivid::AudioProcessable {
         float sample_dt = 1.0f / static_cast<float>(ctx->sample_rate);
         const vivid::MetronomeTransport metronome = vivid::metronome_transport(ctx);
 
-        // Read lane arrays for gate and lane_ids (ports 0, 1)
-        const VividLaneView* gate_lane = ctx->input_lanes ? &ctx->input_lanes[0] : nullptr;
-        const VividLaneView* lane_id_lane = ctx->input_lanes ? &ctx->input_lanes[1] : nullptr;
-        uint32_t current_voice_count = (gate_lane && gate_lane->data) ? gate_lane->length : 0;
+        // Read value views for gate and lane_ids (ports 0, 1)
+        const float* gate_data = ctx->values ? vivid_value_floats(&ctx->values[0]) : nullptr;
+        uint32_t gate_count = ctx->values ? vivid_value_count(&ctx->values[0]) : 0;
+        const float* lane_id_data = ctx->values ? vivid_value_floats(&ctx->values[1]) : nullptr;
+        uint32_t lane_id_count = ctx->values ? vivid_value_count(&ctx->values[1]) : 0;
+        uint32_t current_voice_count = gate_data ? gate_count : 0;
         if (current_voice_count > kMaxVoices) current_voice_count = kMaxVoices;
 
         bool current_present[kMaxVoices] = {};
         float current_gate_values[kMaxVoices] = {};
         for (uint32_t vi = 0; vi < current_voice_count; ++vi) {
-            uint32_t lid = (lane_id_lane && lane_id_lane->data && vi < lane_id_lane->length)
-                ? static_cast<uint32_t>(lane_id_lane->data[vi]) : vi;
+            uint32_t lid = (lane_id_data && vi < lane_id_count)
+                ? static_cast<uint32_t>(lane_id_data[vi]) : vi;
             int tracked = ensure_tracked_lane(lid);
             if (tracked < 0) continue;
             current_present[tracked] = true;
-            current_gate_values[tracked] = gate_lane->data[vi];
+            current_gate_values[tracked] = gate_data[vi];
         }
 
         // Fallback: scalar (non-polyphonic) mode

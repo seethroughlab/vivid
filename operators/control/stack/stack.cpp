@@ -48,27 +48,31 @@ struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
+        compute(ctx->param_values, ctx->values, &ctx->value_outputs[0], ctx->output_values);
     }
 
 private:
-    void compute(const float* params, const VividLaneView* in_lanes,
-                 VividLaneOutput* out_lanes, float* output_values) {
-        if (!in_lanes || !out_lanes) return;
+    void compute(const float* params, const VividValueView* in_values,
+                 VividValueOutput* out_value, float* output_values) {
+        if (!in_values || !out_value) return;
 
-        auto& out = out_lanes[0];
         int m = std::clamp(static_cast<int>(params[0]), 0, 1);
 
         // Collect non-empty input lane arrays
-        const VividLaneView* inputs[kMaxInputs];
+        uint32_t input_lengths[kMaxInputs];
+        const float* input_data[kMaxInputs];
         int input_count = 0;
         for (int i = 0; i < kMaxInputs; ++i) {
-            if (in_lanes[i].length > 0)
-                inputs[input_count++] = &in_lanes[i];
+            uint32_t len = vivid_value_count(&in_values[i]);
+            if (len > 0) {
+                input_lengths[input_count] = len;
+                input_data[input_count] = vivid_value_floats(&in_values[i]);
+                ++input_count;
+            }
         }
 
         if (input_count == 0) {
-            out.commit(out.handle, 0);
+            vivid_value_output_commit(out_value, 0);
             return;
         }
 
@@ -76,17 +80,16 @@ private:
             // Concat: append all inputs end-to-end
             uint32_t total = 0;
             for (int i = 0; i < input_count; ++i)
-                total += inputs[i]->length;
-            float* buf = out.resize(out.handle, total);
+                total += input_lengths[i];
+            float* buf = vivid_value_output_floats(out_value, total);
             if (!buf) return;
 
             uint32_t pos = 0;
             for (int i = 0; i < input_count && pos < total; ++i) {
-                auto& sp = *inputs[i];
-                for (uint32_t j = 0; j < sp.length && pos < total; ++j)
-                    buf[pos++] = sp.data[j];
+                for (uint32_t j = 0; j < input_lengths[i] && pos < total; ++j)
+                    buf[pos++] = input_data[i][j];
             }
-            out.commit(out.handle, total);
+            vivid_value_output_commit(out_value, total);
 
             if (output_values)
                 output_values[0] = (total > 0) ? buf[0] : 0.0f;
@@ -94,22 +97,22 @@ private:
             // Interleave: round-robin from non-empty inputs
             uint32_t max_len = 0;
             for (int i = 0; i < input_count; ++i)
-                max_len = std::max(max_len, inputs[i]->length);
+                max_len = std::max(max_len, input_lengths[i]);
 
             uint32_t total = 0;
             for (int i = 0; i < input_count; ++i)
-                total += inputs[i]->length;
-            float* buf = out.resize(out.handle, total);
+                total += input_lengths[i];
+            float* buf = vivid_value_output_floats(out_value, total);
             if (!buf) return;
 
             uint32_t pos = 0;
             for (uint32_t round = 0; round < max_len && pos < total; ++round) {
                 for (int i = 0; i < input_count && pos < total; ++i) {
-                    if (round < inputs[i]->length)
-                        buf[pos++] = inputs[i]->data[round];
+                    if (round < input_lengths[i])
+                        buf[pos++] = input_data[i][round];
                 }
             }
-            out.commit(out.handle, total);
+            vivid_value_output_commit(out_value, total);
 
             if (output_values)
                 output_values[0] = (total > 0) ? buf[0] : 0.0f;

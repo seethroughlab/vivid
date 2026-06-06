@@ -82,7 +82,7 @@ struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        if (!ctx->output_lanes) return;
+        if (!ctx->value_outputs) return;
 
         float dt  = static_cast<float>(ctx->delta_time);
         float spd = ctx->param_values[1];
@@ -94,15 +94,14 @@ struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable {
 
         uint32_t n = std::clamp(static_cast<uint32_t>(ctx->param_values[0]), 1u, 1024u);
 
-        auto& out = ctx->output_lanes[0];
-        float* buf = out.resize(out.handle, n);
+        float* buf = vivid_value_output_floats(&ctx->value_outputs[0], n);
         if (!buf) return;
 
         for (uint32_t i = 0; i < n; ++i) {
             buf[i] = spread_noise01(i, time_, s) * amp + off;
         }
 
-        out.commit(out.handle, n);
+        vivid_value_output_commit(&ctx->value_outputs[0], n);
     }
 
     void draw_thumbnail(const VividThumbnailContext* ctx) override {

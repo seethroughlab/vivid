@@ -59,12 +59,12 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     void process_frame(const VividFrameContext* ctx) override {
         float beat_phase = vivid::resolve_clock_phase(
             clock_mode.int_value(), ctx->input_values[0], vivid::metronome_transport(ctx));
-        compute(beat_phase, ctx->param_values, ctx->input_lanes, ctx->output_lanes, ctx->output_values);
+        compute(beat_phase, ctx->param_values, ctx->values, ctx->value_outputs, ctx->output_values);
     }
 
 private:
-    void compute(float beat_phase, const float* params, const VividLaneView* in_lanes,
-                 VividLaneOutput* out_lanes, float* output_values) {
+    void compute(float beat_phase, const float* params, const VividValueView* in_values,
+                 VividValueOutput* out_values, float* output_values) {
         int c = std::clamp(static_cast<int>(params[0]), 0, 4);
 
         // Cycle lengths in beats: Beat=1, 2 Beats=2, Bar=4, 2 Bars=8, 4 Bars=16
@@ -76,25 +76,25 @@ private:
         if (delta < -0.5f) beat_count_++;
         prev_phase_ = beat_phase;
 
-        if (!in_lanes || !out_lanes) return;
+        if (!in_values || !out_values) return;
 
-        // Collect connected (non-empty) lane inputs
-        // Lane inputs are at port indices 1..kMaxInputs (port 0 is beat_phase scalar)
-        const VividLaneView* inputs[kMaxInputs];
+        // Collect connected (non-empty) value inputs
+        // Value inputs are at port indices 1..kMaxInputs (port 0 is beat_phase scalar)
+        const VividValueView* inputs[kMaxInputs];
         int input_indices[kMaxInputs];
         int input_count = 0;
         for (int i = 0; i < kMaxInputs; ++i) {
-            if (in_lanes[1 + i].length > 0) {
-                inputs[input_count] = &in_lanes[1 + i];
+            if (vivid_value_count(&in_values[1 + i]) > 0) {
+                inputs[input_count] = &in_values[1 + i];
                 input_indices[input_count] = i;
                 input_count++;
             }
         }
 
-        auto& out = out_lanes[0];
+        auto& out = out_values[0];
 
         if (input_count == 0) {
-            out.commit(out.handle, 0);
+            vivid_value_output_commit(&out, 0);
             output_values[0] = 0.0f;
             return;
         }
@@ -104,13 +104,14 @@ private:
         active = std::clamp(active, 0, input_count - 1);
 
         // Pass through selected input
-        auto& sel = *inputs[active];
-        uint32_t len = sel.length;
-        float* buf = out.resize(out.handle, len);
-        if (buf) {
+        const VividValueView* sel = inputs[active];
+        uint32_t len = vivid_value_count(sel);
+        const float* sel_data = vivid_value_floats(sel);
+        float* buf = vivid_value_output_floats(&out, len);
+        if (buf && sel_data) {
             for (uint32_t i = 0; i < len; ++i)
-                buf[i] = sel.data[i];
-            out.commit(out.handle, len);
+                buf[i] = sel_data[i];
+            vivid_value_output_commit(&out, len);
         }
 
         // Output the logical index (which input is active)

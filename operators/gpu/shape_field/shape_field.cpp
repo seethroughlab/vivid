@@ -251,13 +251,15 @@ struct ShapeField : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     // Fetch lane data + length for input port `idx`. Returns data=nullptr
-    // when the port is disconnected or the lane is empty.
+    // when the port is disconnected or the value is empty.
     struct LaneSlot { const float* data = nullptr; uint32_t length = 0; };
     static LaneSlot lane_slot(const VividGpuContext* ctx, int idx) {
-        if (!ctx->input_lanes) return {};
-        const auto& lane = ctx->input_lanes[idx];
-        if (!lane.data || lane.length == 0) return {};
-        return {lane.data, lane.length};
+        if (!ctx->values) return {};
+        const VividValueView* v = &ctx->values[idx];
+        const float* data = vivid_value_floats(v);
+        const uint32_t length = vivid_value_count(v);
+        if (!data || length == 0) return {};
+        return {data, length};
     }
 
     void process_gpu(const VividGpuContext* ctx) override {

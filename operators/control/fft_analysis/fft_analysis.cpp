@@ -42,13 +42,13 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         // Read input lane array
-        if (!ctx->input_lanes || ctx->input_lanes[0].length == 0) {
+        if (!ctx->values || vivid_value_count(&ctx->values[0]) == 0) {
             ctx->output_values[0] = 0.0f;
             return;
         }
 
-        const float* wave_data = ctx->input_lanes[0].data;
-        uint32_t wave_len = ctx->input_lanes[0].length;
+        const float* wave_data = vivid_value_floats(&ctx->values[0]);
+        uint32_t wave_len = vivid_value_count(&ctx->values[0]);
 
         // Determine FFT size (must be power of 2: 256, 512, or 1024)
         uint32_t N = static_cast<uint32_t>(fft_size.int_value());
@@ -113,16 +113,15 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
 
         // Output magnitude spectrum (N/2 bins)
         uint32_t num_bins = N / 2;
-        if (!ctx->output_lanes) return;
-        auto& out = ctx->output_lanes[0];
-        float* buf = out.resize(out.handle, num_bins);
+        if (!ctx->value_outputs) return;
+        float* buf = vivid_value_output_floats(&ctx->value_outputs[0], num_bins);
         if (!buf) return;
         float inv_N = 2.0f / N;
         for (uint32_t i = 0; i < num_bins; ++i) {
             float mag = std::sqrt(buf_real_[i] * buf_real_[i] + buf_imag_[i] * buf_imag_[i]) * inv_N;
             buf[i] = mag;
         }
-        out.commit(out.handle, num_bins);
+        vivid_value_output_commit(&ctx->value_outputs[0], num_bins);
 
         // Scalar fallback: DC component
         ctx->output_values[0] = buf[0];

@@ -60,11 +60,12 @@ struct InstancesFromLanes2D : vivid::OperatorBase, vivid::GpuProcessable {
         const float* in_data[9]{};
         uint32_t     in_len [9]{};
 
-        if (ctx->input_lanes) {
+        if (ctx->values) {
             for (int p = 0; p < 9; ++p) {
-                if (ctx->input_lanes[p].length > 0) {
-                    in_data[p] = ctx->input_lanes[p].data;
-                    in_len [p] = ctx->input_lanes[p].length;
+                uint32_t len = vivid_value_count(&ctx->values[p]);
+                if (len > 0) {
+                    in_data[p] = vivid_value_floats(&ctx->values[p]);
+                    in_len [p] = len;
                 }
             }
         }

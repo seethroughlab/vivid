@@ -293,16 +293,41 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
         }
 
         // Emit voice_*/voices_out aligned to active-note-by-note_id order.
-        // ctx->output_lanes[] is indexed by overall OUTPUT port position.
+        // ctx->value_outputs[] is indexed by overall OUTPUT port position.
         // Output port order: output(0), voices_out(1), voice_ids(2),
         // voice_gates(3), voice_velocities(4), voice_freqs(5).
-        if (ctx->output_lanes) {
-            VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
-                ctx->output_lanes[2], ctx->output_lanes[3],
-                ctx->output_lanes[4], ctx->output_lanes[5],
+        //
+        // Inlined the value-API equivalent of
+        // vivid_sequencers::emit_voice_breakouts_from_sorted: the shared
+        // helper is still lane-API-only (VividLaneOutput), so we replicate its
+        // four-lane emission here over the same sorted/active_count ordering to
+        // keep behavior byte-identical.
+        if (ctx->value_outputs) {
+            const uint32_t n = static_cast<uint32_t>(active_count);
+            auto emit_lane = [&](int port, auto value_for_slot) {
+                VividValueOutput* out = &ctx->value_outputs[port];
+                float* buf = vivid_value_output_floats(out, n);
+                if (buf) {
+                    for (int i = 0; i < active_count; ++i) {
+                        buf[i] = value_for_slot(
+                            static_cast<const vivid::VoiceSlot&>(
+                                voices_[sorted[i]]));
+                    }
+                }
+                vivid_value_output_commit(out, n);
             };
-            vivid_sequencers::emit_voice_breakouts_from_sorted(
-                voices_, sorted, active_count, lanes);
+            emit_lane(2, [](const vivid::VoiceSlot& s) {
+                return static_cast<float>(s.note_id);
+            });
+            emit_lane(3, [](const vivid::VoiceSlot& s) {
+                return s.gate ? 1.0f : 0.0f;
+            });
+            emit_lane(4, [](const vivid::VoiceSlot& s) {
+                return s.velocity;
+            });
+            emit_lane(5, [](const vivid::VoiceSlot& s) {
+                return vivid_sequencers::voice_freq_hz(s);
+            });
         }
     }
 

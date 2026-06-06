@@ -330,13 +330,37 @@ struct SP404 : vivid::OperatorBase, vivid::AudioProcessable {
             frame_counter_++;
         }
 
-        if (ctx->output_lanes) {
-            VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
-                ctx->output_lanes[2], ctx->output_lanes[3],
-                ctx->output_lanes[4], ctx->output_lanes[5],
+        if (ctx->value_outputs) {
+            // Voice breakouts emitted to value_outputs[2..5] (ids/gates/
+            // velocities/freqs). Output ports 0=output, 1=voices_out (audio)
+            // precede the first voice_* lane port, so the lane ports start at
+            // ordinal 2 — matching the previous lane-output slice at [2..5].
+            auto emit_breakout = [&](int port, auto value_for_slot) {
+                VividValueOutput* out = &ctx->value_outputs[port];
+                float* buf = vivid_value_output_floats(
+                    out, static_cast<uint32_t>(active_count));
+                if (buf) {
+                    for (int i = 0; i < active_count; ++i) {
+                        buf[i] = value_for_slot(
+                            static_cast<const vivid::VoiceSlot&>(
+                                voices_[sorted[i]]));
+                    }
+                }
+                vivid_value_output_commit(
+                    out, static_cast<uint32_t>(active_count));
             };
-            vivid_sequencers::emit_voice_breakouts_from_sorted(
-                voices_, sorted, active_count, lanes);
+            emit_breakout(2, [](const vivid::VoiceSlot& s) {
+                return static_cast<float>(s.note_id);
+            });
+            emit_breakout(3, [](const vivid::VoiceSlot& s) {
+                return s.gate ? 1.0f : 0.0f;
+            });
+            emit_breakout(4, [](const vivid::VoiceSlot& s) {
+                return s.velocity;
+            });
+            emit_breakout(5, [](const vivid::VoiceSlot& s) {
+                return vivid_sequencers::voice_freq_hz(s);
+            });
         }
     }
 

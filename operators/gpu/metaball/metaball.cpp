@@ -281,27 +281,31 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
         u.color_b    = b.value;
         u.render_mode = static_cast<float>(render_mode.int_value());
 
-        // Pack ball data from lane inputs (or generate defaults)
+        // Pack ball data from value inputs (or generate defaults)
+        const float* vx = ctx->values ? vivid_value_floats(&ctx->values[0]) : nullptr;
+        const float* vy = ctx->values ? vivid_value_floats(&ctx->values[1]) : nullptr;
+        const float* vr = ctx->values ? vivid_value_floats(&ctx->values[2]) : nullptr;
+        uint32_t cx = ctx->values ? vivid_value_count(&ctx->values[0]) : 0;
+        uint32_t cy = ctx->values ? vivid_value_count(&ctx->values[1]) : 0;
+        uint32_t cr = ctx->values ? vivid_value_count(&ctx->values[2]) : 0;
+
         for (int i = 0; i < n; ++i) {
             float px = 0.5f, py = 0.5f, rad = 0.08f;
 
-            // Read lane inputs if connected
-            if (ctx->input_lanes) {
-                auto& sp_x = ctx->input_lanes[0];
-                if (sp_x.data && static_cast<uint32_t>(i) < sp_x.length)
-                    px = sp_x.data[i];
+            // Read value inputs if connected
+            if (ctx->values) {
+                if (vx && static_cast<uint32_t>(i) < cx)
+                    px = vx[i];
 
-                auto& sp_y = ctx->input_lanes[1];
-                if (sp_y.data && static_cast<uint32_t>(i) < sp_y.length)
-                    py = sp_y.data[i];
+                if (vy && static_cast<uint32_t>(i) < cy)
+                    py = vy[i];
 
-                auto& sp_r = ctx->input_lanes[2];
-                if (sp_r.data && static_cast<uint32_t>(i) < sp_r.length)
-                    rad = sp_r.data[i];
+                if (vr && static_cast<uint32_t>(i) < cr)
+                    rad = vr[i];
             }
 
-            // Fallback: distribute in a circle if no lane input
-            if (!ctx->input_lanes || !ctx->input_lanes[0].data) {
+            // Fallback: distribute in a circle if no value input
+            if (!ctx->values || !vx) {
                 float angle = static_cast<float>(i) / static_cast<float>(n) * 6.2831853f;
                 float phase = static_cast<float>(ctx->time) * 0.5f;
                 px = 0.5f + 0.25f * std::cos(angle + phase);

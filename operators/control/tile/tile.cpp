@@ -35,30 +35,33 @@ struct Tile : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void process_frame(const VividFrameContext* ctx) override {
-        compute(ctx->input_lanes, ctx->param_values,
-                ctx->output_lanes, ctx->output_values);
+        compute(ctx->values, ctx->param_values,
+                ctx->value_outputs, ctx->output_values);
     }
 
 
 private:
-    void compute(const VividLaneView* in_lanes, const float* params,
-                 VividLaneOutput* out_lanes, float* output_values) {
-        if (!in_lanes || !out_lanes) return;
-        auto& in = in_lanes[0];
-        auto& out = out_lanes[0];
+    void compute(const VividValueView* in_values, const float* params,
+                 VividValueOutput* out_values, float* output_values) {
+        if (!in_values || !out_values) return;
+        const VividValueView* in = &in_values[0];
+        VividValueOutput* out = &out_values[0];
 
-        if (in.length == 0) {
-            out.commit(out.handle, 0);
+        uint32_t in_length = vivid_value_count(in);
+        const float* in_data = vivid_value_floats(in);
+
+        if (in_length == 0) {
+            vivid_value_output_commit(out, 0);
             if (output_values) output_values[0] = 0.0f;
             return;
         }
 
         uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, 1024u);
-        float* buf = out.resize(out.handle, n);
+        float* buf = vivid_value_output_floats(out, n);
         if (!buf) return;
         for (uint32_t i = 0; i < n; ++i)
-            buf[i] = in.data[i % in.length];
-        out.commit(out.handle, n);
+            buf[i] = in_data[i % in_length];
+        vivid_value_output_commit(out, n);
 
         if (output_values)
             output_values[0] = buf[0];

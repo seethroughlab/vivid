@@ -108,9 +108,9 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
         int resolved = -1;
         bool valid = false;
 
-        const VividStringLaneView* in_lanes =
-            ctx->input_string_lanes ? &ctx->input_string_lanes[0] : nullptr;
-        const uint32_t n = (in_lanes && in_lanes->data) ? in_lanes->length : 0;
+        const VividValueView* in_view = ctx->values ? &ctx->values[0] : nullptr;
+        const char* const* in_data = in_view ? vivid_value_strings(in_view) : nullptr;
+        const uint32_t n = in_data ? vivid_value_count(in_view) : 0;
         if (n > 0) {
             int idx = static_cast<int>(std::floor(ctx->input_values[1]));
             if (wrap.bool_value()) {
@@ -119,7 +119,7 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
             } else {
                 idx = std::max(0, std::min(idx, static_cast<int>(n) - 1));
             }
-            const char* s = in_lanes->data[idx];
+            const char* s = in_data[idx];
             if (s && *s) {
                 selected_ = s;
                 resolved = idx;

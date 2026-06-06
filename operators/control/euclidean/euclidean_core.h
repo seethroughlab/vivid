@@ -94,7 +94,7 @@ struct EuclideanCore : vivid::OperatorBase {
 
     void compute(float beat_phase, double beats_elapsed, int beats_per_bar,
                  const float* params,
-                 VividLaneOutput* output_lanes, float* output_values,
+                 VividValueOutput* value_outputs, float* output_values,
                  void** custom_outputs = nullptr,
                  uint32_t custom_output_count = 0) {
         int h   = std::clamp(static_cast<int>(params[0]), 0, 32);
@@ -154,14 +154,14 @@ struct EuclideanCore : vivid::OperatorBase {
         output_values[1] = gate;
         output_values[2] = static_cast<float>(current_step);
 
-        if (output_lanes) {
-            auto& pattern_lane = output_lanes[3];
+        if (value_outputs) {
+            auto& pattern_out = value_outputs[3];
             auto len = static_cast<uint32_t>(n);
-            float* buf = pattern_lane.resize(pattern_lane.handle, len);
+            float* buf = vivid_value_output_floats(&pattern_out, len);
             if (buf) {
                 for (uint32_t i = 0; i < len; ++i)
                     buf[i] = static_cast<float>(pattern_[i]);
-                pattern_lane.commit(pattern_lane.handle, len);
+                vivid_value_output_commit(&pattern_out, len);
             }
         }
 

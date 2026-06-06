@@ -54,7 +54,7 @@ struct Repeat : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         compute(ctx->input_values[0], ctx->param_values,
-                ctx->output_lanes, ctx->output_values);
+                ctx->value_outputs, ctx->output_values);
     }
 
 private:
@@ -81,16 +81,15 @@ private:
     }
 
     void compute(float input, const float* params,
-                 VividLaneOutput* out_lanes, float* output_values) {
-        if (!out_lanes) return;
-        auto& out = out_lanes[0];
+                 VividValueOutput* value_outputs, float* output_values) {
+        if (!value_outputs) return;
         uint32_t n = std::clamp(static_cast<uint32_t>(params[0]), 1u, 1024u);
         int   m = static_cast<int>(params[1]);
         float s = params[2];
         int   sd = static_cast<int>(params[3]);
         float rot = params[4];
 
-        float* buf = out.resize(out.handle, n);
+        float* buf = vivid_value_output_floats(&value_outputs[0], n);
         if (!buf) return;
 
         float inv_n = 1.0f / static_cast<float>(n);
@@ -161,7 +160,7 @@ private:
         }
         }
 
-        out.commit(out.handle, n);
+        vivid_value_output_commit(&value_outputs[0], n);
 
         if (output_values)
             output_values[0] = input;
