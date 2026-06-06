@@ -43,6 +43,9 @@ namespace ui { class ThumbnailCache; }
 
 namespace main_internal {
 
+inline constexpr uint32_t kDefaultTexW = 1280;
+inline constexpr uint32_t kDefaultTexH = 720;
+
 struct DisplayState {
     bool fullscreen = false;
     GLFWmonitor* fullscreen_monitor = nullptr;

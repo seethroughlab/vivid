@@ -27,37 +27,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Is retained UI state synchronized correctly with runtime graph snapshots?
-- [ ] Are input state transitions clear for selection, dragging, connecting, editing, and dialogs?
-- [ ] Does inspector behavior match operator metadata, parameter lanes, presets, and editor widgets?
-- [ ] Are rendering and layout dimensions stable under long labels, small viewports, and dynamic values?
-- [ ] Are UI-to-runtime boundaries clean, or do runtime headers depend on UI-only types?
-- [ ] Are node graph files still too large or multi-purpose to audit safely?
-- [ ] Are screenshot and interaction tests strong enough to catch regressions?
+- [x] Is retained UI state synchronized correctly with runtime graph snapshots? → Covered; no confirmed snapshot-sync defect after round-1 selected-wire fix.
+- [x] Are input state transitions clear for selection, dragging, connecting, editing, and dialogs? → Covered; interaction state is explicit and param-gesture predicate is centralized.
+- [x] Does inspector behavior match operator metadata, parameter lanes, presets, and editor widgets? → Covered; round 2 fixed inspector helper duplication without changing behavior.
+- [x] Are rendering and layout dimensions stable under long labels, small viewports, and dynamic values? → Covered; canonical `truncate_text` is now shared where applicable.
+- [x] Are UI-to-runtime boundaries clean, or do runtime headers depend on UI-only types? → Clean; `UICommandSink`/`GraphSnapshot` value boundaries are enforced by tests.
+- [x] Are node graph files still too large or multi-purpose to audit safely? → Mostly okay; `node_graph.cpp` is large but split across focused TUs.
+- [x] Are screenshot and interaction tests strong enough to catch regressions? → Partially; GUI screenshot env flake is documented, and harder interrupt cases remain backlog.
 
 ## Subsystem Checklist
 
-- [ ] Trace graph snapshot ingestion into node graph state and rendered output.
-- [ ] Review click, drag, hover, text editing, connection, and context-menu state machines.
-- [ ] Inspect inspector sections, parameter widgets, operator editors, and dialog interactions.
-- [ ] Check rendering helpers for text clipping, layout jitter, and inconsistent theme usage.
-- [ ] Review command sink boundaries and shared data types between UI and runtime.
-- [ ] Verify tests cover live graph updates, inspector editing, modal input capture, and screenshot baselines.
-- [ ] Identify UI files that should be split by interaction state, drawing responsibility, or inspector section.
+- [x] Trace graph snapshot ingestion into node graph state and rendered output. → Covered; no confirmed Round-2 defect.
+- [x] Review click, drag, hover, text editing, connection, and context-menu state machines. → Covered; round-1 interaction fix retained.
+- [x] Inspect inspector sections, parameter widgets, operator editors, and dialog interactions. → Covered; inspector draw helpers were deduplicated.
+- [x] Check rendering helpers for text clipping, layout jitter, and inconsistent theme usage. → Covered; shared helpers and canonical truncation now used.
+- [x] Review command sink boundaries and shared data types between UI and runtime. → Clean; architecture guard enforces boundary.
+- [x] Verify tests cover live graph updates, inspector editing, modal input capture, and screenshot baselines. → Partially; focused UI tests pass, with harder screenshot scenarios deferred.
+- [x] Identify UI files that should be split by interaction state, drawing responsibility, or inspector section. → Covered; no urgent split beyond completed inspector-helper extraction.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 

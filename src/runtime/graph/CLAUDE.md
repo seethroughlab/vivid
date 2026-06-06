@@ -58,7 +58,7 @@ Hot reload (`graph_compiler_reload.cpp`) reuses the existing `CompiledGraph` in 
 
 `AudioExecutor` runs on the real-time audio thread. `build()` pre-computes lane lift groups — sets of `InstancePerLane` operators that need per-lane cloned instances for multi-lane audio processing. The audio callback walks `audio_order`, processes each node (or each lane instance for lifted nodes), and writes to the output device buffer. Real-time constraints apply: no allocation, no locking, no blocking.
 
-Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `BridgeLaneSlot` carries lane data in both directions using pre-allocated flat buffers (default capacity `kDefaultLaneCapacity` = 1024, growable up to `max_lane_elements`) wired during graph build. The audio callback reads bridge lane data directly (zero-copy, no heap allocation).
+Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `BridgeLaneSlot` carries lane data in both directions using pre-allocated flat buffers wired during graph build. Bridge slots are fixed-capacity (default `kDefaultLaneCapacity` = 1024); oversized lane arrays are clamped and counted via `lane_overflow_count()` / runtime health diagnostics. Frame-thread lane buffers can grow, but bridge slots are not growable yet. The audio callback reads bridge lane data directly (zero-copy, no heap allocation).
 
 ### Lane State
 

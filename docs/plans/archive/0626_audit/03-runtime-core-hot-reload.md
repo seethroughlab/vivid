@@ -27,37 +27,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Are startup, shutdown, and runtime reinitialization paths explicit and testable?
-- [ ] Does `RuntimeCore` own the right state, or is responsibility spread across main-loop helpers?
-- [ ] Can hot reload leave stale graph, operator, UI, or audio state behind?
-- [ ] Are crash recovery and safe mode reliable after partial initialization failures?
-- [ ] Are settings, workspace, source index, and file watcher interactions well bounded?
-- [ ] Are undo and command routing consistent with graph mutation semantics?
-- [ ] Are large core files still hiding separable lifecycle concerns?
+- [x] Are startup, shutdown, and runtime reinitialization paths explicit and testable? → Mostly yes; round 2 found duplicated post-build init and implicit prepared-build contracts, now fixed for the main rebuild/adopt paths.
+- [x] Does `RuntimeCore` own the right state, or is responsibility spread across main-loop helpers? → Clean; `RuntimeCore` owns graph/bridge/frame execution state, while `main_*` helpers own UI/audio lifecycle orchestration by design.
+- [x] Can hot reload leave stale graph, operator, UI, or audio state behind? → No confirmed stale-state defect; round 2 found a maintainability hazard in duplicated post-build init rather than a live correctness issue.
+- [x] Are crash recovery and safe mode reliable after partial initialization failures? → Covered by existing safe-mode/quarantine/crash tests; no confirmed defect.
+- [x] Are settings, workspace, source index, and file watcher interactions well bounded? → No confirmed boundary defect; file-watcher debounce remains a plausible low-value test gap from round 1.
+- [x] Are undo and command routing consistent with graph mutation semantics? → Clean by design; undo remains JSON graph state and re-flows through normal compile/load paths.
+- [x] Are large core files still hiding separable lifecycle concerns? → Yes in one place: the 953-line `tick_frame` lambda remains a backlog maintainability item (03-R2-F6).
 
 ## Subsystem Checklist
 
-- [ ] Trace app bootstrap from process entry to ready runtime.
-- [ ] Review `RuntimeCore` interactions with graph compilation, operator registry, UI, audio, and control surfaces.
-- [ ] Inspect hot reload and file watcher behavior for duplicate events, missed rebuilds, and stale pointers.
-- [ ] Check crash guard, recovery, quarantine, and safe-mode behavior around failed operators.
-- [ ] Review settings/workspace/source-index persistence and reload semantics.
-- [ ] Verify undo tests cover grouped mutations, reload boundaries, and failed commands.
-- [ ] Identify lifecycle behavior that is only covered through manual UI usage.
+- [x] Trace app bootstrap from process entry to ready runtime. → Covered; startup ordering concerns were refuted by source review and phase instrumentation.
+- [x] Review `RuntimeCore` interactions with graph compilation, operator registry, UI, audio, and control surfaces. → Covered; the RuntimeCore/caller boundary is intentional and now better documented.
+- [x] Inspect hot reload and file watcher behavior for duplicate events, missed rebuilds, and stale pointers. → Covered; no confirmed stale-pointer defect, with file-watcher debounce retained as an unverified test gap.
+- [x] Check crash guard, recovery, quarantine, and safe-mode behavior around failed operators. → Covered; existing tests refuted the safe-mode/quarantine gap.
+- [x] Review settings/workspace/source-index persistence and reload semantics. → Covered; no confirmed finding.
+- [x] Verify undo tests cover grouped mutations, reload boundaries, and failed commands. → Covered; no confirmed undo defect, with reload-boundary scenarios kept as optional test backlog.
+- [x] Identify lifecycle behavior that is only covered through manual UI usage. → Covered; async adoption edge cases and `tick_frame` decomposition remain backlog items.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 
@@ -262,8 +262,8 @@ cited a non-existent line), and two "undocumented invariant" claims that are alr
 ### Dismissed (verification-refuted)
 - **03-R2-F3** (adoption logic "split" between RuntimeCore and callers) — refuted: the split is intentional
   and documented (RuntimeCore doesn't own AudioEngine; caller owns audio lifecycle). Not a smear.
-- **03-R2-F5** (hardcoded 1280×720 GPU texture size) — refuted: 1280×720 are `kDefaultTexW/kDefaultTexH`
-  (`main.cpp:122-123`) used at every allocate site; not a magic number.
+- **03-R2-F5** (hardcoded 1280×720 GPU texture size) — refuted after cleanup: default texture dimensions are
+  shared as `main_internal::kDefaultTexW/kDefaultTexH` and used by main-loop and async graph allocation sites.
 - **03-R2-F7** (post_tick audio-sync order not self-evident) — refuted: already documented at
   `main.cpp:3231-3236`.
 - **03-R2-F8** (device-switch audio rebuild not guarded by `graph_transaction_active`) — refuted: the
@@ -275,6 +275,9 @@ cited a non-existent line), and two "undocumented invariant" claims that are alr
   guard + postcondition doc to `RuntimeCore::adopt_prepared_build` and an audio-shutdown-contract note on its
   header; added `test_runtime_core` Test 1c (null-`PreparedBuild` adopt is a guarded no-op). Build + tests
   green.
+- **DONE 2026-06-05 (review cleanup):** annotated the full checklist per the Re-Audit Mandate; clarified the
+  worker-prepare/main-thread-adopt concurrency contract; promoted the default texture dimensions to shared
+  `main_internal` constants so async allocation no longer carries raw `1280, 720` literals.
 - **Deferred — backlog (03-R2-F6):** decompose the 953-line `tick_frame` lambda into phase helpers — a large
   main-loop refactor, Low priority, already comment-sectioned; its own focused effort (orthogonal to the
   lane-value clean-break, so it survives). Also backlog: the harder async-adoption error tests from 03-R2-F9

@@ -28,37 +28,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Do HTTP endpoints, `RuntimeAPI` commands, and MCP tools agree on behavior and error shape?
-- [ ] Are graph mutations atomic enough for UI, audio, and MCP clients?
-- [ ] Are invalid tool calls rejected with diagnostics that are actionable for an LLM?
-- [ ] Are MCP-only tools and raw HTTP endpoints clearly documented?
-- [ ] Does bridge startup/restart behavior avoid stale tool surfaces?
-- [ ] Are runtime capture, package, preset, modulation, and session commands scoped consistently?
-- [ ] Are command routing and persistence paths tested independently of UI behavior?
+- [x] Do HTTP endpoints, `RuntimeAPI` commands, and MCP tools agree on behavior and error shape? → Mostly yes; `CommandResult`/JSON/MCP envelopes are consistent, with the API-surface matrix documented as a Low follow-up.
+- [x] Are graph mutations atomic enough for UI, audio, and MCP clients? → Covered; mutations route through `RuntimeAPI`, with no confirmed atomicity defect after round-1 fixes.
+- [x] Are invalid tool calls rejected with diagnostics that are actionable for an LLM? → Covered; round 2 reduced dispatch validation duplication and added handler-shape coverage.
+- [x] Are MCP-only tools and raw HTTP endpoints clearly documented? → Partially; contract exists in prose, with 04-F4 tracking the missing unified HTTP/MCP matrix.
+- [x] Does bridge startup/restart behavior avoid stale tool surfaces? → Covered; no confirmed stale bridge/tool-surface defect.
+- [x] Are runtime capture, package, preset, modulation, and session commands scoped consistently? → Covered; dispatch/query splits and field-extraction helpers keep scope clearer.
+- [x] Are command routing and persistence paths tested independently of UI behavior? → Covered; control-server tests now exercise dispatch shape and representative malformed/valid calls.
 
 ## Subsystem Checklist
 
-- [ ] Trace representative add/connect/set/save/load commands from MCP or HTTP to `RuntimeAPI`.
-- [ ] Compare MCP tool definitions with control-server endpoint docs.
-- [ ] Review dispatch/query/check layers for duplicated validation or inconsistent errors.
-- [ ] Inspect graph file I/O boundaries, including any runtime-to-UI type dependencies.
-- [ ] Check crash/reporting endpoints and health responses for useful operational detail.
-- [ ] Verify tests cover malformed JSON, missing nodes/ports, package command failures, and concurrent-looking command sequences.
-- [ ] Identify tool contract drift that could break composition workflows.
+- [x] Trace representative add/connect/set/save/load commands from MCP or HTTP to `RuntimeAPI`. → Covered in round 1 and preserved by the handler-table migration.
+- [x] Compare MCP tool definitions with control-server endpoint docs. → Covered; 04-F4 remains the documentation matrix follow-up.
+- [x] Review dispatch/query/check layers for duplicated validation or inconsistent errors. → Covered; 04-R2-F1/F2/F7 drove the dispatch-table and `extract_field` refactor.
+- [x] Inspect graph file I/O boundaries, including any runtime-to-UI type dependencies. → Covered; no harmful runtime-to-UI dependency found.
+- [x] Check crash/reporting endpoints and health responses for useful operational detail. → Covered; no confirmed Round-2 defect.
+- [x] Verify tests cover malformed JSON, missing nodes/ports, package command failures, and concurrent-looking command sequences. → Covered at representative control-server level; handler-table shape guard added.
+- [x] Identify tool contract drift that could break composition workflows. → Covered; missing surface matrix is tracked as Low docs work.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 

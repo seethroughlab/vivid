@@ -376,7 +376,8 @@ static void finalize_live_runtime(MainAppContext& ctx) {
     ctx.graph_loaded = ctx.runtime.compiled_graph() && !ctx.runtime.compiled_graph()->nodes.empty();
     ctx.has_gpu_ops = ctx.runtime.has_gpu_operators();
     if (ctx.has_gpu_ops) {
-        ctx.runtime.allocate_gpu_textures(ctx.gpu.device(), 1280, 720, WGPUTextureFormat_RGBA16Float);
+        ctx.runtime.allocate_gpu_textures(ctx.gpu.device(), kDefaultTexW, kDefaultTexH,
+                                          WGPUTextureFormat_RGBA16Float);
         ctx.video_out_idx = ctx.runtime.find_effective_gpu_sink();
     } else {
         ctx.video_out_idx = -1;

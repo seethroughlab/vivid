@@ -29,37 +29,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Are package install, link, rebuild, uninstall, and dependency resolution semantics clear?
-- [ ] Are build targets modular enough for app, operators, tests, packages, and export?
-- [ ] Are dependency versions and platform frameworks declared in one trustworthy place?
-- [ ] Does standalone export preserve graph/operator behavior without hidden runtime assumptions?
-- [ ] Are package compilation failures reported with actionable diagnostics?
-- [ ] Are test partitions aligned with actual resource requirements?
-- [ ] Are generated or copied build artifacts isolated from source-tracked state?
+- [x] Are package install, link, rebuild, uninstall, and dependency resolution semantics clear? → Improved; uninstall/unlink now return `InstallResult` like install/link/rebuild.
+- [x] Are build targets modular enough for app, operators, tests, packages, and export? → Covered; no confirmed modularity defect after Round 2.
+- [x] Are dependency versions and platform frameworks declared in one trustworthy place? → Clean; dependency manifest remains the trusted source.
+- [x] Does standalone export preserve graph/operator behavior without hidden runtime assumptions? → Covered; no confirmed export behavior defect.
+- [x] Are package compilation failures reported with actionable diagnostics? → Covered; structured result paths remain consistent.
+- [x] Are test partitions aligned with actual resource requirements? → Covered; arch-pinning remains a Low untested edge.
+- [x] Are generated or copied build artifacts isolated from source-tracked state? → Clean; no confirmed artifact isolation defect.
 
 ## Subsystem Checklist
 
-- [ ] Trace package manifest parsing through install/link/rebuild/uninstall.
-- [ ] Review `add_vivid_operator()` and package compilation behavior for seed and package operators.
-- [ ] Inspect test CMake partitions for duplication, stale dependencies, and resource labels.
-- [ ] Check export pipeline assumptions about graph assets, operator sources, and static linking.
-- [ ] Compare dependency declarations with docs and platform assumptions.
-- [ ] Verify tests cover broken manifests, missing package dependencies, compile failures, and export fixture behavior.
-- [ ] Identify build files that are oversized or own too many concerns.
+- [x] Trace package manifest parsing through install/link/rebuild/uninstall. → Covered; uninstall/unlink API consistency fixed.
+- [x] Review `add_vivid_operator()` and package compilation behavior for seed and package operators. → Covered; round-1 CMake package-path findings retained/fixed separately.
+- [x] Inspect test CMake partitions for duplication, stale dependencies, and resource labels. → Covered; no confirmed Round-2 defect.
+- [x] Check export pipeline assumptions about graph assets, operator sources, and static linking. → Covered; no confirmed defect.
+- [x] Compare dependency declarations with docs and platform assumptions. → Covered; dependency manifest judged trustworthy.
+- [x] Verify tests cover broken manifests, missing package dependencies, compile failures, and export fixture behavior. → Covered at existing package-test level; arch-pinning test gap remains Low.
+- [x] Identify build files that are oversized or own too many concerns. → Covered; no high-payoff split identified.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 

@@ -51,11 +51,12 @@ public:
 
     bool build(const Graph& graph, OperatorRegistry& registry);
     // Split prepare/adopt path for async/UI callers. CONCURRENCY: prepare_build()
-    // is const but NOT thread-safe vs adopt_prepared_build()/tick() — it reads
-    // shared RuntimeCore state without locking. Prepare on a worker while the main
-    // thread ticks; only the main thread adopts, at a frame boundary. Keep at most
-    // one PreparedBuild in flight (no internal queue/generation guard). An
-    // un-adopted PreparedBuild is freed by RAII. See docs/runtime/runtime_core.md.
+    // may run on a worker while the main thread continues ticking the current
+    // compiled graph. Do not run prepare_build() concurrently with
+    // adopt_prepared_build(), and keep at most one PreparedBuild in flight (no
+    // internal queue/generation guard). Only the main thread adopts, at a frame
+    // boundary. An un-adopted PreparedBuild is freed by RAII. See
+    // docs/runtime/runtime_core.md.
     bool prepare_build(const Graph& graph, OperatorRegistry& registry,
                        PreparedBuild& out, std::string* error = nullptr) const;
     // Swap in a prepared build (main thread, at a frame boundary). PRECONDITION:

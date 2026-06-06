@@ -28,37 +28,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Are WebGPU, Metal, texture, and buffer lifetimes explicit and leak-resistant?
-- [ ] Are WGSL parsing and uniform layout rules consistent between runtime and operators?
-- [ ] Do media decode/upload/session paths handle reload, seek, failure, and shutdown safely?
-- [ ] Are visual I/O operators resilient to missing devices, missing files, and unsupported codecs?
-- [ ] Are capture, screenshot, readback, and analysis paths synchronized correctly?
-- [ ] Are GPU-backed lane or texture outputs documented and tested?
-- [ ] Are platform-specific paths isolated enough for future cross-platform work?
+- [x] Are WebGPU, Metal, texture, and buffer lifetimes explicit and leak-resistant? → Clean; no resource-lifetime defect confirmed.
+- [x] Are WGSL parsing and uniform layout rules consistent between runtime and operators? → Covered; helper docs clarified when to use standard GPU helpers versus hand-rolled paths.
+- [x] Do media decode/upload/session paths handle reload, seek, failure, and shutdown safely? → Mostly yes; decoder-concrete-type cleanup remains deferred with rationale.
+- [x] Are visual I/O operators resilient to missing devices, missing files, and unsupported codecs? → Covered; WebcamIn non-macOS guard and movie diagnostic follow-up addressed the actionable gaps.
+- [x] Are capture, screenshot, readback, and analysis paths synchronized correctly? → Covered; no confirmed synchronization defect.
+- [x] Are GPU-backed lane or texture outputs documented and tested? → Partially; lane-related work is deferred to the lane-value clean-break.
+- [x] Are platform-specific paths isolated enough for future cross-platform work? → Improved; WebcamIn now guards the macOS-only camera enumeration path.
 
 ## Subsystem Checklist
 
-- [ ] Trace GPU context initialization, resize, frame submission, and shutdown.
-- [ ] Review WGSL header parsing and uniform layout assumptions against representative GPU operators.
-- [ ] Inspect movie decode worker/session/queue/upload lifetimes.
-- [ ] Check webcam and Syphon behavior for unavailable devices and platform stubs.
-- [ ] Review texture readback, screenshot, mipmap, and analysis utilities for synchronization hazards.
-- [ ] Verify tests cover shader parse failures, missing media, reload during playback, and capture correctness.
-- [ ] Identify repeated GPU resource setup patterns that should become helpers or API contract docs.
+- [x] Trace GPU context initialization, resize, frame submission, and shutdown. → Covered; no confirmed lifetime defect.
+- [x] Review WGSL header parsing and uniform layout assumptions against representative GPU operators. → Covered; helper/API docs updated for standard-vs-custom layouts.
+- [x] Inspect movie decode worker/session/queue/upload lifetimes. → Covered; concrete decoder dependency remains backlog.
+- [x] Check webcam and Syphon behavior for unavailable devices and platform stubs. → Covered; WebcamIn non-macOS guard added.
+- [x] Review texture readback, screenshot, mipmap, and analysis utilities for synchronization hazards. → Covered; no confirmed defect.
+- [x] Verify tests cover shader parse failures, missing media, reload during playback, and capture correctness. → Covered at existing integration level; remaining media/device gaps are Low/deferred.
+- [x] Identify repeated GPU resource setup patterns that should become helpers or API contract docs. → Covered; `create_fallback_texture` extracted.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 

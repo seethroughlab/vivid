@@ -54,13 +54,15 @@ the live runtime running until commit time. The commit step still owns audio shu
 GPU texture allocation, and any graph-identity bookkeeping.
 
 **Concurrency contract.** `prepare_build()` is `const` and compiles into a caller-owned
-`PreparedBuild`, but it is **not** thread-safe with respect to `adopt_prepared_build()` or `tick()`:
+`PreparedBuild`. The supported pattern is a worker thread preparing a candidate graph while the
+main thread keeps ticking the current compiled graph, followed by main-thread adoption at a frame
+boundary:
 
-- It reads shared `RuntimeCore` state (`subgraph_modules_`, `operators_src_dir_`, `safe_mode_`,
-  audio params) without locking, so **do not call `prepare_build()` while `tick()` or
-  `adopt_prepared_build()` is executing on another thread.** The supported pattern is: a worker
-  thread prepares while the main thread keeps ticking, and the main thread alone calls
-  `adopt_prepared_build()` at a frame boundary.
+- `prepare_build()` may overlap with `tick()` because it writes only the caller-owned
+  `PreparedBuild` and does not mutate the live `CompiledGraph`/`FrameExecutor`.
+- Do not call `prepare_build()` concurrently with `adopt_prepared_build()`: both read or replace
+  shared RuntimeCore configuration/state (`subgraph_modules_`, `operators_src_dir_`, `safe_mode_`,
+  graph base directory, bridge/frame-executor state) without a RuntimeCore-level lock.
 - Only **one** prepared result should be in flight at a time per coordinator. There is no internal
   queue or generation check — a stale `PreparedBuild` adopted after the live graph has otherwise
   changed will simply replace it. The async coordinators enforce single-in-flight via their own

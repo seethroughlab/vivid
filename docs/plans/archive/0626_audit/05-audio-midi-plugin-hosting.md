@@ -28,37 +28,37 @@ and structural risks that make future defects likely.
 
 ## Primary Questions
 
-- [ ] Are real-time audio paths free of blocking operations, unbounded allocation, and unsafe locks?
-- [ ] Are audio/frame bridge snapshots coherent and race-safe?
-- [ ] Are device start, stop, switch, and failure paths recoverable?
-- [ ] Are MIDI message lifetimes and routing semantics explicit?
-- [ ] Are AU/VST3/CLAP scan and host boundaries clear and failure-tolerant?
-- [ ] Do audio operators consistently handle sample rate, block size, lanes, and reset behavior?
-- [ ] Are audio tests strong enough without relying on fragile device availability?
+- [x] Are real-time audio paths free of blocking operations, unbounded allocation, and unsafe locks? → Clean; round 1 and round 2 found no RT-safety defect.
+- [x] Are audio/frame bridge snapshots coherent and race-safe? → Covered; bridge ownership and atomics are documented and no confirmed race was found.
+- [x] Are device start, stop, switch, and failure paths recoverable? → Covered; remaining device-rate/device-availability items are Low test gaps.
+- [x] Are MIDI message lifetimes and routing semantics explicit? → Covered; round 1 fixed/tested the actionable MIDI buffer concern.
+- [x] Are AU/VST3/CLAP scan and host boundaries clear and failure-tolerant? → Covered; scan diagnostics remain Low/observability, while shared host boundaries are clean.
+- [x] Do audio operators consistently handle sample rate, block size, lanes, and reset behavior? → Covered; lane-specific bridge work is deferred to the lane-value clean-break.
+- [x] Are audio tests strong enough without relying on fragile device availability? → Partially; `PluginSlot` mock-handle tests were added, with real-plugin/device integration intentionally deferred.
 
 ## Subsystem Checklist
 
-- [ ] Trace audio callback execution and identify every dependency it touches.
-- [ ] Review `AudioFrameBridge` usage from both audio and frame cadences.
-- [ ] Inspect MIDI input/output and clock routing for timestamp and ownership assumptions.
-- [ ] Review plugin scanning and host shared code for UI-thread, audio-thread, and background-thread boundaries.
-- [ ] Check audio operators for denormal, clipping, reset, bypass, and preset consistency.
-- [ ] Verify tests cover reload during audio processing, multi-lane audio, missing devices, and plugin scan failures.
-- [ ] Identify places where plugin-specific code duplicates shared host behavior.
+- [x] Trace audio callback execution and identify every dependency it touches. → Covered; callback path judged RT-clean.
+- [x] Review `AudioFrameBridge` usage from both audio and frame cadences. → Covered; no confirmed bridge race, lane-value rewrite tracked separately.
+- [x] Inspect MIDI input/output and clock routing for timestamp and ownership assumptions. → Covered by round-1 findings/fixes.
+- [x] Review plugin scanning and host shared code for UI-thread, audio-thread, and background-thread boundaries. → Covered; plugin lifecycle duplication captured in 05-R2-F2.
+- [x] Check audio operators for denormal, clipping, reset, bypass, and preset consistency. → Covered; no confirmed Round-2 defect.
+- [x] Verify tests cover reload during audio processing, multi-lane audio, missing devices, and plugin scan failures. → Partially; device/plugin integration gaps remain Low/deferred due CI constraints.
+- [x] Identify places where plugin-specific code duplicates shared host behavior. → Covered; `PluginSlot` test harness added as the first safe step toward the deferred base extraction.
 
 ## Audit Checklist
 
-- [ ] Read the relevant subsystem docs and navigation guides.
-- [ ] Inspect the main source files and ownership boundaries.
-- [ ] Review tests that claim to cover the subsystem.
-- [ ] Check docs/code/test contract drift.
-- [ ] Identify correctness, robustness, and maintainability findings.
-- [ ] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
-- [ ] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
-- [ ] Check dependency direction and public/private API boundaries.
-- [ ] Check whether tests make future refactors safe, not just whether they cover the latest fix.
-- [ ] Record findings with severity, category, evidence, and recommendation.
-- [ ] Propose immediate, near-term, and backlog follow-up work.
+- [x] Read the relevant subsystem docs and navigation guides.
+- [x] Inspect the main source files and ownership boundaries.
+- [x] Review tests that claim to cover the subsystem.
+- [x] Check docs/code/test contract drift.
+- [x] Identify correctness, robustness, and maintainability findings.
+- [x] Identify oversized files, mixed responsibilities, fragile seams, and unclear ownership.
+- [x] Identify duplicated logic or repeated patterns that should be shared or intentionally documented.
+- [x] Check dependency direction and public/private API boundaries.
+- [x] Check whether tests make future refactors safe, not just whether they cover the latest fix.
+- [x] Record findings with severity, category, evidence, and recommendation.
+- [x] Propose immediate, near-term, and backlog follow-up work.
 
 ## Required Maintainability Review
 
