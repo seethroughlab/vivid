@@ -444,6 +444,11 @@ struct CompiledNode {
     std::vector<VividLaneView> c_in_lane_views;
     std::vector<VividLaneOutput> c_out_lane_outputs;
     std::vector<LaneBuffer> out_lane_bufs;
+    // Value-model staging (lane-value clean-break, Phase 4a; additive). The
+    // value views are populated per-tick alongside the lane views; the value
+    // outputs are backed by out_lane_bufs (same transport).
+    std::vector<VividValueView> c_in_value_views;
+    std::vector<VividValueOutput> c_out_value_outputs;
     std::vector<VividStringLaneView> c_in_string_lane_views;
     std::vector<VividStringLaneOutput> c_out_string_lane_outputs;
     std::vector<StringLaneBuffer> out_string_lane_bufs;

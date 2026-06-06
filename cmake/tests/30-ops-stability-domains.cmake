@@ -957,6 +957,16 @@ target_link_libraries(test_lane_broadcast PRIVATE
 add_dependencies(test_lane_broadcast lane_source_op lane_sink_op lane_smooth_op)
 add_test(NAME test_lane_broadcast COMMAND test_lane_broadcast WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Frame value-view API (lane-value clean-break, Phase 4a).
+add_executable(test_frame_value_api
+    tests/lanes/test_frame_value_api.cpp
+)
+target_include_directories(test_frame_value_api PRIVATE src tests)
+target_link_libraries(test_frame_value_api PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_frame_value_api lane_source_op value_gain_op lane_sink_op)
+add_test(NAME test_frame_value_api COMMAND test_frame_value_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Scalar-to-lane-array broadcast test
 add_executable(test_scalar_lane_broadcast
     tests/lanes/test_scalar_lane_broadcast.cpp

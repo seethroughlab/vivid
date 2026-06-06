@@ -228,6 +228,27 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                     ? cn.input_lane_sets[p].lane_set_id : 0;
             cn.c_in_lane_views[p].flags = 0;
         }
+        // Value-view input staging (Phase 4a): alias the same lane data + the
+        // compile-time value envelope (Pass 2.7). Runtime multiplicity/count come
+        // from the materialized lane length.
+        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+            const auto& ref = cn.input_lane_refs[p];
+            VividValueView& vv = cn.c_in_value_views[p];
+            vv.data        = ref.data();
+            vv.value_count = ref.length();
+            if (p < cn.input_value_envelopes.size()) {
+                vv.value_type    = cn.input_value_envelopes[p].value_type;
+                vv.identity_mode = cn.input_value_envelopes[p].identity_mode;
+                vv.storage_kind  = cn.input_value_envelopes[p].storage_kind;
+            } else {
+                vv.value_type    = VIVID_VALUE_FLOAT;
+                vv.identity_mode = VIVID_IDENTITY_NONE;
+                vv.storage_kind  = VIVID_STORAGE_CPU;
+            }
+            vv.multiplicity = (ref.length() > 1) ? VIVID_MULTIPLICITY_MANY
+                                                 : VIVID_MULTIPLICITY_SCALAR;
+            vv.flags = 0;
+        }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_lane_bufs[p].reset();
         }
@@ -495,6 +516,8 @@ void FrameExecutor::populate_frame_context(VividFrameContext& ctx, CompiledNode&
     ctx.param_values = cn.param_values.data();
     ctx.input_lanes = cn.c_in_lane_views.data();
     ctx.output_lanes = cn.c_out_lane_outputs.data();
+    ctx.values = cn.c_in_value_views.empty() ? nullptr : cn.c_in_value_views.data();
+    ctx.value_outputs = cn.c_out_value_outputs.empty() ? nullptr : cn.c_out_value_outputs.data();
     ctx.custom_inputs = cn.resolved_custom_inputs.data();
     ctx.custom_input_count = static_cast<uint32_t>(cn.resolved_custom_inputs.size());
     ctx.custom_outputs = cn.custom_output_buf.data();
