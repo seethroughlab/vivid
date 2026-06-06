@@ -36,4 +36,32 @@ inline VividValueOutput make_value_output(LaneBuffer* buf) {
     return out;
 }
 
+// ---- String value output (Phase 4b) ----
+// The many-string VividValueOutput is backed by the same StringLaneBuffer the
+// string-lane path uses (out_string_lane_bufs[p]) — so a value-API string
+// operator's output flows downstream through the unchanged string-lane
+// propagation, and string-lane + value-API operators interoperate. resize()
+// returns the handle (non-null sentinel) on success, null on overflow (no alloc).
+
+inline void* string_value_output_resize_fn(void* handle, uint32_t count) {
+    return static_cast<StringLaneBuffer*>(handle)->resize(count) ? handle : nullptr;
+}
+
+inline void string_value_output_commit_fn(void* handle, uint32_t count) {
+    static_cast<StringLaneBuffer*>(handle)->commit(count);
+}
+
+inline void string_value_output_set_string_fn(void* handle, uint32_t index, const char* value) {
+    static_cast<StringLaneBuffer*>(handle)->set(index, value);
+}
+
+inline VividValueOutput make_string_value_output(StringLaneBuffer* buf) {
+    VividValueOutput out{};
+    out.handle = buf;
+    out.resize = string_value_output_resize_fn;
+    out.commit = string_value_output_commit_fn;
+    out.set_string = string_value_output_set_string_fn;
+    return out;
+}
+
 } // namespace vivid

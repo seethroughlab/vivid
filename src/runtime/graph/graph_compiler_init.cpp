@@ -143,12 +143,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
 
-    // Value-model staging (Phase 4a). Inputs populated per-tick; float outputs
-    // backed by the same out_lane_bufs (no new allocation, shared lane transport).
+    // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
+    // backed by the SAME transport the lane path uses (float→out_lane_bufs,
+    // string→out_string_lane_bufs) so value-API + lane-API operators interoperate.
     cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
     cn.c_out_value_outputs.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_value_outputs[p] = make_value_output(&cn.out_lane_bufs[p]);
 
     cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
     cn.in_string_lane_ptrs.resize(cn.input_port_count);
@@ -158,6 +157,16 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.c_out_string_lane_outputs.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
+
+    // Per-port value-output backing (needs out_string_lane_bufs to exist first).
+    for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+        const VividPortType t = (p < cn.output_port_types.size())
+            ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+        cn.c_out_value_outputs[p] =
+            (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
+                ? make_string_value_output(&cn.out_string_lane_bufs[p])
+                : make_value_output(&cn.out_lane_bufs[p]);
+    }
 
     cn.file_param_storage.clear();
     cn.file_param_ptrs.clear();
