@@ -593,6 +593,14 @@ target_link_libraries(test_value_flow PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_value_flow COMMAND test_value_flow WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Value-storage substrate (lane-value clean-break, Phase 3) — header-only.
+add_executable(test_value_buffer
+    tests/lanes/test_value_buffer.cpp
+)
+target_include_directories(test_value_buffer PRIVATE src tests)
+target_link_libraries(test_value_buffer PRIVATE vivid_operator_api)
+add_test(NAME test_value_buffer COMMAND test_value_buffer WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_lane_state tests/lanes/test_lane_state.cpp)
 target_include_directories(test_lane_state PRIVATE src tests)
 target_link_libraries(test_lane_state PRIVATE vivid_runtime_testlib vivid_operator_api)
