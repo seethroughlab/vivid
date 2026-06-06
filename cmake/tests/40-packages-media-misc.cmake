@@ -639,6 +639,18 @@ add_test(NAME test_lane_equivalence
     COMMAND test_lane_equivalence ${CMAKE_BINARY_DIR}
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Audio value-view API (lane-value clean-break, Phase 5a) — offline.
+add_executable(test_audio_value_api
+    tests/audio/test_audio_value_api.cpp
+)
+target_include_directories(test_audio_value_api PRIVATE src tests)
+target_link_libraries(test_audio_value_api PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json miniaudio webgpu)
+add_dependencies(test_audio_value_api mono_dc_source_op audio_gain_value_op)
+add_test(NAME test_audio_value_api
+    COMMAND test_audio_value_api ${CMAKE_BINARY_DIR}
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Undo coverage across roadmap mutation types via RuntimeCommandSink + RuntimeAPI
 add_executable(test_undo_mutation_types
     tests/core/test_undo_mutation_types.cpp

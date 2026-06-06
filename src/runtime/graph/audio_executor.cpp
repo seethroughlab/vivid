@@ -1,6 +1,7 @@
 #include <miniaudio.h>
 
 #include "runtime/graph/audio_executor.h"
+#include "runtime/graph/value_output_adapter.h"  // make_audio_value_output (Phase 5a)
 #include "runtime/audio/audio_device_list.h"
 #include "runtime/audio/audio_frame_bridge.h"
 #include "runtime/core/crash_guard.h"
@@ -1216,6 +1217,31 @@ void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& 
     ctx.lane_index = 0;
     ctx.lane_set_id = 0;
     ctx.lane_id = 0;
+
+    // Value-model views (Phase 5a, Scalar audio path) — RT-safe: only writes
+    // pre-allocated per-port fields + returns adapter structs by value. Audio/
+    // control inputs alias the audio block; the audio output's value output
+    // returns the runtime-provided block.
+    for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
+        VividValueView& vv = cn.c_in_value_views[p];
+        vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
+        vv.value_count  = 1;
+        vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        vv.value_type   = (p < cn.input_port_types.size() &&
+                           cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER)
+                              ? VIVID_VALUE_AUDIO : VIVID_VALUE_FLOAT;
+        vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
+        vv.identity_mode = VIVID_IDENTITY_NONE;
+        vv.flags = 0;
+    }
+    for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_value_outputs.size(); ++p) {
+        if (p < cn.output_port_types.size() &&
+            cn.output_port_types[p] == VIVID_PORT_AUDIO_BUFFER && ctx.output_buffers) {
+            cn.c_out_value_outputs[p] = make_audio_value_output(ctx.output_buffers[p]);
+        }
+    }
+    ctx.values = cn.c_in_value_views.empty() ? nullptr : cn.c_in_value_views.data();
+    ctx.value_outputs = cn.c_out_value_outputs.empty() ? nullptr : cn.c_out_value_outputs.data();
 
     auto process_start = AudioClock::now();
     try {

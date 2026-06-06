@@ -369,6 +369,13 @@ typedef struct VividAudioContext {
     uint32_t          custom_output_count;  // number of custom-transport output ports
     const char**      file_param_values;
     uint32_t          file_param_count;
+    // ---- Value-model I/O (lane-value clean-break, Phase 5a; additive) ----
+    // One VividValueView per input port (AUDIO block, or float control) + one
+    // VividValueOutput per output port (the audio output's resize() returns the
+    // runtime-provided block). Backed by the existing audio-buffer transport;
+    // populated for the Scalar (non-lifted) path. NULL if unpopulated.
+    const VividValueView* values;         // [input port_ordinal]
+    VividValueOutput*     value_outputs;  // [output port_ordinal]
     const VividSharedHandleService* shared_handles;
 
     // ---- Lane metadata (populated by audio executor) ----
