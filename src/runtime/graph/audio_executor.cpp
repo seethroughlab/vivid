@@ -1062,6 +1062,7 @@ void AudioExecutor::process_lifted_audio_node(CompiledNode& cn, AudioNodeState& 
         ctx.lane_set_id = group.lane_set_id;
         ctx.lane_id = group.lane_ids[c];
         // Note: allocate/retire use lane_state_ directly (not per-node context)
+        populate_audio_value_views(ctx, cn);  // Phase 5b (per-lane value views)
 
         auto process_start = AudioClock::now();
         try {
@@ -1160,6 +1161,7 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
             ctx.lane_index = c;
             ctx.lane_set_id = cn.audio->lane_lift_set_id;
             ctx.lane_id = loop_lane_ids[c];
+            populate_audio_value_views(ctx, cn);  // Phase 5b (per-lane value views)
 
             auto process_start = AudioClock::now();
             try {
@@ -1201,27 +1203,12 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
 }
 
 // Normal (non-lifted) dispatch: a single process_audio() call.
-void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
-                                              double node_time, uint32_t chunk, uint32_t frames_written,
-                                              uint32_t ni_ord, const GraphMetronomeSample& metronome,
-                                              uint32_t& node_process_us, uint32_t& node_lane_count) {
-    // ── Normal (non-lifted) processing ──
-    node_lane_count = 1;
-    VividAudioContext ctx{};
-    populate_audio_context(ctx, cn, a, node_time, chunk, frames_written, ni_ord, metronome);
-    ctx.input_buffers = a.in_ptrs.data();
-    ctx.output_buffers = a.out_ptrs.data();
-    ctx.input_channel_counts = a.input_channel_counts.data();
-    ctx.output_channel_counts = a.output_channel_counts.data();
-    ctx.lane_count = 1;
-    ctx.lane_index = 0;
-    ctx.lane_set_id = 0;
-    ctx.lane_id = 0;
-
-    // Value-model views (Phase 5a, Scalar audio path) — RT-safe: only writes
-    // pre-allocated per-port fields + returns adapter structs by value. Audio/
-    // control inputs alias the audio block; the audio output's value output
-    // returns the runtime-provided block.
+void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledNode& cn) {
+    // RT-safe: only writes pre-allocated per-port fields + returns adapter structs
+    // by value. Input ports alias the (per-lane) audio block; AUDIO output ports'
+    // value output returns the runtime-provided block. Shared by all three audio
+    // paths — for lifted/loopbased the loop is sequential, so reusing the node's
+    // value-view vectors per lane is safe.
     for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
         VividValueView& vv = cn.c_in_value_views[p];
         vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
@@ -1242,6 +1229,26 @@ void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& 
     }
     ctx.values = cn.c_in_value_views.empty() ? nullptr : cn.c_in_value_views.data();
     ctx.value_outputs = cn.c_out_value_outputs.empty() ? nullptr : cn.c_out_value_outputs.data();
+}
+
+void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& a, void* audio_instance,
+                                              double node_time, uint32_t chunk, uint32_t frames_written,
+                                              uint32_t ni_ord, const GraphMetronomeSample& metronome,
+                                              uint32_t& node_process_us, uint32_t& node_lane_count) {
+    // ── Normal (non-lifted) processing ──
+    node_lane_count = 1;
+    VividAudioContext ctx{};
+    populate_audio_context(ctx, cn, a, node_time, chunk, frames_written, ni_ord, metronome);
+    ctx.input_buffers = a.in_ptrs.data();
+    ctx.output_buffers = a.out_ptrs.data();
+    ctx.input_channel_counts = a.input_channel_counts.data();
+    ctx.output_channel_counts = a.output_channel_counts.data();
+    ctx.lane_count = 1;
+    ctx.lane_index = 0;
+    ctx.lane_set_id = 0;
+    ctx.lane_id = 0;
+
+    populate_audio_value_views(ctx, cn);  // Phase 5
 
     auto process_start = AudioClock::now();
     try {

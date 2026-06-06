@@ -147,6 +147,12 @@ private:
                                 double node_time, uint32_t chunk, uint32_t frames_written,
                                 uint32_t ni_ord, const GraphMetronomeSample& metronome);
 
+    // Value-model views (lane-value clean-break, Phase 5). RT-safe: populates the
+    // pre-allocated per-port value views from ctx.input_buffers/output_buffers and
+    // sets ctx.values/value_outputs. Called from all three audio paths (Scalar,
+    // InstancePerLane, LoopBased) after the (per-lane) buffers are wired.
+    void populate_audio_value_views(VividAudioContext& ctx, CompiledNode& cn);
+
     // Lane-lifted dispatch: deinterleave → per-lane process_audio() → interleave.
     void process_lifted_audio_node(CompiledNode& cn, AudioNodeState& a, LaneLiftGroup& group,
                                    double node_time, uint32_t chunk, uint32_t frames_written,
