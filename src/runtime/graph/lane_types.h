@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "operator_api/value_model.h"  // VividValueType/Multiplicity/IdentityMode/StorageKind
 
 namespace vivid {
 
@@ -38,5 +39,39 @@ enum class LaneExecutionStrategy : uint8_t {
     LoopBased       = 2,  // single instance, runtime-driven loop over lanes
     // Future: GpuCompute = 3
 };
+
+// ---------------------------------------------------------------------------
+// ValueEnvelope — the value-model descriptor for a value flowing through an
+// edge/port (lane-value clean-break, Phase 2). Computed by the value-flow pass
+// in PARALLEL with LaneSet; not yet consumed by execution (Phases 4-5). The
+// successor to LaneSet: multiplicity replaces lane_set_id/lane_count, identity
+// replaces identity_bearing, and value_type/storage are first-class.
+// ---------------------------------------------------------------------------
+
+struct ValueEnvelope {
+    VividValueType    value_type    = VIVID_VALUE_FLOAT;
+    VividMultiplicity multiplicity  = VIVID_MULTIPLICITY_SCALAR;
+    uint32_t          value_count   = 1;                    // mirrors lane_count (runtime-refined)
+    VividIdentityMode identity_mode = VIVID_IDENTITY_NONE;
+    VividStorageKind  storage_kind  = VIVID_STORAGE_CPU;
+
+    bool is_scalar() const { return multiplicity == VIVID_MULTIPLICITY_SCALAR; }
+};
+
+// Project a LaneSet into the value-model multiplicity/identity — the equivalence
+// target the value-flow pass is proven against. (value_type/storage come from the
+// port type + cadence, supplied by the caller.)
+inline ValueEnvelope envelope_from_lane_set(const LaneSet& ls, VividValueType vt,
+                                            VividStorageKind sk) {
+    ValueEnvelope e;
+    e.value_type    = vt;
+    e.multiplicity  = ls.is_scalar() ? VIVID_MULTIPLICITY_SCALAR : VIVID_MULTIPLICITY_MANY;
+    e.value_count   = ls.lane_count;
+    e.identity_mode = ls.is_scalar()        ? VIVID_IDENTITY_NONE
+                    : (ls.identity_bearing  ? VIVID_IDENTITY_STABLE_IDS
+                                            : VIVID_IDENTITY_POSITIONAL);
+    e.storage_kind  = sk;
+    return e;
+}
 
 } // namespace vivid
