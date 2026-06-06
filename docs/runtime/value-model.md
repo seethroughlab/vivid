@@ -1,7 +1,7 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phases 0–3 + Phase 4a/4b/4c + Phase 5a/5b of the
-[lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done**. The value API is **complete**:
+**Status:** Phases 0–3 + Phase 4a/4b/4c + Phase 5a/5b/5c **done**; **Phase 6 in progress** (21/25 lane-using
+operators migrated to the value API). The value API is **complete**:
 `VividFrameContext`/`VividGpuContext`/`VividAudioContext` `values`/`value_outputs` cover every payload (float,
 STRING_LANES, texture, audio) across both cadences (frame + audio) and all execution strategies
 (scalar/lifted/loopbased), backed by the existing lane/string-lane/texture/audio-buffer transport. Operators

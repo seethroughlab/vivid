@@ -240,7 +240,31 @@ Phase 5 is complete when the audio callback uses precomputed value slots only, a
 
 ### Phase 6: Operator, Graph, UI, MCP, And Docs Migration
 
-Migrate the product surface in one coordinated sweep.
+**Phase 6 (operator code) — ⏳ IN PROGRESS 2026-06-06. 21/25 lane-using operators migrated.** Scope insight:
+Phase 7 only removes the *lane-specific* surfaces (`VividLaneView`/`VividLaneOutput`, `VIVID_PORT_LANE_ARRAY`/
+`STRING_LANES`, lane sets, `LaneExecutionStrategy`, lane bridge slots) — NOT the typed accessors
+(`input_values`/`input_buffers`/`input_textures`). So only the ~25 operators that *use the lane API* must
+migrate; pure scalar/audio/texture ops already fit. The migration swaps lane-surface I/O calls →
+`ctx->values`/`value_outputs` (helpers in `value_view.h`), keeping ports + behavior (value_outputs[p] and
+output_lanes[p] share `out_lane_bufs[p]`; `ctx->values` aliases the same data) — behavior-identical.
+
+Done via a 25-agent workflow (`f18ae732`) + per-op build/regression verification. **Migrated (21):**
+dual_filter, fm_synth, sampler, slicer, sp404; alternate, envelope, euclidean, fft_analysis, folder_list,
+pat_transform, pattern_seq, repeat, select, spread_noise, stack, string_select, tile;
+instances_from_lanes_2d, metaball, shape_field. Also fixed a 4a gap the regression caught: placeholder nodes
+weren't getting value-view staging → crash (`f3110684`).
+
+**DEFERRED (4) + two gaps to close first:**
+- **note_breakout, drum_sequencer** (voice-breakout ops): migrate the shared `emit_voice_breakouts` helper
+  (`operators/shared/sequencer/voice_breakouts.h`) to a value-API version, then update all callers (incl. the
+  synths) — a coordinated change, NOT per-op rewrites (the agents' rewrites segfaulted, reverted).
+- **filter, sequencer** (audio ops reading `VIVID_PORT_LANE_ARRAY` inputs via the cross-cadence bridge):
+  blocked by a **Phase-5b gap** — `populate_audio_value_views` aliases every audio input to `input_buffers[p]`
+  (scalar), so bridged lane-array inputs (`c_in_lane_views`) aren't carried into `ctx->values`. Close that
+  (audio value views carry lane-array inputs) before migrating these.
+- Remaining Phase-6 surfaces (graph JSON, UI multiplicity rendering, MCP, docs) still to do.
+
+Original spec — Migrate the product surface in one coordinated sweep.
 
 - Update seed operators in `operators/audio`, `operators/control`, `operators/gpu`, and `operators/shared`.
 - Update scaffolding templates so newly generated operators use the new API only.
