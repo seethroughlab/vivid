@@ -39,6 +39,56 @@ inline const char* lane_behavior_help_str(VividLaneBehavior lb) {
     }
 }
 
+// --- Value model (lane-value clean-break, v6) --------------------------------
+
+inline const char* multiplicity_behavior_str(VividMultiplicityBehavior mb) {
+    switch (mb) {
+        case VIVID_MULTIPLICITY_SCALAR_ONLY: return "scalar_only";
+        case VIVID_MULTIPLICITY_MAP:         return "map";
+        case VIVID_MULTIPLICITY_REDUCE:      return "reduce";
+        case VIVID_MULTIPLICITY_GENERATE:    return "generate";
+        case VIVID_MULTIPLICITY_COLLECT:     return "collect";
+        case VIVID_MULTIPLICITY_PRESERVE:    return "preserve";
+        case VIVID_MULTIPLICITY_KERNEL:      return "kernel";
+        default: return "unknown";
+    }
+}
+
+inline const char* value_type_str(VividValueType vt) {
+    switch (vt) {
+        case VIVID_VALUE_FLOAT:   return "float";
+        case VIVID_VALUE_AUDIO:   return "audio";
+        case VIVID_VALUE_TEXTURE: return "texture";
+        case VIVID_VALUE_STRING:  return "string";
+        case VIVID_VALUE_CUSTOM:  return "custom";
+        default: return "unknown";
+    }
+}
+
+inline const char* multiplicity_str(VividMultiplicity m) {
+    return m == VIVID_MULTIPLICITY_MANY ? "many" : "scalar";
+}
+
+// Derive the value-model envelope of a port from its (current) port type. Phase 1:
+// the descriptor's stored value_type/multiplicity default to 0; probing reports the
+// derived view so MCP shows correct values. Codegen port-emission is deferred until
+// an operator needs to override these.
+inline VividValueType value_type_for_port_type(VividPortType t) {
+    if (vivid_is_custom_port_type(t)) return VIVID_VALUE_CUSTOM;
+    switch (t) {
+        case VIVID_PORT_AUDIO_BUFFER: return VIVID_VALUE_AUDIO;
+        case VIVID_PORT_STRING:
+        case VIVID_PORT_STRING_LANES: return VIVID_VALUE_STRING;
+        case VIVID_PORT_TEXTURE:      return VIVID_VALUE_TEXTURE;
+        default:                      return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY
+    }
+}
+
+inline VividMultiplicity multiplicity_for_port_type(VividPortType t) {
+    return (t == VIVID_PORT_LANE_ARRAY || t == VIVID_PORT_STRING_LANES)
+        ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+}
+
 inline const char* kind_str(VividOperatorKind k) {
     switch (k) {
         case VIVID_OP_CONTROL: return "control";

@@ -22,6 +22,7 @@ inline constexpr const char* kMissingName                  = "missing_name";
 inline constexpr const char* kNullParams                   = "null_params";
 inline constexpr const char* kNullPorts                    = "null_ports";
 inline constexpr const char* kMissingCapability            = "missing_capability";
+inline constexpr const char* kInvalidMultiplicityBehavior  = "invalid_multiplicity_behavior";
 inline constexpr const char* kParamMissingName             = "param_missing_name";
 inline constexpr const char* kDuplicateParamName           = "duplicate_param_name";
 inline constexpr const char* kParamMissingChoiceLabels     = "param_missing_choice_labels";
