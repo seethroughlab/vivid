@@ -1,5 +1,6 @@
 #include "runtime/graph/graph_compiler.h"
 #include "runtime/graph/graph_compiler_internal.h"
+#include "runtime/graph/value_output_adapter.h"  // make_value_output (Phase 4a)
 
 #include <algorithm>
 #include <cstring>
@@ -141,6 +142,13 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.c_out_lane_outputs.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
+
+    // Value-model staging (Phase 4a). Inputs populated per-tick; float outputs
+    // backed by the same out_lane_bufs (no new allocation, shared lane transport).
+    cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
+    cn.c_out_value_outputs.resize(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.c_out_value_outputs[p] = make_value_output(&cn.out_lane_bufs[p]);
 
     cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
     cn.in_string_lane_ptrs.resize(cn.input_port_count);

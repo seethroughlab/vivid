@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include "value_model.h"  /* VividValueType / VividMultiplicity / VividMultiplicityBehavior (lane-value clean-break) */
+#include "value_view.h"   /* VividValueView / VividValueOutput (lane-value clean-break, Phase 4) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -424,6 +425,13 @@ typedef struct VividFrameContext {
     const char** output_string_values;  // [string_port_ordinal]
     const VividStringLaneView*  input_string_lanes;   // [port_ordinal], NULL if none
     VividStringLaneOutput*      output_string_lanes;  // [port_ordinal], NULL if none
+    // ---- Value-model I/O (lane-value clean-break, Phase 4; additive) ----
+    // The successor to the lane/string-lane views above: one VividValueView per
+    // input port (scalar or many, any payload) + one VividValueOutput per output
+    // port. Backed by the same transport as the lane views in Phase 4a; operators
+    // may use either API. NULL if the runtime did not populate them.
+    const VividValueView* values;         // [input port_ordinal]
+    VividValueOutput*     value_outputs;  // [output port_ordinal]
     const char** file_param_values;   // indexed by file param order, NULL if none
     uint32_t     file_param_count;
     void*     input;          // VividInputState* for interactive operators, NULL otherwise
