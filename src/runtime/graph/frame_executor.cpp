@@ -1,5 +1,6 @@
 #include "runtime/graph/frame_executor.h"
 #include "runtime/graph/lane_buffer_gpu.h"
+#include "runtime/graph/gpu_value_output_adapter.h"  // make_texture_value_output (Phase 4c)
 #include "runtime/core/crash_guard.h"
 #include "runtime/core/shared_handle_registry.h"
 #include "common/gpu_util.h"
@@ -677,6 +678,37 @@ void FrameExecutor::process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32
         ? nullptr : cn.gpu->aux_gpu_textures.data();
     gpu_ctx.aux_output_texture_count =
         static_cast<uint32_t>(cn.gpu->aux_gpu_texture_views.size());
+
+    // Value-model views (Phase 4c). Texture inputs become TEXTURE VividValueViews
+    // (the resolved view handle); float/string input ports keep the views the
+    // per-tick frame staging populated (4a/4b). The primary texture output port
+    // gets a VividValueOutput returning the runtime render target.
+    if (!cn.c_in_value_views.empty()) {
+        for (size_t ti = 0; ti < tex_count; ++ti) {
+            uint32_t port_idx = cn.gpu->texture_input_port_indices[ti];
+            if (port_idx < cn.c_in_value_views.size()) {
+                VividValueView& vv = cn.c_in_value_views[port_idx];
+                vv.data         = static_cast<const void*>(cn.gpu->resolved_tex_inputs[ti]);
+                vv.value_count  = 1;
+                vv.value_type   = VIVID_VALUE_TEXTURE;
+                vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+                vv.identity_mode = VIVID_IDENTITY_NONE;
+                vv.storage_kind  = VIVID_STORAGE_GPU;
+                vv.flags = 0;
+            }
+        }
+        gpu_ctx.values = cn.c_in_value_views.data();
+    }
+    if (!cn.c_out_value_outputs.empty()) {
+        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
+            if (p < cn.output_port_types.size() &&
+                cn.output_port_types[p] == VIVID_PORT_TEXTURE) {
+                cn.c_out_value_outputs[p] = make_texture_value_output(cn.gpu->texture_view);
+                break;  // primary texture output only (4c)
+            }
+        }
+        gpu_ctx.value_outputs = cn.c_out_value_outputs.data();
+    }
 
     // Resolve custom inputs from upstream via edges
     for (size_t hi = 0; hi < cn.custom_input_port_indices.size(); ++hi) {

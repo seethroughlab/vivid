@@ -903,6 +903,16 @@ target_link_libraries(test_gpu_operators PRIVATE vivid_runtime_testlib vivid_ope
 add_dependencies(test_gpu_operators gpu_fill_op gpu_metronome_probe_op shape_2d control_thumb_op lfo envelope gain)
 add_test(NAME test_gpu_operators COMMAND test_gpu_operators WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# GPU value-view API (lane-value clean-break, Phase 4c) — headless.
+add_executable(test_gpu_value_api
+    tests/gpu/test_gpu_value_api.cpp
+)
+target_include_directories(test_gpu_value_api PRIVATE src tests)
+target_link_libraries(test_gpu_value_api PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_gpu_value_api gpu_value_fill_op)
+add_test(NAME test_gpu_value_api COMMAND test_gpu_value_api WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # GPU output correctness tests (brightness, contrast, motion property assertions)
 add_executable(test_gpu_correctness
     tests/gpu/test_gpu_correctness.cpp
