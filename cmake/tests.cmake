@@ -193,6 +193,7 @@ add_vivid_test_fixture(audio_reduce_op  tests/operators/audio_reduce_op.cpp CODE
 add_vivid_test_fixture(scalar_source_op  tests/operators/scalar_source_op.cpp CODEGEN)
 add_vivid_test_fixture(dual_lane_sink_op tests/operators/dual_lane_sink_op.cpp CODEGEN)
 add_vivid_test_fixture(gpu_fill_op      tests/operators/gpu_fill_op.cpp CODEGEN EXTRA_LIBS webgpu)
+add_vivid_test_fixture(gpu_value_fill_op tests/operators/gpu_value_fill_op.cpp CODEGEN EXTRA_LIBS webgpu)
 add_vivid_test_fixture(gpu_metronome_probe_op tests/operators/gpu_metronome_probe_op.cpp CODEGEN EXTRA_LIBS webgpu)
 
 # SIMD smoke operator fixture (Highway when available, scalar fallback)

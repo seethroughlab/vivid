@@ -80,6 +80,13 @@ struct VividGpuContext {
     const char**       output_string_values;
     const VividStringLaneView*  input_string_lanes;
     VividStringLaneOutput*      output_string_lanes;
+    // ---- Value-model I/O (lane-value clean-break, Phase 4c; additive) ----
+    // The successor to the lane/texture views: one VividValueView per input port
+    // (TEXTURE handle, or float/string per 4a/4b) + one VividValueOutput per
+    // output port (the primary texture output's resize() returns the runtime
+    // render target; float outputs back on the lane buffer). NULL if unpopulated.
+    const VividValueView* values;         // [input port_ordinal]
+    VividValueOutput*     value_outputs;  // [output port_ordinal]
     const char**       file_param_values;
     uint32_t           file_param_count;
 
