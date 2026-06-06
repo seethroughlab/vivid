@@ -1,8 +1,9 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phases 0–3 + Phase 4a/4b/4c + Phase 5a/5b/5c **done**; **Phase 6 operator-code migration complete**
-(25/25 lane-using operators now use the value API; non-code surfaces — graph JSON, UI, MCP, docs — remain).
-The value API is **complete**:
+**Status:** Phases 0–6 of the clean-break are **done** (Phase 6: 25/25 lane-using operators migrated +
+scaffolding/authoring docs are value-native; graph JSON is type-agnostic/no-op; UI+MCP value-rendering deferred
+to Phase 7 with lane removal). Next is **Phase 7** (remove the lane API + switch transport to the native
+ValueArena/BridgeValueSlot substrate + replace UI/MCP lane rendering). The value API is **complete**:
 `VividFrameContext`/`VividGpuContext`/`VividAudioContext` `values`/`value_outputs` cover every payload (float,
 STRING_LANES, texture, audio) across both cadences (frame + audio) and all execution strategies
 (scalar/lifted/loopbased), backed by the existing lane/string-lane/texture/audio-buffer transport. Operators

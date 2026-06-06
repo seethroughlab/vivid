@@ -240,8 +240,12 @@ Phase 5 is complete when the audio callback uses precomputed value slots only, a
 
 ### Phase 6: Operator, Graph, UI, MCP, And Docs Migration
 
-**Phase 6 (operator code) — ✅ COMPLETE 2026-06-06. 25/25 lane-using operators migrated.** (Non-code Phase-6
-surfaces — graph JSON, UI multiplicity rendering, MCP, docs — still TODO.) The final 4 (filter, sequencer,
+**Phase 6 — ✅ COMPLETE 2026-06-06.** Operator code: 25/25 lane-using operators migrated. Non-code authoring
+surface (`7c5d13c4`): scaffolding (operator_creator.cpp) + authoring docs (opdev_docs core/control/audio/gpu/
+advanced, AGENTS.md, ARCHITECTURE.md §5.9) now teach the value API as canonical + mark the lane API legacy.
+**Graph JSON: no change** (type-agnostic — node ids + port-name connections only). **UI/MCP value-rendering:
+deferred to Phase 7** (lane rendering/inspection is accurate + equivalent until lanes are removed; replacing it
+belongs with the removal). 25/25 operator code + The final 4 (filter, sequencer,
 note_breakout, drum_sequencer) landed after closing a **Phase-5b gap** (`098081bb`): audio value views now
 carry bridged `LANE_ARRAY` inputs (not just scalar `input_buffers`). note_breakout/drum_sequencer migrated via
 a value-API `emit_voice_breakouts` overload (shared helper, not per-op rewrites; drum's `out_spreads` was a
