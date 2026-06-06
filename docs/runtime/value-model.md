@@ -1,9 +1,10 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phase 0 (Design Lock) of the [lane-value clean-break](../plans/lane-value-model-clean-break.md).
-This document locks the vocabulary and the old→new mapping. The vocabulary header
-`src/operator_api/value_model.h` is **inert** until Phase 1 wires it into the ABI. The lane system is still
-live; this is the target, not the current state.
+**Status:** Phase 0 (Design Lock) + Phase 1 (New API Skeleton) of the
+[lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done**. The vocabulary
+(`src/operator_api/value_model.h`) and value views (`value_view.h`) are wired into the descriptor + codegen +
+probing, and the ABI is bumped to **6**. The lane system is **still the live execution path** (additive
+through Phase 6; removed in Phase 7) — this document is the target contract.
 
 Phase 0 is complete when every current lane surface has an explicit new-model target here and no
 naming/semantic decision is left to later phases.

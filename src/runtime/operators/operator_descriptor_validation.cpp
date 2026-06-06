@@ -39,6 +39,10 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
     if (!desc->has_process_audio && !desc->has_process_gpu && !desc->has_process_frame) {
         issues.push_back({vc::kMissingCapability, "descriptor declares no execution capability"});
     }
+    if (desc->multiplicity_behavior > VIVID_MULTIPLICITY_KERNEL) {
+        issues.push_back({vc::kInvalidMultiplicityBehavior,
+            "multiplicity_behavior is out of range (" + std::to_string(desc->multiplicity_behavior) + ")"});
+    }
 
     std::unordered_set<std::string> param_names;
     if (desc->params) {

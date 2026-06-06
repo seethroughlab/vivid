@@ -196,6 +196,9 @@ inline nlohmann::json build_port_descriptor_json(const VividPortDescriptor& pd) 
     p["name"] = pd.name;
     p["type"] = port_type_str(pd.type);
     p["transport"] = transport_str(pd.transport);
+    // Value-model envelope (lane-value clean-break, v6) — derived from the port type.
+    p["value_type"] = value_type_str(value_type_for_port_type(pd.type));
+    p["multiplicity"] = multiplicity_str(multiplicity_for_port_type(pd.type));
     if (pd.type_name && *pd.type_name)
         p["type_name"] = pd.type_name;
     if (pd.stable_type_id && *pd.stable_type_id)
@@ -250,6 +253,7 @@ inline nlohmann::json build_operator_docs_response(const VividOperatorDescriptor
     op["time_dependent"] = (desc.time_dependent != 0);
     op["lane_behavior"] = lane_behavior_str(desc.lane_behavior);
     op["lane_behavior_help"] = lane_behavior_help_str(desc.lane_behavior);
+    op["multiplicity_behavior"] = multiplicity_behavior_str(desc.multiplicity_behavior);
     if (!package_name.empty())
         op["package"] = package_name;
     // v3 metadata: human-facing label, search keywords, one-line summary.

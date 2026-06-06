@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "value_model.h"  /* VividValueType / VividMultiplicity / VividMultiplicityBehavior (lane-value clean-break) */
 
 #ifdef __cplusplus
 extern "C" {
@@ -8,7 +9,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 5u  /* v5: VividPortDescriptor.gpu_texture_format (typed texture outputs); v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 6u  /* v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -168,6 +169,13 @@ typedef struct VividPortDescriptor {
     // and designated init), e.g. {.name="flow", .type=VIVID_PORT_TEXTURE,
     // .direction=VIVID_PORT_OUTPUT, .gpu_texture_format=VIVID_TEXFMT_RG16F}.
     VividTextureFormat gpu_texture_format = 0;
+
+    // Value model (lane-value clean-break, v6). Additive alongside `type`/`transport`,
+    // which remain the live path until Phase 7. Codegen derives these from the port
+    // `type` (LANE_ARRAY/STRING_LANES => Many; else Scalar; payload from the type), so
+    // existing operators get correct values with no source change.
+    VividValueType    value_type   = 0;  // VIVID_VALUE_FLOAT
+    VividMultiplicity multiplicity = 0;  // VIVID_MULTIPLICITY_SCALAR
 } VividPortDescriptor;
 
 
@@ -201,6 +209,13 @@ typedef struct VividOperatorDescriptor {
     // One-line description (v3+). NULL when unset; consumers fall back to the
     // operator's source-doc brief.
     const char*               summary;
+
+    // Multiplicity behavior (lane-value clean-break, v6). The successor to
+    // `lane_behavior` (which stays until Phase 7). Codegen derives a default from
+    // `lane_behavior` (POINTWISE->Map, REDUCTION->Reduce, STRUCTURAL->Generate,
+    // KERNEL->Kernel); an operator overrides via `static constexpr
+    // VividMultiplicityBehavior kMultiplicityBehavior`.
+    VividMultiplicityBehavior multiplicity_behavior;  // 0 = VIVID_MULTIPLICITY_SCALAR_ONLY
 } VividOperatorDescriptor;
 
 typedef struct VividGeneratedUniformMember {

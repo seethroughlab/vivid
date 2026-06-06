@@ -1628,6 +1628,7 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
     out << "        " << keywords_ptr << ",\n";
     out << "        " << keyword_count << ",\n";
     out << "        " << summary_expr << ",\n";
+    out << "        vivid::detail::get_multiplicity_behavior<" << class_name << ">(),\n";
     out << "    };\n";
     out << "    return &desc;\n";
     out << "}\n";

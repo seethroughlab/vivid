@@ -65,6 +65,30 @@ int main() {
               "empty display_name string falls back to auto-derive");
     }
 
+    // Value-model fields (lane-value clean-break, v6): operator multiplicity_behavior
+    // + per-port value_type/multiplicity derived from the port type.
+    {
+        std::fprintf(stderr, "\n=== Value-model fields ===\n");
+        VividPortDescriptor ports[1]{};
+        ports[0].name      = "voices";
+        ports[0].type      = VIVID_PORT_LANE_ARRAY;   // -> Float + Many
+        ports[0].direction = VIVID_PORT_OUTPUT;
+        VividOperatorDescriptor desc{};
+        desc.name                  = "VoiceGen";
+        desc.has_process_frame     = 1;
+        desc.multiplicity_behavior = VIVID_MULTIPLICITY_REDUCE;
+        desc.ports                 = ports;
+        desc.port_count            = 1;
+
+        nlohmann::json op = vivid::build_operator_docs_response(desc, nullptr);
+        check(op["multiplicity_behavior"] == "reduce", "operator multiplicity_behavior on the wire");
+        check(op.contains("outputs") && op["outputs"].is_array() && op["outputs"].size() == 1,
+              "output port present");
+        const auto& port = op["outputs"][0];
+        check(port["value_type"] == "float", "lane-array output value_type derived = float");
+        check(port["multiplicity"] == "many", "lane-array output multiplicity derived = many");
+    }
+
     std::fprintf(stderr, "\n=== %s (%d failures) ===\n\n",
         failures == 0 ? "ALL PASSED" : "SOME FAILED", failures);
     return failures == 0 ? 0 : 1;

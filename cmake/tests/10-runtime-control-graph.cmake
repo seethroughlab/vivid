@@ -17,6 +17,15 @@ target_link_libraries(test_voice_table PRIVATE vivid_operator_api)
 add_test(NAME test_voice_table COMMAND test_voice_table WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_tests_properties(test_voice_table PROPERTIES TIMEOUT 5)
 
+# Value model (lane-value clean-break, Phase 1) — operator-API side, header-only.
+add_executable(test_value_model
+    tests/core/test_value_model.cpp
+)
+target_include_directories(test_value_model PRIVATE src tests)
+target_link_libraries(test_value_model PRIVATE vivid_operator_api)
+add_test(NAME test_value_model COMMAND test_value_model WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_tests_properties(test_value_model PROPERTIES TIMEOUT 5)
+
 # Native note transport helpers — header-only, no runtime needed.
 add_executable(test_note_helpers
     tests/shared/test_note_helpers.cpp

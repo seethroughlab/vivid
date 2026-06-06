@@ -432,6 +432,32 @@ constexpr bool get_strategy_independent() {
     else
         return false;
 }
+
+// Multiplicity behavior (lane-value clean-break, v6). If the operator declares a
+// static constexpr kMultiplicityBehavior, use it; otherwise derive from the
+// operator's lane_behavior so existing operators get a correct value for free.
+template <typename T, typename = void>
+struct has_multiplicity_behavior : std::false_type {};
+template <typename T>
+struct has_multiplicity_behavior<T, std::void_t<decltype(T::kMultiplicityBehavior)>> : std::true_type {};
+
+constexpr VividMultiplicityBehavior multiplicity_behavior_from_lane(VividLaneBehavior lb) {
+    switch (lb) {
+        case VIVID_LANE_POINTWISE:  return VIVID_MULTIPLICITY_MAP;
+        case VIVID_LANE_REDUCTION:  return VIVID_MULTIPLICITY_REDUCE;
+        case VIVID_LANE_STRUCTURAL: return VIVID_MULTIPLICITY_GENERATE;
+        case VIVID_LANE_KERNEL:     return VIVID_MULTIPLICITY_KERNEL;
+        default:                    return VIVID_MULTIPLICITY_MAP;
+    }
+}
+
+template <typename T>
+constexpr VividMultiplicityBehavior get_multiplicity_behavior() {
+    if constexpr (has_multiplicity_behavior<T>::value)
+        return T::kMultiplicityBehavior;
+    else
+        return multiplicity_behavior_from_lane(get_lane_behavior<T>());
+}
 template <typename T, typename = void>
 struct has_time_dependent : std::false_type {};
 template <typename T>
