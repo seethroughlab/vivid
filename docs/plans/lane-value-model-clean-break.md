@@ -124,7 +124,23 @@ Replace lane propagation with value type and multiplicity inference.
 
 Phase 2 is complete when the compiler can plan mixed scalar/many graphs without using `VIVID_PORT_LANE_ARRAY`, and audio channel count inference is independent from multiplicity.
 
-### Phase 3: Unified Runtime Storage
+### Phase 3: Unified Runtime Storage — ✅ DONE 2026-06-05 (additive substrate)
+
+**Done:** the value-storage substrate as additive, unit-tested infrastructure — `ValueBuffer` (one
+payload-tagged buffer: float/string/custom CPU storage carrying the Phase-2 `ValueEnvelope`, subsuming
+`LaneBuffer`/`StringLaneBuffer`/custom-snapshot), `ValueRef` (RAII intrusive ref), `ValueArena` (growable
+frame / fixed audio pool, mirroring `LaneBufferPool`), `ValueHealthCounters`
+{bridge_overflow,identity_truncation,dropped_many}, and `BridgeValueSlot` (envelope across the cadence
+boundary + RT-safe `write_clamped` folding **01-R2-F7**). RT-safety preserved: fixed (audio) buffers/arenas
+return false/null on overflow with **no allocation**; only frame/non-pool storage grows. `test_value_buffer`
+covers scalar+many per payload + the RT-safety + overflow accounting.
+
+**Additive & verified:** lane storage, executors, and the bridge are **untouched** (the substrate is not yet
+consumed by execution — Phases 4–5 wire it). All value/lane/bridge/audio/graph tests green. **Deferred to
+4–5/7:** wiring the executors+bridge onto the substrate; unifying GPU/audio-block storage into `ValueBuffer`
+(stay handle-based); removing `LaneBuffer`/`StringLaneBuffer`/`BridgeLaneSlot` (Phase 7).
+
+Original Phase-3 spec:
 
 Replace lane-buffer-centered transport with general value storage.
 
