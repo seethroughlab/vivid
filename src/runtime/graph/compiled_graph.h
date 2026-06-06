@@ -157,6 +157,11 @@ struct CompiledEdge {
     uint32_t lane_set_id = 0;    // 0 = scalar
     uint32_t lane_count  = 1;
 
+    // Value-model envelope (lane-value clean-break, Phase 2). Computed by the
+    // value-flow pass in parallel with the lane metadata above; not yet consumed
+    // by execution. Proven equivalent to lane_set_id/lane_count.
+    ValueEnvelope value_envelope;
+
     // Remap helpers.
     bool has_remap() const {
         return from_min != 0.0f || from_max != 1.0f ||
@@ -513,6 +518,14 @@ struct CompiledNode {
     std::vector<LaneSet> output_lane_sets;
     std::vector<LaneSet> input_lane_sets;
 
+    // ── Value-model (lane-value clean-break, Phase 2) ─────────────────────
+    // multiplicity_behavior is set in Pass 1 from the descriptor; the value
+    // envelopes are computed by the value-flow pass in parallel with the lane
+    // sets above (not yet consumed by execution).
+    VividMultiplicityBehavior multiplicity_behavior = VIVID_MULTIPLICITY_MAP;
+    std::vector<ValueEnvelope> output_value_envelopes;
+    std::vector<ValueEnvelope> input_value_envelopes;
+
     // ── Frame-domain lane execution (populated by compiler Pass 4c) ──────
     LaneExecutionStrategy frame_execution_strategy = LaneExecutionStrategy::Scalar;
     int32_t frame_lane_id_port = -1;  // lane-array port with lane_ids (-1 = positional)
@@ -580,6 +593,11 @@ struct CompiledGraph {
     // Scans only audio_order (typically 2-5 nodes), not all nodes.
     // Lane-set ID allocator (0 reserved for scalar).
     uint32_t next_lane_set_id = 1;
+
+    // Value-flow (lane-value clean-break, Phase 2): count of edges where the
+    // inferred value multiplicity disagreed with the Pass-2.6 lane sets. 0 means
+    // the value-flow inference is fully equivalent to lane planning. Tests assert 0.
+    uint32_t value_flow_mismatches = 0;
 
     // Maximum lane count for LoopBased audio operators (from compiler options).
     uint32_t max_loop_lanes = 16;

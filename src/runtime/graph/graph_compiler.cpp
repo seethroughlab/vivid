@@ -136,6 +136,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.active_cadence = Cadence::Frame;
             }
             cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
+            cn.multiplicity_behavior = desc->multiplicity_behavior;  // value-flow (Phase 2)
             // Semantic domain (port-based), used for display/discovery surfaces.
             // Execution cadence is carried separately by active_cadence above.
             cn.operator_kind = vivid_operator_domain(desc);
@@ -700,6 +701,26 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                         e.lane_count  = ols.lane_count;
                     }
                 }
+            }
+        }
+    }
+
+    // ===================================================================
+    // Pass 2.7: Value-flow inference (lane-value clean-break, Phase 2)
+    // ===================================================================
+    // Compute the value-model envelope (type/multiplicity/identity/storage) for
+    // every edge/port from each operator's multiplicity_behavior, in PARALLEL
+    // with the lane sets above — which remain the live execution path. Asserts
+    // the inferred multiplicity is equivalent to the lane sets (non-fatal).
+    {
+        auto vf_order = kahn_sort(n, adj, in_degree);
+        if (!vf_order.empty() || n == 0) {
+            cg->value_flow_mismatches =
+                graph_compiler_internal::plan_value_flow(*cg, vf_order);
+            if (cg->value_flow_mismatches != 0 && std::getenv("VIVID_VERBOSE")) {
+                std::fprintf(stderr,
+                    "[vivid] value-flow: %u edge multiplicity mismatch(es) vs lane sets\n",
+                    cg->value_flow_mismatches);
             }
         }
     }

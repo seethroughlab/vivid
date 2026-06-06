@@ -53,4 +53,13 @@ void warm_up_instance_assets(CompiledNode& cn);
 // Phase 4: conservative GPU lane promotion analysis.
 void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold = kGpuLanePromotionThreshold);
 
+// Lane-value clean-break, Phase 2: value-flow inference. Computes each node's
+// input/output ValueEnvelopes (and every edge's value_envelope) from the
+// operator's multiplicity_behavior + input envelopes + port value-type, in
+// PARALLEL with the lane sets (which stay the live execution path). Asserts the
+// inferred multiplicity is equivalent to the Pass-2.6 lane sets and records
+// non-fatal diagnostics on mismatch. `topo_order` must be a topological order.
+// Returns the number of edge equivalence mismatches (0 = fully equivalent).
+uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_order);
+
 } // namespace vivid::graph_compiler_internal

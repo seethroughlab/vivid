@@ -1,8 +1,121 @@
 #include "runtime/graph/graph_compiler_internal.h"
 
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace vivid::graph_compiler_internal {
+
+// ---- Value-flow inference (lane-value clean-break, Phase 2) -----------------
+namespace {
+
+// Payload type a port carries. Channel count (for AUDIO) is payload layout, NOT
+// multiplicity — the value-flow separation invariant.
+VividValueType value_type_for_port(VividPortType t) {
+    switch (t) {
+        case VIVID_PORT_AUDIO_BUFFER: return VIVID_VALUE_AUDIO;
+        case VIVID_PORT_STRING:
+        case VIVID_PORT_STRING_LANES: return VIVID_VALUE_STRING;
+        case VIVID_PORT_TEXTURE:      return VIVID_VALUE_TEXTURE;
+        default:                      return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY, custom
+    }
+}
+
+// Initial storage policy from payload type + node domain. Refined in Phase 3.
+VividStorageKind value_storage_for(const CompiledNode& cn, VividValueType vt) {
+    if (vt == VIVID_VALUE_TEXTURE || cn.is_gpu())     return VIVID_STORAGE_GPU;
+    if (vt == VIVID_VALUE_AUDIO || cn.active_cadence == Cadence::Audio)
+                                                      return VIVID_STORAGE_AUDIO_BLOCK;
+    if (vt == VIVID_VALUE_STRING)                     return VIVID_STORAGE_STRING_STORE;
+    return VIVID_STORAGE_CPU;
+}
+
+// Infer an output port's multiplicity from the value model — independently of the
+// lane-set id. A lane-array/string-lanes port carries Many by definition; otherwise
+// the operator's multiplicity_behavior decides (Map/Preserve/Kernel forward the
+// input multiplicity). Mirrors the Pass-2.6 output rules in value terms.
+VividMultiplicity infer_output_multiplicity(const CompiledNode& cn, size_t port_idx,
+                                            bool any_many_input) {
+    // Reduction breakout: a lane-array output port of a Reducer exposes per-element
+    // structure (Many) while its primary outputs collapse to scalar. This mirrors
+    // Pass 2.6's breakout rule. (Lane-array outputs of non-Reduction nodes follow
+    // the behavior/input multiplicity below — Pass 2.6 does NOT force them Many.)
+    if (cn.lane_behavior == LaneBehavior::Reduction && port_idx < cn.output_port_types.size()) {
+        const auto pt = cn.output_port_types[port_idx];
+        if (pt == VIVID_PORT_LANE_ARRAY || pt == VIVID_PORT_STRING_LANES)
+            return VIVID_MULTIPLICITY_MANY;
+    }
+    switch (cn.multiplicity_behavior) {
+        case VIVID_MULTIPLICITY_SCALAR_ONLY:
+        case VIVID_MULTIPLICITY_REDUCE:   return VIVID_MULTIPLICITY_SCALAR;
+        case VIVID_MULTIPLICITY_GENERATE:
+        case VIVID_MULTIPLICITY_COLLECT:  return VIVID_MULTIPLICITY_MANY;
+        case VIVID_MULTIPLICITY_MAP:
+        case VIVID_MULTIPLICITY_PRESERVE:
+        case VIVID_MULTIPLICITY_KERNEL:
+        default:
+            return any_many_input ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+    }
+}
+
+}  // namespace
+
+uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_order) {
+    uint32_t mismatches = 0;
+    for (uint32_t idx : topo_order) {
+        auto& cn = cg.nodes[idx];
+
+        // Input envelopes: project from the already-resolved input lane sets + the
+        // input port's payload type. Track whether any input is Many.
+        cn.input_value_envelopes.assign(cn.input_lane_sets.size(), ValueEnvelope{});
+        bool any_many_input = false;
+        for (size_t pi = 0; pi < cn.input_lane_sets.size(); ++pi) {
+            const VividValueType vt = (pi < cn.input_port_types.size())
+                ? value_type_for_port(cn.input_port_types[pi]) : VIVID_VALUE_FLOAT;
+            ValueEnvelope env = envelope_from_lane_set(cn.input_lane_sets[pi], vt,
+                                                       value_storage_for(cn, vt));
+            cn.input_value_envelopes[pi] = env;
+            if (env.multiplicity == VIVID_MULTIPLICITY_MANY) any_many_input = true;
+        }
+
+        // Output envelopes: multiplicity INFERRED from the value model; identity +
+        // count carried from the lane-set projection (runtime-determined parts).
+        cn.output_value_envelopes.assign(cn.output_lane_sets.size(), ValueEnvelope{});
+        for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
+            const VividValueType vt = (pi < cn.output_port_types.size())
+                ? value_type_for_port(cn.output_port_types[pi]) : VIVID_VALUE_FLOAT;
+            const ValueEnvelope proj = envelope_from_lane_set(cn.output_lane_sets[pi], vt,
+                                                              value_storage_for(cn, vt));
+            const VividMultiplicity inferred = infer_output_multiplicity(cn, pi, any_many_input);
+
+            ValueEnvelope env = proj;
+            env.multiplicity = inferred;
+            cn.output_value_envelopes[pi] = env;
+
+            // Equivalence proof: the independently-inferred multiplicity must match
+            // the Pass-2.6 lane-set projection. Non-fatal (Phase 2 changes no graph's
+            // compile result); loud under VIVID_VERBOSE.
+            if (inferred != proj.multiplicity) {
+                ++mismatches;
+                if (std::getenv("VIVID_VERBOSE")) {
+                    std::fprintf(stderr,
+                        "[vivid] value-flow: multiplicity mismatch at node '%s' out-port %zu "
+                        "(inferred=%u, lane-set=%u)\n",
+                        cn.node_id.c_str(), pi,
+                        static_cast<unsigned>(inferred), static_cast<unsigned>(proj.multiplicity));
+                }
+            }
+        }
+
+        // Publish output envelopes onto outgoing edges.
+        for (auto& e : cg.edges) {
+            if (e.from_node != idx) continue;
+            if (e.from_port < cn.output_value_envelopes.size())
+                e.value_envelope = cn.output_value_envelopes[e.from_port];
+        }
+    }
+    return mismatches;
+}
 
 namespace {
 
