@@ -240,7 +240,17 @@ Phase 5 is complete when the audio callback uses precomputed value slots only, a
 
 ### Phase 6: Operator, Graph, UI, MCP, And Docs Migration
 
-**Phase 6 (operator code) — ⏳ IN PROGRESS 2026-06-06. 21/25 lane-using operators migrated.** Scope insight:
+**Phase 6 (operator code) — ✅ COMPLETE 2026-06-06. 25/25 lane-using operators migrated.** (Non-code Phase-6
+surfaces — graph JSON, UI multiplicity rendering, MCP, docs — still TODO.) The final 4 (filter, sequencer,
+note_breakout, drum_sequencer) landed after closing a **Phase-5b gap** (`098081bb`): audio value views now
+carry bridged `LANE_ARRAY` inputs (not just scalar `input_buffers`). note_breakout/drum_sequencer migrated via
+a value-API `emit_voice_breakouts` overload (shared helper, not per-op rewrites; drum's `out_spreads` was a
+vestigial unused param). **filter + sequencer also fixed a pre-existing latent indexing bug** — they read
+`input_lanes[0..]` (lane-ordinal) but views are full-ordinal, so their per-lane features (filter cutoff_mod/
+keytrack; sequencer external arrays) were dead; now they read the correct ports (`ctx->values[3..]`) and
+function as designed (behavior change toward correctness; no test/demo regressed). `0628b30d`.
+
+Earlier (21/25) scope insight:
 Phase 7 only removes the *lane-specific* surfaces (`VividLaneView`/`VividLaneOutput`, `VIVID_PORT_LANE_ARRAY`/
 `STRING_LANES`, lane sets, `LaneExecutionStrategy`, lane bridge slots) — NOT the typed accessors
 (`input_values`/`input_buffers`/`input_textures`). So only the ~25 operators that *use the lane API* must
