@@ -256,8 +256,16 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 vv.value_count = static_cast<uint32_t>(cn.input_string_lanes[p].size());
             } else {
                 const auto& ref = cn.input_lane_refs[p];
-                vv.data        = ref.data();
-                vv.value_count = ref.length();
+                if (ref.length() > 0) {
+                    vv.data        = ref.data();          // many: the lane buffer
+                    vv.value_count = ref.length();
+                } else if (p < cn.input_values.size()) {
+                    vv.data        = &cn.input_values[p]; // scalar float: alias input_values
+                    vv.value_count = 1;
+                } else {
+                    vv.data        = nullptr;
+                    vv.value_count = 0;
+                }
             }
             if (p < cn.input_value_envelopes.size()) {
                 vv.value_type    = cn.input_value_envelopes[p].value_type;
