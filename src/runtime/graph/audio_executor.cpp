@@ -1211,15 +1211,41 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
     // value-view vectors per lane is safe.
     for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
         VividValueView& vv = cn.c_in_value_views[p];
-        vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
-        vv.value_count  = 1;
-        vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-        vv.value_type   = (p < cn.input_port_types.size() &&
-                           cn.input_port_types[p] == VIVID_PORT_AUDIO_BUFFER)
-                              ? VIVID_VALUE_AUDIO : VIVID_VALUE_FLOAT;
-        vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
-        vv.identity_mode = VIVID_IDENTITY_NONE;
-        vv.flags = 0;
+        const VividPortType pt = (p < cn.input_port_types.size())
+            ? cn.input_port_types[p] : VIVID_PORT_SCALAR;
+        if (pt == VIVID_PORT_LANE_ARRAY && p < cn.c_in_lane_views.size()) {
+            // Bridged lane-array input (cross-cadence): carry the FULL array — the
+            // operator indexes it by ctx->lane_index, same as the lane view did.
+            const VividLaneView& lv = cn.c_in_lane_views[p];
+            vv.data         = lv.data;
+            vv.value_count  = lv.length;
+            vv.value_type   = VIVID_VALUE_FLOAT;
+            vv.multiplicity = (lv.length > 1) ? VIVID_MULTIPLICITY_MANY
+                                              : VIVID_MULTIPLICITY_SCALAR;
+            vv.storage_kind = VIVID_STORAGE_BRIDGE_SLOT;
+            vv.identity_mode = VIVID_IDENTITY_NONE;
+            vv.flags = 0;
+        } else if (pt == VIVID_PORT_STRING_LANES && p < cn.c_in_string_lane_views.size()) {
+            const VividStringLaneView& sv = cn.c_in_string_lane_views[p];
+            vv.data         = sv.data;
+            vv.value_count  = sv.length;
+            vv.value_type   = VIVID_VALUE_STRING;
+            vv.multiplicity = (sv.length > 1) ? VIVID_MULTIPLICITY_MANY
+                                              : VIVID_MULTIPLICITY_SCALAR;
+            vv.storage_kind = VIVID_STORAGE_BRIDGE_SLOT;
+            vv.identity_mode = VIVID_IDENTITY_NONE;
+            vv.flags = 0;
+        } else {
+            // Audio block, or a scalar control carried as a 1-sample block.
+            vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
+            vv.value_count  = 1;
+            vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+            vv.value_type   = (pt == VIVID_PORT_AUDIO_BUFFER) ? VIVID_VALUE_AUDIO
+                                                              : VIVID_VALUE_FLOAT;
+            vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
+            vv.identity_mode = VIVID_IDENTITY_NONE;
+            vv.flags = 0;
+        }
     }
     for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_value_outputs.size(); ++p) {
         if (p < cn.output_port_types.size() &&
