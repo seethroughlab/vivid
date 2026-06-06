@@ -1,9 +1,10 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phase 0 (Design Lock) + Phase 1 (New API Skeleton) of the
-[lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done**. The vocabulary
-(`src/operator_api/value_model.h`) and value views (`value_view.h`) are wired into the descriptor + codegen +
-probing, and the ABI is bumped to **6**. The lane system is **still the live execution path** (additive
+**Status:** Phases 0–2 of the [lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done**.
+The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the descriptor/codegen/probing
+(ABI **6**), and the compiler now runs a **value-flow inference pass** (Pass 2.7) that computes a
+`ValueEnvelope` per edge/port from `multiplicity_behavior`, proven equivalent to the lane sets
+(`CompiledGraph.value_flow_mismatches == 0`). The lane system is **still the live execution path** (additive
 through Phase 6; removed in Phase 7) — this document is the target contract.
 
 Phase 0 is complete when every current lane surface has an explicit new-model target here and no

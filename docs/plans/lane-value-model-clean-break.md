@@ -94,7 +94,24 @@ Introduce the new public API and descriptor shape before wiring it into runtime 
 
 Phase 1 is complete when new descriptors are visible through registry/probing, new API examples compile, and old operators fail for the right reason once the ABI bump is active.
 
-### Phase 2: Compiler Rewrite
+### Phase 2: Compiler Rewrite — ✅ DONE 2026-06-05 (additive value-flow pass)
+
+**Done:** added **Pass 2.7 — value-flow inference** (`plan_value_flow` in `graph_compiler_planning.cpp`),
+running in parallel with Pass 2.6. Computes a `ValueEnvelope` (value_type · multiplicity · identity ·
+storage) per edge/port from each operator's `multiplicity_behavior` (P1) — **independently of lane ids**, and
+treating **audio channel count as payload layout, not multiplicity** (the Phase-2 separation invariant). Per
+edge it asserts the inferred multiplicity is **equivalent** to the Pass-2.6 lane sets and records mismatches
+in `CompiledGraph.value_flow_mismatches` (non-fatal; tests assert 0). The equivalence harness immediately
+caught (and I fixed) a real inference bug — `value_flow_mismatches == 0` now holds across every lane test
+(structural/reduction/multi-channel + cross-cadence bridge) + demo graphs.
+
+**Additive & verified:** lane planning, lane execution, the strategy planners, and all lane consumers are
+**untouched** — the envelopes are not yet consumed by execution (Phases 4-5 switch onto them). All lane +
+graph tests green; `test_value_flow` added. **Deferred to 2b/later:** surfacing the envelope on the UI
+snapshot; deriving the lane fields from the envelope / removing `LaneExecutionStrategy` (the Phase-4/5
+convergence, then Phase-7 removal).
+
+Original Phase-2 spec:
 
 Replace lane propagation with value type and multiplicity inference.
 
