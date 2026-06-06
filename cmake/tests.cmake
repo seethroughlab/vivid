@@ -189,6 +189,7 @@ add_vivid_test_fixture(audio_gain_value_op  tests/operators/audio_gain_value_op.
 add_vivid_test_fixture(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp CODEGEN)
 add_vivid_test_fixture(lane_frame_op             tests/operators/lane_frame_op.cpp CODEGEN)
 add_vivid_test_fixture(value_gain_op             tests/operators/value_gain_op.cpp CODEGEN)
+add_vivid_test_fixture(scalar_value_gain_op      tests/operators/scalar_value_gain_op.cpp CODEGEN)
 add_vivid_test_fixture(string_value_echo_op      tests/operators/string_value_echo_op.cpp CODEGEN)
 add_vivid_test_fixture(audio_lane_op    tests/operators/audio_lane_op.cpp CODEGEN)
 add_vivid_test_fixture(audio_reduce_op  tests/operators/audio_reduce_op.cpp CODEGEN)

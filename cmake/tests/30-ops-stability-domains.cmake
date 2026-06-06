@@ -987,6 +987,16 @@ target_link_libraries(test_frame_value_api_string PRIVATE
 add_dependencies(test_frame_value_api_string string_source_op string_value_echo_op string_sink_op)
 add_test(NAME test_frame_value_api_string COMMAND test_frame_value_api_string WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Frame scalar-float value path (lane-value clean-break, Phase 5c).
+add_executable(test_frame_value_scalar
+    tests/lanes/test_frame_value_scalar.cpp
+)
+target_include_directories(test_frame_value_scalar PRIVATE src tests)
+target_link_libraries(test_frame_value_scalar PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_frame_value_scalar scalar_source_op scalar_value_gain_op control_pass_op)
+add_test(NAME test_frame_value_scalar COMMAND test_frame_value_scalar ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 # Scalar-to-lane-array broadcast test
 add_executable(test_scalar_lane_broadcast
     tests/lanes/test_scalar_lane_broadcast.cpp
