@@ -64,7 +64,24 @@ Write the new value/multiplicity contract before changing execution code.
 
 Phase 0 is complete when the old-to-new concept mapping is explicit and no naming or semantic decisions are left to later phases.
 
-### Phase 1: New API Skeleton
+### Phase 1: New API Skeleton — ✅ DONE 2026-06-05 (additive; engine unaffected)
+
+**Done:** `value_view.h` (`VividValueView`/`VividValueOutput` + typed helpers); descriptor fields
+(`VividOperatorDescriptor.multiplicity_behavior`, `VividPortDescriptor.{value_type,multiplicity}`);
+`VIVID_OPERATOR_ABI_VERSION` bumped **5→6**; codegen emits `multiplicity_behavior` via SFINAE
+`get_multiplicity_behavior<T>()` (default-derived from `lane_behavior`, overridable with
+`kMultiplicityBehavior`); probing surfaces the fields (MCP `operator_docs`/`list_types`); descriptor
+validation gained `kInvalidMultiplicityBehavior`; tests `test_value_model` (override + derivation
+static-asserts + value_view) and the extended `test_operator_docs_metadata` (probing JSON) pass.
+
+**Additive & verified non-disruptive:** the old lane API + lane execution are untouched (removed in Phase 7);
+the ~152 seed operators auto-rebuilt to ABI 6 and still run via lanes (`test_demo_graphs` +
+`test_lane_equivalence` + the full sanity sweep pass). Only external sibling dylibs (ABI 5) now reject at
+probe with a clean `abi_mismatch` diagnostic. **02-R2-F3 registration-contract unification was DEFERRED** to a
+focused follow-up (avoid compounding ABI-bump risk). Full 7-behavior example set + `values[]` context wiring
+deferred to Phases 4/6.
+
+Original Phase-1 spec:
 
 Introduce the new public API and descriptor shape before wiring it into runtime execution.
 
