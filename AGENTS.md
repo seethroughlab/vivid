@@ -166,12 +166,14 @@ vivid/
 - Connections: `{"from": "node/port", "to": "node/port"}`
 - Every wire carries a value; multiplicity is expressed with lanes. A scalar is a one-lane value.
 
-### Lane Vocabulary
-- Use the canonical multiplicity surfaces: `VIVID_PORT_LANE_ARRAY`, `VIVID_PORT_STRING_LANES`, `lane_array`, and `string_lanes`
-- No new multiplicity-bearing surface should use `spread`
-- Allowed exceptions: clearly marked historical references and legitimate domain terms like stereo spread or spatial spread
-- Locked naming decisions: `string_spread` became `string_lanes`, and `SpreadSourceOp` / `SpreadSinkOp` / `IdentitySpreadSourceOp` became lane-oriented names
-- Treat string-lane work as lane work. Prefer payload-generic lane operators where semantics are shared instead of rebuilding a separate collection model for strings
+### Multiplicity Vocabulary (value model)
+- **The value model is canonical** (clean-break, see `docs/runtime/value-model.md`): every value carries
+  payload type + multiplicity (Scalar/Many) + identity + storage. Operators declare `kMultiplicityBehavior`
+  and do many-valued I/O via `ctx->values` / `ctx->value_outputs` (`value_view.h`).
+- **The lane vocabulary below is legacy — still live, removed in Phase 7.** Don't build new surfaces on it.
+- Legacy multiplicity surfaces (being removed): `VIVID_PORT_LANE_ARRAY`, `VIVID_PORT_STRING_LANES`,
+  `lane_array`, `string_lanes`, `VividLaneView`/`VividLaneOutput`, `kLaneBehavior`, `LaneExecutionStrategy`.
+- No multiplicity-bearing surface should use `spread` (historical/domain terms like stereo spread excepted).
 
 ### Three Domains
 - **GPU** (cyan `#4ECDC4`): textures, shaders, meshes, particles — Dawn/WebGPU

@@ -20,9 +20,11 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `frame` | `uint64_t` | Frame counter |
 | `param_values` | `float*` | Indexed by param descriptor order (auto-synced to Param<T>.value) |
 | `input_values` | `float*` | Float input ports, indexed by input port order |
-| `output_values` | `float*` | Float output ports, indexed by output port order — **write your outputs here** |
-| `input_lanes` | `const VividLaneView*` | Lane array input ports (`.data`, `.length`, `.lane_set_id`, `.flags`) |
-| `output_lanes` | `VividLaneOutput*` | Lane array output ports (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
+| `output_values` | `float*` | Float output ports, indexed by output port order — **write scalar outputs here** |
+| `values` | `const VividValueView*` | **Value API** — one input value per input port (scalar or many; read via `vivid_value_floats`/`_strings` + `vivid_value_count`). The canonical many-valued input. |
+| `value_outputs` | `VividValueOutput*` | **Value API** — one output builder per output port (`vivid_value_output_floats`/`_set_string` + `vivid_value_output_commit`). The canonical many-valued output. |
+| `input_lanes` | `const VividLaneView*` | _Legacy (removed Phase 7)_ — use `values` instead. |
+| `output_lanes` | `VividLaneOutput*` | _Legacy (removed Phase 7)_ — use `value_outputs` instead. |
 | `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `custom_outputs` | `void**` | Custom-port outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String input ports |
@@ -51,23 +53,32 @@ Port indices are counted separately for inputs and outputs, in the order declare
 - String ports → `input_string_values[i]` / `output_string_values[i]`
 - Custom ports → `custom_inputs[i]` / `custom_outputs[i]`
 
-## Lane Array Ports
+## Many-Valued Ports — the value API
+
+A port carries one *value* that may be Scalar or Many. Read inputs via
+`ctx->values[port]` and write outputs via `ctx->value_outputs[port]`
+(`#include "operator_api/value_view.h"`):
 
 ```cpp
-// Reading input lane array
-const VividLaneView& sp = ctx->input_lanes[0];
-for (uint32_t i = 0; i < sp.length; i++) {
-    float val = sp.data[i];
-}
+// Reading an input value (scalar → count 1; many → count N)
+const VividValueView* in = &ctx->values[0];
+const float* v = vivid_value_floats(in);
+uint32_t n = vivid_value_count(in);
+for (uint32_t i = 0; i < n; ++i) { float x = v[i]; /* ... */ }
 
-// Writing output lane array (builder pattern)
-auto& out = ctx->output_lanes[0];
-float* buf = out.resize(out.handle, count);
+// Writing an output value (builder)
+float* buf = vivid_value_output_floats(&ctx->value_outputs[0], count);
 if (buf) {
-    for (uint32_t i = 0; i < count; i++) buf[i] = computed_value;
-    out.commit(out.handle, count);
+    for (uint32_t i = 0; i < count; ++i) buf[i] = computed_value;
+    vivid_value_output_commit(&ctx->value_outputs[0], count);
 }
 ```
+
+A many-valued output port currently still declares `VIVID_PORT_LANE_ARRAY` (the port
+type is removed in Phase 7); the I/O above is the same regardless.
+
+> _Legacy (removed Phase 7):_ `ctx->input_lanes[i]` (`.data`/`.length`) +
+> `ctx->output_lanes[i]` (`.resize`/`.commit`) — superseded by the value API above.
 
 ## Example: Simple Control Operator
 

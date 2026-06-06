@@ -126,8 +126,10 @@ WgslFilterBase checks shader file modification time every 30 frames. When a chan
 | `input_texture_widths` / `input_texture_heights` | `uint32_t*` | Input dimensions |
 | `operators_src_dir` | `const char*` | Path to operators/ source tree |
 | `custom_inputs` / `custom_outputs` | `void**` | Custom-port inputs/outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
-| `input_lanes` | `const VividLaneView*` | Lane-array input ports (`.data`, `.length`, `.lane_set_id`, `.flags`) |
-| `output_lanes` | `VividLaneOutput*` | Lane-array output ports (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
+| `values` | `const VividValueView*` | **Value API** — one input value per input port (texture handle for TEXTURE ports; float/many for control inputs). Read via `vivid_value_floats` etc. |
+| `value_outputs` | `VividValueOutput*` | **Value API** — one output builder per output port (the texture output's `resize` returns the runtime render target). |
+| `input_lanes` | `const VividLaneView*` | _Legacy (removed Phase 7)_ — use `values`. |
+| `output_lanes` | `VividLaneOutput*` | _Legacy (removed Phase 7)_ — use `value_outputs`. |
 | `input_string_values` / `output_string_values` | `const char**` | String ports |
 | `input` | `VividInputState*` | Mouse/keyboard events |
 
