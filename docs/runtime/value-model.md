@@ -1,9 +1,10 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phases 0–3 + Phase 4a/4b/4c of the [lane-value clean-break](../plans/lane-value-model-clean-break.md)
-are **done** (4a float, 4b many-string, 4c GPU/texture): `VividFrameContext`/`VividGpuContext`
-`values`/`value_outputs` cover float + STRING_LANES + texture, backed by the existing lane/string-lane/texture
-transport. The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the
+**Status:** Phases 0–3 + Phase 4a/4b/4c + Phase 5a of the
+[lane-value clean-break](../plans/lane-value-model-clean-break.md) are **done** (4a float, 4b many-string,
+4c GPU/texture, 5a audio-scalar): `VividFrameContext`/`VividGpuContext`/`VividAudioContext`
+`values`/`value_outputs` cover float + STRING_LANES + texture + audio, backed by the existing
+lane/string-lane/texture/audio-buffer transport — across both cadences (frame + audio) for the scalar path. The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the
 descriptor/codegen/probing (ABI **6**); the compiler runs a **value-flow inference pass** (Pass 2.7) computing
 a `ValueEnvelope` per edge/port from `multiplicity_behavior`, proven equivalent to the lane sets
 (`CompiledGraph.value_flow_mismatches == 0`); the runtime has a unified **value-storage substrate**

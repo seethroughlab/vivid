@@ -203,6 +203,20 @@ Phase 4 is complete when control and GPU operators can consume and produce scala
 
 ### Phase 5: Audio Executor And Bridge Migration
 
+**Phase 5a — ✅ DONE 2026-06-06 (audio value API, Scalar path).** `VividAudioContext` exposes
+`values`/`value_outputs` — audio operators can read audio + control inputs and write the audio output via the
+value API, backed by the existing audio-buffer transport (RT-safe, additive). `make_audio_value_output`
+(provided-buffer model, like textures: `resize` returns the runtime block, `commit` no-op). The Scalar audio
+path (`process_normal_audio_node`) populates the value views per block (pre-allocated fields only — no
+alloc/lock). `AudioGainValueOp` + offline `test_audio_value_api` drive the real audio executor (mono 0.5 →
+×2 → 1.0 on the Scalar path). The value API now spans every payload across **both cadences** (frame + audio)
+for the scalar path. 10 audio/lane/frame/gpu/value tests green; audio path + all operators unchanged.
+
+**Deferred to 5b:** lifted/loopbased (polyphonic) audio value views; the `BridgeValueSlot` cross-cadence
+wiring (audio↔frame value transport — the first real `ValueArena` execution consumer).
+
+Original Phase-5 spec:
+
 Move audio execution and cross-cadence transport to the same value model.
 
 - Replace audio lane metadata with value views plus audio payload layout.
