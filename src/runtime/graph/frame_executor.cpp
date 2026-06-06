@@ -228,27 +228,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                     ? cn.input_lane_sets[p].lane_set_id : 0;
             cn.c_in_lane_views[p].flags = 0;
         }
-        // Value-view input staging (Phase 4a): alias the same lane data + the
-        // compile-time value envelope (Pass 2.7). Runtime multiplicity/count come
-        // from the materialized lane length.
-        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            const auto& ref = cn.input_lane_refs[p];
-            VividValueView& vv = cn.c_in_value_views[p];
-            vv.data        = ref.data();
-            vv.value_count = ref.length();
-            if (p < cn.input_value_envelopes.size()) {
-                vv.value_type    = cn.input_value_envelopes[p].value_type;
-                vv.identity_mode = cn.input_value_envelopes[p].identity_mode;
-                vv.storage_kind  = cn.input_value_envelopes[p].storage_kind;
-            } else {
-                vv.value_type    = VIVID_VALUE_FLOAT;
-                vv.identity_mode = VIVID_IDENTITY_NONE;
-                vv.storage_kind  = VIVID_STORAGE_CPU;
-            }
-            vv.multiplicity = (ref.length() > 1) ? VIVID_MULTIPLICITY_MANY
-                                                 : VIVID_MULTIPLICITY_SCALAR;
-            vv.flags = 0;
-        }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_lane_bufs[p].reset();
         }
@@ -262,6 +241,35 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_string_lane_bufs[p].reset();
+        }
+        // Value-view input staging (Phase 4a float / 4b many-string). Aliases the
+        // same transport the lane views use + the compile-time value envelope
+        // (Pass 2.7); runtime multiplicity/count come from the materialized length.
+        // Placed after the string staging so in_string_lane_ptrs is ready.
+        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
+            VividValueView& vv = cn.c_in_value_views[p];
+            const VividValueType vt = (p < cn.input_value_envelopes.size())
+                ? cn.input_value_envelopes[p].value_type : VIVID_VALUE_FLOAT;
+            if (vt == VIVID_VALUE_STRING) {
+                vv.data        = cn.in_string_lane_ptrs[p].data();  // const char* const*
+                vv.value_count = static_cast<uint32_t>(cn.input_string_lanes[p].size());
+            } else {
+                const auto& ref = cn.input_lane_refs[p];
+                vv.data        = ref.data();
+                vv.value_count = ref.length();
+            }
+            if (p < cn.input_value_envelopes.size()) {
+                vv.value_type    = cn.input_value_envelopes[p].value_type;
+                vv.identity_mode = cn.input_value_envelopes[p].identity_mode;
+                vv.storage_kind  = cn.input_value_envelopes[p].storage_kind;
+            } else {
+                vv.value_type    = VIVID_VALUE_FLOAT;
+                vv.identity_mode = VIVID_IDENTITY_NONE;
+                vv.storage_kind  = VIVID_STORAGE_CPU;
+            }
+            vv.multiplicity = (vv.value_count > 1) ? VIVID_MULTIPLICITY_MANY
+                                                   : VIVID_MULTIPLICITY_SCALAR;
+            vv.flags = 0;
         }
         std::fill(cn.custom_output_buf.begin(), cn.custom_output_buf.end(), nullptr);
 
