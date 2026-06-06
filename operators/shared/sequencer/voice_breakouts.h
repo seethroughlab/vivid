@@ -192,4 +192,69 @@ inline uint32_t emit_voice_breakouts(const vivid::VoiceTable<N>& alloc,
     return static_cast<uint32_t>(count);
 }
 
+// ---------------------------------------------------------------------------
+// Value-API overloads (lane-value clean-break, Phase 6). Identical sort + emit,
+// writing through VividValueOutput (the successor to VividLaneOutput) over the
+// SAME backing buffers — behavior-identical. value_outs[] is indexed by
+// VoiceBreakoutLane; callers pass `ctx->value_outputs + first_voice_lane_port`.
+// ---------------------------------------------------------------------------
+template <typename SlotT>
+inline void emit_voice_breakouts_from_sorted(
+    const SlotT* slots, const int* sorted, int count,
+    VividValueOutput value_outs[kVoiceBreakoutLaneCount]) {
+    static_assert(std::is_base_of<vivid::VoiceSlot, SlotT>::value,
+                  "SlotT must derive from vivid::VoiceSlot");
+    auto emit = [&](int lane_idx, auto value_for_slot) {
+        VividValueOutput& out = value_outs[lane_idx];
+        if (!out.resize || !out.handle) return;
+        float* buf = static_cast<float*>(out.resize(out.handle, static_cast<uint32_t>(count)));
+        if (buf) {
+            for (int i = 0; i < count; ++i) {
+                buf[i] = value_for_slot(static_cast<const vivid::VoiceSlot&>(
+                    slots[sorted[i]]));
+            }
+        }
+        if (out.commit) out.commit(out.handle, static_cast<uint32_t>(count));
+    };
+    emit(kVoiceBreakoutIds,
+         [](const vivid::VoiceSlot& s) { return static_cast<float>(s.note_id); });
+    emit(kVoiceBreakoutGates,
+         [](const vivid::VoiceSlot& s) { return s.gate ? 1.0f : 0.0f; });
+    emit(kVoiceBreakoutVelocities,
+         [](const vivid::VoiceSlot& s) { return s.velocity; });
+    emit(kVoiceBreakoutFreqs,
+         [](const vivid::VoiceSlot& s) { return voice_freq_hz(s); });
+    emit(kVoiceBreakoutPitchBend,
+         [](const vivid::VoiceSlot& s) { return s.pitch_bend_semis; });
+    emit(kVoiceBreakoutPressure,
+         [](const vivid::VoiceSlot& s) { return s.pressure; });
+    emit(kVoiceBreakoutTimbre,
+         [](const vivid::VoiceSlot& s) { return s.timbre; });
+}
+
+template <typename SlotT>
+inline uint32_t emit_voice_breakouts(const SlotT* slots, int capacity,
+                                     VividValueOutput value_outs[kVoiceBreakoutLaneCount],
+                                     int* sorted_out = nullptr) {
+    static_assert(std::is_base_of<vivid::VoiceSlot, SlotT>::value,
+                  "SlotT must derive from vivid::VoiceSlot");
+    constexpr int kMaxSlots = 64;
+    int sorted[kMaxSlots];
+    int count = collect_sorted_voice_indices(slots, capacity, sorted, kMaxSlots);
+    emit_voice_breakouts_from_sorted(slots, sorted, count, value_outs);
+    if (sorted_out) {
+        for (int i = 0; i < count; ++i) sorted_out[i] = sorted[i];
+    }
+    return static_cast<uint32_t>(count);
+}
+
+template <int N>
+inline uint32_t emit_voice_breakouts(const vivid::VoiceTable<N>& alloc,
+                                     VividValueOutput value_outs[kVoiceBreakoutLaneCount]) {
+    int sorted[N];
+    int count = collect_sorted_voice_indices(alloc.slots, N, sorted, N);
+    emit_voice_breakouts_from_sorted(alloc.slots, sorted, count, value_outs);
+    return static_cast<uint32_t>(count);
+}
+
 }  // namespace vivid_sequencers

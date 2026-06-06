@@ -126,21 +126,20 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
             },
             [](int, VividNoteEventType, float) {});
 
-        // Emit all 7 breakout lanes (Phase 2 + Phase 4).
-        // ctx->output_lanes[] is indexed by overall OUTPUT port position.
-        // Output port order: notes_out(0, custom_ref), then the 7 lane
-        // outputs at indices 1..7.
-        if (ctx->output_lanes) {
-            VividLaneOutput lanes[vivid_sequencers::kVoiceBreakoutLaneCount] = {
-                ctx->output_lanes[1],  // voice_ids
-                ctx->output_lanes[2],  // voice_gates
-                ctx->output_lanes[3],  // voice_velocities
-                ctx->output_lanes[4],  // voice_freqs
-                ctx->output_lanes[5],  // voice_pitch_bend
-                ctx->output_lanes[6],  // voice_pressure
-                ctx->output_lanes[7],  // voice_timbre
+        // Emit all 7 breakout lanes (Phase 2 + Phase 4) via the value API.
+        // ctx->value_outputs[] is indexed by overall OUTPUT port position.
+        // Output port order: notes_out(0, custom_ref), then the 7 outputs at 1..7.
+        if (ctx->value_outputs) {
+            VividValueOutput value_outs[vivid_sequencers::kVoiceBreakoutLaneCount] = {
+                ctx->value_outputs[1],  // voice_ids
+                ctx->value_outputs[2],  // voice_gates
+                ctx->value_outputs[3],  // voice_velocities
+                ctx->value_outputs[4],  // voice_freqs
+                ctx->value_outputs[5],  // voice_pitch_bend
+                ctx->value_outputs[6],  // voice_pressure
+                ctx->value_outputs[7],  // voice_timbre
             };
-            vivid_sequencers::emit_voice_breakouts(alloc_, lanes);
+            vivid_sequencers::emit_voice_breakouts(alloc_, value_outs);
         }
 
         frame_counter_ += ctx->buffer_size;

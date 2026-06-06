@@ -12,7 +12,7 @@ struct Sequencer : SequencerCore, vivid::AudioProcessable {
         };
         float local_out[3] = {};
         compute(local_in, ctx->delta_time,
-                ctx->input_lanes, local_out,
+                ctx->values, local_out,
                 ctx->custom_outputs, ctx->custom_output_count,
                 vivid::metronome_transport(ctx));
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {

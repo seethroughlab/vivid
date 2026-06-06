@@ -191,7 +191,7 @@ struct SequencerCore : vivid::OperatorBase {
     }
 
     void compute(const float* input_values, double delta_time,
-                 const VividLaneView* in_lanes, float* output_values,
+                 const VividValueView* values, float* output_values,
                  void** custom_outputs, uint32_t custom_output_count,
                  const vivid::MetronomeTransport& metronome) {
         float dt = static_cast<float>(delta_time);
@@ -206,13 +206,19 @@ struct SequencerCore : vivid::OperatorBase {
         uint32_t prob_len = 0;
         const float* ratch_data = nullptr;
         uint32_t ratch_len = 0;
-        if (use_external && in_lanes) {
-            val_len   = in_lanes[0].length;
-            val_data  = in_lanes[0].data;
-            prob_len  = in_lanes[1].length;
-            prob_data = in_lanes[1].data;
-            ratch_len = in_lanes[2].length;
-            ratch_data = in_lanes[2].data;
+        // External lane-array inputs via the value API: values (input port 3),
+        // probs (4), ratchets (5). NOTE: the legacy code read in_lanes[0]/[1]/[2],
+        // but the lane views are full-input-ordinal-indexed, so [0]/[1]/[2] were
+        // the beat_phase/reset/gate scalar ports (empty lanes) and external mode
+        // was effectively dead. Reading the actual lane-array ports (3/4/5) via
+        // ctx->values fixes that latent indexing bug.
+        if (use_external && values) {
+            val_data  = vivid_value_floats(&values[3]);
+            val_len   = vivid_value_count(&values[3]);
+            prob_data = vivid_value_floats(&values[4]);
+            prob_len  = vivid_value_count(&values[4]);
+            ratch_data = vivid_value_floats(&values[5]);
+            ratch_len = vivid_value_count(&values[5]);
         }
 
         // Phase computation

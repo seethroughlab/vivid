@@ -38,6 +38,12 @@ struct LaneOutBuf {
         self->data.assign(len, 0.0f);
         return self->data.data();
     }
+    // Value-API resize (NoteBreakout now writes via VividValueOutput).
+    static void* resize_value_cb(void* h, uint32_t len) {
+        auto* self = static_cast<LaneOutBuf*>(h);
+        self->data.assign(len, 0.0f);
+        return self->data.data();
+    }
     static void commit_cb(void* /*h*/, uint32_t /*len*/) {}
 };
 
@@ -56,7 +62,7 @@ struct Harness {
     // output_lanes is indexed by overall output port ordinal. NoteBreakout has
     // 8 output ports: notes_out (custom ref, ordinal 0) + 7 lane arrays (1-7).
     // Slot 0 is unused (notes_out is a custom ref port, not a lane array).
-    VividLaneOutput lane_outputs[8] = {};
+    VividValueOutput value_outputs[8] = {};
 
     VividNoteBuffer notes{};
     void* custom_inputs[1] = {&notes};
@@ -70,15 +76,16 @@ struct Harness {
         ctx.lane_state_service = nullptr;
         ctx.lane_id            = 1;
 
-        // lane_outputs[0] is the slot for notes_out (custom ref) — left as zero.
-        lane_outputs[1] = {&voice_ids_buf,         LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_gates_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_velocities_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[4] = {&voice_freqs_buf,       LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[5] = {&voice_pitch_bend_buf,  LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[6] = {&voice_pressure_buf,    LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[7] = {&voice_timbre_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        ctx.output_lanes = lane_outputs;
+        // value_outputs[0] is the slot for notes_out (custom ref) — left as zero.
+        // {handle, resize, commit, set_string}
+        value_outputs[1] = {&voice_ids_buf,        LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[2] = {&voice_gates_buf,      LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[3] = {&voice_velocities_buf, LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[4] = {&voice_freqs_buf,      LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[5] = {&voice_pitch_bend_buf, LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[6] = {&voice_pressure_buf,   LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[7] = {&voice_timbre_buf,     LaneOutBuf::resize_value_cb, LaneOutBuf::commit_cb, nullptr};
+        ctx.value_outputs = value_outputs;
 
         ctx.custom_inputs      = custom_inputs;
         ctx.custom_input_count = 1;

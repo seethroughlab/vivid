@@ -51,7 +51,7 @@ int compute_frame_and_count(TestDrum& drum, const std::vector<float>& params,
     VividNoteBuffer buf{};
     void* custom_outs[1] = {&buf};
     float output[1] = {};
-    VividLaneOutput lane_dummy{};
+    VividValueOutput lane_dummy{};
     auto* mutable_params = const_cast<float*>(params.data());
     // compute() expects the custom_outputs slot to point to the operator's
     // own midi_buf_; the core overwrites that slot with its own buffer ptr.
@@ -256,7 +256,7 @@ int main() {
         VividNoteBuffer buf{};
         void* custom[1] = {&buf};
         float out[2] = {};
-        VividLaneOutput lane_dummy{};
+        VividValueOutput lane_dummy{};
         drum.compute(0.02f, 0.0f, 0.0, 4,
                      params.data(), out, &lane_dummy, custom, 1);
 
@@ -285,7 +285,7 @@ int main() {
         void* custom[7] = {&bufs[0], &bufs[1], &bufs[2], &bufs[3],
                            &bufs[4], &bufs[5], &bufs[6]};
         float out[2] = {};
-        VividLaneOutput lane_dummy{};
+        VividValueOutput lane_dummy{};
 
         // Step 0 tick — kick fires. Start at phase 0 so the first-frame
         // clock_mode reset lands phase_offset_ at 0 and later phases map

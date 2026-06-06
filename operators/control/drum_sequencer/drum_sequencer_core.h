@@ -474,7 +474,7 @@ struct DrumSequencerCore : vivid::OperatorBase {
     void compute(float phase, float reset_in,
                  double beats_elapsed, int beats_per_bar,
                  const float* params,
-                 float* output_values, VividLaneOutput* out_spreads,
+                 float* output_values, VividValueOutput* out_spreads,
                  void** custom_outputs, uint32_t custom_output_count);
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
 

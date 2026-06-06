@@ -56,7 +56,7 @@ StepResult drive(TestDrum& d, std::vector<float>& params, float phase,
     void* custom[7] = {&bufs[0], &bufs[1], &bufs[2], &bufs[3],
                        &bufs[4], &bufs[5], &bufs[6]};
     float output[2] = {};
-    VividLaneOutput lane_dummy{};
+    VividValueOutput lane_dummy{};
     d.compute(phase, reset_in, 0.0, 4, params.data(),
               output, &lane_dummy, custom, 7);
     StepResult r{};

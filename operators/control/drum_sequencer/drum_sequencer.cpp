@@ -13,7 +13,7 @@ struct DrumSequencer : DrumSequencerCore, vivid::AudioProcessable {
         float reset = vivid::audio_scalar_block_start(ctx, 1);
         compute(beat_phase, reset, m.beats_elapsed, m.beats_per_bar,
                 ctx->param_values,
-                local_out, ctx->output_lanes,
+                local_out, ctx->value_outputs,
                 ctx->custom_outputs, ctx->custom_output_count);
         // Runtime sizes output_buffers[] from collect_ports(), so both
         // scalar outputs are guaranteed allocated.

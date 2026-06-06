@@ -115,17 +115,22 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         float cutoff_cv_val    = ctx->input_buffers[1] ? ctx->input_buffers[1][0] : 0.0f;
         float resonance_cv_val = ctx->input_buffers[2] ? ctx->input_buffers[2][0] : 0.0f;
 
-        // Lane-array inputs (computed once, shared across channels)
+        // Lane-array inputs via the value API: cutoff_mod (input port 3) +
+        // frequencies (input port 4), indexed by lane_index. NOTE: the legacy
+        // code read ctx->input_lanes[0]/[1], but the lane views are full-input-
+        // ordinal-indexed, so [0]/[1] were the audio/cutoff_cv ports (empty lanes)
+        // and the per-lane modulation was effectively dead. Reading the actual
+        // lane-array ports (3/4) via ctx->values fixes that latent indexing bug.
         float cutoff_mod_val = 0.0f;
         float voice_freq = 0.0f;
-        if (ctx->input_lanes) {
+        if (ctx->values) {
             uint32_t ci = ctx->lane_index;
-            auto& cutoff_mod_sp = ctx->input_lanes[0];
-            if (cutoff_mod_sp.data && ci < cutoff_mod_sp.length)
-                cutoff_mod_val = cutoff_mod_sp.data[ci];
-            auto& freq_sp = ctx->input_lanes[1];
-            if (freq_sp.data && ci < freq_sp.length)
-                voice_freq = freq_sp.data[ci];
+            const float* cm = vivid_value_floats(&ctx->values[3]);
+            uint32_t cm_n = vivid_value_count(&ctx->values[3]);
+            if (cm && ci < cm_n) cutoff_mod_val = cm[ci];
+            const float* fr = vivid_value_floats(&ctx->values[4]);
+            uint32_t fr_n = vivid_value_count(&ctx->values[4]);
+            if (fr && ci < fr_n) voice_freq = fr[ci];
         }
 
         float mod_cutoff = cutoff.value;
