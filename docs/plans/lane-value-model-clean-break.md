@@ -165,11 +165,19 @@ the Pass-2.7 envelope. Proven by `ValueGainOp` (kMultiplicityBehavior=Map) + `te
 through real frame execution (scalar + many). The lane path, all ~152 operators, and behavior are unchanged;
 23 value/lane/frame/graph/demo tests green.
 
-**Deferred to 4b/5/6/7:** string + custom value outputs (back `set_string`/custom via a `ValueArena`
-`ValueBuffer` — Phase 3's substrate gets its execution consumer); behavior-specific executor paths
-(Map/Reduce/Generate/Collect as distinct logic; identity through map/preserve — 4a runs the value API through
-the existing strategy/exec path); GPU value routing; audio executor + bridge (Phase 5); migrating the seed
-operators (Phase 6); removing `input_lane_refs`/lane views (Phase 7).
+**Phase 4b — ✅ DONE 2026-06-05 (frame value API, many-string).** Extends 4a to the `STRING_LANES` payload —
+the clean mirror of float lanes, backed by the existing `StringLaneBuffer` transport
+(`make_string_value_output()`; per-output-port backing chosen by port type in `graph_compiler_init`; the
+per-tick value-view input staging now points string ports at `in_string_lane_ptrs`). `StringValueEchoOp`
+(kMultiplicityBehavior=Map) + `test_frame_value_api_string` prove the value API round-trips many strings
+through real frame execution and interoperates with string-lane neighbors. Float (4a) + many-string (4b) both
+flow through the value API; engine unchanged; 23 + 3 tests green.
+
+**Deferred to 4c/5/6/7:** scalar `VIVID_PORT_STRING` value I/O (the `output_string_values` path) + custom
+value outputs (a `ValueArena` `ValueBuffer` — Phase 3's substrate gets its execution consumer); behavior-
+specific executor paths (Map/Reduce/Generate/Collect as distinct logic; identity through map/preserve — 4a/4b
+run through the existing strategy/exec path); GPU value routing; audio executor + bridge (Phase 5); migrating
+the seed operators (Phase 6); removing `input_lane_refs`/lane views (Phase 7).
 
 Original Phase-4 spec:
 
