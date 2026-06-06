@@ -584,6 +584,15 @@ target_link_libraries(test_lane_propagation PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_test(NAME test_lane_propagation COMMAND test_lane_propagation WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Value-flow inference (lane-value clean-break, Phase 2).
+add_executable(test_value_flow
+    tests/lanes/test_value_flow.cpp
+)
+target_include_directories(test_value_flow PRIVATE src tests)
+target_link_libraries(test_value_flow PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_test(NAME test_value_flow COMMAND test_value_flow WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_lane_state tests/lanes/test_lane_state.cpp)
 target_include_directories(test_lane_state PRIVATE src tests)
 target_link_libraries(test_lane_state PRIVATE vivid_runtime_testlib vivid_operator_api)
