@@ -173,11 +173,20 @@ per-tick value-view input staging now points string ports at `in_string_lane_ptr
 through real frame execution and interoperates with string-lane neighbors. Float (4a) + many-string (4b) both
 flow through the value API; engine unchanged; 23 + 3 tests green.
 
-**Deferred to 4c/5/6/7:** scalar `VIVID_PORT_STRING` value I/O (the `output_string_values` path) + custom
-value outputs (a `ValueArena` `ValueBuffer` — Phase 3's substrate gets its execution consumer); behavior-
-specific executor paths (Map/Reduce/Generate/Collect as distinct logic; identity through map/preserve — 4a/4b
-run through the existing strategy/exec path); GPU value routing; audio executor + bridge (Phase 5); migrating
-the seed operators (Phase 6); removing `input_lane_refs`/lane views (Phase 7).
+**Phase 4c — ✅ DONE 2026-06-05 (GPU value routing).** Extends the value API to the GPU/texture domain:
+`VividGpuContext` exposes `values`/`value_outputs`. Texture inputs become `VividValueView` carrying the
+resolved WGPUTextureView handle (`value_type=TEXTURE`, scalar, storage=GPU); float/string ports keep the
+4a/4b views; the primary texture output is a `VividValueOutput` whose `resize()` returns the runtime render
+target (`make_texture_value_output`, commit no-op). `GpuValueFillOp` + headless `test_gpu_value_api` prove the
+texture OUTPUT (readback RED) + texture INPUT value view + interop (fill_b detects fill_a's texture via
+`ctx->values`, renders GREEN). 18 gpu/lane/frame/value tests green; GPU path + all operators unchanged. The
+frame value API now spans float + many-string + texture/GPU.
+
+**Deferred to 4d/5/6/7:** scalar `VIVID_PORT_STRING` value I/O (the `output_string_values` path) + custom
+value outputs (a `ValueArena` `ValueBuffer` — Phase 3's substrate gets its execution consumer); aux/multi-
+texture + many-texture multiplicity; behavior-specific executor paths (Map/Reduce/Generate/Collect as distinct
+logic; identity through map/preserve — 4a-c run through the existing strategy/exec path); audio executor +
+bridge (Phase 5); migrating the seed operators (Phase 6); removing `input_lane_refs`/lane views (Phase 7).
 
 Original Phase-4 spec:
 
