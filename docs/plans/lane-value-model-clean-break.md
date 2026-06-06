@@ -212,8 +212,17 @@ alloc/lock). `AudioGainValueOp` + offline `test_audio_value_api` drive the real 
 ×2 → 1.0 on the Scalar path). The value API now spans every payload across **both cadences** (frame + audio)
 for the scalar path. 10 audio/lane/frame/gpu/value tests green; audio path + all operators unchanged.
 
-**Deferred to 5b:** lifted/loopbased (polyphonic) audio value views; the `BridgeValueSlot` cross-cadence
-wiring (audio↔frame value transport — the first real `ValueArena` execution consumer).
+**Phase 5b — ✅ DONE 2026-06-06 (audio value API, lifted/loopbased).** Factors 5a's population into a shared
+RT-safe `populate_audio_value_views(ctx, cn)` called in all three audio paths (Scalar/InstancePerLane/
+LoopBased), so polyphonic/per-lane audio operators get per-lane value views (the executor's Map over the Many
+input → per-lane Scalar view). `test_audio_value_api` extended with the InstancePerLane case (4ch source →
+mono value-API gain lifted to 4 → per-lane `(c+1)*0.1*2`). 17 tests green. **The value API is now COMPLETE**
+— every payload (float/string/texture/audio), both cadences (frame/audio), all strategies
+(scalar/lifted/loopbased) — the precondition for Phase 6.
+
+**Deferred to Phase 7:** the `BridgeValueSlot`/`ValueArena` native cross-cadence transport (the first real
+`ValueArena` execution consumer) — lands at the removal/convergence when execution consumes value storage
+instead of lane buffers; additive now would be dead storage.
 
 Original Phase-5 spec:
 
