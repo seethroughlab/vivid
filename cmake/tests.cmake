@@ -55,6 +55,7 @@ add_library(vivid_runtime_testlib STATIC
     src/runtime/graph/graph_compiler_planning.cpp
     src/runtime/graph/graph_compiler_reload.cpp
     src/runtime/graph/lane_buffer_gpu.cpp
+    src/runtime/graph/value_buffer_gpu.cpp
     src/runtime/graph/port_type_registry.cpp
     src/runtime/graph/subgraph_module.cpp
     src/runtime/operators/builtin_operators.cpp

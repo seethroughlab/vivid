@@ -7,6 +7,7 @@
 #include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/graph/lane_types.h"
 #include "runtime/graph/lane_buffer.h"
+#include "runtime/graph/value_buffer.h"
 #include "runtime/graph/lane_output_adapter.h"
 #include <algorithm>
 #include <array>
@@ -427,7 +428,14 @@ struct CompiledNode {
     std::vector<const char*> c_output_string_values;
 
     // ── Spread state ────────────────────────────────────────────────────────
-    // Canonical lane transport (LaneBufferRef-based, zero-copy).
+    // Canonical value transport (ValueRef-based, zero-copy; lane-value clean-break
+    // Phase 7a). The frame executor reads/writes these; the lane_refs below are a
+    // shim kept populated for the (still-live) audio executor + bridge until 7b.
+    std::vector<ValueRef> input_value_refs;
+    std::vector<ValueRef> output_value_refs;
+    std::vector<ValueBuffer> out_value_bufs;   // node-local float output buffers
+
+    // Legacy lane transport (LaneBufferRef-based) — shim during 7a, removed 7d.
     std::vector<LaneBufferRef> input_lane_refs;
     std::vector<LaneBufferRef> output_lane_refs;
 

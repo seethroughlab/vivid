@@ -2,8 +2,32 @@
 
 #include "operator_api/types.h"
 #include "lane_buffer.h"
+#include "value_buffer.h"
 
 namespace vivid {
+
+// ---- Native value-buffer float output (Phase 7) ----
+// A float VividValueOutput backed by a ValueBuffer (the native value transport,
+// successor to the LaneBuffer-backed overload below). ensure()+floats_ptr() is
+// RT-safe: a fixed (audio) buffer returns nullptr rather than allocating.
+
+inline void* value_buffer_output_resize_fn(void* handle, uint32_t count) {
+    auto* b = static_cast<ValueBuffer*>(handle);
+    return b->ensure(count) ? static_cast<void*>(b->floats_ptr()) : nullptr;
+}
+
+inline void value_buffer_output_commit_fn(void* handle, uint32_t count) {
+    static_cast<ValueBuffer*>(handle)->commit(count);
+}
+
+inline VividValueOutput make_value_output(ValueBuffer* buf) {
+    VividValueOutput out{};
+    out.handle = buf;
+    out.resize = value_buffer_output_resize_fn;
+    out.commit = value_buffer_output_commit_fn;
+    out.set_string = nullptr;
+    return out;
+}
 
 // ---------------------------------------------------------------------------
 // Trampoline bridging VividValueOutput (lane-value clean-break, Phase 4) to a

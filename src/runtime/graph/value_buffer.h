@@ -7,7 +7,20 @@
 
 #include "runtime/graph/lane_types.h"  // ValueEnvelope, VividValueType/Multiplicity
 
+// Forward-declare WebGPU buffer handle (avoids pulling webgpu.h into audio paths).
+struct WGPUBufferImpl;
+typedef WGPUBufferImpl* WGPUBuffer;
+
 namespace vivid {
+
+// GPU backing state for value buffers (mirrors the lane path; lane-value
+// clean-break Phase 7). CpuOnly until a GPU consumer promotes the buffer.
+enum class ValueGpuBacking : uint8_t {
+    CpuOnly = 0,  // no GPU buffer allocated
+    CpuDirty,     // CPU has newer data, GPU buffer exists but stale
+    GpuDirty,     // GPU has newer data (future: GPU compute producers)
+    Synced,       // CPU and GPU hold identical data
+};
 
 // ---------------------------------------------------------------------------
 // ValueBuffer — unified storage for one value (scalar or many) of a CPU payload
@@ -30,11 +43,18 @@ struct ValueBuffer {
     std::vector<std::string>  strings;           // STRING
     std::vector<uint8_t>      bytes;             // CUSTOM (by value)
     uint32_t                  committed_count = 0;
+    uint32_t                  lane_set_id = 0;   // provenance (carried through propagation)
     std::atomic<uint32_t>     ref_count{0};
     bool                      pool_owned = false;
     // When true, ensure() may grow even if pool-owned. Set only for frame-thread
     // arenas; audio-thread arenas leave it false to preserve no-alloc RT safety.
     bool                      allow_grow = false;
+
+    // GPU storage-buffer backing (FLOAT/AUDIO payloads). CpuOnly by default;
+    // promoted by value_buffer_ensure_gpu() on the frame thread.
+    ValueGpuBacking           gpu_backing = ValueGpuBacking::CpuOnly;
+    WGPUBuffer                gpu_buffer = nullptr;
+    uint32_t                  gpu_buffer_capacity = 0;  // allocated size in floats
 
     explicit ValueBuffer(VividValueType vt = VIVID_VALUE_FLOAT, uint32_t capacity = 0) {
         envelope.value_type = vt;
@@ -48,6 +68,7 @@ struct ValueBuffer {
     // Non-copyable (atomic member), movable for container use.
     ValueBuffer(const ValueBuffer&) = delete;
     ValueBuffer& operator=(const ValueBuffer&) = delete;
+    ~ValueBuffer() { if (gpu_buffer) release_gpu(); }
 
     ValueBuffer(ValueBuffer&& o) noexcept
         : envelope(o.envelope)
@@ -55,24 +76,39 @@ struct ValueBuffer {
         , strings(std::move(o.strings))
         , bytes(std::move(o.bytes))
         , committed_count(o.committed_count)
+        , lane_set_id(o.lane_set_id)
         , ref_count(o.ref_count.load(std::memory_order_relaxed))
         , pool_owned(o.pool_owned)
-        , allow_grow(o.allow_grow) {
+        , allow_grow(o.allow_grow)
+        , gpu_backing(o.gpu_backing)
+        , gpu_buffer(o.gpu_buffer)
+        , gpu_buffer_capacity(o.gpu_buffer_capacity) {
         o.committed_count = 0;
         o.ref_count.store(0, std::memory_order_relaxed);
+        o.gpu_buffer = nullptr;
+        o.gpu_backing = ValueGpuBacking::CpuOnly;
+        o.gpu_buffer_capacity = 0;
     }
     ValueBuffer& operator=(ValueBuffer&& o) noexcept {
         if (this != &o) {
+            if (gpu_buffer) release_gpu();
             envelope = o.envelope;
             floats = std::move(o.floats);
             strings = std::move(o.strings);
             bytes = std::move(o.bytes);
             committed_count = o.committed_count;
+            lane_set_id = o.lane_set_id;
             ref_count.store(o.ref_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
             pool_owned = o.pool_owned;
             allow_grow = o.allow_grow;
+            gpu_backing = o.gpu_backing;
+            gpu_buffer = o.gpu_buffer;
+            gpu_buffer_capacity = o.gpu_buffer_capacity;
             o.committed_count = 0;
             o.ref_count.store(0, std::memory_order_relaxed);
+            o.gpu_buffer = nullptr;
+            o.gpu_backing = ValueGpuBacking::CpuOnly;
+            o.gpu_buffer_capacity = 0;
         }
         return *this;
     }
@@ -119,9 +155,17 @@ struct ValueBuffer {
         envelope.value_count  = committed_count;
         envelope.multiplicity = (committed_count > 1) ? VIVID_MULTIPLICITY_MANY
                                                        : VIVID_MULTIPLICITY_SCALAR;
+        if (gpu_buffer) gpu_backing = ValueGpuBacking::CpuDirty;
     }
 
-    void reset() { committed_count = 0; }
+    void reset() {
+        committed_count = 0;
+        if (gpu_buffer) release_gpu();
+    }
+
+    // Release GPU storage buffer. Safe to call even if none exists. Defined in
+    // value_buffer_gpu.cpp to keep webgpu.h out of audio-path headers.
+    void release_gpu();
 };
 
 // ---------------------------------------------------------------------------
@@ -160,5 +204,11 @@ struct ValueRef {
     const float* floats() const { return buf ? buf->floats.data() : nullptr; }
     bool empty() const { return !buf || buf->committed_count == 0; }
 };
+
+// Create a ref to a node-local (non-pool) ValueBuffer. The buffer must outlive
+// all refs — guaranteed for CompiledNode::out_value_bufs during execution.
+inline ValueRef make_ref_from_existing(ValueBuffer* buf) {
+    return ValueRef(buf);
+}
 
 } // namespace vivid

@@ -143,6 +143,16 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
 
+    // Native value transport (lane-value clean-break Phase 7a). Node-local
+    // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).
+    cn.input_value_refs.resize(cn.input_port_count);
+    cn.output_value_refs.resize(cn.output_port_count);
+    cn.out_value_bufs.clear();
+    cn.out_value_bufs.reserve(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
+                                       graph_compiler_internal::kDefaultLaneCapacity);
+
     // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
     // backed by the SAME transport the lane path uses (float→out_lane_bufs,
     // string→out_string_lane_bufs) so value-API + lane-API operators interoperate.

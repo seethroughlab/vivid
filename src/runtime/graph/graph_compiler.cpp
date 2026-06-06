@@ -273,6 +273,15 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
 
+            // Native value transport (Phase 7a) — mirror init_frame_state.
+            cn.input_value_refs.resize(cn.input_port_count);
+            cn.output_value_refs.resize(cn.output_port_count);
+            cn.out_value_bufs.clear();
+            cn.out_value_bufs.reserve(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
+                                               graph_compiler_internal::kDefaultLaneCapacity);
+
             cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
