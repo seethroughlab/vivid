@@ -9,18 +9,27 @@ Every operator must:
 4. Override `collect_params()` and `collect_ports()` to declare params and ports
 5. Override the capability-specific process method
 
-Optionally declare lane behavior (defaults to `VIVID_LANE_POINTWISE` if omitted):
+Optionally declare **multiplicity behavior** — how the operator transforms "many"
+values (defaults to `VIVID_MULTIPLICITY_MAP` if omitted):
 ```cpp
-static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
+static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
 ```
 
-Lane behavior classes:
+Multiplicity behaviors (the value model — see `docs/runtime/value-model.md`):
 | Constant | Meaning |
 |----------|---------|
-| `VIVID_LANE_POINTWISE` | Processes each lane independently (default). Runtime may lift to N lanes. |
-| `VIVID_LANE_STRUCTURAL` | Creates, reshapes, or filters lane sets (e.g., voice allocator, collection generator). |
-| `VIVID_LANE_REDUCTION` | Collapses many lanes into fewer (e.g., voice mixer, sum). |
-| `VIVID_LANE_KERNEL` | Reads full lane set with cross-lane access (e.g., smoothing, convolution). |
+| `VIVID_MULTIPLICITY_MAP` | Many(N) → Many(N), per-element (default). Runtime may lift per element. |
+| `VIVID_MULTIPLICITY_GENERATE` | 1 → Many(M): mints a new collection (e.g., voice allocator, spread). |
+| `VIVID_MULTIPLICITY_COLLECT` | several scalars → Many(K): gathers inputs into a collection. |
+| `VIVID_MULTIPLICITY_REDUCE` | Many(N) → 1: collapses (e.g., voice mixer, sum). |
+| `VIVID_MULTIPLICITY_PRESERVE` | Many(N) → Many(N) pass-through (no per-element compute). |
+| `VIVID_MULTIPLICITY_KERNEL` | sees the whole collection at once (cross-element / neighborhood). |
+| `VIVID_MULTIPLICITY_SCALAR_ONLY` | scalar 1 → 1 only. |
+
+> **Legacy (removed in clean-break Phase 7):** the old `kLaneBehavior`
+> (`VIVID_LANE_POINTWISE`/`STRUCTURAL`/`REDUCTION`/`KERNEL`) still compiles and maps onto
+> the behaviors above (POINTWISE→Map, STRUCTURAL→Generate, REDUCTION→Reduce, KERNEL→Kernel),
+> but new operators should declare `kMultiplicityBehavior`.
 
 ```cpp
 #include "operator_api/operator.h"
@@ -68,9 +77,12 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 | `VIVID_PORT_SCALAR` | `control_float` | Scalar control signals |
 | `VIVID_PORT_AUDIO_BUFFER` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
-| `VIVID_PORT_LANE_ARRAY` | lane array | Variable-length float arrays (lane-bearing data transport) |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
-| `VIVID_PORT_STRING_LANES` | string lanes | Variable-length string arrays |
+| `VIVID_PORT_LANE_ARRAY` | lane array | Many float values (legacy port type — removed in Phase 7; a port becomes a payload type that may carry Scalar **or** Many via the value model) |
+| `VIVID_PORT_STRING_LANES` | string lanes | Many string values (legacy — see above) |
+
+Read/write port data via the **value API** (`#include "operator_api/value_view.h"`):
+`vivid_value_floats(&ctx->values[p])` + `vivid_value_count(...)` to read; `vivid_value_output_floats(&ctx->value_outputs[p], n)` + `vivid_value_output_commit(...)` to write (strings: `vivid_value_strings` / `vivid_value_output_set_string`). See the per-domain docs for context fields.
 
 ### Custom Types
 

@@ -52,10 +52,22 @@ static std::string tpl_replace(std::string s, const std::string& key, const std:
 static constexpr const char* kOptionalFeaturesComment = R"(
     // --- Optional features (uncomment or add as needed) ---
     // static constexpr bool kTimeDependent = true;           // ctx->time, ctx->delta_time
-    // static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    //
+    // Multiplicity (value model): declare how this operator transforms "many"
+    // values — one of Map / Reduce / Generate / Collect / Preserve / Kernel:
+    //   static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
+    //
+    // Many-valued I/O — the value API (#include "operator_api/value_view.h"):
+    //   read:   const float* v = vivid_value_floats(&ctx->values[port]);
+    //           uint32_t     n = vivid_value_count(&ctx->values[port]);
+    //   write:  float* out = vivid_value_output_floats(&ctx->value_outputs[port], n);
+    //           for (uint32_t i = 0; i < n; ++i) out[i] = /* ... */;
+    //           vivid_value_output_commit(&ctx->value_outputs[port], n);
+    //   (strings: vivid_value_strings / vivid_value_output_set_string)
     //
     // Param types:   int, bool, FilePath, TextValue (e.g. vivid::Param[T])
-    // Port types:    VIVID_PORT_LANE_ARRAY, VIVID_PORT_STRING, VIVID_PORT_TEXTURE
+    // Port types:    VIVID_PORT_STRING, VIVID_PORT_TEXTURE, VIVID_PORT_AUDIO_BUFFER
+    //                (a many-valued output currently declares VIVID_PORT_LANE_ARRAY)
     //
     // Semantic metadata (populated in the ctor or collect_params):
     //   vivid::semantic_tag(%SEMANTIC_TAG_EXAMPLE_PARAM%, "%SEMANTIC_TAG_EXAMPLE_TAG%");
@@ -63,7 +75,7 @@ static constexpr const char* kOptionalFeaturesComment = R"(
     //
     // Thumbnails:    void draw_thumbnail(const VividDrawContext*) override;
     // Child ops:     vivid::ChildOp<LFO> lfo_;  vivid::ChildOp<Smooth> smoother_;
-    // Lane state:    vivid_lane_state() for per-lane persistent storage
+    // Per-element state:  vivid_lane_state() — identity-keyed persistent storage
     //
     // One-shot setup (called once per instance before first process_*):
     //   void prepare_instance_assets() override { /* load dylib assets, …*/ })";

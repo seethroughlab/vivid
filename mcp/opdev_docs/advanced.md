@@ -315,6 +315,13 @@ Reference operators for advanced patterns — study these when implementing spec
 
 ## Lane Behavior and Identity-Bearing Lane Sets
 
+> **Migrating to the value model (clean-break).** The lane system below is **legacy** — it still executes but
+> is removed in Phase 7. New operators declare `kMultiplicityBehavior` (Map/Reduce/Generate/Collect/Preserve/
+> Kernel — the successor to `kLaneBehavior`) and do many-valued I/O via `ctx->values`/`ctx->value_outputs`
+> (`value_view.h`). Identity is a first-class value property (`VividIdentityMode` None/Positional/StableIds);
+> per-element persistent state is still `vivid_lane_state()` (keyed by the identity token). See
+> `docs/runtime/value-model.md` for the full old→new mapping. The sections below describe the legacy mechanics.
+
 ### Declaring Lane Behavior
 
 ```cpp

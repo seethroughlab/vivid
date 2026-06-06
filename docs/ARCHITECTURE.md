@@ -285,6 +285,14 @@ Hot-reload flow: file system watcher (efsw, cross-platform) detects operator sou
 
 ## 5.9 Lanes: Implicit Vectorization
 
+> **Superseded by the value model (clean-break).** The lane mechanics described here still execute but are
+> being replaced by a first-class value model — every value carries payload type + multiplicity (Scalar/Many)
+> + identity + storage, and operators declare a `VividMultiplicityBehavior`. The execution semantics
+> (implicit vectorization, per-element state, reductions) are preserved; the *representation* changes (no
+> special lane port types, lane buffers, or `LaneExecutionStrategy`). The lane API is removed in Phase 7.
+> See `docs/runtime/value-model.md` for the canonical contract + the old→new mapping. This section documents
+> the (still-live) lane mechanics.
+
 **Decision: Every value in the graph can carry multiple parallel elements — lanes.** A single number is a one-lane value. An FFT output is a 512-lane value. When a multi-lane output connects to a single-lane input, the operation automatically vectorizes across all lanes. No explicit loop nodes are needed for the common case.
 
 This is the single most impactful design decision for Vivid's data model. It resolves the instantiation problem that plagues every visual programming environment for creative work: "how do I make 500 particles?" In Vivid, the answer is "connect a 500-lane position value to a rendering operator." Where those lanes came from — a grid generator, an FFT, a MIDI controller, a lane source — doesn't matter. The operator processes all elements.

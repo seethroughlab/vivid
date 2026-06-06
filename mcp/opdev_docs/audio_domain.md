@@ -26,8 +26,10 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `sample_rate` | `uint32_t` | Sample rate (typically 48000) |
 | `input_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
 | `output_channel_counts` | `const uint8_t*` | Per-port channel count (NULL = all mono) |
-| `input_lanes` | `const VividLaneView*` | Cross-cadence lane inputs from control (`.data`, `.length`, `.lane_set_id`, `.flags`) |
-| `output_lanes` | `VividLaneOutput*` | Lane outputs (runtime-owned builder: `.handle`, `.resize()`, `.commit()`) |
+| `values` | `const VividValueView*` | **Value API** — one input value per input port: audio block (`vivid_value_audio`), or a cross-cadence many-valued control input (`vivid_value_floats` + `vivid_value_count`). The canonical input. |
+| `value_outputs` | `VividValueOutput*` | **Value API** — one output builder per output port (audio block via `vivid_value_output_floats`; commit). The canonical output. |
+| `input_lanes` | `const VividLaneView*` | _Legacy (removed Phase 7)_ — use `values` (lane-array control inputs now arrive there). |
+| `output_lanes` | `VividLaneOutput*` | _Legacy (removed Phase 7)_ — use `value_outputs`. |
 | `custom_inputs` | `void**` | Custom-port inputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String inputs |
 | `file_param_values` | `const char**` | File/text param values |
@@ -40,9 +42,13 @@ struct MyAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
 | `allocate_lane_id_fn` | function pointer | Allocate a fresh lane_id (structural operators) |
 | `retire_lane_id_fn` | function pointer | Retire a lane_id for deferred cleanup |
 
-## Lane Lifting
+## Per-element lifting
 
-Mono audio operators that receive multi-channel or multi-lane inputs are automatically **lane-lifted**: the runtime creates N instances and processes each lane independently. Each instance sees `lane_index` identifying its lane and `lane_count` for the total.
+Read inputs via the **value API** (`ctx->values[port]`, `vivid_value_audio` / `vivid_value_floats`) and write
+via `ctx->value_outputs[port]`; a many-valued control input arrives as a `Many` value the operator indexes by
+`lane_index`. (Legacy `input_lanes`/`output_lanes` are removed in Phase 7.)
+
+Mono audio operators that receive multi-channel or multi-lane inputs are automatically **lifted**: the runtime creates N instances and processes each element independently. Each instance sees `lane_index` identifying its element and `lane_count` for the total.
 
 For per-lane persistent state (e.g., oscillator phase), use `vivid_lane_state()`:
 ```cpp
