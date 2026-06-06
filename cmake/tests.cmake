@@ -184,6 +184,8 @@ add_vivid_test_fixture(lane_slew_op           tests/operators/lane_slew_op.cpp C
 add_vivid_test_fixture(identity_lane_source_op tests/operators/identity_lane_source_op.cpp CODEGEN)
 add_vivid_test_fixture(lane_state_tracker_op     tests/operators/lane_state_tracker_op.cpp CODEGEN)
 add_vivid_test_fixture(multi_channel_dc_source_op tests/operators/multi_channel_dc_source_op.cpp CODEGEN)
+add_vivid_test_fixture(mono_dc_source_op    tests/operators/mono_dc_source_op.cpp CODEGEN)
+add_vivid_test_fixture(audio_gain_value_op  tests/operators/audio_gain_value_op.cpp CODEGEN)
 add_vivid_test_fixture(dc_per_lane_op            tests/operators/dc_per_lane_op.cpp CODEGEN)
 add_vivid_test_fixture(lane_frame_op             tests/operators/lane_frame_op.cpp CODEGEN)
 add_vivid_test_fixture(value_gain_op             tests/operators/value_gain_op.cpp CODEGEN)

@@ -64,4 +64,27 @@ inline VividValueOutput make_string_value_output(StringLaneBuffer* buf) {
     return out;
 }
 
+// ---- Audio value output (Phase 5a) ----
+// An audio op writes into the runtime-PROVIDED output block (output_buffers[port],
+// fixed buffer_size). Like the texture output, resize() returns that block (the op
+// writes buffer_size*channels samples into it) and commit() is a no-op. The handle
+// IS the float* audio block.
+
+inline void* audio_value_output_resize_fn(void* handle, uint32_t /*count*/) {
+    return handle;  // the runtime-provided audio block, as void*
+}
+
+inline void audio_value_output_commit_fn(void* /*handle*/, uint32_t /*count*/) {
+    // no-op: the output block is the audio transport buffer
+}
+
+inline VividValueOutput make_audio_value_output(float* buf) {
+    VividValueOutput out{};
+    out.handle = static_cast<void*>(buf);
+    out.resize = audio_value_output_resize_fn;
+    out.commit = audio_value_output_commit_fn;
+    out.set_string = nullptr;
+    return out;
+}
+
 } // namespace vivid
