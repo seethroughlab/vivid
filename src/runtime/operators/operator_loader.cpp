@@ -78,10 +78,12 @@ HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
     if (!hot_reload_port_layout_compatible(old_desc, new_desc))
         return HotReloadCompat::Incompatible;
 
-    // Layout is identical, but lane behavior and/or execution-strategy opt-in
-    // changed. These feed the lane-set propagation pass (Pass 2.6) and the
-    // execution-strategy planner, which the in-place reload does NOT re-run —
-    // so a full recompile is required for the change to take effect correctly.
+    // Layout is identical, but multiplicity/lane behavior and/or execution-strategy
+    // opt-in changed. These feed value-flow inference (Pass 2.7), lane-set
+    // propagation (Pass 2.6), and the execution-strategy planner, which the in-place
+    // reload does NOT re-run — so a full recompile is required to take effect.
+    if (old_desc->multiplicity_behavior != new_desc->multiplicity_behavior)
+        return HotReloadCompat::RecompileRequired;
     if (old_desc->lane_behavior != new_desc->lane_behavior)
         return HotReloadCompat::RecompileRequired;
     if (old_desc->strategy_independent != new_desc->strategy_independent)

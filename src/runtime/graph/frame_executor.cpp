@@ -499,8 +499,10 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
                     if (!dst_ref.empty())
                         cn.input_values[e.to_port] = dst_ref.floats()[0];
                 } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Scalar source → lane_array destination: lift
-                    // the scalar into a 1-element value.
+                    // Scalar source → lane_array destination: lift the scalar into
+                    // a 1-element value. NOTE: gated on the DECLARED many-capable
+                    // port (lane-array), not runtime multiplicity — de-port-typing
+                    // this needs per-port declared multiplicity (7c+7d combined).
                     auto& dst_ref = cn.input_value_refs[e.to_port];
                     if (dst_ref.empty()) {
                         ValueBuffer* buf = value_arena_.acquire();
