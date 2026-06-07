@@ -289,10 +289,14 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
-            cn.out_string_lane_bufs.resize(cn.output_port_count, StringLaneBuffer(graph_compiler_internal::kDefaultLaneCapacity));
+            cn.out_string_value_bufs.clear();
+            cn.out_string_value_bufs.reserve(cn.output_port_count);
+            for (uint32_t p = 0; p < cn.output_port_count; ++p)
+                cn.out_string_value_bufs.emplace_back(VIVID_VALUE_STRING,
+                                                      graph_compiler_internal::kDefaultLaneCapacity);
             cn.c_out_string_lane_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
+                cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_value_bufs[p]);
 
             // Value-model staging (Phase 4) — must mirror init_frame_state so the
             // per-tick value-view loop is in-bounds for placeholder nodes too.
@@ -303,7 +307,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
                 cn.c_out_value_outputs[p] =
                     (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
-                        ? make_string_value_output(&cn.out_string_lane_bufs[p])
+                        ? make_string_value_output(&cn.out_string_value_bufs[p])
                         : make_value_output(&cn.out_value_bufs[p]);
             }
 

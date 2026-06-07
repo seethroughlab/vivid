@@ -88,6 +88,27 @@ inline VividValueOutput make_string_value_output(StringLaneBuffer* buf) {
     return out;
 }
 
+// ---- Native value-buffer string output (Phase 7d.4) ----
+// String output backed by a ValueBuffer(STRING) — the value-substrate successor to the
+// StringLaneBuffer-backed overload above.
+inline void* string_valuebuf_output_resize_fn(void* handle, uint32_t count) {
+    return static_cast<ValueBuffer*>(handle)->ensure(count) ? handle : nullptr;
+}
+inline void string_valuebuf_output_commit_fn(void* handle, uint32_t count) {
+    static_cast<ValueBuffer*>(handle)->commit(count);
+}
+inline void string_valuebuf_output_set_string_fn(void* handle, uint32_t index, const char* value) {
+    static_cast<ValueBuffer*>(handle)->set_string(index, value);
+}
+inline VividValueOutput make_string_value_output(ValueBuffer* buf) {
+    VividValueOutput out{};
+    out.handle = buf;
+    out.resize = string_valuebuf_output_resize_fn;
+    out.commit = string_valuebuf_output_commit_fn;
+    out.set_string = string_valuebuf_output_set_string_fn;
+    return out;
+}
+
 // ---- Audio value output (Phase 5a) ----
 // An audio op writes into the runtime-PROVIDED output block (output_buffers[port],
 // fixed buffer_size). Like the texture output, resize() returns that block (the op

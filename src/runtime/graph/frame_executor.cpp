@@ -246,7 +246,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             cn.c_in_string_lane_views[p].flags = 0;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.out_string_lane_bufs[p].reset();
+            cn.out_string_value_bufs[p].reset();
         }
         // Value-view input staging (Phase 4a float / 4b many-string). Aliases the
         // same transport the lane views use + the compile-time value envelope
@@ -327,11 +327,11 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 cn.output_string_values[p] = cn.c_output_string_values[p];
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            uint32_t slen = cn.out_string_lane_bufs[p].committed_length;
+            uint32_t slen = cn.out_string_value_bufs[p].committed_count;
             if (slen > 0) {
                 cn.output_string_lanes[p].resize(slen);
                 for (uint32_t si = 0; si < slen; ++si)
-                    cn.output_string_lanes[p][si] = cn.out_string_lane_bufs[p].owned[si];
+                    cn.output_string_lanes[p][si] = cn.out_string_value_bufs[p].strings[si];
             } else {
                 cn.output_string_lanes[p].clear();
             }

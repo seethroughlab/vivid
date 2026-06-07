@@ -77,4 +77,25 @@ inline VividStringLaneOutput make_string_lane_output(StringLaneBuffer* buf) {
     return out;
 }
 
+// ---- String lane output backed by a ValueBuffer(STRING) (Phase 7d.4 shim) ----
+// Lets the still-live string lane-API fixture ops write into the value-substrate string
+// output (out_string_value_bufs). Removed in 7d.5 with the lane API.
+inline uint8_t string_lane_output_from_value_resize_fn(void* handle, uint32_t length) {
+    return static_cast<ValueBuffer*>(handle)->ensure(length) ? 1 : 0;
+}
+inline void string_lane_output_from_value_set_fn(void* handle, uint32_t index, const char* value) {
+    static_cast<ValueBuffer*>(handle)->set_string(index, value);
+}
+inline void string_lane_output_from_value_commit_fn(void* handle, uint32_t length) {
+    static_cast<ValueBuffer*>(handle)->commit(length);
+}
+inline VividStringLaneOutput make_string_lane_output(ValueBuffer* buf) {
+    VividStringLaneOutput out{};
+    out.handle = buf;
+    out.resize = string_lane_output_from_value_resize_fn;
+    out.set = string_lane_output_from_value_set_fn;
+    out.commit = string_lane_output_from_value_commit_fn;
+    return out;
+}
+
 } // namespace vivid

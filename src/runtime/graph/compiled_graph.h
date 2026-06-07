@@ -470,7 +470,10 @@ struct CompiledNode {
     std::vector<VividValueOutput> c_out_value_outputs;
     std::vector<VividStringLaneView> c_in_string_lane_views;
     std::vector<VividStringLaneOutput> c_out_string_lane_outputs;
-    std::vector<StringLaneBuffer> out_string_lane_bufs;
+    // String OUTPUT buffers on the value substrate (ValueBuffer STRING; Phase 7d.4 —
+    // was StringLaneBuffer). Both the lane-API + value-API string output adapters back
+    // onto these; readback syncs .strings → output_string_lanes.
+    std::vector<ValueBuffer> out_string_value_bufs;
     std::vector<std::vector<const char*>> in_string_lane_ptrs; // c_str() staging for input views
 
     // ── Custom ports ────────────────────────────────────────────────────────
