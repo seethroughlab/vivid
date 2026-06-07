@@ -1,9 +1,11 @@
-// Control passthrough with lane support: output = input * gain
+// Control passthrough with multi-value support: output = input * gain
+// Uses the value API (ctx->values/value_outputs) — successor to the lane views. (7d.5b)
 #include "operator_api/operator.h"
 
 struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "ControlPassOp";
     static constexpr bool kTimeDependent = false;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 100.0f};
 
@@ -21,18 +23,18 @@ struct ControlPassOp : vivid::OperatorBase, vivid::FrameProcessable {
         float in = ctx->input_values[0];
         ctx->output_values[0] = in * g;
 
-        // Lane propagation: multiply each lane element by gain
-        if (ctx->input_lanes && ctx->output_lanes) {
-            const auto& isp = ctx->input_lanes[0];
-            auto& osp = ctx->output_lanes[0];
-            if (isp.length > 0) {
-                float* buf = osp.resize(osp.handle, isp.length);
-                if (buf) {
-                    for (uint32_t i = 0; i < isp.length; ++i) {
-                        buf[i] = isp.data[i] * g;
-                    }
-                    osp.commit(osp.handle, isp.length);
+        // Value propagation: multiply each element by gain
+        const VividValueView* iv = ctx->values        ? &ctx->values[0]        : nullptr;
+        VividValueOutput*     ov = ctx->value_outputs ? &ctx->value_outputs[0] : nullptr;
+        const float*          src = vivid_value_floats(iv);
+        const uint32_t        n   = vivid_value_count(iv);
+        if (src && n > 0) {
+            float* buf = vivid_value_output_floats(ov, n);
+            if (buf) {
+                for (uint32_t i = 0; i < n; ++i) {
+                    buf[i] = src[i] * g;
                 }
+                vivid_value_output_commit(ov, n);
             }
         }
     }

@@ -25,12 +25,15 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         if (ctx->output_string_values) ctx->output_string_values[0] = value.str_value.c_str();
-        if (ctx->output_string_lanes) {
-            auto& sp = ctx->output_string_lanes[1];
+        // Many-string output via the value API (port "list", index 1) — successor
+        // to ctx->output_string_lanes. (7d.5b)
+        VividValueOutput* out = ctx->value_outputs ? &ctx->value_outputs[1] : nullptr;
+        if (out && out->resize) {
             uint32_t n = static_cast<uint32_t>(lanes_ptrs_.size());
-            if (sp.resize(sp.handle, n)) {
-                for (uint32_t i = 0; i < n; ++i) sp.set(sp.handle, i, lanes_ptrs_[i]);
-                sp.commit(sp.handle, n);
+            if (out->resize(out->handle, n)) {
+                for (uint32_t i = 0; i < n; ++i)
+                    vivid_value_output_set_string(out, i, lanes_ptrs_[i]);
+                vivid_value_output_commit(out, n);
             }
         }
     }
