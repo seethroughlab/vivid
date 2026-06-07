@@ -405,6 +405,13 @@ struct CompiledNode {
     uint32_t output_port_count = 0;
     std::vector<VividPortType> input_port_types;
     std::vector<VividPortType> output_port_types;
+    // Per-port DECLARED multiplicity (lane-value clean-break Phase 7d): a port's
+    // arity — Scalar (one element) or Many (a collection) — independent of the
+    // payload type. Derived from the declared port type during the transition
+    // (LANE_ARRAY/STRING_LANES → Many); the value-model successor to encoding
+    // multiplicity in the port type. The gates read THIS, not the port type.
+    std::vector<VividMultiplicity> input_port_multiplicities;
+    std::vector<VividMultiplicity> output_port_multiplicities;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     // Output ports tagged VIVID_PORT_DISPLAY_ADVANCED — inspector hides

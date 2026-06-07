@@ -50,6 +50,18 @@ BridgeKind parse_bridge_kind(const std::string& s);
 float remap_to_scale(const ConnectionDef& c);
 void warm_up_instance_assets(CompiledNode& cn);
 
+// Per-port DECLARED multiplicity (lane-value clean-break Phase 7d). Honors an
+// explicit VividPortDescriptor.multiplicity if the operator set one; otherwise
+// derives it from the (transitional) port type — LANE_ARRAY/STRING_LANES = Many,
+// everything else = Scalar. The value-model successor to encoding arity in the
+// port type; gates read this instead of the port type. Forward-compatible with
+// Phase 7d.5 (ops declare .multiplicity, port types collapse to payload types).
+inline VividMultiplicity port_declared_multiplicity(const VividPortDescriptor& pd) {
+    if (pd.multiplicity != VIVID_MULTIPLICITY_SCALAR) return pd.multiplicity;
+    return (pd.type == VIVID_PORT_LANE_ARRAY || pd.type == VIVID_PORT_STRING_LANES)
+        ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+}
+
 // Phase 4: conservative GPU lane promotion analysis.
 void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold = kGpuLanePromotionThreshold);
 
