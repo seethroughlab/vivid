@@ -276,8 +276,8 @@ static void test_frame_state_lane_ports() {
 
     check(cn.c_in_lane_views.size() == 1, "1 input lane staging");
     check(cn.c_out_lane_outputs.size() == 1, "1 output lane staging");
-    check(cn.out_lane_bufs.size() == 1, "output lane buf allocated");
-    check(cn.out_lane_bufs[0].data.size() == 1024, "lane buf capacity 1024");
+    check(cn.out_value_bufs.size() == 1, "output value buf allocated");
+    check(cn.out_value_bufs[0].floats.size() == 1024, "value buf capacity 1024");
 }
 
 // ---------------------------------------------------------------------------

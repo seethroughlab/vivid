@@ -184,42 +184,7 @@ inline LaneBufferRef make_ref_from_existing(LaneBuffer* buf) {
     return LaneBufferRef(buf);
 }
 
-// ---------------------------------------------------------------------------
-// StringLaneBuffer — CPU-backed string lane storage.
-//
-// Strings are copied into runtime-owned storage during set() so operators
-// do not need to keep source pointers alive after process_*() returns.
-// ---------------------------------------------------------------------------
-
-struct StringLaneBuffer {
-    std::vector<std::string> owned;       // runtime-owned string copies
-    std::vector<const char*> ptrs;        // c_str() pointers (rebuilt after set/commit)
-    uint32_t committed_length = 0;
-    uint32_t lane_set_id = 0;
-
-    explicit StringLaneBuffer(uint32_t capacity = 0)
-        : owned(capacity), ptrs(capacity, nullptr) {}
-
-    // Returns 1 on success, 0 if length exceeds capacity.
-    uint8_t resize(uint32_t length) {
-        if (length > static_cast<uint32_t>(owned.size())) return 0;
-        return 1;
-    }
-
-    void set(uint32_t index, const char* value) {
-        if (index < static_cast<uint32_t>(owned.size())) {
-            owned[index] = value ? value : "";
-            ptrs[index] = owned[index].c_str();
-        }
-    }
-
-    void commit(uint32_t length) {
-        committed_length = (length <= static_cast<uint32_t>(owned.size()))
-                               ? length
-                               : static_cast<uint32_t>(owned.size());
-    }
-
-    void reset() { committed_length = 0; }
-};
+// StringLaneBuffer removed (lane-value clean-break 7d.5a) — string output moved to
+// ValueBuffer(STRING) in 7d.4. The string lane-API surfaces are removed in 7d.5e.
 
 } // namespace vivid

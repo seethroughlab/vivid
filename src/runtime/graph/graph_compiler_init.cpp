@@ -146,13 +146,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 
     cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
 
-    // Legacy lane output buffers — kept allocated as the 7a shim source for the
-    // bridge (output readback copies out_value_bufs → out_lane_bufs → output_lane_refs).
-    cn.out_lane_bufs.clear();
-    cn.out_lane_bufs.reserve(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
-
     // Native value transport (lane-value clean-break Phase 7a). Node-local
     // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).
     cn.input_value_refs.resize(cn.input_port_count);
