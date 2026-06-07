@@ -2,8 +2,32 @@
 
 #include "operator_api/types.h"
 #include "lane_buffer.h"
+#include "value_buffer.h"
 
 namespace vivid {
+
+// ---- Float lane output backed by a ValueBuffer (Phase 7 shim) ----
+// Lets the still-live lane-API operators (test fixture ops) write into the
+// native value transport (out_value_bufs) during the 7a transition, so a
+// lane-API op's output flows downstream through value propagation. Removed in
+// Phase 7d with the lane API.
+
+inline float* lane_output_from_value_resize_fn(void* handle, uint32_t length) {
+    auto* b = static_cast<ValueBuffer*>(handle);
+    return b->ensure(length) ? b->floats_ptr() : nullptr;
+}
+
+inline void lane_output_from_value_commit_fn(void* handle, uint32_t length) {
+    static_cast<ValueBuffer*>(handle)->commit(length);
+}
+
+inline VividLaneOutput make_lane_output(ValueBuffer* buf) {
+    VividLaneOutput out{};
+    out.handle = buf;
+    out.resize = lane_output_from_value_resize_fn;
+    out.commit = lane_output_from_value_commit_fn;
+    return out;
+}
 
 // ---------------------------------------------------------------------------
 // Trampoline functions bridging VividLaneOutput / VividStringLaneOutput

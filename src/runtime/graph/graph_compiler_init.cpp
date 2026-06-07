@@ -135,13 +135,33 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.output_lane_refs.resize(cn.output_port_count);
 
     cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
+
+    // Legacy lane output buffers — kept allocated as the 7a shim source for the
+    // bridge (output readback copies out_value_bufs → out_lane_bufs → output_lane_refs).
     cn.out_lane_bufs.clear();
     cn.out_lane_bufs.reserve(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
+
+    // Native value transport (lane-value clean-break Phase 7a). Node-local
+    // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).
+    cn.input_value_refs.resize(cn.input_port_count);
+    cn.output_value_refs.resize(cn.output_port_count);
+    cn.out_value_bufs.clear();
+    cn.out_value_bufs.reserve(cn.output_port_count);
+    for (uint32_t p = 0; p < cn.output_port_count; ++p)
+        cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
+                                       graph_compiler_internal::kDefaultLaneCapacity);
+
+    // Output adapters: FRAME/GPU nodes back onto out_value_bufs (the value
+    // transport the frame executor reads in 7a); AUDIO-cadence nodes keep
+    // out_lane_bufs (the audio executor + bridge are still lane-based until 7b).
+    const bool audio_path = (cn.audio != nullptr);
     cn.c_out_lane_outputs.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_lane_bufs[p]);
+        cn.c_out_lane_outputs[p] = audio_path
+            ? make_lane_output(&cn.out_lane_bufs[p])
+            : make_lane_output(&cn.out_value_bufs[p]);
 
     // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
     // backed by the SAME transport the lane path uses (float→out_lane_bufs,
@@ -165,7 +185,8 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.c_out_value_outputs[p] =
             (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
                 ? make_string_value_output(&cn.out_string_lane_bufs[p])
-                : make_value_output(&cn.out_lane_bufs[p]);
+                : audio_path ? make_value_output(&cn.out_lane_bufs[p])
+                             : make_value_output(&cn.out_value_bufs[p]);
     }
 
     cn.file_param_storage.clear();
