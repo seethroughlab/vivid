@@ -68,6 +68,11 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
 
         // Input envelopes: project from the already-resolved input lane sets + the
         // input port's payload type. Track whether any input is Many.
+        // NOTE (7d.3): native edge-propagation was attempted here but the value
+        // envelope (WIRE multiplicity) genuinely differs from the lane-set INPUT
+        // projection (the per-invocation/effective view for lifted/LoopBased nodes),
+        // so it cannot coexist with the lane-set cross-check. Native value-flow is
+        // deferred to 7d.5, where Pass 2.6 + this cross-check are removed together.
         cn.input_value_envelopes.assign(cn.input_lane_sets.size(), ValueEnvelope{});
         bool any_many_input = false;
         for (size_t pi = 0; pi < cn.input_lane_sets.size(); ++pi) {
