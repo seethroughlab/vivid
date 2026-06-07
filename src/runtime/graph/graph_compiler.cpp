@@ -277,12 +277,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                                graph_compiler_internal::kDefaultLaneCapacity);
-            const bool placeholder_audio_path = (cn.audio != nullptr);
             cn.c_out_lane_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_lane_outputs[p] = placeholder_audio_path
-                    ? make_lane_output(&cn.out_lane_bufs[p])
-                    : make_lane_output(&cn.out_value_bufs[p]);
+                cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
 
             cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
@@ -303,8 +300,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.c_out_value_outputs[p] =
                     (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
                         ? make_string_value_output(&cn.out_string_lane_bufs[p])
-                        : placeholder_audio_path ? make_value_output(&cn.out_lane_bufs[p])
-                                                 : make_value_output(&cn.out_value_bufs[p]);
+                        : make_value_output(&cn.out_value_bufs[p]);
             }
 
             if (is_disabled) {

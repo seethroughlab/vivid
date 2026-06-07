@@ -728,17 +728,17 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             // Priority: refs (audio-direct routing) > bridge views (already
             // populated from snapshot above) > empty.
             for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
-                if (p < cn.input_lane_refs.size() && cn.input_lane_refs[p]) {
-                    const auto& ref = cn.input_lane_refs[p];
-                    cn.c_in_lane_views[p].data = ref.data();
-                    cn.c_in_lane_views[p].length = ref.length();
+                if (p < cn.input_value_refs.size() && cn.input_value_refs[p]) {
+                    const auto& ref = cn.input_value_refs[p];
+                    cn.c_in_lane_views[p].data = ref.floats();
+                    cn.c_in_lane_views[p].length = ref.count();
                     cn.c_in_lane_views[p].lane_set_id = 0;
                     cn.c_in_lane_views[p].flags = 0;
                 }
                 // Otherwise keep whatever was set during snapshot unpack (or empty).
             }
-            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_lane_bufs.size(); ++p) {
-                cn.out_lane_bufs[p].reset();
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_value_bufs.size(); ++p) {
+                cn.out_value_bufs[p].reset();
             }
 
             // Check for lane-lifted processing
@@ -752,28 +752,28 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 process_normal_audio_node(cn, a, audio_instance, node_time, chunk, frames_written, ni_ord, metronome, node_process_us, node_lane_count);
             }
 
-            // Publish output lane refs
-            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_lane_bufs.size(); ++p) {
-                if (cn.out_lane_bufs[p].committed_length > 0 && p < cn.output_lane_refs.size()) {
-                    cn.output_lane_refs[p] = make_ref_from_existing(&cn.out_lane_bufs[p]);
-                } else if (p < cn.output_lane_refs.size()) {
-                    cn.output_lane_refs[p] = {};
+            // Publish output value refs (Phase 7b)
+            for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_value_bufs.size(); ++p) {
+                if (cn.out_value_bufs[p].committed_count > 0 && p < cn.output_value_refs.size()) {
+                    cn.output_value_refs[p] = make_ref_from_existing(&cn.out_value_bufs[p]);
+                } else if (p < cn.output_value_refs.size()) {
+                    cn.output_value_refs[p] = {};
                 }
             }
             write_audio_port_telemetry(cn, a, false, chunk, buffer_size_);
-            // Note: analysis snapshot reads output_lane_refs directly (no compat sync needed).
+            // Note: analysis snapshot reads output_value_refs directly (no compat sync needed).
 
             // Route float/lane/custom outputs to downstream audio nodes
             for (uint32_t ei : cg.audio_direct_edges) {
                 const auto& e = cg.edges[ei];
                 if (e.from_node != ni || e.targets_param) continue;
 
-                if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Lane routing between audio nodes — share ref (zero copy)
+                if (e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY) {
+                    // Many-value routing between audio nodes — share ref (zero copy)
                     auto& to_cn = cg.nodes[e.to_node];
-                    if (e.from_port < cn.output_lane_refs.size() &&
-                        e.to_port < to_cn.input_lane_refs.size()) {
-                        to_cn.input_lane_refs[e.to_port] = cn.output_lane_refs[e.from_port];
+                    if (e.from_port < cn.output_value_refs.size() &&
+                        e.to_port < to_cn.input_value_refs.size()) {
+                        to_cn.input_value_refs[e.to_port] = cn.output_value_refs[e.from_port];
                     }
                 } else if (vivid_is_custom_port_type(e.data_type)) {
                     // Custom port routing between audio nodes
@@ -958,10 +958,10 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
         if (i < analysis.lane_outputs.size()) {
             for (size_t p = 0; p < cn.output_port_count && p < analysis.lane_outputs[i].size(); ++p) {
                 auto& dst = analysis.lane_outputs[i][p];
-                if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p]) {
-                    const auto& ref = cn.output_lane_refs[p];
-                    dst.length = std::min(ref.length(), dst.capacity);
-                    std::memcpy(dst.data, ref.data(), dst.length * sizeof(float));
+                if (p < cn.output_value_refs.size() && cn.output_value_refs[p]) {
+                    const auto& ref = cn.output_value_refs[p];
+                    dst.length = std::min(ref.count(), dst.capacity);
+                    std::memcpy(dst.data, ref.floats(), dst.length * sizeof(float));
                 } else {
                     dst.length = 0;
                 }
@@ -1190,12 +1190,12 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             if (p < cn.output_port_types.size() &&
                 cn.output_port_types[p] == VIVID_PORT_SCALAR &&
-                p < cn.out_lane_bufs.size() &&
-                loop_lanes <= static_cast<uint32_t>(cn.out_lane_bufs[p].data.size())) {
-                cn.out_lane_bufs[p].committed_length = loop_lanes;
+                p < cn.out_value_bufs.size() &&
+                cn.out_value_bufs[p].ensure(loop_lanes)) {
+                cn.out_value_bufs[p].commit(loop_lanes);
                 for (uint32_t c = 0; c < loop_lanes; ++c) {
                     float* lane_buf = a.buffers_out[p].data() + c * buffer_size_;
-                    cn.out_lane_bufs[p].data[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
+                    cn.out_value_bufs[p].floats[c] = (chunk > 0) ? lane_buf[chunk - 1] : 0.0f;
                 }
             }
         }

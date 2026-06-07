@@ -153,15 +153,13 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                        graph_compiler_internal::kDefaultLaneCapacity);
 
-    // Output adapters: FRAME/GPU nodes back onto out_value_bufs (the value
-    // transport the frame executor reads in 7a); AUDIO-cadence nodes keep
-    // out_lane_bufs (the audio executor + bridge are still lane-based until 7b).
-    const bool audio_path = (cn.audio != nullptr);
+    // Output adapters back onto out_value_bufs for ALL nodes (Phase 7b — both the
+    // frame and audio executors now run on the value substrate). Audio-block output
+    // ports are re-pointed per-tick by populate_audio_value_views to the runtime
+    // output_buffers; lane-array/scalar outputs flow through out_value_bufs.
     cn.c_out_lane_outputs.resize(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_lane_outputs[p] = audio_path
-            ? make_lane_output(&cn.out_lane_bufs[p])
-            : make_lane_output(&cn.out_value_bufs[p]);
+        cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
 
     // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
     // backed by the SAME transport the lane path uses (float→out_lane_bufs,
@@ -185,8 +183,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.c_out_value_outputs[p] =
             (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
                 ? make_string_value_output(&cn.out_string_lane_bufs[p])
-                : audio_path ? make_value_output(&cn.out_lane_bufs[p])
-                             : make_value_output(&cn.out_value_bufs[p]);
+                : make_value_output(&cn.out_value_bufs[p]);
     }
 
     cn.file_param_storage.clear();
