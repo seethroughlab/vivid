@@ -235,6 +235,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.output_port_types.assign(cn.output_port_count, VIVID_PORT_SCALAR);
             cn.input_port_multiplicities.assign(cn.input_port_count, VIVID_MULTIPLICITY_SCALAR);
             cn.output_port_multiplicities.assign(cn.output_port_count, VIVID_MULTIPLICITY_SCALAR);
+            cn.input_port_value_types.assign(cn.input_port_count, VIVID_VALUE_FLOAT);
+            cn.output_port_value_types.assign(cn.output_port_count, VIVID_VALUE_FLOAT);
             cn.input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_dirty.assign(cn.input_port_count, 0);

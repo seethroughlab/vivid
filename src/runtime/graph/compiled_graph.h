@@ -412,6 +412,10 @@ struct CompiledNode {
     // multiplicity in the port type. The gates read THIS, not the port type.
     std::vector<VividMultiplicity> input_port_multiplicities;
     std::vector<VividMultiplicity> output_port_multiplicities;
+    // Per-port PAYLOAD value-type (the orthogonal axis to multiplicity). Gates read
+    // {value_type, multiplicity} fully independent of the port-type enum (Phase 7d).
+    std::vector<VividValueType> input_port_value_types;
+    std::vector<VividValueType> output_port_value_types;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     // Output ports tagged VIVID_PORT_DISPLAY_ADVANCED — inspector hides

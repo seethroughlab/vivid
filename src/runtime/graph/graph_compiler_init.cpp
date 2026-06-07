@@ -47,11 +47,15 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
             cn.input_port_types.push_back(desc->ports[i].type);
             cn.input_port_multiplicities.push_back(
                 graph_compiler_internal::port_declared_multiplicity(desc->ports[i]));
+            cn.input_port_value_types.push_back(
+                graph_compiler_internal::port_value_type(desc->ports[i]));
         } else {
             cn.output_port_indices[desc->ports[i].name] = cn.output_port_count++;
             cn.output_port_types.push_back(desc->ports[i].type);
             cn.output_port_multiplicities.push_back(
                 graph_compiler_internal::port_declared_multiplicity(desc->ports[i]));
+            cn.output_port_value_types.push_back(
+                graph_compiler_internal::port_value_type(desc->ports[i]));
         }
     }
 
@@ -119,6 +123,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
             cn.output_port_indices[name] = idx;
             cn.output_port_types.push_back(VIVID_PORT_SCALAR);
             cn.output_port_multiplicities.push_back(VIVID_MULTIPLICITY_SCALAR);
+            cn.output_port_value_types.push_back(VIVID_VALUE_FLOAT);
             return idx;
         };
         cn.gpu->analysis_frame_hash_idx = inject("frame_hash");

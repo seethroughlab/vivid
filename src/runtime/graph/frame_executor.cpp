@@ -195,27 +195,25 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 }
             } else if (!cn.input_port_types.empty() && !cn.output_port_types.empty() &&
                        cn.input_port_types[0] == cn.output_port_types[0]) {
-                switch (cn.input_port_types[0]) {
-                case VIVID_PORT_SCALAR:
+                // Passthrough dispatch by {value_type, multiplicity} (value-model, 7d).
+                const VividValueType vt0 = cn.input_port_value_types.empty()
+                    ? VIVID_VALUE_FLOAT : cn.input_port_value_types[0];
+                const bool many0 = !cn.input_port_multiplicities.empty() &&
+                    cn.input_port_multiplicities[0] == VIVID_MULTIPLICITY_MANY;
+                if (vt0 == VIVID_VALUE_FLOAT && !many0) {
                     if (!cn.input_values.empty() && !cn.output_values.empty())
                         cn.output_values[0] = cn.input_values[0];
-                    break;
-                case VIVID_PORT_LANE_ARRAY:
+                } else if (vt0 == VIVID_VALUE_FLOAT && many0) {
                     if (!cn.input_value_refs.empty() && !cn.output_value_refs.empty())
                         cn.output_value_refs[0] = cn.input_value_refs[0];
-                    break;
-                case VIVID_PORT_STRING:
+                } else if (vt0 == VIVID_VALUE_STRING && !many0) {
                     if (!cn.input_string_values.empty() && !cn.output_string_values.empty())
                         cn.output_string_values[0] = cn.input_string_values[0];
-                    break;
-                case VIVID_PORT_STRING_LANES:
+                } else if (vt0 == VIVID_VALUE_STRING && many0) {
                     if (!cn.input_string_lanes.empty() && !cn.output_string_lanes.empty())
                         cn.output_string_lanes[0] = cn.input_string_lanes[0];
-                    break;
-                default:
-                    // Texture / custom on a non-GPU node — leave outputs neutral.
-                    break;
                 }
+                // else texture / custom / audio on a non-GPU node — leave neutral.
             }
             cn.processed_this_tick = true;
             continue;
@@ -498,11 +496,11 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
                     }
                     if (!dst_ref.empty())
                         cn.input_values[e.to_port] = dst_ref.floats()[0];
-                } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Scalar source → lane_array destination: lift the scalar into
-                    // a 1-element value. NOTE: gated on the DECLARED many-capable
-                    // port (lane-array), not runtime multiplicity — de-port-typing
-                    // this needs per-port declared multiplicity (7c+7d combined).
+                } else if (e.to_port < cn.input_port_multiplicities.size() &&
+                           cn.input_port_multiplicities[e.to_port] == VIVID_MULTIPLICITY_MANY) {
+                    // Scalar source → many destination: lift the scalar into a
+                    // 1-element value. Gated on the DECLARED many-capable port
+                    // (per-port multiplicity, 7d) — float-only context here.
                     auto& dst_ref = cn.input_value_refs[e.to_port];
                     if (dst_ref.empty()) {
                         ValueBuffer* buf = value_arena_.acquire();

@@ -36,15 +36,16 @@ VividStorageKind value_storage_for(const CompiledNode& cn, VividValueType vt) {
 // input multiplicity). Mirrors the Pass-2.6 output rules in value terms.
 VividMultiplicity infer_output_multiplicity(const CompiledNode& cn, size_t port_idx,
                                             bool any_many_input) {
-    // Reduction breakout: a lane-array output port of a Reducer exposes per-element
-    // structure (Many) while its primary outputs collapse to scalar. This mirrors
-    // Pass 2.6's breakout rule. (Lane-array outputs of non-Reduction nodes follow
-    // the behavior/input multiplicity below — Pass 2.6 does NOT force them Many.)
-    if (cn.lane_behavior == LaneBehavior::Reduction && port_idx < cn.output_port_types.size()) {
-        const auto pt = cn.output_port_types[port_idx];
-        if (pt == VIVID_PORT_LANE_ARRAY || pt == VIVID_PORT_STRING_LANES)
-            return VIVID_MULTIPLICITY_MANY;
-    }
+    // Reduction breakout: a DECLARED-Many output port of a Reducer exposes
+    // per-element structure (Many) while its primary outputs collapse to scalar.
+    // Value-model successor to Pass 2.6's breakout rule — scoped to REDUCE behavior
+    // (was lane_behavior==Reduction) + per-port DECLARED multiplicity (was the
+    // LANE_ARRAY port type). Non-Reduction declared-Many outputs follow the
+    // behavior/input multiplicity below (Pass 2.6 does NOT force them Many).
+    if (cn.multiplicity_behavior == VIVID_MULTIPLICITY_REDUCE &&
+        port_idx < cn.output_port_multiplicities.size() &&
+        cn.output_port_multiplicities[port_idx] == VIVID_MULTIPLICITY_MANY)
+        return VIVID_MULTIPLICITY_MANY;
     switch (cn.multiplicity_behavior) {
         case VIVID_MULTIPLICITY_SCALAR_ONLY:
         case VIVID_MULTIPLICITY_REDUCE:   return VIVID_MULTIPLICITY_SCALAR;

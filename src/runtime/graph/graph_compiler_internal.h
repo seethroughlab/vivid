@@ -62,6 +62,21 @@ inline VividMultiplicity port_declared_multiplicity(const VividPortDescriptor& p
         ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
 }
 
+// Per-port PAYLOAD value-type (lane-value clean-break Phase 7d). Honors an explicit
+// VividPortDescriptor.value_type, else derives from the port type. The payload axis
+// (orthogonal to multiplicity); survives Phase 7d.5 (SCALAR→FLOAT, STRING→STRING,
+// AUDIO_BUFFER→AUDIO, TEXTURE→TEXTURE; LANE_ARRAY→FLOAT, STRING_LANES→STRING).
+inline VividValueType port_value_type(const VividPortDescriptor& pd) {
+    if (pd.value_type != VIVID_VALUE_FLOAT) return pd.value_type;  // 0 == FLOAT default
+    switch (pd.type) {
+        case VIVID_PORT_AUDIO_BUFFER:  return VIVID_VALUE_AUDIO;
+        case VIVID_PORT_STRING:
+        case VIVID_PORT_STRING_LANES:  return VIVID_VALUE_STRING;
+        case VIVID_PORT_TEXTURE:       return VIVID_VALUE_TEXTURE;
+        default:                       return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY, custom
+    }
+}
+
 // Phase 4: conservative GPU lane promotion analysis.
 void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold = kGpuLanePromotionThreshold);
 

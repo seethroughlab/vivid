@@ -1213,9 +1213,13 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
         VividValueView& vv = cn.c_in_value_views[p];
         const VividPortType pt = (p < cn.input_port_types.size())
             ? cn.input_port_types[p] : VIVID_PORT_SCALAR;
-        if (pt == VIVID_PORT_LANE_ARRAY && p < cn.c_in_lane_views.size()) {
-            // Bridged lane-array input (cross-cadence): carry the FULL array — the
-            // operator indexes it by ctx->lane_index, same as the lane view did.
+        const bool many_float_in =
+            p < cn.input_port_multiplicities.size() &&
+            cn.input_port_multiplicities[p] == VIVID_MULTIPLICITY_MANY &&
+            cn.input_port_value_types[p] == VIVID_VALUE_FLOAT;
+        if (many_float_in && p < cn.c_in_lane_views.size()) {
+            // Bridged many (float) input (cross-cadence): carry the FULL array — the
+            // operator indexes it by ctx->lane_index. (Value-model gate, 7d.)
             const VividLaneView& lv = cn.c_in_lane_views[p];
             vv.data         = lv.data;
             vv.value_count  = lv.length;
