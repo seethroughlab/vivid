@@ -212,18 +212,20 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
                 snap.node_params[si][e.to_port] = val;
         } else if (e.data_type == VIVID_PORT_LANE_ARRAY && !e.targets_param) {
             // Spread input
-            if (e.from_port < from_cn.output_lane_refs.size() &&
+            // frame→audio: read the frame source node's value transport directly
+            // (Phase 7b — replaces the 7a output_lane_refs shim).
+            if (e.from_port < from_cn.output_value_refs.size() &&
                 e.to_port < snap.lane_inputs[si].size()) {
-                const auto& ref = from_cn.output_lane_refs[e.from_port];
+                const auto& ref = from_cn.output_value_refs[e.from_port];
                 auto& dst = snap.lane_inputs[si][e.to_port];
                 if (ref) {
-                    uint32_t src_len = ref.length();
+                    uint32_t src_len = ref.count();
                     dst.length = std::min(src_len, dst.capacity);
                     if (src_len > dst.capacity && (lane_overflow_count_++ % 600 == 0))
                         std::fprintf(stderr, "[vivid] Bridge lane overflow: %u lanes clamped to %u\n",
                                      src_len, dst.capacity);
                     float scale = e.remap_scale();
-                    const float* src = ref.data();
+                    const float* src = ref.floats();
                     for (uint32_t j = 0; j < dst.length; ++j)
                         dst.data[j] = src[j] * scale;
                     dst.lane_set_id = e.lane_set_id;

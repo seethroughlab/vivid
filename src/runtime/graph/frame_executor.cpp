@@ -29,23 +29,6 @@ static void warn_lane_pool_resize_failed(const CompiledNode& cn, uint32_t port, 
         len, cn.node_id.c_str(), port);
 }
 
-// Phase-7a shim: mirror a published value ref into the legacy lane fields
-// (out_lane_bufs[p] + output_lane_refs[p]) so the still-lane-based cross-cadence
-// bridge + audio executor see frame outputs byte-identically. Removed in 7b when
-// the bridge reads value refs directly.
-static void publish_value_to_lane_shim(CompiledNode& cn, uint32_t p, const ValueRef& vr) {
-    if (p >= cn.out_lane_bufs.size() || p >= cn.output_lane_refs.size()) return;
-    if (!vr) { cn.output_lane_refs[p] = {}; return; }
-    uint32_t n = vr.count();
-    float* d = cn.out_lane_bufs[p].resize(n);
-    if (d) {
-        std::memcpy(d, vr.floats(), n * sizeof(float));
-        cn.out_lane_bufs[p].lane_set_id = vr.buf ? vr.buf->lane_set_id : 0;
-        cn.out_lane_bufs[p].commit(n);
-    }
-    cn.output_lane_refs[p] = make_ref_from_existing(&cn.out_lane_bufs[p]);
-}
-
 // tick() processes all frame-cadence nodes once per frame in topological order.
 //
 // Per-node steps: zero inputs → propagate upstream wire values (with lane
@@ -218,10 +201,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                         cn.output_values[0] = cn.input_values[0];
                     break;
                 case VIVID_PORT_LANE_ARRAY:
-                    if (!cn.input_value_refs.empty() && !cn.output_value_refs.empty()) {
+                    if (!cn.input_value_refs.empty() && !cn.output_value_refs.empty())
                         cn.output_value_refs[0] = cn.input_value_refs[0];
-                        publish_value_to_lane_shim(cn, 0, cn.output_value_refs[0]);
-                    }
                     break;
                 case VIVID_PORT_STRING:
                     if (!cn.input_string_values.empty() && !cn.output_string_values.empty())
@@ -333,9 +314,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 cn.output_value_refs[p] = make_ref_from_existing(&cn.out_value_bufs[p]);
             else
                 cn.output_value_refs[p] = {};
-            // 7a shim: mirror into the legacy lane fields (out_lane_bufs +
-            // output_lane_refs) so the bridge + audio executor see it.
-            publish_value_to_lane_shim(cn, p, cn.output_value_refs[p]);
         }
         // Sync → output_lanes (vector<float>) for consumers that still read it
         // (tests, bridge analysis injection display).

@@ -45,6 +45,8 @@ static std::unique_ptr<vivid::CompiledGraph> make_audio_graph(const std::vector<
         cn.output_lanes.resize(s.output_port_count);
         cn.input_lane_refs.resize(s.input_port_count);
         cn.output_lane_refs.resize(s.output_port_count);
+        cn.input_value_refs.resize(s.input_port_count);
+        cn.output_value_refs.resize(s.output_port_count);
 
         cn.audio = std::make_unique<vivid::AudioNodeState>();
         auto& a = *cn.audio;
@@ -526,12 +528,13 @@ static void test_push_lane_preserves_lane_set_id() {
     cg->nodes[0].active_cadence = vivid::Cadence::Frame;
     cg->audio_order = {1};
 
-    // gen outputs a lane array — populate both old field and canonical ref
+    // gen outputs a many-value — populate the value transport (Phase 7b: the
+    // bridge reads output_value_refs) + the display vector.
     cg->nodes[0].output_lanes[0] = {1.0f, 2.0f, 3.0f};
-    static vivid::LaneBuffer test_lane_buf(1024);
-    test_lane_buf.data[0] = 1.0f; test_lane_buf.data[1] = 2.0f; test_lane_buf.data[2] = 3.0f;
-    test_lane_buf.committed_length = 3;
-    cg->nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&test_lane_buf);
+    static vivid::ValueBuffer test_val_buf(VIVID_VALUE_FLOAT, 1024);
+    test_val_buf.floats[0] = 1.0f; test_val_buf.floats[1] = 2.0f; test_val_buf.floats[2] = 3.0f;
+    test_val_buf.committed_count = 3;
+    cg->nodes[0].output_value_refs[0] = vivid::ValueRef(&test_val_buf);
 
     // Snapshot edge with lane_set_id = 42
     vivid::CompiledEdge edge{};
@@ -570,10 +573,10 @@ static void test_push_lane_clamps_overflow() {
     // gen outputs a lane array LONGER than the 1024-element bridge slot capacity.
     constexpr uint32_t kCap  = vivid::graph_compiler_internal::kDefaultLaneCapacity;
     constexpr uint32_t kOver = kCap + 500;  // 1524
-    static vivid::LaneBuffer big_buf(kOver);
-    for (uint32_t i = 0; i < kOver; ++i) big_buf.data[i] = static_cast<float>(i);
-    big_buf.committed_length = kOver;
-    cg->nodes[0].output_lane_refs[0] = vivid::LaneBufferRef(&big_buf);
+    static vivid::ValueBuffer big_buf(VIVID_VALUE_FLOAT, kOver);
+    for (uint32_t i = 0; i < kOver; ++i) big_buf.floats[i] = static_cast<float>(i);
+    big_buf.committed_count = kOver;
+    cg->nodes[0].output_value_refs[0] = vivid::ValueRef(&big_buf);
 
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
