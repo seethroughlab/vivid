@@ -2,7 +2,7 @@
 
 #include "runtime/graph/compiled_graph.h"
 #include "runtime/graph/executor_common.h"
-#include "runtime/graph/lane_buffer_pool.h"
+#include "runtime/graph/value_arena.h"
 #include "runtime/graph/lane_state.h"
 #include <functional>
 #include <string>
@@ -127,10 +127,11 @@ private:
     LaneStateService frame_lane_state_;
     std::vector<NodeLaneCtx> frame_lane_contexts_;
 
-    // Pool for lane buffer allocation during wire propagation. Growable: the
-    // frame thread may allocate, so wide remapped/expanded lanes (>capacity)
-    // grow rather than silently truncating to an empty buffer.
-    LaneBufferPool lane_pool_{1024, /*growable=*/true};
+    // Arena for value-buffer allocation during wire propagation (lane-value
+    // clean-break Phase 7a; successor to the lane pool). Growable: the frame
+    // thread may allocate, so wide remapped/expanded values (>capacity) grow
+    // rather than silently truncating to an empty buffer.
+    ValueArena value_arena_{VIVID_VALUE_FLOAT, 1024, /*growable=*/true};
 
 public:
     void set_operators_src_dir(const std::string& dir) { operators_src_dir_ = dir; }
