@@ -155,6 +155,28 @@ uint32_t find_structural_input(const CompiledNode& cn) {
     return 0;
 }
 
+// Value-model successor to the find_structural_input lift trigger (7d.5c.1): does
+// any input carry Many per the value envelopes? This drives the lift DECISION,
+// flipping the multiplicity authority to the value model. `lane_lift_set_id` keeps
+// the lane-set provenance (cosmetic, Pass 2.6 stays vestigial → removed in 7e).
+bool has_many_value_input(const CompiledNode& cn) {
+    for (const auto& env : cn.input_value_envelopes) {
+        if (env.multiplicity == VIVID_MULTIPLICITY_MANY) return true;
+    }
+    return false;
+}
+
+// Cross-cadence: a Snapshot (bridge) edge carrying Many into this node — the value
+// successor to the `e.lane_set_id != 0` snapshot fallback below.
+bool has_many_snapshot_input(const CompiledGraph& cg, uint32_t node_idx) {
+    for (const auto& e : cg.edges) {
+        if (e.to_node == node_idx && e.transport == EdgeTransport::Snapshot &&
+            e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY)
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 AudioLanePlan plan_audio_lane_strategy(
@@ -207,6 +229,12 @@ AudioLanePlan plan_audio_lane_strategy(
     bool opt_in = desc && desc->strategy_independent;
     if (!opt_in) return plan;
 
+    // Lift DECISION from the value model (7d.5c.1): a Many input on a Direct wire
+    // or via a Snapshot (cross-cadence) edge. Behavior-identical to the old
+    // lane-set trigger while the value envelopes are still the lane-set projection.
+    const bool lift = has_many_value_input(cn) || has_many_snapshot_input(cg, node_idx);
+
+    // Provenance for ctx.lane_set_id (cosmetic; Pass 2.6 alive → removed in 7e).
     uint32_t structural_set_id = find_structural_input(cn);
     if (structural_set_id == 0) {
         for (const auto& e : cg.edges) {
@@ -218,7 +246,7 @@ AudioLanePlan plan_audio_lane_strategy(
         }
     }
 
-    if (structural_set_id != 0) {
+    if (lift) {
         plan.strategy = LaneExecutionStrategy::LoopBased;
         plan.lane_lift_set_id = structural_set_id;
         plan.lane_id_port = detect_lane_id_port(cn);
@@ -235,8 +263,8 @@ FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
     const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
     if (!desc || !desc->strategy_independent) return plan;
 
-    uint32_t structural_set_id = find_structural_input(cn);
-    if (structural_set_id != 0) {
+    // Lift DECISION from the value model (7d.5c.1). Frame has no cross-cadence lift.
+    if (has_many_value_input(cn)) {
         plan.strategy = LaneExecutionStrategy::LoopBased;
         plan.lane_id_port = detect_lane_id_port(cn);
     }
