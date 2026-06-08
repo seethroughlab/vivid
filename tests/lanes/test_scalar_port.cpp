@@ -24,8 +24,7 @@ static void test_port_type_compat() {
           "AUDIO_BUFFER ↔ SCALAR incompatible");
     check(!vivid_port_type_compatible(VIVID_PORT_SCALAR, VIVID_PORT_TEXTURE),
           "SCALAR ↔ TEXTURE incompatible");
-    check(!vivid_port_type_compatible(VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_LANE_ARRAY),
-          "AUDIO_BUFFER ↔ LANE_ARRAY incompatible");
+    // (LANE_ARRAY retired in 7d.5e; float-many is SCALAR — covered by the SCALAR↔AUDIO_BUFFER case above.)
 }
 
 static void test_audio_scalar_routing(const std::string& build_dir) {

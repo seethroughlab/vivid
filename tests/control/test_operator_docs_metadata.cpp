@@ -70,9 +70,10 @@ int main() {
     {
         std::fprintf(stderr, "\n=== Value-model fields ===\n");
         VividPortDescriptor ports[1]{};
-        ports[0].name      = "voices";
-        ports[0].type      = VIVID_PORT_LANE_ARRAY;   // -> Float + Many
-        ports[0].direction = VIVID_PORT_OUTPUT;
+        ports[0].name         = "voices";
+        ports[0].type         = VIVID_PORT_SCALAR;            // Float payload
+        ports[0].multiplicity = VIVID_MULTIPLICITY_MANY;     // -> Float + Many
+        ports[0].direction    = VIVID_PORT_OUTPUT;
         VividOperatorDescriptor desc{};
         desc.name                  = "VoiceGen";
         desc.has_process_frame     = 1;

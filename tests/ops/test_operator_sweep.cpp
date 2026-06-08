@@ -266,10 +266,10 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     for (uint32_t i = 0; i < desc->port_count; i++) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             n_in_total++;
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_lane_in++;
+            if (desc->ports[i].multiplicity == VIVID_MULTIPLICITY_MANY) n_lane_in++;
         } else {
             n_out_total++;
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) n_lane_out++;
+            if (desc->ports[i].multiplicity == VIVID_MULTIPLICITY_MANY) n_lane_out++;
         }
     }
 
@@ -511,10 +511,10 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             for (uint32_t pi = 0; pi < desc->port_count; pi++) {
                 if (desc->ports[pi].direction == VIVID_PORT_INPUT) {
                     ni++;
-                    if (desc->ports[pi].type == VIVID_PORT_LANE_ARRAY) nsi++;
+                    if (desc->ports[pi].multiplicity == VIVID_MULTIPLICITY_MANY) nsi++;
                 } else {
                     no++;
-                    if (desc->ports[pi].type == VIVID_PORT_LANE_ARRAY) nso++;
+                    if (desc->ports[pi].multiplicity == VIVID_MULTIPLICITY_MANY) nso++;
                 }
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);

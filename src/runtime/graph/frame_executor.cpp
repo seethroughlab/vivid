@@ -415,11 +415,15 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
         }
 
         if (e.data_type == VIVID_PORT_STRING) {
-            cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
-            continue;
-        }
-        if (e.data_type == VIVID_PORT_STRING_LANES) {
-            cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
+            // Payload tag is STRING for both scalar + many (string-lanes port type
+            // retired, 7d.5e). String transport is separate from the float value
+            // envelope, so route by the DEST port's declared multiplicity.
+            const bool many = e.to_port < cn.input_port_multiplicities.size() &&
+                              cn.input_port_multiplicities[e.to_port] == VIVID_MULTIPLICITY_MANY;
+            if (many)
+                cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
+            else
+                cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
             continue;
         }
 

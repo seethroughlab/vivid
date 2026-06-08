@@ -78,8 +78,12 @@ Params are declared as member variables. The runtime syncs `ctx->param_values` i
 | `VIVID_PORT_AUDIO_BUFFER` | `audio_float` | Audio sample buffers |
 | `VIVID_PORT_TEXTURE` | `gpu_texture` | GPU textures |
 | `VIVID_PORT_STRING` | string | UTF-8 strings |
-| `VIVID_PORT_LANE_ARRAY` | lane array | Many float values (legacy port type — removed in Phase 7; a port becomes a payload type that may carry Scalar **or** Many via the value model) |
-| `VIVID_PORT_STRING_LANES` | string lanes | Many string values (legacy — see above) |
+
+A port type is a **payload** type only. Multiplicity (Scalar vs Many) is an orthogonal
+axis declared per-port via `.multiplicity = VIVID_MULTIPLICITY_MANY` (the old
+`VIVID_PORT_LANE_ARRAY` / `VIVID_PORT_STRING_LANES` port types were removed in Phase 7d.5e):
+a many-float output is `{.type=VIVID_PORT_SCALAR, .multiplicity=VIVID_MULTIPLICITY_MANY}`,
+a many-string output is `{.type=VIVID_PORT_STRING, .multiplicity=VIVID_MULTIPLICITY_MANY}`.
 
 Read/write port data via the **value API** (`#include "operator_api/value_view.h"`):
 `vivid_value_floats(&ctx->values[p])` + `vivid_value_count(...)` to read; `vivid_value_output_floats(&ctx->value_outputs[p], n)` + `vivid_value_output_commit(...)` to write (strings: `vivid_value_strings` / `vivid_value_output_set_string`). See the per-domain docs for context fields.

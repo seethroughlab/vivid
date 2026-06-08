@@ -403,7 +403,7 @@ inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
     };
     out.push_back(make_analysis("rms",      VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_SIGNAL));
     out.push_back(make_analysis("peak",     VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_SIGNAL));
-    out.push_back(make_analysis("waveform", VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_LANE_ARRAY, VIVID_MULTIPLICITY_MANY));
+    out.push_back(make_analysis("waveform", VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_SIGNAL, VIVID_MULTIPLICITY_MANY));
 }
 
 } // namespace vivid

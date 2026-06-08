@@ -1341,7 +1341,7 @@ void DescriptorBuilder::populate_port_specs(const SourceSyntaxRecord& record,
                 " VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, \"analysis\"}");
             result.port_exprs.push_back(
                 "VividPortDescriptor{.name=\"waveform\", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT,"
-                " .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .semantic_tag=\"analysis\","
+                " .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag=\"analysis\","
                 " .multiplicity=VIVID_MULTIPLICITY_MANY}");
         }
 

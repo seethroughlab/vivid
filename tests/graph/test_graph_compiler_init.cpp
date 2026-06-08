@@ -15,7 +15,8 @@
 // ---------------------------------------------------------------------------
 
 static VividPortDescriptor make_port(const char* name, VividPortType type,
-                                      VividPortDirection dir, uint8_t channels = 1) {
+                                      VividPortDirection dir, uint8_t channels = 1,
+                                      VividMultiplicity multiplicity = VIVID_MULTIPLICITY_SCALAR) {
     VividPortDescriptor p{};
     p.name = name;
     p.type = type;
@@ -23,6 +24,7 @@ static VividPortDescriptor make_port(const char* name, VividPortType type,
     p.transport = VIVID_PORT_TRANSPORT_SIGNAL;
     p.channels = channels;
     p.default_value = 0.0f;
+    p.multiplicity = multiplicity;
     return p;
 }
 
@@ -261,8 +263,8 @@ static void test_frame_state_lane_ports() {
     std::fprintf(stderr, "\n--- init_frame_state: lane port buffers ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
-        make_port("sp_out", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT),
+        make_port("sp_in",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT,  1, VIVID_MULTIPLICITY_MANY),
+        make_port("sp_out", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT, 1, VIVID_MULTIPLICITY_MANY),
     };
     VividOperatorDescriptor desc{};
     desc.name = "SpreadOp";
@@ -357,7 +359,7 @@ static void test_audio_state_lane_flags() {
     std::fprintf(stderr, "\n--- init_audio_state: lane/string/custom flags ---\n");
 
     VividPortDescriptor ports[] = {
-        make_port("sp_in",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT),
+        make_port("sp_in",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT, 1, VIVID_MULTIPLICITY_MANY),
         make_port("str_in", VIVID_PORT_STRING, VIVID_PORT_INPUT),
         make_port("out",    VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT, 1),
     };

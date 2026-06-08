@@ -543,7 +543,7 @@ static void test_push_lane_preserves_lane_set_id() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_LANE_ARRAY;
+    edge.data_type = VIVID_PORT_SCALAR;  // float-many payload tag (7d.5e); many-ness in value_envelope
     edge.lane_set_id = 42;
     edge.value_envelope.multiplicity = VIVID_MULTIPLICITY_MANY;  // bridge gates on this (7d)
     edge.value_envelope.value_type = VIVID_VALUE_FLOAT;
@@ -586,7 +586,7 @@ static void test_push_lane_clamps_overflow() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_LANE_ARRAY;
+    edge.data_type = VIVID_PORT_SCALAR;  // float-many payload tag (7d.5e); many-ness in value_envelope
     edge.value_envelope.multiplicity = VIVID_MULTIPLICITY_MANY;  // bridge gates on this (7d)
     edge.value_envelope.value_type = VIVID_VALUE_FLOAT;
     cg->edges.push_back(edge);

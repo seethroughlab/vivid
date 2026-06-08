@@ -299,10 +299,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
             cn.c_out_value_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                const VividPortType t = (p < cn.output_port_types.size())
-                    ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+                const VividValueType vt = (p < cn.output_port_value_types.size())
+                    ? cn.output_port_value_types[p] : VIVID_VALUE_FLOAT;
                 cn.c_out_value_outputs[p] =
-                    (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
+                    (vt == VIVID_VALUE_STRING)
                         ? make_string_value_output(&cn.out_string_value_bufs[p])
                         : make_value_output(&cn.out_value_bufs[p]);
             }
@@ -466,11 +466,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 }
             }
 
-            // Type validation (lane-value 7d.5d.1): keyed on payload value_type +
-            // declared multiplicity, NOT the (transitional) LANE_ARRAY/STRING_LANES
-            // port type. e.data_type keeps the LANE_ARRAY/STRING_LANES enum as the
-            // computed downstream edge tag (executors read it; removed in 7d.5e).
-            // Behavior-identical while LANE_ARRAY⟺FLOAT+Many and STRING_LANES⟺STRING+Many.
+            // Type validation (lane-value 7d.5d.1/7d.5e): keyed on payload value_type +
+            // declared multiplicity, NOT the (retired) LANE_ARRAY/STRING_LANES port type.
+            // e.data_type now carries the PAYLOAD tag only (STRING/SCALAR/TEXTURE/...);
+            // many-ness lives in e.value_envelope.multiplicity (consumers read that).
             if (!from_cn.missing_operator && !to_cn.missing_operator) {
                 const bool from_many = (from_port_mult == VIVID_MULTIPLICITY_MANY);
                 const bool to_many   = (to_port_mult   == VIVID_MULTIPLICITY_MANY);
@@ -480,14 +479,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     string_in_fanin[ti][e.to_port]++;
                 } else if (from_port_vt == VIVID_VALUE_STRING && to_port_vt == VIVID_VALUE_STRING &&
                            from_many && to_many) {
-                    e.data_type = VIVID_PORT_STRING_LANES;
+                    // String-many edge: payload tag STRING; many-ness in value_envelope.
+                    e.data_type = VIVID_PORT_STRING;
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
                 } else if (from_port_vt == VIVID_VALUE_FLOAT && to_port_vt == VIVID_VALUE_FLOAT &&
                            (from_many || to_many)) {
-                    // Float-many on either end → lane edge (scalar→many broadcast preserved).
-                    e.data_type = VIVID_PORT_LANE_ARRAY;
+                    // Float-many edge: payload tag SCALAR (float); many-ness in
+                    // value_envelope (scalar→many broadcast preserved).
+                    e.data_type = VIVID_PORT_SCALAR;
                 } else if (vivid_is_custom_port_type(from_port_type) &&
                            vivid_is_custom_port_type(to_port_type) &&
                            from_port_type == to_port_type) {
@@ -717,8 +718,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
                     const bool is_lane_array =
                         cn.lane_behavior == LaneBehavior::Reduction &&
-                        pi < cn.output_port_types.size() &&
-                        cn.output_port_types[pi] == VIVID_PORT_LANE_ARRAY;
+                        pi < cn.output_port_multiplicities.size() &&
+                        cn.output_port_multiplicities[pi] == VIVID_MULTIPLICITY_MANY &&
+                        cn.output_port_value_types[pi] == VIVID_VALUE_FLOAT;
                     if (is_lane_array) {
                         if (!breakout_minted) {
                             breakout_ls.lane_set_id      = cg->next_lane_set_id++;

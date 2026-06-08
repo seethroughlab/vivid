@@ -14,10 +14,9 @@ namespace {
 VividValueType value_type_for_port(VividPortType t) {
     switch (t) {
         case VIVID_PORT_AUDIO_BUFFER: return VIVID_VALUE_AUDIO;
-        case VIVID_PORT_STRING:
-        case VIVID_PORT_STRING_LANES: return VIVID_VALUE_STRING;
+        case VIVID_PORT_STRING:       return VIVID_VALUE_STRING;
         case VIVID_PORT_TEXTURE:      return VIVID_VALUE_TEXTURE;
-        default:                      return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY, custom
+        default:                      return VIVID_VALUE_FLOAT;  // SCALAR, custom
     }
 }
 
@@ -381,8 +380,8 @@ void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold) {
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             // Many input (value-model successor to LANE_ARRAY; 7d.5d.1). GPU nodes
             // only carry float-many lane inputs, so multiplicity alone suffices —
-            // matching the old LANE_ARRAY check (the downstream edge-tag gate on
-            // e.data_type == LANE_ARRAY below already restricts to float lanes).
+            // matching the old LANE_ARRAY check (the downstream edge gate on
+            // e.value_envelope float-many below already restricts to float lanes).
             if (p >= cn.input_port_multiplicities.size() ||
                 cn.input_port_multiplicities[p] != VIVID_MULTIPLICITY_MANY)
                 continue;
@@ -392,7 +391,8 @@ void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold) {
             uint32_t src_port = UINT32_MAX;
             for (const auto& e : cg.edges) {
                 if (e.to_node == ni && e.to_port == p && !e.targets_param &&
-                    e.data_type == VIVID_PORT_LANE_ARRAY) {
+                    e.value_envelope.value_type == VIVID_VALUE_FLOAT &&
+                    e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY) {
                     src_node = e.from_node;
                     src_port = e.from_port;
                     break;

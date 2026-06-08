@@ -222,13 +222,11 @@ inline bool resolve_exact_port_type(OperatorRegistry& registry,
 // only connects to a texture port, and a custom 'data' port only connects to the
 // same custom type — these mismatches are silently dropped/rejected at compile,
 // so warn immediately. All other combinations (scalar / control / audio /
-// lane-array, or exact matches) are compatible. Empty string = no warning.
+// float-many, or exact matches) are compatible. Empty string = no warning.
 inline std::string connect_type_issue(VividPortType from_type, VividPortType to_type) {
     if (from_type == to_type) return {};
-    if (from_type == VIVID_PORT_LANE_ARRAY || to_type == VIVID_PORT_LANE_ARRAY) return {};
     const char* tail = "; this connection will be dropped at compile — check get_graph_errors";
-    if (from_type == VIVID_PORT_STRING || from_type == VIVID_PORT_STRING_LANES ||
-        to_type == VIVID_PORT_STRING || to_type == VIVID_PORT_STRING_LANES)
+    if (from_type == VIVID_PORT_STRING || to_type == VIVID_PORT_STRING)
         return std::string("type mismatch: string ports must match exactly") + tail;
     if (from_type == VIVID_PORT_TEXTURE || to_type == VIVID_PORT_TEXTURE)
         return std::string("type mismatch: a gpu_texture port only connects to another "

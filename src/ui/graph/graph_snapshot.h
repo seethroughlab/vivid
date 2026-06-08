@@ -297,8 +297,9 @@ struct ConnectionSnapshot {
     uint8_t  curve       = 0;   // RemapCurve index
 
     bool supports_remap() const {
+        // Float-many edges now carry the SCALAR payload tag (LANE_ARRAY retired, 7d.5e);
+        // many-ness lives in the value envelope.
         return data_type == VIVID_PORT_SCALAR ||
-               data_type == VIVID_PORT_LANE_ARRAY ||
                data_type == VIVID_PORT_AUDIO_BUFFER;
     }
 

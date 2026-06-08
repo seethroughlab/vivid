@@ -11,9 +11,9 @@ struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"values", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="values", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"out",    VIVID_PORT_AUDIO_BUFFER,    VIVID_PORT_OUTPUT});
-        out.push_back({"echo",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="echo", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::append_analysis_ports(out);
     }
 

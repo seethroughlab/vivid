@@ -185,10 +185,10 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
 
     // Per-port value-output backing (needs out_string_value_bufs to exist first).
     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-        const VividPortType t = (p < cn.output_port_types.size())
-            ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+        const VividValueType vt = (p < cn.output_port_value_types.size())
+            ? cn.output_port_value_types[p] : VIVID_VALUE_FLOAT;
         cn.c_out_value_outputs[p] =
-            (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
+            (vt == VIVID_VALUE_STRING)
                 ? make_string_value_output(&cn.out_string_value_bufs[p])
                 : make_value_output(&cn.out_value_bufs[p]);
     }
@@ -265,10 +265,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     if (cn.gpu) cn.gpu->texture_input_port_indices.push_back(input_idx);
                     break;
                 case VIVID_PORT_STRING:
-                    cn.string_input_port_indices.push_back(input_idx);
-                    break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.string_lane_input_port_indices.push_back(input_idx);
+                    if (graph_compiler_internal::port_declared_multiplicity(desc->ports[i])
+                            == VIVID_MULTIPLICITY_MANY)
+                        cn.string_lane_input_port_indices.push_back(input_idx);
+                    else
+                        cn.string_input_port_indices.push_back(input_idx);
                     break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -291,10 +292,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     }
                     break;
                 case VIVID_PORT_STRING:
-                    cn.has_string_output = true;
-                    break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.has_string_lane_output = true;
+                    if (graph_compiler_internal::port_declared_multiplicity(desc->ports[i])
+                            == VIVID_MULTIPLICITY_MANY)
+                        cn.has_string_lane_output = true;
+                    else
+                        cn.has_string_output = true;
                     break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -329,7 +331,9 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             a.descriptor_input_channels.push_back(desc->ports[i].channels);
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) a.has_lane_ports = true;
+            if (graph_compiler_internal::port_value_type(desc->ports[i]) == VIVID_VALUE_FLOAT &&
+                graph_compiler_internal::port_declared_multiplicity(desc->ports[i]) == VIVID_MULTIPLICITY_MANY)
+                a.has_lane_ports = true;
             if (desc->ports[i].type == VIVID_PORT_STRING) a.has_string_input_ports = true;
             if (vivid_is_custom_port_type(desc->ports[i].type)) a.has_custom_input_ports = true;
         } else {

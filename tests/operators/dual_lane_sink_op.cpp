@@ -11,8 +11,8 @@ struct DualLaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"in_a", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"in_b", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="in_a", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="in_b", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"out_a", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"out_b", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }

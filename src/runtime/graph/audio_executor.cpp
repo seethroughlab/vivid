@@ -595,7 +595,11 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (uint32_t ei : cg.audio_direct_edges) {
                 const auto& e = cg.edges[ei];
                 if (e.to_node != ni || e.targets_param) continue;
+                // Audio sample-buffer / scalar-control routing only. Float-many edges
+                // (payload tag SCALAR, but value_envelope MANY since LANE_ARRAY retired
+                // in 7d.5e) are handled by the lane/value staging path, not here.
                 if (e.data_type != VIVID_PORT_AUDIO_BUFFER && e.data_type != VIVID_PORT_SCALAR) continue;
+                if (e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY) continue;
 
                 auto& from_cn = cg.nodes[e.from_node];
                 auto& from_a = *from_cn.audio;
@@ -1211,12 +1215,13 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
     // value-view vectors per lane is safe.
     for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
         VividValueView& vv = cn.c_in_value_views[p];
-        const VividPortType pt = (p < cn.input_port_types.size())
-            ? cn.input_port_types[p] : VIVID_PORT_SCALAR;
-        const bool many_float_in =
+        const bool many_in =
             p < cn.input_port_multiplicities.size() &&
-            cn.input_port_multiplicities[p] == VIVID_MULTIPLICITY_MANY &&
-            cn.input_port_value_types[p] == VIVID_VALUE_FLOAT;
+            cn.input_port_multiplicities[p] == VIVID_MULTIPLICITY_MANY;
+        const bool many_float_in =
+            many_in && cn.input_port_value_types[p] == VIVID_VALUE_FLOAT;
+        const bool many_string_in =
+            many_in && cn.input_port_value_types[p] == VIVID_VALUE_STRING;
         if (many_float_in && p < cn.c_in_lane_views.size()) {
             // Bridged many (float) input (cross-cadence): carry the FULL array — the
             // operator indexes it by ctx->lane_index. (Value-model gate, 7d.)
@@ -1229,7 +1234,7 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
             vv.storage_kind = VIVID_STORAGE_BRIDGE_SLOT;
             vv.identity_mode = VIVID_IDENTITY_NONE;
             vv.flags = 0;
-        } else if (pt == VIVID_PORT_STRING_LANES && p < cn.c_in_string_lane_views.size()) {
+        } else if (many_string_in && p < cn.c_in_string_lane_views.size()) {
             const VividStringLaneView& sv = cn.c_in_string_lane_views[p];
             vv.data         = sv.data;
             vv.value_count  = sv.length;
@@ -1244,8 +1249,9 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
             vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
             vv.value_count  = 1;
             vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-            vv.value_type   = (pt == VIVID_PORT_AUDIO_BUFFER) ? VIVID_VALUE_AUDIO
-                                                              : VIVID_VALUE_FLOAT;
+            vv.value_type   = (p < cn.input_port_value_types.size() &&
+                               cn.input_port_value_types[p] == VIVID_VALUE_AUDIO)
+                                  ? VIVID_VALUE_AUDIO : VIVID_VALUE_FLOAT;
             vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
             vv.identity_mode = VIVID_IDENTITY_NONE;
             vv.flags = 0;

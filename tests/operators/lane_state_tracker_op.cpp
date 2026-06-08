@@ -28,8 +28,8 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",    VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT});
         out.push_back({"output",   VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT});
         // Lane-array inputs for per-lane values and identity-bearing lane_ids
-        out.push_back({"values",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="values",   .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         // Signal outputs for last-lane readback
         out.push_back({"lane_count_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_id_out",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});

@@ -77,7 +77,7 @@ struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({.name="values", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT,
-                       .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .multiplicity=VIVID_MULTIPLICITY_MANY});
+                       .transport=VIVID_PORT_TRANSPORT_SIGNAL, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

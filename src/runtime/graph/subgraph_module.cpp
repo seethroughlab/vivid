@@ -50,9 +50,12 @@ const ModDestinationBinding* SubgraphModuleDef::find_mod_destination(const std::
 static VividPortType parse_port_type(const std::string& s) {
     if (s == "signal")        return VIVID_PORT_SCALAR;
     if (s == "audio")         return VIVID_PORT_AUDIO_BUFFER;
-    if (s == "lane_array")    return VIVID_PORT_LANE_ARRAY;
+    // Legacy many-port vocabulary (lane port types retired, 7d.5e) → payload type.
+    // Subgraph placeholder port type isn't load-bearing (resolved at compile via the
+    // bound internal node), so the lost many-ness here is cosmetic.
+    if (s == "lane_array")    return VIVID_PORT_SCALAR;
     if (s == "string")        return VIVID_PORT_STRING;
-    if (s == "string_lanes") return VIVID_PORT_STRING_LANES;
+    if (s == "string_lanes")  return VIVID_PORT_STRING;
     if (s == "texture")       return VIVID_PORT_TEXTURE;
     // custom_ref / custom_value are opaque-pointer / opaque-value port shapes
     // (e.g. VividNoteBuffer). The actual transport + stable type id is

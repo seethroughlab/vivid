@@ -196,9 +196,10 @@ inline nlohmann::json build_port_descriptor_json(const VividPortDescriptor& pd) 
     p["name"] = pd.name;
     p["type"] = port_type_str(pd.type);
     p["transport"] = transport_str(pd.transport);
-    // Value-model envelope (lane-value clean-break, v6) — derived from the port type.
-    p["value_type"] = value_type_str(value_type_for_port_type(pd.type));
-    p["multiplicity"] = multiplicity_str(multiplicity_for_port_type(pd.type));
+    // Value-model envelope (lane-value clean-break) — multiplicity declared on the
+    // port; value_type honors explicit override else derives from the payload type.
+    p["value_type"] = value_type_str(value_type_for_port(pd));
+    p["multiplicity"] = multiplicity_str(multiplicity_for_port(pd));
     if (pd.type_name && *pd.type_name)
         p["type_name"] = pd.type_name;
     if (pd.stable_type_id && *pd.stable_type_id)

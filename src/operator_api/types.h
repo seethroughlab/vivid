@@ -10,7 +10,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 6u  /* v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 7u  /* v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -63,11 +63,11 @@ typedef uint32_t VividPortDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_SCALAR         0u  // scalar numeric value
+#define VIVID_PORT_SCALAR         0u  // scalar numeric value (multiplicity declares many)
 #define VIVID_PORT_AUDIO_BUFFER   1u  // audio sample buffer
-#define VIVID_PORT_LANE_ARRAY         2u  // variable-length float array
-#define VIVID_PORT_STRING         3u  // UTF-8 string
-#define VIVID_PORT_STRING_LANES  4u  // variable-length string array
+// 2u retired (was VIVID_PORT_LANE_ARRAY) — float-many is now SCALAR + .multiplicity=MANY (7d.5e)
+#define VIVID_PORT_STRING         3u  // UTF-8 string (multiplicity declares many)
+// 4u retired (was VIVID_PORT_STRING_LANES) — string-many is now STRING + .multiplicity=MANY (7d.5e)
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
 
 typedef uint32_t VividPortDirection;
@@ -77,9 +77,9 @@ typedef uint32_t VividPortDirection;
 typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
-#define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float lane array copy
+// 2u retired (was VIVID_PORT_TRANSPORT_LANE_ARRAY) — float-many rides SIGNAL (7d.5e)
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
-#define VIVID_PORT_TRANSPORT_STRING_LANES  4u  // string lane array copy
+// 4u retired (was VIVID_PORT_TRANSPORT_STRING_LANES) — string-many rides STRING (7d.5e)
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
@@ -821,8 +821,9 @@ typedef void (*VividPrepareInstanceAssetsFn)(void* instance,
 // ---------------------------------------------------------------------------
 
 static inline int vivid_is_control_type(VividPortType t) {
-    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_LANE_ARRAY ||
-           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES;
+    // Multiplicity is orthogonal to the payload type (lane port types retired,
+    // 7d.5e): float-many is SCALAR, string-many is STRING.
+    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_STRING;
 }
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {

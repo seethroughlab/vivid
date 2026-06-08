@@ -166,9 +166,10 @@ double run_once(vivid::OperatorLoader& loader, uint32_t frames, Measurement& m,
         const uint32_t ch = std::max<uint32_t>(1u, port.channels);
         if (port.direction == VIVID_PORT_INPUT) {
             if (port.type == VIVID_PORT_AUDIO_BUFFER) audio_in.push_back({ch, p});
+            // float-many is SCALAR+MANY (LANE_ARRAY retired, 7d.5e) — check before plain scalar.
+            else if (port.type == VIVID_PORT_SCALAR && port.multiplicity == VIVID_MULTIPLICITY_MANY) lane_in.push_back({ch, p});
             else if (port.type == VIVID_PORT_SCALAR) scalar_in.push_back({ch, p});
-            else if (port.type == VIVID_PORT_LANE_ARRAY) lane_in.push_back({ch, p});
-            else if (port.type == VIVID_PORT_STRING || port.type == VIVID_PORT_STRING_LANES) string_in.push_back({ch, p});
+            else if (port.type == VIVID_PORT_STRING) string_in.push_back({ch, p});
         } else if (port.direction == VIVID_PORT_OUTPUT) {
             if (port.type == VIVID_PORT_AUDIO_BUFFER) audio_out.push_back({ch, p});
         }

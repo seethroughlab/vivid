@@ -20,7 +20,7 @@ struct StringSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"out", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
-        out.push_back({"list", VIVID_PORT_STRING_LANES, VIVID_PORT_OUTPUT});
+        out.push_back({.name="list", .type=VIVID_PORT_STRING, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

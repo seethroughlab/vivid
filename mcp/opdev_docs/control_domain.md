@@ -74,8 +74,10 @@ if (buf) {
 }
 ```
 
-A many-valued output port currently still declares `VIVID_PORT_LANE_ARRAY` (the port
-type is removed in Phase 7); the I/O above is the same regardless.
+A many-valued output port declares the payload type plus
+`.multiplicity = VIVID_MULTIPLICITY_MANY` (e.g.
+`{.name="voices", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY}`);
+the I/O above is the same regardless.
 
 > _Legacy (removed Phase 7):_ `ctx->input_lanes[i]` (`.data`/`.length`) +
 > `ctx->output_lanes[i]` (`.resize`/`.commit`) — superseded by the value API above.

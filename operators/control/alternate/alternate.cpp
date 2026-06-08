@@ -36,22 +36,22 @@ struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"beat_phase", VIVID_PORT_SCALAR, VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "beat_phase"});
-        out.push_back({.name="input_0",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=0,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_1",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=1,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_2",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=2,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_3",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=3,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_4",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=4,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_5",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=5,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_6",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=6,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_7",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=7,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_8",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=8,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_9",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=9,  .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_10", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=10, .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_11", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=11, .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_12", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=12, .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_13", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=13, .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_14", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=14, .multiplicity=VIVID_MULTIPLICITY_MANY});
-        out.push_back({.name="input_15", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .repeat_group="input", .repeat_group_idx=15, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_0",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=0,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_1",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=1,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_2",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=2,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_3",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=3,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_4",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=4,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_5",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=5,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_6",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=6,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_7",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=7,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_8",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=8,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_9",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=9,  .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_10", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=10, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_11", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=11, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_12", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=12, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_13", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=13, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_14", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=14, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="input_15", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .repeat_group="input", .repeat_group_idx=15, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({.name="output", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"index",  VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});
     }

@@ -50,30 +50,25 @@ BridgeKind parse_bridge_kind(const std::string& s);
 float remap_to_scale(const ConnectionDef& c);
 void warm_up_instance_assets(CompiledNode& cn);
 
-// Per-port DECLARED multiplicity (lane-value clean-break Phase 7d). Honors an
-// explicit VividPortDescriptor.multiplicity if the operator set one; otherwise
-// derives it from the (transitional) port type — LANE_ARRAY/STRING_LANES = Many,
-// everything else = Scalar. The value-model successor to encoding arity in the
-// port type; gates read this instead of the port type. Forward-compatible with
-// Phase 7d.5 (ops declare .multiplicity, port types collapse to payload types).
+// Per-port DECLARED multiplicity (lane-value clean-break Phase 7d). Arity is
+// declared on the port via VividPortDescriptor.multiplicity — the value-model
+// successor to encoding arity in the port type (the LANE_ARRAY/STRING_LANES port
+// types were retired in Phase 7d.5e). Gates read this instead of the port type.
 inline VividMultiplicity port_declared_multiplicity(const VividPortDescriptor& pd) {
-    if (pd.multiplicity != VIVID_MULTIPLICITY_SCALAR) return pd.multiplicity;
-    return (pd.type == VIVID_PORT_LANE_ARRAY || pd.type == VIVID_PORT_STRING_LANES)
-        ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+    return pd.multiplicity;
 }
 
 // Per-port PAYLOAD value-type (lane-value clean-break Phase 7d). Honors an explicit
-// VividPortDescriptor.value_type, else derives from the port type. The payload axis
-// (orthogonal to multiplicity); survives Phase 7d.5 (SCALAR→FLOAT, STRING→STRING,
-// AUDIO_BUFFER→AUDIO, TEXTURE→TEXTURE; LANE_ARRAY→FLOAT, STRING_LANES→STRING).
+// VividPortDescriptor.value_type, else derives from the payload port type (the
+// multiplicity axis is orthogonal): SCALAR→FLOAT, STRING→STRING, AUDIO_BUFFER→AUDIO,
+// TEXTURE→TEXTURE.
 inline VividValueType port_value_type(const VividPortDescriptor& pd) {
     if (pd.value_type != VIVID_VALUE_FLOAT) return pd.value_type;  // 0 == FLOAT default
     switch (pd.type) {
         case VIVID_PORT_AUDIO_BUFFER:  return VIVID_VALUE_AUDIO;
-        case VIVID_PORT_STRING:
-        case VIVID_PORT_STRING_LANES:  return VIVID_VALUE_STRING;
+        case VIVID_PORT_STRING:        return VIVID_VALUE_STRING;
         case VIVID_PORT_TEXTURE:       return VIVID_VALUE_TEXTURE;
-        default:                       return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY, custom
+        default:                       return VIVID_VALUE_FLOAT;  // SCALAR, custom
     }
 }
 

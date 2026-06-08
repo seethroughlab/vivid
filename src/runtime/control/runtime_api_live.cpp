@@ -149,10 +149,12 @@ std::string infer_bridge_kind(const vivid::Graph& graph,
         if (name == "rms")      return "rms";
         if (name == "peak")     return "peak";
         if (name == "waveform") return "waveform";
-        if (src_port->type == VIVID_PORT_LANE_ARRAY) return "waveform";
+        if (src_port->type == VIVID_PORT_SCALAR &&
+            src_port->multiplicity == VIVID_MULTIPLICITY_MANY) return "waveform";  // float-many
         return "last_sample";
     }
-    if (src_port->type == VIVID_PORT_LANE_ARRAY) return "snapshot";
+    if (src_port->type == VIVID_PORT_SCALAR &&
+        src_port->multiplicity == VIVID_MULTIPLICITY_MANY) return "snapshot";  // float-many
     return "hold";
 }
 

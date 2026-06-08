@@ -391,8 +391,9 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         return result;
     };
     auto type_suffix = [](VividPortType t) -> const char* {
+        // Many-string ["] decoration retired with the STRING_LANES port type (7d.5e);
+        // multiplicity-aware port labels return in the 7e UI provenance re-source.
         if (t == VIVID_PORT_STRING) return " \"";
-        if (t == VIVID_PORT_STRING_LANES) return " [\"]";
         return "";
     };
 

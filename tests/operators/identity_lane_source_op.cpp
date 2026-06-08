@@ -37,7 +37,7 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"out",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

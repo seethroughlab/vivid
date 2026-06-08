@@ -1452,9 +1452,12 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                     if      (type_str == "float")         out = VIVID_PORT_SCALAR;
                     else if (type_str == "int")           out = VIVID_PORT_SCALAR;
                     else if (type_str == "bool")          out = VIVID_PORT_SCALAR;
-                    else if (type_str == "lane_array")        out = VIVID_PORT_LANE_ARRAY;
+                    // Legacy many-port vocabulary (lane port types retired, 7d.5e):
+                    // accepted for back-compat, mapped to the payload type. Multiplicity
+                    // is now declared via the port's .multiplicity, not the type string.
+                    else if (type_str == "lane_array")    out = VIVID_PORT_SCALAR;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
-                    else if (type_str == "string_lanes") out = VIVID_PORT_STRING_LANES;
+                    else if (type_str == "string_lanes")  out = VIVID_PORT_STRING;
                     else return "unknown control port type '" + type_str + "'";
                 } else if (k == VIVID_OP_AUDIO) {
                     if (type_str == "float") out = VIVID_PORT_AUDIO_BUFFER;
