@@ -5,6 +5,8 @@
 #include <unordered_map>
 #include <mutex>
 #include <memory>
+#include <atomic>
+#include <cstdint>
 
 namespace efsw { class FileWatcher; }
 
@@ -48,24 +50,38 @@ private:
         std::string package_name;
     };
 
+    // State touched by the efsw callback thread, held via shared_ptr by both the
+    // FileWatcher and its Listener. efsw's macOS FSEvents backend routes
+    // callbacks through a serial dispatch queue that it does NOT drain on
+    // teardown, so one in-flight callback can fire AFTER stop(); keeping this
+    // alive (with active == false) makes that late callback a safe no-op instead
+    // of a use-after-free. See stop().
+    struct SharedState {
+        std::mutex watch_mutex;
+        // path → target_name mapping for event filtering. Protected by watch_mutex.
+        std::unordered_map<std::string, std::string> path_to_target;
+        std::vector<WatchRoot> watch_roots;
+        // Debounce: target → last event time (steady_clock ms). watch_mutex.
+        std::unordered_map<std::string, uint64_t> last_event_time;
+
+        std::mutex queue_mutex;
+        std::vector<FileChangeEvent> pending;
+
+        // Cleared by stop() once efsw is torn down; a late callback checks this
+        // (no lock) and returns before touching any shared map.
+        std::atomic<bool> active{true};
+
+        std::string resolve_target_locked(const std::string& path) const;
+    };
+
     void ensure_dir_watched(const std::string& dir, bool recursive);
-    std::string resolve_target_locked(const std::string& path) const;
 
     std::unique_ptr<efsw::FileWatcher> watcher_;
-    std::unique_ptr<Listener> listener_;
+    std::shared_ptr<Listener> listener_;   // efsw holds listener_.get()
+    std::shared_ptr<SharedState> state_;
 
-    // path → target_name mapping for event filtering.  Protected by watch_mutex_.
-    std::mutex watch_mutex_;
-    std::unordered_map<std::string, std::string> path_to_target_;
+    // Directories already registered with efsw (main-thread only).
     std::unordered_map<std::string, bool> watched_dirs_;
-    std::vector<WatchRoot> watch_roots_;
-
-    // Debounce: target → last event time (steady_clock ms)
-    std::unordered_map<std::string, uint64_t> last_event_time_;
-
-    std::mutex queue_mutex_;
-    std::vector<FileChangeEvent> pending_;
-
     std::string operators_dir_;
 };
 
