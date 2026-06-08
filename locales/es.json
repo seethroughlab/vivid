@@ -283,5 +283,7 @@
     "inspector_bypass": "Bypass",
     "inspector_bypassed": "Bypassed",
     "node_bypass_badge": "BYPASS",
-    "advanced_outputs": "Advanced Outputs"
+    "advanced_outputs": "Advanced Outputs",
+    "voices": "Voces",
+    "voices_idle": "— sin voces activas —"
 }
