@@ -25,19 +25,33 @@ struct LaneOutBuf {
         return self->data.data();
     }
     static void commit_cb(void* /*h*/, uint32_t /*len*/) {}
+    // Value-API resize (VividValueOutput): same buffer, void* return.
+    static void* value_resize_cb(void* h, uint32_t len) { return resize_cb(h, len); }
 };
+
+// Build a FLOAT VividValueView over a captured many-value buffer.
+static VividValueView float_value_view(const std::vector<float>& v) {
+    VividValueView vv{};
+    vv.data        = v.empty() ? nullptr : v.data();
+    vv.value_count = static_cast<uint32_t>(v.size());
+    vv.value_type  = VIVID_VALUE_FLOAT;
+    vv.multiplicity = (v.size() > 1) ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+    return vv;
+}
 
 struct NoteBreakoutHarness {
     LaneOutBuf voice_ids_buf;
     LaneOutBuf voice_gates_buf;
     LaneOutBuf voice_velocities_buf;
     LaneOutBuf voice_freqs_buf;
-    // output_lanes is indexed by overall output port ordinal.
-    // NoteBreakout: notes_out(0,custom_ref), voice_ids(1..7 lane arrays).
-    // Slot 0 is the notes_out custom ref port — left as zero/unused.
-    // Slots 5-7 (voice_pitch_bend/pressure/timbre) are left as zero since
-    // this test only exercises the first four lane outputs.
-    VividLaneOutput lane_outputs[8] = {};
+    // value_outputs is indexed by overall output port ordinal. NoteBreakout emits
+    // its voice_* breakouts through the value API (ctx->value_outputs) since the
+    // Phase-6 op migration, not the legacy ctx->output_lanes.
+    // Ports: notes_out(0,custom_ref), voice_ids(1), voice_gates(2),
+    // voice_velocities(3), voice_freqs(4), voice_pitch_bend(5), voice_pressure(6),
+    // voice_timbre(7). Slot 0 + slots 5-7 are left as null adapters (the op's
+    // emit helper guards null resize/commit); this test exercises 1..4.
+    VividValueOutput value_outputs[8] = {};
 
     VividNoteBuffer notes{};
     void* custom_inputs[1] = {&notes};
@@ -49,11 +63,11 @@ struct NoteBreakoutHarness {
         ctx.custom_inputs = custom_inputs;
         ctx.custom_input_count = 1;
 
-        lane_outputs[1] = {&voice_ids_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[2] = {&voice_gates_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[4] = {&voice_freqs_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        ctx.output_lanes = lane_outputs;
+        value_outputs[1] = {&voice_ids_buf,        LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[2] = {&voice_gates_buf,      LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[3] = {&voice_velocities_buf, LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[4] = {&voice_freqs_buf,      LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        ctx.value_outputs = value_outputs;
     }
 
     void clear_notes() { notes.count = 0; }
@@ -78,7 +92,10 @@ struct EnvelopeHarness {
     float output[kMaxVoices * kFrames] = {};
     float* input_buffers[3] = {nullptr, nullptr, beat_phase};
     float* output_buffers[1] = {output};
-    VividLaneView input_lanes[2] = {};
+    // Envelope reads its lane inputs through the value API since the Phase-6 op
+    // migration: ctx->values[0] = gate, ctx->values[1] = lane_ids. beat_phase
+    // (port 2, scalar) stays on ctx->input_buffers[2].
+    VividValueView values[3] = {};
     VividAudioContext ctx{};
 
     EnvelopeHarness() {
@@ -86,14 +103,12 @@ struct EnvelopeHarness {
         ctx.buffer_size = kFrames;
         ctx.input_buffers = input_buffers;
         ctx.output_buffers = output_buffers;
-        ctx.input_lanes = input_lanes;
+        ctx.values = values;
     }
 
     void bind_from(const NoteBreakoutHarness& src) {
-        input_lanes[0].data = src.voice_gates_buf.data.empty() ? nullptr : src.voice_gates_buf.data.data();
-        input_lanes[0].length = static_cast<uint32_t>(src.voice_gates_buf.data.size());
-        input_lanes[1].data = src.voice_ids_buf.data.empty() ? nullptr : src.voice_ids_buf.data.data();
-        input_lanes[1].length = static_cast<uint32_t>(src.voice_ids_buf.data.size());
+        values[0] = float_value_view(src.voice_gates_buf.data);  // gate
+        values[1] = float_value_view(src.voice_ids_buf.data);    // lane_ids
     }
 
     void clear_output() {
