@@ -1,6 +1,7 @@
-// Audio test operator for audio-frame bridge lane snapshot testing.
-// Reads a lane-array input, copies it to the lane-array output, and emits a
-// DC audio signal equal to the sum of the lane values.
+// Audio test operator for audio-frame bridge many-value snapshot testing.
+// Reads a many-value input, copies it to the many-value output, and emits a
+// DC audio signal equal to the sum of the values. Uses the value API
+// (ctx->values/value_outputs) — successor to the lane views. (7e.1)
 #include "operator_api/operator.h"
 #include <cstring>
 
@@ -18,27 +19,23 @@ struct AudioLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     }
 
     void process_audio(const VividAudioContext* ctx) override {
-        // Sum lane input values
+        // Sum the many-value input (port 0 "values")
         float sum = 0.0f;
-        if (ctx->input_lanes) {
-            const auto& isp = ctx->input_lanes[0];  // "values" input (port 0)
-            for (uint32_t i = 0; i < isp.length; ++i) {
-                sum += isp.data[i];
-            }
+        const float* in  = ctx->values ? vivid_value_floats(&ctx->values[0]) : nullptr;
+        const uint32_t n = ctx->values ? vivid_value_count(&ctx->values[0]) : 0;
+        for (uint32_t i = 0; i < n; ++i) sum += in[i];
 
-            // Echo lane array to output port 1 ("echo")
-            if (ctx->output_lanes) {
-                auto& osp = ctx->output_lanes[1];  // "echo" output (port 1)
-                float* buf = osp.resize(osp.handle, isp.length);
-                if (buf && isp.length > 0) {
-                    std::memcpy(buf, isp.data, isp.length * sizeof(float));
-                    osp.commit(osp.handle, isp.length);
-                }
+        // Echo the many-value array to output port 1 ("echo")
+        if (ctx->value_outputs && in && n > 0) {
+            float* buf = vivid_value_output_floats(&ctx->value_outputs[1], n);
+            if (buf) {
+                std::memcpy(buf, in, n * sizeof(float));
+                vivid_value_output_commit(&ctx->value_outputs[1], n);
             }
         }
 
-        // Write DC audio output = sum
-        float* out = ctx->output_buffers[0];  // "out" output (port 0)
+        // Write DC audio output = sum (port 0 "out", AUDIO_BUFFER)
+        float* out = ctx->output_buffers[0];
         for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
             out[i] = sum;
         }
