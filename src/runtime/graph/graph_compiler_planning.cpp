@@ -149,8 +149,9 @@ int32_t detect_lane_id_port(const CompiledNode& cn) {
     auto li_it = cn.input_port_indices.find("lane_ids");
     if (li_it != cn.input_port_indices.end()) {
         uint32_t pi = li_it->second;
-        if (pi < cn.input_port_types.size() &&
-            cn.input_port_types[pi] == VIVID_PORT_LANE_ARRAY) {
+        // Many-capable "lane_ids" input (value-model successor to LANE_ARRAY; 7d.5d.1).
+        if (pi < cn.input_port_multiplicities.size() &&
+            cn.input_port_multiplicities[pi] == VIVID_MULTIPLICITY_MANY) {
             return static_cast<int32_t>(pi);
         }
     }
@@ -378,8 +379,12 @@ void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold) {
         cn.gpu->resolved_lane_gpu_lengths.resize(cn.input_port_count, 0);
 
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            if (p >= cn.input_port_types.size() ||
-                cn.input_port_types[p] != VIVID_PORT_LANE_ARRAY)
+            // Many input (value-model successor to LANE_ARRAY; 7d.5d.1). GPU nodes
+            // only carry float-many lane inputs, so multiplicity alone suffices —
+            // matching the old LANE_ARRAY check (the downstream edge-tag gate on
+            // e.data_type == LANE_ARRAY below already restricts to float lanes).
+            if (p >= cn.input_port_multiplicities.size() ||
+                cn.input_port_multiplicities[p] != VIVID_MULTIPLICITY_MANY)
                 continue;
 
             // Find source node/port for this input.

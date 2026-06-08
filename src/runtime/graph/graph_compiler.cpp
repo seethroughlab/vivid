@@ -368,6 +368,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         VividPortType from_port_type = VIVID_PORT_SCALAR;
         VividPortTransport from_port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
         uint32_t from_payload_size = 0;
+        // Value-model view of the source port (lane-value 7d.5d.1): declared
+        // multiplicity + payload, the de-port-typed successor to keying off the
+        // LANE_ARRAY/STRING_LANES port type. Honors an explicit .multiplicity.
+        VividMultiplicity from_port_mult = VIVID_MULTIPLICITY_SCALAR;
+        VividValueType    from_port_vt   = VIVID_VALUE_FLOAT;
         bool source_is_param = false;
         uint32_t from_port_idx = 0;
         auto fp_it = from_cn.output_port_indices.find(conn.from_port);
@@ -382,6 +387,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                             from_port_type = from_desc->ports[pi].type;
                             from_port_transport = from_desc->ports[pi].transport;
                             from_payload_size = from_desc->ports[pi].payload_size;
+                            from_port_mult = graph_compiler_internal::port_declared_multiplicity(from_desc->ports[pi]);
+                            from_port_vt   = graph_compiler_internal::port_value_type(from_desc->ports[pi]);
                             break;
                         }
                         oi++;
@@ -405,6 +412,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             auto fp_src_it = from_cn.file_param_indices.find(conn.from_port);
             from_port_type = (fp_src_it != from_cn.file_param_indices.end())
                 ? VIVID_PORT_STRING : VIVID_PORT_SCALAR;
+            from_port_vt = (from_port_type == VIVID_PORT_STRING) ? VIVID_VALUE_STRING : VIVID_VALUE_FLOAT;
+            // params are scalar → from_port_mult stays SCALAR
         }
 
         CompiledEdge e;
@@ -439,6 +448,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.targets_param = false;
 
             VividPortType to_port_type = VIVID_PORT_SCALAR;
+            VividMultiplicity to_port_mult = VIVID_MULTIPLICITY_SCALAR;
+            VividValueType    to_port_vt   = VIVID_VALUE_FLOAT;
             if (to_cn.loader && to_cn.loader->descriptor()) {
                 const auto* to_desc = to_cn.loader->descriptor();
                 uint32_t inp_idx = 0;
@@ -446,6 +457,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     if (to_desc->ports[pi].direction == VIVID_PORT_INPUT) {
                         if (inp_idx == tp_it->second) {
                             to_port_type = to_desc->ports[pi].type;
+                            to_port_mult = graph_compiler_internal::port_declared_multiplicity(to_desc->ports[pi]);
+                            to_port_vt   = graph_compiler_internal::port_value_type(to_desc->ports[pi]);
                             break;
                         }
                         inp_idx++;
@@ -453,22 +466,27 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 }
             }
 
-            // Type validation
+            // Type validation (lane-value 7d.5d.1): keyed on payload value_type +
+            // declared multiplicity, NOT the (transitional) LANE_ARRAY/STRING_LANES
+            // port type. e.data_type keeps the LANE_ARRAY/STRING_LANES enum as the
+            // computed downstream edge tag (executors read it; removed in 7d.5e).
+            // Behavior-identical while LANE_ARRAY⟺FLOAT+Many and STRING_LANES⟺STRING+Many.
             if (!from_cn.missing_operator && !to_cn.missing_operator) {
-                if (from_port_type == VIVID_PORT_STRING &&
-                    to_port_type == VIVID_PORT_STRING) {
+                const bool from_many = (from_port_mult == VIVID_MULTIPLICITY_MANY);
+                const bool to_many   = (to_port_mult   == VIVID_MULTIPLICITY_MANY);
+                if (from_port_vt == VIVID_VALUE_STRING && to_port_vt == VIVID_VALUE_STRING &&
+                    !from_many && !to_many) {
                     e.data_type = VIVID_PORT_STRING;
                     string_in_fanin[ti][e.to_port]++;
-                } else if (from_port_type == VIVID_PORT_STRING_LANES &&
-                           to_port_type == VIVID_PORT_STRING_LANES) {
+                } else if (from_port_vt == VIVID_VALUE_STRING && to_port_vt == VIVID_VALUE_STRING &&
+                           from_many && to_many) {
                     e.data_type = VIVID_PORT_STRING_LANES;
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
-                } else if (from_port_type == VIVID_PORT_LANE_ARRAY ||
-                           to_port_type == VIVID_PORT_LANE_ARRAY) {
-                    // LANE_ARRAY on either end → treat as lane edge
-                    // (SIGNAL↔SPREAD is compatible for control types)
+                } else if (from_port_vt == VIVID_VALUE_FLOAT && to_port_vt == VIVID_VALUE_FLOAT &&
+                           (from_many || to_many)) {
+                    // Float-many on either end → lane edge (scalar→many broadcast preserved).
                     e.data_type = VIVID_PORT_LANE_ARRAY;
                 } else if (vivid_is_custom_port_type(from_port_type) &&
                            vivid_is_custom_port_type(to_port_type) &&
@@ -477,12 +495,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.custom_type_id = from_port_type;
                     e.port_transport = from_port_transport;
                     e.custom_payload_size = from_payload_size;
-                } else if (from_port_type == VIVID_PORT_STRING ||
-                           from_port_type == VIVID_PORT_STRING_LANES ||
-                           to_port_type == VIVID_PORT_STRING ||
-                           to_port_type == VIVID_PORT_STRING_LANES) {
+                } else if (from_port_vt == VIVID_VALUE_STRING || to_port_vt == VIVID_VALUE_STRING) {
                     std::fprintf(stderr, "[vivid] GraphCompiler: string type mismatch %s/%s -> %s/%s "
-                        "(string port types must match exactly)\n",
+                        "(string port payload/arity must match)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
                         conn.to_node.c_str(), conn.to_port.c_str());
                     return nullptr;

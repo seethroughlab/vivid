@@ -35,6 +35,9 @@ uint32_t add_gpu_lane_consumer(CompiledGraph& cg, const char* id, uint32_t lane_
     cn.gpu = std::make_unique<GpuNodeState>();
     cn.input_port_count = 1;
     cn.input_port_types = { VIVID_PORT_LANE_ARRAY };
+    // GPU lane promotion now gates on declared multiplicity (lane-value 7d.5d.1),
+    // not the LANE_ARRAY port type. This hand-built node must set it explicitly.
+    cn.input_port_multiplicities = { VIVID_MULTIPLICITY_MANY };
     LaneSet ls;
     ls.lane_set_id = 7;          // non-zero → not scalar
     ls.lane_count = lane_count;
