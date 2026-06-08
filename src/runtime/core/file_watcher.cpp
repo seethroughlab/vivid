@@ -39,83 +39,36 @@ std::optional<std::string> path_part(const std::filesystem::path& path, size_t i
     return std::nullopt;
 }
 
+// Process-lifetime graveyard for retired Listener + SharedState objects.
+//
+// efsw's macOS FSEvents backend (WatcherFSEvents) delivers callbacks on a serial
+// dispatch queue and does NOT drain that queue when the watcher is destroyed, so
+// a callback block already in flight can run after FileWatcher::stop() tears the
+// watcher down. Rather than free the Listener (which efsw still references) and
+// the state it touches out from under that late callback, we retire them here so
+// they outlive any in-flight callback; the callback finds active == false and
+// no-ops. The retained objects are tiny (the maps are cleared on retire) and
+// bounded by the number of start()/stop() cycles — negligible in practice.
+std::mutex g_retired_mutex;
+std::vector<std::shared_ptr<void>> g_retired;
+
+void retire(std::shared_ptr<void> a, std::shared_ptr<void> b) {
+    std::lock_guard<std::mutex> lock(g_retired_mutex);
+    if (a) g_retired.push_back(std::move(a));
+    if (b) g_retired.push_back(std::move(b));
+}
+
 } // namespace
 
-// --- Listener (efsw callback → pending queue) ---
-
-class FileWatcher::Listener : public efsw::FileWatchListener {
-public:
-    explicit Listener(FileWatcher& owner) : owner_(owner) {}
-
-    void handleFileAction(efsw::WatchID, const std::string& dir,
-                          const std::string& filename, efsw::Action action,
-                          std::string) override {
-        if (action != efsw::Actions::Modified &&
-            action != efsw::Actions::Add &&
-            action != efsw::Actions::Moved &&
-            action != efsw::Actions::Delete)
-            return;
-
-        std::string path = dir;
-        if (!path.empty() && path.back() != '/')
-            path += '/';
-        path += filename;
-        path = normalize_path(path);
-
-        std::string target;
-        {
-            std::lock_guard<std::mutex> lock(owner_.watch_mutex_);
-            target = owner_.resolve_target_locked(path);
-            if (target.empty()) return;
-
-            // Debounce: skip if within 100ms of last event for same target
-            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            auto& last = owner_.last_event_time_[target];
-            if (now - last < kDebounceMs) return;
-            last = now;
-        }
-
-        std::fprintf(stderr, "[vivid] File changed: %s (operator: %s)\n",
-                     path.c_str(), target.c_str());
-
-        {
-            std::lock_guard<std::mutex> lock(owner_.queue_mutex_);
-            owner_.pending_.push_back({path, target});
-        }
-    }
-
-private:
-    FileWatcher& owner_;
-};
-
-// --- FileWatcher ---
-
-FileWatcher::FileWatcher() = default;
-
-FileWatcher::~FileWatcher() {
-    stop();
-}
-
-void FileWatcher::ensure_dir_watched(const std::string& dir, bool recursive) {
-    if (!watcher_) return;
-    std::string normalized = normalize_path(dir);
-    auto it = watched_dirs_.find(normalized);
-    if (it != watched_dirs_.end() && (it->second || !recursive))
-        return;
-    watched_dirs_[normalized] = watched_dirs_[normalized] || recursive;
-    watcher_->addWatch(normalized, listener_.get(), recursive);
-}
-
-std::string FileWatcher::resolve_target_locked(const std::string& path) const {
-    auto explicit_it = path_to_target_.find(path);
-    if (explicit_it != path_to_target_.end())
+std::string FileWatcher::SharedState::resolve_target_locked(const std::string& path) const {
+    auto explicit_it = path_to_target.find(path);
+    if (explicit_it != path_to_target.end())
         return explicit_it->second;
 
     const std::filesystem::path p(path);
     const auto ext = p.extension().string();
     std::filesystem::path rel;
-    for (const auto& root : watch_roots_) {
+    for (const auto& root : watch_roots) {
         if (!is_under_root(path, root.root, rel))
             continue;
 
@@ -143,11 +96,84 @@ std::string FileWatcher::resolve_target_locked(const std::string& path) const {
     return {};
 }
 
+// --- Listener (efsw callback → pending queue) ---
+
+class FileWatcher::Listener : public efsw::FileWatchListener {
+public:
+    explicit Listener(std::shared_ptr<SharedState> state) : state_(std::move(state)) {}
+
+    void handleFileAction(efsw::WatchID, const std::string& dir,
+                          const std::string& filename, efsw::Action action,
+                          std::string) override {
+        // The shared state outlives this object; bail out fast if the watcher has
+        // been stopped (a late FSEvents callback after teardown — see retire()).
+        std::shared_ptr<SharedState> st = state_;
+        if (!st || !st->active.load(std::memory_order_acquire))
+            return;
+
+        if (action != efsw::Actions::Modified &&
+            action != efsw::Actions::Add &&
+            action != efsw::Actions::Moved &&
+            action != efsw::Actions::Delete)
+            return;
+
+        std::string path = dir;
+        if (!path.empty() && path.back() != '/')
+            path += '/';
+        path += filename;
+        path = normalize_path(path);
+
+        std::string target;
+        {
+            std::lock_guard<std::mutex> lock(st->watch_mutex);
+            target = st->resolve_target_locked(path);
+            if (target.empty()) return;
+
+            // Debounce: skip if within 100ms of last event for same target
+            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            auto& last = st->last_event_time[target];
+            if (now - last < kDebounceMs) return;
+            last = now;
+        }
+
+        std::fprintf(stderr, "[vivid] File changed: %s (operator: %s)\n",
+                     path.c_str(), target.c_str());
+
+        {
+            std::lock_guard<std::mutex> lock(st->queue_mutex);
+            st->pending.push_back({path, target});
+        }
+    }
+
+private:
+    std::shared_ptr<SharedState> state_;
+};
+
+// --- FileWatcher ---
+
+FileWatcher::FileWatcher() = default;
+
+FileWatcher::~FileWatcher() {
+    stop();
+}
+
+void FileWatcher::ensure_dir_watched(const std::string& dir, bool recursive) {
+    if (!watcher_) return;
+    std::string normalized = normalize_path(dir);
+    auto it = watched_dirs_.find(normalized);
+    if (it != watched_dirs_.end() && (it->second || !recursive))
+        return;
+    watched_dirs_[normalized] = watched_dirs_[normalized] || recursive;
+    watcher_->addWatch(normalized, listener_.get(), recursive);
+}
+
 bool FileWatcher::start(const std::string& operators_dir) {
     if (watcher_) return false;
 
     operators_dir_ = normalize_path(operators_dir);
-    listener_ = std::make_unique<Listener>(*this);
+    state_ = std::make_shared<SharedState>();
+    listener_ = std::make_shared<Listener>(state_);
     watcher_ = std::make_unique<efsw::FileWatcher>();
     watcher_->followSymlinks(true);
 
@@ -156,6 +182,7 @@ bool FileWatcher::start(const std::string& operators_dir) {
         std::fprintf(stderr, "[vivid] FileWatcher: cannot open %s\n", operators_dir.c_str());
         watcher_.reset();
         listener_.reset();
+        state_.reset();
         return false;
     }
 
@@ -174,8 +201,8 @@ bool FileWatcher::start(const std::string& operators_dir) {
                 if (!file_entry.is_regular_file()) continue;
                 if (file_entry.path().extension() != ".cpp") continue;
 
-                std::lock_guard<std::mutex> lock(watch_mutex_);
-                path_to_target_[normalize_path(file_entry.path())] = target_name;
+                std::lock_guard<std::mutex> lock(state_->watch_mutex);
+                state_->path_to_target[normalize_path(file_entry.path())] = target_name;
                 ensure_dir_watched(op_dir, false);
                 count++;
             }
@@ -187,12 +214,13 @@ bool FileWatcher::start(const std::string& operators_dir) {
                      operators_dir.c_str());
         watcher_.reset();
         listener_.reset();
+        state_.reset();
         return false;
     }
 
     {
-        std::lock_guard<std::mutex> lock(watch_mutex_);
-        watch_roots_.push_back({WatchRootKind::SeedOperators, operators_dir_, {}});
+        std::lock_guard<std::mutex> lock(state_->watch_mutex);
+        state_->watch_roots.push_back({WatchRootKind::SeedOperators, operators_dir_, {}});
     }
     watcher_->watch();
     std::fprintf(stderr, "[vivid] FileWatcher: watching %d files\n", count);
@@ -200,25 +228,44 @@ bool FileWatcher::start(const std::string& operators_dir) {
 }
 
 void FileWatcher::stop() {
+    // Deactivate first so a late callback no-ops, then tear efsw down (which may
+    // still fire one in-flight callback on its undrained dispatch queue).
+    if (state_)
+        state_->active.store(false, std::memory_order_release);
     watcher_.reset();
-    listener_.reset();
-    std::lock_guard<std::mutex> lock(watch_mutex_);
-    path_to_target_.clear();
+
+    // Free the heavy maps now that the watcher is gone (a late callback already
+    // saw active == false; one mid-acquire serializes on watch_mutex and then
+    // resolves nothing).
+    if (state_) {
+        std::lock_guard<std::mutex> lock(state_->watch_mutex);
+        state_->path_to_target.clear();
+        state_->watch_roots.clear();
+        state_->last_event_time.clear();
+    }
+
+    // Retire the listener + state so a post-teardown callback (efsw doesn't drain
+    // its FSEvents dispatch queue) hits live, inert memory instead of a UAF.
+    retire(std::move(listener_), std::move(state_));
+    listener_.reset();  // moved-from; make the null explicit
+    state_.reset();
+
     watched_dirs_.clear();
-    watch_roots_.clear();
-    last_event_time_.clear();
+    operators_dir_.clear();
 }
 
 std::vector<FileChangeEvent> FileWatcher::poll_changes() {
-    std::lock_guard<std::mutex> lock(queue_mutex_);
+    if (!state_) return {};
+    std::lock_guard<std::mutex> lock(state_->queue_mutex);
     std::vector<FileChangeEvent> result;
-    result.swap(pending_);
+    result.swap(state_->pending);
     return result;
 }
 
 bool FileWatcher::add_watch(const std::string& path, const std::string& target_name) {
     namespace fs = std::filesystem;
     if (!fs::exists(path)) return false;
+    if (!state_) return false;
 
     std::string abs = normalize_path(path);
     std::string dir = fs::path(abs).parent_path().string();
@@ -226,15 +273,15 @@ bool FileWatcher::add_watch(const std::string& path, const std::string& target_n
     if (stored_target.rfind("shader:", 0) == 0)
         stored_target = "shader:" + abs;
 
-    std::lock_guard<std::mutex> lock(watch_mutex_);
-    path_to_target_[abs] = stored_target;
+    std::lock_guard<std::mutex> lock(state_->watch_mutex);
+    state_->path_to_target[abs] = stored_target;
     if (watcher_) ensure_dir_watched(dir, false);
     return true;
 }
 
 int FileWatcher::add_package_watches(const std::string& packages_dir) {
     namespace fs = std::filesystem;
-    if (!fs::exists(packages_dir)) return 0;
+    if (!fs::exists(packages_dir) || !state_) return 0;
 
     int count = 0;
     std::error_code ec;
@@ -270,10 +317,10 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
                     std::string fname = file_entry.path().filename().string();
                     if (fname.size() < 5 || fname.substr(fname.size() - 4) != ".cpp") continue;
 
-                    std::lock_guard<std::mutex> lock(watch_mutex_);
-                    path_to_target_[normalize_path(file_entry.path())] = target;
+                    std::lock_guard<std::mutex> lock(state_->watch_mutex);
+                    state_->path_to_target[normalize_path(file_entry.path())] = target;
                     if (!added_package_root) {
-                        watch_roots_.push_back({WatchRootKind::PackageOperators, normalized_ops_dir, pkg_name});
+                        state_->watch_roots.push_back({WatchRootKind::PackageOperators, normalized_ops_dir, pkg_name});
                         added_package_root = true;
                     }
                     ensure_dir_watched(op_dir_str, false);
@@ -291,7 +338,7 @@ int FileWatcher::add_package_watches(const std::string& packages_dir) {
 
 int FileWatcher::add_shader_operator_watches(const std::string& directory) {
     namespace fs = std::filesystem;
-    if (directory.empty() || !fs::exists(directory)) return 0;
+    if (directory.empty() || !fs::exists(directory) || !state_) return 0;
 
     std::string normalized_dir = normalize_path(directory);
     int count = 0;
@@ -304,14 +351,14 @@ int FileWatcher::add_shader_operator_watches(const std::string& directory) {
         std::string abs = normalize_path(entry.path());
         std::string target = "shader:" + abs;
 
-        std::lock_guard<std::mutex> lock(watch_mutex_);
-        path_to_target_[abs] = target;
+        std::lock_guard<std::mutex> lock(state_->watch_mutex);
+        state_->path_to_target[abs] = target;
         count++;
     }
 
     if (count > 0) {
-        std::lock_guard<std::mutex> lock(watch_mutex_);
-        watch_roots_.push_back({WatchRootKind::ShaderDirectory, normalized_dir, {}});
+        std::lock_guard<std::mutex> lock(state_->watch_mutex);
+        state_->watch_roots.push_back({WatchRootKind::ShaderDirectory, normalized_dir, {}});
         ensure_dir_watched(normalized_dir, false);
     }
     if (count > 0) {
