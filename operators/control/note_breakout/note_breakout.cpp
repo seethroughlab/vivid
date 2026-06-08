@@ -78,24 +78,24 @@ struct NoteBreakout : vivid::OperatorBase, vivid::AudioProcessable {
         // vivid_sequencers::VoiceBreakoutLane:
         //   voice_ids / voice_gates / voice_velocities / voice_freqs (Phase 2)
         //   voice_pitch_bend / voice_pressure / voice_timbre (Phase 4 expression)
-        out.push_back({"voice_ids",         VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_ids",         .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_gates",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_gates",       .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_velocities",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_velocities",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_freqs",       VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_freqs",       .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
         // Phase 4: per-note expression breakouts. voice_pitch_bend exposes
         // the raw pitch_bend_semis (voice_freqs already folds bend into Hz);
         // voice_pressure / voice_timbre carry slot.pressure / slot.timbre as
         // 0..1 for downstream filter cutoff / amplitude / wavetable position
         // bindings. Tracker (Phase 4) and MidiInput emit the source events.
-        out.push_back({"voice_pitch_bend",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_pitch_bend",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_pressure",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_pressure",    .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_timbre",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_timbre",      .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
     }
 

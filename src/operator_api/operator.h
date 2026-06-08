@@ -390,18 +390,20 @@ struct GpuProcessable {
 // Append standard audio analysis output ports (rms, peak, waveform).
 // Audio operators should call this at the end of collect_ports().
 inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
-    auto make_analysis = [](const char* name, VividPortType type, VividPortTransport transport) {
+    auto make_analysis = [](const char* name, VividPortType type, VividPortTransport transport,
+                            VividMultiplicity multiplicity = VIVID_MULTIPLICITY_SCALAR) {
         VividPortDescriptor pd{};
         pd.name = name;
         pd.type = type;
         pd.direction = VIVID_PORT_OUTPUT;
         pd.transport = transport;
         pd.semantic_tag = "analysis";
+        pd.multiplicity = multiplicity;
         return pd;
     };
-    out.push_back(make_analysis("rms",      VIVID_PORT_SCALAR,     VIVID_PORT_TRANSPORT_SIGNAL));
-    out.push_back(make_analysis("peak",     VIVID_PORT_SCALAR,     VIVID_PORT_TRANSPORT_SIGNAL));
-    out.push_back(make_analysis("waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_TRANSPORT_LANE_ARRAY));
+    out.push_back(make_analysis("rms",      VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_SIGNAL));
+    out.push_back(make_analysis("peak",     VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_SIGNAL));
+    out.push_back(make_analysis("waveform", VIVID_PORT_SCALAR, VIVID_PORT_TRANSPORT_LANE_ARRAY, VIVID_MULTIPLICITY_MANY));
 }
 
 } // namespace vivid

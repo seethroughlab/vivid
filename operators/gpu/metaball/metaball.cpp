@@ -249,9 +249,9 @@ struct Metaball : vivid::OperatorBase, vivid::GpuProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"pos_x",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 0
-        out.push_back({"pos_y",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 1
-        out.push_back({"radii",   VIVID_PORT_LANE_ARRAY,  VIVID_PORT_INPUT});   // lane input 2
+        out.push_back({.name="pos_x", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // lane input 0
+        out.push_back({.name="pos_y", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // lane input 1
+        out.push_back({.name="radii", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // lane input 2
         out.push_back({"texture", VIVID_PORT_TEXTURE, VIVID_PORT_OUTPUT});
     }
 

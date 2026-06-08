@@ -1340,8 +1340,9 @@ void DescriptorBuilder::populate_port_specs(const SourceSyntaxRecord& record,
                 "VividPortDescriptor{\"peak\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT,"
                 " VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, \"analysis\"}");
             result.port_exprs.push_back(
-                "VividPortDescriptor{\"waveform\", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT,"
-                " VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, \"analysis\"}");
+                "VividPortDescriptor{.name=\"waveform\", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT,"
+                " .transport=VIVID_PORT_TRANSPORT_LANE_ARRAY, .semantic_tag=\"analysis\","
+                " .multiplicity=VIVID_MULTIPLICITY_MANY}");
         }
 
         result.port_advanced_flags.assign(result.port_exprs.size(), false);

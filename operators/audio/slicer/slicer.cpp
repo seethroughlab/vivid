@@ -92,13 +92,13 @@ struct Slicer : vivid::OperatorBase, vivid::AudioProcessable {
                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
                        16, 0.0f}); // kMaxVoices channels
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_ids",        .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_gates",      .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_velocities", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_freqs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_freqs",      .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
         vivid::append_analysis_ports(out);
     }
