@@ -66,22 +66,31 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
     for (uint32_t idx : topo_order) {
         auto& cn = cg.nodes[idx];
 
-        // Input envelopes: project from the already-resolved input lane sets + the
-        // input port's payload type. Track whether any input is Many.
-        // NOTE (7d.3): native edge-propagation was attempted here but the value
-        // envelope (WIRE multiplicity) genuinely differs from the lane-set INPUT
-        // projection (the per-invocation/effective view for lifted/LoopBased nodes),
-        // so it cannot coexist with the lane-set cross-check. Native value-flow is
-        // deferred to 7d.5, where Pass 2.6 + this cross-check are removed together.
-        cn.input_value_envelopes.assign(cn.input_lane_sets.size(), ValueEnvelope{});
-        bool any_many_input = false;
-        for (size_t pi = 0; pi < cn.input_lane_sets.size(); ++pi) {
+        // Input envelopes: propagate NATIVELY from incoming Direct edges' published
+        // value envelopes (7d.5c.2) — the value model is now the multiplicity
+        // AUTHORITY, no longer a projection of the Pass-2.6 lane sets. Snapshot
+        // (cross-cadence) lift is handled separately by the strategy planner.
+        cn.input_value_envelopes.assign(cn.input_port_count, ValueEnvelope{});
+        for (uint32_t pi = 0; pi < cn.input_port_count; ++pi) {
             const VividValueType vt = (pi < cn.input_port_types.size())
                 ? value_type_for_port(cn.input_port_types[pi]) : VIVID_VALUE_FLOAT;
-            ValueEnvelope env = envelope_from_lane_set(cn.input_lane_sets[pi], vt,
-                                                       value_storage_for(cn, vt));
-            cn.input_value_envelopes[pi] = env;
-            if (env.multiplicity == VIVID_MULTIPLICITY_MANY) any_many_input = true;
+            ValueEnvelope& env = cn.input_value_envelopes[pi];
+            env.value_type    = vt;
+            env.multiplicity  = VIVID_MULTIPLICITY_SCALAR;
+            env.value_count   = 1;
+            env.identity_mode = VIVID_IDENTITY_NONE;
+            env.storage_kind  = value_storage_for(cn, vt);
+        }
+        bool any_many_input = false;
+        for (const auto& e : cg.edges) {
+            if (e.to_node != idx || e.transport != EdgeTransport::Direct) continue;
+            if (e.to_port >= cn.input_value_envelopes.size()) continue;
+            if (e.value_envelope.multiplicity != VIVID_MULTIPLICITY_MANY) continue;
+            ValueEnvelope& env = cn.input_value_envelopes[e.to_port];
+            env.multiplicity  = VIVID_MULTIPLICITY_MANY;
+            env.value_count   = e.value_envelope.value_count;
+            env.identity_mode = e.value_envelope.identity_mode;
+            any_many_input    = true;
         }
 
         // Output envelopes: multiplicity INFERRED from the value model; identity +
