@@ -39,6 +39,8 @@ struct LaneOutBuf {
         return self->data.data();
     }
     static void commit_cb(void* /*h*/, uint32_t /*len*/) {}
+    // Value-API resize (VividValueOutput): same buffer, void* return.
+    static void* value_resize_cb(void* h, uint32_t len) { return resize_cb(h, len); }
 };
 
 static void* stub_lane_state(void*, uint32_t, uint32_t) { return nullptr; }
@@ -53,11 +55,13 @@ struct FmHarness {
     float* input_bufs[3]  = {&scalar_in_freq, &scalar_in_mod, &scalar_in_gate};
 
     LaneOutBuf voice_ids_buf, voice_gates_buf, voice_velocities_buf, voice_freqs_buf;
-    // output_lanes is indexed by overall output port ordinal. FmSynth's
+    // value_outputs is indexed by overall output port ordinal. FmSynth's
     // output ports: output(0), voices_out(1), voice_ids(2), voice_gates(3),
     // voice_velocities(4), voice_freqs(5), then analysis ports.
-    // Slots 0-1 (audio buffer ports) are left zero/unused.
-    VividLaneOutput lane_outputs[6] = {};
+    // Slots 0-1 (audio buffer ports) are left zero/unused. (FmSynth emits its
+    // voice breakouts through the value API since Phase 6 — ctx->value_outputs,
+    // not the legacy ctx->output_lanes.)
+    VividValueOutput value_outputs[6] = {};
 
     VividNoteBuffer notes{};
     void* note_inputs[1] = {&notes};
@@ -75,12 +79,12 @@ struct FmHarness {
         ctx.custom_inputs      = note_inputs;
         ctx.custom_input_count = 1;
 
-        // lane_outputs[0] = output audio port, lane_outputs[1] = voices_out — both unused/zero.
-        lane_outputs[2] = {&voice_ids_buf,        LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[3] = {&voice_gates_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[4] = {&voice_velocities_buf, LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        lane_outputs[5] = {&voice_freqs_buf,      LaneOutBuf::resize_cb, LaneOutBuf::commit_cb};
-        ctx.output_lanes = lane_outputs;
+        // value_outputs[0] = output audio port, [1] = voices_out — both unused/zero.
+        value_outputs[2] = {&voice_ids_buf,        LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[3] = {&voice_gates_buf,      LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[4] = {&voice_velocities_buf, LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        value_outputs[5] = {&voice_freqs_buf,      LaneOutBuf::value_resize_cb, LaneOutBuf::commit_cb, nullptr};
+        ctx.value_outputs = value_outputs;
     }
 
     void clear_notes() { notes.count = 0; }
