@@ -38,6 +38,18 @@ Each operator dir produces exactly one cmake target whose name matches the dir n
 
 Tests are split across numbered partition files so CI can run subsets based on available resources. Partition 10 (no GPU, no audio, no window) runs everywhere; higher partitions may require a display server or audio device.
 
+### Performance benchmarks
+
+`tests/benchmarks/bench_*` are standalone chrono-timed executables — **NOT** `add_test`'d, because perf is machine-sensitive and would flake the default `ctest` run. Run them manually.
+
+The value-model graph perf gate (lane-value Phase 8d): `bench_value_graphs` times the scalar / many-valued-frame / audio-lifted / bridge-heavy graph shapes and emits JSON. The opt-in regression gate is:
+
+```
+uv run tools/bench_regression.py [build_dir]   # default build_dir = ./build
+```
+
+It compares against `tests/benchmarks/value_graphs_baseline.json` and exits non-zero only if `scalar_us` regresses > 15% **and** by > 0.3 µs (the absolute floor keeps sub-microsecond jitter from false-failing). The baseline is **machine-specific** (captured on the dev machine); refresh on a new machine with `./build/bench_value_graphs "$PWD/build" > tests/benchmarks/value_graphs_baseline.json`.
+
 ## See Also
 
 - `AGENTS.md` §Building — build commands and workflow

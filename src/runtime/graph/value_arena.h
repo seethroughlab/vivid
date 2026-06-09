@@ -15,7 +15,7 @@ namespace vivid {
 // allocate on acquire()/ensure(); fixed arenas (audio) never allocate after
 // prewarm — acquire() returns nullptr when exhausted, preserving RT safety.
 // sweep() reclaims pool-owned buffers whose ref_count dropped to zero (frame
-// thread). Additive: not yet consumed by execution.
+// thread). This is the live value-flow pool consumed by both executors.
 // ---------------------------------------------------------------------------
 
 class ValueArena {

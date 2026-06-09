@@ -28,13 +28,13 @@ enum class ValueGpuBacking : uint8_t {
 // storage paths: LaneBuffer (float), StringLaneBuffer (string), and the custom
 // byte snapshot — into one payload-tagged buffer carrying the value envelope.
 //
-// Texture / audio-block / GPU payloads stay handle-based for now; envelope
-// .storage_kind records the intended policy for Phases 4-5. ValueBuffer is the
-// successor to LaneBuffer and follows the same RT-safety contract: pre-allocated
+// Texture / audio-block / GPU payloads stay handle-based; envelope .storage_kind
+// records which storage policy applies. ValueBuffer replaced the removed LaneBuffer
+// (clean break, Phase 7e.4) and follows the same RT-safety contract: pre-allocated
 // at build (audio stopped); during execution ensure() returns false rather than
 // allocating when a fixed-capacity (audio) buffer would overflow. Refcounting is
 // intrusive + lock-free; release() never frees (the arena reclaims on the frame
-// thread). Additive: not yet consumed by execution.
+// thread). This is the sole value-flow buffer consumed by both executors.
 // ---------------------------------------------------------------------------
 
 struct ValueBuffer {

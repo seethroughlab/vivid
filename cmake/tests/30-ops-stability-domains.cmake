@@ -739,6 +739,15 @@ target_include_directories(bench_audio_kernels PRIVATE src tests ${CMAKE_SOURCE_
 target_link_libraries(bench_audio_kernels PRIVATE vivid_runtime_testlib vivid_operator_api)
 vivid_enable_audio_kernels(bench_audio_kernels)
 
+# Value-model graph-level perf benchmark (lane-value Phase 8d). Manual/opt-in
+# (NOT add_test'd — perf is machine-sensitive); run via tools/bench_regression.py.
+add_executable(bench_value_graphs
+    tests/benchmarks/bench_value_graphs.cpp
+)
+target_include_directories(bench_value_graphs PRIVATE src tests)
+target_link_libraries(bench_value_graphs PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(bench_value_graphs lane_source_op lane_sink_op lane_frame_op identity_lane_source_op lane_slew_op audio_lane_op)
+
 # Reverb DSP renderer and benchmark targets
 add_executable(test_reverb_dsp
     tests/audio/test_reverb_dsp.cpp
@@ -1041,6 +1050,36 @@ target_link_libraries(test_lane_breadth PRIVATE
     vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
 add_dependencies(test_lane_breadth lane_source_op lane_sink_op lane_frame_op fft_analysis repeat)
 add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Value-flow runtime correctness (lane-value Phase 8a) — successor to test_value_flow.
+add_executable(test_value_flow_runtime
+    tests/lanes/test_value_flow_runtime.cpp
+)
+target_include_directories(test_value_flow_runtime PRIVATE src tests)
+target_link_libraries(test_value_flow_runtime PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_flow_runtime lane_source_op lane_sink_op lane_frame_op lane_smooth_op reduce_op collect_op preserve_op)
+add_test(NAME test_value_flow_runtime COMMAND test_value_flow_runtime ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Frame lane-count normalization + positional alignment (lane-value Phase 8c).
+add_executable(test_value_normalization
+    tests/lanes/test_value_normalization.cpp
+)
+target_include_directories(test_value_normalization PRIVATE src tests)
+target_link_libraries(test_value_normalization PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_normalization lane_source_op lane_sink_op add_many_op)
+add_test(NAME test_value_normalization COMMAND test_value_normalization ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Value-model stress suite (lane-value Phase 8e) — identity churn, recompile, sustained overflow.
+add_executable(test_value_stress
+    tests/lanes/test_value_stress.cpp
+)
+target_include_directories(test_value_stress PRIVATE src tests)
+target_link_libraries(test_value_stress PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_stress lane_source_op lane_sink_op lane_frame_op audio_lane_op)
+add_test(NAME test_value_stress COMMAND test_value_stress ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 add_executable(test_compute_lane_equivalence tests/lanes/test_compute_lane_equivalence.cpp)
 target_include_directories(test_compute_lane_equivalence PRIVATE src tests)

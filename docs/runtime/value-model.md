@@ -14,8 +14,12 @@ strategy (scalar / instance-per-lane / loop-based). Operators declare how they t
 multiplicity-flow pass. Cross-cadence transport and value storage use the native substrate
 (`ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot`); UI/MCP wire and port coloring read
 `provenance_group_id` off the `ValueEnvelope`. The vocabulary (`value_model.h`) + value views (`value_view.h`)
-are wired into descriptor/codegen/probing at ABI **10**. This document is the canonical contract; §3 (the
-old→new mapping) is retained as history of what each removed lane surface became.
+are wired into descriptor/codegen/probing at ABI **10**. **Phase 8 (hardening)** is complete: the value model
+is covered by a correctness + RT-safety + performance net — value-flow runtime tests for all six multiplicity
+behaviors, an audio zero-allocation guard, positional-alignment normalization tests, a forward performance
+baseline + opt-in regression gate, and a stress suite (identity churn / recompile / sustained bridge overflow).
+This document is the canonical contract; §3 (the old→new mapping) is retained as history of what each removed
+lane surface became.
 
 ---
 
