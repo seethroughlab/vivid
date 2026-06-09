@@ -196,6 +196,7 @@ add_vivid_test_fixture(audio_reduce_op  tests/operators/audio_reduce_op.cpp CODE
 add_vivid_test_fixture(reduce_op        tests/operators/reduce_op.cpp CODEGEN)
 add_vivid_test_fixture(collect_op       tests/operators/collect_op.cpp CODEGEN)
 add_vivid_test_fixture(preserve_op      tests/operators/preserve_op.cpp CODEGEN)
+add_vivid_test_fixture(add_many_op      tests/operators/add_many_op.cpp CODEGEN)
 add_vivid_test_fixture(scalar_source_op  tests/operators/scalar_source_op.cpp CODEGEN)
 add_vivid_test_fixture(dual_lane_sink_op tests/operators/dual_lane_sink_op.cpp CODEGEN)
 add_vivid_test_fixture(gpu_fill_op      tests/operators/gpu_fill_op.cpp CODEGEN EXTRA_LIBS webgpu)

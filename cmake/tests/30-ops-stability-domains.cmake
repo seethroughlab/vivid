@@ -1052,6 +1052,16 @@ target_link_libraries(test_value_flow_runtime PRIVATE
 add_dependencies(test_value_flow_runtime lane_source_op lane_sink_op lane_frame_op lane_smooth_op reduce_op collect_op preserve_op)
 add_test(NAME test_value_flow_runtime COMMAND test_value_flow_runtime ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Frame lane-count normalization + positional alignment (lane-value Phase 8c).
+add_executable(test_value_normalization
+    tests/lanes/test_value_normalization.cpp
+)
+target_include_directories(test_value_normalization PRIVATE src tests)
+target_link_libraries(test_value_normalization PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_normalization lane_source_op lane_sink_op add_many_op)
+add_test(NAME test_value_normalization COMMAND test_value_normalization ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_compute_lane_equivalence tests/lanes/test_compute_lane_equivalence.cpp)
 target_include_directories(test_compute_lane_equivalence PRIVATE src tests)
 target_link_libraries(test_compute_lane_equivalence PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
