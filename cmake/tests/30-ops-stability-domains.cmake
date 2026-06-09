@@ -1042,6 +1042,16 @@ target_link_libraries(test_lane_breadth PRIVATE
 add_dependencies(test_lane_breadth lane_source_op lane_sink_op lane_frame_op fft_analysis repeat)
 add_test(NAME test_lane_breadth COMMAND test_lane_breadth WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Value-flow runtime correctness (lane-value Phase 8a) — successor to test_value_flow.
+add_executable(test_value_flow_runtime
+    tests/lanes/test_value_flow_runtime.cpp
+)
+target_include_directories(test_value_flow_runtime PRIVATE src tests)
+target_link_libraries(test_value_flow_runtime PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_flow_runtime lane_source_op lane_sink_op lane_frame_op lane_smooth_op reduce_op collect_op preserve_op)
+add_test(NAME test_value_flow_runtime COMMAND test_value_flow_runtime ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_compute_lane_equivalence tests/lanes/test_compute_lane_equivalence.cpp)
 target_include_directories(test_compute_lane_equivalence PRIVATE src tests)
 target_link_libraries(test_compute_lane_equivalence PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
