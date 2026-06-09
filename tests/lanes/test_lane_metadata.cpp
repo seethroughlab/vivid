@@ -1,7 +1,7 @@
 // Test: VividFrameContext lane metadata population.
 //
 // Verifies that the frame executor populates lane_count, lane_index,
-// and lane_set_id on VividFrameContext before calling process_frame().
+// and lane_id on VividFrameContext before calling process_frame().
 // Uses LaneMetadataOp which copies these fields to scalar outputs.
 #include "runtime/operators/operator_registry.h"
 #include "runtime/graph/graph.h"
@@ -55,14 +55,14 @@ int main(int argc, char* argv[]) {
     if (meta) {
         // LaneSourceOp emits count=8 lane array. LaneMetadataOp should see:
         // lane_count = 8 (runtime materialized lane length)
-        // lane_index = 0 (always 0 in Phase 3)
-        // lane_set_id != 0 (LaneSourceOp is Structural → nonzero provenance)
+        // lane_index = 0 (not per-lane lifted)
+        // lane_id = 0 (positional — not lane-lifted)
         check_float(meta->output_values[0], 8.0f, 0.01f,
                      "lane_count = 8 (lane length)");
         check_float(meta->output_values[1], 0.0f, 0.01f,
                      "lane_index = 0 (no per-lane lifting)");
-        check(meta->output_values[2] != 0.0f,
-              "lane_set_id != 0 (structural upstream provenance)");
+        check_float(meta->output_values[2], 0.0f, 0.01f,
+              "lane_id = 0 (positional, not lane-lifted)");
     }
 
     // --- Test 2: Scalar-only operator sees scalar lane metadata ---
@@ -73,13 +73,13 @@ int main(int argc, char* argv[]) {
     }
     check(meta_scalar != nullptr, "found meta_scalar node");
     if (meta_scalar) {
-        // No lane input → lane_count = 1, lane_set_id = 0
+        // No lane input → lane_count = 1, lane_id = 0
         check_float(meta_scalar->output_values[0], 1.0f, 0.01f,
                      "lane_count = 1 (scalar)");
         check_float(meta_scalar->output_values[1], 0.0f, 0.01f,
                      "lane_index = 0");
         check_float(meta_scalar->output_values[2], 0.0f, 0.01f,
-                     "lane_set_id = 0 (no upstream provenance)");
+                     "lane_id = 0 (positional)");
     }
 
     std::filesystem::remove_all(staging);

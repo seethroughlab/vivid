@@ -1340,8 +1340,9 @@ void DescriptorBuilder::populate_port_specs(const SourceSyntaxRecord& record,
                 "VividPortDescriptor{\"peak\", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT,"
                 " VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, \"analysis\"}");
             result.port_exprs.push_back(
-                "VividPortDescriptor{\"waveform\", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT,"
-                " VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, \"analysis\"}");
+                "VividPortDescriptor{.name=\"waveform\", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT,"
+                " .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag=\"analysis\","
+                " .multiplicity=VIVID_MULTIPLICITY_MANY}");
         }
 
         result.port_advanced_flags.assign(result.port_exprs.size(), false);
@@ -1622,7 +1623,6 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
     out << "        std::is_base_of_v<vivid::AudioProcessable, " << class_name << "> ? 1 : 0,\n";
     out << "        std::is_base_of_v<vivid::GpuProcessable, " << class_name << "> ? 1 : 0,\n";
     out << "        std::is_base_of_v<vivid::FrameProcessable, " << class_name << "> ? 1 : 0,\n";
-    out << "        vivid::detail::get_lane_behavior<" << class_name << ">(),\n";
     out << "        vivid::detail::get_strategy_independent<" << class_name << ">() ? 1 : 0,\n";
     out << "        " << display_name_expr << ",\n";
     out << "        " << keywords_ptr << ",\n";

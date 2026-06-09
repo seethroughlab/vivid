@@ -143,10 +143,10 @@ std::vector<DiagnosticFinding> collect_diagnostics(
             }
         }
         if (!found_non_finite) {
-            for (const auto& ref : ns.output_lane_refs) {
+            for (const auto& ref : ns.output_value_refs) {
                 if (!ref) continue;
-                for (uint32_t j = 0; j < ref.length(); ++j) {
-                    if (!std::isfinite(ref.data()[j])) { found_non_finite = true; break; }
+                for (uint32_t j = 0; j < ref.count(); ++j) {
+                    if (!std::isfinite(ref.floats()[j])) { found_non_finite = true; break; }
                 }
                 if (found_non_finite) break;
             }
@@ -506,9 +506,9 @@ bool resolve_state_path(Graph& graph, RuntimeCore& core,
     }
     if (rest == "env_metrics.audio.waveform_length") {
         auto it = node->output_port_indices.find("waveform");
-        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_lane_refs.size())
+        if (node->active_cadence != vivid::Cadence::Audio || it == node->output_port_indices.end() || it->second >= node->output_value_refs.size())
             return false;
-        out = cv_number(static_cast<double>(node->output_lane_refs[it->second].length()));
+        out = cv_number(static_cast<double>(node->output_value_refs[it->second].count()));
         return true;
     }
 
@@ -541,8 +541,8 @@ bool resolve_state_path(Graph& graph, RuntimeCore& core,
             out = cv_number(node->output_values[pi]);
             return true;
         }
-        if (tail == "lane_array.length" && pi < node->output_lane_refs.size()) {
-            out = cv_number(static_cast<double>(node->output_lane_refs[pi].length()));
+        if (tail == "lane_array.length" && pi < node->output_value_refs.size()) {
+            out = cv_number(static_cast<double>(node->output_value_refs[pi].count()));
             return true;
         }
         return false;

@@ -221,7 +221,8 @@ void AudioEngine::audio_node_output_port(const std::string& node_id,
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             if (desc->ports[i].direction == VIVID_PORT_OUTPUT &&
                 desc->ports[i].name && port_name == desc->ports[i].name) {
-                *is_lane_array_out = (desc->ports[i].type == VIVID_PORT_LANE_ARRAY);
+                *is_lane_array_out = (desc->ports[i].type == VIVID_PORT_SCALAR &&
+                                      desc->ports[i].multiplicity == VIVID_MULTIPLICITY_MANY);
                 break;
             }
         }

@@ -15,11 +15,11 @@
 namespace vivid::ui {
 
 // Stable hue for a lane-set id (provenance coloring): wires/ports that share a
-// lane_set_id carry the same multiplicity identity and get the same tint.
-// Returns false for ids that don't get a tint (0 = scalar, 1 = default/single set).
-inline bool lane_set_color(uint32_t lane_set_id, float& r, float& g, float& b) {
-    if (lane_set_id <= 1u) return false;
-    const float h = std::fmod(static_cast<float>(lane_set_id) * 0.6180339887f, 1.0f); // golden ratio
+// provenance group share the same origin and get the same tint.
+// Returns false for ids that don't get a tint (0 = scalar, 1 = default/single group).
+inline bool provenance_color(uint32_t group_id, float& r, float& g, float& b) {
+    if (group_id <= 1u) return false;
+    const float h = std::fmod(static_cast<float>(group_id) * 0.6180339887f, 1.0f); // golden ratio
     const float s = 0.62f, v = 1.0f;
     const float i = std::floor(h * 6.0f);
     const float f = h * 6.0f - i;
@@ -306,7 +306,7 @@ inline bool is_control_type(VividPortType t) {
 }
 
 inline bool is_numeric_type(VividPortType t) {
-    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_LANE_ARRAY || t == VIVID_PORT_AUDIO_BUFFER;
+    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_AUDIO_BUFFER;
 }
 
 inline bool port_type_compatible(VividPortType a, VividPortType b) {
@@ -323,9 +323,7 @@ struct PortTypeEntry {
 inline const std::vector<PortTypeEntry>& port_types_for_env(int env_sel) {
     static const std::vector<PortTypeEntry> control_types = {
         {"float",         VIVID_PORT_SCALAR},
-        {"lane_array",    VIVID_PORT_LANE_ARRAY},
         {"string",        VIVID_PORT_STRING},
-        {"string_lanes", VIVID_PORT_STRING_LANES},
     };
     static const std::vector<PortTypeEntry> audio_types = {
         {"audio", VIVID_PORT_AUDIO_BUFFER},

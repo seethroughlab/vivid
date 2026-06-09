@@ -17,7 +17,7 @@ struct OperatorLayoutEntry {
     std::string kind;           // "gpu" | "audio" | "control" | ""
     std::string hash;           // content hash of the text blob used to embed
     std::string brief;          // one-line description from @brief
-    std::string lane_behavior;  // "pointwise" | "structural" | ...
+    std::string multiplicity_behavior;  // "pointwise" | "structural" | ...
     int num_inputs = 0;
     int num_outputs = 0;
     std::vector<std::string> related;  // @see cross-references

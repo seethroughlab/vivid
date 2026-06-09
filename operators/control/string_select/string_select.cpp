@@ -96,7 +96,7 @@ struct StringSelect : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"files", VIVID_PORT_STRING_LANES, VIVID_PORT_INPUT});
+        out.push_back({.name="files", .type=VIVID_PORT_STRING, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"index", VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"file", VIVID_PORT_STRING, VIVID_PORT_OUTPUT});
         out.push_back({"valid", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});

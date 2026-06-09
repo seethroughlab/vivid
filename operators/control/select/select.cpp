@@ -15,7 +15,7 @@
 struct Select : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Select";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     vivid::Param<int> lane{"lane", 0, 0, 1023};
 
@@ -28,7 +28,7 @@ struct Select : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"input",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="input", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"output", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 

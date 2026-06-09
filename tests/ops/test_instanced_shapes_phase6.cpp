@@ -5,7 +5,8 @@
 //
 // Verifies:
 //   1. Total input ports = 7 (5 from Phase 5 + 2 from Phase 6).
-//   2. `rotation` and `shape_idx` exist with LANE_ARRAY type and correct
+//   2. `rotation` and `shape_idx` exist as SCALAR + multiplicity MANY (the
+//      post-lane representation of a per-element float array) with correct
 //      semantic metadata.
 //   3. Phase 5 lane ordinals (pos_x=0 … brightness=4) are preserved.
 //   4. Phase 6 ordinals: rotation=5, shape_idx=6.
@@ -61,8 +62,8 @@ void assert_lane_input(const VividOperatorDescriptor& desc,
     check(port != nullptr, msg);
     if (!port) return;
 
-    std::snprintf(msg, sizeof(msg), "%s type = LANE_ARRAY", port_name);
-    check(port->type == VIVID_PORT_LANE_ARRAY, msg);
+    std::snprintf(msg, sizeof(msg), "%s type = SCALAR + multiplicity MANY", port_name);
+    check(port->type == VIVID_PORT_SCALAR && port->multiplicity == VIVID_MULTIPLICITY_MANY, msg);
 
     std::snprintf(msg, sizeof(msg), "%s semantic_tag = %s", port_name, expected_tag);
     check(port->semantic_tag && std::strcmp(port->semantic_tag, expected_tag) == 0, msg);

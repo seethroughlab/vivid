@@ -38,9 +38,9 @@ The `GraphCompiler` transforms a `Graph` (pure data model) into a `CompiledGraph
 |------|------|---------|
 | 1 | Create CompiledNodes | Instantiate operators via `dlopen`, determine each node's cadence (frame or audio) |
 | 2 | Resolve edges | Map JSON connections to `CompiledEdge` structs with resolved port indices |
-| 2.6 | Lane-set propagation | Walk nodes in topological order, propagating lane-set provenance through edges (see §5.9). Pointwise nodes inherit their input lane set; Structural nodes mint a fresh `lane_set_id`; Reduction nodes emit scalar. Mismatched non-scalar inputs on a Pointwise node are a compile error. |
+| 2.7 | Value-flow inference | Walk nodes in topological order, computing a `ValueEnvelope` (payload type + multiplicity + identity + storage + `provenance_group_id`) per edge/port from each operator's `kMultiplicityBehavior` (see §5.9). Map preserves the input envelope; Generate/Collect mint fresh provenance; Reduce collapses to Scalar. This is the sole multiplicity-flow pass. |
 | 3 | Topological sort | Produce `frame_order` and `audio_order` execution sequences |
-| 4 | Audio channel negotiation | Resolve channel counts: explicit declarations → propagated from upstream → planner fallback. Includes sub-passes 4c/4d for lane execution strategy planning (see §5.9.6). |
+| 4 | Audio channel negotiation | Resolve channel counts: explicit declarations → propagated from upstream → planner fallback. Includes internal sub-passes 4c/4d that derive each node's per-element `LaneExecutionStrategy` from its value envelope + behavior (see §5.9.6). |
 | 5 | Audio buffer allocation | Pre-allocate per-node planar audio buffers sized to the negotiated channel count |
 | 6 | Partition edges | Classify each edge as frame-Direct, audio-Direct, or Snapshot (cross-cadence via `AudioFrameBridge`) |
 | 7 | Finalize | Collect errors, emit diagnostics |
@@ -56,18 +56,18 @@ Each graph carries a metronome (`GraphMetronomeDef`: `bpm`, `beats_per_bar`). Th
 **Decision: Cross-cadence data flows through two bidirectional bridges.** Audio and GPU never communicate directly — everything routes through the frame-rate side. This simplifies the architecture to two boundary mechanisms:
 
 ### Frame ↔ Audio (`AudioFrameBridge`)
-- **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Lane-bearing data uses `BridgeLaneSlot` — pre-allocated flat buffers wired during graph build, with capacity up to `kDefaultLaneCapacity` (1024). The audio thread reads lane data directly from the bridge slot (zero-copy). Latency: ~5ms at 256 samples / 48kHz.
-- **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `BridgeLaneSlot` data back to the frame side.
+- **Frame → Audio:** `ParamSnapshot` double-buffer with atomic index swap. Many-valued (multiplicity=Many) data uses `BridgeValueSlot` — a value array + `ValueEnvelope` in pre-allocated storage wired during graph build, with capacity up to `kDefaultLaneCapacity` (1024). The audio thread reads the value array directly from the bridge slot (zero-copy). Latency: ~5ms at 256 samples / 48kHz.
+- **Audio → Frame:** `AnalysisSnapshot` double-buffer carries RMS, peak, waveform, and per-port `BridgeValueSlot` data back to the frame side.
 
 ### CPU ↔ GPU
-- **CPU → GPU:** parameter store updated per frame. GPU operators upload lane data via `wgpuQueueWriteBuffer` into storage buffers. Latency: ~16ms at 60fps.
+- **CPU → GPU:** parameter store updated per frame. GPU operators upload many-valued data via `wgpuQueueWriteBuffer` into storage buffers. Latency: ~16ms at 60fps.
 - **GPU → CPU:** async readback from GPU staging buffers. Frame-rate nodes receive data when it lands. Latency: 1–2 frames.
 
 **Why not direct Audio ↔ GPU?** Audio and frame-rate operators both live on the CPU. The "hop" through the frame side is just a CPU-side buffer copy (nanoseconds), followed by the same CPU→GPU upload that would happen regardless. The only real boundary is CPU↔GPU, and that crossing happens exactly once no matter how the data is routed.
 
 ### Bridge Capacity Limits
 
-- `kDefaultLaneCapacity = 1024` — lane data crossing the `AudioFrameBridge` is written into pre-allocated `BridgeLaneSlot` buffers (capacity set at graph build time). Lane arrays exceeding the slot capacity are clamped with a rate-limited diagnostic.
+- `kDefaultLaneCapacity = 1024` — many-valued data crossing the `AudioFrameBridge` is written into pre-allocated `BridgeValueSlot` storage (capacity set at graph build time). Value arrays exceeding the slot capacity are clamped with a rate-limited diagnostic.
 - `CustomPortSnapshot::kMaxBytes = 256` — custom port types using `VIVID_PORT_TRANSPORT_CUSTOM_VALUE` must fit within 256 bytes when crossing cadence boundaries. Larger payloads should use `VIVID_PORT_TRANSPORT_CUSTOM_REF` (opaque pointer via the shared handle registry).
 - `RecordingTap::kRingSize = 960000` — lock-free mix recording ring buffer holds ~10 seconds at 48 kHz stereo interleaved.
 - `AudioNodeState::error_message[256]` — audio-thread error messages are fixed-size 256-char buffers (no heap allocation). Messages exceeding 255 characters are silently truncated.
@@ -79,12 +79,12 @@ The type system serves three consumers: the graph runtime (bridge selection), th
 
 Six built-in port types reflect the runtime's routing mechanisms:
 
-- `VIVID_PORT_SCALAR` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
+- `VIVID_PORT_SCALAR` — control float (floats, ints, bools all route identically). Updated at no fixed rate. A port that may carry many floats sets `.multiplicity = Many` — there is no separate "lane array" port type.
 - `VIVID_PORT_AUDIO_BUFFER` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-- `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
-- `VIVID_PORT_STRING` — UTF-8 string.
-- `VIVID_PORT_STRING_LANES` — variable-length string array.
+- `VIVID_PORT_STRING` — UTF-8 string. A many-valued string port sets `.multiplicity = Many`.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 1280×720).
+
+A port declares a base payload `type` plus a `.multiplicity` (Scalar or Many). "Many-valued" replaces the old `VIVID_PORT_LANE_ARRAY` / `VIVID_PORT_STRING_LANES` port types, which were removed.
 
 ### Custom Port Types and the Port Type Registry
 
@@ -283,99 +283,100 @@ Full design history lives under `docs/plans/archive/2d-pipeline/` (master plan +
 
 Hot-reload flow: file system watcher (efsw, cross-platform) detects operator source change → invoke system C++ compiler to build `.dylib` → `dlclose` old library → `dlopen` new library → call `vivid_create` with existing parameter values → operator resumes with new behavior, old parameter state intact.
 
-## 5.9 Lanes: Implicit Vectorization
+## 5.9 Multiplicity: Implicit Vectorization
 
-> **Superseded by the value model (clean-break).** The lane mechanics described here still execute but are
-> being replaced by a first-class value model — every value carries payload type + multiplicity (Scalar/Many)
-> + identity + storage, and operators declare a `VividMultiplicityBehavior`. The execution semantics
-> (implicit vectorization, per-element state, reductions) are preserved; the *representation* changes (no
-> special lane port types, lane buffers, or `LaneExecutionStrategy`). The lane API is removed in Phase 7.
-> See `docs/runtime/value-model.md` for the canonical contract + the old→new mapping. This section documents
-> the (still-live) lane mechanics.
+> **The value model is the sole authority (clean-break, complete through Phase 7e).** Every runtime value
+> carries payload type + multiplicity (Scalar/Many) + identity + storage in a `ValueEnvelope`, and operators
+> declare a `VividMultiplicityBehavior`. The execution semantics described below (implicit vectorization,
+> per-element state, reductions) are preserved; the old lane *representation* is gone — there are no special
+> lane port types, lane buffers, lane sets, or `BridgeLaneSlot`, and the operator-facing lane C-API was
+> removed. The per-element execution machinery (`LaneExecutionStrategy`, `vivid_lane_state()`,
+> `ctx.lane_count`/`lane_index`/`lane_id`) is kept by design. See `docs/runtime/value-model.md` for the
+> canonical contract + the old→new mapping.
 
-**Decision: Every value in the graph can carry multiple parallel elements — lanes.** A single number is a one-lane value. An FFT output is a 512-lane value. When a multi-lane output connects to a single-lane input, the operation automatically vectorizes across all lanes. No explicit loop nodes are needed for the common case.
+**Decision: Every value in the graph can carry multiple parallel elements (multiplicity = Many).** A single number is a Scalar value. An FFT output is a 512-element Many value. When a Many output connects to a Scalar input, the operation automatically vectorizes across all elements. No explicit loop nodes are needed for the common case.
 
-This is the single most impactful design decision for Vivid's data model. It resolves the instantiation problem that plagues every visual programming environment for creative work: "how do I make 500 particles?" In Vivid, the answer is "connect a 500-lane position value to a rendering operator." Where those lanes came from — a grid generator, an FFT, a MIDI controller, a lane source — doesn't matter. The operator processes all elements.
+This is the single most impactful design decision for Vivid's data model. It resolves the instantiation problem that plagues every visual programming environment for creative work: "how do I make 500 particles?" In Vivid, the answer is "connect a 500-element position value to a rendering operator." Where those elements came from — a grid generator, an FFT, a MIDI controller — doesn't matter. The operator processes all elements.
 
 Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender Geometry Nodes' Fields all validate this pattern. The systems that handle instantiation best all converge on the same insight: the right primitive for creative work is not an object with methods but an element with attributes, operated on in parallel.
 
 **Key properties:**
 
-- **Broadcasting:** scalar values broadcast into any lane set. A single control knob modulating a 512-lane particle field applies the same value to every lane.
-- **Provenance:** multi-lane values carry lane-set provenance. Two values with the same `lane_set_id` are aligned lane-for-lane. Mismatched non-scalar lane sets require explicit reshape operators (Repeat, Tile, Select).
-- **Cross-domain:** lane-bearing control values (e.g., 512 FFT bins) can connect directly to GPU operators, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; lanes handle the cardinality.
-- **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
-- **Port types:** `VIVID_PORT_LANE_ARRAY` is the port type for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` is the port type for variable-length string lane arrays. Texture and audio ports don't have a lane-array variant — multiple instances use multiple ports.
-- **Cross-domain bridge implementation:** Control↔Audio uses pre-allocated `BridgeLaneSlot` buffers inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. The audio callback reads lane data directly from bridge slots (zero-copy). Control→GPU uses WebGPU storage buffers: the operator uploads lane data via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
-- **Lane identity:** for stateful lane sets (polyphonic voices, persistent simulations), lanes carry stable identity tokens (`lane_id`) that survive reordering and compaction. Operators access per-lane persistent state via `vivid_lane_state()` keyed by `lane_id`, not positional index.
+- **Broadcasting:** Scalar values broadcast into any Many value. A single control knob modulating a 512-element particle field applies the same value to every element.
+- **Provenance:** Many values carry a `provenance_group_id` on their `ValueEnvelope`. Two values with the same `provenance_group_id` are aligned element-for-element. Mismatched Many values require explicit reshape operators (Repeat, Tile, Select).
+- **Cross-domain:** Many control values (e.g., 512 FFT bins) can connect directly to GPU operators, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; multiplicity handles the cardinality.
+- **LLM-friendly:** describing many-valued operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on Many values.
+- **Port multiplicity:** a port declares a base payload `type` (`VIVID_PORT_SCALAR`, `VIVID_PORT_STRING`, …) plus a `.multiplicity` (Scalar or Many). A "many-valued" float or string port is just `.multiplicity = Many`; there are no separate lane-array port types. Texture and audio ports don't carry Many — multiple instances use multiple ports.
+- **Cross-domain bridge implementation:** Control↔Audio uses pre-allocated `BridgeValueSlot` storage (value array + `ValueEnvelope`) inside the double-buffered `ParamSnapshot`/`AnalysisSnapshot` bridges — no heap allocation on the audio thread. The audio callback reads the value array directly from bridge slots (zero-copy). Control→GPU uses WebGPU storage buffers: the operator uploads the value array via `wgpuQueueWriteBuffer` into a `ReadOnlyStorage` binding that the fragment shader reads as `array<f32>`.
+- **Identity:** for stateful Many values (polyphonic voices, persistent simulations), elements carry stable identity tokens (`VividIdentityMode::StableIds`) that survive reordering and compaction. Operators access per-element persistent state via `vivid_lane_state()` keyed by the identity token (`lane_id`), not positional index.
 
 ### 5.9.1 Core Value Model
 
-The semantic unit that moves through the graph is:
+The semantic unit that moves through the graph is a value with four orthogonal properties:
 
-- **payload kind + lane set**
-
-Those axes are independent:
-
-- **payload kind** answers what each lane carries: scalar float, string, audio buffer, texture, or custom payload.
-- **lane set** answers how many parallel elements the value contains and how those elements relate.
-- **cadence** answers when the value is produced and consumed. It is separate from both payload kind and multiplicity.
+- **payload type** — what each element carries: Float, String, Audio, Texture, or Custom.
+- **multiplicity** — Scalar (one) or Many (a parallel collection).
+- **identity** — None, Positional, or StableIds: how the "many" elements are named.
+- **storage** — where the bytes live (Cpu, AudioBlock, Gpu, BridgeSlot, StringStore, Custom).
+- **cadence** answers when the value is produced and consumed. It is orthogonal to all of the above.
 
 This separation is what lets Vivid say "512 FFT bins driving 512 particles" without inventing a separate collection system for each payload kind or cadence.
 
-### 5.9.2 Lane Behaviors
+### 5.9.2 Multiplicity Behaviors
 
-Operators participate in the lane model in four ways:
+Operators declare how they transform multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaulting to `Map`):
 
-- **Pointwise** — preserve the upstream lane set and apply the operator independently per lane.
-- **Structural** — create, reshape, remap, or otherwise legalize a new lane arrangement.
-- **Reduction** — intentionally collapse many lanes into fewer lanes.
-- **Kernel** — read across lanes while still operating inside the same multiplicity system.
+- **Map** — preserve the upstream multiplicity and apply the operator independently per element.
+- **Reduce** — intentionally collapse Many into Scalar (or fewer elements).
+- **Generate** / **Collect** — mint a fresh Many value (from a control input, or by gathering several scalars).
+- **Preserve** — forward the input value unchanged (pass-through; no per-element compute).
+- **Kernel** — read across all elements at once (cross-element / neighborhood); cannot be element-lifted.
+- **ScalarOnly** — only ever sees Scalar.
 
-These are semantic behaviors, not transport details. They explain how an operator treats multiplicity regardless of whether the underlying payload is floats, strings, or something else.
+These are semantic declarations, not transport details. They explain how an operator treats multiplicity regardless of whether the underlying payload is floats, strings, or something else, and they are the sole authority the compiler uses to infer value flow.
 
 ### 5.9.3 Legality and Provenance
 
-Lane compatibility is stricter than "the counts happen to match."
+Many-value compatibility is stricter than "the counts happen to match."
 
-- Matching lane count is necessary, but not sufficient, for elementwise alignment.
-- Lane-set provenance is the default proof that two multi-lane values are aligned lane-for-lane.
-- Structural operators are the explicit places where reshaping, remapping, or broadcasting becomes legal.
+- Matching element count is necessary, but not sufficient, for elementwise alignment.
+- A shared `provenance_group_id` is the default proof that two Many values are aligned element-for-element.
+- Generate/Collect operators are the explicit places where reshaping, remapping, or broadcasting becomes legal.
 
-This is why Vivid can broadcast a scalar into any lane set by default while still requiring explicit reshape operators such as `Repeat`, `Tile`, or `Select` when two non-scalar lane sets do not already share provenance.
+This is why Vivid can broadcast a Scalar into any Many value by default while still requiring explicit reshape operators such as `Repeat`, `Tile`, or `Select` when two Many values do not already share provenance.
 
-### 5.9.4 Lane Identity
+### 5.9.4 Identity
 
-Not every lane set needs identity semantics. Vivid distinguishes between:
+Not every Many value needs identity semantics. `VividIdentityMode` distinguishes between:
 
-- **positional lane sets** — only the order and count matter
-- **identity-bearing lane sets** — lanes carry stable identity tokens that matter across time
+- **Positional** — only the order and count matter
+- **StableIds** — elements carry stable identity tokens that matter across time
 
-Identity-bearing lane sets are what make polyphonic voices, persistent simulations, and other stateful pointwise systems behave correctly. Reordering or compaction may change positional index, but stable `lane_id` is what preserves per-lane state.
+StableIds values are what make polyphonic voices, persistent simulations, and other stateful Map systems behave correctly. Reordering or compaction may change positional index, but the stable identity token (`lane_id`) is what preserves per-element state.
 
-**Cross-cadence lane state rule:** When per-lane persistent state crosses the `AudioFrameBridge` boundary, all per-lane persistent state must be sourced through `vivid_lane_state()` in both the frame-side and audio-side operators when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
+**Cross-cadence state rule:** When per-element persistent state crosses the `AudioFrameBridge` boundary, all per-element persistent state must be sourced through `vivid_lane_state()` in both the frame-side and audio-side operators when `ctx->lane_state_fn` is present. Any member state in such an operator is a scalar fallback only and must not be used when lane-state services are active.
 
-### 5.9.6 Lane Execution Strategies
+### 5.9.6 Execution Strategies
 
-Lane behaviors (§5.9.2) describe the *semantic* relationship between an operator and its lanes. **Execution strategies** describe *how the runtime physically processes* those lanes. The compiler chooses a strategy per node during Pass 4c (audio) and Pass 4d (frame):
+Multiplicity behaviors (§5.9.2) describe the *semantic* relationship between an operator and its values. **Execution strategies** describe *how the runtime physically processes* a Many value. The compiler derives a `LaneExecutionStrategy` per node (an internal, derived decision) during the Pass 4 sub-passes 4c (audio) and 4d (frame):
 
-- **`Scalar`** — `lane_count=1`. Single instance, no lifting. The common case for operators that only receive scalar inputs.
-- **`InstancePerLane`** — N cloned operator instances, one per lane. Used for audio-domain Pointwise operators with multi-lane inputs. The executor **deinterleaves** the multi-lane input buffer into N mono buffers, calls `process_audio()` on each instance independently, then **interleaves** the N mono outputs back into a multi-lane output buffer. Each instance maintains its own persistent state (filter memory, oscillator phase, etc.), which is what makes polyphonic audio work — each voice is a genuinely independent operator instance.
-- **`LoopBased`** — single instance, runtime-driven loop over lanes. Used for frame-domain Pointwise operators that declare `strategy_independent = true`. The executor loops over lanes, setting `input_values` and collecting `output_values` per iteration. More memory-efficient than `InstancePerLane` but only works for stateless-per-lane operators.
+- **`Scalar`** — `lane_count=1`. Single instance, no lifting. The common case for operators that only receive Scalar inputs.
+- **`InstancePerLane`** — N cloned operator instances, one per element. Used for audio-domain Map operators with Many inputs. The executor **deinterleaves** the many-valued input buffer into N mono buffers, calls `process_audio()` on each instance independently, then **interleaves** the N mono outputs back into a many-valued output buffer. Each instance maintains its own persistent state (filter memory, oscillator phase, etc.), which is what makes polyphonic audio work — each voice is a genuinely independent operator instance.
+- **`LoopBased`** — single instance, runtime-driven loop over elements. Used for frame-domain Map operators that declare `strategy_independent = true`. The executor loops over elements, setting `input_values` and collecting `output_values` per iteration. More memory-efficient than `InstancePerLane` but only works for stateless-per-element operators.
 
-**Scalar-to-lane broadcasting:** When a scalar output connects to a `VIVID_PORT_LANE_ARRAY` input, and the compiler has marked that port as non-scalar (via Pass 2.6), the frame executor broadcasts the scalar value by repeating it to match the lane count of other inputs on the same node. This is the runtime implementation of the broadcasting rule described in §5.9.
+**Scalar broadcasting:** When a Scalar output connects to a Many input (the compiler having computed `multiplicity = Many` on that port via Pass 2.7 value-flow inference), the frame executor broadcasts the scalar value by repeating it to match the element count of other inputs on the same node. This is the runtime implementation of the broadcasting rule described in §5.9.
 
-**Lane count limits:**
+**Element count limits:**
 - `max_loop_lanes = 16` — default maximum for `LoopBased` iteration. Exceeding this logs a warning and clamps.
-- `kDefaultLaneCapacity = 1024` — default lane buffer size for `VividLaneOutput` builders in control operators.
+- `kDefaultLaneCapacity = 1024` — default capacity for many-valued value arrays in control operators.
 - `InstancePerLane` has no hardcoded limit but is bounded by available memory (each instance allocates its own audio buffers).
 
 ### 5.9.7 Capability Differences, Not Model Differences
 
-Float lanes and string lanes are both first-class lane-bearing values.
+Float and String values are both first-class and can both be Many.
 
-- `VIVID_PORT_LANE_ARRAY` is the float-lane transport.
-- `VIVID_PORT_STRING_LANES` is the string-lane transport.
+- A many-valued Float port is `VIVID_PORT_SCALAR` with `.multiplicity = Many`.
+- A many-valued String port is `VIVID_PORT_STRING` with `.multiplicity = Many`.
 
 The storage, operators, or backend support available to those payload kinds may differ, but those are capability differences. They do not create separate multiplicity models.
 
@@ -736,7 +737,7 @@ The long-term goal is that each state owns a subgraph — a self-contained patch
 
 > **Status: Implemented.** All pattern algebra operators are built-in core operators.
 
-**Decision: Patterns are standard control-domain operators with lane-array ports, not a DSL.** Composition happens through normal graph wiring. The lane model (§5.9) provides implicit vectorization — a pattern transformer operates on all lanes transparently.
+**Decision: Patterns are standard control-domain operators with many-valued (multiplicity=Many) ports, not a DSL.** Composition happens through normal graph wiring. The value model (§5.9) provides implicit vectorization — a pattern transformer operates on all elements transparently.
 
 **Three operator roles:**
 

@@ -214,10 +214,33 @@ double run_once(vivid::OperatorLoader& loader, const Case& tc) {
 
     float* input_bufs[5] = {};
     float* output_bufs[1] = {prepared.output.data()};
-    VividLaneView lane_views[3] = {};
-    lane_views[0] = {prepared.lane0.data(), static_cast<uint32_t>(prepared.lane0.size()), 1, 0};
-    lane_views[1] = {prepared.lane1.data(), static_cast<uint32_t>(prepared.lane1.size()), 1, 0};
-    lane_views[2] = {prepared.lane2.data(), static_cast<uint32_t>(prepared.lane2.size()), 1, 0};
+
+    // Value-view input staging (lane-value 7e.2): size to the op's input port
+    // count and place the prepared many-float modulation buffers at the operator's
+    // MANY input ordinals (cutoff_mod / frequencies), so the op reads them by port.
+    uint32_t in_port_count = 0;
+    for (uint32_t i = 0; i < desc->port_count; ++i)
+        if (desc->ports[i].direction == VIVID_PORT_INPUT) ++in_port_count;
+    std::vector<VividValueView> value_views(in_port_count, VividValueView{});
+    {
+        const float* mod_data[3] = {prepared.lane0.data(), prepared.lane1.data(), prepared.lane2.data()};
+        const uint32_t mod_len[3] = {static_cast<uint32_t>(prepared.lane0.size()),
+                                     static_cast<uint32_t>(prepared.lane1.size()),
+                                     static_cast<uint32_t>(prepared.lane2.size())};
+        int mod_i = 0;
+        uint32_t in_ord = 0;
+        for (uint32_t i = 0; i < desc->port_count && mod_i < tc.lane_view_count && mod_i < 3; ++i) {
+            if (desc->ports[i].direction != VIVID_PORT_INPUT) continue;
+            if (desc->ports[i].multiplicity == VIVID_MULTIPLICITY_MANY && in_ord < value_views.size()) {
+                value_views[in_ord] = VividValueView{
+                    mod_data[mod_i], mod_len[mod_i], VIVID_VALUE_FLOAT,
+                    (mod_len[mod_i] > 1) ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR,
+                    VIVID_IDENTITY_NONE, VIVID_STORAGE_BRIDGE_SLOT, 0};
+                ++mod_i;
+            }
+            ++in_ord;
+        }
+    }
 
     VividAudioContext ctx{};
     ctx.sample_rate = kSampleRate;
@@ -225,10 +248,9 @@ double run_once(vivid::OperatorLoader& loader, const Case& tc) {
     ctx.param_values = params.data();
     ctx.input_buffers = input_bufs;
     ctx.output_buffers = output_bufs;
-    ctx.input_lanes = tc.lane_view_count > 0 ? lane_views : nullptr;
+    ctx.values = value_views.empty() ? nullptr : value_views.data();
     ctx.lane_count = 1;
     ctx.lane_index = 0;
-    ctx.lane_set_id = 1;
     ctx.lane_id = 1;
     ctx.lane_state_fn = bench_lane_state;
 

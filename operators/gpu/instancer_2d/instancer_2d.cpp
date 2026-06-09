@@ -31,7 +31,7 @@
 struct Instancer2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "Instancer2D";
     static constexpr bool kTimeDependent       = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_KERNEL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 

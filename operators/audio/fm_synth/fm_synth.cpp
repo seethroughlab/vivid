@@ -37,7 +37,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     // is a lane reduction (scalar provenance) — this lets multiple synths meet
     // at a pointwise Mixer. The per-voice voice_*/voices_out breakouts keep
     // their own lane set (handled per-port in the compiler's lane-set pass).
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     vivid::Param<float> carrier_freq{"carrier_freq", 440.0f, 20.0f, 20000.0f};
     vivid::Param<float> mod_ratio   {"mod_ratio",    2.0f,   0.0f,  16.0f};
@@ -144,13 +144,13 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
                        VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr,
                        8, 0.0f}); // kMaxVoices channels
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_ids",        VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_ids",        .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_gates",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_gates",      .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_velocities", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_velocities", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
-        out.push_back({"voice_freqs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="voice_freqs",      .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::advanced_breakout(out.back());
         vivid::append_analysis_ports(out);
     }
@@ -274,8 +274,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
             // voice_gates(3), voice_velocities(4), voice_freqs(5). Value-API
             // equivalent of vivid_sequencers::emit_voice_breakouts_from_sorted:
             // resize each lane to active_count, fill in note_id-sorted order,
-            // commit. (The shared helper is VividLaneOutput-based; this inlines
-            // the same logic over value_outputs without changing behavior.)
+            // commit. (Inlines the helper's emission logic locally over value_outputs.)
             if (ctx->value_outputs) {
                 const uint32_t n = static_cast<uint32_t>(active_count);
                 auto emit_value_lane = [&](int port, auto value_for_slot) {

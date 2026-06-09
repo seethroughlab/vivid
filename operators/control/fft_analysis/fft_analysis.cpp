@@ -17,7 +17,7 @@
 struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "FFTAnalysis";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int> window   {"window",   1, {"none", "hann", "hamming"}};
     vivid::Param<int> fft_size {"fft_size", 512, 256, 1024};
@@ -36,8 +36,8 @@ struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"waveform", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"spectrum", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="waveform", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="spectrum", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

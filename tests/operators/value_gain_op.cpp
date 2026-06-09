@@ -10,7 +10,6 @@
 struct ValueGainOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "ValueGainOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
 
     vivid::Param<float> gain{"gain", 2.0f, 0.0f, 100.0f};

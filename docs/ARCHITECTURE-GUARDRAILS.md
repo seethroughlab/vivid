@@ -6,7 +6,7 @@ Rules for promoting new concepts in the vivid codebase.
 
 The architecture supports four deliberately separate mechanisms:
 
-1. **Ports** — graph-visible transport between nodes (signal, audio, texture, lane array)
+1. **Ports** — graph-visible transport between nodes (signal, audio, texture, many-valued)
 2. **Owned child operators** — host-local executable behavior with private state via `ChildOp<T>`
 3. **Primitive params with compound widgets** — persisted float/int/bool/file/text values, optionally edited through built-in or package-defined inspector widgets
 4. **Explicit outputs** — when host-local behavior must become graph-visible (triggers, gates, energy summaries)

@@ -136,8 +136,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             } else {
                 cn.active_cadence = Cadence::Frame;
             }
-            cn.lane_behavior = static_cast<LaneBehavior>(desc->lane_behavior);
-            cn.multiplicity_behavior = desc->multiplicity_behavior;  // value-flow (Phase 2)
+            cn.multiplicity_behavior = desc->multiplicity_behavior;  // value-flow multiplicity authority
             // Semantic domain (port-based), used for display/discovery surfaces.
             // Execution cadence is carried separately by active_cadence above.
             cn.operator_kind = vivid_operator_domain(desc);
@@ -233,6 +232,10 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.output_port_indices[out_names[i]] = i;
             cn.input_port_types.assign(cn.input_port_count, VIVID_PORT_SCALAR);
             cn.output_port_types.assign(cn.output_port_count, VIVID_PORT_SCALAR);
+            cn.input_port_multiplicities.assign(cn.input_port_count, VIVID_MULTIPLICITY_SCALAR);
+            cn.output_port_multiplicities.assign(cn.output_port_count, VIVID_MULTIPLICITY_SCALAR);
+            cn.input_port_value_types.assign(cn.input_port_count, VIVID_VALUE_FLOAT);
+            cn.output_port_value_types.assign(cn.output_port_count, VIVID_VALUE_FLOAT);
             cn.input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_values.assign(cn.input_port_count, 0.0f);
             cn.bridge_input_dirty.assign(cn.input_port_count, 0);
@@ -246,8 +249,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.output_lanes.resize(cn.output_port_count);
             cn.input_string_lanes.resize(cn.input_port_count);
             cn.output_string_lanes.resize(cn.output_port_count);
-            cn.input_lane_sets.resize(cn.input_port_count);
-            cn.output_lane_sets.resize(cn.output_port_count);
 
             uint32_t pidx = 0;
             for (const auto& [pname, pval] : ndef.params) {
@@ -261,14 +262,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     cn.param_lock_flags[pi->second] = flags;
             }
 
-            cn.input_lane_refs.resize(cn.input_port_count);
-            cn.output_lane_refs.resize(cn.output_port_count);
 
-            cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
-            cn.out_lane_bufs.clear();
-            cn.out_lane_bufs.reserve(cn.output_port_count);
-            for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
             // Native value transport (Phase 7a) — mirror init_frame_state.
             cn.input_value_refs.resize(cn.input_port_count);
             cn.output_value_refs.resize(cn.output_port_count);
@@ -277,29 +271,26 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                                graph_compiler_internal::kDefaultLaneCapacity);
-            cn.c_out_lane_outputs.resize(cn.output_port_count);
-            for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
 
-            cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
-            cn.out_string_lane_bufs.resize(cn.output_port_count, StringLaneBuffer(graph_compiler_internal::kDefaultLaneCapacity));
-            cn.c_out_string_lane_outputs.resize(cn.output_port_count);
+            cn.out_string_value_bufs.clear();
+            cn.out_string_value_bufs.reserve(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
+                cn.out_string_value_bufs.emplace_back(VIVID_VALUE_STRING,
+                                                      graph_compiler_internal::kDefaultLaneCapacity);
 
             // Value-model staging (Phase 4) — must mirror init_frame_state so the
             // per-tick value-view loop is in-bounds for placeholder nodes too.
             cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
             cn.c_out_value_outputs.resize(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-                const VividPortType t = (p < cn.output_port_types.size())
-                    ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+                const VividValueType vt = (p < cn.output_port_value_types.size())
+                    ? cn.output_port_value_types[p] : VIVID_VALUE_FLOAT;
                 cn.c_out_value_outputs[p] =
-                    (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
-                        ? make_string_value_output(&cn.out_string_lane_bufs[p])
+                    (vt == VIVID_VALUE_STRING)
+                        ? make_string_value_output(&cn.out_string_value_bufs[p])
                         : make_value_output(&cn.out_value_bufs[p]);
             }
 
@@ -364,6 +355,11 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         VividPortType from_port_type = VIVID_PORT_SCALAR;
         VividPortTransport from_port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
         uint32_t from_payload_size = 0;
+        // Value-model view of the source port (lane-value 7d.5d.1): declared
+        // multiplicity + payload, the de-port-typed successor to keying off the
+        // LANE_ARRAY/STRING_LANES port type. Honors an explicit .multiplicity.
+        VividMultiplicity from_port_mult = VIVID_MULTIPLICITY_SCALAR;
+        VividValueType    from_port_vt   = VIVID_VALUE_FLOAT;
         bool source_is_param = false;
         uint32_t from_port_idx = 0;
         auto fp_it = from_cn.output_port_indices.find(conn.from_port);
@@ -378,6 +374,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                             from_port_type = from_desc->ports[pi].type;
                             from_port_transport = from_desc->ports[pi].transport;
                             from_payload_size = from_desc->ports[pi].payload_size;
+                            from_port_mult = graph_compiler_internal::port_declared_multiplicity(from_desc->ports[pi]);
+                            from_port_vt   = graph_compiler_internal::port_value_type(from_desc->ports[pi]);
                             break;
                         }
                         oi++;
@@ -401,6 +399,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             auto fp_src_it = from_cn.file_param_indices.find(conn.from_port);
             from_port_type = (fp_src_it != from_cn.file_param_indices.end())
                 ? VIVID_PORT_STRING : VIVID_PORT_SCALAR;
+            from_port_vt = (from_port_type == VIVID_PORT_STRING) ? VIVID_VALUE_STRING : VIVID_VALUE_FLOAT;
+            // params are scalar → from_port_mult stays SCALAR
         }
 
         CompiledEdge e;
@@ -435,6 +435,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             e.targets_param = false;
 
             VividPortType to_port_type = VIVID_PORT_SCALAR;
+            VividMultiplicity to_port_mult = VIVID_MULTIPLICITY_SCALAR;
+            VividValueType    to_port_vt   = VIVID_VALUE_FLOAT;
             if (to_cn.loader && to_cn.loader->descriptor()) {
                 const auto* to_desc = to_cn.loader->descriptor();
                 uint32_t inp_idx = 0;
@@ -442,6 +444,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     if (to_desc->ports[pi].direction == VIVID_PORT_INPUT) {
                         if (inp_idx == tp_it->second) {
                             to_port_type = to_desc->ports[pi].type;
+                            to_port_mult = graph_compiler_internal::port_declared_multiplicity(to_desc->ports[pi]);
+                            to_port_vt   = graph_compiler_internal::port_value_type(to_desc->ports[pi]);
                             break;
                         }
                         inp_idx++;
@@ -449,23 +453,29 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 }
             }
 
-            // Type validation
+            // Type validation (lane-value 7d.5d.1/7d.5e): keyed on payload value_type +
+            // declared multiplicity, NOT the (retired) LANE_ARRAY/STRING_LANES port type.
+            // e.data_type now carries the PAYLOAD tag only (STRING/SCALAR/TEXTURE/...);
+            // many-ness lives in e.value_envelope.multiplicity (consumers read that).
             if (!from_cn.missing_operator && !to_cn.missing_operator) {
-                if (from_port_type == VIVID_PORT_STRING &&
-                    to_port_type == VIVID_PORT_STRING) {
+                const bool from_many = (from_port_mult == VIVID_MULTIPLICITY_MANY);
+                const bool to_many   = (to_port_mult   == VIVID_MULTIPLICITY_MANY);
+                if (from_port_vt == VIVID_VALUE_STRING && to_port_vt == VIVID_VALUE_STRING &&
+                    !from_many && !to_many) {
                     e.data_type = VIVID_PORT_STRING;
                     string_in_fanin[ti][e.to_port]++;
-                } else if (from_port_type == VIVID_PORT_STRING_LANES &&
-                           to_port_type == VIVID_PORT_STRING_LANES) {
-                    e.data_type = VIVID_PORT_STRING_LANES;
+                } else if (from_port_vt == VIVID_VALUE_STRING && to_port_vt == VIVID_VALUE_STRING &&
+                           from_many && to_many) {
+                    // String-many edge: payload tag STRING; many-ness in value_envelope.
+                    e.data_type = VIVID_PORT_STRING;
                 } else if (from_port_type == VIVID_PORT_TEXTURE &&
                            to_port_type == VIVID_PORT_TEXTURE) {
                     e.data_type = VIVID_PORT_TEXTURE;
-                } else if (from_port_type == VIVID_PORT_LANE_ARRAY ||
-                           to_port_type == VIVID_PORT_LANE_ARRAY) {
-                    // LANE_ARRAY on either end → treat as lane edge
-                    // (SIGNAL↔SPREAD is compatible for control types)
-                    e.data_type = VIVID_PORT_LANE_ARRAY;
+                } else if (from_port_vt == VIVID_VALUE_FLOAT && to_port_vt == VIVID_VALUE_FLOAT &&
+                           (from_many || to_many)) {
+                    // Float-many edge: payload tag SCALAR (float); many-ness in
+                    // value_envelope (scalar→many broadcast preserved).
+                    e.data_type = VIVID_PORT_SCALAR;
                 } else if (vivid_is_custom_port_type(from_port_type) &&
                            vivid_is_custom_port_type(to_port_type) &&
                            from_port_type == to_port_type) {
@@ -473,12 +483,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     e.custom_type_id = from_port_type;
                     e.port_transport = from_port_transport;
                     e.custom_payload_size = from_payload_size;
-                } else if (from_port_type == VIVID_PORT_STRING ||
-                           from_port_type == VIVID_PORT_STRING_LANES ||
-                           to_port_type == VIVID_PORT_STRING ||
-                           to_port_type == VIVID_PORT_STRING_LANES) {
+                } else if (from_port_vt == VIVID_VALUE_STRING || to_port_vt == VIVID_VALUE_STRING) {
                     std::fprintf(stderr, "[vivid] GraphCompiler: string type mismatch %s/%s -> %s/%s "
-                        "(string port types must match exactly)\n",
+                        "(string port payload/arity must match)\n",
                         conn.from_node.c_str(), conn.from_port.c_str(),
                         conn.to_node.c_str(), conn.to_port.c_str());
                     return nullptr;
@@ -574,177 +581,16 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
     }
 
     // ===================================================================
-    // Pass 2.6: Lane-set propagation
+    // Pass 2.7: Value-flow inference (lane-value clean-break)
     // ===================================================================
-    // Walk nodes in topological order and propagate lane-set metadata.
-    // Enforces legality: pointwise nodes may not receive inputs from
-    // different non-scalar lane sets. Structural nodes allocate fresh
-    // lane sets. Reductions emit scalar output.
-    //
-    // In Phase 2A all operators default to Pointwise, so this pass
-    // populates metadata but does not reject any existing graphs.
-    {
-        // We need a topo order for propagation. Use a temporary sort
-        // from the current adjacency (rebuilt at end of Pass 2.5).
-        auto lane_order = kahn_sort(n, adj, in_degree);
-        // If cycle detected, skip lane propagation — Pass 3 will catch it.
-        if (!lane_order.empty() || n == 0) {
-            for (uint32_t idx : lane_order) {
-                auto& cn = cg->nodes[idx];
-
-                // Collect non-scalar input lane sets from incoming Direct edges.
-                uint32_t resolved_lane_set_id = 0;
-                uint32_t resolved_lane_count  = 1;
-                bool     resolved_identity    = false;
-                bool     has_multi_lane       = false;
-                bool     lane_mismatch        = false;
-                std::string resolved_src_node;
-                std::string mismatch_src_a, mismatch_src_b;
-
-                for (const auto& e : cg->edges) {
-                    if (e.to_node != idx || e.transport != EdgeTransport::Direct || e.targets_param)
-                        continue;
-
-                    const auto& from_cn = cg->nodes[e.from_node];
-                    if (e.from_port >= from_cn.output_lane_sets.size())
-                        continue;
-
-                    const auto& src_ls = from_cn.output_lane_sets[e.from_port];
-                    if (src_ls.is_scalar())
-                        continue;
-
-                    if (!has_multi_lane) {
-                        // First non-scalar input — adopt it.
-                        resolved_lane_set_id = src_ls.lane_set_id;
-                        resolved_lane_count  = src_ls.lane_count;
-                        resolved_identity    = src_ls.identity_bearing;
-                        has_multi_lane       = true;
-                        resolved_src_node     = cg->nodes[e.from_node].node_id;
-                    } else if (src_ls.lane_set_id != resolved_lane_set_id) {
-                        lane_mismatch = true;
-                        if (mismatch_src_a.empty())
-                            mismatch_src_a = resolved_src_node;
-                        mismatch_src_b = cg->nodes[e.from_node].node_id;
-                    } else {
-                        // Same lane_set_id — take the max count.
-                        if (src_ls.lane_count > resolved_lane_count)
-                            resolved_lane_count = src_ls.lane_count;
-                    }
-                }
-
-                // Enforce legality for Pointwise nodes: mismatched non-scalar
-                // lane sets are a hard compile failure.
-                if (lane_mismatch && cn.lane_behavior == LaneBehavior::Pointwise) {
-                    std::fprintf(stderr,
-                        "[vivid] GraphCompiler: lane-set mismatch at pointwise node '%s' "
-                        "(conflicting sources: '%s', '%s')\n",
-                        cn.node_id.c_str(), mismatch_src_a.c_str(),
-                        mismatch_src_b.c_str());
-                    return nullptr;
-                }
-
-                // Build the resolved input lane set.
-                LaneSet resolved;
-                resolved.lane_set_id     = resolved_lane_set_id;
-                resolved.lane_count      = resolved_lane_count;
-                resolved.identity_bearing = resolved_identity;
-
-                // Store per-input-port lane sets.
-                for (const auto& e : cg->edges) {
-                    if (e.to_node != idx || e.transport != EdgeTransport::Direct || e.targets_param)
-                        continue;
-                    if (e.to_port < cn.input_lane_sets.size()) {
-                        const auto& from_cn = cg->nodes[e.from_node];
-                        if (e.from_port < from_cn.output_lane_sets.size()) {
-                            const auto& src_ls = from_cn.output_lane_sets[e.from_port];
-                            if (src_ls.is_scalar()) {
-                                // Scalar broadcasts into the resolved lane set.
-                                cn.input_lane_sets[e.to_port] = resolved;
-                            } else {
-                                cn.input_lane_sets[e.to_port] = src_ls;
-                            }
-                        }
-                    }
-                }
-
-                // Set output lane sets based on lane behavior.
-                LaneSet output_ls;
-                switch (cn.lane_behavior) {
-                    case LaneBehavior::Pointwise:
-                    case LaneBehavior::Kernel:
-                        output_ls = resolved;
-                        break;
-                    case LaneBehavior::Structural:
-                        output_ls.lane_set_id = cg->next_lane_set_id++;
-                        output_ls.lane_count  = 1;  // runtime will set actual count
-                        output_ls.identity_bearing = false;
-                        break;
-                    case LaneBehavior::Reduction:
-                        output_ls.lane_set_id     = 0;
-                        output_ls.lane_count      = 1;
-                        output_ls.identity_bearing = false;
-                        break;
-                }
-
-                // A Reduction node collapses its primary outputs to a scalar
-                // lane set so they mix freely (e.g. a polyphonic synth summing
-                // its voices to one audio stream — two such synths can then meet
-                // at a pointwise Mixer). Its lane-array breakout ports, however,
-                // still expose per-element structure (a synth's voice_* per-voice
-                // lanes); give all of them one shared, freshly minted lane set so
-                // downstream consumers see coherent, mutually-aligned provenance.
-                LaneSet breakout_ls;
-                bool    breakout_minted = false;
-                for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
-                    const bool is_lane_array =
-                        cn.lane_behavior == LaneBehavior::Reduction &&
-                        pi < cn.output_port_types.size() &&
-                        cn.output_port_types[pi] == VIVID_PORT_LANE_ARRAY;
-                    if (is_lane_array) {
-                        if (!breakout_minted) {
-                            breakout_ls.lane_set_id      = cg->next_lane_set_id++;
-                            breakout_ls.lane_count       = 1;  // runtime sets actual count
-                            breakout_ls.identity_bearing = false;
-                            breakout_minted = true;
-                        }
-                        cn.output_lane_sets[pi] = breakout_ls;
-                    } else {
-                        cn.output_lane_sets[pi] = output_ls;
-                    }
-                }
-
-                // Populate edge lane metadata for outgoing edges.
-                for (auto& e : cg->edges) {
-                    if (e.from_node != idx)
-                        continue;
-                    if (e.from_port < cn.output_lane_sets.size()) {
-                        const auto& ols = cn.output_lane_sets[e.from_port];
-                        e.lane_set_id = ols.lane_set_id;
-                        e.lane_count  = ols.lane_count;
-                    }
-                }
-            }
-        }
-    }
-
-    // ===================================================================
-    // Pass 2.7: Value-flow inference (lane-value clean-break, Phase 2)
-    // ===================================================================
-    // Compute the value-model envelope (type/multiplicity/identity/storage) for
-    // every edge/port from each operator's multiplicity_behavior, in PARALLEL
-    // with the lane sets above — which remain the live execution path. Asserts
-    // the inferred multiplicity is equivalent to the lane sets (non-fatal).
+    // Compute the value-model envelope (type/multiplicity/identity/storage +
+    // provenance group) for every edge/port from each operator's
+    // multiplicity_behavior. The value model is the sole multiplicity authority
+    // (Pass 2.6 lane-set propagation was retired in 7e.5b).
     {
         auto vf_order = kahn_sort(n, adj, in_degree);
-        if (!vf_order.empty() || n == 0) {
-            cg->value_flow_mismatches =
-                graph_compiler_internal::plan_value_flow(*cg, vf_order);
-            if (cg->value_flow_mismatches != 0 && std::getenv("VIVID_VERBOSE")) {
-                std::fprintf(stderr,
-                    "[vivid] value-flow: %u edge multiplicity mismatch(es) vs lane sets\n",
-                    cg->value_flow_mismatches);
-            }
-        }
+        if (!vf_order.empty() || n == 0)
+            graph_compiler_internal::plan_value_flow(*cg, vf_order);
     }
 
     // ===================================================================
@@ -867,7 +713,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
         auto plan = graph_compiler_internal::plan_audio_lane_strategy(cn, a, *cg, idx);
         a.execution_strategy = plan.strategy;
         a.lane_lift_count = plan.lane_lift_count;
-        a.lane_lift_set_id = plan.lane_lift_set_id;
         a.lane_id_port = plan.lane_id_port;
         if (plan.override_channel_counts) {
             for (auto& ch : a.input_channel_counts) ch = 1;

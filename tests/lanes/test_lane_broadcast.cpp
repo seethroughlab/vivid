@@ -75,7 +75,7 @@ int main(int argc, char* argv[]) {
 
     // --- Test 3: Same-provenance same-length merge (element-wise add) ---
     // merge_sink receives two wires from the same single_src/out.
-    // Both edges carry the same lane_set_id (same Structural source).
+    // Both edges share the same provenance group (same Structural source).
     // The executor should add them element-wise:
     //   [2, 4, 6, 8] + [2, 4, 6, 8] = [4, 8, 12, 16]
     std::fprintf(stderr, "\n--- same-provenance merge (element-wise add) ---\n");

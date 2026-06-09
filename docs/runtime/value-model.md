@@ -1,33 +1,29 @@
 # Vivid Value Model — Canonical Contract
 
-**Status:** Phases 0–6 of the clean-break are **done** (Phase 6: 25/25 lane-using operators migrated +
-scaffolding/authoring docs are value-native; graph JSON is type-agnostic/no-op; UI+MCP value-rendering deferred
-to Phase 7 with lane removal). Next is **Phase 7** (remove the lane API + switch transport to the native
-ValueArena/BridgeValueSlot substrate + replace UI/MCP lane rendering). The value API is **complete**:
-`VividFrameContext`/`VividGpuContext`/`VividAudioContext` `values`/`value_outputs` cover every payload (float,
-STRING_LANES, texture, audio) across both cadences (frame + audio) and all execution strategies
-(scalar/lifted/loopbased), backed by the existing lane/string-lane/texture/audio-buffer transport. Operators
-can fully consume/produce via the value API — the precondition for Phase 6 (migrate the seed operators) and
-Phase 7 (swap transport to native value storage + remove the lane API). The vocabulary (`value_model.h`) + value views (`value_view.h`) are wired into the
-descriptor/codegen/probing (ABI **6**); the compiler runs a **value-flow inference pass** (Pass 2.7) computing
-a `ValueEnvelope` per edge/port from `multiplicity_behavior`, proven equivalent to the lane sets
-(`CompiledGraph.value_flow_mismatches == 0`); the runtime has a unified **value-storage substrate**
-(`ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot` + health counters); and (Phase 4a)
-**`VividFrameContext` exposes `values`/`value_outputs`** so frame/control operators can consume/produce
-scalar-or-many values via the value API, backed by the existing lane transport (proven by `ValueGainOp`). All
-**additive** — the lane system is **still the live execution path** (Phase 4b/5 switch execution onto the
-substrate; Phase 7 removes lanes). This document is the target contract.
-
-Phase 0 is complete when every current lane surface has an explicit new-model target here and no
-naming/semantic decision is left to later phases.
+**Status:** The clean break is **COMPLETE** through **Phase 7e**. The value model is now the **sole authority**
+for multiplicity, identity, payload type, and storage — there is no parallel lane machinery left to "switch"
+onto. The runtime lane system is **fully removed**: the operator-facing lane C-API (`VividLaneView`/
+`VividLaneOutput` and the `*_lanes` context fields), the lane buffers (`LaneBuffer`/`LaneBufferRef`/
+`LaneBufferPool`), lane-set propagation (the old Pass 2.6, `LaneSet`/`lane_set_id`/`next_lane_set_id`),
+`BridgeLaneSlot`, and the `VividLaneBehavior` enum + `descriptor.lane_behavior` field are all gone. Operators
+consume/produce via the value API: `VividFrameContext`/`VividGpuContext`/`VividAudioContext` `values`/
+`value_outputs` cover every payload (Float, String, Texture, Audio) across both cadences and every execution
+strategy (scalar / instance-per-lane / loop-based). Operators declare how they transform multiplicity via
+`static constexpr VividMultiplicityBehavior kMultiplicityBehavior`; the compiler's **value-flow inference pass
+(Pass 2.7)** computes a `ValueEnvelope` per edge/port from `multiplicity_behavior` — this is the only
+multiplicity-flow pass. Cross-cadence transport and value storage use the native substrate
+(`ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot`); UI/MCP wire and port coloring read
+`provenance_group_id` off the `ValueEnvelope`. The vocabulary (`value_model.h`) + value views (`value_view.h`)
+are wired into descriptor/codegen/probing at ABI **10**. This document is the canonical contract; §3 (the
+old→new mapping) is retained as history of what each removed lane surface became.
 
 ---
 
 ## 1. The model
 
-The lane system represents "many values" with special port types (`VIVID_PORT_LANE_ARRAY`,
+The removed lane system represented "many values" with special port types (`VIVID_PORT_LANE_ARRAY`,
 `VIVID_PORT_STRING_LANES`), side-channel lane buffers, execution strategies, and bridge-only scratch. The
-value model replaces all of that: **every runtime value carries four orthogonal properties**, and operators
+value model replaced all of that: **every runtime value carries four orthogonal properties**, and operators
 **declare** how they transform multiplicity instead of relying on runtime heuristics.
 
 | Axis | Enum (`value_model.h`) | Values | Replaces |

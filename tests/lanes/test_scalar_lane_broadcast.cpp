@@ -1,7 +1,7 @@
 // Test: scalar-to-lane lifting and lane count normalization.
 //
-// Phase 1 (scalar lift): a scalar output connected to a VIVID_PORT_LANE_ARRAY
-// input becomes a 1-element lane array in the wire propagation.
+// Phase 1 (scalar lift): a scalar output connected to a many-capable
+// (.multiplicity=MANY) input becomes a 1-element lane array in the wire propagation.
 //
 // Phase 2 (normalization): shorter lane arrays on a node are expanded to
 // match the longest by repeating their last element.

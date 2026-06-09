@@ -56,8 +56,6 @@ struct MathHarness {
         ctx.param_values   = params;
         ctx.input_values   = inputs;
         ctx.output_values  = outputs;
-        ctx.input_lanes    = nullptr;
-        ctx.output_lanes   = nullptr;
 
         loader.process_frame(instance, &ctx);
         return outputs[0];

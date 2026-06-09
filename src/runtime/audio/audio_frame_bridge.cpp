@@ -35,7 +35,7 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
     }
     lane_overflow_count_ = 0;
 
-    // Allocate ParamSnapshot arrays and wire BridgeLaneSlot pointers.
+    // Allocate ParamSnapshot arrays and wire BridgeValueSlot pointers.
     for (int b = 0; b < 2; ++b) {
         auto& snap = snapshots_[b];
         snap.node_params.resize(audio_count);
@@ -54,7 +54,6 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
                 snap.lane_inputs[i][p].data = lane_input_storage_[b].data() + input_offset;
                 snap.lane_inputs[i][p].capacity = kLaneCap;
                 snap.lane_inputs[i][p].length = 0;
-                snap.lane_inputs[i][p].lane_set_id = 0;
                 input_offset += kLaneCap;
             }
             snap.input_string_values[i].assign(cn.input_port_count, "");
@@ -100,7 +99,6 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
                 snap.lane_outputs[i][p].data = lane_output_storage_[b].data() + output_offset;
                 snap.lane_outputs[i][p].capacity = kLaneCap;
                 snap.lane_outputs[i][p].length = 0;
-                snap.lane_outputs[i][p].lane_set_id = 0;
                 output_offset += kLaneCap;
             }
             snap.scalar_outputs[i].assign(cn.output_port_count, 0.0f);
@@ -210,8 +208,11 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
             // before calling process_audio.
             if (e.to_port < snap.node_params[si].size())
                 snap.node_params[si][e.to_port] = val;
-        } else if (e.data_type == VIVID_PORT_LANE_ARRAY && !e.targets_param) {
-            // Spread input
+        } else if (e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY &&
+                   e.value_envelope.value_type == VIVID_VALUE_FLOAT && !e.targets_param) {
+            // Many (float) input — value-model gate. OUTPUT side: the source's
+            // INFERRED output multiplicity (e.value_envelope), which accounts for
+            // behavior-many (e.g. a SCALAR-typed Generate output), not just port arity.
             // frame→audio: read the frame source node's value transport directly
             // (Phase 7b — replaces the 7a output_lane_refs shim).
             if (e.from_port < from_cn.output_value_refs.size() &&
@@ -228,7 +229,9 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
                     const float* src = ref.floats();
                     for (uint32_t j = 0; j < dst.length; ++j)
                         dst.data[j] = src[j] * scale;
-                    dst.lane_set_id = e.lane_set_id;
+                    // Carry the value envelope across the boundary (provenance group-id
+                    // rides this in 7e.5; consumed by UI/control then).
+                    dst.envelope = e.value_envelope;
                 } else {
                     dst.length = 0;
                 }
@@ -302,9 +305,13 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
         uint32_t si = static_cast<uint32_t>(si_signed);
 
         auto& to_cn = cg.nodes[e.to_node];
+        // OUTPUT side: inferred output multiplicity (behavior-aware), via the edge.
+        const bool from_many_float =
+            e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY &&
+            e.value_envelope.value_type == VIVID_VALUE_FLOAT;
 
-        if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-            // Spread output → frame-rate input (Snapshot bridge kind)
+        if (from_many_float) {
+            // Many (float) output → frame-rate input (value-model gate, 7d)
             if (si < snap.lane_outputs.size() &&
                 e.from_port < snap.lane_outputs[si].size()) {
                 const auto& src = snap.lane_outputs[si][e.from_port];
@@ -369,9 +376,8 @@ void AudioFrameBridge::pull_from_audio(CompiledGraph& cg) {
                 }
                 to_cn.dirty = true;
             }
-        } else if (e.bridge_kind == BridgeKind::Waveform &&
-                   e.data_type == VIVID_PORT_LANE_ARRAY) {
-            // Waveform: read downsampled waveform → frame lane port (channel 0)
+        } else if (e.bridge_kind == BridgeKind::Waveform && from_many_float) {
+            // Waveform: read downsampled waveform → frame many (float) port (channel 0)
             if (si < snap.waveform.size() && e.to_port < to_cn.input_lanes.size()) {
                 const auto& wf = snap.waveform[si][0];
                 to_cn.input_lanes[e.to_port].assign(wf.begin(), wf.end());

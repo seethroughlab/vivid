@@ -33,7 +33,6 @@
 struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Filter";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> cutoff    {"cutoff",    2000.0f, 20.0f, 20000.0f};
@@ -99,8 +98,8 @@ struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"output",       VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 0, 0.0f, nullptr, "audio_signal",   "audio_buffer", "audio_output",         "Filtered audio output."});
         out.push_back({"cutoff_cv",    VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "pitch_like_mod", "scalar",        "global_cutoff_mod",   "Global cutoff modulation shared by all voices."});
         out.push_back({"resonance_cv", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0, 0.0f, nullptr, "resonance",      "scalar",        "global_resonance_mod","Global resonance modulation shared by all voices."});
-        out.push_back({"cutoff_mod",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "cutoff_mod",     "lane_array",    "per_note_cutoff_mod", "Per-lane cutoff modulation for polyphonic envelopes and note shaping."});
-        out.push_back({"frequencies",  VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0, 0.0f, nullptr, "frequency_hz",   "lane_array",    "per_note_frequency",  "Per-lane note frequencies used for keytracking in polyphonic chains."});
+        out.push_back({.name="cutoff_mod",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag="cutoff_mod", .semantic_shape="lane_array", .semantic_intent="per_note_cutoff_mod", .description="Per-lane cutoff modulation for polyphonic envelopes and note shaping.", .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="frequencies", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag="frequency_hz", .semantic_shape="lane_array", .semantic_intent="per_note_frequency", .description="Per-lane note frequencies used for keytracking in polyphonic chains.", .multiplicity=VIVID_MULTIPLICITY_MANY});
         vivid::append_analysis_ports(out);
     }
 

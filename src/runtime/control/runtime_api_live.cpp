@@ -6,6 +6,7 @@
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_preparation_service.h"
+#include "runtime/control/control_server_enums.h"  // multiplicity_behavior_str
 #include "runtime/audio/system_midi.h"
 #include <sstream>
 #include <cmath>
@@ -149,10 +150,12 @@ std::string infer_bridge_kind(const vivid::Graph& graph,
         if (name == "rms")      return "rms";
         if (name == "peak")     return "peak";
         if (name == "waveform") return "waveform";
-        if (src_port->type == VIVID_PORT_LANE_ARRAY) return "waveform";
+        if (src_port->type == VIVID_PORT_SCALAR &&
+            src_port->multiplicity == VIVID_MULTIPLICITY_MANY) return "waveform";  // float-many
         return "last_sample";
     }
-    if (src_port->type == VIVID_PORT_LANE_ARRAY) return "snapshot";
+    if (src_port->type == VIVID_PORT_SCALAR &&
+        src_port->multiplicity == VIVID_MULTIPLICITY_MANY) return "snapshot";  // float-many
     return "hold";
 }
 
@@ -774,9 +777,9 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     std::ostringstream oss;
     oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
     {
-        static const char* lb_names[] = {"pointwise", "structural", "reduction", "kernel"};
-        uint8_t lb = static_cast<uint8_t>(cn->lane_behavior);
-        if (lb < 4) oss << "  lane_behavior: " << lb_names[lb] << "\n";
+        oss << "  multiplicity_behavior: "
+            << multiplicity_behavior_str(desc ? desc->multiplicity_behavior : VIVID_MULTIPLICITY_MAP)
+            << "\n";
     }
     if (cn->missing_operator) {
         oss << "  status: missing operator placeholder for type "
@@ -799,12 +802,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << cn->output_values[idx];
         if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
             oss << " \"" << cn->output_string_values[idx] << "\"";
-        if (idx < cn->output_lane_refs.size() && cn->output_lane_refs[idx]) {
-            const auto& ref = cn->output_lane_refs[idx];
+        if (idx < cn->output_value_refs.size() && cn->output_value_refs[idx]) {
+            const auto& ref = cn->output_value_refs[idx];
             oss << " [";
-            for (uint32_t si = 0; si < ref.length(); ++si) {
+            for (uint32_t si = 0; si < ref.count(); ++si) {
                 if (si > 0) oss << ",";
-                oss << ref.data()[si];
+                oss << ref.floats()[si];
             }
             oss << "]";
         }
@@ -828,12 +831,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             oss << cn->input_values[idx];
             if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
                 oss << " \"" << cn->input_string_values[idx] << "\"";
-            if (idx < cn->input_lane_refs.size() && cn->input_lane_refs[idx]) {
-                const auto& ref = cn->input_lane_refs[idx];
+            if (idx < cn->input_value_refs.size() && cn->input_value_refs[idx]) {
+                const auto& ref = cn->input_value_refs[idx];
                 oss << " [";
-                for (uint32_t si = 0; si < ref.length(); ++si) {
+                for (uint32_t si = 0; si < ref.count(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << ref.data()[si];
+                    oss << ref.floats()[si];
                 }
                 oss << "]";
             }

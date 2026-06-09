@@ -61,7 +61,7 @@ DescriptorFixture make_baseline() {
     f.desc.has_process_audio    = 0;
     f.desc.has_process_gpu      = 0;
     f.desc.has_process_frame    = 1;
-    f.desc.lane_behavior        = 0;  // POINTWISE
+    f.desc.multiplicity_behavior = VIVID_MULTIPLICITY_MAP;
     f.desc.strategy_independent = 0;
     return f;
 }

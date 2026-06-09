@@ -15,7 +15,7 @@
 struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "IdentityLaneSourceOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     // Max voices this source can emit.
     static constexpr uint32_t kMaxVoices = 8;
@@ -36,7 +36,7 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"out",      VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
@@ -59,20 +59,18 @@ struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         // Write scalar output (first active value or 0)
         ctx->output_values[0] = active_count > 0 ? values[0] : 0.0f;
 
-        // Write main lane array (out port, index 0) and lane_ids (index 1)
-        if (ctx->output_lanes) {
-            auto& osp = ctx->output_lanes[0];
-            auto& lid_sp = ctx->output_lanes[1];
-            float* buf = osp.resize(osp.handle, active_count);
-            float* id_buf = lid_sp.resize(lid_sp.handle, active_count);
-            if (buf && id_buf) {
-                for (uint32_t i = 0; i < active_count; ++i)
-                    buf[i] = values[i];
-                for (uint32_t i = 0; i < active_count; ++i)
-                    id_buf[i] = ids[i];
-                osp.commit(osp.handle, active_count);
-                lid_sp.commit(lid_sp.handle, active_count);
-            }
+        // Write main value array (out port, index 0) and lane_ids (index 1)
+        VividValueOutput* out    = ctx->value_outputs ? &ctx->value_outputs[0] : nullptr;
+        VividValueOutput* lid    = ctx->value_outputs ? &ctx->value_outputs[1] : nullptr;
+        float* buf    = vivid_value_output_floats(out, active_count);
+        float* id_buf = vivid_value_output_floats(lid, active_count);
+        if (buf && id_buf) {
+            for (uint32_t i = 0; i < active_count; ++i)
+                buf[i] = values[i];
+            for (uint32_t i = 0; i < active_count; ++i)
+                id_buf[i] = ids[i];
+            vivid_value_output_commit(out, active_count);
+            vivid_value_output_commit(lid, active_count);
         }
     }
 };

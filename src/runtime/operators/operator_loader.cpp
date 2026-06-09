@@ -84,8 +84,6 @@ HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
     // reload does NOT re-run — so a full recompile is required to take effect.
     if (old_desc->multiplicity_behavior != new_desc->multiplicity_behavior)
         return HotReloadCompat::RecompileRequired;
-    if (old_desc->lane_behavior != new_desc->lane_behavior)
-        return HotReloadCompat::RecompileRequired;
     if (old_desc->strategy_independent != new_desc->strategy_independent)
         return HotReloadCompat::RecompileRequired;
 

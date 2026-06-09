@@ -36,21 +36,21 @@
 struct InstancesFromLanes2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName               = "InstancesFromLanes2D";
     static constexpr bool kTimeDependent             = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_KERNEL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 
     void collect_params(std::vector<vivid::ParamBase*>& /*out*/) override {}
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         // 9 optional lane-array inputs, fixed order:
-        out.push_back({"pos_x",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 0
-        out.push_back({"pos_y",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 1
-        out.push_back({"scale_x",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 2
-        out.push_back({"scale_y",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 3
-        out.push_back({"rotation", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 4
-        out.push_back({"color_r",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 5
-        out.push_back({"color_g",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 6
-        out.push_back({"color_b",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 7
-        out.push_back({"color_a",  VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});  // 8
+        out.push_back({.name="pos_x",    .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 0
+        out.push_back({.name="pos_y",    .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 1
+        out.push_back({.name="scale_x",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 2
+        out.push_back({.name="scale_y",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 3
+        out.push_back({.name="rotation", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 4
+        out.push_back({.name="color_r",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 5
+        out.push_back({.name="color_g",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 6
+        out.push_back({.name="color_b",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 7
+        out.push_back({.name="color_a",  .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});  // 8
 
         out.push_back(VIVID_CUSTOM_REF_PORT("instances", VIVID_PORT_OUTPUT,
                                             vivid::gpu::InstanceArray2D));

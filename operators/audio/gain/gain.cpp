@@ -24,7 +24,6 @@
 struct Gain : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Gain";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 2.0f};

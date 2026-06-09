@@ -358,19 +358,18 @@ static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
     check(lfo != nullptr, "LFO node found");
     if (!sn || !lfo) return;
 
-    check(sn->lane_behavior == vivid::LaneBehavior::Structural,
-          "LaneSourceOp classified as Structural");
-    check(lfo->lane_behavior == vivid::LaneBehavior::Pointwise,
-          "LFO classified as Pointwise (default)");
+    check(sn->multiplicity_behavior == VIVID_MULTIPLICITY_GENERATE,
+          "LaneSourceOp classified as GENERATE (structural)");
+    check(lfo->multiplicity_behavior == VIVID_MULTIPLICITY_MAP,
+          "LFO classified as MAP (pointwise default)");
 
-    // Structural node should have gotten a fresh lane_set_id on its outputs.
+    // Structural node should have gotten a fresh provenance group on its outputs.
     bool has_fresh_id = false;
-    for (const auto& ls : sn->output_lane_sets) {
-        if (ls.lane_set_id != 0)
+    for (const auto& env : sn->output_value_envelopes) {
+        if (env.provenance_group_id != 0)
             has_fresh_id = true;
     }
-    check(has_fresh_id, "LaneSourceOp outputs have fresh lane_set_id");
-    check(cg->next_lane_set_id > 1, "lane_set_id counter advanced");
+    check(has_fresh_id, "LaneSourceOp outputs have a fresh provenance group");
 
     std::filesystem::remove_all(staging);
 }
@@ -412,7 +411,7 @@ static void test_audio_lane_lift_from_lane_input(const std::string& build_dir) {
     // Currently, non-audio lane-bearing inputs do NOT trigger audio lane lifting
     // because structural outputs have runtime-dynamic lane counts that can't be
     // pre-allocated at compile time. This test verifies the provenance metadata
-    // is present on input_lane_sets even without lifting.
+    // is present on the value envelopes even without lifting.
     vivid::Graph g;
     g.add_node("sn", "LaneSourceOp");
     g.add_node("audio_meta", "LaneMetadataAudioOp");
@@ -434,19 +433,16 @@ static void test_audio_lane_lift_from_lane_input(const std::string& build_dir) {
         // at runtime (Phase 3), not via compiler Pass 2.6 (which only processes
         // Direct edges). So we verify the source has the provenance.
         bool has_non_scalar = false;
-        for (const auto& ols : sn->output_lane_sets) {
-            if (!ols.is_scalar()) has_non_scalar = true;
+        for (const auto& env : sn->output_value_envelopes) {
+            if (!env.is_scalar()) has_non_scalar = true;
         }
         check(has_non_scalar,
-              "structural source has non-scalar output lane set");
+              "structural source has non-scalar output value envelope");
     }
 
     if (audio_meta) {
-        // The audio node's input_lane_sets are NOT populated for cross-cadence
-        // edges (Pass 2.6 only processes Direct edges). Lane provenance crosses
-        // the cadence boundary via snapshot bridge at runtime.
-        check(audio_meta->lane_behavior == vivid::LaneBehavior::Pointwise,
-              "audio op is Pointwise (default)");
+        check(audio_meta->multiplicity_behavior == VIVID_MULTIPLICITY_MAP,
+              "audio op is MAP (pointwise default)");
     }
 
     std::filesystem::remove_all(staging);
@@ -505,9 +501,9 @@ static void test_loop_based_strategy(const std::string& build_dir) {
     auto* src = cg->find_node("src");
     if (src) {
         bool has_non_scalar = false;
-        for (const auto& ols : src->output_lane_sets)
-            if (!ols.is_scalar()) has_non_scalar = true;
-        check(has_non_scalar, "LaneSourceOp has non-scalar output lane set");
+        for (const auto& env : src->output_value_envelopes)
+            if (!env.is_scalar()) has_non_scalar = true;
+        check(has_non_scalar, "LaneSourceOp has non-scalar output value envelope");
     }
 
     std::filesystem::remove_all(staging);

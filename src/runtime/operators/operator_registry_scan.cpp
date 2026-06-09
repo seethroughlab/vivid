@@ -286,7 +286,7 @@ static std::optional<DeferredEntry> deep_copy_descriptor(
     entry.desc.has_process_audio = src->has_process_audio;
     entry.desc.has_process_gpu = src->has_process_gpu;
     entry.desc.has_process_frame = src->has_process_frame;
-    entry.desc.lane_behavior = src->lane_behavior;
+    entry.desc.multiplicity_behavior = src->multiplicity_behavior;
     entry.desc.strategy_independent = src->strategy_independent;
 
     // v3 metadata: copy display_name / keywords / summary into deferred storage

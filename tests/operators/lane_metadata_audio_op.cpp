@@ -1,6 +1,6 @@
 // Test operator: mono audio passthrough that exposes VividAudioContext lane
 // metadata as float signal outputs. When lane-lifted, each instance sees its
-// own lane_index and the shared lane_count/lane_set_id.
+// own lane_index/lane_id and the shared lane_count.
 #include "operator_api/operator.h"
 #include <cstring>
 
@@ -15,7 +15,7 @@ struct LaneMetadataAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"output",      VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT});
         out.push_back({"lane_count",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_index",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_set_id", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_id",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_audio(const VividAudioContext* ctx) override {
@@ -28,7 +28,7 @@ struct LaneMetadataAudioOp : vivid::OperatorBase, vivid::AudioProcessable {
             float vals[3];
             vals[0] = static_cast<float>(ctx->lane_count);
             vals[1] = static_cast<float>(ctx->lane_index);
-            vals[2] = static_cast<float>(ctx->lane_set_id);
+            vals[2] = static_cast<float>(ctx->lane_id);
             for (uint32_t i = 0; i < ctx->buffer_size; ++i) {
                 for (int j = 0; j < 3; ++j)
                     ctx->output_buffers[j][i] = vals[j];

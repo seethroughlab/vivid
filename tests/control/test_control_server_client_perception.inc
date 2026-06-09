@@ -668,9 +668,9 @@
                     check(t0.contains("operator_family") && t0["operator_family"].is_string() &&
                               t0["operator_family"].get<std::string>() == "test-fixture",
                           "list_types exposes operator_family");
-                    check(t0.contains("lane_behavior_help") && t0["lane_behavior_help"].is_string() &&
-                              !t0["lane_behavior_help"].get<std::string>().empty(),
-                          "list_types exposes lane_behavior_help");
+                    check(t0.contains("multiplicity_behavior_help") && t0["multiplicity_behavior_help"].is_string() &&
+                              !t0["multiplicity_behavior_help"].get<std::string>().empty(),
+                          "list_types exposes multiplicity_behavior_help");
                     check(!t0.contains("params") && !t0.contains("outputs"),
                           "list_types stays compact and omits rich descriptor arrays");
                     check(!ms_type.is_null(), "contains MsSourceOp");
@@ -703,9 +703,9 @@
                 check(op.contains("source_path") && op["source_path"].is_string() &&
                           op["source_path"].get<std::string>() == "operators/control/test_op/test_op.cpp",
                       "operator_docs merges source_path");
-                check(op.contains("lane_behavior_help") && op["lane_behavior_help"].is_string() &&
-                          !op["lane_behavior_help"].get<std::string>().empty(),
-                      "operator_docs includes lane_behavior_help");
+                check(op.contains("multiplicity_behavior_help") && op["multiplicity_behavior_help"].is_string() &&
+                          !op["multiplicity_behavior_help"].get<std::string>().empty(),
+                      "operator_docs includes multiplicity_behavior_help");
                 auto& params_obj = op["params"];
                 check(params_obj.is_array() && params_obj.size() == 1, "operator_docs returns params");
                 if (params_obj.is_array() && params_obj.size() == 1) {

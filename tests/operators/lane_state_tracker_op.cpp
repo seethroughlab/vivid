@@ -1,9 +1,10 @@
-// Test operator: accumulates per-lane state from lane input values.
+// Test operator: accumulates per-lane state from many-value input.
 //
 // Strategy-independent operator used to test identity compaction.
-// Each lane reads its value from the input lane array (indexed by lane_index),
-// accumulates it into vivid_lane_state keyed by lane_id, and writes the
-// accumulated value to the audio output buffer.
+// Each lane reads its value from the many-value input (ctx->values, indexed by
+// lane_index — a lifted invocation sees the FULL view), accumulates it into
+// vivid_lane_state keyed by lane_id, and writes the accumulated value to the
+// audio output buffer. Uses the value API — successor to the lane views. (7d.5b)
 //
 // After compaction (lane removal + reordering), the accumulated value
 // should follow the lane_id, not the positional index.
@@ -13,7 +14,6 @@
 struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "LaneStateTrackerOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     struct State {
@@ -27,8 +27,8 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",    VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_INPUT});
         out.push_back({"output",   VIVID_PORT_AUDIO_BUFFER,  VIVID_PORT_OUTPUT});
         // Lane-array inputs for per-lane values and identity-bearing lane_ids
-        out.push_back({"values",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
-        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="values",   .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         // Signal outputs for last-lane readback
         out.push_back({"lane_count_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_id_out",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
@@ -39,15 +39,17 @@ struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     void process_audio(const VividAudioContext* ctx) override {
         State& s = *vivid_lane_state(ctx, ctx->lane_id, State);
 
-        // Read per-lane value from lane input
-        // Port order: input(audio)=0, values(lane_array)=1, lane_ids(lane_array)=2
-        // input_lanes is indexed by input port ordinal
+        // Read per-lane value from the many-value input.
+        // Port order: input(audio)=0, values(many)=1, lane_ids(many)=2
+        // ctx->values is indexed by input port ordinal; a lifted invocation sees
+        // the FULL view, so index it by lane_index.
         float value = 0.0f;
-        if (ctx->input_lanes) {
+        if (ctx->values) {
             uint32_t ci = ctx->lane_index;
-            const auto& val_sp = ctx->input_lanes[1];  // "values" lane array (port index 1)
-            if (val_sp.data && ci < val_sp.length)
-                value = val_sp.data[ci];
+            const VividValueView* val = &ctx->values[1];  // "values" many input (port index 1)
+            const float* data = vivid_value_floats(val);
+            if (data && ci < vivid_value_count(val))
+                value = data[ci];
         }
 
         s.accumulated += value;

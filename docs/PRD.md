@@ -326,10 +326,9 @@ Seven canonical port types reflect the runtime's routing mechanisms:
 
 - `VIVID_PORT_SCALAR` — scalar float (control values: floats, ints, bools all route identically). Updated at no fixed rate.
 - `VIVID_PORT_AUDIO_BUFFER` — a 256-sample buffer at 48kHz. Always continuous — producing a buffer every callback, even if silence. Mono throughout; stereo is two ports (left/right).
-- `VIVID_PORT_LANE_ARRAY` — variable-length float array with broadcast semantics.
 - `VIVID_PORT_STRING` — UTF-8 string.
-- `VIVID_PORT_STRING_LANES` — variable-length string array.
 - `VIVID_PORT_TEXTURE` — 2D RGBA8 `WGPUTextureView` with per-node configurable resolution (default 1280×720).
+- **Multiplicity** — any port (SCALAR float, STRING) can be **many-valued** by declaring `.multiplicity = MANY`: a variable-length array of that payload. (This replaced the former `VIVID_PORT_LANE_ARRAY` / `VIVID_PORT_STRING_LANES` port types — payload and multiplicity are now orthogonal.)
 - `VIVID_CUSTOM_PORT(id)` — custom port types using either `CUSTOM_REF` (opaque pointer) or `CUSTOM_VALUE` (inline blob) transport. Type-safe via named type registry with `transport`, `type_name`, and `payload_size`. Used for GPU buffers, meshes, compute dispatches, media streams, MIDI, and package-defined types.
 
 **Semantic Tags (Advisory)**
@@ -381,7 +380,7 @@ Precedent: vvvv's Spreads, Houdini's per-point attribute operations, and Blender
 - **Broadcasting:** scalar values broadcast into any lane set. A single control knob modulating a 512-lane particle field applies the same value to every lane. Mismatched non-scalar lane sets require explicit reshape operators.
 - **Cross-domain:** lane-bearing control values (e.g., 512 FFT bins) can connect directly to a GPU operator, producing 512 visual elements driven by audio. The Control→GPU bridge handles the data; lanes handle the cardinality.
 - **LLM-friendly:** describing lane-based operations in natural language is natural. "Create 512 particles in a circle, sized by the FFT, colored by frequency" maps directly to a chain of operations on lane-bearing values.
-- **Port types:** `VIVID_PORT_LANE_ARRAY` for variable-length float lane arrays. `VIVID_PORT_STRING_LANES` for variable-length string lane arrays. Payload kind and multiplicity are orthogonal, and differences between float lanes and string lanes are capability differences rather than separate collection models.
+- **Port types:** payload kind (`VIVID_PORT_SCALAR` float, `VIVID_PORT_STRING`, …) and **multiplicity** (`.multiplicity = MANY` for a variable-length array) are orthogonal. Differences between float-many and string-many are capability differences rather than separate collection models.
 
 ### 5.10 Simulation Zones: Frame-to-Frame State
 

@@ -44,7 +44,6 @@
 struct Transform2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "Transform2D";
     static constexpr bool kTimeDependent       = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
 
     vivid::Param<float> translate_x {"translate_x", 0.0f, -4.0f, 4.0f};
     vivid::Param<float> translate_y {"translate_y", 0.0f, -4.0f, 4.0f};

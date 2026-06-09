@@ -1,5 +1,4 @@
 #include "runtime/graph/frame_executor.h"
-#include "runtime/graph/lane_buffer_gpu.h"
 #include "runtime/graph/value_buffer_gpu.h"          // value_buffer_ensure_gpu (Phase 7a)
 #include "runtime/graph/gpu_value_output_adapter.h"  // make_texture_value_output (Phase 4c)
 #include "runtime/core/crash_guard.h"
@@ -75,7 +74,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (cn.errored) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
@@ -86,7 +84,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (solo_node_idx_ >= 0 && !solo_active_set_.empty() && !solo_active_set_[ni]) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             continue;
         }
@@ -166,7 +163,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (cn.bypassed && cn.bypassable) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
@@ -195,60 +191,42 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 }
             } else if (!cn.input_port_types.empty() && !cn.output_port_types.empty() &&
                        cn.input_port_types[0] == cn.output_port_types[0]) {
-                switch (cn.input_port_types[0]) {
-                case VIVID_PORT_SCALAR:
+                // Passthrough dispatch by {value_type, multiplicity} (value-model, 7d).
+                const VividValueType vt0 = cn.input_port_value_types.empty()
+                    ? VIVID_VALUE_FLOAT : cn.input_port_value_types[0];
+                const bool many0 = !cn.input_port_multiplicities.empty() &&
+                    cn.input_port_multiplicities[0] == VIVID_MULTIPLICITY_MANY;
+                if (vt0 == VIVID_VALUE_FLOAT && !many0) {
                     if (!cn.input_values.empty() && !cn.output_values.empty())
                         cn.output_values[0] = cn.input_values[0];
-                    break;
-                case VIVID_PORT_LANE_ARRAY:
+                } else if (vt0 == VIVID_VALUE_FLOAT && many0) {
                     if (!cn.input_value_refs.empty() && !cn.output_value_refs.empty())
                         cn.output_value_refs[0] = cn.input_value_refs[0];
-                    break;
-                case VIVID_PORT_STRING:
+                } else if (vt0 == VIVID_VALUE_STRING && !many0) {
                     if (!cn.input_string_values.empty() && !cn.output_string_values.empty())
                         cn.output_string_values[0] = cn.input_string_values[0];
-                    break;
-                case VIVID_PORT_STRING_LANES:
+                } else if (vt0 == VIVID_VALUE_STRING && many0) {
                     if (!cn.input_string_lanes.empty() && !cn.output_string_lanes.empty())
                         cn.output_string_lanes[0] = cn.input_string_lanes[0];
-                    break;
-                default:
-                    // Texture / custom on a non-GPU node — leave outputs neutral.
-                    break;
                 }
+                // else texture / custom / audio on a non-GPU node — leave neutral.
             }
             cn.processed_this_tick = true;
             continue;
         }
 
-        // ── Build lane view/output staging (from the value transport) ───
-        // c_in_lane_views is the legacy lane-API operator input (still used by
-        // test fixture ops); populate it from input_value_refs so lane-API and
-        // value-API operators see the same data. Removed in 7d with the lane API.
-        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            const auto& ref = cn.input_value_refs[p];
-            cn.c_in_lane_views[p].data = ref.floats();
-            cn.c_in_lane_views[p].length = ref.count();
-            // Propagate lane provenance from compile-time metadata or ref.
-            cn.c_in_lane_views[p].lane_set_id =
-                (ref && ref.buf->lane_set_id != 0) ? ref.buf->lane_set_id
-                : (p < cn.input_lane_sets.size() && !cn.input_lane_sets[p].is_scalar())
-                    ? cn.input_lane_sets[p].lane_set_id : 0;
-            cn.c_in_lane_views[p].flags = 0;
-        }
+        // ── Build value-view input staging (from the value transport) ───
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_value_bufs[p].reset();
         }
+        // Rebuild c_str() pointers for string inputs (feeds the value-view string
+        // path below via in_string_lane_ptrs).
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_lane_ptrs[p].size(); ++si)
                 cn.in_string_lane_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
-            cn.c_in_string_lane_views[p].data = cn.in_string_lane_ptrs[p].data();
-            cn.c_in_string_lane_views[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
-            cn.c_in_string_lane_views[p].lane_set_id = 0;
-            cn.c_in_string_lane_views[p].flags = 0;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            cn.out_string_lane_bufs[p].reset();
+            cn.out_string_value_bufs[p].reset();
         }
         // Value-view input staging (Phase 4a float / 4b many-string). Aliases the
         // same transport the lane views use + the compile-time value envelope
@@ -329,11 +307,11 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                 cn.output_string_values[p] = cn.c_output_string_values[p];
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            uint32_t slen = cn.out_string_lane_bufs[p].committed_length;
+            uint32_t slen = cn.out_string_value_bufs[p].committed_count;
             if (slen > 0) {
                 cn.output_string_lanes[p].resize(slen);
                 for (uint32_t si = 0; si < slen; ++si)
-                    cn.output_string_lanes[p][si] = cn.out_string_lane_bufs[p].owned[si];
+                    cn.output_string_lanes[p][si] = cn.out_string_value_bufs[p].strings[si];
             } else {
                 cn.output_string_lanes[p].clear();
             }
@@ -417,11 +395,15 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
         }
 
         if (e.data_type == VIVID_PORT_STRING) {
-            cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
-            continue;
-        }
-        if (e.data_type == VIVID_PORT_STRING_LANES) {
-            cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
+            // Payload tag is STRING for both scalar + many (string-lanes port type
+            // retired, 7d.5e). String transport is separate from the float value
+            // envelope, so route by the DEST port's declared multiplicity.
+            const bool many = e.to_port < cn.input_port_multiplicities.size() &&
+                              cn.input_port_multiplicities[e.to_port] == VIVID_MULTIPLICITY_MANY;
+            if (many)
+                cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
+            else
+                cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
             continue;
         }
 
@@ -442,7 +424,7 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
             // Lane-aware ref-based propagation.
             // No cycle-expand, no modulo indexing. Compiler legality
             // (Pass 2.6) guarantees that non-scalar inputs sharing a
-            // port have the same lane_set_id.
+            // port share the same provenance group.
             if (!e.sources_param && e.from_port < from_cn.output_value_refs.size()) {
                 const auto& src_ref = from_cn.output_value_refs[e.from_port];
                 if (src_ref) {
@@ -498,11 +480,11 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
                     }
                     if (!dst_ref.empty())
                         cn.input_values[e.to_port] = dst_ref.floats()[0];
-                } else if (e.data_type == VIVID_PORT_LANE_ARRAY) {
-                    // Scalar source → lane_array destination: lift the scalar into
-                    // a 1-element value. NOTE: gated on the DECLARED many-capable
-                    // port (lane-array), not runtime multiplicity — de-port-typing
-                    // this needs per-port declared multiplicity (7c+7d combined).
+                } else if (e.to_port < cn.input_port_multiplicities.size() &&
+                           cn.input_port_multiplicities[e.to_port] == VIVID_MULTIPLICITY_MANY) {
+                    // Scalar source → many destination: lift the scalar into a
+                    // 1-element value. Gated on the DECLARED many-capable port
+                    // (per-port multiplicity, 7d) — float-only context here.
                     auto& dst_ref = cn.input_value_refs[e.to_port];
                     if (dst_ref.empty()) {
                         ValueBuffer* buf = value_arena_.acquire();
@@ -539,8 +521,6 @@ void FrameExecutor::populate_frame_context(VividFrameContext& ctx, CompiledNode&
     ctx.frame = frame;
     ctx.node_id = cn.node_id.c_str();
     ctx.param_values = cn.param_values.data();
-    ctx.input_lanes = cn.c_in_lane_views.data();
-    ctx.output_lanes = cn.c_out_lane_outputs.data();
     ctx.values = cn.c_in_value_views.empty() ? nullptr : cn.c_in_value_views.data();
     ctx.value_outputs = cn.c_out_value_outputs.empty() ? nullptr : cn.c_out_value_outputs.data();
     ctx.custom_inputs = cn.resolved_custom_inputs.data();
@@ -549,8 +529,6 @@ void FrameExecutor::populate_frame_context(VividFrameContext& ctx, CompiledNode&
     ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
     ctx.input_string_values = cn.c_input_string_values.data();
     ctx.output_string_values = cn.c_output_string_values.data();
-    ctx.input_string_lanes = cn.c_in_string_lane_views.data();
-    ctx.output_string_lanes = cn.c_out_string_lane_outputs.data();
     ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
     ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
     ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -576,8 +554,6 @@ void FrameExecutor::process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32
     gpu_ctx.input_values     = cn.input_values.data();
     gpu_ctx.output_values    = cn.output_values.data();
     gpu_ctx.input_connected  = cn.input_connected.data();
-    gpu_ctx.input_lanes  = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-    gpu_ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
 
     // GPU storage-buffer lane inputs (Phase 4).
     if (!cn.gpu->lane_input_gpu_promoted.empty()) {
@@ -607,10 +583,6 @@ void FrameExecutor::process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32
                                 ? nullptr : cn.c_input_string_values.data();
     gpu_ctx.output_string_values = cn.c_output_string_values.empty()
                                 ? nullptr : cn.c_output_string_values.data();
-    gpu_ctx.input_string_lanes = cn.c_in_string_lane_views.empty()
-                                ? nullptr : cn.c_in_string_lane_views.data();
-    gpu_ctx.output_string_lanes = cn.c_out_string_lane_outputs.empty()
-                                ? nullptr : cn.c_out_string_lane_outputs.data();
     gpu_ctx.file_param_values = cn.file_param_ptrs.empty()
                                 ? nullptr : cn.file_param_ptrs.data();
     gpu_ctx.file_param_count  = static_cast<uint32_t>(cn.file_param_ptrs.size());
@@ -813,12 +785,6 @@ void FrameExecutor::process_loopbased_node(CompiledNode& cn, uint32_t fi_ord,
             loop_lane_ids[c] = c + 1;
     }
 
-    // lane_set_id from compilation
-    uint32_t lane_set_id = 0;
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) { lane_set_id = ils.lane_set_id; break; }
-    }
-
     // Per-lane scratch for input/output values
     std::vector<float> lane_input_values(cn.input_port_count, 0.0f);
     std::vector<float> lane_output_values(cn.output_port_count, 0.0f);
@@ -847,7 +813,6 @@ void FrameExecutor::process_loopbased_node(CompiledNode& cn, uint32_t fi_ord,
         ctx.output_values = lane_output_values.data();
         ctx.lane_count = loop_lanes;
         ctx.lane_index = c;
-        ctx.lane_set_id = lane_set_id;
         ctx.lane_id = loop_lane_ids[c];
         ctx.lane_state_fn = lane_state_fn_bridge;
         ctx.lane_state_service = &frame_lane_contexts_[fi_ord];
@@ -903,10 +868,6 @@ void FrameExecutor::process_control_node(CompiledNode& cn,
     }
     ctx.lane_count = max_lane_len > 1 ? max_lane_len : 1;
     ctx.lane_index = 0;
-    ctx.lane_set_id = 0;
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) { ctx.lane_set_id = ils.lane_set_id; break; }
-    }
 
     try {
         vivid::CrashGuard guard(cn.node_id.c_str());

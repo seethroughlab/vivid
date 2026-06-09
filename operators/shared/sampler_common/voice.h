@@ -280,22 +280,4 @@ struct GateTracker {
     }
 };
 
-// ---------------------------------------------------------------------------
-// Spread input helper
-// ---------------------------------------------------------------------------
-
-struct LaneInput {
-    const float* data = nullptr;
-    uint32_t length = 0;
-};
-
-inline LaneInput read_lane_input(const VividLaneView* lanes, int port_index) {
-    LaneInput result;
-    if (lanes) {
-        result.data = lanes[port_index].data;
-        result.length = lanes[port_index].length;
-    }
-    return result;
-}
-
 } // namespace vivid_sampler

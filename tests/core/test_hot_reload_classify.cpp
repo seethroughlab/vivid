@@ -3,7 +3,7 @@
 // Verifies classify_hot_reload() — the gate that decides whether a dylib swap
 // during hot reload is safe in place, needs a full recompile, or must be
 // rejected. Regression guard for the fix that added strategy_independent (and
-// reclassified lane_behavior) as RecompileRequired rather than a silent no-op /
+// reclassified multiplicity_behavior) as RecompileRequired rather than a silent no-op /
 // stale-metadata hazard.
 
 #include "runtime/operators/operator_loader.h"
@@ -25,7 +25,7 @@ VividOperatorDescriptor base_desc() {
     d.port_count = 0;
     d.ports = nullptr;
     d.has_process_gpu = 0;
-    d.lane_behavior = VIVID_LANE_POINTWISE;
+    d.multiplicity_behavior = VIVID_MULTIPLICITY_MAP;
     d.strategy_independent = 0;
     return d;
 }
@@ -50,12 +50,12 @@ int main() {
               "strategy_independent change → RecompileRequired");
     }
 
-    // lane_behavior changed → RecompileRequired (now applies live via recompile).
+    // multiplicity_behavior changed → RecompileRequired (now applies live via recompile).
     {
         VividOperatorDescriptor a = base_desc(), b = base_desc();
-        b.lane_behavior = VIVID_LANE_STRUCTURAL;
+        b.multiplicity_behavior = VIVID_MULTIPLICITY_GENERATE;
         check(classify_hot_reload(&a, &b) == HotReloadCompat::RecompileRequired,
-              "lane_behavior change → RecompileRequired");
+              "multiplicity_behavior change → RecompileRequired");
     }
 
     // has_process_gpu changed → Incompatible (hard reject).

@@ -12,7 +12,6 @@
 struct LaneSlewOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "LaneSlewOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> rate {"rate", 0.1f, 0.001f, 1.0f};
@@ -29,7 +28,7 @@ struct LaneSlewOp : vivid::OperatorBase, vivid::AudioProcessable {
         out.push_back({"input",  VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_INPUT});
         out.push_back({"output", VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT});
         // Spread input for identity-bearing lane_ids from structural upstream
-        out.push_back({"lane_ids", VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         // Signal outputs for test readback
         out.push_back({"lane_count_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_index_out",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});

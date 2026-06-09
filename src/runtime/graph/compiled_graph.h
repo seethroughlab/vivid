@@ -6,9 +6,8 @@
 #include "runtime/operators/operator_loader.h"
 #include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/graph/lane_types.h"
-#include "runtime/graph/lane_buffer.h"
 #include "runtime/graph/value_buffer.h"
-#include "runtime/graph/lane_output_adapter.h"
+#include "runtime/graph/value_output_adapter.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -154,13 +153,14 @@ struct CompiledEdge {
     VividPortTransport port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
     uint32_t custom_payload_size = 0;
 
-    // Lane metadata (populated by compiler Pass 2.6).
-    uint32_t lane_set_id = 0;    // 0 = scalar
+    // Effective wire width — the runtime-refined element count on this edge
+    // (refined by the audio strategy planner; 1 = scalar). Used for the bridge
+    // capacity check + the UI ×N badge + health metrics.
     uint32_t lane_count  = 1;
 
-    // Value-model envelope (lane-value clean-break, Phase 2). Computed by the
-    // value-flow pass in parallel with the lane metadata above; not yet consumed
-    // by execution. Proven equivalent to lane_set_id/lane_count.
+    // Value-model envelope (lane-value clean-break) — type/multiplicity/identity/
+    // storage + provenance group. The sole multiplicity authority (Pass 2.6 lane
+    // sets retired in 7e.5b).
     ValueEnvelope value_envelope;
 
     // Remap helpers.
@@ -227,7 +227,6 @@ struct AudioNodeState {
     // Lane execution strategy (selected by compiler, not operator author).
     LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes
-    uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
     int32_t lane_id_port = -1;  // lane-array port carrying identity-bearing lane_ids (-1 = positional)
 
     // Audio lane/string/custom bridging flags.
@@ -405,6 +404,17 @@ struct CompiledNode {
     uint32_t output_port_count = 0;
     std::vector<VividPortType> input_port_types;
     std::vector<VividPortType> output_port_types;
+    // Per-port DECLARED multiplicity (lane-value clean-break Phase 7d): a port's
+    // arity — Scalar (one element) or Many (a collection) — independent of the
+    // payload type. Derived from the declared port type during the transition
+    // (LANE_ARRAY/STRING_LANES → Many); the value-model successor to encoding
+    // multiplicity in the port type. The gates read THIS, not the port type.
+    std::vector<VividMultiplicity> input_port_multiplicities;
+    std::vector<VividMultiplicity> output_port_multiplicities;
+    // Per-port PAYLOAD value-type (the orthogonal axis to multiplicity). Gates read
+    // {value_type, multiplicity} fully independent of the port-type enum (Phase 7d).
+    std::vector<VividValueType> input_port_value_types;
+    std::vector<VividValueType> output_port_value_types;
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
     // Output ports tagged VIVID_PORT_DISPLAY_ADVANCED — inspector hides
@@ -435,10 +445,6 @@ struct CompiledNode {
     std::vector<ValueRef> output_value_refs;
     std::vector<ValueBuffer> out_value_bufs;   // node-local float output buffers
 
-    // Legacy lane transport (LaneBufferRef-based) — shim during 7a, removed 7d.
-    std::vector<LaneBufferRef> input_lane_refs;
-    std::vector<LaneBufferRef> output_lane_refs;
-
     // Bridge injection scratch — used by pull_from_audio for analysis/waveform
     // data injected from audio→frame. NOT the canonical lane values.
     std::vector<std::vector<float>> input_lanes;
@@ -448,18 +454,15 @@ struct CompiledNode {
     std::vector<std::vector<std::string>> input_string_lanes;
     std::vector<std::vector<std::string>> output_string_lanes;
 
-    // Pre-allocated staging for lane views and output builders.
-    std::vector<VividLaneView> c_in_lane_views;
-    std::vector<VividLaneOutput> c_out_lane_outputs;
-    std::vector<LaneBuffer> out_lane_bufs;
-    // Value-model staging (lane-value clean-break, Phase 4a; additive). The
-    // value views are populated per-tick alongside the lane views; the value
-    // outputs are backed by out_lane_bufs (same transport).
+    // Value-model input/output staging (lane-value clean-break). The value views are
+    // populated per-tick; the value outputs are backed by out_value_bufs /
+    // out_string_value_bufs (string).
     std::vector<VividValueView> c_in_value_views;
     std::vector<VividValueOutput> c_out_value_outputs;
-    std::vector<VividStringLaneView> c_in_string_lane_views;
-    std::vector<VividStringLaneOutput> c_out_string_lane_outputs;
-    std::vector<StringLaneBuffer> out_string_lane_bufs;
+    // String OUTPUT buffers on the value substrate (ValueBuffer STRING; Phase 7d.4 —
+    // was StringLaneBuffer). Both the lane-API + value-API string output adapters back
+    // onto these; readback syncs .strings → output_string_lanes.
+    std::vector<ValueBuffer> out_string_value_bufs;
     std::vector<std::vector<const char*>> in_string_lane_ptrs; // c_str() staging for input views
 
     // ── Custom ports ────────────────────────────────────────────────────────
@@ -526,12 +529,7 @@ struct CompiledNode {
     // (control server, lockfile) use missing_operator_reason/_detail, not this.
     std::string missing_operator_ui_message;
 
-    // ── Lane metadata (populated by compiler Pass 2.6) ────────────────────
-    LaneBehavior lane_behavior = LaneBehavior::Pointwise;
-    std::vector<LaneSet> output_lane_sets;
-    std::vector<LaneSet> input_lane_sets;
-
-    // ── Value-model (lane-value clean-break, Phase 2) ─────────────────────
+    // ── Value-model (lane-value clean-break) ──────────────────────────────
     // multiplicity_behavior is set in Pass 1 from the descriptor; the value
     // envelopes are computed by the value-flow pass in parallel with the lane
     // sets above (not yet consumed by execution).
@@ -601,16 +599,6 @@ struct CompiledGraph {
         auto it = node_id_to_index.find(id);
         return it != node_id_to_index.end() ? &nodes[it->second] : nullptr;
     }
-
-    // Check if any audio-cadence node instances of a given type exist.
-    // Scans only audio_order (typically 2-5 nodes), not all nodes.
-    // Lane-set ID allocator (0 reserved for scalar).
-    uint32_t next_lane_set_id = 1;
-
-    // Value-flow (lane-value clean-break, Phase 2): count of edges where the
-    // inferred value multiplicity disagreed with the Pass-2.6 lane sets. 0 means
-    // the value-flow inference is fully equivalent to lane planning. Tests assert 0.
-    uint32_t value_flow_mismatches = 0;
 
     // Maximum lane count for LoopBased audio operators (from compiler options).
     uint32_t max_loop_lanes = 16;

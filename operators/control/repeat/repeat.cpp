@@ -20,7 +20,7 @@
 struct Repeat : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Repeat";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int>   count   {"count",    4, 1, 1024};
     vivid::Param<int>   mode    {"mode",     0, {"copy", "linear", "random", "phase", "golden"}};
@@ -48,8 +48,8 @@ struct Repeat : vivid::OperatorBase, vivid::FrameProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
         out.push_back({"input",  VIVID_PORT_SCALAR, VIVID_PORT_INPUT,
                        VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr});
-        out.push_back({"output", VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT,
-                       VIVID_PORT_TRANSPORT_LANE_ARRAY, 0, nullptr, 0, 0.0f, nullptr, nullptr, nullptr, nullptr, nullptr});
+        out.push_back({.name="output", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT,
+                       .transport=VIVID_PORT_TRANSPORT_SIGNAL, .multiplicity=VIVID_MULTIPLICITY_MANY});
     }
 
     void process_frame(const VividFrameContext* ctx) override {

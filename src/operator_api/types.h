@@ -10,7 +10,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 6u  /* v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 10u  /* v10: lane-value Phase 7e.6a — removed VividOperatorDescriptor.lane_behavior + the VividLaneBehavior enum/VIVID_LANE_* constants; operators declare multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaults to Map); v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/*_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -22,12 +22,6 @@ typedef uint32_t VividOperatorKind;
 #define VIVID_OP_AUDIO   1u   // audio thread, audio-rate (~48 kHz)
 #define VIVID_OP_GPU     2u   // main thread, GPU command submission
 
-// Lane behavior — how an operator interacts with lane multiplicity.
-typedef uint32_t VividLaneBehavior;
-#define VIVID_LANE_POINTWISE   0u  // processes each lane independently, preserves lane set
-#define VIVID_LANE_STRUCTURAL  1u  // creates, reshapes, reorders, or filters lanes
-#define VIVID_LANE_REDUCTION   2u  // collapses many lanes into fewer (often one)
-#define VIVID_LANE_KERNEL      3u  // needs cross-lane access (neighborhood / full collection)
 
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
@@ -63,11 +57,11 @@ typedef uint32_t VividPortDisplayHint;
 // Channel kinds — reflect the logical data type on a port.
 typedef uint32_t VividPortType;
 
-#define VIVID_PORT_SCALAR         0u  // scalar numeric value
+#define VIVID_PORT_SCALAR         0u  // scalar numeric value (multiplicity declares many)
 #define VIVID_PORT_AUDIO_BUFFER   1u  // audio sample buffer
-#define VIVID_PORT_LANE_ARRAY         2u  // variable-length float array
-#define VIVID_PORT_STRING         3u  // UTF-8 string
-#define VIVID_PORT_STRING_LANES  4u  // variable-length string array
+// 2u retired (was VIVID_PORT_LANE_ARRAY) — float-many is now SCALAR + .multiplicity=MANY (7d.5e)
+#define VIVID_PORT_STRING         3u  // UTF-8 string (multiplicity declares many)
+// 4u retired (was VIVID_PORT_STRING_LANES) — string-many is now STRING + .multiplicity=MANY (7d.5e)
 #define VIVID_PORT_TEXTURE        5u  // WGPUTextureView
 
 typedef uint32_t VividPortDirection;
@@ -77,9 +71,9 @@ typedef uint32_t VividPortDirection;
 typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_SIGNAL         0u  // numeric value (scalar or buffer depending on execution environment)
 #define VIVID_PORT_TRANSPORT_AUDIO_BUFFER   1u  // audio sample buffers
-#define VIVID_PORT_TRANSPORT_LANE_ARRAY         2u  // float lane array copy
+// 2u retired (was VIVID_PORT_TRANSPORT_LANE_ARRAY) — float-many rides SIGNAL (7d.5e)
 #define VIVID_PORT_TRANSPORT_STRING         3u  // string copy
-#define VIVID_PORT_TRANSPORT_STRING_LANES  4u  // string lane array copy
+// 4u retired (was VIVID_PORT_TRANSPORT_STRING_LANES) — string-many rides STRING (7d.5e)
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
@@ -192,8 +186,6 @@ typedef struct VividOperatorDescriptor {
 
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 
-    // Lane behavior (v3+)
-    VividLaneBehavior         lane_behavior;         // POINTWISE, STRUCTURAL, REDUCTION, or KERNEL
     int                       strategy_independent;  // 1 if operator uses vivid_lane_state() for all per-lane state
 
     // Human-facing label (v3+). NULL => runtime auto-derives from name by splitting
@@ -211,11 +203,10 @@ typedef struct VividOperatorDescriptor {
     // operator's source-doc brief.
     const char*               summary;
 
-    // Multiplicity behavior (lane-value clean-break, v6). The successor to
-    // `lane_behavior` (which stays until Phase 7). Codegen derives a default from
-    // `lane_behavior` (POINTWISE->Map, REDUCTION->Reduce, STRUCTURAL->Generate,
-    // KERNEL->Kernel); an operator overrides via `static constexpr
-    // VividMultiplicityBehavior kMultiplicityBehavior`.
+    // Multiplicity behavior (the value-model authority — how the operator transforms
+    // multiplicity). An operator declares it via `static constexpr
+    // VividMultiplicityBehavior kMultiplicityBehavior`; codegen defaults it to Map
+    // (pass-through) when unset.
     VividMultiplicityBehavior multiplicity_behavior;  // 0 = VIVID_MULTIPLICITY_SCALAR_ONLY
 } VividOperatorDescriptor;
 
@@ -295,36 +286,10 @@ typedef struct VividInputState {
     int   modifiers;
 } VividInputState;
 
-// ---------------------------------------------------------------------------
-// Lane views (immutable inputs) and output builders (runtime-owned)
-// ---------------------------------------------------------------------------
-
-typedef struct VividLaneView {
-    const float* data;       // immutable pointer to lane data
-    uint32_t     length;     // number of floats
-    uint32_t     lane_set_id;// provenance identifier (0 = scalar)
-    uint32_t     flags;      // reserved, must be 0
-} VividLaneView;
-
-typedef struct VividLaneOutput {
-    void*    handle;                                         // runtime-owned, opaque
-    float*   (*resize)(void* handle, uint32_t length);       // returns writable buffer or NULL
-    void     (*commit)(void* handle, uint32_t length);       // publish length elements
-} VividLaneOutput;
-
-typedef struct VividStringLaneView {
-    const char* const* data; // immutable pointer to string array
-    uint32_t     length;     // number of strings
-    uint32_t     lane_set_id;// provenance identifier (0 = scalar)
-    uint32_t     flags;      // reserved, must be 0
-} VividStringLaneView;
-
-typedef struct VividStringLaneOutput {
-    void*    handle;                                         // runtime-owned, opaque
-    uint8_t  (*resize)(void* handle, uint32_t length);       // returns 1 on success, 0 on failure
-    void     (*set)(void* handle, uint32_t index, const char* value); // copy string into slot
-    void     (*commit)(void* handle, uint32_t length);       // publish length elements
-} VividStringLaneOutput;
+// Lane views/outputs (VividLaneView/VividLaneOutput/VividStringLaneView/
+// VividStringLaneOutput) were removed in Phase 7e.2 — operators now use the
+// unified value API (VividValueView/VividValueOutput in value_view.h, exposed via
+// ctx->values / ctx->value_outputs). Multiplicity is declared per-port.
 
 typedef struct VividSharedHandleEntry {
     const char* type;
@@ -359,9 +324,6 @@ typedef struct VividAudioContext {
     // Per-port channel counts (resolved by runtime)
     const uint8_t* input_channel_counts;   // [port_idx] — NULL when all mono
     const uint8_t* output_channel_counts;  // [port_idx] — NULL when all mono
-    // Cross-cadence inputs from frame executor
-    const VividLaneView*  input_lanes;
-    VividLaneOutput*      output_lanes;
     void**            custom_inputs;       // [custom_input_ordinal] — opaque custom-type inputs
     uint32_t          custom_input_count;  // number of custom-transport input ports
     const char**      input_string_values;
@@ -381,11 +343,9 @@ typedef struct VividAudioContext {
     // ---- Lane metadata (populated by audio executor) ----
     // lane_count: number of lanes this node is lifted over (1 = not lifted).
     // lane_index: which lane this invocation processes (0..lane_count-1).
-    // lane_set_id: compile-time provenance (0 = scalar).
     // lane_id: stable identity token for identity-bearing lane sets (0 = positional).
     uint32_t          lane_count;
     uint32_t          lane_index;
-    uint32_t          lane_set_id;
     uint32_t          lane_id;
 
     // ---- Per-lane persistent state service (Phase 5) ----
@@ -422,16 +382,12 @@ typedef struct VividFrameContext {
     float*    param_values;   // indexed by param descriptor order
     float*    input_values;   // indexed by input port order (VIVID_PORT_INPUT only)
     float*    output_values;  // indexed by output port order (VIVID_PORT_OUTPUT only)
-    const VividLaneView*  input_lanes;    // [port_ordinal], NULL if none
-    VividLaneOutput*      output_lanes;   // [port_ordinal], NULL if none
     void**     custom_inputs;          // [custom_input_ordinal], NULL if none
     uint32_t   custom_input_count;     // number of custom-transport input ports
     void**     custom_outputs;         // [custom_output_ordinal], NULL if none
     uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
-    const VividStringLaneView*  input_string_lanes;   // [port_ordinal], NULL if none
-    VividStringLaneOutput*      output_string_lanes;  // [port_ordinal], NULL if none
     // ---- Value-model I/O (lane-value clean-break, Phase 4; additive) ----
     // The successor to the lane/string-lane views above: one VividValueView per
     // input port (scalar or many, any payload) + one VividValueOutput per output
@@ -447,7 +403,6 @@ typedef struct VividFrameContext {
     // ---- Lane metadata (read-only, populated by frame executor) ----
     uint32_t  lane_count;     // runtime materialized lane count (1 = scalar)
     uint32_t  lane_index;     // current lane in LoopBased (0 = scalar or first lane)
-    uint32_t  lane_set_id;    // compile-time provenance (0 = scalar)
     uint32_t  lane_id;        // stable identity token for vivid_lane_state() (0 = positional)
 
     // ---- Lane state service (populated for LoopBased frame nodes) ----
@@ -821,8 +776,9 @@ typedef void (*VividPrepareInstanceAssetsFn)(void* instance,
 // ---------------------------------------------------------------------------
 
 static inline int vivid_is_control_type(VividPortType t) {
-    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_LANE_ARRAY ||
-           t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES;
+    // Multiplicity is orthogonal to the payload type (lane port types retired,
+    // 7d.5e): float-many is SCALAR, string-many is STRING.
+    return t == VIVID_PORT_SCALAR || t == VIVID_PORT_STRING;
 }
 
 static inline int vivid_port_type_compatible(VividPortType a, VividPortType b) {

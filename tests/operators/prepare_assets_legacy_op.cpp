@@ -59,7 +59,7 @@ extern "C" const VividOperatorDescriptor* vivid_descriptor() {
         desc.has_process_audio = 0;
         desc.has_process_gpu = 0;
         desc.has_process_frame = 1;
-        desc.lane_behavior = VIVID_LANE_POINTWISE;
+        desc.multiplicity_behavior = VIVID_MULTIPLICITY_MAP;
         desc.strategy_independent = 0;
         desc.param_count = static_cast<uint32_t>(params.size());
         desc.params = params.data();

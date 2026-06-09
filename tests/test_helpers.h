@@ -110,10 +110,6 @@ static void check_graph_clean(const CG* cg, const char* ctx = "graph") {
             dc.to_node.c_str(), dc.to_port.c_str(), dc.reason.c_str());
     check(cg->dropped_connections.empty(),
           (std::string(ctx) + ": no dropped connections").c_str());
-    // Lane-value clean-break, Phase 2: the value-flow inference must be equivalent
-    // to the lane sets on every edge of every compiled graph a test builds.
-    check(cg->value_flow_mismatches == 0,
-          (std::string(ctx) + ": value-flow equivalent to lane sets").c_str());
 }
 
 inline int find_free_loopback_port() {

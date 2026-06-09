@@ -58,8 +58,8 @@ void assert_lane_input(const VividOperatorDescriptor& desc,
     check(port != nullptr, msg);
     if (!port) return;
 
-    std::snprintf(msg, sizeof(msg), "%s type = LANE_ARRAY", port_name);
-    check(port->type == VIVID_PORT_LANE_ARRAY, msg);
+    std::snprintf(msg, sizeof(msg), "%s type = SCALAR + multiplicity MANY", port_name);
+    check(port->type == VIVID_PORT_SCALAR && port->multiplicity == VIVID_MULTIPLICITY_MANY, msg);
 
     std::snprintf(msg, sizeof(msg), "%s semantic_tag = %s", port_name, expected_tag);
     check(port->semantic_tag && std::strcmp(port->semantic_tag, expected_tag) == 0, msg);

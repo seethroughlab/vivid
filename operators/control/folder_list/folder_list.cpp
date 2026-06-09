@@ -105,7 +105,7 @@ struct FolderList : vivid::OperatorBase, vivid::FrameProcessable {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"files", VIVID_PORT_STRING_LANES, VIVID_PORT_OUTPUT});
+        out.push_back({.name="files", .type=VIVID_PORT_STRING, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"count", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 

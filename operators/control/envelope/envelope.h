@@ -32,7 +32,6 @@
 struct Envelope : vivid::OperatorBase {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
     static constexpr uint32_t kMaxVoices = 16;
 
@@ -143,8 +142,8 @@ struct Envelope : vivid::OperatorBase {
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back({"gate",       VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0,                             0.0f, nullptr, "gate",             "lane_array",   "per_note_gate",          "Gate input for ADSR triggering. Accepts a scalar gate or per-voice lanes such as NoteBreakout/voice_gates."});
-        out.push_back({"lane_ids",   VIVID_PORT_LANE_ARRAY,   VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_LANE_ARRAY,   0, nullptr, 0,                             0.0f, nullptr, "lane_id",          "lane_array",   nullptr,                  "Per-voice lane IDs for stable envelope state across reallocation."});
+        out.push_back({.name="gate",     .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag="gate",    .semantic_shape="lane_array", .semantic_intent="per_note_gate", .description="Gate input for ADSR triggering. Accepts a scalar gate or per-voice lanes such as NoteBreakout/voice_gates.", .multiplicity=VIVID_MULTIPLICITY_MANY});
+        out.push_back({.name="lane_ids", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .transport=VIVID_PORT_TRANSPORT_SIGNAL, .semantic_tag="lane_id", .semantic_shape="lane_array", .description="Per-voice lane IDs for stable envelope state across reallocation.", .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back({"beat_phase", VIVID_PORT_SCALAR,       VIVID_PORT_INPUT,  VIVID_PORT_TRANSPORT_SIGNAL,       0, nullptr, 0,                             0.0f, nullptr, "beat_phase",       "scalar",       "global_retrigger_phase", "Global tempo phase. A wrap retriggers the envelope for all lanes."});
         out.push_back({"value",      VIVID_PORT_AUDIO_BUFFER, VIVID_PORT_OUTPUT, VIVID_PORT_TRANSPORT_AUDIO_BUFFER, 0, nullptr, 16, 0.0f, nullptr, "amplitude_linear", "audio_buffer", "envelope_output",        "Per-voice envelope output. Multi-channel when driven by polyphonic gates."});
     }

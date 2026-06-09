@@ -67,7 +67,7 @@ static constexpr const char* kOptionalFeaturesComment = R"(
     //
     // Param types:   int, bool, FilePath, TextValue (e.g. vivid::Param[T])
     // Port types:    VIVID_PORT_STRING, VIVID_PORT_TEXTURE, VIVID_PORT_AUDIO_BUFFER
-    //                (a many-valued output currently declares VIVID_PORT_LANE_ARRAY)
+    //                (a many-valued port declares .multiplicity=VIVID_MULTIPLICITY_MANY)
     //
     // Semantic metadata (populated in the ctor or collect_params):
     //   vivid::semantic_tag(%SEMANTIC_TAG_EXAMPLE_PARAM%, "%SEMANTIC_TAG_EXAMPLE_TAG%");
@@ -128,9 +128,7 @@ static const char* port_type_name(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SCALAR:         return "VIVID_PORT_SCALAR";
         case VIVID_PORT_AUDIO_BUFFER:         return "VIVID_PORT_AUDIO_BUFFER";
-        case VIVID_PORT_LANE_ARRAY:        return "VIVID_PORT_LANE_ARRAY";
         case VIVID_PORT_STRING:        return "VIVID_PORT_STRING";
-        case VIVID_PORT_STRING_LANES: return "VIVID_PORT_STRING_LANES";
         case VIVID_PORT_TEXTURE:       return "VIVID_PORT_TEXTURE";
         default:                       return "VIVID_PORT_SCALAR";
     }

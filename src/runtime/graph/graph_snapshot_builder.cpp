@@ -80,7 +80,14 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         sn.is_gpu = cn.is_gpu();
         sn.is_gpu_sink = cn.is_gpu_sink();
         sn.is_generator = cn.gpu ? cn.gpu->texture_input_port_indices.empty() && !cn.is_gpu_sink() : true;
-        sn.lane_behavior = static_cast<uint8_t>(cn.lane_behavior);
+        // Node-body multiplicity badge: map the value-model behavior to the legacy
+        // display code (0=none/MAP, 1=S/GENERATE, 2=R/REDUCE, 3=K/KERNEL).
+        switch (cn.multiplicity_behavior) {
+            case VIVID_MULTIPLICITY_GENERATE: sn.lane_behavior = 1; break;
+            case VIVID_MULTIPLICITY_REDUCE:   sn.lane_behavior = 2; break;
+            case VIVID_MULTIPLICITY_KERNEL:   sn.lane_behavior = 3; break;
+            default:                          sn.lane_behavior = 0; break;
+        }
         sn.input_port_indices = cn.input_port_indices;
         sn.output_port_indices = cn.output_port_indices;
         sn.analysis_output_port_indices = cn.audio ? cn.audio->analysis_output_port_indices
@@ -94,14 +101,9 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         // payloads (large clip JSON, caches, legacy internals) stay off the
         // hot per-frame UI snapshot path.
         sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
-        sn.output_lanes.resize(cn.output_port_count);
-        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p])
-                sn.output_lanes[p].assign(cn.output_lane_refs[p].data(),
-                                           cn.output_lane_refs[p].data() + cn.output_lane_refs[p].length());
-            else
-                sn.output_lanes[p].clear();
-        }
+        // The value-derived display scratch cn.output_lanes is filled per-tick by
+        // the frame executor from output_value_refs (lane-value 7e.4).
+        sn.output_lanes = cn.output_lanes;
         sn.output_string_values = cn.output_string_values;
         sn.output_string_lanes = cn.output_string_lanes;
         for (const auto& [name, idx] : cn.file_param_indices) {
@@ -425,10 +427,11 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                         if (idx == e.to_port && name == conns[i].to_port) { to_ok = true; break; }
                 }
                 if (from_ok && to_ok) {
-                    c.lane_set_id = e.lane_set_id;
                     c.lane_count  = e.lane_count;
                     c.data_type   = e.data_type;
                     c.curve       = static_cast<uint8_t>(e.curve);
+                    c.provenance_group_id = e.value_envelope.provenance_group_id;
+                    c.is_many     = (e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY);
                     break;
                 }
             }

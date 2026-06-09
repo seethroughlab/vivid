@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
     // Chain: Repeat(1.0, count=1024) → FFTAnalysis(fft_size=1024, window=none) → LaneFrameOp → sink
     // Constant waveform of 1.0 across 1024 samples.
     // FFT of DC=1.0 with N=1024: bin 0 magnitude = 1.0 * 1024 * (2/1024) = 2.0, all others ≈ 0.
-    // FFTAnalysis is STRUCTURAL → its spectrum lane array gets a fresh lane_set_id.
+    // FFTAnalysis is STRUCTURAL → its spectrum (many-valued) output gets a fresh provenance group.
     // LaneFrameOp is kStrategyIndependent → compiler assigns LoopBased from FFT's lane set.
     // Per-bin accumulation proves each of 512 bins is lifted independently.
     std::fprintf(stderr, "\n--- FFT-derived per-bin lane processing ---\n");
@@ -141,11 +141,11 @@ int main(int argc, char* argv[]) {
         auto* fft_node = runtime.compiled_graph()->find_node("fft");
         check(fft_node != nullptr, "fft node found");
         if (fft_node) {
-            check(fft_node->lane_behavior == vivid::LaneBehavior::Structural,
-                  "FFTAnalysis is Structural");
-            if (!fft_node->output_lane_sets.empty()) {
-                check(fft_node->output_lane_sets[0].lane_set_id > 0,
-                      "FFT output has non-scalar lane_set_id");
+            check(fft_node->multiplicity_behavior == VIVID_MULTIPLICITY_GENERATE,
+                  "FFTAnalysis is GENERATE (structural)");
+            if (!fft_node->output_value_envelopes.empty()) {
+                check(fft_node->output_value_envelopes[0].provenance_group_id > 0,
+                      "FFT output has a provenance group");
             }
         }
 

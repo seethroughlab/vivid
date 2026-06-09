@@ -19,9 +19,9 @@ This directory contains the graph compiler and both execution engines. It transf
 | `frame_executor.h/cpp` | `FrameExecutor` — processes frame-cadence nodes in topo order each tick |
 | `audio_executor.h/cpp` | `AudioExecutor` — processes audio-cadence nodes in the real-time audio callback |
 | `lane_state.h` | `LaneStateService` — identity-keyed per-lane persistent state storage |
-| `lane_types.h` | Lane set types, provenance, execution strategy enums |
+| `lane_types.h` | `ValueEnvelope` (payload type, multiplicity, identity, storage, `provenance_group_id`), execution strategy enums |
 | `cadence_types.h` | `Cadence` enum (Frame, Audio) and `BridgeKind` |
-| `snapshot_types.h` | `ParamSnapshot`, `AnalysisSnapshot`, `BridgeLaneSlot` — cross-cadence data structs |
+| `snapshot_types.h` | `ParamSnapshot`, `AnalysisSnapshot`, `BridgeValueSlot` — cross-cadence data structs |
 | `graph_snapshot_builder.h/cpp` | Builds the read-only `GraphSnapshot` consumed by the UI |
 | `subgraph_module.h/cpp` | Subgraph expansion and module instance management |
 | `port_type_registry.cpp` | Runtime custom port type registration |
@@ -36,9 +36,9 @@ This directory contains the graph compiler and both execution engines. It transf
 
 2. **Pass 2 — Resolve edges.** Converts `ConnectionDef`s into `CompiledEdge`s. Resolves port indices, detects type mismatches, classifies bridge kind for cross-cadence edges, and builds the adjacency graph.
 
-3. **Pass 2.6 — Lane-set propagation.** Walks the graph in topo order propagating lane-set provenance through edges. Determines which nodes see multi-lane inputs and what their effective lane count is.
+3. **Pass 2.7 — Value-flow inference.** Walks the graph in topo order computing a `ValueEnvelope` (payload type + multiplicity + identity + storage + `provenance_group_id`) per edge/port from each operator's `kMultiplicityBehavior`. Determines which nodes see Many inputs and what their effective element (`lane_count`) is. This is the sole multiplicity-flow pass — there is no Pass 2.6.
 
-4. **Pass 4 — Audio channel negotiation.** Five sub-passes: (a) explicit channel counts from descriptors, (b) propagation via audio Direct edges, (c) audio lane execution strategy via planner, (c.1) effective wire-width re-propagation for lane-expanded audio edges after strategy assignment, (d) frame lane execution strategy via planner.
+4. **Pass 4 — Audio channel negotiation.** Five sub-passes: (a) explicit channel counts from descriptors, (b) propagation via audio Direct edges, (c) audio `LaneExecutionStrategy` via planner (derived from the value envelope + behavior), (c.1) effective wire-width re-propagation for many-valued audio edges after strategy assignment, (d) frame `LaneExecutionStrategy` via planner.
 
 5. **Pass 5 — Audio buffer allocation.** Pre-allocates per-node planar audio buffers based on negotiated channel counts.
 
@@ -48,17 +48,17 @@ This directory contains the graph compiler and both execution engines. It transf
 
 Topology changes always trigger a full recompile. The `CompiledGraph` is never mutated during execution — it is shared read-only between both executors.
 
-Hot reload (`graph_compiler_reload.cpp`) reuses the existing `CompiledGraph` in place and does **not** re-run lane-set propagation (Pass 2.6) or the execution-strategy planner. To keep lane metadata correct, an operator reload whose descriptor changes `lane_behavior` or `strategy_independent` is classified `HotReloadCompat::RecompileRequired` (`operator_loader.cpp`), and the reload driver (`main_helpers.cpp`) calls `RuntimeAPI::request_recompile()` so the next frame rebuilds from the `Graph` with the new descriptor. Param/port/GPU-layout changes remain rejected as hot-reload-incompatible.
+Hot reload (`graph_compiler_reload.cpp`) reuses the existing `CompiledGraph` in place and does **not** re-run value-flow inference (Pass 2.7) or the execution-strategy planner. To keep value-envelope metadata correct, an operator reload whose descriptor changes `multiplicity_behavior` or `strategy_independent` is classified `HotReloadCompat::RecompileRequired` (`operator_loader.cpp`), and the reload driver (`main_helpers.cpp`) calls `RuntimeAPI::request_recompile()` so the next frame rebuilds from the `Graph` with the new descriptor. Param/port/GPU-layout changes remain rejected as hot-reload-incompatible.
 
 ### Frame Executor
 
-`FrameExecutor::tick()` walks `frame_order` (the topo-sorted frame-cadence nodes) once per frame. For each node it sets up the lane context, copies wire values from upstream outputs to downstream inputs, calls `process_frame()` or `process_gpu()`, and propagates lane data. GPU nodes are dispatched via a callback to the GPU context.
+`FrameExecutor::tick()` walks `frame_order` (the topo-sorted frame-cadence nodes) once per frame. For each node it sets up the per-element context, copies wire values from upstream outputs to downstream inputs, calls `process_frame()` or `process_gpu()`, and propagates value data. GPU nodes are dispatched via a callback to the GPU context.
 
 ### Audio Executor
 
 `AudioExecutor` runs on the real-time audio thread. `build()` pre-computes lane lift groups — sets of `InstancePerLane` operators that need per-lane cloned instances for multi-lane audio processing. The audio callback walks `audio_order`, processes each node (or each lane instance for lifted nodes), and writes to the output device buffer. Real-time constraints apply: no allocation, no locking, no blocking.
 
-Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `BridgeLaneSlot` carries lane data in both directions using pre-allocated flat buffers wired during graph build. Bridge slots are fixed-capacity (default `kDefaultLaneCapacity` = 1024); oversized lane arrays are clamped and counted via `lane_overflow_count()` / runtime health diagnostics. Frame-thread lane buffers can grow, but bridge slots are not growable yet. The audio callback reads bridge lane data directly (zero-copy, no heap allocation).
+Cross-cadence data flows through `AudioFrameBridge`: frame→audio via `ParamSnapshot` (atomic index swap), audio→frame via `AnalysisSnapshot`. `BridgeValueSlot` carries many-valued data in both directions (a value array + `ValueEnvelope`) using pre-allocated storage wired during graph build. Bridge slots are fixed-capacity (default `kDefaultLaneCapacity` = 1024); oversized value arrays are clamped and counted via `lane_overflow_count()` / runtime health diagnostics. Frame-thread value buffers can grow, but bridge slots are not growable yet. The audio callback reads the bridge value array directly (zero-copy, no heap allocation).
 
 ### Lane State
 

@@ -43,8 +43,6 @@ static std::unique_ptr<vivid::CompiledGraph> make_audio_graph(const std::vector<
         cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO_BUFFER);
         cn.input_lanes.resize(s.input_port_count);
         cn.output_lanes.resize(s.output_port_count);
-        cn.input_lane_refs.resize(s.input_port_count);
-        cn.output_lane_refs.resize(s.output_port_count);
         cn.input_value_refs.resize(s.input_port_count);
         cn.output_value_refs.resize(s.output_port_count);
 
@@ -517,8 +515,8 @@ static void test_bridge_zero_value_passthrough() {
 
 // ---------------------------------------------------------------------------
 
-static void test_push_lane_preserves_lane_set_id() {
-    std::fprintf(stderr, "\n--- push_to_audio: lane-array lane_set_id preserved ---\n");
+static void test_push_lane_carries_value_envelope() {
+    std::fprintf(stderr, "\n--- push_to_audio: value envelope carried across the bridge ---\n");
 
     // Frame node 0 → audio node 1 via SPREAD snapshot edge
     auto cg = make_audio_graph({
@@ -536,15 +534,17 @@ static void test_push_lane_preserves_lane_set_id() {
     test_val_buf.committed_count = 3;
     cg->nodes[0].output_value_refs[0] = vivid::ValueRef(&test_val_buf);
 
-    // Snapshot edge with lane_set_id = 42
+    // Snapshot edge: float-many. The bridge gates on value_envelope.multiplicity
+    // and carries the envelope across the cadence boundary (7e.3).
     vivid::CompiledEdge edge{};
     edge.from_node = 0;
     edge.from_port = 0;
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_LANE_ARRAY;
-    edge.lane_set_id = 42;
+    edge.data_type = VIVID_PORT_SCALAR;  // float-many payload tag (7d.5e); many-ness in value_envelope
+    edge.value_envelope.multiplicity = VIVID_MULTIPLICITY_MANY;
+    edge.value_envelope.value_type = VIVID_VALUE_FLOAT;
     cg->edges.push_back(edge);
     cg->frame_to_audio_edges.push_back(0);
 
@@ -554,8 +554,10 @@ static void test_push_lane_preserves_lane_set_id() {
 
     const auto& snap = bridge.active_params();
     check(snap.lane_inputs[0][0].length == 3, "lane length = 3");
-    check(snap.lane_inputs[0][0].lane_set_id == 42,
-          "lane_set_id = 42 preserved through snapshot");
+    check(snap.lane_inputs[0][0].envelope.multiplicity == VIVID_MULTIPLICITY_MANY,
+          "value envelope multiplicity = Many carried through snapshot");
+    check(snap.lane_inputs[0][0].envelope.value_type == VIVID_VALUE_FLOAT,
+          "value envelope value_type = Float carried through snapshot");
 }
 
 // audit 01-R2-F7: a lane array longer than the fixed bridge slot capacity must
@@ -584,7 +586,9 @@ static void test_push_lane_clamps_overflow() {
     edge.to_node = 1;
     edge.to_port = 0;
     edge.transport = vivid::EdgeTransport::Snapshot;
-    edge.data_type = VIVID_PORT_LANE_ARRAY;
+    edge.data_type = VIVID_PORT_SCALAR;  // float-many payload tag (7d.5e); many-ness in value_envelope
+    edge.value_envelope.multiplicity = VIVID_MULTIPLICITY_MANY;  // bridge gates on this (7d)
+    edge.value_envelope.value_type = VIVID_VALUE_FLOAT;
     cg->edges.push_back(edge);
     cg->frame_to_audio_edges.push_back(0);
 
@@ -618,7 +622,7 @@ int main() {
     test_propagate_respects_param_lock();
     // test_bridge_zero_value_passthrough removed when explicit bridge semantics became the
     // only frame/audio delivery path.
-    test_push_lane_preserves_lane_set_id();
+    test_push_lane_carries_value_envelope();
     test_push_lane_clamps_overflow();
 
     std::fprintf(stderr, "\n%s (%d failures)\n", failures == 0 ? "PASSED" : "FAILED", failures);

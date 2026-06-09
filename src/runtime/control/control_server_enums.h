@@ -10,36 +10,7 @@
 
 namespace vivid {
 
-inline const char* lane_behavior_str(VividLaneBehavior lb) {
-    switch (lb) {
-        case VIVID_LANE_POINTWISE:  return "pointwise";
-        case VIVID_LANE_STRUCTURAL: return "structural";
-        case VIVID_LANE_REDUCTION:  return "reduction";
-        case VIVID_LANE_KERNEL:     return "kernel";
-        default: return "unknown";
-    }
-}
-
-inline const char* lane_behavior_help_str(VividLaneBehavior lb) {
-    switch (lb) {
-        case VIVID_LANE_POINTWISE:
-            return "Processes each lane independently and preserves per-lane structure. "
-                   "Use this in poly chains when you want one stateful copy per note or lane.";
-        case VIVID_LANE_STRUCTURAL:
-            return "Creates, reorders, or reshapes lane structure. "
-                   "Use this to generate or transform polyphonic note/gate lane arrays.";
-        case VIVID_LANE_REDUCTION:
-            return "Consumes multiple lanes and collapses them into fewer outputs. "
-                   "Use this when summing or mixing voices back to a smaller channel count.";
-        case VIVID_LANE_KERNEL:
-            return "Processes neighborhoods of lanes together. "
-                   "Use this for cross-lane operations that depend on nearby lane values.";
-        default:
-            return "Lane behavior is unknown.";
-    }
-}
-
-// --- Value model (lane-value clean-break, v6) --------------------------------
+// --- Value model multiplicity behavior --------------------------------------
 
 inline const char* multiplicity_behavior_str(VividMultiplicityBehavior mb) {
     switch (mb) {
@@ -51,6 +22,30 @@ inline const char* multiplicity_behavior_str(VividMultiplicityBehavior mb) {
         case VIVID_MULTIPLICITY_PRESERVE:    return "preserve";
         case VIVID_MULTIPLICITY_KERNEL:      return "kernel";
         default: return "unknown";
+    }
+}
+
+inline const char* multiplicity_behavior_help_str(VividMultiplicityBehavior mb) {
+    switch (mb) {
+        case VIVID_MULTIPLICITY_SCALAR_ONLY:
+            return "Operates only on scalar (single) values.";
+        case VIVID_MULTIPLICITY_MAP:
+            return "Processes each value independently and preserves multiplicity. "
+                   "Use this in poly chains when you want one stateful copy per note or element.";
+        case VIVID_MULTIPLICITY_REDUCE:
+            return "Collapses many values into fewer (often one). "
+                   "Use this when summing or mixing voices back to a smaller count.";
+        case VIVID_MULTIPLICITY_GENERATE:
+            return "Generates / reshapes a many-valued output. "
+                   "Use this to produce or transform polyphonic note/gate arrays.";
+        case VIVID_MULTIPLICITY_COLLECT:
+            return "Collects several scalar inputs into one many-valued output.";
+        case VIVID_MULTIPLICITY_PRESERVE:
+            return "Passes a many-valued stream through unchanged (no per-element compute).";
+        case VIVID_MULTIPLICITY_KERNEL:
+            return "Processes the whole collection together (cross-element neighborhoods).";
+        default:
+            return "Multiplicity behavior is unknown.";
     }
 }
 
@@ -69,24 +64,22 @@ inline const char* multiplicity_str(VividMultiplicity m) {
     return m == VIVID_MULTIPLICITY_MANY ? "many" : "scalar";
 }
 
-// Derive the value-model envelope of a port from its (current) port type. Phase 1:
-// the descriptor's stored value_type/multiplicity default to 0; probing reports the
-// derived view so MCP shows correct values. Codegen port-emission is deferred until
-// an operator needs to override these.
-inline VividValueType value_type_for_port_type(VividPortType t) {
-    if (vivid_is_custom_port_type(t)) return VIVID_VALUE_CUSTOM;
-    switch (t) {
+// Value-model envelope of a port for MCP probing. Multiplicity is declared on the
+// port (lane port types retired, 7d.5e); the payload value_type honors an explicit
+// override else derives from the payload port type.
+inline VividValueType value_type_for_port(const VividPortDescriptor& pd) {
+    if (pd.value_type != VIVID_VALUE_FLOAT) return pd.value_type;  // explicit override
+    if (vivid_is_custom_port_type(pd.type)) return VIVID_VALUE_CUSTOM;
+    switch (pd.type) {
         case VIVID_PORT_AUDIO_BUFFER: return VIVID_VALUE_AUDIO;
-        case VIVID_PORT_STRING:
-        case VIVID_PORT_STRING_LANES: return VIVID_VALUE_STRING;
+        case VIVID_PORT_STRING:       return VIVID_VALUE_STRING;
         case VIVID_PORT_TEXTURE:      return VIVID_VALUE_TEXTURE;
-        default:                      return VIVID_VALUE_FLOAT;  // SCALAR, LANE_ARRAY
+        default:                      return VIVID_VALUE_FLOAT;  // SCALAR
     }
 }
 
-inline VividMultiplicity multiplicity_for_port_type(VividPortType t) {
-    return (t == VIVID_PORT_LANE_ARRAY || t == VIVID_PORT_STRING_LANES)
-        ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+inline VividMultiplicity multiplicity_for_port(const VividPortDescriptor& pd) {
+    return pd.multiplicity;
 }
 
 inline const char* kind_str(VividOperatorKind k) {
@@ -138,9 +131,7 @@ inline const char* port_type_str(VividPortType t) {
     switch (t) {
         case VIVID_PORT_SCALAR:         return "float";
         case VIVID_PORT_AUDIO_BUFFER:         return "audio";
-        case VIVID_PORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_STRING:        return "string";
-        case VIVID_PORT_STRING_LANES: return "string_lanes";
         case VIVID_PORT_TEXTURE:       return "texture";
         default:
             if (vivid_is_custom_port_type(t)) return "custom";
@@ -152,9 +143,7 @@ inline const char* transport_str(VividPortTransport t) {
     switch (t) {
         case VIVID_PORT_TRANSPORT_SIGNAL:        return "scalar";
         case VIVID_PORT_TRANSPORT_AUDIO_BUFFER:  return "audio_buffer";
-        case VIVID_PORT_TRANSPORT_LANE_ARRAY:        return "lane_array";
         case VIVID_PORT_TRANSPORT_STRING:        return "string";
-        case VIVID_PORT_TRANSPORT_STRING_LANES: return "string_lanes";
         case VIVID_PORT_TRANSPORT_TEXTURE:       return "texture";
         case VIVID_PORT_TRANSPORT_CUSTOM_VALUE:  return "custom_value";
         case VIVID_PORT_TRANSPORT_CUSTOM_REF:    return "custom_ref";

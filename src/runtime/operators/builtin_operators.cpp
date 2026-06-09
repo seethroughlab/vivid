@@ -32,7 +32,6 @@ static const VividOperatorDescriptor audio_out_desc = {
     1,                      // has_process_audio
     0,                      // has_process_gpu
     0,                        // has_process_frame
-    VIVID_LANE_POINTWISE,     // lane_behavior
     0,                        // strategy_independent
 };
 
@@ -71,7 +70,6 @@ static const VividOperatorDescriptor video_out_desc = {
     0,                      // has_process_audio
     1,                      // has_process_gpu
     0,                      // has_process_frame
-    VIVID_LANE_POINTWISE,   // lane_behavior
 };
 
 static const VividOperatorDescriptor* video_out_descriptor() { return &video_out_desc; }

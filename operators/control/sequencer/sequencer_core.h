@@ -179,9 +179,9 @@ struct SequencerCore : vivid::OperatorBase {
         out.push_back({"reset",      VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "trigger"});   // 1
         out.push_back({"gate",       VIVID_PORT_SCALAR,     VIVID_PORT_INPUT, VIVID_PORT_TRANSPORT_SIGNAL, 0, nullptr, 0, 0.0f, nullptr, "gate"});   // 2
         // Lane-array inputs (external mode)
-        out.push_back({"values",     VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // 0
-        out.push_back({"probs",      VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // 1
-        out.push_back({"ratchets",   VIVID_PORT_LANE_ARRAY, VIVID_PORT_INPUT});   // 2
+        out.push_back({.name="values",   .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // 0
+        out.push_back({.name="probs",    .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // 1
+        out.push_back({.name="ratchets", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_INPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});   // 2
         // Scalar outputs
         out.push_back({"value",      VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // 0
         out.push_back({"step",       VIVID_PORT_SCALAR,     VIVID_PORT_OUTPUT});  // 1

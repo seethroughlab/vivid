@@ -44,7 +44,6 @@
 struct InstanceNoise2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName               = "InstanceNoise2D";
     static constexpr bool kTimeDependent             = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
 
     vivid::Param<float> position_jitter {"position_jitter", 0.05f, 0.0f, 2.0f};
     vivid::Param<float> rotation_jitter {"rotation_jitter", 0.0f,  0.0f, 6.2832f};

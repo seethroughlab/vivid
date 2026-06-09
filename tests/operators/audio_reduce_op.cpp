@@ -9,7 +9,7 @@
 struct AudioReduceOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "AudioReduceOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}
 

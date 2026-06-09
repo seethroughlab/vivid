@@ -118,7 +118,7 @@ struct PatternSeqCore : vivid::OperatorBase {
         out.push_back({"trigger",    VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"gate",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
         out.push_back({"step",       VIVID_PORT_SCALAR,  VIVID_PORT_OUTPUT});
-        out.push_back({"pattern",    VIVID_PORT_LANE_ARRAY, VIVID_PORT_OUTPUT});
+        out.push_back({.name="pattern", .type=VIVID_PORT_SCALAR, .direction=VIVID_PORT_OUTPUT, .multiplicity=VIVID_MULTIPLICITY_MANY});
         out.push_back(VIVID_CUSTOM_REF_PORT("notes_out", VIVID_PORT_OUTPUT, VividNoteBuffer));
     }
 

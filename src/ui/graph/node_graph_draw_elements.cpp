@@ -1624,8 +1624,8 @@ void NodeGraphUI::draw_chooser_map(Renderer2D& tr, float px, float py,
         kind_label = "Audio";
     }
     tr.draw_text(inner_x, cursor_y, kind_label, kind_col[0], kind_col[1], kind_col[2]);
-    if (!entry->lane_behavior.empty()) {
-        std::string lb = " · " + entry->lane_behavior;
+    if (!entry->multiplicity_behavior.empty()) {
+        std::string lb = " · " + entry->multiplicity_behavior;
         float kw = tr.text_width(kind_label);
         tr.draw_text(inner_x + kw, cursor_y, lb.c_str(),
                      style_.dim_text[0], style_.dim_text[1], style_.dim_text[2]);

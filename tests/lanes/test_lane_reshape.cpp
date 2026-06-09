@@ -145,11 +145,11 @@ int main(int argc, char* argv[]) {
     std::fprintf(stderr, "\n--- mismatch resolution via Select ---\n");
     {
         vivid::Graph graph;
-        // src_a(base=1, count=4) → lane array [1,2,3,4], lane_set_id=X
-        // src_b(base=10, count=3) → lane array [10,20,30], lane_set_id=Y
-        // Select(lane=0) on src_b → scalar 10.0 (Reduction → lane_set_id=0)
+        // src_a(base=1, count=4) → lane array [1,2,3,4], provenance_group_id=X
+        // src_b(base=10, count=3) → lane array [10,20,30], provenance_group_id=Y
+        // Select(lane=0) on src_b → scalar 10.0 (Reduction → provenance_group_id=0)
         // Math(add): a=src_a, b=Select(src_b)
-        // src_a is non-scalar (lane_set_id=X), Select output is scalar → no mismatch
+        // src_a is non-scalar (provenance_group_id=X), Select output is scalar → no mismatch
         graph.add_node("src_a", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
         graph.add_node("src_b", "LaneSourceOp", {{"base", 10.0f}, {"count", 3.0f}});
         graph.add_node("sel", "Select", {{"lane", 0.0f}});
@@ -181,7 +181,7 @@ int main(int argc, char* argv[]) {
     }
 
     // --- Test 5: Compiler metadata — provenance IDs ---
-    std::fprintf(stderr, "\n--- compiler metadata: lane_set_id provenance ---\n");
+    std::fprintf(stderr, "\n--- compiler metadata: provenance_group_id provenance ---\n");
     {
         vivid::Graph graph;
         graph.add_node("src", "LaneSourceOp", {{"base", 1.0f}, {"count", 4.0f}});
@@ -202,52 +202,52 @@ int main(int argc, char* argv[]) {
             auto* sel = cg->find_node("sel");
             auto* src = cg->find_node("src");
 
-            // Source is Structural → non-scalar lane_set_id
-            check(src != nullptr && !src->output_lane_sets.empty(), "src found with output_lane_sets");
-            if (src && !src->output_lane_sets.empty()) {
-                check(src->output_lane_sets[0].lane_set_id > 0,
-                      "src: lane_set_id > 0 (structural)");
+            // Source is Structural → non-scalar provenance_group_id
+            check(src != nullptr && !src->output_value_envelopes.empty(), "src found with output_value_envelopes");
+            if (src && !src->output_value_envelopes.empty()) {
+                check(src->output_value_envelopes[0].provenance_group_id > 0,
+                      "src: provenance_group_id > 0 (structural)");
             }
 
-            // Repeat is Structural → fresh lane_set_id, different from src
-            check(rep != nullptr && !rep->output_lane_sets.empty(), "rep found with output_lane_sets");
-            if (rep && !rep->output_lane_sets.empty() && src && !src->output_lane_sets.empty()) {
-                check(rep->output_lane_sets[0].lane_set_id > 0,
-                      "Repeat: lane_set_id > 0 (structural)");
-                check(rep->output_lane_sets[0].lane_set_id != src->output_lane_sets[0].lane_set_id,
-                      "Repeat: fresh lane_set_id (differs from src)");
+            // Repeat is Structural → fresh provenance_group_id, different from src
+            check(rep != nullptr && !rep->output_value_envelopes.empty(), "rep found with output_value_envelopes");
+            if (rep && !rep->output_value_envelopes.empty() && src && !src->output_value_envelopes.empty()) {
+                check(rep->output_value_envelopes[0].provenance_group_id > 0,
+                      "Repeat: provenance_group_id > 0 (structural)");
+                check(rep->output_value_envelopes[0].provenance_group_id != src->output_value_envelopes[0].provenance_group_id,
+                      "Repeat: fresh provenance_group_id (differs from src)");
             }
 
-            // Tile is Structural → fresh lane_set_id, different from src and rep
-            check(til != nullptr && !til->output_lane_sets.empty(), "til found with output_lane_sets");
-            if (til && !til->output_lane_sets.empty()) {
-                check(til->output_lane_sets[0].lane_set_id > 0,
-                      "Tile: lane_set_id > 0 (structural)");
-                if (rep && !rep->output_lane_sets.empty()) {
-                    check(til->output_lane_sets[0].lane_set_id != rep->output_lane_sets[0].lane_set_id,
-                          "Tile: fresh lane_set_id (differs from Repeat)");
+            // Tile is Structural → fresh provenance_group_id, different from src and rep
+            check(til != nullptr && !til->output_value_envelopes.empty(), "til found with output_value_envelopes");
+            if (til && !til->output_value_envelopes.empty()) {
+                check(til->output_value_envelopes[0].provenance_group_id > 0,
+                      "Tile: provenance_group_id > 0 (structural)");
+                if (rep && !rep->output_value_envelopes.empty()) {
+                    check(til->output_value_envelopes[0].provenance_group_id != rep->output_value_envelopes[0].provenance_group_id,
+                          "Tile: fresh provenance_group_id (differs from Repeat)");
                 }
             }
 
-            // Select is Reduction → scalar lane_set_id = 0
-            check(sel != nullptr && !sel->output_lane_sets.empty(), "sel found with output_lane_sets");
-            if (sel && !sel->output_lane_sets.empty()) {
-                check(sel->output_lane_sets[0].lane_set_id == 0,
-                      "Select: lane_set_id = 0 (reduction → scalar)");
-                check(sel->output_lane_sets[0].is_scalar(),
+            // Select is Reduction → scalar provenance_group_id = 0
+            check(sel != nullptr && !sel->output_value_envelopes.empty(), "sel found with output_value_envelopes");
+            if (sel && !sel->output_value_envelopes.empty()) {
+                check(sel->output_value_envelopes[0].provenance_group_id == 0,
+                      "Select: provenance_group_id = 0 (reduction → scalar)");
+                check(sel->output_value_envelopes[0].is_scalar(),
                       "Select: is_scalar() = true");
             }
         }
     }
 
     // --- Test 6: Tile mismatch resolution ---
-    // Two lane sources with different lane_set_ids → each through Tile to
+    // Two lane sources with different provenance_group_ids → each through Tile to
     // same length → feed pointwise Math → verify compilation succeeds.
     // This is the specific doc scenario: "mismatched lane sets → Tile → now legal"
     std::fprintf(stderr, "\n--- Tile mismatch resolution ---\n");
     {
         vivid::Graph graph;
-        // Two independent lane sources → different lane_set_ids
+        // Two independent lane sources → different provenance_group_ids
         graph.add_node("src_a", "LaneSourceOp", {{"base", 1.0f}, {"count", 3.0f}});
         graph.add_node("src_b", "LaneSourceOp", {{"base", 10.0f}, {"count", 4.0f}});
         // Tile both to the same length (12)
@@ -264,22 +264,14 @@ int main(int argc, char* argv[]) {
 
         vivid::RuntimeCore runtime;
         bool built = runtime.build(graph, registry);
-        // Without Tile, src_a and src_b have different lane_set_ids → mismatch.
-        // Tile gives each a fresh lane_set_id. Two different fresh IDs still mismatch...
-        // Actually, two Tile outputs also have different lane_set_ids (each Structural
-        // gets its own). So this WILL fail as a mismatch at the pointwise Math node.
-        // The correct resolution is: Tile one, then the other receives from the same
-        // Tile (same lane_set_id). Or use one Tile for both (but that's semantically
-        // different).
-        //
-        // The doc's "mismatched lane sets → Tile → now legal" means: a short lane array
-        // from one source, Tiled to match the lane count of another source FROM THE
-        // SAME PROVENANCE. Not mixing two independent provenances.
-        //
-        // The real mismatch resolution scenario for two independent sources is Select
-        // (already tested in Test 4). So test that this does NOT compile (validates
-        // that the compiler correctly rejects mismatched Tile outputs).
-        check(!built, "mismatched Tile outputs at pointwise Math → compile fails (expected)");
+        // Value model (lane-value 7e.5b): the Pass-2.6 lane-set legality check — which
+        // hard-rejected two different-provenance Many inputs at a Pointwise node — was
+        // retired with Pass 2.6. The value model is permissive: two Many inputs to a MAP
+        // operator vectorize with POSITIONAL alignment (lane i of A with lane i of B),
+        // a well-defined behavior, so the graph now compiles cleanly.
+        check(built, "two independent Tile outputs at MAP node → compiles (positional alignment)");
+        if (built)
+            check_graph_clean(runtime.compiled_graph(), "two-provenance Tile → MAP");
     }
 
     // --- Test 7: Kernel consumer accepts independent structural inputs ---
@@ -300,8 +292,8 @@ int main(int argc, char* argv[]) {
             auto* meta = cg->find_node("metaball");
             check(meta != nullptr, "metaball found");
             if (meta) {
-                check(meta->lane_behavior == vivid::LaneBehavior::Kernel,
-                      "Metaball declares Kernel lane behavior");
+                check(meta->multiplicity_behavior == VIVID_MULTIPLICITY_KERNEL,
+                      "Metaball declares Kernel multiplicity behavior");
             }
         }
     }

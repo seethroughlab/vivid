@@ -45,9 +45,17 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             cn.input_port_indices[desc->ports[i].name] = cn.input_port_count++;
             cn.input_port_types.push_back(desc->ports[i].type);
+            cn.input_port_multiplicities.push_back(
+                graph_compiler_internal::port_declared_multiplicity(desc->ports[i]));
+            cn.input_port_value_types.push_back(
+                graph_compiler_internal::port_value_type(desc->ports[i]));
         } else {
             cn.output_port_indices[desc->ports[i].name] = cn.output_port_count++;
             cn.output_port_types.push_back(desc->ports[i].type);
+            cn.output_port_multiplicities.push_back(
+                graph_compiler_internal::port_declared_multiplicity(desc->ports[i]));
+            cn.output_port_value_types.push_back(
+                graph_compiler_internal::port_value_type(desc->ports[i]));
         }
     }
 
@@ -114,6 +122,8 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
             uint32_t idx = cn.output_port_count++;
             cn.output_port_indices[name] = idx;
             cn.output_port_types.push_back(VIVID_PORT_SCALAR);
+            cn.output_port_multiplicities.push_back(VIVID_MULTIPLICITY_SCALAR);
+            cn.output_port_value_types.push_back(VIVID_VALUE_FLOAT);
             return idx;
         };
         cn.gpu->analysis_frame_hash_idx = inject("frame_hash");
@@ -128,20 +138,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.output_string_lanes.resize(cn.output_port_count);
     }
 
-    cn.input_lane_sets.resize(cn.input_port_count);
-    cn.output_lane_sets.resize(cn.output_port_count);
 
-    cn.input_lane_refs.resize(cn.input_port_count);
-    cn.output_lane_refs.resize(cn.output_port_count);
-
-    cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
-
-    // Legacy lane output buffers — kept allocated as the 7a shim source for the
-    // bridge (output readback copies out_value_bufs → out_lane_bufs → output_lane_refs).
-    cn.out_lane_bufs.clear();
-    cn.out_lane_bufs.reserve(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.out_lane_bufs.emplace_back(graph_compiler_internal::kDefaultLaneCapacity);
 
     // Native value transport (lane-value clean-break Phase 7a). Node-local
     // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).
@@ -153,36 +150,29 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                        graph_compiler_internal::kDefaultLaneCapacity);
 
-    // Output adapters back onto out_value_bufs for ALL nodes (Phase 7b — both the
-    // frame and audio executors now run on the value substrate). Audio-block output
+    // Value-model staging. Inputs populated per-tick; outputs backed by
+    // out_value_bufs (float) / out_string_value_bufs (string). Audio-block output
     // ports are re-pointed per-tick by populate_audio_value_views to the runtime
-    // output_buffers; lane-array/scalar outputs flow through out_value_bufs.
-    cn.c_out_lane_outputs.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
-
-    // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
-    // backed by the SAME transport the lane path uses (float→out_lane_bufs,
-    // string→out_string_lane_bufs) so value-API + lane-API operators interoperate.
+    // output_buffers.
     cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
     cn.c_out_value_outputs.resize(cn.output_port_count);
 
-    cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
     cn.in_string_lane_ptrs.resize(cn.input_port_count);
     for (uint32_t p = 0; p < cn.input_port_count; ++p)
         cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
-    cn.out_string_lane_bufs.resize(cn.output_port_count, StringLaneBuffer(graph_compiler_internal::kDefaultLaneCapacity));
-    cn.c_out_string_lane_outputs.resize(cn.output_port_count);
+    cn.out_string_value_bufs.clear();
+    cn.out_string_value_bufs.reserve(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_lane_bufs[p]);
+        cn.out_string_value_bufs.emplace_back(VIVID_VALUE_STRING,
+                                              graph_compiler_internal::kDefaultLaneCapacity);
 
-    // Per-port value-output backing (needs out_string_lane_bufs to exist first).
+    // Per-port value-output backing (needs out_string_value_bufs to exist first).
     for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-        const VividPortType t = (p < cn.output_port_types.size())
-            ? cn.output_port_types[p] : VIVID_PORT_SCALAR;
+        const VividValueType vt = (p < cn.output_port_value_types.size())
+            ? cn.output_port_value_types[p] : VIVID_VALUE_FLOAT;
         cn.c_out_value_outputs[p] =
-            (t == VIVID_PORT_STRING || t == VIVID_PORT_STRING_LANES)
-                ? make_string_value_output(&cn.out_string_lane_bufs[p])
+            (vt == VIVID_VALUE_STRING)
+                ? make_string_value_output(&cn.out_string_value_bufs[p])
                 : make_value_output(&cn.out_value_bufs[p]);
     }
 
@@ -258,10 +248,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     if (cn.gpu) cn.gpu->texture_input_port_indices.push_back(input_idx);
                     break;
                 case VIVID_PORT_STRING:
-                    cn.string_input_port_indices.push_back(input_idx);
-                    break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.string_lane_input_port_indices.push_back(input_idx);
+                    if (graph_compiler_internal::port_declared_multiplicity(desc->ports[i])
+                            == VIVID_MULTIPLICITY_MANY)
+                        cn.string_lane_input_port_indices.push_back(input_idx);
+                    else
+                        cn.string_input_port_indices.push_back(input_idx);
                     break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -284,10 +275,11 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
                     }
                     break;
                 case VIVID_PORT_STRING:
-                    cn.has_string_output = true;
-                    break;
-                case VIVID_PORT_STRING_LANES:
-                    cn.has_string_lane_output = true;
+                    if (graph_compiler_internal::port_declared_multiplicity(desc->ports[i])
+                            == VIVID_MULTIPLICITY_MANY)
+                        cn.has_string_lane_output = true;
+                    else
+                        cn.has_string_output = true;
                     break;
                 default:
                     if (vivid_is_custom_port_type(desc->ports[i].type))
@@ -322,7 +314,9 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     for (uint32_t i = 0; i < desc->port_count; ++i) {
         if (desc->ports[i].direction == VIVID_PORT_INPUT) {
             a.descriptor_input_channels.push_back(desc->ports[i].channels);
-            if (desc->ports[i].type == VIVID_PORT_LANE_ARRAY) a.has_lane_ports = true;
+            if (graph_compiler_internal::port_value_type(desc->ports[i]) == VIVID_VALUE_FLOAT &&
+                graph_compiler_internal::port_declared_multiplicity(desc->ports[i]) == VIVID_MULTIPLICITY_MANY)
+                a.has_lane_ports = true;
             if (desc->ports[i].type == VIVID_PORT_STRING) a.has_string_input_ports = true;
             if (vivid_is_custom_port_type(desc->ports[i].type)) a.has_custom_input_ports = true;
         } else {
@@ -337,7 +331,6 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.debug_output_channel_counts.assign(cn.output_port_count, 1);
     a.execution_strategy = LaneExecutionStrategy::Scalar;
     a.lane_lift_count = 0;
-    a.lane_lift_set_id = 0;
 
     a.buffers_in.resize(cn.input_port_count, std::vector<float>(buffer_size, 0.0f));
     a.buffers_out.resize(cn.output_port_count, std::vector<float>(buffer_size, 0.0f));
