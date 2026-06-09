@@ -555,6 +555,15 @@ target_include_directories(test_audio_frame_bridge PRIVATE src tests)
 target_link_libraries(test_audio_frame_bridge PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
 add_test(NAME test_audio_frame_bridge COMMAND test_audio_frame_bridge WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Audio real-time-safety guard (lane-value Phase 8b) — zero heap alloc in the callback.
+add_executable(test_audio_rt_safety
+    tests/audio/test_audio_rt_safety.cpp
+)
+target_include_directories(test_audio_rt_safety PRIVATE src tests)
+target_link_libraries(test_audio_rt_safety PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(test_audio_rt_safety identity_lane_source_op lane_slew_op multi_channel_dc_source_op lane_source_op audio_lane_op)
+add_test(NAME test_audio_rt_safety COMMAND test_audio_rt_safety ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_subgraph_module
     tests/graph/test_subgraph_module.cpp
 )
