@@ -1623,7 +1623,6 @@ std::string DescriptorBuilder::render_registration_cpp(const DescriptorResult& r
     out << "        std::is_base_of_v<vivid::AudioProcessable, " << class_name << "> ? 1 : 0,\n";
     out << "        std::is_base_of_v<vivid::GpuProcessable, " << class_name << "> ? 1 : 0,\n";
     out << "        std::is_base_of_v<vivid::FrameProcessable, " << class_name << "> ? 1 : 0,\n";
-    out << "        vivid::detail::get_lane_behavior<" << class_name << ">(),\n";
     out << "        vivid::detail::get_strategy_independent<" << class_name << ">() ? 1 : 0,\n";
     out << "        " << display_name_expr << ",\n";
     out << "        " << keywords_ptr << ",\n";

@@ -58,8 +58,8 @@ bool OperatorLayout::load_file(const std::string& path) {
         if (const auto b = entry.find("brief"); b != entry.end() && b->is_string()) {
             e.brief = b->get<std::string>();
         }
-        if (const auto lb = entry.find("lane_behavior"); lb != entry.end() && lb->is_string()) {
-            e.lane_behavior = lb->get<std::string>();
+        if (const auto lb = entry.find("multiplicity_behavior"); lb != entry.end() && lb->is_string()) {
+            e.multiplicity_behavior = lb->get<std::string>();
         }
         if (const auto ni = entry.find("num_inputs"); ni != entry.end() && ni->is_number_integer()) {
             e.num_inputs = ni->get<int>();

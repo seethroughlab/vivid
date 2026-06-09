@@ -13,7 +13,6 @@
 struct DcPerLaneOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "DcPerLaneOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}

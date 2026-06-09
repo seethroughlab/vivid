@@ -8,7 +8,6 @@
 struct LaneFrameOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "LaneFrameOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     struct State {

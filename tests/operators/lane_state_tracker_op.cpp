@@ -14,7 +14,6 @@
 struct LaneStateTrackerOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "LaneStateTrackerOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     struct State {

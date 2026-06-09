@@ -19,7 +19,7 @@ static constexpr int kMaxInputs = 16;
 struct Alternate : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Alternate";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int> cycle {"cycle", 2, {"Beat","2 Beats","Bar","2 Bars","4 Bars"}};
     vivid::Param<int> clock_mode {"clock_mode", vivid::kClockModeSyncedMetronome, vivid::clock_mode_synced_labels()};

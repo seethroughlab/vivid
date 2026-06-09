@@ -15,7 +15,7 @@ static constexpr int kMaxInputs = 16;
 struct Stack : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "Stack";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int> mode {"mode", 0, {"Concat","Interleave"}};
 

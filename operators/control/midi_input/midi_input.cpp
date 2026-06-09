@@ -35,7 +35,7 @@
 struct MidiInput : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "MidiInput";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     // Mode constants
     static constexpr int kModePolyShared = 0;

@@ -8,7 +8,6 @@
 struct LaneSmoothOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "LaneSmoothOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_KERNEL;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {}

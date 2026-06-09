@@ -48,7 +48,7 @@ inline float spread_noise01(uint32_t i, float t, uint32_t seed) {
 struct SpreadNoise : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "SpreadNoise";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int>   count     {"count",     125, 1, 1024};
     vivid::Param<float> speed     {"speed",     1.0f, 0.0f, 20.0f};

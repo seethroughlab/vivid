@@ -129,7 +129,7 @@ def build_semantic_text(docs: dict) -> str:
     kind = docs.get("kind", "")
     if kind:
         lines.append(f"Domain: {kind}")
-    lane = docs.get("lane_behavior", "")
+    lane = docs.get("multiplicity_behavior", "")
     if lane:
         lines.append(f"Lane behavior: {lane}")
 
@@ -196,7 +196,7 @@ def _collect_one(name: str) -> dict | None:
         "hash": content_hash(text),
         "brief": (docs.get("brief") or "").strip(),
         "related": list(docs.get("related") or []),
-        "lane_behavior": docs.get("lane_behavior", ""),
+        "multiplicity_behavior": docs.get("multiplicity_behavior", ""),
         "num_inputs": len(docs.get("inputs") or []),
         "num_outputs": len(docs.get("outputs") or []),
     }
@@ -356,7 +356,7 @@ def build_layout(records: list[dict]) -> list[dict]:
                 "xy": [float(xy[i, 0]), float(xy[i, 1])],
                 "brief": r.get("brief", ""),
                 "related": r.get("related", []),
-                "lane_behavior": r.get("lane_behavior", ""),
+                "multiplicity_behavior": r.get("multiplicity_behavior", ""),
                 "num_inputs": int(r.get("num_inputs", 0)),
                 "num_outputs": int(r.get("num_outputs", 0)),
                 "embedding": [float(v) for v in vecs[i]],

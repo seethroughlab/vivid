@@ -10,7 +10,6 @@
 struct StringValueEchoOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "StringValueEchoOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
 
     void collect_params(std::vector<vivid::ParamBase*>&) override {}

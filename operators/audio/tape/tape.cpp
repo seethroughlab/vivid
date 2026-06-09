@@ -125,7 +125,6 @@ struct FractionalDelayLine {
 struct Tape : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Tape";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
 
     vivid::Param<float> drive          {"drive",          0.30f,  0.0f, 1.0f};
     vivid::Param<float> wow            {"wow",            0.20f,  0.0f, 1.0f};

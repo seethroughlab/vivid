@@ -66,7 +66,7 @@ std::string operator_descriptor_hash(const VividOperatorDescriptor* desc) {
        << " audio:"     << desc->has_process_audio
        << " gpu:"       << desc->has_process_gpu
        << " frame:"     << desc->has_process_frame
-       << " lane_behavior:"       << desc->lane_behavior
+       << " multiplicity_behavior:" << static_cast<int>(desc->multiplicity_behavior)
        << " strategy_independent:" << desc->strategy_independent
        << "\n";
 

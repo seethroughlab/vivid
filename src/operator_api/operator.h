@@ -408,20 +408,7 @@ inline void append_analysis_ports(std::vector<VividPortDescriptor>& out) {
 
 } // namespace vivid
 
-// C++17-compatible detection of static constexpr kLaneBehavior member.
 namespace vivid { namespace detail {
-template <typename T, typename = void>
-struct has_lane_behavior : std::false_type {};
-template <typename T>
-struct has_lane_behavior<T, std::void_t<decltype(T::kLaneBehavior)>> : std::true_type {};
-
-template <typename T>
-constexpr VividLaneBehavior get_lane_behavior() {
-    if constexpr (has_lane_behavior<T>::value)
-        return T::kLaneBehavior;
-    else
-        return VIVID_LANE_POINTWISE;
-}
 template <typename T, typename = void>
 struct has_strategy_independent : std::false_type {};
 template <typename T>
@@ -435,30 +422,20 @@ constexpr bool get_strategy_independent() {
         return false;
 }
 
-// Multiplicity behavior (lane-value clean-break, v6). If the operator declares a
-// static constexpr kMultiplicityBehavior, use it; otherwise derive from the
-// operator's lane_behavior so existing operators get a correct value for free.
+// Multiplicity behavior (the value-model authority). If the operator declares a
+// static constexpr kMultiplicityBehavior, use it; otherwise default to Map (the
+// pass-through behavior — an op that processes each value independently).
 template <typename T, typename = void>
 struct has_multiplicity_behavior : std::false_type {};
 template <typename T>
 struct has_multiplicity_behavior<T, std::void_t<decltype(T::kMultiplicityBehavior)>> : std::true_type {};
-
-constexpr VividMultiplicityBehavior multiplicity_behavior_from_lane(VividLaneBehavior lb) {
-    switch (lb) {
-        case VIVID_LANE_POINTWISE:  return VIVID_MULTIPLICITY_MAP;
-        case VIVID_LANE_REDUCTION:  return VIVID_MULTIPLICITY_REDUCE;
-        case VIVID_LANE_STRUCTURAL: return VIVID_MULTIPLICITY_GENERATE;
-        case VIVID_LANE_KERNEL:     return VIVID_MULTIPLICITY_KERNEL;
-        default:                    return VIVID_MULTIPLICITY_MAP;
-    }
-}
 
 template <typename T>
 constexpr VividMultiplicityBehavior get_multiplicity_behavior() {
     if constexpr (has_multiplicity_behavior<T>::value)
         return T::kMultiplicityBehavior;
     else
-        return multiplicity_behavior_from_lane(get_lane_behavior<T>());
+        return VIVID_MULTIPLICITY_MAP;
 }
 template <typename T, typename = void>
 struct has_time_dependent : std::false_type {};
@@ -831,7 +808,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             std::is_base_of_v<vivid::GpuProcessable, ClassName> ? 1 : 0;      \
         desc.has_process_frame =                                              \
             std::is_base_of_v<vivid::FrameProcessable, ClassName> ? 1 : 0;    \
-        desc.lane_behavior = vivid::detail::get_lane_behavior<ClassName>();   \
+        desc.multiplicity_behavior =                                          \
+            vivid::detail::get_multiplicity_behavior<ClassName>();             \
         desc.strategy_independent =                                           \
             vivid::detail::get_strategy_independent<ClassName>() ? 1 : 0;     \
         desc.param_count    = static_cast<uint32_t>(s_params.size());         \

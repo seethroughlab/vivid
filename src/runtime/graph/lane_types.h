@@ -6,17 +6,6 @@
 namespace vivid {
 
 // ---------------------------------------------------------------------------
-// Lane behavior — how an operator interacts with lane multiplicity.
-// ---------------------------------------------------------------------------
-
-enum class LaneBehavior : uint8_t {
-    Pointwise   = 0,  // processes each lane independently, preserves lane set
-    Structural  = 1,  // creates, reshapes, reorders, or filters lanes
-    Reduction   = 2,  // collapses many lanes into fewer (often one)
-    Kernel      = 3,  // needs cross-lane access (neighborhood / full collection)
-};
-
-// ---------------------------------------------------------------------------
 // LaneExecutionStrategy — how the runtime evaluates lanes for a given node.
 // Selected by the compiler/planner, not by operator authors.
 // ---------------------------------------------------------------------------

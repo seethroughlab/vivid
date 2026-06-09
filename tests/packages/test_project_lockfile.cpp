@@ -1475,7 +1475,6 @@ static const VividOperatorDescriptor kAssetOpDesc = {
     1,
     kAssetOpPorts,
     0, 0, 0, 1,
-    VIVID_LANE_POINTWISE,
     0,
 };
 

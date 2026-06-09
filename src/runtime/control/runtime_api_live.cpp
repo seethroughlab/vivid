@@ -6,6 +6,7 @@
 #include "runtime/audio/audio_engine.h"
 #include "runtime/operators/operator_registry.h"
 #include "runtime/operators/operator_preparation_service.h"
+#include "runtime/control/control_server_enums.h"  // multiplicity_behavior_str
 #include "runtime/audio/system_midi.h"
 #include <sstream>
 #include <cmath>
@@ -776,9 +777,9 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     std::ostringstream oss;
     oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
     {
-        static const char* lb_names[] = {"pointwise", "structural", "reduction", "kernel"};
-        uint8_t lb = static_cast<uint8_t>(desc ? desc->lane_behavior : 0);
-        if (lb < 4) oss << "  lane_behavior: " << lb_names[lb] << "\n";
+        oss << "  multiplicity_behavior: "
+            << multiplicity_behavior_str(desc ? desc->multiplicity_behavior : VIVID_MULTIPLICITY_MAP)
+            << "\n";
     }
     if (cn->missing_operator) {
         oss << "  status: missing operator placeholder for type "

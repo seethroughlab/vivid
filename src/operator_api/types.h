@@ -10,7 +10,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 9u  /* v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/*_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 10u  /* v10: lane-value Phase 7e.6a — removed VividOperatorDescriptor.lane_behavior + the VividLaneBehavior enum/VIVID_LANE_* constants; operators declare multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaults to Map); v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/*_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -22,12 +22,6 @@ typedef uint32_t VividOperatorKind;
 #define VIVID_OP_AUDIO   1u   // audio thread, audio-rate (~48 kHz)
 #define VIVID_OP_GPU     2u   // main thread, GPU command submission
 
-// Lane behavior — how an operator interacts with lane multiplicity.
-typedef uint32_t VividLaneBehavior;
-#define VIVID_LANE_POINTWISE   0u  // processes each lane independently, preserves lane set
-#define VIVID_LANE_STRUCTURAL  1u  // creates, reshapes, reorders, or filters lanes
-#define VIVID_LANE_REDUCTION   2u  // collapses many lanes into fewer (often one)
-#define VIVID_LANE_KERNEL      3u  // needs cross-lane access (neighborhood / full collection)
 
 typedef uint32_t VividParamType;
 #define VIVID_PARAM_FLOAT  0u
@@ -192,8 +186,6 @@ typedef struct VividOperatorDescriptor {
 
     int                       has_process_frame;     // 1 if operator implements FrameProcessable
 
-    // Lane behavior (v3+)
-    VividLaneBehavior         lane_behavior;         // POINTWISE, STRUCTURAL, REDUCTION, or KERNEL
     int                       strategy_independent;  // 1 if operator uses vivid_lane_state() for all per-lane state
 
     // Human-facing label (v3+). NULL => runtime auto-derives from name by splitting
@@ -211,11 +203,10 @@ typedef struct VividOperatorDescriptor {
     // operator's source-doc brief.
     const char*               summary;
 
-    // Multiplicity behavior (lane-value clean-break, v6). The successor to
-    // `lane_behavior` (which stays until Phase 7). Codegen derives a default from
-    // `lane_behavior` (POINTWISE->Map, REDUCTION->Reduce, STRUCTURAL->Generate,
-    // KERNEL->Kernel); an operator overrides via `static constexpr
-    // VividMultiplicityBehavior kMultiplicityBehavior`.
+    // Multiplicity behavior (the value-model authority — how the operator transforms
+    // multiplicity). An operator declares it via `static constexpr
+    // VividMultiplicityBehavior kMultiplicityBehavior`; codegen defaults it to Map
+    // (pass-through) when unset.
     VividMultiplicityBehavior multiplicity_behavior;  // 0 = VIVID_MULTIPLICITY_SCALAR_ONLY
 } VividOperatorDescriptor;
 

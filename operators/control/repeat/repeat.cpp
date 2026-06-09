@@ -20,7 +20,7 @@
 struct Repeat : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Repeat";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int>   count   {"count",    4, 1, 1024};
     vivid::Param<int>   mode    {"mode",     0, {"copy", "linear", "random", "phase", "golden"}};

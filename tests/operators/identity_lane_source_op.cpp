@@ -15,7 +15,6 @@
 struct IdentityLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "IdentityLaneSourceOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     // Max voices this source can emit.

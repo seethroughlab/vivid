@@ -44,7 +44,6 @@ struct LFO : vivid::OperatorBase {
     ~LFO() override = default;
     static constexpr const char* kName   = "LFO";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> frequency    {"frequency",     1.0f,  0.01f, 20.0f};

@@ -252,9 +252,8 @@ inline nlohmann::json build_operator_docs_response(const VividOperatorDescriptor
     op["name"] = desc.name;
     op["kind"] = kind_str(vivid_operator_domain(&desc));
     op["time_dependent"] = (desc.time_dependent != 0);
-    op["lane_behavior"] = lane_behavior_str(desc.lane_behavior);
-    op["lane_behavior_help"] = lane_behavior_help_str(desc.lane_behavior);
     op["multiplicity_behavior"] = multiplicity_behavior_str(desc.multiplicity_behavior);
+    op["multiplicity_behavior_help"] = multiplicity_behavior_help_str(desc.multiplicity_behavior);
     if (!package_name.empty())
         op["package"] = package_name;
     // v3 metadata: human-facing label, search keywords, one-line summary.

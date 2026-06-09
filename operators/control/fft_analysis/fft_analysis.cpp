@@ -17,7 +17,7 @@
 struct FFTAnalysis : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "FFTAnalysis";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<int> window   {"window",   1, {"none", "hann", "hamming"}};
     vivid::Param<int> fft_size {"fft_size", 512, 256, 1024};

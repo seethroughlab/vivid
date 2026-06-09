@@ -32,7 +32,6 @@
 struct Envelope : vivid::OperatorBase {
     static constexpr const char* kName   = "Envelope";
     static constexpr bool kTimeDependent = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
     static constexpr uint32_t kMaxVoices = 16;
 

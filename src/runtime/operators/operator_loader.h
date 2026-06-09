@@ -12,7 +12,7 @@ struct WgslOperatorConfig;
 // Result of comparing an already-loaded operator descriptor against a candidate
 // replacement during hot reload.
 //   Compatible        — in-place reload is safe; no recompile needed.
-//   RecompileRequired — layout (params/ports/gpu) is unchanged, but lane_behavior
+//   RecompileRequired — layout (params/ports/gpu) is unchanged, but multiplicity_behavior
 //                       and/or strategy_independent differ, so the dylib can be
 //                       swapped but the graph must be recompiled to re-run the
 //                       lane-set propagation and execution-strategy planner.

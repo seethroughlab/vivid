@@ -56,7 +56,6 @@ struct Text2D : vivid::OperatorBase, vivid::GpuProcessable {
     // anim_mode=None (fast-path hits when nothing changed), but when an
     // animation is active we need a fresh glyph run each frame.
     static constexpr bool kTimeDependent             = true;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
 
     vivid::Param<vivid::TextValue> text {"text", "vivid"};
     vivid::Param<float> font_size  {"font_size",  0.12f, 0.01f, 1.0f};

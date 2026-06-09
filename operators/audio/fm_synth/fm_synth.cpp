@@ -37,7 +37,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
     // is a lane reduction (scalar provenance) — this lets multiple synths meet
     // at a pointwise Mixer. The per-voice voice_*/voices_out breakouts keep
     // their own lane set (handled per-port in the compiler's lane-set pass).
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     vivid::Param<float> carrier_freq{"carrier_freq", 440.0f, 20.0f, 20000.0f};
     vivid::Param<float> mod_ratio   {"mod_ratio",    2.0f,   0.0f,  16.0f};

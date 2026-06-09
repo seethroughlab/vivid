@@ -58,7 +58,7 @@ static fs::path write_test_package_source(const fs::path& package_root) {
 struct BootstrapLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "BootstrapLaneSourceOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};
     vivid::Param<int>   count{"count", 4, 1, 64};

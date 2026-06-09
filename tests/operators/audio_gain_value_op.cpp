@@ -10,7 +10,6 @@
 struct AudioGainValueOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "AudioGainValueOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_MAP;
 
     vivid::Param<float> gain{"gain", 1.0f, 0.0f, 4.0f};

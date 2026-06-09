@@ -33,7 +33,6 @@
 struct Filter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "Filter";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     vivid::Param<float> cutoff    {"cutoff",    2000.0f, 20.0f, 20000.0f};

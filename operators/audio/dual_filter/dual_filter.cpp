@@ -44,7 +44,6 @@ inline float flush_audio_denormal(float x) {
 struct DualFilter : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName   = "DualFilter";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_POINTWISE;
     static constexpr bool kStrategyIndependent = true;
 
     // --- Filter A ---

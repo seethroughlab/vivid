@@ -15,7 +15,7 @@
 struct Select : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "Select";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     vivid::Param<int> lane{"lane", 0, 0, 1023};
 

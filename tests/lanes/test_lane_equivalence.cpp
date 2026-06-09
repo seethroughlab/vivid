@@ -1,6 +1,6 @@
 // Test: LoopBased execution produces correct per-lane independent output.
 //
-// Verifies that LaneSlewOp (strategy-independent, VIVID_LANE_POINTWISE)
+// Verifies that LaneSlewOp (strategy-independent, MAP multiplicity)
 // runs correctly under LoopBased execution:
 // - Compiler assigns LoopBased strategy
 // - Runtime drives per-lane loop from lane input

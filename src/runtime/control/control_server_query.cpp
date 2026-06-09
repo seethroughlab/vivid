@@ -481,12 +481,11 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 }
             }
 
-            // Lane metadata — read from the descriptor (CompiledNode.lane_behavior
-            // retired in 7e.5b; multiplicity_behavior is the runtime authority).
+            // Multiplicity behavior (value-model authority) — from the descriptor.
             if (ns) {
                 const auto* lb_desc = ns->loader ? ns->loader->descriptor() : nullptr;
-                node["lane_behavior"] = lane_behavior_str(
-                    static_cast<VividLaneBehavior>(lb_desc ? lb_desc->lane_behavior : 0));
+                node["multiplicity_behavior"] = multiplicity_behavior_str(
+                    lb_desc ? lb_desc->multiplicity_behavior : VIVID_MULTIPLICITY_MAP);
             }
         }
 
@@ -1219,8 +1218,8 @@ std::string handle_list_types(OperatorRegistry& registry,
         nlohmann::json t = nlohmann::json::object();
         t["name"] = desc->name;
         t["kind"] = kind;
-        t["lane_behavior"] = lane_behavior_str(desc->lane_behavior);
-        t["lane_behavior_help"] = lane_behavior_help_str(desc->lane_behavior);
+        t["multiplicity_behavior"] = multiplicity_behavior_str(desc->multiplicity_behavior);
+        t["multiplicity_behavior_help"] = multiplicity_behavior_help_str(desc->multiplicity_behavior);
         // v3 metadata. display_name is always present (auto-derived when
         // descriptor doesn't supply one); keywords and summary are emitted
         // only when set.

@@ -6,7 +6,6 @@
 struct LaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName   = "LaneSourceOp";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 
     vivid::Param<float> base{"base", 1.0f, 0.0f, 100.0f};

@@ -10,36 +10,7 @@
 
 namespace vivid {
 
-inline const char* lane_behavior_str(VividLaneBehavior lb) {
-    switch (lb) {
-        case VIVID_LANE_POINTWISE:  return "pointwise";
-        case VIVID_LANE_STRUCTURAL: return "structural";
-        case VIVID_LANE_REDUCTION:  return "reduction";
-        case VIVID_LANE_KERNEL:     return "kernel";
-        default: return "unknown";
-    }
-}
-
-inline const char* lane_behavior_help_str(VividLaneBehavior lb) {
-    switch (lb) {
-        case VIVID_LANE_POINTWISE:
-            return "Processes each lane independently and preserves per-lane structure. "
-                   "Use this in poly chains when you want one stateful copy per note or lane.";
-        case VIVID_LANE_STRUCTURAL:
-            return "Creates, reorders, or reshapes lane structure. "
-                   "Use this to generate or transform polyphonic note/gate lane arrays.";
-        case VIVID_LANE_REDUCTION:
-            return "Consumes multiple lanes and collapses them into fewer outputs. "
-                   "Use this when summing or mixing voices back to a smaller channel count.";
-        case VIVID_LANE_KERNEL:
-            return "Processes neighborhoods of lanes together. "
-                   "Use this for cross-lane operations that depend on nearby lane values.";
-        default:
-            return "Lane behavior is unknown.";
-    }
-}
-
-// --- Value model (lane-value clean-break, v6) --------------------------------
+// --- Value model multiplicity behavior --------------------------------------
 
 inline const char* multiplicity_behavior_str(VividMultiplicityBehavior mb) {
     switch (mb) {
@@ -51,6 +22,30 @@ inline const char* multiplicity_behavior_str(VividMultiplicityBehavior mb) {
         case VIVID_MULTIPLICITY_PRESERVE:    return "preserve";
         case VIVID_MULTIPLICITY_KERNEL:      return "kernel";
         default: return "unknown";
+    }
+}
+
+inline const char* multiplicity_behavior_help_str(VividMultiplicityBehavior mb) {
+    switch (mb) {
+        case VIVID_MULTIPLICITY_SCALAR_ONLY:
+            return "Operates only on scalar (single) values.";
+        case VIVID_MULTIPLICITY_MAP:
+            return "Processes each value independently and preserves multiplicity. "
+                   "Use this in poly chains when you want one stateful copy per note or element.";
+        case VIVID_MULTIPLICITY_REDUCE:
+            return "Collapses many values into fewer (often one). "
+                   "Use this when summing or mixing voices back to a smaller count.";
+        case VIVID_MULTIPLICITY_GENERATE:
+            return "Generates / reshapes a many-valued output. "
+                   "Use this to produce or transform polyphonic note/gate arrays.";
+        case VIVID_MULTIPLICITY_COLLECT:
+            return "Collects several scalar inputs into one many-valued output.";
+        case VIVID_MULTIPLICITY_PRESERVE:
+            return "Passes a many-valued stream through unchanged (no per-element compute).";
+        case VIVID_MULTIPLICITY_KERNEL:
+            return "Processes the whole collection together (cross-element neighborhoods).";
+        default:
+            return "Multiplicity behavior is unknown.";
     }
 }
 

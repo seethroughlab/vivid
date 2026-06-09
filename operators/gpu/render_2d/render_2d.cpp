@@ -330,7 +330,7 @@ fn fs_main(in: GlyphVertexOutput) -> @location(0) vec4f {
 struct Render2D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Render2D";
     static constexpr bool kTimeDependent = false;
-    static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_REDUCTION;
+    static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_REDUCE;
 
     vivid::Param<float> bg_r {"bg_r", 0.0f, 0.0f, 1.0f};
     vivid::Param<float> bg_g {"bg_g", 0.0f, 0.0f, 1.0f};
