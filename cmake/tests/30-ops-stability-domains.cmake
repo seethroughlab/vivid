@@ -739,6 +739,15 @@ target_include_directories(bench_audio_kernels PRIVATE src tests ${CMAKE_SOURCE_
 target_link_libraries(bench_audio_kernels PRIVATE vivid_runtime_testlib vivid_operator_api)
 vivid_enable_audio_kernels(bench_audio_kernels)
 
+# Value-model graph-level perf benchmark (lane-value Phase 8d). Manual/opt-in
+# (NOT add_test'd — perf is machine-sensitive); run via tools/bench_regression.py.
+add_executable(bench_value_graphs
+    tests/benchmarks/bench_value_graphs.cpp
+)
+target_include_directories(bench_value_graphs PRIVATE src tests)
+target_link_libraries(bench_value_graphs PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
+add_dependencies(bench_value_graphs lane_source_op lane_sink_op lane_frame_op identity_lane_source_op lane_slew_op audio_lane_op)
+
 # Reverb DSP renderer and benchmark targets
 add_executable(test_reverb_dsp
     tests/audio/test_reverb_dsp.cpp
