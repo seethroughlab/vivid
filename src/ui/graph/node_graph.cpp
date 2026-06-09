@@ -723,7 +723,7 @@ void NodeGraphUI::layout_nodes(bool force) {
         rect.type_name = ns.type_name;
         rect.active_cadence = ns.active_cadence;
         rect.is_gpu = ns.is_gpu;
-        rect.lane_behavior = ns.lane_behavior;
+        rect.multiplicity_behavior = ns.multiplicity_behavior;
         rect.w = kNodeW;
         rect.h = h;
         rect.target_h = h;
@@ -982,7 +982,7 @@ void NodeGraphUI::place_new_nodes() {
         rect.type_name = ns.type_name;
         rect.active_cadence = ns.active_cadence;
         rect.is_gpu = ns.is_gpu;
-        rect.lane_behavior = ns.lane_behavior;
+        rect.multiplicity_behavior = ns.multiplicity_behavior;
         rect.w = kNodeW;
         rect.h = h;
         rect.target_h = h;

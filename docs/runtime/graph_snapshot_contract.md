@@ -52,8 +52,8 @@ Helper semantics:
 The UI should not assume mutability or cross-frame identity beyond what the
 snapshot explicitly carries.
 
-`NodeSnapshot` does carry compiler-derived lane metadata that is cheap to copy:
-`lane_behavior` (Pointwise/Structural/Reduction/Kernel) and `active_cadence`.
+`NodeSnapshot` does carry compiler-derived multiplicity metadata that is cheap to copy:
+`multiplicity_behavior` (Map/Generate/Reduce/Collect/Preserve/Kernel/ScalarOnly) and `active_cadence`.
 It deliberately does **not** carry the internal `LaneExecutionStrategy`
 (Scalar/InstancePerLane/LoopBased) — that is a compile/executor implementation
 detail, not part of the UI contract; consumers that need it query the compiled

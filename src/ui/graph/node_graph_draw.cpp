@@ -339,11 +339,11 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
         float tx = sx + (sw - tw) * 0.5f;
         tr.draw_text(tx, text_y, display_name.c_str(), 1.0f, 1.0f, 1.0f, 1.0f, zoom_);
 
-        // Lane behavior badge (S/R/K) for non-Pointwise operators
-        if (r.lane_behavior > 0) {
-            const char* lb_badge = (r.lane_behavior == 1) ? "S"
-                                 : (r.lane_behavior == 2) ? "R"
-                                 : (r.lane_behavior == 3) ? "K" : nullptr;
+        // Multiplicity behavior badge (G/R/K) for non-Map operators
+        if (r.multiplicity_behavior > 0) {
+            const char* lb_badge = (r.multiplicity_behavior == 1) ? "G"
+                                 : (r.multiplicity_behavior == 2) ? "R"
+                                 : (r.multiplicity_behavior == 3) ? "K" : nullptr;
             if (lb_badge) {
                 float bx = tx + tw + 4.0f * zoom_;
                 tr.draw_text(bx, text_y, lb_badge,
@@ -461,7 +461,7 @@ void NodeGraphUI::draw_graph(Renderer2D& tr) {
                 if (pit != sn->output_port_indices.end()) {
                     uint32_t pidx = pit->second;
                     if (pidx < sn->output_lanes.size())             lane_n = sn->output_lanes[pidx].size();
-                    else if (pidx < sn->output_string_lanes.size()) lane_n = sn->output_string_lanes[pidx].size();
+                    else if (pidx < sn->output_string_value_arrays.size()) lane_n = sn->output_string_value_arrays[pidx].size();
                 }
                 auto lit = out_port_pgid.find(r.node_id + "\x1f" + p.name);
                 if (lit != out_port_pgid.end()) lset = lit->second;

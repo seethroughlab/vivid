@@ -247,8 +247,8 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.c_output_string_values.assign(cn.output_port_count, nullptr);
             cn.input_lanes.resize(cn.input_port_count);
             cn.output_lanes.resize(cn.output_port_count);
-            cn.input_string_lanes.resize(cn.input_port_count);
-            cn.output_string_lanes.resize(cn.output_port_count);
+            cn.input_string_value_arrays.resize(cn.input_port_count);
+            cn.output_string_value_arrays.resize(cn.output_port_count);
 
             uint32_t pidx = 0;
             for (const auto& [pname, pval] : ndef.params) {
@@ -272,9 +272,9 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                 cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                                graph_compiler_internal::kDefaultLaneCapacity);
 
-            cn.in_string_lane_ptrs.resize(cn.input_port_count);
+            cn.in_string_value_ptrs.resize(cn.input_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
-                cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
+                cn.in_string_value_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
             cn.out_string_value_bufs.clear();
             cn.out_string_value_bufs.reserve(cn.output_port_count);
             for (uint32_t p = 0; p < cn.output_port_count; ++p)

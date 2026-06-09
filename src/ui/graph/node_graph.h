@@ -55,7 +55,7 @@ struct NodeRect {
     std::string type_name;
     Cadence active_cadence = Cadence::Frame;
     bool is_gpu = false;
-    uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
+    uint8_t multiplicity_behavior = 0;  // 0=Map, 1=Generate, 2=Reduce, 3=Kernel
     float x = 0, y = 0, w = 0, h = 0;
     float target_h = 0;  // animated height target (h lerps toward this)
     enum class TimingKind : uint8_t { None, Clock, Trigger, Gate };

@@ -212,9 +212,9 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
                         if (pidx < src_node.output_lanes.size() &&
                             !src_node.output_lanes[pidx].empty()) {
                             lane_n = src_node.output_lanes[pidx].size();
-                        } else if (pidx < src_node.output_string_lanes.size() &&
-                                   !src_node.output_string_lanes[pidx].empty()) {
-                            lane_n = src_node.output_string_lanes[pidx].size();
+                        } else if (pidx < src_node.output_string_value_arrays.size() &&
+                                   !src_node.output_string_value_arrays[pidx].empty()) {
+                            lane_n = src_node.output_string_value_arrays[pidx].size();
                         }
                     }
                 }
@@ -270,10 +270,10 @@ void NodeGraphUI::draw_wire_tooltip(Renderer2D& tr) {
                     !src_ns->output_lanes[pidx].empty()) {
                     value_str = format_float(val) + " [lane_array: " +
                                 std::to_string(src_ns->output_lanes[pidx].size()) + "]";
-                } else if (pidx < src_ns->output_string_lanes.size() &&
-                           !src_ns->output_string_lanes[pidx].empty()) {
-                    value_str = "\"" + src_ns->output_string_lanes[pidx][0] + "\" [string_lanes: " +
-                                std::to_string(src_ns->output_string_lanes[pidx].size()) + "]";
+                } else if (pidx < src_ns->output_string_value_arrays.size() &&
+                           !src_ns->output_string_value_arrays[pidx].empty()) {
+                    value_str = "\"" + src_ns->output_string_value_arrays[pidx][0] + "\" [string_values: " +
+                                std::to_string(src_ns->output_string_value_arrays[pidx].size()) + "]";
                 } else {
                     if (pidx < src_ns->output_string_values.size() &&
                         !src_ns->output_string_values[pidx].empty()) {

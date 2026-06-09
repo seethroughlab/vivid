@@ -4639,7 +4639,7 @@ async def inspect_graph(detail: str = "summary") -> str:
 
 @mcp.tool()
 async def list_types(domain: str = "") -> str:
-    """List all available operator types (compact catalog: name, display_name, kind, brief, lane_behavior, plus optional keywords/summary when authors set them). Use operator_docs(name) to get full details (params, ports, docs) for a specific operator.
+    """List all available operator types (compact catalog: name, display_name, kind, brief, multiplicity_behavior, plus optional keywords/summary when authors set them). Use operator_docs(name) to get full details (params, ports, docs) for a specific operator.
 
     Args:
         domain: Optional filter — "gpu", "audio", or "control". Omit to list all domains.

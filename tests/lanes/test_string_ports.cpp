@@ -51,7 +51,7 @@ int main() {
                 check(sink->output_string_values[out_it->second] == "alpha", "string scalar routed");
             }
             if (list_it != sink->output_port_indices.end()) {
-                check(sink->output_string_lanes[list_it->second].size() == 3, "string lane array size routed");
+                check(sink->output_string_value_arrays[list_it->second].size() == 3, "string lane array size routed");
             }
             if (valid_it != sink->output_port_indices.end()) {
                 check(sink->output_values[valid_it->second] > 0.5f, "valid output true");

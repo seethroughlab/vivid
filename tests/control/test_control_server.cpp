@@ -187,12 +187,12 @@ int main(int argc, char* argv[]) {
     "ports": [
       { "name": "mod_in", "type": "signal", "direction": "input", "bind": "mod_src/in" },
       { "name": "echo_in", "type": "string", "direction": "input", "bind": "sink/in" },
-      { "name": "echo_list_in", "type": "string_lanes", "direction": "input", "bind": "sink/in_list" },
+      { "name": "echo_list_in", "type": "string_values", "direction": "input", "bind": "sink/in_list" },
       { "name": "scaled", "type": "signal", "direction": "output", "bind": "math/out" },
       { "name": "label_out", "type": "string", "direction": "output", "bind": "text_src/out" },
       { "name": "label_list", "type": "string_lanes", "direction": "output", "bind": "text_src/list" },
       { "name": "echo_out", "type": "string", "direction": "output", "bind": "sink/out" },
-      { "name": "echo_list_out", "type": "string_lanes", "direction": "output", "bind": "sink/out_list" }
+      { "name": "echo_list_out", "type": "string_values", "direction": "output", "bind": "sink/out_list" }
     ],
     "mod_sources": [
       { "name": "motion", "bind": "mod_src/out", "description": "Numeric motion source" }

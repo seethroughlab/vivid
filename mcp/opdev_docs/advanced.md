@@ -313,29 +313,32 @@ Reference operators for advanced patterns — study these when implementing spec
 | Custom thumbnails | `control/envelope`, `control/clock`, `control/smooth` |
 | Audio analysis / FFT | `control/fft_analysis`, `audio/audio_analysis` |
 
-## Lane Behavior and Identity-Bearing Lane Sets
+## Multiplicity Behavior and Identity
 
-> **Migrating to the value model (clean-break).** The lane system below is **legacy** — it still executes but
-> is removed in Phase 7. New operators declare `kMultiplicityBehavior` (Map/Reduce/Generate/Collect/Preserve/
-> Kernel — the successor to `kLaneBehavior`) and do many-valued I/O via `ctx->values`/`ctx->value_outputs`
-> (`value_view.h`). Identity is a first-class value property (`VividIdentityMode` None/Positional/StableIds);
-> per-element persistent state is still `vivid_lane_state()` (keyed by the identity token). See
-> `docs/runtime/value-model.md` for the full old→new mapping. The sections below describe the legacy mechanics.
+> Operators declare how they transform multiplicity via `kMultiplicityBehavior` (Map/Reduce/Generate/Collect/
+> Preserve/Kernel/ScalarOnly) and do many-valued I/O via `ctx->values`/`ctx->value_outputs` (`value_view.h`).
+> Identity is a first-class value property (`VividIdentityMode` None/Positional/StableIds); per-element
+> persistent state is `vivid_lane_state()` (keyed by the identity token / `lane_id`). The old lane system
+> (`kLaneBehavior`/`VividLaneBehavior`, the lane C-API, lane-set provenance) was removed in the clean break
+> (ABI 10) — see `docs/runtime/value-model.md` for the full old→new mapping.
 
-### Declaring Lane Behavior
+### Declaring Multiplicity Behavior
 
 ```cpp
-static constexpr VividLaneBehavior kLaneBehavior = VIVID_LANE_STRUCTURAL;
+static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 ```
 
-If omitted, the operator defaults to `VIVID_LANE_POINTWISE`.
+If omitted, the operator defaults to `VIVID_MULTIPLICITY_MAP`.
 
 ### Behavior Classes
 
-- **Pointwise** (default): processes one lane at a time. The runtime may create N instances for multi-lane inputs (lane lifting). Most operators are pointwise.
-- **Structural**: creates, reshapes, or filters lane sets. Outputs get a fresh lane-set provenance. Example: voice allocator, collection generator.
-- **Reduction**: collapses many lanes into fewer. Example: voice mixer, sum.
-- **Kernel**: reads the full lane set with cross-lane access. Not lane-lifted; runs as a single instance with full lane data. Example: lane smoothing, FFT-bin interpolation.
+- **Map** (default): applies the same operation per element and preserves identity. The runtime may lift the operator to N instances for many-valued inputs. Most operators are Map.
+- **Generate**: emits many values from scalar/control input (fresh provenance). Example: voice allocator, collection generator.
+- **Reduce**: collapses many values into one. Example: voice mixer, sum.
+- **Collect**: aggregates several scalar inputs into one many-valued output.
+- **Preserve**: forwards multiplicity and identity unchanged.
+- **Kernel**: reads the full collection with cross-element access. Not lifted; runs as a single instance with the full value array. Example: smoothing, FFT-bin interpolation.
+- **ScalarOnly**: accepts one value and emits one value.
 
 ### Per-Lane Persistent State
 

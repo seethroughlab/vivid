@@ -1457,7 +1457,8 @@ static const std::unordered_map<std::string, DispatchHandler>& handler_table() {
                     // is now declared via the port's .multiplicity, not the type string.
                     else if (type_str == "lane_array")    out = VIVID_PORT_SCALAR;
                     else if (type_str == "string")        out = VIVID_PORT_STRING;
-                    else if (type_str == "string_lanes")  out = VIVID_PORT_STRING;
+                    else if (type_str == "string_values") out = VIVID_PORT_STRING;
+                    else if (type_str == "string_lanes")  out = VIVID_PORT_STRING;  // legacy alias
                     else return "unknown control port type '" + type_str + "'";
                 } else if (k == VIVID_OP_AUDIO) {
                     if (type_str == "float") out = VIVID_PORT_AUDIO_BUFFER;

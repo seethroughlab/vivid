@@ -811,11 +811,11 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             }
             oss << "]";
         }
-        if (idx < cn->output_string_lanes.size() && !cn->output_string_lanes[idx].empty()) {
+        if (idx < cn->output_string_value_arrays.size() && !cn->output_string_value_arrays[idx].empty()) {
             oss << " [";
-            for (size_t si = 0; si < cn->output_string_lanes[idx].size(); ++si) {
+            for (size_t si = 0; si < cn->output_string_value_arrays[idx].size(); ++si) {
                 if (si > 0) oss << ",";
-                oss << "\"" << cn->output_string_lanes[idx][si] << "\"";
+                oss << "\"" << cn->output_string_value_arrays[idx][si] << "\"";
             }
             oss << "]";
         }
@@ -840,11 +840,11 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
                 }
                 oss << "]";
             }
-            if (idx < cn->input_string_lanes.size() && !cn->input_string_lanes[idx].empty()) {
+            if (idx < cn->input_string_value_arrays.size() && !cn->input_string_value_arrays[idx].empty()) {
                 oss << " [";
-                for (size_t si = 0; si < cn->input_string_lanes[idx].size(); ++si) {
+                for (size_t si = 0; si < cn->input_string_value_arrays[idx].size(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << "\"" << cn->input_string_lanes[idx][si] << "\"";
+                    oss << "\"" << cn->input_string_value_arrays[idx][si] << "\"";
                 }
                 oss << "]";
             }
