@@ -274,8 +274,7 @@ struct FmSynth : vivid::OperatorBase, vivid::AudioProcessable {
             // voice_gates(3), voice_velocities(4), voice_freqs(5). Value-API
             // equivalent of vivid_sequencers::emit_voice_breakouts_from_sorted:
             // resize each lane to active_count, fill in note_id-sorted order,
-            // commit. (The shared helper is VividLaneOutput-based; this inlines
-            // the same logic over value_outputs without changing behavior.)
+            // commit. (Inlines the helper's emission logic locally over value_outputs.)
             if (ctx->value_outputs) {
                 const uint32_t n = static_cast<uint32_t>(active_count);
                 auto emit_value_lane = [&](int port, auto value_for_slot) {

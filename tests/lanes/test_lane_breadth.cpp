@@ -115,7 +115,7 @@ int main(int argc, char* argv[]) {
     // Chain: Repeat(1.0, count=1024) → FFTAnalysis(fft_size=1024, window=none) → LaneFrameOp → sink
     // Constant waveform of 1.0 across 1024 samples.
     // FFT of DC=1.0 with N=1024: bin 0 magnitude = 1.0 * 1024 * (2/1024) = 2.0, all others ≈ 0.
-    // FFTAnalysis is STRUCTURAL → its spectrum lane array gets a fresh lane_set_id.
+    // FFTAnalysis is STRUCTURAL → its spectrum (many-valued) output gets a fresh provenance group.
     // LaneFrameOp is kStrategyIndependent → compiler assigns LoopBased from FFT's lane set.
     // Per-bin accumulation proves each of 512 bins is lifted independently.
     std::fprintf(stderr, "\n--- FFT-derived per-bin lane processing ---\n");

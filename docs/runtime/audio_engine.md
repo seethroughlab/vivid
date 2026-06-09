@@ -30,15 +30,15 @@ Communication between frame and audio worlds uses `AudioFrameBridge`, which main
 double-buffered snapshot pairs with lock-free atomic index flips:
 
 - **`ParamSnapshot`** (frame → audio): audio-node parameter snapshots, held scalar bridge values,
-  lane data via `BridgeLaneSlot` (pre-allocated flat buffers, default capacity `kDefaultLaneCapacity` = 1024),
-  string/custom snapshots, and solo active set
+  many-valued data via `BridgeValueSlot` (pre-allocated value array + `ValueEnvelope`, default capacity
+  `kDefaultLaneCapacity` = 1024), string/custom snapshots, and solo active set
 - **`AnalysisSnapshot`** (audio → frame): RMS, peak, waveform ring buffers, scalar bridge
-  payloads, lane outputs via `BridgeLaneSlot`, and error state
+  payloads, many-valued outputs via `BridgeValueSlot`, and error state
 
 These snapshots are runtime transport, not a second multiplicity model. They carry the same
-lane-bearing values described in the top-level architecture, packaged into audio-safe transfer
-structures for the cadence boundary. Lane data uses pre-allocated `BridgeLaneSlot` storage
-wired during `AudioFrameBridge::build()` — the audio callback reads lane data directly from
+values described in the top-level architecture, packaged into audio-safe transfer
+structures for the cadence boundary. Many-valued data uses pre-allocated `BridgeValueSlot` storage
+wired during `AudioFrameBridge::build()` — the audio callback reads the value array directly from
 bridge slots (zero-copy, no heap allocation).
 
 ### Frame → Audio
@@ -70,12 +70,12 @@ Partitioned into four index lists in `CompiledGraph`: `frame_direct_edges`, `aud
 `AudioExecutor::audio_callback()` processes audio-order nodes in chunks of the configured audio
 buffer size:
 
-1. Apply `ParamSnapshot` — populate `c_in_lane_views` directly from bridge `BridgeLaneSlot` pointers (zero-copy), apply params, strings, custom ports
+1. Apply `ParamSnapshot` — populate input value views directly from bridge `BridgeValueSlot` pointers (zero-copy), apply params, strings, custom ports
 2. For each node in `audio_order`:
    - Zero input buffers
    - Route upstream audio via `audio_direct_edges` (with channel negotiation)
-   - Route lane data via `LaneBufferRef` sharing (zero-copy for same-cadence direct edges)
-   - Build lane views: prefer `input_lane_refs` (direct routing) > bridge views (snapshot) > empty
+   - Route many-valued data via `ValueRef` sharing (zero-copy for same-cadence direct edges)
+   - Build value views: prefer `input_value_refs` (direct routing) > bridge views (snapshot) > empty
    - Call `process_audio()` — lane-lifted (InstancePerLane), LoopBased (pre-allocated scratch), or normal
    - Publish RT-safe node telemetry (`last_block_total_us`, `last_process_us`, EMA block time, budget %, lane count, retained lane-state entry count)
 3. Extract sink node output to device buffer
@@ -107,7 +107,7 @@ bridged to the frame world via `AnalysisSnapshot`.
 - Audio thread: reads `ParamSnapshot`, writes `AnalysisSnapshot`
 - Main thread: writes `ParamSnapshot`, reads `AnalysisSnapshot`
 - All audio-thread buffers are pre-allocated; no heap allocation in `audio_callback()`
-- Lane data: bridge slots are pre-allocated flat buffers; audio reads via pointer (no copy). `LaneBufferRef` retain/release uses lock-free atomics (never deallocates). LoopBased scratch vectors (`loop_lane_ids`, `loop_in_ptrs`, `loop_out_ptrs`) are pre-allocated during `build()`.
+- Many-valued data: bridge value slots are pre-allocated; audio reads the value array via pointer (no copy). `ValueRef` retain/release uses lock-free atomics (never deallocates). LoopBased scratch vectors (`loop_lane_ids`, `loop_in_ptrs`, `loop_out_ptrs`) are pre-allocated during `build()`.
 - Error messages use `char[256]` arrays to avoid `std::string` allocation on audio thread
 - Custom ports use bounded audio-safe snapshots; audio thread never dereferences runtime objects
 

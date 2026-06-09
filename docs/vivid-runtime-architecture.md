@@ -79,12 +79,12 @@ Connections may also carry an optional value remap: `from_min`, `from_max`, `to_
 
 | Type | ID | Description |
 |------|----|-------------|
-| `SCALAR` | 0 | Scalar numeric value |
+| `SCALAR` | 0 | Numeric value (float/int/bool) |
 | `AUDIO_BUFFER` | 1 | Planar audio sample buffer |
-| `LANE_ARRAY` | 2 | Variable-length float array |
 | `STRING` | 3 | UTF-8 text |
-| `STRING_LANES` | 4 | Variable-length string lane array |
 | `TEXTURE` | 5 | `WGPUTextureView` (GPU only) |
+
+A port declares a base payload `type` plus a `.multiplicity` (Scalar or Many). A many-valued float port is `VIVID_PORT_SCALAR` with `.multiplicity = Many`; a many-valued string port is `VIVID_PORT_STRING` with `.multiplicity = Many`. The standalone `LANE_ARRAY` / `STRING_LANES` port types were removed in favor of this.
 
 Custom port types can be registered at runtime via the port type registry, identified by `stable_type_id`.
 
@@ -113,7 +113,7 @@ The `GraphCompiler` transforms a `Graph` plus an `OperatorRegistry` into a `Comp
    - `frame_order` for frame and GPU nodes
    - `audio_order` for audio nodes
 
-6. **Pre-allocate state.** Buffers, parameter arrays, lane storage, string storage, custom-port staging, GPU textures, and audio buffers are allocated up front. Execution avoids heap allocation on the hot path.
+6. **Pre-allocate state.** Buffers, parameter arrays, value storage, string storage, custom-port staging, GPU textures, and audio buffers are allocated up front. Execution avoids heap allocation on the hot path.
 
 ### CompiledGraph Structure
 
@@ -166,8 +166,8 @@ Contains the payloads needed by audio-cadence nodes:
 |-------|---------|
 | `node_params` | Parameter values per audio node |
 | `scalar_inputs` | Held scalar bridge values (`hold`) |
-| `lane_inputs` | Lane-array snapshots (`snapshot`) |
-| `input_string_values` | String and string-lane snapshots |
+| `lane_inputs` | Many-valued (multiplicity=Many) value snapshots (`snapshot`) |
+| `input_string_values` | String and many-valued string snapshots |
 | `custom_inputs` | Custom-value or custom-ref snapshots |
 | `solo_active_set` | Which nodes are active under solo mode |
 
@@ -180,15 +180,15 @@ Contains the payloads needed by frame-cadence nodes:
 | `rms`, `peak` | Per-node meter values |
 | `waveform` | 1024-sample waveform summaries |
 | `scalar_outputs` | Audio-to-frame scalar bridge payloads |
-| `lane_outputs` | Lane snapshots from audio nodes |
+| `lane_outputs` | Many-valued snapshots from audio nodes |
 | `errored`, `error_msgs` | Error state propagated without heap allocation |
 
 Bridge behavior is explicit and edge-driven:
 
 - `hold` keeps the latest frame scalar available to audio inputs
-- `snapshot` copies lane, string, or custom payloads across the cadence boundary
+- `snapshot` copies many-valued, string, or custom payloads across the cadence boundary
 - `last_sample`, `rms`, and `peak` reduce audio output to a frame-visible scalar
-- `waveform` publishes a summarized lane array for frame-side consumers
+- `waveform` publishes a summarized value array for frame-side consumers
 
 ## 7. Frame Executor
 
@@ -204,7 +204,7 @@ for node in frame_order:
 
     for edge in frame_direct_edges targeting this node:
         copy output → input (with remap if configured)
-        propagate lanes, strings, textures, and custom ports
+        propagate values, strings, textures, and custom ports
 
     apply audio→frame bridge values for dirty bridge inputs
 
@@ -269,7 +269,7 @@ Each `CompiledNode` stores the execution-world-independent state needed by the r
 | Scalar state | `param_values`, `input_values`, `output_values` |
 | Bridge state | `bridge_input_values`, `bridge_input_dirty`, `input_connected` |
 | String state | `input_string_values`, `output_string_values` |
-| Lane state | `input_lanes`, `output_lanes`, lane metadata |
+| Value transport | `input_value_refs`, `output_value_refs`, `ValueEnvelope` metadata |
 | Custom ports | resolved input/output storage |
 | Cadence-specific state | `audio` or `gpu` sub-structs |
 

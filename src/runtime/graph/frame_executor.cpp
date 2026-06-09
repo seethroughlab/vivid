@@ -424,7 +424,7 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
             // Lane-aware ref-based propagation.
             // No cycle-expand, no modulo indexing. Compiler legality
             // (Pass 2.6) guarantees that non-scalar inputs sharing a
-            // port have the same lane_set_id.
+            // port share the same provenance group.
             if (!e.sources_param && e.from_port < from_cn.output_value_refs.size()) {
                 const auto& src_ref = from_cn.output_value_refs[e.from_port];
                 if (src_ref) {

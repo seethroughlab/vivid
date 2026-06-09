@@ -30,8 +30,7 @@ inline VividValueOutput make_value_output(ValueBuffer* buf) {
 
 
 // ---- Native value-buffer string output (Phase 7d.4) ----
-// String output backed by a ValueBuffer(STRING) — the value-substrate successor to the
-// StringLaneBuffer-backed overload above.
+// String output backed by a ValueBuffer(STRING).
 inline void* string_valuebuf_output_resize_fn(void* handle, uint32_t count) {
     return static_cast<ValueBuffer*>(handle)->ensure(count) ? handle : nullptr;
 }

@@ -19,10 +19,10 @@ enum class LaneExecutionStrategy : uint8_t {
 
 // ---------------------------------------------------------------------------
 // ValueEnvelope — the value-model descriptor for a value flowing through an
-// edge/port (lane-value clean-break, Phase 2). Computed by the value-flow pass
-// in PARALLEL with LaneSet; not yet consumed by execution (Phases 4-5). The
-// successor to LaneSet: multiplicity replaces lane_set_id/lane_count, identity
-// replaces identity_bearing, and value_type/storage are first-class.
+// edge/port. Computed by the value-flow pass (Pass 2.7) and the SOLE multiplicity
+// authority. multiplicity carries one-vs-many, identity carries how "many" is
+// named, value_type/storage are first-class, and provenance_group_id groups
+// same-origin many-values for UI coloring.
 // ---------------------------------------------------------------------------
 
 struct ValueEnvelope {

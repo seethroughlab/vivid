@@ -164,15 +164,26 @@ vivid/
 - Node IDs are object keys (e.g., `"lfo1"`, `"particles1"`), not UUIDs
 - Parameters in JSON carry current values only — metadata (min, max, tags) lives in operator code
 - Connections: `{"from": "node/port", "to": "node/port"}`
-- Every wire carries a value; multiplicity is expressed with lanes. A scalar is a one-lane value.
+- Every wire carries a value; multiplicity is expressed with the value model. A scalar is a `Scalar` value; a collection is a `Many` value.
 
 ### Multiplicity Vocabulary (value model)
-- **The value model is canonical** (clean-break, see `docs/runtime/value-model.md`): every value carries
-  payload type + multiplicity (Scalar/Many) + identity + storage. Operators declare `kMultiplicityBehavior`
-  and do many-valued I/O via `ctx->values` / `ctx->value_outputs` (`value_view.h`).
-- **The lane vocabulary below is legacy — still live, removed in Phase 7.** Don't build new surfaces on it.
-- Legacy multiplicity surfaces (being removed): `VIVID_PORT_LANE_ARRAY`, `VIVID_PORT_STRING_LANES`,
-  `lane_array`, `string_lanes`, `VividLaneView`/`VividLaneOutput`, `kLaneBehavior`, `LaneExecutionStrategy`.
+- **The value model is the sole authority** (clean-break, COMPLETE through Phase 7e; see
+  `docs/runtime/value-model.md`): every value carries payload type + multiplicity (Scalar/Many) + identity +
+  storage in a `ValueEnvelope`. Operators declare `static constexpr VividMultiplicityBehavior
+  kMultiplicityBehavior` (Map/Reduce/Generate/Collect/Preserve/Kernel/ScalarOnly, default Map) and do
+  many-valued I/O via `ctx->values` / `ctx->value_outputs` (`value_view.h`). ABI is **10**.
+- A port declares a base payload `type` (`VIVID_PORT_SCALAR`, `VIVID_PORT_STRING`, `VIVID_PORT_AUDIO_BUFFER`,
+  `gpu_texture`, `data`) plus a `.multiplicity` (Scalar or Many). A "many-valued" float/string port is just
+  `.multiplicity = Many`.
+- **The runtime lane machinery is fully REMOVED — do not reintroduce it.** Gone: `VIVID_PORT_LANE_ARRAY`,
+  `VIVID_PORT_STRING_LANES`, `lane_array`, `string_lanes`, `VividLaneView`/`VividLaneOutput`, the
+  `VividLaneBehavior` enum / `descriptor.lane_behavior` (now `multiplicity_behavior`), `LaneSet`/`lane_set_id`
+  / the old Pass 2.6, `LaneBuffer`/`LaneBufferRef`/`LaneBufferPool`, `BridgeLaneSlot`. Transport is the native
+  `ValueBuffer`/`ValueArena`/`ValueRef` + `BridgeValueSlot` substrate; the compiler's Pass 2.7 value-flow
+  inference computes the per-edge `ValueEnvelope`.
+- **Kept by design (per-element lifting):** `vivid_lane_state()`, `ctx.lane_count`/`lane_index`/`lane_id`,
+  `LaneStateService`, `LaneExecutionStrategy` (Scalar/InstancePerLane/LoopBased, a derived/internal decision),
+  `LaneLiftGroup`, `CompiledEdge.lane_count`.
 - No multiplicity-bearing surface should use `spread` (historical/domain terms like stereo spread excepted).
 
 ### Three Domains

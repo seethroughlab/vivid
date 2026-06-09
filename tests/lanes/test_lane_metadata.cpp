@@ -1,7 +1,7 @@
 // Test: VividFrameContext lane metadata population.
 //
 // Verifies that the frame executor populates lane_count, lane_index,
-// and lane_set_id on VividFrameContext before calling process_frame().
+// and lane_id on VividFrameContext before calling process_frame().
 // Uses LaneMetadataOp which copies these fields to scalar outputs.
 #include "runtime/operators/operator_registry.h"
 #include "runtime/graph/graph.h"

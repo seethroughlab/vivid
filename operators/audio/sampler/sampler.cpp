@@ -298,8 +298,7 @@ struct Sampler : vivid::OperatorBase, vivid::AudioProcessable {
         // voice_gates(3), voice_velocities(4), voice_freqs(5).
         //
         // Inlined the value-API equivalent of
-        // vivid_sequencers::emit_voice_breakouts_from_sorted: the shared
-        // helper is still lane-API-only (VividLaneOutput), so we replicate its
+        // vivid_sequencers::emit_voice_breakouts_from_sorted: replicates its
         // four-lane emission here over the same sorted/active_count ordering to
         // keep behavior byte-identical.
         if (ctx->value_outputs) {

@@ -6,7 +6,7 @@
 namespace vivid::graph_compiler_internal {
 
 // Default initial capacity for pre-allocated lane buffers. Output builders on
-// the frame thread can grow beyond this via LaneBuffer::resize() (up to
+// the frame thread can grow beyond this via ValueBuffer::ensure() (up to
 // CompiledGraph::max_lane_elements). Audio-thread pool buffers are fixed at
 // this capacity. Bridge slots are also sized to this by default but can be
 // overridden per-port based on compile-time lane count.

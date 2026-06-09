@@ -200,30 +200,30 @@ Shader-backed operators are persisted exactly like any other operator: a node st
 operator `type` (for example `"Blur"`), and the shader source lives in a real `.wgsl` file under
 core `filters/`, a package `filters/`, or the project-local `<graph_dir>/filters/` directory.
 
-## Lane Transport (CompiledGraph)
+## Value Transport (CompiledGraph)
 
-Lane data between compiled nodes uses `LaneBufferRef` — an intrusive-refcount reference to immutable `LaneBuffer` storage. The frame executor propagates lanes via ref sharing (zero-copy passthrough), pool-allocated buffers (remap/merge/normalization), and runtime-owned output builders.
+Value data between compiled nodes uses `ValueRef` — an intrusive-refcount reference to immutable `ValueBuffer` storage. The frame executor propagates values via ref sharing (zero-copy passthrough), arena-allocated buffers (remap/merge/normalization), and runtime-owned output builders.
 
-Lane behavior controls how provenance is checked during compilation:
+The operator's declared `kMultiplicityBehavior` controls how the compiler's Pass 2.7 value-flow inference computes each port's `ValueEnvelope` (payload type + multiplicity + identity + storage + `provenance_group_id`):
 
-- `Pointwise` operators process one lane at a time and may receive one non-scalar lane lineage plus scalar broadcasts. Multiple independent non-scalar lane sets are rejected even when their current lane counts match.
-- `Structural` operators create, reshape, reorder, or filter lanes and therefore allocate fresh lane-set provenance for their outputs.
-- `Reduction` operators collapse lane collections back to scalar outputs.
-- `Kernel` operators consume a whole lane collection or neighborhood. They may accept multiple lane-array inputs with different provenance when the operator owns the collection semantics.
+- `Map` operators process one element at a time and may receive one Many input plus Scalar broadcasts. Two Many inputs with different `provenance_group_id` require an explicit reshape even when their element counts match.
+- `Generate` / `Collect` operators mint a fresh Many value with new provenance for their outputs.
+- `Reduce` operators collapse a Many collection back to a Scalar output.
+- `Kernel` operators consume a whole Many collection or neighborhood in one invocation. They may accept multiple Many inputs with different provenance when the operator owns the collection semantics.
 
-Operators that read `ctx->input_lanes[...]` as whole arrays should declare `VIVID_LANE_KERNEL` instead of relying on the default pointwise behavior.
+Operators that read `ctx->values[...]` as whole arrays should declare `kMultiplicityBehavior = Kernel` instead of relying on the default `Map` behavior.
 
 Key runtime types:
-- `LaneBuffer` — CPU-backed float array with optional GPU storage-buffer backing and intrusive refcount
-- `LaneBufferRef` — RAII reference wrapper (retain on copy, release on destroy, never deallocates)
-- `LaneBufferPool` — pre-allocated buffer pool for frame-thread lane allocation (remap, merge, normalization)
-- `BridgeLaneSlot` — pre-allocated bridge slot for cross-cadence lane data (replaces old fixed 64-element `LaneSnapshot`)
+- `ValueBuffer` — CPU-backed value array with optional GPU storage-buffer backing and intrusive refcount
+- `ValueRef` — RAII reference wrapper (retain on copy, release on destroy, never deallocates)
+- `ValueArena` — pre-allocated value store for frame-thread allocation (remap, merge, normalization)
+- `BridgeValueSlot` — pre-allocated bridge slot (value array + `ValueEnvelope`) for cross-cadence many-valued data
 
-Canonical lane values live in `CompiledNode::input_lane_refs` / `output_lane_refs`. The old `input_lanes` / `output_lanes` vector fields remain as bridge injection scratch for audio→frame analysis data.
+Canonical values live in `CompiledNode::input_value_refs` / `output_value_refs`.
 
-GPU lane promotion: `plan_gpu_lane_promotion()` conservatively promotes lane arrays feeding GPU consumers above `kGpuLanePromotionThreshold` (256) to GPU storage-buffer backing, with lazy CPU→GPU upload cached per frame.
+GPU storage promotion: values feeding GPU consumers above the promotion threshold (256) get `VividStorageKind::Gpu` (storage-buffer backing) with lazy CPU→GPU upload cached per frame.
 
-Allocation policy: `kDefaultLaneCapacity` (1024) is the default initial pool-buffer size. The frame executor's `LaneBufferPool` is constructed **growable**, so remap/merge/normalization buffers that exceed the initial capacity grow on the frame thread (allocation is safe there) rather than silently truncating to an empty buffer. The audio bridge's lane slots stay no-alloc for real-time safety. `CompiledGraph::max_lane_elements` (default 16,777,216) is a nominal upper-bound field and is **not currently enforced** in the allocation path.
+Allocation policy: `kDefaultLaneCapacity` (1024) is the default initial arena-buffer size. The frame executor's `ValueArena` is constructed **growable**, so remap/merge/normalization buffers that exceed the initial capacity grow on the frame thread (allocation is safe there) rather than silently truncating to an empty buffer. The audio bridge's value slots stay no-alloc for real-time safety. `CompiledGraph::max_lane_elements` (default 16,777,216) is a nominal upper-bound field and is **not currently enforced** in the allocation path.
 
 ## Audio Lane Width Negotiation
 
@@ -247,9 +247,9 @@ On the frame path, retired lane IDs are swept at the start of each `FrameExecuto
 audio path, retired lane IDs are swept at audio block boundaries before the next callback begins
 processing node state for that block.
 
-Lane IDs are either positional (rebuilt per-graph) or identity-bearing (the `identity_bearing`
-flag on a lane set, set by the compiler when an upstream operator emits explicit `lane_ids`), which
-keeps per-lane state stable across reordering/compaction within a running graph. Lane identity is
+Lane IDs are either positional (rebuilt per-graph) or identity-bearing (`VividIdentityMode::StableIds`
+on the value envelope, set by the compiler when an upstream operator emits explicit `lane_ids`), which
+keeps per-element state stable across reordering/compaction within a running graph. Lane identity is
 **not** preserved across a full recompile: a topology change or graph reload re-runs the compiler
 and lane IDs are re-allocated from scratch, so per-lane persistent state does not survive a rebuild.
 

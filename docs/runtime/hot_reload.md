@@ -97,9 +97,9 @@ shape changes are rejected explicitly rather than partially reusing the previous
 ### Lane / strategy descriptor changes → full recompile
 
 `classify_hot_reload()` (`operator_loader.cpp`) returns three outcomes: `Compatible` (in-place reload),
-`Incompatible` (rejected, as above), and `RecompileRequired`. A change to `lane_behavior` or
-`strategy_independent` is `RecompileRequired`: the in-place reload would leave lane-set provenance
-(Pass 2.6) and the execution-strategy planner stale, so the reload driver instead calls
+`Incompatible` (rejected, as above), and `RecompileRequired`. A change to `multiplicity_behavior` or
+`strategy_independent` is `RecompileRequired`: the in-place reload would leave the per-edge `ValueEnvelope`s
+(value-flow inference, Pass 2.7) and the execution-strategy planner stale, so the reload driver instead calls
 `RuntimeAPI::request_recompile()` (`main_helpers.cpp`), and the next frame rebuilds the whole graph from
 the `Graph` model with the new descriptor. This is the post-Audit-01 behavior — the edit still applies
 live, just via a full recompile rather than an in-place swap. See `src/runtime/graph/CLAUDE.md`.
