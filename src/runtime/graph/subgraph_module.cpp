@@ -55,7 +55,8 @@ static VividPortType parse_port_type(const std::string& s) {
     // bound internal node), so the lost many-ness here is cosmetic.
     if (s == "lane_array")    return VIVID_PORT_SCALAR;
     if (s == "string")        return VIVID_PORT_STRING;
-    if (s == "string_lanes")  return VIVID_PORT_STRING;
+    if (s == "string_values") return VIVID_PORT_STRING;
+    if (s == "string_lanes")  return VIVID_PORT_STRING;  // legacy alias (saved graphs)
     if (s == "texture")       return VIVID_PORT_TEXTURE;
     // custom_ref / custom_value are opaque-pointer / opaque-value port shapes
     // (e.g. VividNoteBuffer). The actual transport + stable type id is

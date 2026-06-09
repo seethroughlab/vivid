@@ -83,10 +83,10 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         // Node-body multiplicity badge: map the value-model behavior to the legacy
         // display code (0=none/MAP, 1=S/GENERATE, 2=R/REDUCE, 3=K/KERNEL).
         switch (cn.multiplicity_behavior) {
-            case VIVID_MULTIPLICITY_GENERATE: sn.lane_behavior = 1; break;
-            case VIVID_MULTIPLICITY_REDUCE:   sn.lane_behavior = 2; break;
-            case VIVID_MULTIPLICITY_KERNEL:   sn.lane_behavior = 3; break;
-            default:                          sn.lane_behavior = 0; break;
+            case VIVID_MULTIPLICITY_GENERATE: sn.multiplicity_behavior = 1; break;
+            case VIVID_MULTIPLICITY_REDUCE:   sn.multiplicity_behavior = 2; break;
+            case VIVID_MULTIPLICITY_KERNEL:   sn.multiplicity_behavior = 3; break;
+            default:                          sn.multiplicity_behavior = 0; break;
         }
         sn.input_port_indices = cn.input_port_indices;
         sn.output_port_indices = cn.output_port_indices;
@@ -105,7 +105,7 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         // the frame executor from output_value_refs (lane-value 7e.4).
         sn.output_lanes = cn.output_lanes;
         sn.output_string_values = cn.output_string_values;
-        sn.output_string_lanes = cn.output_string_lanes;
+        sn.output_string_value_arrays = cn.output_string_value_arrays;
         for (const auto& [name, idx] : cn.file_param_indices) {
             if (idx < cn.file_param_storage.size() &&
                 should_copy_string_param_to_snapshot(sn.op_info.get(), name)) {

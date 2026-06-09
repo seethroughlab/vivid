@@ -819,8 +819,8 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
     auto draw_output_line = [&](uint32_t idx, const std::string& name) {
         constexpr size_t kMaxLaneValues = 8;
         std::string line;
-        if (idx < node.output_string_lanes.size() && !node.output_string_lanes[idx].empty()) {
-            const auto& sp = node.output_string_lanes[idx];
+        if (idx < node.output_string_value_arrays.size() && !node.output_string_value_arrays[idx].empty()) {
+            const auto& sp = node.output_string_value_arrays[idx];
             std::string vals = "[";
             size_t show = std::min(sp.size(), kMaxLaneValues);
             for (size_t i = 0; i < show; ++i) {

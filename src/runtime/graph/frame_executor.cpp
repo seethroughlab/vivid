@@ -75,7 +75,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
-            for (auto& sp : cn.output_string_lanes) sp.clear();
+            for (auto& sp : cn.output_string_value_arrays) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
             continue;
         }
@@ -93,7 +93,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         std::fill(cn.input_string_values.begin(), cn.input_string_values.end(), std::string());
         for (auto& ref : cn.input_value_refs) ref = {};
         for (auto& sp : cn.input_lanes) sp.clear();
-        for (auto& sp : cn.input_string_lanes) sp.clear();
+        for (auto& sp : cn.input_string_value_arrays) sp.clear();
 
         // ── Wire propagation ────────────────────────────────────────────
         propagate_frame_direct_edges(cg, cn, ni);
@@ -164,7 +164,7 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
-            for (auto& sp : cn.output_string_lanes) sp.clear();
+            for (auto& sp : cn.output_string_value_arrays) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
 
             if (cn.is_gpu()) {
@@ -206,8 +206,8 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
                     if (!cn.input_string_values.empty() && !cn.output_string_values.empty())
                         cn.output_string_values[0] = cn.input_string_values[0];
                 } else if (vt0 == VIVID_VALUE_STRING && many0) {
-                    if (!cn.input_string_lanes.empty() && !cn.output_string_lanes.empty())
-                        cn.output_string_lanes[0] = cn.input_string_lanes[0];
+                    if (!cn.input_string_value_arrays.empty() && !cn.output_string_value_arrays.empty())
+                        cn.output_string_value_arrays[0] = cn.input_string_value_arrays[0];
                 }
                 // else texture / custom / audio on a non-GPU node — leave neutral.
             }
@@ -220,10 +220,10 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             cn.out_value_bufs[p].reset();
         }
         // Rebuild c_str() pointers for string inputs (feeds the value-view string
-        // path below via in_string_lane_ptrs).
+        // path below via in_string_value_ptrs).
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_lane_ptrs[p].size(); ++si)
-                cn.in_string_lane_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
+            for (size_t si = 0; si < cn.input_string_value_arrays[p].size() && si < cn.in_string_value_ptrs[p].size(); ++si)
+                cn.in_string_value_ptrs[p][si] = cn.input_string_value_arrays[p][si].c_str();
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_string_value_bufs[p].reset();
@@ -231,14 +231,14 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         // Value-view input staging (Phase 4a float / 4b many-string). Aliases the
         // same transport the lane views use + the compile-time value envelope
         // (Pass 2.7); runtime multiplicity/count come from the materialized length.
-        // Placed after the string staging so in_string_lane_ptrs is ready.
+        // Placed after the string staging so in_string_value_ptrs is ready.
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             VividValueView& vv = cn.c_in_value_views[p];
             const VividValueType vt = (p < cn.input_value_envelopes.size())
                 ? cn.input_value_envelopes[p].value_type : VIVID_VALUE_FLOAT;
             if (vt == VIVID_VALUE_STRING) {
-                vv.data        = cn.in_string_lane_ptrs[p].data();  // const char* const*
-                vv.value_count = static_cast<uint32_t>(cn.input_string_lanes[p].size());
+                vv.data        = cn.in_string_value_ptrs[p].data();  // const char* const*
+                vv.value_count = static_cast<uint32_t>(cn.input_string_value_arrays[p].size());
             } else {
                 const auto& ref = cn.input_value_refs[p];
                 if (ref.count() > 0) {
@@ -309,11 +309,11 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             uint32_t slen = cn.out_string_value_bufs[p].committed_count;
             if (slen > 0) {
-                cn.output_string_lanes[p].resize(slen);
+                cn.output_string_value_arrays[p].resize(slen);
                 for (uint32_t si = 0; si < slen; ++si)
-                    cn.output_string_lanes[p][si] = cn.out_string_value_bufs[p].strings[si];
+                    cn.output_string_value_arrays[p][si] = cn.out_string_value_bufs[p].strings[si];
             } else {
-                cn.output_string_lanes[p].clear();
+                cn.output_string_value_arrays[p].clear();
             }
         }
 
@@ -401,7 +401,7 @@ void FrameExecutor::propagate_frame_direct_edges(CompiledGraph& cg, CompiledNode
             const bool many = e.to_port < cn.input_port_multiplicities.size() &&
                               cn.input_port_multiplicities[e.to_port] == VIVID_MULTIPLICITY_MANY;
             if (many)
-                cn.input_string_lanes[e.to_port] = from_cn.output_string_lanes[e.from_port];
+                cn.input_string_value_arrays[e.to_port] = from_cn.output_string_value_arrays[e.from_port];
             else
                 cn.input_string_values[e.to_port] = from_cn.output_string_values[e.from_port];
             continue;

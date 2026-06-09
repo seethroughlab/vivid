@@ -393,7 +393,7 @@ package source tree, the response may also include summary-level doc fields:
 - `brief`
 - `has_docs`
 - `operator_family`
-- `lane_behavior_help`
+- `multiplicity_behavior_help`
 
 Missing docs are not an error. Operators without matching docs still appear with descriptor-only metadata and `has_docs: false`.
 
@@ -413,7 +413,7 @@ Optional:
 
 Response shape:
 
-- descriptor metadata: `name`, `kind`, `time_dependent`, `lane_behavior`, `lane_behavior_help`, `params`, `inputs`, `outputs`
+- descriptor metadata: `name`, `kind`, `time_dependent`, `multiplicity_behavior`, `multiplicity_behavior_help`, `params`, `inputs`, `outputs`
 - doc-derived fields when available: `brief`, `body`, `source_path`, `tips`, `related`, `recipes`, `pitfalls`, `best_used_with`, `common_companions`, `operator_family`
 - `has_docs`: `true` when a source doc block was found and merged, `false` otherwise
 

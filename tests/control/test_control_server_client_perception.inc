@@ -909,12 +909,12 @@
                     auto echo_list_out = find_named_entry(mod.value("outputs", json::array()), "echo_list_out");
 
                     check(!echo_in.is_null(), "module input port present");
-                    check(!echo_list_in.is_null(), "module string-lanes input port present");
+                    check(!echo_list_in.is_null(), "module string-values input port present");
                     check(!scaled.is_null(), "module scalar output port present");
                     check(!label_out.is_null(), "module string output port present");
-                    check(!label_list.is_null(), "module string-lanes output port present");
+                    check(!label_list.is_null(), "module string-values output port present");
                     check(!echo_out.is_null(), "module echoed string output present");
-                    check(!echo_list_out.is_null(), "module echoed string-lanes output present");
+                    check(!echo_list_out.is_null(), "module echoed string-values output present");
 
                     if (!echo_in.is_null()) {
                         check(echo_in.contains("current_string") && echo_in["current_string"].is_string() &&
@@ -922,9 +922,9 @@
                               "module input exposes current_string");
                     }
                     if (!echo_list_in.is_null()) {
-                        check(echo_list_in.contains("string_lanes") && echo_list_in["string_lanes"].is_array() &&
-                                  echo_list_in["string_lanes"].size() == 3,
-                              "module input exposes string_lanes");
+                        check(echo_list_in.contains("string_values") && echo_list_in["string_values"].is_array() &&
+                                  echo_list_in["string_values"].size() == 3,
+                              "module input exposes string_values");
                     }
                     if (!scaled.is_null()) {
                         check(scaled.contains("current_value") && scaled["current_value"].is_number() &&
@@ -937,9 +937,9 @@
                               "module string output exposes current_string");
                     }
                     if (!label_list.is_null()) {
-                        check(label_list.contains("string_lanes") && label_list["string_lanes"].is_array() &&
-                                  label_list["string_lanes"].size() == 3,
-                              "module string-lanes output exposes string_lanes");
+                        check(label_list.contains("string_values") && label_list["string_values"].is_array() &&
+                                  label_list["string_values"].size() == 3,
+                              "module string-values output exposes string_values");
                     }
                     if (!echo_out.is_null()) {
                         check(echo_out.contains("current_string") && echo_out["current_string"].is_string() &&
@@ -947,9 +947,9 @@
                               "module echoed output exposes current_string");
                     }
                     if (!echo_list_out.is_null()) {
-                        check(echo_list_out.contains("string_lanes") && echo_list_out["string_lanes"].is_array() &&
-                                  echo_list_out["string_lanes"].size() == 3,
-                              "module echoed output exposes string_lanes");
+                        check(echo_list_out.contains("string_values") && echo_list_out["string_values"].is_array() &&
+                                  echo_list_out["string_values"].size() == 3,
+                              "module echoed output exposes string_values");
                     }
                 }
             }
@@ -1002,9 +1002,9 @@
                               "module introspection input exposes wire count");
                     }
                     if (!echo_list_in.is_null()) {
-                        check(echo_list_in.contains("string_lanes") && echo_list_in["string_lanes"].is_object() &&
-                                  echo_list_in["string_lanes"].value("length", -1) == 3,
-                              "module introspection input exposes string_lanes length");
+                        check(echo_list_in.contains("string_values") && echo_list_in["string_values"].is_object() &&
+                                  echo_list_in["string_values"].value("length", -1) == 3,
+                              "module introspection input exposes string_values length");
                     }
                     if (!scaled.is_null()) {
                         check(scaled.contains("scalar") && scaled["scalar"].is_number() &&
@@ -1017,9 +1017,9 @@
                               "module introspection output exposes string");
                     }
                     if (!label_list.is_null()) {
-                        check(label_list.contains("string_lanes") && label_list["string_lanes"].is_object() &&
-                                  label_list["string_lanes"].value("length", -1) == 3,
-                              "module introspection output exposes string_lanes length");
+                        check(label_list.contains("string_values") && label_list["string_values"].is_object() &&
+                                  label_list["string_values"].value("length", -1) == 3,
+                              "module introspection output exposes string_values length");
                     }
                     if (!echo_out.is_null()) {
                         check(echo_out.contains("string") && echo_out["string"].is_string() &&
@@ -1027,9 +1027,9 @@
                               "module introspection echoed output exposes string");
                     }
                     if (!echo_list_out.is_null()) {
-                        check(echo_list_out.contains("string_lanes") && echo_list_out["string_lanes"].is_object() &&
-                                  echo_list_out["string_lanes"].value("length", -1) == 3,
-                              "module introspection echoed output exposes string_lanes length");
+                        check(echo_list_out.contains("string_values") && echo_list_out["string_values"].is_object() &&
+                                  echo_list_out["string_values"].value("length", -1) == 3,
+                              "module introspection echoed output exposes string_values length");
                     }
                 }
             }

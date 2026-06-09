@@ -437,33 +437,37 @@ struct CompiledNode {
     std::vector<const char*> c_input_string_values;
     std::vector<const char*> c_output_string_values;
 
-    // ── Spread state ────────────────────────────────────────────────────────
+    // ── Value transport ─────────────────────────────────────────────────────
     // Canonical value transport (ValueRef-based, zero-copy; lane-value clean-break
-    // Phase 7a). The frame executor reads/writes these; the lane_refs below are a
-    // shim kept populated for the (still-live) audio executor + bridge until 7b.
+    // Phase 7a). The frame executor reads/writes these; the audio executor + bridge
+    // publish through them too. These ARE the multiplicity-bearing value transport.
     std::vector<ValueRef> input_value_refs;
     std::vector<ValueRef> output_value_refs;
     std::vector<ValueBuffer> out_value_bufs;   // node-local float output buffers
 
-    // Bridge injection scratch — used by pull_from_audio for analysis/waveform
-    // data injected from audio→frame. NOT the canonical lane values.
+    // Inspection / audio→frame bridge scratch mirrors — populated by pull_from_audio
+    // for analysis/waveform data injected from audio→frame, and read by the UI/control
+    // introspection snapshot. NOT the canonical value transport (that is
+    // input_value_refs/output_value_refs above) — purely display/debug copies.
     std::vector<std::vector<float>> input_lanes;
     std::vector<std::vector<float>> output_lanes;
 
-    // String lanes remain vector-based (not yet ref-based).
-    std::vector<std::vector<std::string>> input_string_lanes;
-    std::vector<std::vector<std::string>> output_string_lanes;
+    // String many-value display mirrors (vector-based) — the string analog of the
+    // float input_lanes/output_lanes scratch above. Read by the control/UI
+    // introspection surface; not the canonical transport.
+    std::vector<std::vector<std::string>> input_string_value_arrays;
+    std::vector<std::vector<std::string>> output_string_value_arrays;
 
     // Value-model input/output staging (lane-value clean-break). The value views are
     // populated per-tick; the value outputs are backed by out_value_bufs /
     // out_string_value_bufs (string).
     std::vector<VividValueView> c_in_value_views;
     std::vector<VividValueOutput> c_out_value_outputs;
-    // String OUTPUT buffers on the value substrate (ValueBuffer STRING; Phase 7d.4 —
-    // was StringLaneBuffer). Both the lane-API + value-API string output adapters back
-    // onto these; readback syncs .strings → output_string_lanes.
+    // String OUTPUT buffers on the value substrate (ValueBuffer STRING). The value-API
+    // string output adapter backs onto these; readback syncs .strings →
+    // output_string_value_arrays.
     std::vector<ValueBuffer> out_string_value_bufs;
-    std::vector<std::vector<const char*>> in_string_lane_ptrs; // c_str() staging for input views
+    std::vector<std::vector<const char*>> in_string_value_ptrs; // c_str() staging for input views
 
     // ── Custom ports ────────────────────────────────────────────────────────
     std::vector<uint32_t> custom_input_port_indices;

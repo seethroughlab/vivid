@@ -29,14 +29,14 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 | `custom_outputs` | `void**` | Custom-port outputs (`CUSTOM_VALUE` / `CUSTOM_REF`) |
 | `input_string_values` | `const char**` | String input ports |
 | `output_string_values` | `const char**` | String output ports (write pointers here) |
-| `input_string_lanes` | `const VividStringLaneView*` | String lane array inputs (`.data`, `.length`, `.lane_set_id`, `.flags`) |
-| `output_string_lanes` | `VividStringLaneOutput*` | String lane array outputs (runtime-owned builder: `.handle`, `.resize()`, `.set()`, `.commit()`) |
+| `input_string_lanes` | — | _Legacy (removed Phase 7)_ — string many-value inputs arrive via `values` (read with `vivid_value_strings` + `vivid_value_count`). |
+| `output_string_lanes` | — | _Legacy (removed Phase 7)_ — string many-value outputs go via `value_outputs` (`vivid_value_output_set_string` + `vivid_value_output_commit`). |
 | `file_param_values` | `const char**` | File/text param string values |
 | `input` | `void*` | Cast to `VividInputState*` for interactive operators |
 | `shared_handles` | `VividSharedHandleService*` | Process-wide handle service |
 | `lane_count` | `uint32_t` | Runtime lane count (max input lane array length, 1 = scalar) |
 | `lane_index` | `uint32_t` | Current lane in LoopBased (0 = scalar or first lane) |
-| `lane_set_id` | `uint32_t` | Lane provenance (0 = scalar, nonzero = upstream structural node) |
+| `lane_set_id` | — | _Legacy (removed Phase 7)_ — lane-set provenance retired; per-element identity is via `lane_id` + `vivid_lane_state`. |
 
 ### Write-back Fields
 | Field | Type | Description |
@@ -49,7 +49,7 @@ struct MyControlOp : vivid::OperatorBase, vivid::FrameProcessable {
 Port indices are counted separately for inputs and outputs, in the order declared in `collect_ports()`. Only ports of the matching type contribute to each index array:
 
 - Float ports → `input_values[i]` / `output_values[i]`
-- Lane array ports → `input_lanes[i]` / `output_lanes[i]`
+- Many-valued ports (float or string) → `values[i]` / `value_outputs[i]` (the value API)
 - String ports → `input_string_values[i]` / `output_string_values[i]`
 - Custom ports → `custom_inputs[i]` / `custom_outputs[i]`
 

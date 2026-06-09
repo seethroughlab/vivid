@@ -323,10 +323,10 @@ static void test_node_id_to_index() {
 // Test: Lane behavior from real operator descriptors
 // ---------------------------------------------------------------------------
 
-static void test_lane_behavior_from_descriptor(const std::string& build_dir) {
-    std::fprintf(stderr, "\n--- compile: lane behavior from descriptor ---\n");
+static void test_multiplicity_behavior_from_descriptor(const std::string& build_dir) {
+    std::fprintf(stderr, "\n--- compile: multiplicity behavior from descriptor ---\n");
 
-    const std::string staging = build_dir + "/.test_lane_behavior_staging";
+    const std::string staging = build_dir + "/.test_multiplicity_behavior_staging";
     std::filesystem::remove_all(staging);
     std::filesystem::create_directories(staging);
 
@@ -1002,7 +1002,7 @@ int main(int argc, char* argv[]) {
     test_disconnected_nodes();
     test_mixed_real_and_missing(build_dir);
     test_node_id_to_index();
-    test_lane_behavior_from_descriptor(build_dir);
+    test_multiplicity_behavior_from_descriptor(build_dir);
     // test_lane_mismatch_fails removed — see comment block at original definition site.
     test_audio_lane_lift_from_lane_input(build_dir);
     test_loop_based_strategy(build_dir);

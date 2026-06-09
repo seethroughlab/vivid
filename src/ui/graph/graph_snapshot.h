@@ -196,7 +196,7 @@ struct NodeSnapshot {
     bool is_generator = false;  // GPU node with no texture inputs and not a sink
 
     // Lane metadata (from compiler)
-    uint8_t lane_behavior = 0;  // 0=Pointwise, 1=Structural, 2=Reduction, 3=Kernel
+    uint8_t multiplicity_behavior = 0;  // 0=Map, 1=Generate, 2=Reduce, 3=Kernel
 
     std::unordered_map<std::string, uint32_t> input_port_indices;
     std::unordered_map<std::string, uint32_t> output_port_indices;
@@ -212,7 +212,7 @@ struct NodeSnapshot {
     std::vector<float> output_values;
     std::vector<std::vector<float>> output_lanes;
     std::vector<std::string> output_string_values;
-    std::vector<std::vector<std::string>> output_string_lanes;
+    std::vector<std::vector<std::string>> output_string_value_arrays;
     std::unordered_map<std::string, std::string> file_param_values;  // param_name -> path
 
     uint32_t gpu_tex_width = 0;

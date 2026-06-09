@@ -70,8 +70,8 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.c_output_string_values.assign(cn.output_port_count, nullptr);
     cn.input_lanes.resize(cn.input_port_count);
     cn.output_lanes.resize(cn.output_port_count);
-    cn.input_string_lanes.resize(cn.input_port_count);
-    cn.output_string_lanes.resize(cn.output_port_count);
+    cn.input_string_value_arrays.resize(cn.input_port_count);
+    cn.output_string_value_arrays.resize(cn.output_port_count);
 
     cn.param_values.resize(desc->param_count);
     cn.param_lock_flags.assign(desc->param_count, 0);
@@ -135,7 +135,7 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.output_string_values.resize(cn.output_port_count, "");
         cn.c_output_string_values.resize(cn.output_port_count, nullptr);
         cn.output_lanes.resize(cn.output_port_count);
-        cn.output_string_lanes.resize(cn.output_port_count);
+        cn.output_string_value_arrays.resize(cn.output_port_count);
     }
 
 
@@ -157,9 +157,9 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
     cn.c_out_value_outputs.resize(cn.output_port_count);
 
-    cn.in_string_lane_ptrs.resize(cn.input_port_count);
+    cn.in_string_value_ptrs.resize(cn.input_port_count);
     for (uint32_t p = 0; p < cn.input_port_count; ++p)
-        cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
+        cn.in_string_value_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
     cn.out_string_value_bufs.clear();
     cn.out_string_value_bufs.reserve(cn.output_port_count);
     for (uint32_t p = 0; p < cn.output_port_count; ++p)

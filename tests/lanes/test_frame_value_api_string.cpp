@@ -74,11 +74,11 @@ int main(int argc, char* argv[]) {
     const auto* echo = find_node(cg, "echo");
     check(echo != nullptr, "found echo node");
     if (echo) {
-        check(echo->output_string_lanes.size() > 0 && echo->output_string_lanes[0].size() == 3,
+        check(echo->output_string_value_arrays.size() > 0 && echo->output_string_value_arrays[0].size() == 3,
               "echo produced 3 strings via the value API");
-        if (echo->output_string_lanes.size() > 0 && echo->output_string_lanes[0].size() == 3) {
+        if (echo->output_string_value_arrays.size() > 0 && echo->output_string_value_arrays[0].size() == 3) {
             for (int i = 0; i < 3; ++i)
-                check(echo->output_string_lanes[0][i] == expected[i],
+                check(echo->output_string_value_arrays[0][i] == expected[i],
                       (std::string("echo out[") + std::to_string(i) + "] = " + expected[i]).c_str());
         }
     }
@@ -89,11 +89,11 @@ int main(int argc, char* argv[]) {
     check(sink != nullptr, "found sink node");
     if (sink) {
         // in_list is the sink's input port ordinal 1.
-        check(sink->input_string_lanes.size() > 1 && sink->input_string_lanes[1].size() == 3,
+        check(sink->input_string_value_arrays.size() > 1 && sink->input_string_value_arrays[1].size() == 3,
               "sink received 3 strings via the string-lane transport");
-        if (sink->input_string_lanes.size() > 1 && sink->input_string_lanes[1].size() == 3) {
+        if (sink->input_string_value_arrays.size() > 1 && sink->input_string_value_arrays[1].size() == 3) {
             for (int i = 0; i < 3; ++i)
-                check(sink->input_string_lanes[1][i] == expected[i],
+                check(sink->input_string_value_arrays[1][i] == expected[i],
                       (std::string("sink in[") + std::to_string(i) + "] = " + expected[i]).c_str());
         }
     }

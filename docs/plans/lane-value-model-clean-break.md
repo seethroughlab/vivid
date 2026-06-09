@@ -1,5 +1,11 @@
 # Clean-Break Lane System Redesign Plan
 
+> **STATUS: ✅ COMPLETE (2026-06-09).** All phases (0–8) are implemented, merged to `master` (`93e6b27c`),
+> and pushed. The value model is the sole multiplicity authority at operator ABI 10; the entire lane stack
+> (lane port types, the lane C-API, lane buffers, Pass-2.6 lane-sets, and `VividLaneBehavior`) is removed.
+> The downstream sibling-package ABI-10 migration (vivid-3d/ml/plexus/physics2d/wavetable/glitch) is tracked
+> separately and is also complete.
+
 ## Summary
 
 Replace the current lane system with a first-class value and multiplicity model. In the new system, "many values" are not represented by special port types, side-channel lane buffers, bridge-only scratch state, or execution-strategy glue. Instead, every runtime value carries:
