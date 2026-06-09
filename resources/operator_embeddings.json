@@ -22,7 +22,7 @@
         "Stack",
         "PatTransform"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 17,
       "num_outputs": 2,
       "embedding": [
@@ -426,7 +426,7 @@
         "ChordProgression",
         "MidiInput"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 4,
       "num_outputs": 8,
       "embedding": [
@@ -829,7 +829,7 @@
         "Scopes",
         "TextureAnalysis"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 9,
       "embedding": [
@@ -1232,7 +1232,7 @@
         "FolderList",
         "StringSelect"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -1636,7 +1636,7 @@
         "Filter",
         "RingMod"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -2039,7 +2039,7 @@
         "Composite",
         "Feedback"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -2439,7 +2439,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -2839,7 +2839,7 @@
       ],
       "brief": "Combines two 3D meshes with boolean-style scene operations.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -3239,7 +3239,7 @@
       ],
       "brief": "Generates a box mesh with independent dimensions.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -3639,7 +3639,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -4042,7 +4042,7 @@
         "ReactionDiffusion",
         "Noise"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -4446,7 +4446,7 @@
         "Arpeggiator",
         "Sequencer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 7,
       "embedding": [
@@ -4850,7 +4850,7 @@
         "Phaser",
         "Delay"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -5250,7 +5250,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -5654,7 +5654,7 @@
         "Envelope",
         "Sequencer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 4,
       "embedding": [
@@ -6058,7 +6058,7 @@
         "Envelope",
         "Sequencer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 4,
       "embedding": [
@@ -6458,7 +6458,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -6862,7 +6862,7 @@
         "Math",
         "HSV"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 3,
       "embedding": [
@@ -7265,7 +7265,7 @@
         "Feedback",
         "Bloom"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 16,
       "num_outputs": 1,
       "embedding": [
@@ -7668,7 +7668,7 @@
         "Limiter",
         "Gain"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -8072,7 +8072,7 @@
         "StereoPanWidth",
         "PingPongDelay"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -8472,7 +8472,7 @@
       ],
       "brief": "Deforms incoming 3D geometry with procedural or audio-driven motion.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -8876,7 +8876,7 @@
         "Chorus",
         "Reverb"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -9276,7 +9276,7 @@
       ],
       "brief": "Builds a mask from scene depth for compositing and selective post-processing.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -9676,7 +9676,7 @@
       ],
       "brief": "Applies depth-of-field blur to a rendered 3D scene.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -10076,7 +10076,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -10480,7 +10480,7 @@
         "RingMod",
         "Filter"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -10880,7 +10880,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -11280,7 +11280,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -11683,7 +11683,7 @@
         "Render2D",
         "Shape2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 1,
       "embedding": [
@@ -12087,7 +12087,7 @@
         "DrumKick",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -12491,7 +12491,7 @@
         "DrumClap",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -12895,7 +12895,7 @@
         "DrumClap",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -13299,7 +13299,7 @@
         "DrumTom",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -13703,7 +13703,7 @@
         "Euclidean",
         "StepSeq"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 2,
       "embedding": [
@@ -14107,7 +14107,7 @@
         "DrumClap",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -14511,7 +14511,7 @@
         "DrumSnare",
         "DrumKit"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -14914,7 +14914,7 @@
         "Filter",
         "ParametricEQ"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 8,
       "num_outputs": 4,
       "embedding": [
@@ -15314,7 +15314,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -15714,7 +15714,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -16114,7 +16114,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 1,
       "embedding": [
@@ -16518,7 +16518,7 @@
         "MSEG",
         "SpreadADSR"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 1,
       "embedding": [
@@ -16918,7 +16918,7 @@
       ],
       "brief": "Adds environment lighting and rotation controls to a 3D scene.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -17322,7 +17322,7 @@
         "StepSeq",
         "PatternSeq"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -17725,7 +17725,7 @@
         "AudioAnalysis",
         "TextureAnalysis"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -18129,7 +18129,7 @@
         "Composite",
         "TimeMachine"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -18532,7 +18532,7 @@
         "ParametricEQ",
         "Vocoder"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 5,
       "num_outputs": 4,
       "embedding": [
@@ -18936,7 +18936,7 @@
         "Phaser",
         "Delay"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -19339,7 +19339,7 @@
         "Render2D",
         "Particles2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -19742,7 +19742,7 @@
         "ReactionDiffusion",
         "CellularAutomata"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -20146,7 +20146,7 @@
         "Filter",
         "SpreadADSR"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 6,
       "num_outputs": 4,
       "embedding": [
@@ -20550,7 +20550,7 @@
         "Basename",
         "TextureLoader"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 2,
       "embedding": [
@@ -20954,7 +20954,7 @@
         "Compressor",
         "Limiter"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -21354,7 +21354,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 2,
       "embedding": [
@@ -21754,7 +21754,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -22157,7 +22157,7 @@
         "SpectralFreeze",
         "Sampler"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 4,
       "embedding": [
@@ -22557,7 +22557,7 @@
       ],
       "brief": "Generates a reusable 3D grid mesh.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -22957,7 +22957,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -23357,7 +23357,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -23757,7 +23757,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -24157,7 +24157,7 @@
       ],
       "brief": "Generate N per-instance transforms in a geometric layout.",
       "related": [],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -24561,7 +24561,7 @@
         "InstanceNoise2D",
         "InstancesFromLanes2D"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -24961,7 +24961,7 @@
       ],
       "brief": "Add time-varying noise to per-instance position, rotation, and scale.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -25364,7 +25364,7 @@
         "InstanceGrid2D",
         "Instancer2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -25769,7 +25769,7 @@
         "InstancesFromLanes2D",
         "Transform2D"
       ],
-      "lane_behavior": "kernel",
+      "multiplicity_behavior": "kernel",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -26169,7 +26169,7 @@
       ],
       "brief": "Attach an InstanceArray3D bundle to a scene fragment for instanced draws.",
       "related": [],
-      "lane_behavior": "kernel",
+      "multiplicity_behavior": "kernel",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -26569,7 +26569,7 @@
       ],
       "brief": "Migration bridge from per-attribute lane arrays to an InstanceArray3D bundle.",
       "related": [],
-      "lane_behavior": "kernel",
+      "multiplicity_behavior": "kernel",
       "num_inputs": 11,
       "num_outputs": 1,
       "embedding": [
@@ -26972,7 +26972,7 @@
         "InstanceGrid2D",
         "Instancer2D"
       ],
-      "lane_behavior": "kernel",
+      "multiplicity_behavior": "kernel",
       "num_inputs": 9,
       "num_outputs": 1,
       "embedding": [
@@ -27375,7 +27375,7 @@
         "Mouse",
         "MidiInput"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 6,
       "embedding": [
@@ -27775,7 +27775,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -28180,7 +28180,7 @@
         "Math",
         "Smooth"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 2,
       "embedding": [
@@ -28585,7 +28585,7 @@
         "Math",
         "Smooth"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 2,
       "embedding": [
@@ -28985,7 +28985,7 @@
       ],
       "brief": "Defines a configurable 3D light source for the scene pipeline.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -29388,7 +29388,7 @@
         "Compressor",
         "Gain"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -29791,7 +29791,7 @@
         "Math",
         "Gate"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -30194,7 +30194,7 @@
         "Composite",
         "TextureLoader"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -30598,7 +30598,7 @@
         "Smooth",
         "LFO"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -30998,7 +30998,7 @@
       ],
       "brief": "Applies surface shading parameters to incoming 3D geometry.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 5,
       "num_outputs": 1,
       "embedding": [
@@ -31402,7 +31402,7 @@
         "Macro",
         "Quantizer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -31802,7 +31802,7 @@
       ],
       "brief": "Builds common procedural meshes with integrated material settings.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -32202,7 +32202,7 @@
       ],
       "brief": "Renders many copies of a mesh using per-instance transforms.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 1,
       "embedding": [
@@ -32602,7 +32602,7 @@
       ],
       "brief": "Loads an external mesh file into the 3D scene pipeline.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -33006,7 +33006,7 @@
         "TimeMachine",
         "Noise"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -33409,7 +33409,7 @@
         "Fluid",
         "Shape"
       ],
-      "lane_behavior": "kernel",
+      "multiplicity_behavior": "kernel",
       "num_inputs": 3,
       "num_outputs": 1,
       "embedding": [
@@ -33812,7 +33812,7 @@
         "ClockFr",
         "LfoFr"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -34215,7 +34215,7 @@
         "WebcamIn",
         "AudioAnalysis"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 6,
       "embedding": [
@@ -34619,7 +34619,7 @@
         "Sampler",
         "Sequencer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 4,
       "embedding": [
@@ -35023,7 +35023,7 @@
         "Arpeggiator",
         "Keyboard"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 0,
       "num_outputs": 19,
       "embedding": [
@@ -35423,7 +35423,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -35826,7 +35826,7 @@
         "Gain",
         "Composite"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 16,
       "num_outputs": 4,
       "embedding": [
@@ -36230,7 +36230,7 @@
         "LFO",
         "Smooth"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -36633,7 +36633,7 @@
         "Keyboard",
         "PathAnimate"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 5,
       "embedding": [
@@ -37036,7 +37036,7 @@
         "TextureLoader",
         "WebcamIn"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 20,
       "embedding": [
@@ -37436,7 +37436,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -37839,7 +37839,7 @@
         "Oscillator",
         "SpreadNoise"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 4,
       "embedding": [
@@ -38239,7 +38239,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -38642,7 +38642,7 @@
         "Clock",
         "Delay"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -39046,7 +39046,7 @@
         "Arpeggiator",
         "PatternSeq"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -39446,7 +39446,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 6,
       "embedding": [
@@ -39849,7 +39849,7 @@
         "OscOut",
         "MidiInput"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 4,
       "embedding": [
@@ -40252,7 +40252,7 @@
         "OscIn",
         "MidiInput"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 2,
       "embedding": [
@@ -40656,7 +40656,7 @@
         "LFO",
         "Noise"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -41059,7 +41059,7 @@
         "Filter",
         "Vocoder"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -41463,7 +41463,7 @@
         "Flocking2D",
         "Bloom"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -41863,7 +41863,7 @@
       ],
       "brief": "Simulates and renders a configurable 3D particle system.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -42267,7 +42267,7 @@
         "Alternate",
         "Euclidean"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -42670,7 +42670,7 @@
         "LFO",
         "Mouse"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -43070,7 +43070,7 @@
       ],
       "brief": "Shared core logic for PatternSeq frame-rate and audio-rate variants.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 6,
       "embedding": [
@@ -43474,7 +43474,7 @@
         "Chorus",
         "Filter"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -43877,7 +43877,7 @@
         "Delay",
         "Reverb"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -44277,7 +44277,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -44677,7 +44677,7 @@
       ],
       "brief": "Renders incoming 3D points as a shaded point cloud.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -45077,7 +45077,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -45477,7 +45477,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -45877,7 +45877,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -46277,7 +46277,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -46677,7 +46677,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -47080,7 +47080,7 @@
         "CellularAutomata",
         "Fluid"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -47484,7 +47484,7 @@
         "Instancer2D",
         "Particles2D"
       ],
-      "lane_behavior": "reduction",
+      "multiplicity_behavior": "reduce",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -47884,7 +47884,7 @@
       ],
       "brief": "Renders a composed 3D scene into a texture with camera, lighting, and post controls.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 2,
       "embedding": [
@@ -48288,7 +48288,7 @@
         "Select",
         "Stack"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -48691,7 +48691,7 @@
         "Delay",
         "PingPongDelay"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 4,
       "embedding": [
@@ -49093,7 +49093,7 @@
       "related": [
         "Text"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -49497,7 +49497,7 @@
         "Bitcrush",
         "FmSynth"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 4,
       "embedding": [
@@ -49897,7 +49897,7 @@
       ],
       "brief": "Raymarches signed-distance 3D shapes into a rendered scene texture.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -50300,7 +50300,7 @@
         "Sampler",
         "Slicer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 4,
       "embedding": [
@@ -50700,7 +50700,7 @@
       ],
       "brief": "Adds screen-space ambient occlusion to a rendered 3D scene.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -51100,7 +51100,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -51504,7 +51504,7 @@
         "SP404",
         "MidiInput"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 4,
       "embedding": [
@@ -51904,7 +51904,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -52304,7 +52304,7 @@
       ],
       "brief": "Merges multiple 3D scene inputs into a single scene stream.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 1,
       "embedding": [
@@ -52707,7 +52707,7 @@
         "TextureAnalysis",
         "AudioAnalysis"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -53111,7 +53111,7 @@
         "Tile",
         "Stack"
       ],
-      "lane_behavior": "reduction",
+      "multiplicity_behavior": "reduce",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -53515,7 +53515,7 @@
         "Arpeggiator",
         "LFO"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 6,
       "num_outputs": 4,
       "embedding": [
@@ -53919,7 +53919,7 @@
         "Instancer2D",
         "Sprite2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -54319,7 +54319,7 @@
       ],
       "brief": "Generates a procedural 3D primitive with material and transform controls.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -54723,7 +54723,7 @@
         "Instancer2D",
         "Particles2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 7,
       "num_outputs": 1,
       "embedding": [
@@ -55127,7 +55127,7 @@
         "SP404",
         "DrumSequencer"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 4,
       "embedding": [
@@ -55531,7 +55531,7 @@
         "SampleHold",
         "Envelope"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -55931,7 +55931,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -56334,7 +56334,7 @@
         "GranularSynth",
         "Vocoder"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -56734,7 +56734,7 @@
       ],
       "brief": "Generates a sphere mesh with configurable tessellation.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -57134,7 +57134,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -57534,7 +57534,7 @@
       ],
       "brief": "Emit N independently-animated hash-based 1D value noise lanes.",
       "related": [],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -57938,7 +57938,7 @@
         "Render2D",
         "Instancer2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -58341,7 +58341,7 @@
         "Alternate",
         "PatTransform"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 16,
       "num_outputs": 1,
       "embedding": [
@@ -58745,7 +58745,7 @@
         "Sequencer",
         "Envelope"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 4,
       "num_outputs": 6,
       "embedding": [
@@ -59148,7 +59148,7 @@
         "Mixer",
         "Gain"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -59552,7 +59552,7 @@
         "Basename",
         "Stack"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 3,
       "embedding": [
@@ -59955,7 +59955,7 @@
         "TextureLoader",
         "Text"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -60355,7 +60355,7 @@
       ],
       "brief": "Sweeps a profile shape along a path to generate procedural 3D geometry.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -60755,7 +60755,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 8,
       "num_outputs": 1,
       "embedding": [
@@ -61157,7 +61157,7 @@
       "related": [
         "SyphonIn"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 0,
       "embedding": [
@@ -61557,7 +61557,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -61961,7 +61961,7 @@
         "Shape2D",
         "DrawableMerge"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -62364,7 +62364,7 @@
         "Scopes",
         "AudioAnalysis"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 7,
       "embedding": [
@@ -62767,7 +62767,7 @@
         "MovieFile",
         "SvgRender"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -63171,7 +63171,7 @@
         "Select",
         "Stack"
       ],
-      "lane_behavior": "structural",
+      "multiplicity_behavior": "generate",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -63574,7 +63574,7 @@
         "Feedback",
         "Trails"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 1,
       "embedding": [
@@ -63978,7 +63978,7 @@
         "DrumSequencer",
         "NotePattern"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 2,
       "num_outputs": 7,
       "embedding": [
@@ -64381,7 +64381,7 @@
         "Feedback",
         "Particles"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -64781,7 +64781,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -65185,7 +65185,7 @@
         "Instancer2D",
         "Render2D"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -65585,7 +65585,7 @@
       ],
       "brief": "Applies translation, rotation, and scale to incoming 3D geometry.",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -65989,7 +65989,7 @@
         "ParametricEQ",
         "SpectralFreeze"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 3,
       "num_outputs": 4,
       "embedding": [
@@ -66389,7 +66389,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 1,
       "embedding": [
@@ -66792,7 +66792,7 @@
         "MovieFile",
         "SyphonIn"
       ],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 0,
       "num_outputs": 1,
       "embedding": [
@@ -67192,7 +67192,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 0,
       "embedding": [
@@ -67592,7 +67592,7 @@
       ],
       "brief": "",
       "related": [],
-      "lane_behavior": "pointwise",
+      "multiplicity_behavior": "map",
       "num_inputs": 1,
       "num_outputs": 0,
       "embedding": [
