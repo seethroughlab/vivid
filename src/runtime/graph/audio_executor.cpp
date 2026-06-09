@@ -979,8 +979,9 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 auto& dst = analysis.lane_outputs[i][p];
                 if (p < cn.output_value_refs.size() && cn.output_value_refs[p]) {
                     const auto& ref = cn.output_value_refs[p];
-                    dst.length = std::min(ref.count(), dst.capacity);
-                    std::memcpy(dst.data, ref.floats(), dst.length * sizeof(float));
+                    dst.write_clamped(ref.floats(), ref.count());  // RT-safe clamp + length
+                    if (p < cn.output_value_envelopes.size())
+                        dst.envelope = cn.output_value_envelopes[p];
                 } else {
                     dst.length = 0;
                 }

@@ -16,22 +16,12 @@
 
 namespace vivid {
 
-// Pre-allocated bridge lane slot — replaces the old fixed 64-element BridgeLaneSlot.
+// Bridge value slot — carries a many-value array + its value envelope across the
+// cadence boundary (lane-value clean-break; successor to the former BridgeLaneSlot).
 // The `data` pointer is wired to a flat buffer owned by AudioFrameBridge during
-// build(). Capacity is set at build time (default kDefaultLaneCapacity = 1024).
-// Frame-thread output builders can grow beyond this; bridge slots are fixed.
-struct BridgeLaneSlot {
-    float* data = nullptr;       // points into pre-allocated bridge storage
-    uint32_t length = 0;         // current valid element count
-    uint32_t capacity = 0;       // pre-allocated max
-    uint32_t lane_set_id = 0;    // provenance metadata across cadence boundary
-};
-
-// Bridge value slot — the value-model successor to BridgeLaneSlot (lane-value
-// clean-break, Phase 3). Carries the full value envelope across the cadence
-// boundary instead of just a lane_set_id. Fixed-capacity flat-backed storage
-// (wired by the bridge at build); never grows on the audio thread. Additive:
-// defined here but not yet wired into push_to_audio/pull_from_audio (Phase 5).
+// build(); capacity is fixed at build time (default kDefaultLaneCapacity = 1024).
+// Frame-thread output builders can grow beyond this; bridge slots are fixed and
+// never grow on the audio thread (write_clamped is RT-safe).
 struct BridgeValueSlot {
     float* data = nullptr;       // points into pre-allocated bridge storage
     uint32_t length = 0;         // current valid element count
@@ -67,7 +57,7 @@ struct CustomPortSnapshot {
 
 struct ParamSnapshot {
     std::vector<std::vector<float>> node_params;  // [audio_node_idx][param_idx]
-    std::vector<std::vector<BridgeLaneSlot>> lane_inputs; // [audio_node_idx][input_port_idx]
+    std::vector<std::vector<BridgeValueSlot>> lane_inputs; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<std::string>> input_string_values; // [audio_node_idx][input_port_idx]
     std::vector<std::vector<CustomPortSnapshot>> custom_inputs; // [audio_node_idx][input_port_idx]
     std::vector<bool> solo_active_set;  // empty = no solo; [audio_node_idx] = active
@@ -80,7 +70,7 @@ struct AnalysisSnapshot {
     std::vector<std::array<float, kMaxWaveformChannels>> peak;  // [audio_node_idx][channel]
     std::vector<std::array<std::array<float, kWaveformSamples>, kMaxWaveformChannels>> waveform; // [audio_node_idx][channel]
     std::vector<uint8_t> channel_counts; // [audio_node_idx] — actual channel count per node
-    std::vector<std::vector<BridgeLaneSlot>> lane_outputs; // [audio_node_idx][output_port_idx]
+    std::vector<std::vector<BridgeValueSlot>> lane_outputs; // [audio_node_idx][output_port_idx]
     std::vector<std::vector<float>> scalar_outputs; // [audio_node_idx][output_port_idx]
 
     // Error state propagation (audio thread → main thread)

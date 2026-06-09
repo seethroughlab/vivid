@@ -35,7 +35,7 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
     }
     lane_overflow_count_ = 0;
 
-    // Allocate ParamSnapshot arrays and wire BridgeLaneSlot pointers.
+    // Allocate ParamSnapshot arrays and wire BridgeValueSlot pointers.
     for (int b = 0; b < 2; ++b) {
         auto& snap = snapshots_[b];
         snap.node_params.resize(audio_count);
@@ -54,7 +54,6 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
                 snap.lane_inputs[i][p].data = lane_input_storage_[b].data() + input_offset;
                 snap.lane_inputs[i][p].capacity = kLaneCap;
                 snap.lane_inputs[i][p].length = 0;
-                snap.lane_inputs[i][p].lane_set_id = 0;
                 input_offset += kLaneCap;
             }
             snap.input_string_values[i].assign(cn.input_port_count, "");
@@ -100,7 +99,6 @@ void AudioFrameBridge::build(const CompiledGraph& cg) {
                 snap.lane_outputs[i][p].data = lane_output_storage_[b].data() + output_offset;
                 snap.lane_outputs[i][p].capacity = kLaneCap;
                 snap.lane_outputs[i][p].length = 0;
-                snap.lane_outputs[i][p].lane_set_id = 0;
                 output_offset += kLaneCap;
             }
             snap.scalar_outputs[i].assign(cn.output_port_count, 0.0f);
@@ -231,7 +229,9 @@ void AudioFrameBridge::push_to_audio(const CompiledGraph& cg) {
                     const float* src = ref.floats();
                     for (uint32_t j = 0; j < dst.length; ++j)
                         dst.data[j] = src[j] * scale;
-                    dst.lane_set_id = e.lane_set_id;
+                    // Carry the value envelope across the boundary (provenance group-id
+                    // rides this in 7e.5; consumed by UI/control then).
+                    dst.envelope = e.value_envelope;
                 } else {
                     dst.length = 0;
                 }
