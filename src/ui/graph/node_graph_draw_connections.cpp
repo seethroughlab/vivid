@@ -136,12 +136,12 @@ void NodeGraphUI::draw_connections(Renderer2D& tr) {
             a = (hov || sel) ? 1.0f : 0.9f;
         }
 
-        // Lane-set provenance: tint multi-lane wires by their lane_set_id so wires
-        // carrying the same multiplicity identity read as one family.
-        if (!c.invalid && c.lane_count > 1) {
+        // Provenance: tint many-value wires by their provenance group id so wires
+        // sharing an origin read as one family.
+        if (!c.invalid && c.is_many) {
             float lr, lg, lb;
-            if (lane_set_color(c.lane_set_id, lr, lg, lb)) {
-                const float mix = 0.55f;   // blend the env accent toward the lane-set hue
+            if (provenance_color(c.provenance_group_id, lr, lg, lb)) {
+                const float mix = 0.55f;   // blend the env accent toward the provenance hue
                 cr = std::min(1.0f, (cr * (1.0f - mix) + lr * mix) * brightness);
                 cg = std::min(1.0f, (cg * (1.0f - mix) + lg * mix) * brightness);
                 cb = std::min(1.0f, (cb * (1.0f - mix) + lb * mix) * brightness);
@@ -351,6 +351,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         bool can_source;   // outputs + params
         bool can_dest;     // inputs + params
         bool is_param;
+        bool is_many = false;   // declared many (for the ["] string-list suffix)
     };
     struct PortList {
         std::vector<PortEntry> ports;   // outputs + inputs (non-param)
@@ -365,9 +366,10 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         auto sorted_outs = sorted_ports(ns.output_port_indices);
         for (const auto& [idx, name] : sorted_outs) {
             VividPortType pt = VIVID_PORT_SCALAR;
+            bool many = false;
             for (const auto& p : ns.op_info->ports)
-                if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; break; }
-            result.ports.push_back({name, pt, true, false, false});
+                if (p.name == name && p.direction == VIVID_PORT_OUTPUT) { pt = p.type; many = p.is_many; break; }
+            result.ports.push_back({name, pt, true, false, false, many});
         }
 
         // Inputs (signal input ports that aren't params)
@@ -375,7 +377,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             if (pi.direction != VIVID_PORT_INPUT) continue;
             bool is_param = ns.param_indices.count(pi.name) > 0;
             if (!is_param)
-                result.ports.push_back({pi.name, pi.type, false, true, false});
+                result.ports.push_back({pi.name, pi.type, false, true, false, pi.is_many});
         }
 
         // Params (non-FILE, excluding output port names)
@@ -390,10 +392,10 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
         }
         return result;
     };
-    auto type_suffix = [](VividPortType t) -> const char* {
-        // Many-string ["] decoration retired with the STRING_LANES port type (7d.5e);
-        // multiplicity-aware port labels return in the 7e UI provenance re-source.
-        if (t == VIVID_PORT_STRING) return " \"";
+    auto type_suffix = [](VividPortType t, bool is_many) -> const char* {
+        // Value-model multiplicity-aware label suffix (7e.5a): a many-string port is
+        // a string list ["], a scalar string is a single string ".
+        if (t == VIVID_PORT_STRING) return is_many ? " [\"]" : " \"";
         return "";
     };
 
@@ -478,7 +480,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             float jack_cy = row_y + kPatchRowH * 0.5f;
 
             std::string label = port.name;
-            label += type_suffix(port.port_type);
+            label += type_suffix(port.port_type, port.is_many);
             if (label.size() > 12) label = label.substr(0, 11) + "~";
             float label_w = tr.text_width(label.c_str(), 0.85f);
             tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
@@ -518,7 +520,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             float jack_cy = row_y + kPatchRowH * 0.5f;
 
             std::string label = "\xC2\xB7" + port.name;
-            label += type_suffix(port.port_type);
+            label += type_suffix(port.port_type, port.is_many);
             if (label.size() > 12) label = label.substr(0, 11) + "~";
             float label_w = tr.text_width(label.c_str(), 0.85f);
             tr.draw_text(left_jack_x - kPatchJackRadius * 2 - 2 - label_w, row_y + 2,
@@ -559,7 +561,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             float jack_cy = row_y + kPatchRowH * 0.5f;
 
             std::string label = port.name;
-            label += type_suffix(port.port_type);
+            label += type_suffix(port.port_type, port.is_many);
             if (label.size() > 12) label = label.substr(0, 11) + "~";
             float label_alpha = 0.8f;
             tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
@@ -599,7 +601,7 @@ void NodeGraphUI::draw_patch_panel(Renderer2D& tr, const NodeSnapshot& node_a,
             float jack_cy = row_y + kPatchRowH * 0.5f;
 
             std::string label = "\xC2\xB7" + port.name;
-            label += type_suffix(port.port_type);
+            label += type_suffix(port.port_type, port.is_many);
             if (label.size() > 12) label = label.substr(0, 11) + "~";
             tr.draw_text(right_jack_x + kPatchJackRadius * 2 + 2, row_y + 2,
                          label.c_str(), clr_b[0], clr_b[1], clr_b[2], 0.5f, 0.85f);

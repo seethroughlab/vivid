@@ -764,12 +764,12 @@ void NodeGraphUI::draw_inspector_outputs(Renderer2D& tr, const NodeSnapshot& nod
 
     auto sections = build_inspector_output_sections(node, snap_.connections);
 
-    // Look up the lane-set provenance hue for an output port (for sparkline tint).
+    // Look up the provenance hue for an output port (for sparkline tint).
     auto port_lane_hue = [&](const std::string& name, float& r, float& g, float& b) -> bool {
         for (const auto& c : snap_.connections)
-            if (c.lane_count > 1 && c.lane_set_id > 1 && !c.from_is_param &&
+            if (c.is_many && c.provenance_group_id > 1 && !c.from_is_param &&
                 c.from_node == node.node_id && c.from_port == name)
-                return lane_set_color(c.lane_set_id, r, g, b);
+                return provenance_color(c.provenance_group_id, r, g, b);
         return false;
     };
 

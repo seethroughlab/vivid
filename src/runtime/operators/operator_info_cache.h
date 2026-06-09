@@ -169,6 +169,7 @@ public:
             pi.name = desc->ports[i].name ? desc->ports[i].name : "";
             pi.type = desc->ports[i].type;
             pi.direction = desc->ports[i].direction;
+            pi.is_many = (desc->ports[i].multiplicity == VIVID_MULTIPLICITY_MANY);
             pi.repeat_group     = desc->ports[i].repeat_group ? desc->ports[i].repeat_group : "";
             pi.repeat_group_idx = desc->ports[i].repeat_group_idx;
             pi.description      = desc->ports[i].description ? desc->ports[i].description : "";

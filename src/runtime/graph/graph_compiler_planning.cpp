@@ -62,6 +62,7 @@ VividMultiplicity infer_output_multiplicity(const CompiledNode& cn, size_t port_
 
 uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_order) {
     uint32_t mismatches = 0;
+    uint32_t next_pgid = 2;  // 0/1 reserved (no distinct provenance; UI colors >1)
     for (uint32_t idx : topo_order) {
         auto& cn = cg.nodes[idx];
 
@@ -81,20 +82,24 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
             env.storage_kind  = value_storage_for(cn, vt);
         }
         bool any_many_input = false;
+        uint32_t resolved_in_pgid = 0;  // first Many input's provenance group (for forward)
         for (const auto& e : cg.edges) {
             if (e.to_node != idx || e.transport != EdgeTransport::Direct) continue;
             if (e.to_port >= cn.input_value_envelopes.size()) continue;
             if (e.value_envelope.multiplicity != VIVID_MULTIPLICITY_MANY) continue;
             ValueEnvelope& env = cn.input_value_envelopes[e.to_port];
-            env.multiplicity  = VIVID_MULTIPLICITY_MANY;
-            env.value_count   = e.value_envelope.value_count;
-            env.identity_mode = e.value_envelope.identity_mode;
-            any_many_input    = true;
+            env.multiplicity        = VIVID_MULTIPLICITY_MANY;
+            env.value_count         = e.value_envelope.value_count;
+            env.identity_mode       = e.value_envelope.identity_mode;
+            env.provenance_group_id = e.value_envelope.provenance_group_id;
+            if (resolved_in_pgid == 0) resolved_in_pgid = e.value_envelope.provenance_group_id;
+            any_many_input          = true;
         }
 
         // Output envelopes: multiplicity INFERRED from the value model; identity +
         // count carried from the lane-set projection (runtime-determined parts).
         cn.output_value_envelopes.assign(cn.output_lane_sets.size(), ValueEnvelope{});
+        uint32_t node_minted_pgid = 0;  // shared id minted for this node's generated/breakout Many outs
         for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
             const VividValueType vt = (pi < cn.output_port_types.size())
                 ? value_type_for_port(cn.output_port_types[pi]) : VIVID_VALUE_FLOAT;
@@ -104,6 +109,19 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
 
             ValueEnvelope env = proj;
             env.multiplicity = inferred;
+            // Provenance group id (value-model successor to lane_set_id, 7e.5a):
+            // GENERATE/COLLECT + REDUCE-breakout mint ONE shared id per node;
+            // MAP/PRESERVE/KERNEL forward the resolved Many input's id; scalar → 0.
+            if (inferred == VIVID_MULTIPLICITY_MANY) {
+                const VividMultiplicityBehavior mb = cn.multiplicity_behavior;
+                if (mb == VIVID_MULTIPLICITY_GENERATE || mb == VIVID_MULTIPLICITY_COLLECT ||
+                    mb == VIVID_MULTIPLICITY_REDUCE) {
+                    if (node_minted_pgid == 0) node_minted_pgid = next_pgid++;
+                    env.provenance_group_id = node_minted_pgid;
+                } else {
+                    env.provenance_group_id = resolved_in_pgid;
+                }
+            }
             cn.output_value_envelopes[pi] = env;
 
             // Equivalence proof: the independently-inferred multiplicity must match

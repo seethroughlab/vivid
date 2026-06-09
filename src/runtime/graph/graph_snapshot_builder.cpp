@@ -424,6 +424,8 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
                     c.lane_count  = e.lane_count;
                     c.data_type   = e.data_type;
                     c.curve       = static_cast<uint8_t>(e.curve);
+                    c.provenance_group_id = e.value_envelope.provenance_group_id;
+                    c.is_many     = (e.value_envelope.multiplicity == VIVID_MULTIPLICITY_MANY);
                     break;
                 }
             }

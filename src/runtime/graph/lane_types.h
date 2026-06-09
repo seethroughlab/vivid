@@ -54,6 +54,10 @@ struct ValueEnvelope {
     uint32_t          value_count   = 1;                    // mirrors lane_count (runtime-refined)
     VividIdentityMode identity_mode = VIVID_IDENTITY_NONE;
     VividStorageKind  storage_kind  = VIVID_STORAGE_CPU;
+    // Provenance group id — which Many values share an origin (for UI wire/port
+    // coloring). 0/1 = no distinct provenance. The value-model successor to
+    // lane_set_id (lane-value clean-break 7e.5); allocated natively in value-flow.
+    uint32_t          provenance_group_id = 0;
 
     bool is_scalar() const { return multiplicity == VIVID_MULTIPLICITY_SCALAR; }
 };

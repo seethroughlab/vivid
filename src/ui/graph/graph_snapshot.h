@@ -119,6 +119,7 @@ struct PortInfo {
     std::string name;
     VividPortType type = VIVID_PORT_SCALAR;
     VividPortDirection direction = VIVID_PORT_INPUT;
+    bool is_many = false;   // declared .multiplicity == MANY (value-model, 7e.5a)
 
     // Repeat-group metadata (for variadic port patterns)
     std::string repeat_group;
@@ -295,6 +296,10 @@ struct ConnectionSnapshot {
     uint32_t lane_count  = 1;
     uint32_t data_type   = VIVID_PORT_SCALAR;
     uint8_t  curve       = 0;   // RemapCurve index
+    // Value-model provenance + multiplicity (7e.5a; successors to lane_set_id /
+    // lane_count>1 for UI wire/port coloring + the many-string ["] decoration).
+    uint32_t provenance_group_id = 0;
+    bool     is_many = false;
 
     bool supports_remap() const {
         // Float-many edges now carry the SCALAR payload tag (LANE_ARRAY retired, 7d.5e);

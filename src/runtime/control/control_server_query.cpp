@@ -546,8 +546,8 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                             static const char* bk_names[] = {"none","hold","snapshot","last_sample","rms","peak","waveform"};
                             c["bridge_kind"] = bk_names[static_cast<int>(e.bridge_kind)];
                         }
-                        if (e.lane_set_id != 0)
-                            c["lane_set_id"] = e.lane_set_id;
+                        if (e.value_envelope.provenance_group_id != 0)
+                            c["provenance_group_id"] = e.value_envelope.provenance_group_id;
                         if (e.lane_count > 1)
                             c["lane_count"] = e.lane_count;
                         break;
