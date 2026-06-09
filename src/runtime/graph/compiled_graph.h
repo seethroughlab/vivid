@@ -6,7 +6,6 @@
 #include "runtime/operators/operator_loader.h"
 #include "runtime/gpu/gpu_frame_analysis.h"
 #include "runtime/graph/lane_types.h"
-#include "runtime/graph/lane_buffer.h"
 #include "runtime/graph/value_buffer.h"
 #include "runtime/graph/value_output_adapter.h"
 #include <algorithm>
@@ -445,10 +444,6 @@ struct CompiledNode {
     std::vector<ValueRef> input_value_refs;
     std::vector<ValueRef> output_value_refs;
     std::vector<ValueBuffer> out_value_bufs;   // node-local float output buffers
-
-    // Legacy lane transport (LaneBufferRef-based) — shim during 7a, removed 7d.
-    std::vector<LaneBufferRef> input_lane_refs;
-    std::vector<LaneBufferRef> output_lane_refs;
 
     // Bridge injection scratch — used by pull_from_audio for analysis/waveform
     // data injected from audio→frame. NOT the canonical lane values.

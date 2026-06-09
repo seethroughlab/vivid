@@ -94,14 +94,9 @@ vivid::ui::GraphSnapshot build_graph_snapshot(
         // payloads (large clip JSON, caches, legacy internals) stay off the
         // hot per-frame UI snapshot path.
         sn.op_info = op_cache.get(sn.type_name, registry, cn.loader);
-        sn.output_lanes.resize(cn.output_port_count);
-        for (uint32_t p = 0; p < cn.output_port_count; ++p) {
-            if (p < cn.output_lane_refs.size() && cn.output_lane_refs[p])
-                sn.output_lanes[p].assign(cn.output_lane_refs[p].data(),
-                                           cn.output_lane_refs[p].data() + cn.output_lane_refs[p].length());
-            else
-                sn.output_lanes[p].clear();
-        }
+        // The value-derived display scratch cn.output_lanes is filled per-tick by
+        // the frame executor from output_value_refs (lane-value 7e.4).
+        sn.output_lanes = cn.output_lanes;
         sn.output_string_values = cn.output_string_values;
         sn.output_string_lanes = cn.output_string_lanes;
         for (const auto& [name, idx] : cn.file_param_indices) {

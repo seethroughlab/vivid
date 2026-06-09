@@ -43,8 +43,6 @@ static std::unique_ptr<vivid::CompiledGraph> make_audio_graph(const std::vector<
         cn.output_port_types.assign(s.output_port_count, VIVID_PORT_AUDIO_BUFFER);
         cn.input_lanes.resize(s.input_port_count);
         cn.output_lanes.resize(s.output_port_count);
-        cn.input_lane_refs.resize(s.input_port_count);
-        cn.output_lane_refs.resize(s.output_port_count);
         cn.input_value_refs.resize(s.input_port_count);
         cn.output_value_refs.resize(s.output_port_count);
 

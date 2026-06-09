@@ -365,12 +365,12 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                             if (oi->second < icn->output_string_values.size() &&
                                 !icn->output_string_values[oi->second].empty())
                                 p["current_string"] = icn->output_string_values[oi->second];
-                            if (oi->second < icn->output_lane_refs.size() &&
-                                icn->output_lane_refs[oi->second]) {
-                                const auto& ref = icn->output_lane_refs[oi->second];
+                            if (oi->second < icn->output_value_refs.size() &&
+                                icn->output_value_refs[oi->second]) {
+                                const auto& ref = icn->output_value_refs[oi->second];
                                 nlohmann::json lane_arr = nlohmann::json::array();
-                                for (uint32_t j = 0; j < ref.length(); ++j)
-                                    lane_arr.push_back(static_cast<double>(ref.data()[j]));
+                                for (uint32_t j = 0; j < ref.count(); ++j)
+                                    lane_arr.push_back(static_cast<double>(ref.floats()[j]));
                                 p["lane_array"] = std::move(lane_arr);
                             }
                             if (oi->second < icn->output_string_lanes.size() &&
@@ -389,12 +389,12 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                             if (ii->second < icn->input_string_values.size() &&
                                 !icn->input_string_values[ii->second].empty())
                                 p["current_string"] = icn->input_string_values[ii->second];
-                            if (ii->second < icn->input_lane_refs.size() &&
-                                icn->input_lane_refs[ii->second]) {
-                                const auto& ref = icn->input_lane_refs[ii->second];
+                            if (ii->second < icn->input_value_refs.size() &&
+                                icn->input_value_refs[ii->second]) {
+                                const auto& ref = icn->input_value_refs[ii->second];
                                 nlohmann::json lane_arr = nlohmann::json::array();
-                                for (uint32_t j = 0; j < ref.length(); ++j)
-                                    lane_arr.push_back(static_cast<double>(ref.data()[j]));
+                                for (uint32_t j = 0; j < ref.count(); ++j)
+                                    lane_arr.push_back(static_cast<double>(ref.floats()[j]));
                                 p["lane_array"] = std::move(lane_arr);
                             }
                             if (ii->second < icn->input_string_lanes.size() &&
@@ -679,12 +679,12 @@ nlohmann::json sample_node_outputs_snapshot(const CompiledNode& ns,
                 !ns.output_string_values[oi].empty()) {
                 out["string"] = ns.output_string_values[oi];
             }
-            if (include_lanes && oi < ns.output_lane_refs.size() &&
-                ns.output_lane_refs[oi]) {
-                const auto& ref = ns.output_lane_refs[oi];
+            if (include_lanes && oi < ns.output_value_refs.size() &&
+                ns.output_value_refs[oi]) {
+                const auto& ref = ns.output_value_refs[oi];
                 nlohmann::json lane_arr = nlohmann::json::array();
-                for (uint32_t j = 0; j < ref.length(); ++j) {
-                    lane_arr.push_back(static_cast<double>(ref.data()[j]));
+                for (uint32_t j = 0; j < ref.count(); ++j) {
+                    lane_arr.push_back(static_cast<double>(ref.floats()[j]));
                 }
                 out["lane_array"] = std::move(lane_arr);
             }
@@ -931,8 +931,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                         !ns.input_string_values[ii].empty()) {
                         in["string"] = ns.input_string_values[ii];
                     }
-                    if (ii < ns.input_lane_refs.size()) {
-                        in["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_lane_refs[ii].length())}};
+                    if (ii < ns.input_value_refs.size()) {
+                        in["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_value_refs[ii].count())}};
                     }
                     if (ii < ns.input_string_lanes.size()) {
                         in["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.input_string_lanes[ii].size())}};
@@ -973,8 +973,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                         !ns.output_string_values[oi].empty()) {
                         out["string"] = ns.output_string_values[oi];
                     }
-                    if (oi < ns.output_lane_refs.size()) {
-                        out["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_lane_refs[oi].length())}};
+                    if (oi < ns.output_value_refs.size()) {
+                        out["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_value_refs[oi].count())}};
                     }
                     if (oi < ns.output_string_lanes.size()) {
                         out["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(ns.output_string_lanes[oi].size())}};
@@ -1017,15 +1017,15 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
             }
             auto wave_it = ns.output_port_indices.find("waveform");
             if (wave_it != ns.output_port_indices.end() &&
-                wave_it->second < ns.output_lane_refs.size() &&
-                ns.output_lane_refs[wave_it->second]) {
-                const auto& wave = ns.output_lane_refs[wave_it->second];
-                audio["waveform_length"] = static_cast<int64_t>(wave.length());
+                wave_it->second < ns.output_value_refs.size() &&
+                ns.output_value_refs[wave_it->second]) {
+                const auto& wave = ns.output_value_refs[wave_it->second];
+                audio["waveform_length"] = static_cast<int64_t>(wave.count());
                 nlohmann::json preview = nlohmann::json::array();
-                uint32_t preview_count = wave.length();
+                uint32_t preview_count = wave.count();
                 if (preview_count > 32) preview_count = 32;
                 for (uint32_t wi = 0; wi < preview_count; ++wi) {
-                    preview.push_back(static_cast<double>(wave.data()[wi]));
+                    preview.push_back(static_cast<double>(wave.floats()[wi]));
                 }
                 audio["waveform_preview"] = std::move(preview);
             }
@@ -1034,7 +1034,7 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
             nlohmann::json control = nlohmann::json::object();
             int64_t lane_out_nonempty = 0;
             int64_t scalar_out_nonzero = 0;
-            for (const auto& ref : ns.output_lane_refs)
+            for (const auto& ref : ns.output_value_refs)
                 if (ref) lane_out_nonempty++;
             for (float v : ns.output_values)
                 if (v != 0.0f) scalar_out_nonzero++;
@@ -1126,8 +1126,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                         if (oi->second < icn->output_string_values.size() &&
                             !icn->output_string_values[oi->second].empty())
                             p["string"] = icn->output_string_values[oi->second];
-                        if (oi->second < icn->output_lane_refs.size())
-                            p["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(icn->output_lane_refs[oi->second].length())}};
+                        if (oi->second < icn->output_value_refs.size())
+                            p["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(icn->output_value_refs[oi->second].count())}};
                         if (oi->second < icn->output_string_lanes.size())
                             p["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(icn->output_string_lanes[oi->second].size())}};
                     }
@@ -1139,8 +1139,8 @@ std::string handle_introspect_nodes(Graph& graph, RuntimeCore& core, const Subgr
                         if (ii->second < icn->input_string_values.size() &&
                             !icn->input_string_values[ii->second].empty())
                             p["string"] = icn->input_string_values[ii->second];
-                        if (ii->second < icn->input_lane_refs.size())
-                            p["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(icn->input_lane_refs[ii->second].length())}};
+                        if (ii->second < icn->input_value_refs.size())
+                            p["lane_array"] = nlohmann::json{{"length", static_cast<int64_t>(icn->input_value_refs[ii->second].count())}};
                         if (ii->second < icn->input_string_lanes.size())
                             p["string_lanes"] = nlohmann::json{{"length", static_cast<int64_t>(icn->input_string_lanes[ii->second].size())}};
                     }

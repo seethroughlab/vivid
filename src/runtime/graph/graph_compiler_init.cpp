@@ -141,8 +141,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.input_lane_sets.resize(cn.input_port_count);
     cn.output_lane_sets.resize(cn.output_port_count);
 
-    cn.input_lane_refs.resize(cn.input_port_count);
-    cn.output_lane_refs.resize(cn.output_port_count);
 
     // Native value transport (lane-value clean-break Phase 7a). Node-local
     // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).

@@ -1,5 +1,4 @@
 #include "runtime/graph/frame_executor.h"
-#include "runtime/graph/lane_buffer_gpu.h"
 #include "runtime/graph/value_buffer_gpu.h"          // value_buffer_ensure_gpu (Phase 7a)
 #include "runtime/graph/gpu_value_output_adapter.h"  // make_texture_value_output (Phase 4c)
 #include "runtime/core/crash_guard.h"
@@ -75,7 +74,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (cn.errored) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());
@@ -86,7 +84,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (solo_node_idx_ >= 0 && !solo_active_set_.empty() && !solo_active_set_[ni]) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             continue;
         }
@@ -166,7 +163,6 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
         if (cn.bypassed && cn.bypassable) {
             std::fill(cn.output_values.begin(), cn.output_values.end(), 0.0f);
             for (auto& ref : cn.output_value_refs) ref = {};
-            for (auto& ref : cn.output_lane_refs) ref = {};
             for (auto& sp : cn.output_lanes) sp.clear();
             for (auto& sp : cn.output_string_lanes) sp.clear();
             std::fill(cn.output_string_values.begin(), cn.output_string_values.end(), std::string());

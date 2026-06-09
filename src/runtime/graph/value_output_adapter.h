@@ -1,7 +1,6 @@
 #pragma once
 
 #include "operator_api/types.h"
-#include "lane_buffer.h"
 #include "value_buffer.h"
 
 namespace vivid {

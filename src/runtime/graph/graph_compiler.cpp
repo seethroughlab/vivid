@@ -265,8 +265,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
                     cn.param_lock_flags[pi->second] = flags;
             }
 
-            cn.input_lane_refs.resize(cn.input_port_count);
-            cn.output_lane_refs.resize(cn.output_port_count);
 
             // Native value transport (Phase 7a) — mirror init_frame_state.
             cn.input_value_refs.resize(cn.input_port_count);

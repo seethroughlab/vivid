@@ -801,12 +801,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
         oss << cn->output_values[idx];
         if (idx < cn->output_string_values.size() && !cn->output_string_values[idx].empty())
             oss << " \"" << cn->output_string_values[idx] << "\"";
-        if (idx < cn->output_lane_refs.size() && cn->output_lane_refs[idx]) {
-            const auto& ref = cn->output_lane_refs[idx];
+        if (idx < cn->output_value_refs.size() && cn->output_value_refs[idx]) {
+            const auto& ref = cn->output_value_refs[idx];
             oss << " [";
-            for (uint32_t si = 0; si < ref.length(); ++si) {
+            for (uint32_t si = 0; si < ref.count(); ++si) {
                 if (si > 0) oss << ",";
-                oss << ref.data()[si];
+                oss << ref.floats()[si];
             }
             oss << "]";
         }
@@ -830,12 +830,12 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
             oss << cn->input_values[idx];
             if (idx < cn->input_string_values.size() && !cn->input_string_values[idx].empty())
                 oss << " \"" << cn->input_string_values[idx] << "\"";
-            if (idx < cn->input_lane_refs.size() && cn->input_lane_refs[idx]) {
-                const auto& ref = cn->input_lane_refs[idx];
+            if (idx < cn->input_value_refs.size() && cn->input_value_refs[idx]) {
+                const auto& ref = cn->input_value_refs[idx];
                 oss << " [";
-                for (uint32_t si = 0; si < ref.length(); ++si) {
+                for (uint32_t si = 0; si < ref.count(); ++si) {
                     if (si > 0) oss << ",";
-                    oss << ref.data()[si];
+                    oss << ref.floats()[si];
                 }
                 oss << "]";
             }
