@@ -191,7 +191,6 @@ public:
             child_ctx.shared_handles      = parent_ctx->shared_handles;
             child_ctx.lane_count          = parent_ctx->lane_count;
             child_ctx.lane_index          = parent_ctx->lane_index;
-            child_ctx.lane_set_id         = parent_ctx->lane_set_id;
             child_ctx.lane_id             = parent_ctx->lane_id;
             copy_metronome_fields(child_ctx, *parent_ctx);
 

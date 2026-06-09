@@ -481,10 +481,12 @@ std::string handle_inspect_graph(Graph& graph, RuntimeCore& core, const Subgraph
                 }
             }
 
-            // Lane metadata
+            // Lane metadata — read from the descriptor (CompiledNode.lane_behavior
+            // retired in 7e.5b; multiplicity_behavior is the runtime authority).
             if (ns) {
+                const auto* lb_desc = ns->loader ? ns->loader->descriptor() : nullptr;
                 node["lane_behavior"] = lane_behavior_str(
-                    static_cast<VividLaneBehavior>(ns->lane_behavior));
+                    static_cast<VividLaneBehavior>(lb_desc ? lb_desc->lane_behavior : 0));
             }
         }
 

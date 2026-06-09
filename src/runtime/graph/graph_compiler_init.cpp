@@ -138,8 +138,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.output_string_lanes.resize(cn.output_port_count);
     }
 
-    cn.input_lane_sets.resize(cn.input_port_count);
-    cn.output_lane_sets.resize(cn.output_port_count);
 
 
     // Native value transport (lane-value clean-break Phase 7a). Node-local
@@ -333,7 +331,6 @@ void GraphCompiler::init_audio_state(CompiledNode& cn,
     a.debug_output_channel_counts.assign(cn.output_port_count, 1);
     a.execution_strategy = LaneExecutionStrategy::Scalar;
     a.lane_lift_count = 0;
-    a.lane_lift_set_id = 0;
 
     a.buffers_in.resize(cn.input_port_count, std::vector<float>(buffer_size, 0.0f));
     a.buffers_out.resize(cn.output_port_count, std::vector<float>(buffer_size, 0.0f));

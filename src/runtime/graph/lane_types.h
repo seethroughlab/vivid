@@ -17,18 +17,6 @@ enum class LaneBehavior : uint8_t {
 };
 
 // ---------------------------------------------------------------------------
-// LaneSet — the multiplicity descriptor for a value flowing through an edge.
-// ---------------------------------------------------------------------------
-
-struct LaneSet {
-    uint32_t lane_set_id     = 0;      // 0 = scalar (one lane, no provenance)
-    uint32_t lane_count      = 1;      // 1 = scalar
-    bool     identity_bearing = false;  // true for voice-like sets with persistent per-lane state
-
-    bool is_scalar() const { return lane_set_id == 0 && lane_count <= 1; }
-};
-
-// ---------------------------------------------------------------------------
 // LaneExecutionStrategy — how the runtime evaluates lanes for a given node.
 // Selected by the compiler/planner, not by operator authors.
 // ---------------------------------------------------------------------------
@@ -61,21 +49,5 @@ struct ValueEnvelope {
 
     bool is_scalar() const { return multiplicity == VIVID_MULTIPLICITY_SCALAR; }
 };
-
-// Project a LaneSet into the value-model multiplicity/identity — the equivalence
-// target the value-flow pass is proven against. (value_type/storage come from the
-// port type + cadence, supplied by the caller.)
-inline ValueEnvelope envelope_from_lane_set(const LaneSet& ls, VividValueType vt,
-                                            VividStorageKind sk) {
-    ValueEnvelope e;
-    e.value_type    = vt;
-    e.multiplicity  = ls.is_scalar() ? VIVID_MULTIPLICITY_SCALAR : VIVID_MULTIPLICITY_MANY;
-    e.value_count   = ls.lane_count;
-    e.identity_mode = ls.is_scalar()        ? VIVID_IDENTITY_NONE
-                    : (ls.identity_bearing  ? VIVID_IDENTITY_STABLE_IDS
-                                            : VIVID_IDENTITY_POSITIONAL);
-    e.storage_kind  = sk;
-    return e;
-}
 
 } // namespace vivid

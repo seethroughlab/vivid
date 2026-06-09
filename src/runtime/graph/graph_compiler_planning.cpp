@@ -60,8 +60,7 @@ VividMultiplicity infer_output_multiplicity(const CompiledNode& cn, size_t port_
 
 }  // namespace
 
-uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_order) {
-    uint32_t mismatches = 0;
+void plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_order) {
     uint32_t next_pgid = 2;  // 0/1 reserved (no distinct provenance; UI colors >1)
     for (uint32_t idx : topo_order) {
         auto& cn = cg.nodes[idx];
@@ -96,19 +95,25 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
             any_many_input          = true;
         }
 
-        // Output envelopes: multiplicity INFERRED from the value model; identity +
-        // count carried from the lane-set projection (runtime-determined parts).
-        cn.output_value_envelopes.assign(cn.output_lane_sets.size(), ValueEnvelope{});
+        // Output envelopes: multiplicity INFERRED from the value model (the sole
+        // multiplicity authority since 7e.5b — the lane-set projection is gone).
+        // value_count is compile-time 1 (runtime refines the actual element count);
+        // identity is POSITIONAL for Many outputs (stable-id behaviors are a future
+        // value-model feature, not produced by the current operator set).
+        cn.output_value_envelopes.assign(cn.output_port_count, ValueEnvelope{});
         uint32_t node_minted_pgid = 0;  // shared id minted for this node's generated/breakout Many outs
-        for (size_t pi = 0; pi < cn.output_lane_sets.size(); ++pi) {
+        for (size_t pi = 0; pi < cn.output_port_count; ++pi) {
             const VividValueType vt = (pi < cn.output_port_types.size())
                 ? value_type_for_port(cn.output_port_types[pi]) : VIVID_VALUE_FLOAT;
-            const ValueEnvelope proj = envelope_from_lane_set(cn.output_lane_sets[pi], vt,
-                                                              value_storage_for(cn, vt));
             const VividMultiplicity inferred = infer_output_multiplicity(cn, pi, any_many_input);
 
-            ValueEnvelope env = proj;
-            env.multiplicity = inferred;
+            ValueEnvelope env;
+            env.value_type    = vt;
+            env.multiplicity  = inferred;
+            env.value_count   = 1;
+            env.identity_mode = (inferred == VIVID_MULTIPLICITY_MANY)
+                                ? VIVID_IDENTITY_POSITIONAL : VIVID_IDENTITY_NONE;
+            env.storage_kind  = value_storage_for(cn, vt);
             // Provenance group id (value-model successor to lane_set_id, 7e.5a):
             // GENERATE/COLLECT + REDUCE-breakout mint ONE shared id per node;
             // MAP/PRESERVE/KERNEL forward the resolved Many input's id; scalar → 0.
@@ -123,20 +128,6 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
                 }
             }
             cn.output_value_envelopes[pi] = env;
-
-            // Equivalence proof: the independently-inferred multiplicity must match
-            // the Pass-2.6 lane-set projection. Non-fatal (Phase 2 changes no graph's
-            // compile result); loud under VIVID_VERBOSE.
-            if (inferred != proj.multiplicity) {
-                ++mismatches;
-                if (std::getenv("VIVID_VERBOSE")) {
-                    std::fprintf(stderr,
-                        "[vivid] value-flow: multiplicity mismatch at node '%s' out-port %zu "
-                        "(inferred=%u, lane-set=%u)\n",
-                        cn.node_id.c_str(), pi,
-                        static_cast<unsigned>(inferred), static_cast<unsigned>(proj.multiplicity));
-                }
-            }
         }
 
         // Publish output envelopes onto outgoing edges.
@@ -146,7 +137,6 @@ uint32_t plan_value_flow(CompiledGraph& cg, const std::vector<uint32_t>& topo_or
                 e.value_envelope = cn.output_value_envelopes[e.from_port];
         }
     }
-    return mismatches;
 }
 
 namespace {
@@ -175,17 +165,8 @@ int32_t detect_lane_id_port(const CompiledNode& cn) {
     return -1;
 }
 
-uint32_t find_structural_input(const CompiledNode& cn) {
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) return ils.lane_set_id;
-    }
-    return 0;
-}
-
-// Value-model successor to the find_structural_input lift trigger (7d.5c.1): does
-// any input carry Many per the value envelopes? This drives the lift DECISION,
-// flipping the multiplicity authority to the value model. `lane_lift_set_id` keeps
-// the lane-set provenance (cosmetic, Pass 2.6 stays vestigial → removed in 7e).
+// Lift trigger (7d.5c.1): does any input carry Many per the value envelopes? The
+// value model is the multiplicity authority; this drives the lift DECISION.
 bool has_many_value_input(const CompiledNode& cn) {
     for (const auto& env : cn.input_value_envelopes) {
         if (env.multiplicity == VIVID_MULTIPLICITY_MANY) return true;
@@ -213,7 +194,7 @@ AudioLanePlan plan_audio_lane_strategy(
     uint32_t node_idx) {
     AudioLanePlan plan;
 
-    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
+    if (cn.multiplicity_behavior != VIVID_MULTIPLICITY_MAP) return plan;
 
     bool all_mono = true;
     for (uint32_t p = 0; p < cn.input_port_count && all_mono; ++p) {
@@ -247,7 +228,6 @@ AudioLanePlan plan_audio_lane_strategy(
     if (max_wire_ch > 1) {
         plan.strategy = LaneExecutionStrategy::InstancePerLane;
         plan.lane_lift_count = max_wire_ch;
-        plan.lane_lift_set_id = find_structural_input(cn);
         plan.override_channel_counts = true;
         return plan;
     }
@@ -261,21 +241,8 @@ AudioLanePlan plan_audio_lane_strategy(
     // lane-set trigger while the value envelopes are still the lane-set projection.
     const bool lift = has_many_value_input(cn) || has_many_snapshot_input(cg, node_idx);
 
-    // Provenance for ctx.lane_set_id (cosmetic; Pass 2.6 alive → removed in 7e).
-    uint32_t structural_set_id = find_structural_input(cn);
-    if (structural_set_id == 0) {
-        for (const auto& e : cg.edges) {
-            if (e.to_node == node_idx && e.transport == EdgeTransport::Snapshot &&
-                e.lane_set_id != 0) {
-                structural_set_id = e.lane_set_id;
-                break;
-            }
-        }
-    }
-
     if (lift) {
         plan.strategy = LaneExecutionStrategy::LoopBased;
-        plan.lane_lift_set_id = structural_set_id;
         plan.lane_id_port = detect_lane_id_port(cn);
     }
 
@@ -285,7 +252,7 @@ AudioLanePlan plan_audio_lane_strategy(
 FrameLanePlan plan_frame_lane_strategy(const CompiledNode& cn) {
     FrameLanePlan plan;
 
-    if (cn.lane_behavior != LaneBehavior::Pointwise) return plan;
+    if (cn.multiplicity_behavior != VIVID_MULTIPLICITY_MAP) return plan;
 
     const auto* desc = cn.loader ? cn.loader->descriptor() : nullptr;
     if (!desc || !desc->strategy_independent) return plan;
@@ -316,9 +283,7 @@ uint8_t effective_audio_output_channels(
                 return clamp_audio_width(a.lane_lift_count);
             break;
         case LaneExecutionStrategy::LoopBased:
-            if (a.lane_lift_set_id != 0)
-                return clamp_audio_width(max_loop_lanes);
-            break;
+            return clamp_audio_width(max_loop_lanes);
         case LaneExecutionStrategy::Scalar:
             break;
     }
@@ -345,9 +310,7 @@ uint8_t effective_audio_input_channels(
                 return clamp_audio_width(a.lane_lift_count);
             break;
         case LaneExecutionStrategy::LoopBased:
-            if (a.lane_lift_set_id != 0)
-                return clamp_audio_width(max_loop_lanes);
-            break;
+            return clamp_audio_width(max_loop_lanes);
         case LaneExecutionStrategy::Scalar:
             break;
     }
@@ -435,10 +398,11 @@ void plan_gpu_lane_promotion(CompiledGraph& cg, uint32_t threshold) {
             }
             if (feeds_audio || feeds_cpu_frame) continue;
 
-            // Check compile-time lane count from input_lane_sets.
+            // Check compile-time element count from the value envelope.
             uint32_t lane_count = 0;
-            if (p < cn.input_lane_sets.size() && !cn.input_lane_sets[p].is_scalar())
-                lane_count = cn.input_lane_sets[p].lane_count;
+            if (p < cn.input_value_envelopes.size() &&
+                cn.input_value_envelopes[p].multiplicity == VIVID_MULTIPLICITY_MANY)
+                lane_count = cn.input_value_envelopes[p].value_count;
             if (lane_count < threshold) continue;
 
             cn.gpu->lane_input_gpu_promoted[p] = true;

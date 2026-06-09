@@ -1,6 +1,6 @@
 // Test operator: copies VividFrameContext lane metadata to scalar outputs.
 // Used by test_lane_metadata to verify the frame executor populates
-// lane_count, lane_index, and lane_set_id correctly.
+// lane_count, lane_index, and lane_id correctly.
 #include "operator_api/operator.h"
 
 struct LaneMetadataOp : vivid::OperatorBase, vivid::FrameProcessable {
@@ -13,13 +13,13 @@ struct LaneMetadataOp : vivid::OperatorBase, vivid::FrameProcessable {
         out.push_back({"in",          VIVID_PORT_SCALAR, VIVID_PORT_INPUT});
         out.push_back({"lane_count",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
         out.push_back({"lane_index",  VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
-        out.push_back({"lane_set_id", VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
+        out.push_back({"lane_id",     VIVID_PORT_SCALAR, VIVID_PORT_OUTPUT});
     }
 
     void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = static_cast<float>(ctx->lane_count);
         ctx->output_values[1] = static_cast<float>(ctx->lane_index);
-        ctx->output_values[2] = static_cast<float>(ctx->lane_set_id);
+        ctx->output_values[2] = static_cast<float>(ctx->lane_id);
     }
 };
 

@@ -10,7 +10,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 8u  /* v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/*_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 9u  /* v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/*_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -352,11 +352,9 @@ typedef struct VividAudioContext {
     // ---- Lane metadata (populated by audio executor) ----
     // lane_count: number of lanes this node is lifted over (1 = not lifted).
     // lane_index: which lane this invocation processes (0..lane_count-1).
-    // lane_set_id: compile-time provenance (0 = scalar).
     // lane_id: stable identity token for identity-bearing lane sets (0 = positional).
     uint32_t          lane_count;
     uint32_t          lane_index;
-    uint32_t          lane_set_id;
     uint32_t          lane_id;
 
     // ---- Per-lane persistent state service (Phase 5) ----
@@ -414,7 +412,6 @@ typedef struct VividFrameContext {
     // ---- Lane metadata (read-only, populated by frame executor) ----
     uint32_t  lane_count;     // runtime materialized lane count (1 = scalar)
     uint32_t  lane_index;     // current lane in LoopBased (0 = scalar or first lane)
-    uint32_t  lane_set_id;    // compile-time provenance (0 = scalar)
     uint32_t  lane_id;        // stable identity token for vivid_lane_state() (0 = positional)
 
     // ---- Lane state service (populated for LoopBased frame nodes) ----

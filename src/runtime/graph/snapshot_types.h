@@ -94,7 +94,6 @@ struct RecordingTap {
 struct LaneLiftGroup {
     uint32_t node_idx;
     uint32_t lane_count;             // number of lanes to lift over
-    uint32_t lane_set_id;            // provenance of the lane set
     std::vector<void*> instances;    // [lane] → operator instance (instances[0] = primary)
     std::vector<uint32_t> lane_ids;  // [lane] → stable identity (0 = positional)
     // Per-lane mono buffers for process() calls

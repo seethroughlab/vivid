@@ -777,7 +777,7 @@ CommandResult RuntimeAPI::inspect(const std::string& node_id) {
     oss << node_id << " (" << node_display_name(*cn, desc) << ")\n";
     {
         static const char* lb_names[] = {"pointwise", "structural", "reduction", "kernel"};
-        uint8_t lb = static_cast<uint8_t>(cn->lane_behavior);
+        uint8_t lb = static_cast<uint8_t>(desc ? desc->lane_behavior : 0);
         if (lb < 4) oss << "  lane_behavior: " << lb_names[lb] << "\n";
     }
     if (cn->missing_operator) {

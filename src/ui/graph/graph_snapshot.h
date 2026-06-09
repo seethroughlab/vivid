@@ -292,8 +292,7 @@ struct ConnectionSnapshot {
     std::string invalid_reason;
 
     // Lane metadata (from compiled edge)
-    uint32_t lane_set_id = 0;
-    uint32_t lane_count  = 1;
+    uint32_t lane_count  = 1;   // effective wire width (×N badge)
     uint32_t data_type   = VIVID_PORT_SCALAR;
     uint8_t  curve       = 0;   // RemapCurve index
     // Value-model provenance + multiplicity (7e.5a; successors to lane_set_id /

@@ -153,13 +153,14 @@ struct CompiledEdge {
     VividPortTransport port_transport = VIVID_PORT_TRANSPORT_SIGNAL;
     uint32_t custom_payload_size = 0;
 
-    // Lane metadata (populated by compiler Pass 2.6).
-    uint32_t lane_set_id = 0;    // 0 = scalar
+    // Effective wire width — the runtime-refined element count on this edge
+    // (refined by the audio strategy planner; 1 = scalar). Used for the bridge
+    // capacity check + the UI ×N badge + health metrics.
     uint32_t lane_count  = 1;
 
-    // Value-model envelope (lane-value clean-break, Phase 2). Computed by the
-    // value-flow pass in parallel with the lane metadata above; not yet consumed
-    // by execution. Proven equivalent to lane_set_id/lane_count.
+    // Value-model envelope (lane-value clean-break) — type/multiplicity/identity/
+    // storage + provenance group. The sole multiplicity authority (Pass 2.6 lane
+    // sets retired in 7e.5b).
     ValueEnvelope value_envelope;
 
     // Remap helpers.
@@ -226,7 +227,6 @@ struct AudioNodeState {
     // Lane execution strategy (selected by compiler, not operator author).
     LaneExecutionStrategy execution_strategy = LaneExecutionStrategy::Scalar;
     uint32_t lane_lift_count = 0;   // 0 = no lifting, N = lift to N lanes
-    uint32_t lane_lift_set_id = 0;  // provenance of the lane set being lifted over
     int32_t lane_id_port = -1;  // lane-array port carrying identity-bearing lane_ids (-1 = positional)
 
     // Audio lane/string/custom bridging flags.
@@ -529,12 +529,7 @@ struct CompiledNode {
     // (control server, lockfile) use missing_operator_reason/_detail, not this.
     std::string missing_operator_ui_message;
 
-    // ── Lane metadata (populated by compiler Pass 2.6) ────────────────────
-    LaneBehavior lane_behavior = LaneBehavior::Pointwise;
-    std::vector<LaneSet> output_lane_sets;
-    std::vector<LaneSet> input_lane_sets;
-
-    // ── Value-model (lane-value clean-break, Phase 2) ─────────────────────
+    // ── Value-model (lane-value clean-break) ──────────────────────────────
     // multiplicity_behavior is set in Pass 1 from the descriptor; the value
     // envelopes are computed by the value-flow pass in parallel with the lane
     // sets above (not yet consumed by execution).
@@ -604,16 +599,6 @@ struct CompiledGraph {
         auto it = node_id_to_index.find(id);
         return it != node_id_to_index.end() ? &nodes[it->second] : nullptr;
     }
-
-    // Check if any audio-cadence node instances of a given type exist.
-    // Scans only audio_order (typically 2-5 nodes), not all nodes.
-    // Lane-set ID allocator (0 reserved for scalar).
-    uint32_t next_lane_set_id = 1;
-
-    // Value-flow (lane-value clean-break, Phase 2): count of edges where the
-    // inferred value multiplicity disagreed with the Pass-2.6 lane sets. 0 means
-    // the value-flow inference is fully equivalent to lane planning. Tests assert 0.
-    uint32_t value_flow_mismatches = 0;
 
     // Maximum lane count for LoopBased audio operators (from compiler options).
     uint32_t max_loop_lanes = 16;

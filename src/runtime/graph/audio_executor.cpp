@@ -158,7 +158,6 @@ bool AudioExecutor::build(AudioFrameBridge& bridge, CompiledGraph& cg,
         LaneLiftGroup group;
         group.node_idx = idx;
         group.lane_count = lanes;
-        group.lane_set_id = cn.audio->lane_lift_set_id;
 
         // Create additional instances (lane 0 uses primary instance).
         // INVARIANT: The audio engine must be stopped before this code runs.
@@ -1077,7 +1076,6 @@ void AudioExecutor::process_lifted_audio_node(CompiledNode& cn, AudioNodeState& 
         ctx.output_channel_counts = nullptr;
         ctx.lane_count = lanes;
         ctx.lane_index = c;
-        ctx.lane_set_id = group.lane_set_id;
         ctx.lane_id = group.lane_ids[c];
         // Note: allocate/retire use lane_state_ directly (not per-node context)
         populate_audio_value_views(ctx, cn);  // Phase 5b (per-lane value views)
@@ -1178,7 +1176,6 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
             ctx.output_channel_counts = nullptr;
             ctx.lane_count = loop_lanes;
             ctx.lane_index = c;
-            ctx.lane_set_id = cn.audio->lane_lift_set_id;
             ctx.lane_id = loop_lane_ids[c];
             populate_audio_value_views(ctx, cn);  // Phase 5b (per-lane value views)
 
@@ -1276,7 +1273,6 @@ void AudioExecutor::process_normal_audio_node(CompiledNode& cn, AudioNodeState& 
     ctx.output_channel_counts = a.output_channel_counts.data();
     ctx.lane_count = 1;
     ctx.lane_index = 0;
-    ctx.lane_set_id = 0;
     ctx.lane_id = 0;
 
     populate_audio_value_views(ctx, cn);  // Phase 5

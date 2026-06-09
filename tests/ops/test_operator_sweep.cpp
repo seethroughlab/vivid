@@ -391,7 +391,6 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     ctx.shared_handles      = vivid::shared_handle_service();
     ctx.lane_count          = 1;
     ctx.lane_index          = 0;
-    ctx.lane_set_id         = 0;
     ctx.lane_id             = 1;
     ctx.lane_state_fn       = sweep_lane_state_fn;
     ctx.lane_state_service  = &lane_state;
@@ -580,7 +579,6 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.shared_handles      = vivid::shared_handle_service();
             ctx.lane_count          = 1;
             ctx.lane_index          = 0;
-            ctx.lane_set_id         = 0;
             ctx.lane_id             = 1;
             ctx.lane_state_fn       = sweep_lane_state_fn;
             ctx.lane_state_service  = &lane_state;

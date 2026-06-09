@@ -785,12 +785,6 @@ void FrameExecutor::process_loopbased_node(CompiledNode& cn, uint32_t fi_ord,
             loop_lane_ids[c] = c + 1;
     }
 
-    // lane_set_id from compilation
-    uint32_t lane_set_id = 0;
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) { lane_set_id = ils.lane_set_id; break; }
-    }
-
     // Per-lane scratch for input/output values
     std::vector<float> lane_input_values(cn.input_port_count, 0.0f);
     std::vector<float> lane_output_values(cn.output_port_count, 0.0f);
@@ -819,7 +813,6 @@ void FrameExecutor::process_loopbased_node(CompiledNode& cn, uint32_t fi_ord,
         ctx.output_values = lane_output_values.data();
         ctx.lane_count = loop_lanes;
         ctx.lane_index = c;
-        ctx.lane_set_id = lane_set_id;
         ctx.lane_id = loop_lane_ids[c];
         ctx.lane_state_fn = lane_state_fn_bridge;
         ctx.lane_state_service = &frame_lane_contexts_[fi_ord];
@@ -875,10 +868,6 @@ void FrameExecutor::process_control_node(CompiledNode& cn,
     }
     ctx.lane_count = max_lane_len > 1 ? max_lane_len : 1;
     ctx.lane_index = 0;
-    ctx.lane_set_id = 0;
-    for (const auto& ils : cn.input_lane_sets) {
-        if (!ils.is_scalar()) { ctx.lane_set_id = ils.lane_set_id; break; }
-    }
 
     try {
         vivid::CrashGuard guard(cn.node_id.c_str());

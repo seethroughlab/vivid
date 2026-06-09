@@ -141,11 +141,11 @@ int main(int argc, char* argv[]) {
         auto* fft_node = runtime.compiled_graph()->find_node("fft");
         check(fft_node != nullptr, "fft node found");
         if (fft_node) {
-            check(fft_node->lane_behavior == vivid::LaneBehavior::Structural,
-                  "FFTAnalysis is Structural");
-            if (!fft_node->output_lane_sets.empty()) {
-                check(fft_node->output_lane_sets[0].lane_set_id > 0,
-                      "FFT output has non-scalar lane_set_id");
+            check(fft_node->multiplicity_behavior == VIVID_MULTIPLICITY_GENERATE,
+                  "FFTAnalysis is GENERATE (structural)");
+            if (!fft_node->output_value_envelopes.empty()) {
+                check(fft_node->output_value_envelopes[0].provenance_group_id > 0,
+                      "FFT output has a provenance group");
             }
         }
 

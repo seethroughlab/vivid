@@ -259,7 +259,6 @@ double run_once(vivid::OperatorLoader& loader, uint32_t frames, Measurement& m,
     ctx.output_buffers = output_ptrs.empty() ? nullptr : output_ptrs.data();
     ctx.lane_count = 1;
     ctx.lane_index = 0;
-    ctx.lane_set_id = 1;
     ctx.lane_id = 1;
     ctx.lane_state_fn = bench_lane_state;
 

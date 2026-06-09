@@ -43,7 +43,6 @@ struct ValueBuffer {
     std::vector<std::string>  strings;           // STRING
     std::vector<uint8_t>      bytes;             // CUSTOM (by value)
     uint32_t                  committed_count = 0;
-    uint32_t                  lane_set_id = 0;   // provenance (carried through propagation)
     std::atomic<uint32_t>     ref_count{0};
     bool                      pool_owned = false;
     // When true, ensure() may grow even if pool-owned. Set only for frame-thread
@@ -76,7 +75,6 @@ struct ValueBuffer {
         , strings(std::move(o.strings))
         , bytes(std::move(o.bytes))
         , committed_count(o.committed_count)
-        , lane_set_id(o.lane_set_id)
         , ref_count(o.ref_count.load(std::memory_order_relaxed))
         , pool_owned(o.pool_owned)
         , allow_grow(o.allow_grow)
@@ -97,7 +95,6 @@ struct ValueBuffer {
             strings = std::move(o.strings);
             bytes = std::move(o.bytes);
             committed_count = o.committed_count;
-            lane_set_id = o.lane_set_id;
             ref_count.store(o.ref_count.load(std::memory_order_relaxed), std::memory_order_relaxed);
             pool_owned = o.pool_owned;
             allow_grow = o.allow_grow;
