@@ -276,8 +276,8 @@ static void test_frame_state_lane_ports() {
     vivid::CompiledNode cn;
     vivid::GraphCompiler::init_frame_state(cn, &desc, nullptr, nullptr, "");
 
-    check(cn.c_in_lane_views.size() == 1, "1 input lane staging");
-    check(cn.c_out_lane_outputs.size() == 1, "1 output lane staging");
+    check(cn.c_in_value_views.size() == 1, "1 input value-view staging");
+    check(cn.c_out_value_outputs.size() == 1, "1 output value-output staging");
     check(cn.out_value_bufs.size() == 1, "output value buf allocated");
     check(cn.out_value_bufs[0].floats.size() == 1024, "value buf capacity 1024");
 }

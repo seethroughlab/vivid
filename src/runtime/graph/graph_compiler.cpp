@@ -268,7 +268,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             cn.input_lane_refs.resize(cn.input_port_count);
             cn.output_lane_refs.resize(cn.output_port_count);
 
-            cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
             // Native value transport (Phase 7a) — mirror init_frame_state.
             cn.input_value_refs.resize(cn.input_port_count);
             cn.output_value_refs.resize(cn.output_port_count);
@@ -277,11 +276,7 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                                graph_compiler_internal::kDefaultLaneCapacity);
-            cn.c_out_lane_outputs.resize(cn.output_port_count);
-            for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
 
-            cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
             cn.in_string_lane_ptrs.resize(cn.input_port_count);
             for (uint32_t p = 0; p < cn.input_port_count; ++p)
                 cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
@@ -290,9 +285,6 @@ std::unique_ptr<CompiledGraph> GraphCompiler::compile(
             for (uint32_t p = 0; p < cn.output_port_count; ++p)
                 cn.out_string_value_bufs.emplace_back(VIVID_VALUE_STRING,
                                                       graph_compiler_internal::kDefaultLaneCapacity);
-            cn.c_out_string_lane_outputs.resize(cn.output_port_count);
-            for (uint32_t p = 0; p < cn.output_port_count; ++p)
-                cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_value_bufs[p]);
 
             // Value-model staging (Phase 4) — must mirror init_frame_state so the
             // per-tick value-view loop is in-bounds for placeholder nodes too.

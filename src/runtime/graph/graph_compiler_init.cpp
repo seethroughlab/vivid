@@ -144,8 +144,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     cn.input_lane_refs.resize(cn.input_port_count);
     cn.output_lane_refs.resize(cn.output_port_count);
 
-    cn.c_in_lane_views.resize(cn.input_port_count, VividLaneView{});
-
     // Native value transport (lane-value clean-break Phase 7a). Node-local
     // out_value_bufs (pool_owned=false → ensure() grows on the frame thread).
     cn.input_value_refs.resize(cn.input_port_count);
@@ -156,21 +154,13 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
         cn.out_value_bufs.emplace_back(VIVID_VALUE_FLOAT,
                                        graph_compiler_internal::kDefaultLaneCapacity);
 
-    // Output adapters back onto out_value_bufs for ALL nodes (Phase 7b — both the
-    // frame and audio executors now run on the value substrate). Audio-block output
+    // Value-model staging. Inputs populated per-tick; outputs backed by
+    // out_value_bufs (float) / out_string_value_bufs (string). Audio-block output
     // ports are re-pointed per-tick by populate_audio_value_views to the runtime
-    // output_buffers; lane-array/scalar outputs flow through out_value_bufs.
-    cn.c_out_lane_outputs.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_lane_outputs[p] = make_lane_output(&cn.out_value_bufs[p]);
-
-    // Value-model staging (Phase 4a/4b). Inputs populated per-tick; outputs
-    // backed by the SAME transport the lane path uses (float→out_lane_bufs,
-    // string→out_string_lane_bufs) so value-API + lane-API operators interoperate.
+    // output_buffers.
     cn.c_in_value_views.resize(cn.input_port_count, VividValueView{});
     cn.c_out_value_outputs.resize(cn.output_port_count);
 
-    cn.c_in_string_lane_views.resize(cn.input_port_count, VividStringLaneView{});
     cn.in_string_lane_ptrs.resize(cn.input_port_count);
     for (uint32_t p = 0; p < cn.input_port_count; ++p)
         cn.in_string_lane_ptrs[p].resize(graph_compiler_internal::kDefaultLaneCapacity, nullptr);
@@ -179,9 +169,6 @@ void GraphCompiler::init_frame_state(CompiledNode& cn,
     for (uint32_t p = 0; p < cn.output_port_count; ++p)
         cn.out_string_value_bufs.emplace_back(VIVID_VALUE_STRING,
                                               graph_compiler_internal::kDefaultLaneCapacity);
-    cn.c_out_string_lane_outputs.resize(cn.output_port_count);
-    for (uint32_t p = 0; p < cn.output_port_count; ++p)
-        cn.c_out_string_lane_outputs[p] = make_string_lane_output(&cn.out_string_value_bufs[p]);
 
     // Per-port value-output backing (needs out_string_value_bufs to exist first).
     for (uint32_t p = 0; p < cn.output_port_count; ++p) {

@@ -24,26 +24,27 @@
 namespace fs = std::filesystem;
 
 // ============================================================================
-// Lane stub helpers for new VividLaneView / VividLaneOutput API
+// Value-API stub helpers (VividValueView / VividValueOutput)
 // ============================================================================
 
-// No-op output builder: discards all lane writes (tests don't inspect lane output).
-static float* noop_lane_resize(void* /*handle*/, uint32_t length) {
+// No-op output builder: discards all value writes (tests don't inspect output).
+static void* noop_value_resize(void* /*handle*/, uint32_t count) {
     static thread_local std::vector<float> scratch;
-    if (length > scratch.size()) scratch.resize(length, 0.0f);
+    if (count > scratch.size()) scratch.resize(count, 0.0f);
     return scratch.data();
 }
-static void noop_lane_commit(void* /*handle*/, uint32_t /*length*/) {}
+static void noop_value_commit(void* /*handle*/, uint32_t /*count*/) {}
 
-static std::vector<VividLaneView> make_stub_input_lane_views(uint32_t count) {
-    return std::vector<VividLaneView>(count, VividLaneView{});
+static std::vector<VividValueView> make_stub_input_value_views(uint32_t count) {
+    return std::vector<VividValueView>(count, VividValueView{});
 }
-static std::vector<VividLaneOutput> make_stub_output_lane_outputs(uint32_t count) {
-    VividLaneOutput stub{};
+static std::vector<VividValueOutput> make_stub_output_value_outputs(uint32_t count) {
+    VividValueOutput stub{};
     stub.handle = nullptr;
-    stub.resize = noop_lane_resize;
-    stub.commit = noop_lane_commit;
-    return std::vector<VividLaneOutput>(count, stub);
+    stub.resize = noop_value_resize;
+    stub.commit = noop_value_commit;
+    stub.set_string = nullptr;
+    return std::vector<VividValueOutput>(count, stub);
 }
 
 // ============================================================================
@@ -280,9 +281,9 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     std::vector<float> inputs(n_in_total, 0.0f);
     std::vector<float> outputs(n_out_total, 0.0f);
 
-    // Allocate lane stubs by full port count (operators index by port ordinal).
-    auto input_lanes = make_stub_input_lane_views(n_in_total);
-    auto output_lanes = make_stub_output_lane_outputs(n_out_total);
+    // Allocate value stubs by full port count (operators index by port ordinal).
+    auto input_views = make_stub_input_value_views(n_in_total);
+    auto output_builders = make_stub_output_value_outputs(n_out_total);
 
     VividFrameContext ctx{};
     ctx.time       = 0.0;
@@ -291,8 +292,8 @@ static bool smoke_control(vivid::OperatorLoader& loader, void* inst,
     ctx.param_values   = params.empty()      ? nullptr : params.data();
     ctx.input_values   = inputs.empty()      ? nullptr : inputs.data();
     ctx.output_values  = outputs.empty()     ? nullptr : outputs.data();
-    ctx.input_lanes  = input_lanes.empty()  ? nullptr : input_lanes.data();
-    ctx.output_lanes = output_lanes.empty() ? nullptr : output_lanes.data();
+    ctx.values         = input_views.empty()     ? nullptr : input_views.data();
+    ctx.value_outputs  = output_builders.empty() ? nullptr : output_builders.data();
 
     // Process a few ticks to let initialization settle.
     for (int t = 0; t < 3; t++) {
@@ -359,8 +360,8 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     std::vector<float*> in_ptrs, out_ptrs;
     for (auto& b : in_bufs)  in_ptrs.push_back(b.data());
     for (auto& b : out_bufs) out_ptrs.push_back(b.data());
-    auto input_lanes = make_stub_input_lane_views(n_in_total);
-    auto output_lanes = make_stub_output_lane_outputs(n_out_total);
+    auto input_views = make_stub_input_value_views(n_in_total);
+    auto output_builders = make_stub_output_value_outputs(n_out_total);
 
     // Build per-port channel count arrays so multi-channel operators
     // can read input_channel_counts / output_channel_counts safely.
@@ -383,8 +384,8 @@ static bool smoke_audio(vivid::OperatorLoader& loader, void* inst,
     ctx.input_buffers       = in_ptrs.empty()       ? nullptr : in_ptrs.data();
     ctx.output_buffers      = out_ptrs.empty()       ? nullptr : out_ptrs.data();
     ctx.param_values        = params.empty()         ? nullptr : params.data();
-    ctx.input_lanes         = input_lanes.empty()    ? nullptr : input_lanes.data();
-    ctx.output_lanes        = output_lanes.empty()   ? nullptr : output_lanes.data();
+    ctx.values              = input_views.empty()     ? nullptr : input_views.data();
+    ctx.value_outputs       = output_builders.empty() ? nullptr : output_builders.data();
     ctx.input_channel_counts  = in_ch_counts.data();
     ctx.output_channel_counts = out_ch_counts.data();
     ctx.shared_handles      = vivid::shared_handle_service();
@@ -518,15 +519,15 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
                 }
             }
             std::vector<float> ins(ni, 0.0f), outs(no, 0.0f);
-            auto si = make_stub_input_lane_views(ni);
-            auto so = make_stub_output_lane_outputs(no);
+            auto si = make_stub_input_value_views(ni);
+            auto so = make_stub_output_value_outputs(no);
             VividFrameContext ctx{};
             ctx.time = 0.0; ctx.delta_time = 0.016; ctx.frame = 0;
             ctx.param_values   = params.empty() ? nullptr : params.data();
             ctx.input_values   = ins.empty()    ? nullptr : ins.data();
             ctx.output_values  = outs.empty()   ? nullptr : outs.data();
-            ctx.input_lanes  = si.empty()     ? nullptr : si.data();
-            ctx.output_lanes = so.empty()     ? nullptr : so.data();
+            ctx.values         = si.empty()     ? nullptr : si.data();
+            ctx.value_outputs  = so.empty()     ? nullptr : so.data();
             loader.process_frame(inst, &ctx);
             for (uint32_t i = 0; i < no; i++)
                 if (!std::isfinite(outs[i])) return false;
@@ -563,8 +564,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             std::vector<float*> ip, op;
             for (auto& b : ibs) ip.push_back(b.data());
             for (auto& b : obs) op.push_back(b.data());
-            auto in_lanes = make_stub_input_lane_views(ni);
-            auto out_lanes = make_stub_output_lane_outputs(no);
+            auto in_views = make_stub_input_value_views(ni);
+            auto out_builders = make_stub_output_value_outputs(no);
             SweepLaneStateStore lane_state;
             VividAudioContext ctx{};
             ctx.sample_rate         = 44100;
@@ -572,8 +573,8 @@ static bool test_param_boundary(vivid::OperatorLoader& loader, void* inst,
             ctx.input_buffers       = ip.empty() ? nullptr : ip.data();
             ctx.output_buffers      = op.empty() ? nullptr : op.data();
             ctx.param_values        = params.empty() ? nullptr : params.data();
-            ctx.input_lanes         = in_lanes.empty() ? nullptr : in_lanes.data();
-            ctx.output_lanes        = out_lanes.empty() ? nullptr : out_lanes.data();
+            ctx.values              = in_views.empty() ? nullptr : in_views.data();
+            ctx.value_outputs       = out_builders.empty() ? nullptr : out_builders.data();
             ctx.input_channel_counts  = ich.data();
             ctx.output_channel_counts = och.data();
             ctx.shared_handles      = vivid::shared_handle_service();

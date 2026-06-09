@@ -46,7 +46,7 @@ static void reset_lane_states() { g_lane_states.clear(); }
 
 struct LaneOutBuf {
     std::vector<float> data;
-    static float* resize_cb(void* h, uint32_t len) {
+    static void* resize_cb(void* h, uint32_t len) {
         auto* self = static_cast<LaneOutBuf*>(h);
         self->data.assign(len, 0.0f);
         return self->data.data();
@@ -63,7 +63,7 @@ struct Harness {
     float* out_bufs[3] = {trigger_buf, gate_buf, step_buf};
 
     LaneOutBuf pattern_lane_buf;
-    VividLaneOutput lane_outputs[4] = {};
+    VividValueOutput value_outputs[4] = {};
 
     void* custom_outs[1] = {nullptr};
 
@@ -78,10 +78,10 @@ struct Harness {
         ctx.lane_state_service = nullptr;
         ctx.lane_id            = 1;
 
-        lane_outputs[3].handle = &pattern_lane_buf;
-        lane_outputs[3].resize = LaneOutBuf::resize_cb;
-        lane_outputs[3].commit = LaneOutBuf::commit_cb;
-        ctx.output_lanes = lane_outputs;
+        value_outputs[3].handle = &pattern_lane_buf;
+        value_outputs[3].resize = LaneOutBuf::resize_cb;
+        value_outputs[3].commit = LaneOutBuf::commit_cb;
+        ctx.value_outputs = value_outputs;
 
         ctx.custom_outputs      = custom_outs;
         ctx.custom_output_count = 1;

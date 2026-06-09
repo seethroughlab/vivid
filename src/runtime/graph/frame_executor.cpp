@@ -219,31 +219,15 @@ void FrameExecutor::tick(CompiledGraph& cg, const GraphMetronomeSample& metronom
             continue;
         }
 
-        // ── Build lane view/output staging (from the value transport) ───
-        // c_in_lane_views is the legacy lane-API operator input (still used by
-        // test fixture ops); populate it from input_value_refs so lane-API and
-        // value-API operators see the same data. Removed in 7d with the lane API.
-        for (uint32_t p = 0; p < cn.input_port_count; ++p) {
-            const auto& ref = cn.input_value_refs[p];
-            cn.c_in_lane_views[p].data = ref.floats();
-            cn.c_in_lane_views[p].length = ref.count();
-            // Propagate lane provenance from compile-time metadata or ref.
-            cn.c_in_lane_views[p].lane_set_id =
-                (ref && ref.buf->lane_set_id != 0) ? ref.buf->lane_set_id
-                : (p < cn.input_lane_sets.size() && !cn.input_lane_sets[p].is_scalar())
-                    ? cn.input_lane_sets[p].lane_set_id : 0;
-            cn.c_in_lane_views[p].flags = 0;
-        }
+        // ── Build value-view input staging (from the value transport) ───
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_value_bufs[p].reset();
         }
+        // Rebuild c_str() pointers for string inputs (feeds the value-view string
+        // path below via in_string_lane_ptrs).
         for (uint32_t p = 0; p < cn.input_port_count; ++p) {
             for (size_t si = 0; si < cn.input_string_lanes[p].size() && si < cn.in_string_lane_ptrs[p].size(); ++si)
                 cn.in_string_lane_ptrs[p][si] = cn.input_string_lanes[p][si].c_str();
-            cn.c_in_string_lane_views[p].data = cn.in_string_lane_ptrs[p].data();
-            cn.c_in_string_lane_views[p].length = static_cast<uint32_t>(cn.input_string_lanes[p].size());
-            cn.c_in_string_lane_views[p].lane_set_id = 0;
-            cn.c_in_string_lane_views[p].flags = 0;
         }
         for (uint32_t p = 0; p < cn.output_port_count; ++p) {
             cn.out_string_value_bufs[p].reset();
@@ -541,8 +525,6 @@ void FrameExecutor::populate_frame_context(VividFrameContext& ctx, CompiledNode&
     ctx.frame = frame;
     ctx.node_id = cn.node_id.c_str();
     ctx.param_values = cn.param_values.data();
-    ctx.input_lanes = cn.c_in_lane_views.data();
-    ctx.output_lanes = cn.c_out_lane_outputs.data();
     ctx.values = cn.c_in_value_views.empty() ? nullptr : cn.c_in_value_views.data();
     ctx.value_outputs = cn.c_out_value_outputs.empty() ? nullptr : cn.c_out_value_outputs.data();
     ctx.custom_inputs = cn.resolved_custom_inputs.data();
@@ -551,8 +533,6 @@ void FrameExecutor::populate_frame_context(VividFrameContext& ctx, CompiledNode&
     ctx.custom_output_count = static_cast<uint32_t>(cn.custom_output_buf.size());
     ctx.input_string_values = cn.c_input_string_values.data();
     ctx.output_string_values = cn.c_output_string_values.data();
-    ctx.input_string_lanes = cn.c_in_string_lane_views.data();
-    ctx.output_string_lanes = cn.c_out_string_lane_outputs.data();
     ctx.file_param_values = cn.file_param_ptrs.empty() ? nullptr : cn.file_param_ptrs.data();
     ctx.file_param_count = static_cast<uint32_t>(cn.file_param_ptrs.size());
     ctx.input = const_cast<void*>(static_cast<const void*>(input));
@@ -578,8 +558,6 @@ void FrameExecutor::process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32
     gpu_ctx.input_values     = cn.input_values.data();
     gpu_ctx.output_values    = cn.output_values.data();
     gpu_ctx.input_connected  = cn.input_connected.data();
-    gpu_ctx.input_lanes  = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-    gpu_ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
 
     // GPU storage-buffer lane inputs (Phase 4).
     if (!cn.gpu->lane_input_gpu_promoted.empty()) {
@@ -609,10 +587,6 @@ void FrameExecutor::process_gpu_node(CompiledGraph& cg, CompiledNode& cn, uint32
                                 ? nullptr : cn.c_input_string_values.data();
     gpu_ctx.output_string_values = cn.c_output_string_values.empty()
                                 ? nullptr : cn.c_output_string_values.data();
-    gpu_ctx.input_string_lanes = cn.c_in_string_lane_views.empty()
-                                ? nullptr : cn.c_in_string_lane_views.data();
-    gpu_ctx.output_string_lanes = cn.c_out_string_lane_outputs.empty()
-                                ? nullptr : cn.c_out_string_lane_outputs.data();
     gpu_ctx.file_param_values = cn.file_param_ptrs.empty()
                                 ? nullptr : cn.file_param_ptrs.data();
     gpu_ctx.file_param_count  = static_cast<uint32_t>(cn.file_param_ptrs.size());

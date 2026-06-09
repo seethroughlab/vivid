@@ -20,6 +20,25 @@ namespace {
 
 using AudioClock = std::chrono::steady_clock;
 
+// 7e.2: bridged/audio-direct many-float inputs stage directly into c_in_value_views
+// (the value-native staging) — successor to the removed c_in_lane_views shim.
+inline bool is_many_float_input(const CompiledNode& cn, uint32_t p) {
+    return p < cn.input_port_multiplicities.size() &&
+           cn.input_port_multiplicities[p] == VIVID_MULTIPLICITY_MANY &&
+           p < cn.input_port_value_types.size() &&
+           cn.input_port_value_types[p] == VIVID_VALUE_FLOAT;
+}
+
+inline void set_many_float_view(VividValueView& vv, const float* data, uint32_t count) {
+    vv.data          = (count > 0) ? static_cast<const void*>(data) : nullptr;
+    vv.value_count   = count;
+    vv.value_type    = VIVID_VALUE_FLOAT;
+    vv.multiplicity  = (count > 1) ? VIVID_MULTIPLICITY_MANY : VIVID_MULTIPLICITY_SCALAR;
+    vv.storage_kind  = VIVID_STORAGE_BRIDGE_SLOT;
+    vv.identity_mode = VIVID_IDENTITY_NONE;
+    vv.flags         = 0;
+}
+
 float compute_port_peak(const float* buf, uint32_t channel_count,
                         uint32_t planar_stride, uint32_t frame_count) {
     if (!buf || channel_count == 0 || frame_count == 0) return 0.0f;
@@ -499,16 +518,14 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
             for (size_t p = 0; p < a.audio_local_params.size() && p < snap.node_params[i].size(); ++p)
                 a.audio_local_params[p] = snap.node_params[i][p];
         }
-        // Populate lane views directly from bridge snapshot (zero-copy).
-        // Bridge data is double-buffered and valid for the entire callback.
+        // Stage many-float inputs directly from the bridge snapshot (zero-copy)
+        // into c_in_value_views. Bridge data is double-buffered, valid for the
+        // entire callback. (7e.2: value-native staging; c_in_lane_views removed.)
         if (a.has_lane_ports && i < snap.lane_inputs.size()) {
             for (size_t p = 0; p < cn.input_port_count && p < snap.lane_inputs[i].size(); ++p) {
-                if (p >= cn.c_in_lane_views.size()) continue;
+                if (p >= cn.c_in_value_views.size() || !is_many_float_input(cn, p)) continue;
                 const auto& ss = snap.lane_inputs[i][p];
-                cn.c_in_lane_views[p].data = (ss.length > 0) ? ss.data : nullptr;
-                cn.c_in_lane_views[p].length = ss.length;
-                cn.c_in_lane_views[p].lane_set_id = ss.lane_set_id;
-                cn.c_in_lane_views[p].flags = 0;
+                set_many_float_view(cn.c_in_value_views[p], ss.data, ss.length);
             }
         }
         // Copy string inputs and rebuild c_str() pointers
@@ -665,13 +682,13 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                              cn.node_id.c_str(), (void*)cn.loader,
                              cn.audio_instance ? cn.audio_instance : cn.instance, cn.errored);
             }
-            // Debug lane data
+            // Debug many-value input data
             if (kDebugAudio) {
-                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
-                    if (cn.c_in_lane_views[p].length > 0) {
-                        std::fprintf(stderr, "[audio-debug] node '%s' input_lane[%u] len=%u val[0]=%.2f\n",
-                                     cn.node_id.c_str(), p, cn.c_in_lane_views[p].length,
-                                     cn.c_in_lane_views[p].data[0]);
+                for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
+                    if (is_many_float_input(cn, p) && cn.c_in_value_views[p].value_count > 0) {
+                        std::fprintf(stderr, "[audio-debug] node '%s' input_many[%u] len=%u val[0]=%.2f\n",
+                                     cn.node_id.c_str(), p, cn.c_in_value_views[p].value_count,
+                                     static_cast<const float*>(cn.c_in_value_views[p].data)[0]);
                     }
                 }
             }
@@ -728,18 +745,16 @@ void AudioExecutor::audio_callback(float* output, uint32_t frame_count) {
                 continue;
             }
 
-            // Set up lane views and output builders for context.
-            // Priority: refs (audio-direct routing) > bridge views (already
-            // populated from snapshot above) > empty.
-            for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
+            // Stage many-float inputs for the value context.
+            // Priority: refs (audio-direct routing) > bridge views (already staged
+            // from the snapshot above) > empty. (7e.2: value-native staging.)
+            for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
+                if (!is_many_float_input(cn, p)) continue;
                 if (p < cn.input_value_refs.size() && cn.input_value_refs[p]) {
                     const auto& ref = cn.input_value_refs[p];
-                    cn.c_in_lane_views[p].data = ref.floats();
-                    cn.c_in_lane_views[p].length = ref.count();
-                    cn.c_in_lane_views[p].lane_set_id = 0;
-                    cn.c_in_lane_views[p].flags = 0;
+                    set_many_float_view(cn.c_in_value_views[p], ref.floats(), ref.count());
                 }
-                // Otherwise keep whatever was set during snapshot unpack (or empty).
+                // Otherwise keep whatever was staged during snapshot unpack (or empty).
             }
             for (uint32_t p = 0; p < cn.output_port_count && p < cn.out_value_bufs.size(); ++p) {
                 cn.out_value_bufs[p].reset();
@@ -1013,8 +1028,6 @@ void AudioExecutor::populate_audio_context(VividAudioContext& ctx, CompiledNode&
     ctx.param_values = a.audio_local_params.data();
     ctx.buffer_size = chunk;
     ctx.sample_rate = sample_rate_;
-    ctx.input_lanes = cn.c_in_lane_views.empty() ? nullptr : cn.c_in_lane_views.data();
-    ctx.output_lanes = cn.c_out_lane_outputs.empty() ? nullptr : cn.c_out_lane_outputs.data();
     ctx.input_string_values = cn.c_input_string_values.empty() ? nullptr : cn.c_input_string_values.data();
     ctx.custom_inputs = a.has_custom_input_ports ? cn.resolved_custom_inputs.data() : nullptr;
     ctx.custom_input_count = static_cast<uint32_t>(cn.custom_input_port_indices.size());
@@ -1109,9 +1122,9 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
     // ── LoopBased: single instance, runtime-driven loop over lanes ──
     // Discover lane count from lane inputs at runtime.
     uint32_t loop_lanes = 0;
-    for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_lane_views.size(); ++p) {
-        if (cn.c_in_lane_views[p].length > loop_lanes)
-            loop_lanes = cn.c_in_lane_views[p].length;
+    for (uint32_t p = 0; p < cn.input_port_count && p < cn.c_in_value_views.size(); ++p) {
+        if (is_many_float_input(cn, p) && cn.c_in_value_views[p].value_count > loop_lanes)
+            loop_lanes = cn.c_in_value_views[p].value_count;
     }
     uint32_t max_ll = graph_->max_loop_lanes;
     if (loop_lanes > max_ll) {
@@ -1126,11 +1139,12 @@ void AudioExecutor::process_loopbased_audio_node(CompiledNode& cn, AudioNodeStat
         auto* loop_lane_ids = loop_lane_ids_scratch_.data();
         int32_t lid_port = a.lane_id_port;
         bool has_identity_ids = false;
-        if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_lane_views.size()) {
-            const auto& lid_sp = cn.c_in_lane_views[lid_port];
-            if (lid_sp.length >= loop_lanes) {
+        if (lid_port >= 0 && static_cast<uint32_t>(lid_port) < cn.c_in_value_views.size()) {
+            const auto& lid_sp = cn.c_in_value_views[lid_port];
+            if (lid_sp.value_count >= loop_lanes && lid_sp.data) {
+                const float* lid_data = static_cast<const float*>(lid_sp.data);
                 for (uint32_t c = 0; c < loop_lanes; ++c)
-                    loop_lane_ids[c] = static_cast<uint32_t>(lid_sp.data[c]);
+                    loop_lane_ids[c] = static_cast<uint32_t>(lid_data[c]);
                 has_identity_ids = true;
             }
         }
@@ -1218,44 +1232,24 @@ void AudioExecutor::populate_audio_value_views(VividAudioContext& ctx, CompiledN
         const bool many_in =
             p < cn.input_port_multiplicities.size() &&
             cn.input_port_multiplicities[p] == VIVID_MULTIPLICITY_MANY;
-        const bool many_float_in =
-            many_in && cn.input_port_value_types[p] == VIVID_VALUE_FLOAT;
-        const bool many_string_in =
-            many_in && cn.input_port_value_types[p] == VIVID_VALUE_STRING;
-        if (many_float_in && p < cn.c_in_lane_views.size()) {
-            // Bridged many (float) input (cross-cadence): carry the FULL array — the
-            // operator indexes it by ctx->lane_index. (Value-model gate, 7d.)
-            const VividLaneView& lv = cn.c_in_lane_views[p];
-            vv.data         = lv.data;
-            vv.value_count  = lv.length;
-            vv.value_type   = VIVID_VALUE_FLOAT;
-            vv.multiplicity = (lv.length > 1) ? VIVID_MULTIPLICITY_MANY
-                                              : VIVID_MULTIPLICITY_SCALAR;
-            vv.storage_kind = VIVID_STORAGE_BRIDGE_SLOT;
-            vv.identity_mode = VIVID_IDENTITY_NONE;
-            vv.flags = 0;
-        } else if (many_string_in && p < cn.c_in_string_lane_views.size()) {
-            const VividStringLaneView& sv = cn.c_in_string_lane_views[p];
-            vv.data         = sv.data;
-            vv.value_count  = sv.length;
-            vv.value_type   = VIVID_VALUE_STRING;
-            vv.multiplicity = (sv.length > 1) ? VIVID_MULTIPLICITY_MANY
-                                              : VIVID_MULTIPLICITY_SCALAR;
-            vv.storage_kind = VIVID_STORAGE_BRIDGE_SLOT;
-            vv.identity_mode = VIVID_IDENTITY_NONE;
-            vv.flags = 0;
-        } else {
-            // Audio block, or a scalar control carried as a 1-sample block.
-            vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
-            vv.value_count  = 1;
-            vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
-            vv.value_type   = (p < cn.input_port_value_types.size() &&
-                               cn.input_port_value_types[p] == VIVID_VALUE_AUDIO)
-                                  ? VIVID_VALUE_AUDIO : VIVID_VALUE_FLOAT;
-            vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
-            vv.identity_mode = VIVID_IDENTITY_NONE;
-            vv.flags = 0;
+        if (many_in) {
+            // Many inputs are staged before dispatch: many-float from the bridge
+            // snapshot / audio-direct refs (set_many_float_view) — the operator
+            // carries the FULL array and indexes it by ctx->lane_index. Leave them
+            // as staged. (7e.2 — value-native staging; audio many-string has no
+            // transport and no consumer, so it stays default-empty.)
+            continue;
         }
+        // Audio block, or a scalar control carried as a 1-sample block.
+        vv.data         = ctx.input_buffers ? ctx.input_buffers[p] : nullptr;
+        vv.value_count  = 1;
+        vv.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        vv.value_type   = (p < cn.input_port_value_types.size() &&
+                           cn.input_port_value_types[p] == VIVID_VALUE_AUDIO)
+                              ? VIVID_VALUE_AUDIO : VIVID_VALUE_FLOAT;
+        vv.storage_kind = VIVID_STORAGE_AUDIO_BLOCK;
+        vv.identity_mode = VIVID_IDENTITY_NONE;
+        vv.flags = 0;
     }
     for (uint32_t p = 0; p < cn.output_port_count && p < cn.c_out_value_outputs.size(); ++p) {
         if (p < cn.output_port_types.size() &&

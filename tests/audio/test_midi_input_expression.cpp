@@ -41,7 +41,6 @@ struct TestFrameContext {
     TestFrameContext() {
         ctx.param_values     = param_values;
         ctx.output_values    = output_values;
-        ctx.output_lanes     = nullptr;       // no lane outputs anymore
         ctx.custom_outputs   = custom_outputs;
         ctx.custom_output_count = 1;
         ctx.time        = 0.0;

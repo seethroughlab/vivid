@@ -76,15 +76,14 @@ struct BootstrapLaneSourceOp : vivid::OperatorBase, vivid::FrameProcessable {
         float b = ctx->param_values[0];
         int n = static_cast<int>(ctx->param_values[1]);
         ctx->output_values[0] = b;
-        if (ctx->output_lanes) {
-            auto& osp = ctx->output_lanes[0];
+        if (ctx->value_outputs) {
             uint32_t len = static_cast<uint32_t>(n);
-            float* buf = osp.resize(osp.handle, len);
+            float* buf = vivid_value_output_floats(&ctx->value_outputs[0], len);
             if (buf) {
                 for (uint32_t i = 0; i < len; ++i) {
                     buf[i] = b * static_cast<float>(i + 1);
                 }
-                osp.commit(osp.handle, len);
+                vivid_value_output_commit(&ctx->value_outputs[0], len);
             }
         }
     }
@@ -111,16 +110,15 @@ struct BootstrapLaneSinkOp : vivid::OperatorBase, vivid::FrameProcessable {
 
     void process_frame(const VividFrameContext* ctx) override {
         ctx->output_values[0] = ctx->input_values[0];
-        if (ctx->input_lanes && ctx->output_lanes) {
-            const auto& isp = ctx->input_lanes[0];
-            auto& osp = ctx->output_lanes[0];
-            uint32_t len = isp.length;
-            float* buf = osp.resize(osp.handle, len);
+        if (ctx->values && ctx->value_outputs) {
+            const float* src = vivid_value_floats(&ctx->values[0]);
+            uint32_t len = vivid_value_count(&ctx->values[0]);
+            float* buf = vivid_value_output_floats(&ctx->value_outputs[0], len);
             if (buf) {
                 for (uint32_t i = 0; i < len; ++i) {
-                    buf[i] = isp.data[i];
+                    buf[i] = src ? src[i] : 0.0f;
                 }
-                osp.commit(osp.handle, len);
+                vivid_value_output_commit(&ctx->value_outputs[0], len);
             }
         }
     }

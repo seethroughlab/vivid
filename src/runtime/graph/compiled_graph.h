@@ -8,7 +8,7 @@
 #include "runtime/graph/lane_types.h"
 #include "runtime/graph/lane_buffer.h"
 #include "runtime/graph/value_buffer.h"
-#include "runtime/graph/lane_output_adapter.h"
+#include "runtime/graph/value_output_adapter.h"
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -459,15 +459,11 @@ struct CompiledNode {
     std::vector<std::vector<std::string>> input_string_lanes;
     std::vector<std::vector<std::string>> output_string_lanes;
 
-    // Pre-allocated staging for the lane-API shim (test fixture ops; removed 7d.5e).
-    std::vector<VividLaneView> c_in_lane_views;
-    std::vector<VividLaneOutput> c_out_lane_outputs;
-    // Value-model staging (lane-value clean-break, Phase 4a). The value views are
-    // populated per-tick; the value outputs are backed by out_value_bufs.
+    // Value-model input/output staging (lane-value clean-break). The value views are
+    // populated per-tick; the value outputs are backed by out_value_bufs /
+    // out_string_value_bufs (string).
     std::vector<VividValueView> c_in_value_views;
     std::vector<VividValueOutput> c_out_value_outputs;
-    std::vector<VividStringLaneView> c_in_string_lane_views;
-    std::vector<VividStringLaneOutput> c_out_string_lane_outputs;
     // String OUTPUT buffers on the value substrate (ValueBuffer STRING; Phase 7d.4 —
     // was StringLaneBuffer). Both the lane-API + value-API string output adapters back
     // onto these; readback syncs .strings → output_string_lanes.
