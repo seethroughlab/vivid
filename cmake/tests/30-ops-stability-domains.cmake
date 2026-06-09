@@ -1071,6 +1071,16 @@ target_link_libraries(test_value_normalization PRIVATE
 add_dependencies(test_value_normalization lane_source_op lane_sink_op add_many_op)
 add_test(NAME test_value_normalization COMMAND test_value_normalization ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# Value-model stress suite (lane-value Phase 8e) — identity churn, recompile, sustained overflow.
+add_executable(test_value_stress
+    tests/lanes/test_value_stress.cpp
+)
+target_include_directories(test_value_stress PRIVATE src tests)
+target_link_libraries(test_value_stress PRIVATE
+    vivid_runtime_testlib vivid_operator_api nlohmann_json::nlohmann_json webgpu)
+add_dependencies(test_value_stress lane_source_op lane_sink_op lane_frame_op audio_lane_op)
+add_test(NAME test_value_stress COMMAND test_value_stress ${CMAKE_BINARY_DIR} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
 add_executable(test_compute_lane_equivalence tests/lanes/test_compute_lane_equivalence.cpp)
 target_include_directories(test_compute_lane_equivalence PRIVATE src tests)
 target_link_libraries(test_compute_lane_equivalence PRIVATE vivid_runtime_testlib vivid_operator_api webgpu)
