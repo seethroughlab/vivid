@@ -21,6 +21,20 @@ Vivid 4 starts from the hard-learned lessons of Vivid Classic:
 - The agent should work in session concepts first: tracks, clips, scenes, bindings, variations,
   explanations, and task proofs.
 
+## Scope
+
+Vivid is for real-time audiovisual works where audio, visuals, interaction, and performance state
+shape each other:
+
+- live audiovisual performance
+- song-like audiovisual pieces
+- interactive and generative installations
+- museum, gallery, and branded experiential work
+- creative prototyping where hearing, seeing, and modifying the system must stay close together
+
+Vivid is not trying to become a game engine, a traditional DAW, a film/video post-production tool, a
+general desktop app framework, or a replacement for mature synths and effects.
+
 ## Core Principles
 
 ### 1. Session First
@@ -66,7 +80,62 @@ idea as a permanent core operator.
 Core operators belong only when they are infrastructure-like, broadly necessary across projects, or
 essential to the default session workflow. Everything else starts as project-local code or a package.
 
-### 6. Agent-First Workflows
+### 6. Experimentation First
+
+The central product loop is try, perceive, branch, compare, and refine. Vivid should make it cheap to
+audition ideas, inspect what happened, keep the good accidents, and ask the agent for focused
+variations.
+
+Audio and visual exploration have different rhythms. Audio often needs stable loops, A/B comparison,
+musical context, and theory-aware variation. Visual exploration can mutate faster against a stable
+musical anchor. The interface should support both without pretending they are the same activity.
+
+### 7. Text Is the Source of Truth
+
+The project state should be readable, diffable, recoverable, and agent-addressable. Session
+structure, clips, bindings, plugin references, visual states, and project-local code should have a
+clear textual representation.
+
+The visual interface is an authoring and performance surface over that state, not the only place the
+truth exists.
+
+### 8. See Every Step
+
+The user and agent should be able to inspect what is happening at each meaningful layer: active
+scene, queued launches, clip content, generated variations, plugin roles, control signals, visual
+bindings, and the lower-level graph or code that implements them.
+
+Vivid should favor explainable state over hidden magic. When the Drop looks more intense, the system
+should be able to answer in scene, clip, and binding language before requiring graph topology.
+
+### 9. Hot Reload Project Code
+
+Custom project code should feel immediate. Editing a visual behavior, theory generator, mapping
+helper, or local operator should preserve the session whenever possible and return feedback quickly
+enough to stay in the creative loop.
+
+Hot reload is a product requirement because it protects experimentation, not because dynamic loading
+is inherently valuable.
+
+### 10. Creator Tools, Not Developer Tools
+
+Vivid should integrate with the user's existing development environment rather than absorbing it.
+External editors, source control, package managers, plugin installers, and asset tools remain the
+right homes for their own jobs.
+
+The Vivid interface should focus on real-time feedback, performance control, inspection,
+coordination, and agent-mediated authoring.
+
+### 11. Do Not Reinvent the Wheel
+
+Vivid should rely on excellent existing tools where they already solve the problem: VST3/CLAP/AU
+plugins for sound, external IDEs for code, normal text files for project state, and mature libraries
+for specialized runtime needs.
+
+Vivid's job is to make those parts playable, inspectable, reactive, and agent-authorable as one
+environment.
+
+### 12. Agent-First Workflows
 
 The agent should not be forced to reason in raw graph topology for normal work. It should be able to:
 
@@ -76,6 +145,38 @@ The agent should not be forced to reason in raw graph topology for normal work. 
 - explain why a scene sounds or looks a certain way
 - identify which musical signals drive which visual behaviors
 - suggest code only when the environment needs new project-local behavior
+
+The agent also needs perception and evaluation tools. It should be able to capture output, inspect
+semantic state, compare variations, explain tradeoffs, and verify task proofs using the same product
+concepts the user sees.
+
+## Retained Lessons From Vivid Classic
+
+The reboot should preserve the strongest ideas from Vivid Classic while rejecting the parts that made
+the system harder to steer.
+
+Keep:
+
+- audio and visuals as equal creative domains
+- unified, inspectable relationships between music, control, and visuals
+- fast feedback loops for parameters, routing, and project-local code
+- text-backed state that both people and agents can read
+- structured perception and diagnostics for agent workflows
+- a sharp, content-forward interface that makes domains legible without decorative chrome
+
+Revise:
+
+- audio-visual parity means equal power and inspectability, not symmetric interfaces
+- the node graph becomes the deep implementation view, not the default workspace
+- the built-in operator set becomes minimal seed infrastructure, not an ever-growing catalog
+- the agent works in session concepts first and authors code only when the environment needs it
+
+Reject:
+
+- no-master-clock temporal plurality for music authoring
+- rebuilding mature synths and effects inside Vivid
+- requiring graph vocabulary for the primary one-song loop workflow
+- promoting project-specific code into core before repeated use proves the abstraction
 
 ## Primary Surface: Vivid Session View
 
@@ -130,8 +231,8 @@ The first Vivid 4 proof is a one-song loop:
 
 The pressure-test plan and disposable HTML mock are the current source of truth for this proof:
 
-- [`docs/plans/vivid-4-session-view-pressure-test.md`](plans/vivid-4-session-view-pressure-test.md)
-- [`docs/prototypes/vivid-4-session-view.html`](prototypes/vivid-4-session-view.html)
+- [`docs/experiments/session-view-pressure-test.md`](../experiments/session-view-pressure-test.md)
+- [`docs/experiments/session-view-pressure-test.html`](../experiments/session-view-pressure-test.html)
 
 ## Development Gate
 
