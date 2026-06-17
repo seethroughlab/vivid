@@ -406,7 +406,7 @@
 
     .footer-proof {
       display: grid;
-      grid-template-columns: repeat(7, 1fr);
+      grid-template-columns: repeat(8, 1fr);
       gap: 1px;
       border-top: 1px solid var(--line);
       background: var(--line);
@@ -824,7 +824,8 @@
         ["launchedDrop", "Drop", "High-energy state"],
         ["visualExplained", "Explain visual", "Bindings visible"],
         ["bassVariations", "Bass variants", "Agent creates clips"],
-        ["kickBound", "Kick binding", "AV mapping added"]
+        ["kickBound", "Kick binding", "AV mapping added"],
+        ["dropExplained", "Why Drop", "Drop explained"]
       ];
       $("proofList").innerHTML = items.map(([key, title, text]) => `
         <div class="proof-item ${state.proof[key] ? "done" : ""}">

@@ -27,7 +27,7 @@ Use one canonical session in the first clickable mock:
 - **Primary interactions:** launch scenes, select tracks/clips/scenes, inspect visual bindings, ask the agent for variations, and explain why the Drop is more intense.
 
 The initial disposable HTML mock lives at
-[`docs/prototypes/vivid-4-session-view.html`](../prototypes/vivid-4-session-view.html).
+[`docs/experiments/session-view-pressure-test.html`](session-view-pressure-test.html).
 
 ## HTML Prototype Gate
 
