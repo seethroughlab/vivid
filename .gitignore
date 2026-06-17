@@ -1,0 +1,90 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# Editor and workspace state
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# Logs and diagnostics
+*.log
+logs/
+crash/
+crashes/
+diagnostics/
+
+# CMake and native build output
+build/
+build-*/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Testing/
+CTestTestfile.cmake
+
+# Native binaries and generated libraries
+*.app
+*.dSYM/
+*.dylib
+*.so
+*.dll
+*.a
+*.o
+*.obj
+*.exe
+
+# Generated runtime artifacts
+artifacts/
+captures/
+screenshots/
+recordings/
+reports/
+tmp/
+temp/
+
+# Node and web tooling
+node_modules/
+.npm/
+.pnpm-store/
+dist/
+.vite/
+.next/
+
+# Python caches and tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Rust tooling, if used for prototypes or tools
+target/
+
+# Xcode and Apple tooling
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
+
+# Local package/link caches
+.vivid/
+
+# Codex/local agent scratch
+.codex/
+.agents/
