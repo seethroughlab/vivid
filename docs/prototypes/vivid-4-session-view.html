@@ -1,0 +1,957 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivid 4 Session View Pressure Test</title>
+  <style>
+    :root {
+      --bg: #16191d;
+      --panel: #1a1d21;
+      --cell: #22262b;
+      --cell-2: #272c31;
+      --line: #2f353b;
+      --line-hot: #46505a;
+      --text: #e8eaed;
+      --muted: #8a8f98;
+      --audio: #f0a030;
+      --gpu: #4ecdc4;
+      --control: #c0c8d0;
+      --ok: #78d08b;
+      --warn: #f0c060;
+      --bad: #ff6b6b;
+      --purple: #b48cff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    button, input, select {
+      font: inherit;
+      color: inherit;
+    }
+
+    button {
+      background: var(--cell);
+      border: 1px solid var(--line);
+      color: var(--text);
+      padding: 7px 10px;
+      cursor: pointer;
+    }
+
+    button:hover, button:focus {
+      border-color: var(--line-hot);
+      outline: none;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 58px 1fr;
+      min-height: 100vh;
+    }
+
+    .transport {
+      display: grid;
+      grid-template-columns: auto auto auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #14171b;
+    }
+
+    .brand {
+      font-size: 15px;
+      color: var(--text);
+      padding-right: 10px;
+      border-right: 1px solid var(--line);
+    }
+
+    .transport-block {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .transport-label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .transport-value {
+      color: var(--text);
+      font-size: 17px;
+    }
+
+    .queued {
+      color: var(--warn);
+    }
+
+    .main {
+      display: grid;
+      grid-template-columns: minmax(720px, 1fr) 350px;
+      min-height: 0;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    .session-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--cell);
+      padding: 5px 8px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .pill.hot {
+      color: var(--text);
+      border-color: var(--audio);
+    }
+
+    .grid-wrap {
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .session-grid {
+      display: grid;
+      grid-template-columns: 134px repeat(7, minmax(118px, 1fr));
+      min-width: 1050px;
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+
+    .grid-cell,
+    .grid-head,
+    .scene-cell {
+      min-height: 82px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--cell);
+      padding: 8px;
+      position: relative;
+    }
+
+    .grid-head {
+      min-height: 92px;
+      background: #1b2025;
+    }
+
+    .scene-cell {
+      background: #1c2025;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 5px;
+    }
+
+    .corner {
+      background: #15191d;
+    }
+
+    .track-kind {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .track-name {
+      font-size: 13px;
+      line-height: 1.25;
+      overflow-wrap: anywhere;
+    }
+
+    .track-meter {
+      height: 5px;
+      margin-top: 9px;
+      background: #111418;
+      border: 1px solid #30363d;
+    }
+
+    .track-meter span {
+      display: block;
+      height: 100%;
+      background: var(--audio);
+    }
+
+    .track-head-visual .track-meter span { background: var(--gpu); }
+    .track-head-map .track-meter span { background: var(--control); }
+
+    .scene-title {
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+
+    .scene-intent {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .scene-actions {
+      display: flex;
+      gap: 5px;
+    }
+
+    .scene-actions button {
+      width: 30px;
+      height: 26px;
+      padding: 0;
+    }
+
+    .clip-cell {
+      cursor: pointer;
+      transition: background 120ms linear, border-color 120ms linear;
+    }
+
+    .clip-cell:hover {
+      background: var(--cell-2);
+    }
+
+    .clip-cell.active {
+      box-shadow: inset 0 0 0 2px var(--audio);
+    }
+
+    .clip-cell.selected {
+      outline: 2px solid var(--gpu);
+      outline-offset: -3px;
+    }
+
+    .clip-cell.queued {
+      box-shadow: inset 0 0 0 2px var(--warn);
+    }
+
+    .clip-name {
+      font-size: 12px;
+      line-height: 1.25;
+      min-height: 31px;
+      overflow-wrap: anywhere;
+    }
+
+    .clip-meta {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .tag {
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      padding: 2px 4px;
+      background: #171a1e;
+      white-space: nowrap;
+    }
+
+    .tag.audio { color: var(--audio); }
+    .tag.gpu { color: var(--gpu); }
+    .tag.control { color: var(--control); }
+    .tag.hot { color: var(--ok); }
+    .tag.warn { color: var(--warn); }
+
+    .mini-preview {
+      height: 19px;
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 2px;
+    }
+
+    .mini-preview span {
+      background: #30363d;
+      min-width: 0;
+    }
+
+    .mini-preview span.on-audio { background: var(--audio); }
+    .mini-preview span.on-gpu { background: var(--gpu); }
+    .mini-preview span.on-control { background: var(--control); }
+
+    .inspector {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      background: var(--panel);
+    }
+
+    .inspect-scroll {
+      overflow: auto;
+      padding: 14px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      background: #171b1f;
+      margin-bottom: 12px;
+    }
+
+    .section-title {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .section-body {
+      padding: 10px;
+    }
+
+    .title-big {
+      font-size: 18px;
+      line-height: 1.25;
+      margin-bottom: 8px;
+    }
+
+    .body-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid #242a30;
+      font-size: 12px;
+    }
+
+    .row:last-child { border-bottom: 0; }
+
+    .row span:first-child { color: var(--muted); }
+    .row span:last-child { text-align: right; }
+
+    .binding {
+      border: 1px solid var(--line);
+      padding: 8px;
+      margin-bottom: 8px;
+      background: var(--cell);
+      cursor: pointer;
+    }
+
+    .binding.selected {
+      border-color: var(--gpu);
+    }
+
+    .binding-path {
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.35;
+      margin-bottom: 5px;
+    }
+
+    .binding-path .source { color: var(--audio); }
+    .binding-path .dest { color: var(--gpu); }
+
+    .agent {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      background: #14171b;
+    }
+
+    .agent-actions {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .agent-log {
+      border: 1px solid var(--line);
+      background: #111418;
+      min-height: 82px;
+      padding: 9px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .footer-proof {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      border-top: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .proof-item {
+      background: #15191d;
+      padding: 9px 8px;
+      min-height: 56px;
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+
+    .proof-item.done {
+      color: var(--ok);
+    }
+
+    .proof-item b {
+      display: block;
+      color: var(--text);
+      margin-bottom: 3px;
+    }
+
+    .is-hidden {
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      .main {
+        grid-template-columns: 1fr;
+      }
+
+      .inspector {
+        border-top: 1px solid var(--line);
+        min-height: 520px;
+      }
+
+      .transport {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .footer-proof {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="transport">
+      <div class="brand">VIVID 4 SESSION PROOF</div>
+      <div class="transport-block">
+        <span class="transport-label">Transport</span>
+        <span class="transport-value" id="transportReadout">124 BPM / 4-4</span>
+      </div>
+      <div class="transport-block">
+        <span class="transport-label">Now</span>
+        <span class="transport-value" id="barReadout">Bar 17 Beat 1</span>
+      </div>
+      <div class="transport-block">
+        <span class="transport-label">Active Scene</span>
+        <span class="transport-value" id="activeSceneReadout">Verse</span>
+      </div>
+      <div class="transport-block">
+        <span class="transport-label">Queued</span>
+        <span class="transport-value queued" id="queuedReadout">none</span>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="workspace">
+        <div class="session-toolbar">
+          <div class="toolbar-left">
+            <span class="pill hot">Quantize: Bar</span>
+            <span class="pill">Key: D minor</span>
+            <span class="pill">Loop: 4 scenes</span>
+            <span class="pill">Graph hidden: primary path</span>
+          </div>
+          <div class="toolbar-right">
+            <button id="loadSessionBtn">Load One-Song Loop</button>
+            <button id="explainDropBtn">Why Drop?</button>
+          </div>
+        </div>
+
+        <div class="grid-wrap">
+          <div class="session-grid" id="sessionGrid"></div>
+        </div>
+
+        <div class="footer-proof" id="proofList"></div>
+      </section>
+
+      <aside class="inspector">
+        <div class="inspect-scroll">
+          <div class="section">
+            <div class="section-title">
+              <span>Selection</span>
+              <span id="selectionKind">clip</span>
+            </div>
+            <div class="section-body" id="selectionPanel"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <span>Visual Bindings</span>
+              <span id="bindingCount">0</span>
+            </div>
+            <div class="section-body" id="bindingPanel"></div>
+          </div>
+
+          <div class="section">
+            <div class="section-title">
+              <span>Mock MCP Overview</span>
+              <span>agent-readable</span>
+            </div>
+            <div class="section-body">
+              <div class="body-copy" id="mcpPanel"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="agent">
+          <div class="section-title" style="border:0; padding:0 0 9px 0;">
+            <span>Agent Actions</span>
+            <span>mocked</span>
+          </div>
+          <div class="agent-actions">
+            <button id="variationsBtn">Generate 3 Bass Variations</button>
+            <button id="bindKickBtn">Bind Kick -> Particle Burst</button>
+            <button id="explainBtn">Explain Selected State</button>
+          </div>
+          <div class="agent-log" id="agentLog">
+            Select a clip, scene, or binding. Agent actions operate in session language.
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      transport: { bpm: 124, meter: "4/4", bar: 17, beat: 1, quantize: "bar" },
+      activeScene: "verse",
+      queuedScene: "",
+      selected: { type: "clip", id: "bass_verse" },
+      proof: {
+        loaded: false,
+        launchedVerse: true,
+        launchedChorus: false,
+        launchedDrop: false,
+        visualExplained: false,
+        bassVariations: false,
+        kickBound: false,
+        dropExplained: false
+      },
+      tracks: [
+        { id: "drums", name: "Drums", kind: "instrument", accent: "audio", meter: 82 },
+        { id: "bass", name: "Bass", kind: "instrument", accent: "audio", meter: 74 },
+        { id: "chords", name: "Chords", kind: "instrument", accent: "audio", meter: 50 },
+        { id: "lead", name: "Lead", kind: "instrument", accent: "audio", meter: 32 },
+        { id: "particles", name: "Particles", kind: "visual", accent: "gpu", meter: 68 },
+        { id: "camera", name: "Camera/Palette", kind: "visual", accent: "gpu", meter: 44 },
+        { id: "mapping", name: "AV Mapping", kind: "mapping", accent: "control", meter: 100 }
+      ],
+      scenes: [
+        { id: "intro", name: "Intro", intent: "Establish pulse with sparse visuals." },
+        { id: "verse", name: "Verse", intent: "Tight groove, readable rhythm, low visual density." },
+        { id: "chorus", name: "Chorus", intent: "Open harmony and wider visual response." },
+        { id: "drop", name: "Drop", intent: "High energy: bass, particles, camera shake, heavy mappings." }
+      ],
+      clips: {
+        intro: {
+          drums: { id: "drums_intro", name: "Half Kick", kind: "drum", tags: ["kick", "sparse"], pattern: "1000100010000000" },
+          bass: { id: "bass_intro", name: "Sub Hints", kind: "midi", tags: ["Dmin", "sub"], pattern: "1000000010000000" },
+          chords: { id: "chords_intro", name: "Air Pad", kind: "plugin", tags: ["Pigments", "pad"], pattern: "1000000000000000" },
+          lead: { id: "lead_intro", name: "Muted", kind: "midi", tags: ["off"], pattern: "0000000000000000" },
+          particles: { id: "particles_intro", name: "Dust Field", kind: "visual", tags: ["low density"], pattern: "1000100010001000" },
+          camera: { id: "camera_intro", name: "Wide Blue", kind: "visual", tags: ["blue", "wide"], pattern: "1000000010000000" },
+          mapping: { id: "mapping_intro", name: "Light Pulse", kind: "binding", tags: ["kick -> glow"], pattern: "1000100010000000" }
+        },
+        verse: {
+          drums: { id: "drums_verse", name: "Tight Hats", kind: "drum", tags: ["closed hat", "sync"], pattern: "1010101010101010" },
+          bass: { id: "bass_verse", name: "D Minor Pulse", kind: "theory", tags: ["Dmin", "root/fifth"], pattern: "1000101010001010" },
+          chords: { id: "chords_verse", name: "Muted Stabs", kind: "midi", tags: ["i-bVI", "short"], pattern: "1000100010001000" },
+          lead: { id: "lead_verse", name: "Answer Motif", kind: "midi", tags: ["call/response"], pattern: "0000100000001000" },
+          particles: { id: "particles_verse", name: "Sparse Drift", kind: "visual", tags: ["bass env"], pattern: "1000100010001000" },
+          camera: { id: "camera_verse", name: "Locked Wide", kind: "visual", tags: ["stable"], pattern: "1000000000000000" },
+          mapping: { id: "mapping_verse", name: "Bass Size", kind: "binding", tags: ["bass -> size"], pattern: "1000101010001010" }
+        },
+        chorus: {
+          drums: { id: "drums_chorus", name: "Open Hats", kind: "drum", tags: ["open", "drive"], pattern: "1011101110111011" },
+          bass: { id: "bass_chorus", name: "Wide Reese", kind: "plugin", tags: ["Serum", "macro A"], pattern: "1000111010001110" },
+          chords: { id: "chords_chorus", name: "Bright Lift", kind: "theory", tags: ["i-III-bVI"], pattern: "1000100010001000" },
+          lead: { id: "lead_chorus", name: "Hook", kind: "midi", tags: ["high", "repeat"], pattern: "0010001000100010" },
+          particles: { id: "particles_chorus", name: "Dense Swarm", kind: "visual", tags: ["snare flash"], pattern: "1010101010101010" },
+          camera: { id: "camera_chorus", name: "Slow Orbit", kind: "visual", tags: ["warm"], pattern: "1000100010001000" },
+          mapping: { id: "mapping_chorus", name: "Beat Reactive", kind: "binding", tags: ["kick/snare"], pattern: "1011101110111011" }
+        },
+        drop: {
+          drums: { id: "drums_drop", name: "Break Kit", kind: "drum", tags: ["full", "fill"], pattern: "1110111011101110" },
+          bass: { id: "bass_drop", name: "Distorted Drop", kind: "plugin", tags: ["Serum", "drive"], pattern: "1001111010011110" },
+          chords: { id: "chords_drop", name: "Chord Cuts", kind: "midi", tags: ["stabs"], pattern: "1000100010101000" },
+          lead: { id: "lead_drop", name: "Glitch Hook", kind: "midi", tags: ["probability"], pattern: "0010011010010110" },
+          particles: { id: "particles_drop", name: "Burst Swarm", kind: "visual", tags: ["kick burst"], pattern: "1110111011101110" },
+          camera: { id: "camera_drop", name: "Shake Amber", kind: "visual", tags: ["shake", "amber"], pattern: "1010101010101010" },
+          mapping: { id: "mapping_drop", name: "Heavy Reactivity", kind: "binding", tags: ["energy"], pattern: "1111111111111111" }
+        }
+      },
+      bindings: [
+        { id: "b1", scene: "verse", source: "Bass envelope", dest: "Particles / size", curve: "soft exponential", timing: "smoothed 80 ms", scope: "Verse + Chorus", why: "Keeps verse movement tied to groove without literal flashing." },
+        { id: "b2", scene: "chorus", source: "Snare transient", dest: "Particles / flash", curve: "fast peak", timing: "bar synced", scope: "Chorus + Drop", why: "Makes the backbeat visible while the harmony opens." },
+        { id: "b3", scene: "drop", source: "Kick onset", dest: "Particles / burst count", curve: "hard gate", timing: "instant", scope: "Drop", why: "Each kick increases particle density, making the Drop visibly heavier." },
+        { id: "b4", scene: "drop", source: "Scene energy", dest: "Camera / shake", curve: "limited ramp", timing: "2 bar fade", scope: "Drop", why: "Camera movement rises with the arrangement instead of jittering randomly." },
+        { id: "b5", scene: "drop", source: "Chord brightness", dest: "Palette / amber-cyan mix", curve: "linear", timing: "per chord", scope: "Chorus + Drop", why: "Harmony changes become color changes without needing graph inspection." }
+      ]
+    };
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+
+    function clipFor(sceneId, trackId) {
+      return state.clips[sceneId][trackId];
+    }
+
+    function sceneById(id) {
+      return state.scenes.find(scene => scene.id === id);
+    }
+
+    function selectedClip() {
+      for (const scene of state.scenes) {
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          if (clip.id === state.selected.id) {
+            return { clip, scene, track };
+          }
+        }
+      }
+      return null;
+    }
+
+    function bindingsForSelection() {
+      if (state.selected.type === "binding") {
+        return state.bindings.filter(binding => binding.id === state.selected.id);
+      }
+      if (state.selected.type === "track") {
+        const track = state.tracks.find(item => item.id === state.selected.id);
+        if (!track) return [];
+        if (track.kind === "visual") {
+          return state.bindings.filter(binding => binding.dest.startsWith(track.name.split("/")[0]));
+        }
+        if (track.kind === "mapping") {
+          return state.bindings;
+        }
+        return state.bindings.filter(binding => binding.source.toLowerCase().includes(track.name.toLowerCase()));
+      }
+      if (state.selected.type === "scene") {
+        return state.bindings.filter(binding => binding.scene === state.selected.id);
+      }
+      const selected = selectedClip();
+      if (!selected) return state.bindings.filter(binding => binding.scene === state.activeScene);
+      if (selected.track.id === "mapping") {
+        return state.bindings.filter(binding => binding.scene === selected.scene.id);
+      }
+      if (selected.track.kind === "visual") {
+        return state.bindings.filter(binding => binding.dest.startsWith(selected.track.name.split("/")[0]));
+      }
+      return state.bindings.filter(binding => binding.scene === selected.scene.id);
+    }
+
+    function miniPreview(pattern, accent) {
+      const cls = accent === "gpu" ? "on-gpu" : accent === "control" ? "on-control" : "on-audio";
+      return `<div class="mini-preview">${pattern.split("").map(v => `<span class="${v === "1" ? cls : ""}"></span>`).join("")}</div>`;
+    }
+
+    function renderGrid() {
+      const grid = $("sessionGrid");
+      grid.innerHTML = "";
+      grid.insertAdjacentHTML("beforeend", `<div class="grid-head corner"><div class="track-kind">Session</div><div class="track-name">One-Song Loop</div><div class="body-copy">Launch scenes; inspect clips and bindings.</div></div>`);
+      for (const track of state.tracks) {
+        const headCls = track.accent === "gpu" ? "track-head-visual" : track.accent === "control" ? "track-head-map" : "";
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="grid-head ${headCls}" data-select-type="track" data-id="${track.id}">
+            <div class="track-kind">${track.kind}</div>
+            <div class="track-name">${track.name}</div>
+            <div class="track-meter"><span style="width:${track.meter}%"></span></div>
+          </div>
+        `);
+      }
+
+      for (const scene of state.scenes) {
+        const active = scene.id === state.activeScene ? "hot" : "";
+        const queued = scene.id === state.queuedScene ? "warn" : "";
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="scene-cell" data-select-type="scene" data-id="${scene.id}">
+            <div class="scene-title">${scene.name}</div>
+            <div class="scene-intent">${scene.intent}</div>
+            <div class="scene-actions">
+              <button data-launch="${scene.id}" title="Launch ${scene.name}">></button>
+              <span class="tag ${active || queued}">${active ? "active" : queued ? "queued" : "ready"}</span>
+            </div>
+          </div>
+        `);
+
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          const selected = state.selected.type === "clip" && state.selected.id === clip.id ? "selected" : "";
+          const active = scene.id === state.activeScene ? "active" : "";
+          const queued = scene.id === state.queuedScene ? "queued" : "";
+          const tags = clip.tags.map(tag => `<span class="tag ${track.accent}">${tag}</span>`).join("");
+          grid.insertAdjacentHTML("beforeend", `
+            <div class="grid-cell clip-cell ${selected} ${active} ${queued}" data-select-type="clip" data-id="${clip.id}">
+              <div class="clip-name">${clip.name}</div>
+              <div class="clip-meta">
+                <span class="tag ${track.accent}">${clip.kind}</span>
+                ${tags}
+              </div>
+              ${miniPreview(clip.pattern, track.accent)}
+            </div>
+          `);
+        }
+      }
+    }
+
+    function renderSelection() {
+      $("selectionKind").textContent = state.selected.type;
+      const panel = $("selectionPanel");
+      if (state.selected.type === "scene") {
+        const scene = sceneById(state.selected.id);
+        const assigned = state.tracks.map(track => {
+          const clip = clipFor(scene.id, track.id);
+          return `<div class="row"><span>${track.name}</span><span>${clip.name}</span></div>`;
+        }).join("");
+        panel.innerHTML = `
+          <div class="title-big">${scene.name}</div>
+          <div class="body-copy">${scene.intent}</div>
+          <div class="row"><span>Launch</span><span>${state.transport.quantize} boundary</span></div>
+          <div class="row"><span>Role</span><span>scene assignments</span></div>
+          <div style="margin-top:10px">${assigned}</div>
+        `;
+        return;
+      }
+
+      if (state.selected.type === "binding") {
+        const binding = state.bindings.find(item => item.id === state.selected.id);
+        panel.innerHTML = `
+          <div class="title-big">${binding.source} -> ${binding.dest}</div>
+          <div class="body-copy">${binding.why}</div>
+          <div class="row"><span>Curve</span><span>${binding.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${binding.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${binding.scope}</span></div>
+        `;
+        return;
+      }
+
+      if (state.selected.type === "track") {
+        const track = state.tracks.find(item => item.id === state.selected.id);
+        const clips = state.scenes.map(scene => clipFor(scene.id, track.id));
+        panel.innerHTML = `
+          <div class="title-big">${track.name}</div>
+          <div class="body-copy">Typed ${track.kind} track. Clips on this track are behavior capsules across scenes.</div>
+          <div class="row"><span>Kind</span><span>${track.kind}</span></div>
+          <div class="row"><span>Meter</span><span>${track.meter}%</span></div>
+          <div class="row"><span>Clips</span><span>${clips.map(clip => clip.name).join(", ")}</span></div>
+        `;
+        return;
+      }
+
+      const selected = selectedClip();
+      if (!selected) return;
+      const { clip, scene, track } = selected;
+      panel.innerHTML = `
+        <div class="title-big">${clip.name}</div>
+        <div class="body-copy">${track.name} clip in ${scene.name}. This is a ${clip.kind} behavior capsule, not a raw graph node.</div>
+        <div class="row"><span>Track</span><span>${track.name}</span></div>
+        <div class="row"><span>Track kind</span><span>${track.kind}</span></div>
+        <div class="row"><span>Clip kind</span><span>${clip.kind}</span></div>
+        <div class="row"><span>Scene</span><span>${scene.name}</span></div>
+        <div class="row"><span>Tags</span><span>${clip.tags.join(", ")}</span></div>
+      `;
+    }
+
+    function renderBindings() {
+      const bindings = bindingsForSelection();
+      $("bindingCount").textContent = String(bindings.length);
+      $("bindingPanel").innerHTML = bindings.map(binding => `
+        <div class="binding ${state.selected.type === "binding" && state.selected.id === binding.id ? "selected" : ""}" data-select-type="binding" data-id="${binding.id}">
+          <div class="binding-path"><span class="source">${binding.source}</span> -> <span class="dest">${binding.dest}</span></div>
+          <div class="body-copy">${binding.why}</div>
+          <div class="clip-meta">
+            <span class="tag control">${binding.curve}</span>
+            <span class="tag gpu">${binding.timing}</span>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderMcpPanel() {
+      const tracks = state.tracks.length;
+      const scenes = state.scenes.length;
+      const clips = state.scenes.length * state.tracks.length;
+      $("mcpPanel").innerHTML = `
+        inspect_session_overview() would return ${tracks} tracks, ${scenes} scenes,
+        ${clips} clips, ${state.bindings.length} visual bindings, active_scene="${state.activeScene}",
+        queued_scene="${state.queuedScene || "none"}", bpm=${state.transport.bpm},
+        meter="${state.transport.meter}".
+      `;
+    }
+
+    function renderProof() {
+      const items = [
+        ["loaded", "Load session", "One-song loop exists"],
+        ["launchedVerse", "Verse", "Active scene launches"],
+        ["launchedChorus", "Chorus", "Scene launch path"],
+        ["launchedDrop", "Drop", "High-energy state"],
+        ["visualExplained", "Explain visual", "Bindings visible"],
+        ["bassVariations", "Bass variants", "Agent creates clips"],
+        ["kickBound", "Kick binding", "AV mapping added"]
+      ];
+      $("proofList").innerHTML = items.map(([key, title, text]) => `
+        <div class="proof-item ${state.proof[key] ? "done" : ""}">
+          <b>${title}</b>${state.proof[key] ? "passed" : text}
+        </div>
+      `).join("");
+    }
+
+    function renderTransport() {
+      $("transportReadout").textContent = `${state.transport.bpm} BPM / ${state.transport.meter}`;
+      $("barReadout").textContent = `Bar ${state.transport.bar} Beat ${state.transport.beat}`;
+      $("activeSceneReadout").textContent = sceneById(state.activeScene).name;
+      $("queuedReadout").textContent = state.queuedScene ? sceneById(state.queuedScene).name + " at next bar" : "none";
+    }
+
+    function renderAll() {
+      renderTransport();
+      renderGrid();
+      renderSelection();
+      renderBindings();
+      renderMcpPanel();
+      renderProof();
+    }
+
+    function select(type, id) {
+      state.selected = { type, id };
+      if (type === "clip") {
+        const selected = selectedClip();
+        if (selected && selected.track.kind === "visual") {
+          state.proof.visualExplained = true;
+        }
+      }
+      renderAll();
+    }
+
+    function launchScene(sceneId) {
+      state.queuedScene = sceneId;
+      renderAll();
+      window.setTimeout(() => {
+        state.activeScene = sceneId;
+        state.queuedScene = "";
+        state.transport.bar += 4;
+        if (sceneId === "verse") state.proof.launchedVerse = true;
+        if (sceneId === "chorus") state.proof.launchedChorus = true;
+        if (sceneId === "drop") state.proof.launchedDrop = true;
+        select("scene", sceneId);
+        log(`Launched ${sceneById(sceneId).name} on the next bar. Session View stayed on tracks, clips, scenes, and bindings.`);
+      }, 520);
+    }
+
+    function log(message) {
+      $("agentLog").textContent = message;
+    }
+
+    document.addEventListener("click", event => {
+      const launch = event.target.closest("[data-launch]");
+      if (launch) {
+        event.stopPropagation();
+        launchScene(launch.dataset.launch);
+        return;
+      }
+
+      const target = event.target.closest("[data-select-type]");
+      if (target) {
+        select(target.dataset.selectType, target.dataset.id);
+      }
+    });
+
+    $("loadSessionBtn").addEventListener("click", () => {
+      state.proof.loaded = true;
+      state.activeScene = "verse";
+      state.selected = { type: "scene", id: "verse" };
+      log("Loaded the one-song loop: 7 typed tracks, 4 scenes, behavior clips, and AV bindings.");
+      renderAll();
+    });
+
+    $("variationsBtn").addEventListener("click", () => {
+      state.proof.bassVariations = true;
+      log("generate_clip_variations(track_id='bass', clip_id='bass_verse', count=3): Ghost Pulse, Octave Push, Syncopated Reese. These stay compatible with Verse/Chorus scenes.");
+      select("clip", "bass_verse");
+    });
+
+    $("bindKickBtn").addEventListener("click", () => {
+      state.proof.kickBound = true;
+      const exists = state.bindings.some(binding => binding.id === "b6");
+      if (!exists) {
+        state.bindings.push({
+          id: "b6",
+          scene: state.activeScene,
+          source: "Kick onset",
+          dest: "Particles / burst amount",
+          curve: "hard gate",
+          timing: "instant",
+          scope: sceneById(state.activeScene).name,
+          why: "New mock binding: kick hits now visibly push particle bursts in the active scene."
+        });
+      }
+      log("create_av_binding(source='kick_onset', destination='particles.burst_amount'): added to the active scene without opening the graph.");
+      select("binding", "b6");
+    });
+
+    $("explainBtn").addEventListener("click", () => {
+      if (state.selected.type === "scene" && state.selected.id === "drop") {
+        state.proof.dropExplained = true;
+      }
+      if (state.selected.type === "clip") {
+        const selected = selectedClip();
+        log(`explain_session_state(): ${selected.clip.name} is a ${selected.clip.kind} clip on ${selected.track.name}; it participates in ${selected.scene.name} and exposes session-level intent before graph details.`);
+      } else if (state.selected.type === "binding") {
+        const binding = state.bindings.find(item => item.id === state.selected.id);
+        log(`explain_session_state(): ${binding.source} drives ${binding.dest}; curve=${binding.curve}; timing=${binding.timing}; reason=${binding.why}`);
+      } else {
+        const scene = sceneById(state.selected.id);
+        log(`explain_session_state(): ${scene.name} coordinates track clips and visual bindings. ${scene.intent}`);
+      }
+      renderAll();
+    });
+
+    $("explainDropBtn").addEventListener("click", () => {
+      state.proof.dropExplained = true;
+      state.activeScene = "drop";
+      state.selected = { type: "scene", id: "drop" };
+      log("The Drop looks more intense because Break Kit, Distorted Drop, Burst Swarm, Shake Amber, and Heavy Reactivity all launch together; Kick onset and Scene energy bindings increase particle density and camera motion.");
+      renderAll();
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
