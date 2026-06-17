@@ -17,5 +17,6 @@ The first proof target is Session View:
 
 Start with:
 
+- `docs/PRD.md`
 - `docs/plans/vivid-4-session-view-pressure-test.md`
 - `docs/prototypes/vivid-4-session-view.html`
