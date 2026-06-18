@@ -107,6 +107,8 @@ Progress notes:
 
 - See `docs/experiments/session-view-pressure-test.md`.
 - Current prototype: `docs/experiments/session-view-pressure-test.html`.
+- Interface reset guidance: `docs/experiments/session-view-interface-reset.md`.
+- Full application shell explorations are parked until the Session View primary path passes.
 
 ## Phase 2: Agent Workflow Proof
 

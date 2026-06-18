@@ -12,6 +12,7 @@ job well.
 - `research/vivid-classic-lessons.md` - lessons from Vivid Classic and its commit history
 - `experiments/session-view-pressure-test.md` - first Session View pressure test
 - `experiments/session-view-pressure-test.html` - disposable clickable mock
+- `experiments/session-view-interface-reset.md` - guidance for keeping Phase 1 focused
 
 ## Document Types
 

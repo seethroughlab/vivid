@@ -40,17 +40,48 @@ The mock must show:
 - scene x track grid with typed tracks and clip cells
 - selected clip/scene inspector
 - visual binding inspector
-- agent action panel
+- mocked agent action panel or transcript for the scripted agent tasks
 - enough mocked session state to explain what is active, what will launch, and what drives visuals
 
-The mock is disposable product evidence. It is not a commitment to HTML as the production UI
-technology.
+The mock may represent agent work with a lightweight panel or transcript, but it should not decide
+the final agent integration model. Whether the production agent is embedded, external-only, or a
+hybrid is outside the Phase 1 interface proof.
+
+The mock is disposable product evidence, not a commitment to HTML as the production UI technology.
+
+## Phase 1 Scope Reset
+
+The current Phase 1 job is to prove the Session View primary path. It is not to design the full
+Vivid application shell.
+
+Keep in scope:
+
+- Session View as the first and dominant surface.
+- Master transport, active/queued launch state, tracks, clips, scenes, and selection.
+- Visual bindings as first-class, inspectable objects.
+- A small live visual preview only when it helps explain bindings or scene intensity.
+- Mocked agent actions that complete the scripted one-song loop tasks.
+
+Keep out of scope for this prototype:
+
+- top-level Stage mode
+- top-level Graph mode
+- scoped operator network editing
+- project-local code browser/editor
+- final MCP architecture decisions
+- final production navigation model
+
+Explorations that include those ideas should be treated as later-phase research, not as the Phase 1
+prototype unless the Phase 1 task proof specifically demands them.
 
 ## High-Level MCP Tool Sketch
 
 These tools are product-level planning targets only. Do not implement them until the HTML mock proves
 that the workflow is useful. They should layer on top of the existing graph/session tools rather than
 replace them.
+
+The Phase 1 mock can show agent actions as a lightweight product placeholder. Phase 2 should decide
+the real agent workflow surface with mocked MCP responses and separate pressure testing.
 
 | Tool | Purpose |
 |------|---------|
