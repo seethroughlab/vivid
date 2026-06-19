@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivid 4 Full Interface Prototype</title>
+  <link rel="stylesheet" href="vivid.css">
+  <style>
+    /* layout/shell only — shared identity lives in vivid.css */
+    .app { display: grid; grid-template-rows: 58px 1fr; height: 100vh; }
+    .transport { display: grid; grid-template-columns: auto auto auto auto 1fr auto; gap: 14px; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--line); background: #14171b; }
+    .main { display: grid; grid-template-columns: minmax(640px, 1fr) 360px; min-height: 0; }
+    .workspace { min-width: 0; border-right: 1px solid var(--line); display: grid; grid-template-rows: auto 1fr; }
+    .ws-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
+    .ws-title { font-size: 13px; }
+    .ws-sub { color: var(--muted); font-size: 11px; }
+    .ws-body { overflow: auto; min-height: 0; padding: 14px; }
+    .session-grid { display: grid; grid-template-columns: 130px repeat(7, minmax(104px, 1fr)); min-width: 940px; border-top: 1px solid var(--hair); border-left: 1px solid var(--hair); }
+    .grid-cell, .grid-head, .scene-cell { min-height: 72px; border-right: 1px solid var(--hair); border-bottom: 1px solid var(--hair); background: transparent; padding: 9px; position: relative; }
+    .grid-head { min-height: 56px; background: transparent; }
+    .scene-cell { background: transparent; display: grid; grid-template-rows: auto 1fr auto; gap: 4px; }
+    .stage { display: grid; grid-template-columns: 220px 1fr; gap: 12px; height: 100%; min-height: 460px; }
+    .layer-stack { display: flex; flex-direction: column; gap: 6px; }
+    .stage-canvas-wrap { position: relative; border: 1px solid var(--line); background: #0c0e11; min-height: 460px; }
+    #stageCanvas { width: 100%; height: 100%; display: block; }
+    .look { margin-top: 12px; }
+    .net-canvas { position: relative; width: 680px; max-width: 100%; height: 330px; border: 1px solid var(--line); background: #0c0e11; }
+    .net-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .graph-clusters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; align-items: start; }
+    .cluster { border: 1px solid var(--line); background: var(--cell); padding: 10px; }
+    .cluster h4 { margin: 0 0 8px; font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: normal; }
+    .node-mini { border: 1px solid var(--line); padding: 5px 7px; margin-bottom: 5px; font-size: 11px; cursor: pointer; background: #171a1e; }
+    .node-mini:hover { border-color: var(--line-hot); }
+    .right { min-width: 0; display: grid; grid-template-rows: auto auto 1fr; background: var(--panel); min-height: 0; }
+    .preview-wrap { border-bottom: 1px solid var(--line); padding: 12px; }
+    .preview-canvas { width: 100%; height: 150px; display: block; border: 1px solid var(--line); background: #0c0e11; }
+    .section { border-bottom: 1px solid var(--hair); }
+    .agent { border-top: 1px solid var(--line); background: #14171b; display: grid; grid-template-columns: 1fr 360px; gap: 0; }
+    .agent-left { padding: 12px 14px; display: grid; grid-template-rows: auto 1fr; gap: 8px; min-width: 0; }
+    .agent-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .agent-log { border: 1px solid var(--line); background: #111418; padding: 9px; color: var(--muted); font-size: 12px; line-height: 1.4; overflow: auto; }
+    .proof-strip { border-left: 1px solid var(--line); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .proof-strip .ttl { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- TRANSPORT -->
+    <header class="transport">
+      <div class="brand">VIVID 4</div>
+      <div class="transport-block">
+        <span class="transport-label">Transport</span>
+        <span class="transport-value" id="transportReadout">124 BPM / 4-4</span>
+      </div>
+      <div class="transport-block">
+        <span class="transport-label">Now</span>
+        <span class="transport-value" id="barReadout">Bar 17.1</span>
+      </div>
+      <div class="transport-block">
+        <span class="transport-label">Scene</span>
+        <span class="transport-value" id="activeSceneReadout">Verse</span>
+      </div>
+      <div class="workspace-toggle" id="workspaceToggle">
+        <button data-view="session" class="on">Session</button>
+        <button data-view="stage">Stage</button>
+        <button data-view="graph">Graph</button>
+      </div>
+      <div class="live-dot">LIVE OUTPUT</div>
+    </header>
+
+    <!-- MAIN -->
+    <main class="main">
+      <section class="workspace">
+        <div class="ws-bar">
+          <div>
+            <div class="ws-title" id="wsTitle">Session</div>
+            <div class="ws-sub" id="wsSub">When: tracks &times; scenes on the master transport</div>
+          </div>
+          <div class="pills">
+            <span class="pill hot">Quantize: Bar</span>
+            <span class="pill">Key: D minor</span>
+            <span class="pill">Queued: <b id="queuedReadout">none</b></span>
+          </div>
+        </div>
+
+        <div class="ws-body">
+          <div class="breadcrumb is-hidden" id="crumbs" style="margin-bottom: 11px;"></div>
+
+          <!-- SESSION (when) -->
+          <div id="sessionView">
+            <div class="session-grid" id="sessionGrid"></div>
+          </div>
+
+          <!-- STAGE (spatial layer compositor) -->
+          <div id="stageView" class="is-hidden">
+            <div class="stage">
+              <div class="layer-stack" id="layerStack"></div>
+              <div>
+                <div class="stage-canvas-wrap">
+                  <canvas id="stageCanvas"></canvas>
+                  <div class="stage-overlay">Stage &mdash; <b id="stageSceneName">Verse</b> composite</div>
+                </div>
+                <div class="look" id="lookPanel"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- NETWORK (operator graph, scoped to the selected layer or track) -->
+          <div id="networkView" class="is-hidden">
+            <div class="op-palette" style="margin-bottom: 11px;">
+              Add operator:
+              <span class="op-chip">core seed ops</span>
+              <span class="op-chip">audio plugins</span>
+              <span class="op-chip">+ project-local op</span>
+            </div>
+            <div class="net-canvas" id="netCanvas"></div>
+            <div class="body-copy" style="margin-top: 10px;" id="netNote"></div>
+          </div>
+
+          <!-- CODE (project-local source; edited externally + hot reload) -->
+          <div id="codeView" class="is-hidden">
+            <div id="codeBody"></div>
+          </div>
+
+          <!-- GRAPH (whole-project deep view) -->
+          <div id="graphView" class="is-hidden">
+            <div class="body-copy" style="margin-bottom: 11px;">Whole-project graph &mdash; the deep inspection view across audio, visual, and bindings. Normal work is scoped (open a track or layer); this is the escape hatch. Click a node to scope into its network.</div>
+            <div class="graph-clusters" id="graphClusters"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN -->
+      <aside class="right">
+        <div class="preview-wrap">
+          <div class="preview-head"><span>Live Output</span><span id="previewScene">Verse</span></div>
+          <canvas class="preview-canvas" id="previewCanvas"></canvas>
+        </div>
+
+        <div class="section">
+          <div class="section-title"><span>Selection</span><span id="selectionKind">clip</span></div>
+          <div class="section-body" id="selectionPanel"></div>
+        </div>
+
+        <div class="section" style="border-bottom:0; min-height:0;" id="bindingsSection">
+          <div class="section-title"><span>Visual Bindings</span><span id="bindingCount">0</span></div>
+          <div class="section-body" id="bindingPanel"></div>
+        </div>
+      </aside>
+    </main>
+
+  </div>
+
+  <script>
+    const state = {
+      transport: { bpm: 124, meter: "4/4", bar: 17, beat: 1, quantize: "bar" },
+      workspace: "session",
+      activeScene: "verse",
+      queuedScene: "",
+      selected: { type: "clip", id: "bass_verse" },
+      selectedLayer: "particles",
+      view: "session",                          // session | stage | network | code | graph
+      scope: { kind: "layer", id: "particles" }, // what a network/code view is scoped to
+      codeNodeId: null,
+      tracks: [
+        { id: "drums", name: "Drums", kind: "instrument", accent: "audio" },
+        { id: "bass", name: "Bass", kind: "instrument", accent: "audio" },
+        { id: "chords", name: "Chords", kind: "instrument", accent: "audio" },
+        { id: "lead", name: "Lead", kind: "instrument", accent: "audio" },
+        { id: "particles", name: "Particles", kind: "visual", accent: "gpu" },
+        { id: "camera", name: "Camera/Palette", kind: "visual", accent: "gpu" },
+        { id: "mapping", name: "AV Mapping", kind: "mapping", accent: "control" }
+      ],
+      // each scene carries the spatial visual state the Stage + preview render
+      scenes: [
+        { id: "intro",  name: "Intro",  intent: "Establish pulse, sparse visuals.", vis: { density: .14, size: .35, shake: .02, bloom: .25, palette: ["#1f3b66", "#2f6f8f"] } },
+        { id: "verse",  name: "Verse",  intent: "Tight groove, low visual density.", vis: { density: .30, size: .45, shake: .05, bloom: .30, palette: ["#1c5f63", "#3fb6a6"] } },
+        { id: "chorus", name: "Chorus", intent: "Open harmony, wider visual response.", vis: { density: .58, size: .60, shake: .16, bloom: .52, palette: ["#caa23a", "#3fb6a6"] } },
+        { id: "drop",   name: "Drop",   intent: "High energy: bursts, shake, heavy mappings.", vis: { density: .96, size: .80, shake: .55, bloom: .88, palette: ["#f0a030", "#4ecdc4"] } }
+      ],
+      clips: {
+        intro: {
+          drums: { id: "drums_intro", name: "Half Kick", kind: "drum", tags: ["sparse"], pattern: "1000100010000000" },
+          bass: { id: "bass_intro", name: "Sub Hints", kind: "midi", tags: ["sub"], pattern: "1000000010000000" },
+          chords: { id: "chords_intro", name: "Air Pad", kind: "plugin", tags: ["pad"], pattern: "1000000000000000" },
+          lead: { id: "lead_intro", name: "Muted", kind: "midi", tags: ["off"], pattern: "0000000000000000" },
+          particles: { id: "particles_intro", name: "Dust Field", kind: "visual", tags: ["low"], pattern: "1000100010001000" },
+          camera: { id: "camera_intro", name: "Wide Blue", kind: "visual", tags: ["blue"], pattern: "1000000010000000" },
+          mapping: { id: "mapping_intro", name: "Light Pulse", kind: "binding", tags: ["kick -> glow"], pattern: "1000100010000000" }
+        },
+        verse: {
+          drums: { id: "drums_verse", name: "Tight Hats", kind: "drum", tags: ["sync"], pattern: "1010101010101010" },
+          bass: { id: "bass_verse", name: "D Minor Pulse", kind: "theory", tags: ["root/fifth"], pattern: "1000101010001010" },
+          chords: { id: "chords_verse", name: "Muted Stabs", kind: "midi", tags: ["short"], pattern: "1000100010001000" },
+          lead: { id: "lead_verse", name: "Answer Motif", kind: "midi", tags: ["call/resp"], pattern: "0000100000001000" },
+          particles: { id: "particles_verse", name: "Sparse Drift", kind: "visual", tags: ["bass env"], pattern: "1000100010001000" },
+          camera: { id: "camera_verse", name: "Locked Wide", kind: "visual", tags: ["stable"], pattern: "1000000000000000" },
+          mapping: { id: "mapping_verse", name: "Bass Size", kind: "binding", tags: ["bass -> size"], pattern: "1000101010001010" }
+        },
+        chorus: {
+          drums: { id: "drums_chorus", name: "Open Hats", kind: "drum", tags: ["drive"], pattern: "1011101110111011" },
+          bass: { id: "bass_chorus", name: "Wide Reese", kind: "plugin", tags: ["macro A"], pattern: "1000111010001110" },
+          chords: { id: "chords_chorus", name: "Bright Lift", kind: "theory", tags: ["i-III"], pattern: "1000100010001000" },
+          lead: { id: "lead_chorus", name: "Hook", kind: "midi", tags: ["high"], pattern: "0010001000100010" },
+          particles: { id: "particles_chorus", name: "Dense Swarm", kind: "visual", tags: ["snare flash"], pattern: "1010101010101010" },
+          camera: { id: "camera_chorus", name: "Slow Orbit", kind: "visual", tags: ["warm"], pattern: "1000100010001000" },
+          mapping: { id: "mapping_chorus", name: "Beat Reactive", kind: "binding", tags: ["snare -> flash"], pattern: "1011101110111011" }
+        },
+        drop: {
+          drums: { id: "drums_drop", name: "Break Kit", kind: "drum", tags: ["fill"], pattern: "1110111011101110" },
+          bass: { id: "bass_drop", name: "Distorted Drop", kind: "plugin", tags: ["drive"], pattern: "1001111010011110" },
+          chords: { id: "chords_drop", name: "Chord Cuts", kind: "midi", tags: ["stabs"], pattern: "1000100010101000" },
+          lead: { id: "lead_drop", name: "Glitch Hook", kind: "midi", tags: ["prob"], pattern: "0010011010010110" },
+          particles: { id: "particles_drop", name: "Burst Swarm", kind: "visual", tags: ["kick burst"], pattern: "1110111011101110" },
+          camera: { id: "camera_drop", name: "Shake Amber", kind: "visual", tags: ["shake"], pattern: "1010101010101010" },
+          mapping: { id: "mapping_drop", name: "Heavy Reactivity", kind: "binding", tags: ["kick -> burst"], pattern: "1111111111111111" }
+        }
+      },
+      // Stage: spatial layer compositor. Each param can match a binding by its dest string.
+      layers: [
+        { id: "particles", name: "Particles", on: true, summary: "Point field; density and size carry musical energy.", params: [
+          { key: "density", label: "Density", dest: "Particles / density", value: .3 },
+          { key: "size", label: "Size", dest: "Particles / size", value: .45 },
+          { key: "burst", label: "Burst count", dest: "Particles / burst count", value: .2 },
+          { key: "flash", label: "Flash", dest: "Particles / flash", value: .15 }
+        ]},
+        { id: "camera", name: "Camera", on: true, summary: "Framing and motion of the rendered scene.", params: [
+          { key: "shake", label: "Shake", dest: "Camera / shake", value: .05 },
+          { key: "orbit", label: "Orbit speed", dest: "Camera / orbit", value: .2 },
+          { key: "zoom", label: "Zoom", dest: "Camera / zoom", value: .4 }
+        ]},
+        { id: "palette", name: "Palette", on: true, summary: "Color identity; harmony can drive the mix.", params: [
+          { key: "mix", label: "Amber-cyan mix", dest: "Palette / amber-cyan mix", value: .5 },
+          { key: "sat", label: "Saturation", dest: "Palette / saturation", value: .6 }
+        ]},
+        { id: "post", name: "Post / Bloom", on: true, summary: "Glow and feedback over the composite.", params: [
+          { key: "bloom", label: "Bloom", dest: "Post / bloom", value: .3 },
+          { key: "feedback", label: "Feedback", dest: "Post / feedback", value: .1 }
+        ]},
+        { id: "background", name: "Background", on: false, summary: "Base wash behind the field.", params: [
+          { key: "brightness", label: "Brightness", dest: "Background / brightness", value: .2 }
+        ]}
+      ],
+      bindings: [
+        { id: "b1", scene: "verse",  source: "Bass envelope",    dest: "Particles / size",            curve: "soft exponential", timing: "smoothed 80 ms", scope: "Verse + Chorus", why: "Keeps verse movement tied to the groove without literal flashing." },
+        { id: "b2", scene: "chorus", source: "Snare transient",  dest: "Particles / flash",           curve: "fast peak",        timing: "bar synced",     scope: "Chorus + Drop",  why: "Makes the backbeat visible while the harmony opens." },
+        { id: "b3", scene: "drop",   source: "Kick onset",       dest: "Particles / burst count",     curve: "hard gate",        timing: "instant",        scope: "Drop",           why: "Each kick increases particle density, making the Drop visibly heavier." },
+        { id: "b4", scene: "drop",   source: "Scene energy",     dest: "Camera / shake",              curve: "limited ramp",     timing: "2 bar fade",     scope: "Drop",           why: "Camera movement rises with the arrangement instead of jittering randomly." },
+        { id: "b5", scene: "drop",   source: "Chord brightness", dest: "Palette / amber-cyan mix",    curve: "linear",           timing: "per chord",      scope: "Chorus + Drop",  why: "Harmony changes become color changes without graph inspection." }
+      ]
+    };
+
+    // Project-local operator source (what the user "sees" as code). Edited in the
+    // user's own editor; Vivid watches the file and hot-reloads on save.
+    const CODE = {
+      curl: `// curl_noise.glsl — project-local operator
+// Divergence-free flow field that pushes the particle layer.
+vec3 curlNoise(vec3 p) {
+    float e = 0.1;
+    vec3 dx = vec3(e, 0.0, 0.0);
+    vec3 dy = vec3(0.0, e, 0.0);
+    float x = noise(p + dy).z - noise(p - dy).z;
+    float y = noise(p + dx).z - noise(p - dx).z;
+    return normalize(vec3(x, -y, 0.0));
+}`,
+      shake: `// shake.js — project-local operator
+// Maps scene energy to a camera-shake offset.
+export function update(ctx) {
+    const energy = ctx.in("energy");        // 0..1 from Scene Energy
+    const amt = ctx.smooth(energy * energy, 0.12);
+    ctx.set("offset", ctx.rand2().mul(amt * 14.0));
+}`,
+      palette: `// palette_map.glsl — project-local operator
+// Chord brightness chooses the amber <-> cyan blend.
+vec3 paletteMap(float brightness) {
+    vec3 amber = vec3(0.94, 0.63, 0.19);
+    vec3 cyan  = vec3(0.31, 0.80, 0.78);
+    return mix(amber, cyan, clamp(brightness, 0.0, 1.0));
+}`,
+      saturator: `// saturator.dsp — project-local operator
+// Soft-clip saturator with drive + tone; runs per audio sample.
+float process(float x, float drive, float tone) {
+    float pre = x * (1.0 + drive * 4.0);
+    float shaped = tanh(pre);
+    return mix(shaped, lowpass(shaped, tone), 0.5);
+}`
+    };
+
+    // Scoped operator networks. Keyed by scope ("layer:id" or "track:id").
+    // kind: source | core | plugin | local. The graph is the same mechanism for
+    // visual layers and audio tracks (ADR-0007).
+    const NETWORKS = {
+      "layer:particles": { nodes: [
+        { id: "audio", name: "Audio Analysis", kind: "source", x: 24, y: 40, inputs: [], doc: "Kick onset and bass envelope enter the layer here as control signals." },
+        { id: "curl", name: "Curl Noise", kind: "local", x: 24, y: 180, inputs: [], code: { path: "project/operators/curl_noise.glsl", src: CODE.curl } },
+        { id: "field", name: "Particle Field", kind: "core", x: 250, y: 110, inputs: ["audio", "curl"], doc: "Core GPU operator. Emits and advects the point field; density/size are params." },
+        { id: "bloom", name: "Bloom", kind: "core", x: 490, y: 110, inputs: ["field"], doc: "Core post operator. Adds glow over the composited field." }
+      ]},
+      "layer:camera": { nodes: [
+        { id: "energy", name: "Scene Energy", kind: "source", x: 24, y: 70, inputs: [], doc: "Arrangement energy enters here." },
+        { id: "shake", name: "Camera Shake", kind: "local", x: 24, y: 200, inputs: ["energy"], code: { path: "project/operators/shake.js", src: CODE.shake } },
+        { id: "orbit", name: "Orbit Camera", kind: "core", x: 260, y: 120, inputs: ["energy", "shake"], doc: "Core operator. Frames and moves the scene." },
+        { id: "cout", name: "Layer Output", kind: "core", x: 490, y: 120, inputs: ["orbit"], doc: "Composited into the Stage." }
+      ]},
+      "layer:palette": { nodes: [
+        { id: "chord", name: "Chord Brightness", kind: "source", x: 24, y: 120, inputs: [], doc: "Harmonic brightness enters here." },
+        { id: "pmap", name: "Palette Map", kind: "local", x: 280, y: 120, inputs: ["chord"], code: { path: "project/operators/palette_map.glsl", src: CODE.palette } },
+        { id: "pout", name: "Layer Output", kind: "core", x: 510, y: 120, inputs: ["pmap"], doc: "Color identity for the composite." }
+      ]},
+      "layer:post": { nodes: [
+        { id: "pb", name: "Bloom", kind: "core", x: 50, y: 120, inputs: [], doc: "Core glow operator." },
+        { id: "fb", name: "Feedback", kind: "core", x: 300, y: 120, inputs: ["pb"], doc: "Core feedback/trails operator." },
+        { id: "poout", name: "Layer Output", kind: "core", x: 520, y: 120, inputs: ["fb"], doc: "Composited over the Stage." }
+      ]},
+      "layer:background": { nodes: [
+        { id: "grad", name: "Gradient", kind: "core", x: 60, y: 120, inputs: [], doc: "Core background wash." },
+        { id: "bout", name: "Layer Output", kind: "core", x: 340, y: 120, inputs: ["grad"], doc: "Base layer behind the field." }
+      ]},
+      // Audio tracks: same Network mechanism, audio operator chains (ADR-0007).
+      "track:bass": { nodes: [
+        { id: "midi", name: "MIDI In", kind: "source", x: 20, y: 120, inputs: [], doc: "Notes from the bass clip / theory generator." },
+        { id: "synth", name: "Serum", kind: "plugin", x: 190, y: 120, inputs: ["midi"], doc: "Hosted VST3 instrument. The sound lives in the plugin." },
+        { id: "sat", name: "Saturator", kind: "local", x: 370, y: 120, inputs: ["synth"], code: { path: "project/operators/saturator.dsp", src: CODE.saturator } },
+        { id: "mix", name: "Mixer", kind: "core", x: 545, y: 120, inputs: ["sat"], doc: "Core mix bus → master." }
+      ]},
+      "track:drums": { nodes: [
+        { id: "midi", name: "MIDI In", kind: "source", x: 24, y: 120, inputs: [], doc: "Drum pattern notes." },
+        { id: "kit", name: "Drum Kit", kind: "core", x: 250, y: 120, inputs: ["midi"], doc: "Core sampler/drum operator. Compiled; no source." },
+        { id: "mix", name: "Mixer", kind: "core", x: 480, y: 120, inputs: ["kit"], doc: "Core mix bus → master." }
+      ]},
+      "track:chords": { nodes: [
+        { id: "midi", name: "MIDI In", kind: "source", x: 24, y: 120, inputs: [], doc: "Chord notes from the clip." },
+        { id: "synth", name: "Pigments", kind: "plugin", x: 250, y: 120, inputs: ["midi"], doc: "Hosted VST3 instrument." },
+        { id: "mix", name: "Mixer", kind: "core", x: 480, y: 120, inputs: ["synth"], doc: "Core mix bus → master." }
+      ]},
+      "track:lead": { nodes: [
+        { id: "midi", name: "MIDI In", kind: "source", x: 24, y: 120, inputs: [], doc: "Lead notes from the clip." },
+        { id: "synth", name: "Serum", kind: "plugin", x: 250, y: 120, inputs: ["midi"], doc: "Hosted VST3 instrument." },
+        { id: "mix", name: "Mixer", kind: "core", x: 480, y: 120, inputs: ["synth"], doc: "Core mix bus → master." }
+      ]}
+    };
+    // A scope is { kind, id }; networks are keyed "kind:id".
+    const scopeKey = sc => `${sc.kind}:${sc.id}`;
+    const scopeNet = sc => NETWORKS[scopeKey(sc)] || { nodes: [] };
+    const scopeName = sc => sc.kind === "layer" ? layerById(sc.id).name : trackById(sc.id).name;
+    const nodeById = (sc, nid) => scopeNet(sc).nodes.find(n => n.id === nid) || null;
+    // Which scope a Session-grid track opens: instrument → its audio chain; visual → its layer.
+    const trackScope = t => t.kind === "visual" ? { kind: "layer", id: t.id }
+      : t.kind === "instrument" ? { kind: "track", id: t.id } : null;
+
+    const $ = id => document.getElementById(id);
+    const sceneById = id => state.scenes.find(s => s.id === id);
+    const trackById = id => state.tracks.find(t => t.id === id);
+    const layerById = id => state.layers.find(l => l.id === id);
+    const clipFor = (sceneId, trackId) => state.clips[sceneId][trackId];
+
+    function selectedClip() {
+      for (const scene of state.scenes)
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          if (clip.id === state.selected.id) return { clip, scene, track };
+        }
+      return null;
+    }
+
+    function bindingForDest(dest) { return state.bindings.find(b => b.dest === dest); }
+    function onesCount(p) { return p.split("").filter(c => c === "1").length; }
+
+    /* ---------- Session grid ---------- */
+    function clipPreview(clip, track) {
+      if (track.kind === "instrument") {
+        return `<div class="mini-preview">${clip.pattern.split("").map(v => `<span class="${v === "1" ? "on" : ""}"></span>`).join("")}</div>`;
+      }
+      if (track.kind === "visual") {
+        const sc = state.scenes.find(s => state.clips[s.id][track.id].id === clip.id);
+        const pal = sc ? sc.vis.palette : ["#2f6f8f", "#3fb6a6"];
+        const d = Math.round((onesCount(clip.pattern) / 16) * 100);
+        return `<div class="vis-glyph">
+            <div class="vis-swatch" style="background:linear-gradient(90deg,${pal[0]},${pal[1]})"></div>
+            <div class="vis-density"><span style="width:${d}%"></span></div>
+          </div>`;
+      }
+      // mapping
+      const t = clip.tags[0] || "";
+      const parts = t.split("->");
+      return `<div class="map-label">${parts[0].trim()} <span class="arrow">&rarr;</span> ${(parts[1] || "").trim()}</div>`;
+    }
+
+    function renderGrid() {
+      const grid = $("sessionGrid");
+      grid.innerHTML = `<div class="grid-head corner"><div class="track-kind">Session</div><div class="track-name">One-Song Loop</div></div>`;
+      for (const track of state.tracks) {
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="grid-head" data-select-type="track" data-id="${track.id}">
+            <div class="track-name">${track.name}</div>
+            <div class="track-kind">${track.kind}${trackScope(track) ? ` &middot; <span data-opennet="${scopeKey(trackScope(track))}" title="Open operator network" style="cursor: pointer;">net &#9656;</span>` : ""}</div>
+          </div>`);
+      }
+      for (const scene of state.scenes) {
+        const active = scene.id === state.activeScene;
+        const queued = scene.id === state.queuedScene;
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="scene-cell" data-select-type="scene" data-id="${scene.id}">
+            <div class="scene-title">${scene.name}</div>
+            <div></div>
+            <div class="scene-actions">
+              <button data-launch="${scene.id}" title="Launch ${scene.name}">&gt;</button>
+              <span class="tag ${active ? "state" : ""}">${active ? "active" : queued ? "queued" : "ready"}</span>
+            </div>
+          </div>`);
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          const sel = state.selected.type === "clip" && state.selected.id === clip.id ? "selected" : "";
+          const act = active ? "active" : "";
+          const q = queued ? "queued" : "";
+          grid.insertAdjacentHTML("beforeend", `
+            <div class="grid-cell clip-cell ${sel} ${act} ${q}" data-select-type="clip" data-id="${clip.id}">
+              <div class="clip-name">${clip.name}</div>
+              <div class="clip-type">${clip.kind}</div>
+            </div>`);
+        }
+      }
+    }
+
+    /* ---------- Stage ---------- */
+    function renderLayers() {
+      $("layerStack").innerHTML = state.layers.map(layer => {
+        const bound = layer.params.filter(p => bindingForDest(p.dest)).length;
+        return `<div class="layer ${layer.on ? "" : "off"} ${state.selectedLayer === layer.id ? "selected" : ""}" data-select-type="layer" data-id="${layer.id}">
+            <div class="layer-vis"></div>
+            <div class="layer-name">${layer.name}</div>
+            <div class="layer-bound">${bound ? `<span style="color: var(--audio);">${bound} &larr;</span> ` : ""}<span data-opennet="layer:${layer.id}" title="Open operator network" style="color: var(--muted); cursor: pointer;">net &#9656;</span></div>
+            <div class="layer-sum">${layer.summary}</div>
+          </div>`;
+      }).join("");
+    }
+
+    function renderLook() {
+      const layer = layerById(state.selectedLayer);
+      const sc = sceneById(state.activeScene).vis;
+      $("lookPanel").innerHTML = `<div class="body-copy" style="margin-bottom:8px">${layer.name} &mdash; spatial look params. Driven params show their source inline.</div>` +
+        layer.params.map(p => {
+          const b = bindingForDest(p.dest);
+          // bound params visually track the active scene energy so the coupling reads live
+          const shown = b ? Math.min(1, p.value * 0.4 + sc.density * 0.7) : p.value;
+          return `<div class="look-row">
+              <span class="look-key">${p.label}</span>
+              <span class="meterbar"><span style="width:${Math.round(shown * 100)}%"></span></span>
+              <span class="driven">${b ? `&larr; <span class="src">${b.source}</span>` : ""}</span>
+            </div>`;
+        }).join("");
+    }
+
+    /* ---------- Network / Code / Graph (the deep view, any scope) ---------- */
+    const escapeHtml = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+    function renderBreadcrumb() {
+      const v = state.view;
+      if (v === "session" || v === "stage") { $("crumbs").classList.add("is-hidden"); return; }
+      $("crumbs").classList.remove("is-hidden");
+      const c = [];
+      if (v === "graph") {
+        c.push(`<span class="crumb here">Full graph</span>`);
+      } else {
+        const originView = state.scope.kind === "layer" ? "stage" : "session";
+        const origin = state.scope.kind === "layer" ? "Stage" : "Session";
+        c.push(`<span class="crumb" data-view="${originView}">${origin}</span>`,
+               `<span class="crumb-sep">/</span>`,
+               `<span class="crumb" data-view="${originView}">${scopeName(state.scope)}</span>`,
+               `<span class="crumb-sep">/</span>`,
+               `<span class="crumb ${v === "network" ? "here" : ""}" data-crumb="network">Network</span>`);
+        if (v === "code") {
+          const n = nodeById(state.scope, state.codeNodeId);
+          const file = n && n.code ? n.code.path.split("/").pop() : "code";
+          c.push(`<span class="crumb-sep">/</span>`, `<span class="crumb here">${file}</span>`);
+        }
+      }
+      $("crumbs").innerHTML = c.join(" ");
+    }
+
+    function renderNetwork() {
+      const net = scopeNet(state.scope);
+      const NW = 132, NH = 46;
+      let wires = "";
+      for (const n of net.nodes)
+        for (const inp of n.inputs) {
+          const s = nodeById(state.scope, inp);
+          if (!s) continue;
+          const x1 = s.x + NW, y1 = s.y + NH / 2, x2 = n.x, y2 = n.y + NH / 2, mx = (x1 + x2) / 2;
+          wires += `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="#46505a" stroke-width="1.5"/>`;
+        }
+      const nodes = net.nodes.map(n => `
+        <div class="node ${n.kind} ${state.selected.type === "node" && state.selected.id === n.id ? "selected" : ""}" style="left:${n.x}px; top:${n.y}px;" data-opennode="${n.id}">
+          <div class="node-name">${n.name}${n.code ? `<span class="node-edit">{ }</span>` : ""}</div>
+          <span class="node-badge ${n.kind}">${n.kind}</span>
+        </div>`).join("");
+      $("netCanvas").innerHTML = `<svg class="net-wires">${wires}</svg>${nodes}`;
+      const domain = state.scope.kind === "layer" ? "visual layer" : "audio track";
+      $("netNote").innerHTML = `Scoped to the <b style="color:var(--text)">${scopeName(state.scope)}</b> ${domain}'s operators &mdash; not one giant project canvas. <span style="color:var(--audio)">Amber</span> nodes are project-local code; click one to see its source.`;
+    }
+
+    function renderCode() {
+      const n = nodeById(state.scope, state.codeNodeId);
+      if (!n || !n.code) { $("codeBody").innerHTML = ""; return; }
+      const file = n.code.path.split("/").pop();
+      const dir = n.code.path.slice(0, n.code.path.length - file.length);
+      $("codeBody").innerHTML = `
+        <div class="code-head">
+          <div class="code-path"><span class="dir">${dir}</span>${file}</div>
+          <div class="code-actions">
+            <span class="watching">Watching &middot; hot-reload on save</span>
+            <button data-act="openext">Open in external editor</button>
+            <button data-act="reload">Reload</button>
+          </div>
+        </div>
+        <pre class="codepane">${escapeHtml(n.code.src)}</pre>
+        <div class="body-copy" style="margin-top: 10px;"><b style="color:var(--text)">${n.name}</b> is a project-local operator. Vivid does not own an editor &mdash; the source lives as a file in your project, you edit it in your own editor, and Vivid hot-reloads on save. The agent edits the same file.</div>`;
+    }
+
+    function renderGraph() {
+      const clusters = [
+        { title: "Audio tracks", items: state.tracks.filter(t => t.kind === "instrument").map(t => ({ label: t.name, scope: { kind: "track", id: t.id } })) },
+        { title: "Visual layers", items: state.layers.map(l => ({ label: l.name, scope: { kind: "layer", id: l.id } })) },
+        { title: "Bindings", items: state.bindings.map(b => ({ label: `${b.source} → ${b.dest}`, scope: null })) }
+      ];
+      $("graphClusters").innerHTML = clusters.map(cl => `
+        <div class="cluster">
+          <h4>${cl.title}</h4>
+          ${cl.items.map(it => it.scope
+            ? `<div class="node-mini" data-opennet="${scopeKey(it.scope)}">${it.label}</div>`
+            : `<div class="node-mini" style="cursor: default;">${it.label}</div>`).join("")}
+        </div>`).join("");
+    }
+
+    /* ---------- Right column ---------- */
+    function renderSelection() {
+      if (state.selected.type === "node") {
+        const n = nodeById(state.scope, state.selected.id);
+        $("selectionKind").textContent = "node";
+        const kindDoc = n.kind === "core" ? "Core operator — compiled. Shows params/docs, no source."
+          : n.kind === "source" ? "Signal source — a musical/control input into this network."
+          : n.kind === "plugin" ? "Plugin operator — hosted VST3/CLAP/AU."
+          : "Project-local operator — backed by code.";
+        $("selectionPanel").innerHTML = `<div class="title-big">${n.name}</div><div class="body-copy">${kindDoc}</div>
+          <div class="row"><span>Kind</span><span>${n.kind}</span></div>
+          <div class="row"><span>${state.scope.kind === "layer" ? "Layer" : "Track"}</span><span>${scopeName(state.scope)}</span></div>
+          <div class="row"><span>Detail</span><span>${n.doc || (n.code ? n.code.path : "")}</span></div>`;
+        return;
+      }
+      $("selectionKind").textContent = state.selected.type;
+      const panel = $("selectionPanel");
+      if (state.selected.type === "scene") {
+        const scene = sceneById(state.selected.id);
+        panel.innerHTML = `<div class="title-big">${scene.name}</div><div class="body-copy">${scene.intent}</div>
+          <div class="row"><span>Launch</span><span>${state.transport.quantize} boundary</span></div>
+          <div class="row"><span>Visual density</span><span>${Math.round(scene.vis.density * 100)}%</span></div>
+          <div class="row"><span>Camera shake</span><span>${Math.round(scene.vis.shake * 100)}%</span></div>`;
+        return;
+      }
+      if (state.selected.type === "binding") {
+        const b = state.bindings.find(x => x.id === state.selected.id);
+        panel.innerHTML = `<div class="title-big">${b.source} &rarr; ${b.dest}</div><div class="body-copy">${b.why}</div>
+          <div class="row"><span>Curve</span><span>${b.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${b.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${b.scope}</span></div>`;
+        return;
+      }
+      if (state.selected.type === "layer") {
+        const l = layerById(state.selected.id);
+        const driven = l.params.filter(p => bindingForDest(p.dest)).map(p => bindingForDest(p.dest).source);
+        panel.innerHTML = `<div class="title-big">${l.name}</div><div class="body-copy">${l.summary} Spatial layer on the Stage, not a graph node.</div>
+          <div class="row"><span>Visible</span><span>${l.on ? "yes" : "no"}</span></div>
+          <div class="row"><span>Params</span><span>${l.params.length}</span></div>
+          <div class="row"><span>Driven by</span><span>${driven.length ? driven.join(", ") : "nothing yet"}</span></div>`;
+        return;
+      }
+      if (state.selected.type === "track") {
+        const t = trackById(state.selected.id);
+        panel.innerHTML = `<div class="title-big">${t.name}</div><div class="body-copy">Typed ${t.kind} track. Clips are behavior capsules across scenes.</div>
+          <div class="row"><span>Kind</span><span>${t.kind}</span></div>`;
+        return;
+      }
+      const sel = selectedClip();
+      if (!sel) return;
+      panel.innerHTML = `<div class="title-big">${sel.clip.name}</div>
+        <div class="body-copy">${sel.track.name} clip in ${sel.scene.name}. A ${sel.clip.kind} behavior capsule.</div>
+        <div class="row"><span>Track</span><span>${sel.track.name}</span></div>
+        <div class="row"><span>Clip kind</span><span>${sel.clip.kind}</span></div>
+        <div class="row"><span>Scene</span><span>${sel.scene.name}</span></div>
+        ${sel.track.kind === "visual" ? `<div class="row"><span>Open on</span><span>Stage</span></div>` : ""}`;
+    }
+
+    function bindingsForSelection() {
+      const s = state.selected;
+      if (s.type === "binding") return state.bindings;
+      if (s.type === "layer") { const l = layerById(s.id); return state.bindings.filter(b => b.dest.startsWith(l.name)); }
+      if (s.type === "scene") return state.bindings.filter(b => b.scene === s.id);
+      if (s.type === "track") {
+        const t = trackById(s.id);
+        if (t.kind === "visual") return state.bindings.filter(b => b.dest.toLowerCase().includes(t.name.split("/")[0].toLowerCase()));
+        if (t.kind === "mapping") return state.bindings;
+        return []; // instrument track — bindings not relevant
+      }
+      if (s.type === "node") return [];
+      const sel = selectedClip();
+      if (!sel) return [];
+      if (sel.track.kind === "visual") return state.bindings.filter(b => b.dest.toLowerCase().includes(sel.track.name.split("/")[0].toLowerCase()));
+      if (sel.track.kind === "mapping") return state.bindings.filter(b => b.scene === sel.scene.id);
+      return []; // audio clip — not relevant
+    }
+
+    function renderBindings() {
+      const list = bindingsForSelection();
+      $("bindingsSection").classList.toggle("is-hidden", list.length === 0);
+      $("bindingCount").textContent = String(list.length);
+      $("bindingPanel").innerHTML = list.map(b => `
+        <div class="binding ${state.selected.type === "binding" && state.selected.id === b.id ? "selected" : ""}" data-select-type="binding" data-id="${b.id}">
+          <div class="binding-path"><span class="source">${b.source}</span> &rarr; <span class="dest">${b.dest}</span></div>
+          <div class="body-copy">${b.why}</div>
+        </div>`).join("") || `<div class="body-copy">No bindings for this selection.</div>`;
+    }
+
+    /* ---------- transport / workspace ---------- */
+    function renderTransport() {
+      $("transportReadout").textContent = `${state.transport.bpm} BPM / ${state.transport.meter}`;
+      $("barReadout").textContent = `Bar ${state.transport.bar}.${state.transport.beat}`;
+      $("activeSceneReadout").textContent = sceneById(state.activeScene).name;
+      $("queuedReadout").textContent = state.queuedScene ? sceneById(state.queuedScene).name : "none";
+      $("previewScene").textContent = sceneById(state.activeScene).name;
+      $("stageSceneName").textContent = sceneById(state.activeScene).name;
+    }
+
+    const VIEW_META = {
+      session: ["Session", "When: tracks × scenes on the master transport"],
+      stage:   ["Stage", "What the visuals are: spatial layers, looks, camera, palette"],
+      network: ["Network", "The operators behind this — a scoped node graph"],
+      code:    ["Code", "Project-local operator source — edited externally, hot-reloaded"],
+      graph:   ["Graph", "Whole-project deep view across audio, visual, and bindings"]
+    };
+    function renderView() {
+      const v = state.view;
+      $("sessionView").classList.toggle("is-hidden", v !== "session");
+      $("stageView").classList.toggle("is-hidden", v !== "stage");
+      $("networkView").classList.toggle("is-hidden", v !== "network");
+      $("codeView").classList.toggle("is-hidden", v !== "code");
+      $("graphView").classList.toggle("is-hidden", v !== "graph");
+      $("wsTitle").textContent = VIEW_META[v][0];
+      $("wsSub").textContent = VIEW_META[v][1];
+      // the top toggle highlights only the three primary surfaces
+      [...$("workspaceToggle").children].forEach(b => b.classList.toggle("on", b.dataset.view === v));
+      renderBreadcrumb();
+      if (v === "network") renderNetwork();
+      if (v === "code") renderCode();
+      if (v === "graph") renderGraph();
+    }
+
+    function renderAll() {
+      renderTransport();
+      renderView();
+      renderGrid();
+      renderLayers();
+      renderLook();
+      renderSelection();
+      renderBindings();
+    }
+
+    /* ---------- selection + actions ---------- */
+    function select(type, id) {
+      state.selected = { type, id };
+      if (type === "layer") state.selectedLayer = id;
+      if (type === "clip") {
+        const sel = selectedClip();
+        if (sel && sel.track.kind === "visual") {
+          // selecting a visual clip links to the Stage layer it authors
+          if (sel.track.id === "particles") state.selectedLayer = "particles";
+          if (sel.track.id === "camera") state.selectedLayer = "camera";
+        }
+      }
+      renderAll();
+    }
+
+    function gotoView(v) { state.view = v; renderAll(); }
+
+    function openNetwork(spec) {     // spec = "kind:id"
+      const [kind, id] = spec.split(":");
+      state.scope = { kind, id };
+      state.view = "network";
+      if (kind === "layer") { state.selectedLayer = id; state.selected = { type: "layer", id }; }
+      else state.selected = { type: "track", id };
+      renderAll();
+    }
+
+    function openNode(nodeId) {
+      const n = nodeById(state.scope, nodeId);
+      if (!n) return;
+      state.selected = { type: "node", id: nodeId };
+      if (n.kind === "local" && n.code) { state.view = "code"; state.codeNodeId = nodeId; }
+      renderAll();
+    }
+
+    let reloadFlash = 0;
+
+    function launchScene(sceneId) {
+      state.queuedScene = sceneId;
+      renderTransport(); renderGrid();
+      setTimeout(() => {
+        state.activeScene = sceneId;
+        state.queuedScene = "";
+        state.transport.bar += 4;
+        select("scene", sceneId);
+      }, 480);
+    }
+
+    const log = () => {};   // no agent/MCP panel in the human UI; feedback is the UI itself
+
+    document.addEventListener("click", e => {
+      const launch = e.target.closest("[data-launch]");
+      if (launch) { e.stopPropagation(); launchScene(launch.dataset.launch); return; }
+      const view = e.target.closest("[data-view]");
+      if (view) { gotoView(view.dataset.view); return; }
+      const opennet = e.target.closest("[data-opennet]");
+      if (opennet) { e.stopPropagation(); openNetwork(opennet.dataset.opennet); return; }
+      const crumb = e.target.closest("[data-crumb]");
+      if (crumb) { gotoView(crumb.dataset.crumb); return; }
+      const node = e.target.closest("[data-opennode]");
+      if (node) { openNode(node.dataset.opennode); return; }
+      const act = e.target.closest("[data-act]");
+      if (act) {
+        if (act.dataset.act === "reload") { reloadFlash = 1; log("Saved → Vivid detected the change, recompiled the operator, and hot-reloaded it live. The session kept running."); }
+        else log("Handed off to your external editor (mock). Vivid keeps watching the file.");
+        return;
+      }
+      const t = e.target.closest("[data-select-type]");
+      if (t) select(t.dataset.selectType, t.dataset.id);
+    });
+
+    /* ---------- canvas rendering (stylized live output) ---------- */
+    const seeds = Array.from({ length: 320 }, (_, i) => ({
+      x: (i * 97.13) % 100 / 100,
+      y: (i * 53.71) % 100 / 100,
+      ph: (i * 1.37) % (Math.PI * 2),
+      sp: 0.2 + ((i * 31) % 100) / 250
+    }));
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function hexToRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+    function mixColor(c1, c2, t) {
+      const a = hexToRgb(c1), b = hexToRgb(c2);
+      return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
+    }
+
+    function fit(canvas) {
+      const r = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      if (canvas.width !== Math.round(r.width * dpr) || canvas.height !== Math.round(r.height * dpr)) {
+        canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+      }
+      return dpr;
+    }
+
+    function drawField(canvas, vis, time) {
+      if (!canvas.getClientRects().length) return;
+      const dpr = fit(canvas);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      // background wash from palette
+      const g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0, mixColor("#0c0e11", vis.palette[0], 0.18 + vis.bloom * 0.12));
+      g.addColorStop(1, mixColor("#0c0e11", vis.palette[1], 0.10 + vis.bloom * 0.10));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      const count = Math.floor(vis.density * seeds.length);
+      const shake = vis.shake * 14 * dpr;
+      const jx = Math.sin(time * 0.013) * shake, jy = Math.cos(time * 0.017) * shake;
+      const baseR = (1.4 + vis.size * 4.5) * dpr;
+      for (let i = 0; i < count; i++) {
+        const s = seeds[i];
+        const drift = (time * 0.00006 * s.sp);
+        const x = ((s.x + Math.sin(s.ph + time * 0.0004 * s.sp) * 0.04 + drift) % 1) * w + jx;
+        const y = ((s.y + Math.cos(s.ph + time * 0.0005 * s.sp) * 0.04) % 1) * h + jy;
+        const t = (i % 17) / 17;
+        const r = baseR * (0.7 + 0.6 * Math.abs(Math.sin(s.ph + time * 0.002)));
+        ctx.globalAlpha = 0.35 + vis.bloom * 0.55;
+        ctx.fillStyle = mixColor(vis.palette[0], vis.palette[1], t);
+        ctx.beginPath(); ctx.arc((x + w) % w, (y + h) % h, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      if (reloadFlash > 0.01) { ctx.fillStyle = `rgba(255,255,255,${reloadFlash * 0.35})`; ctx.fillRect(0, 0, w, h); }
+    }
+
+    function frame(time) {
+      const vis = sceneById(state.activeScene).vis;
+      drawField($("previewCanvas"), vis, time);
+      if (state.view === "stage") drawField($("stageCanvas"), vis, time);
+      if (reloadFlash > 0.01) reloadFlash *= 0.9; else reloadFlash = 0;
+      requestAnimationFrame(frame);
+    }
+
+    renderAll();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
