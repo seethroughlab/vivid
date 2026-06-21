@@ -20,26 +20,45 @@
    ========================================================================== */
 
 :root {
+  /* Vivid Classic "Dark Steel" palette (src/ui/style/ui_style.cpp on vivid-classic). */
   --bg: #16191d;
   --panel: #1a1d21;
   --cell: #22262b;
   --cell-2: #272c31;
-  --line: #2f353b;
+  --input: #141618;  /* input/field wells, darkest */
+  --line: #2a2e33;
   --hair: #21262b;   /* very subtle internal divider — calm default */
-  --line-hot: #46505a;
+  --line-hot: #3a3e43;
+  --sep: #383c47;    /* separators / dividers / button fill */
   --text: #e8eaed;
-  --muted: #8a8f98;
+  --muted: #8c94a0;
+  /* domain accents (identity) */
   --audio: #f0a030;
   --gpu: #4ecdc4;
   --control: #c0c8d0;
-  --ok: #78d08b;
-  --warn: #f0c060;
-  --bad: #ff6b6b;
+  /* UI selection — cool blue, kept distinct from the domain accents */
+  --sel: #598dd9;
+  --sel-bg: #2d3849;
+  --slider: #4169ad;
+  /* status */
+  --ok: #66da72;
+  --warn: #f2b233;
+  --bad: #e64040;
+  --solo: #ffd933;
   --purple: #b48cff;
+  /* perf/status metrics */
+  --ms: #73a6f2;
+  --mem: #f2a540;
+  --aud: #73d9e5;
 }
 
 /* ---- base ---- */
-* { box-sizing: border-box; }
+* { box-sizing: border-box; border-radius: 0; }  /* sharp corners — Dark Steel */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #1f2126; }
+::-webkit-scrollbar-thumb { background: #4d525d; border: 2px solid #1f2126; }
+::-webkit-scrollbar-thumb:hover { background: #5a6069; }
 
 body {
   margin: 0;
@@ -52,14 +71,14 @@ body {
 button, input, select { font: inherit; color: inherit; }
 
 button {
-  background: var(--cell);
+  background: var(--sep);
   border: 1px solid var(--line);
   color: var(--text);
   padding: 7px 10px;
   cursor: pointer;
 }
 
-button:hover, button:focus { border-color: var(--line-hot); outline: none; }
+button:hover, button:focus { background: #474c59; border-color: var(--line-hot); outline: none; }
 
 .is-hidden { display: none !important; }
 
@@ -119,7 +138,7 @@ button:hover, button:focus { border-color: var(--line-hot); outline: none; }
 .binding { padding: 9px 0; border-bottom: 1px solid var(--hair); cursor: pointer; }
 .binding:last-child { border-bottom: 0; }
 .binding:hover { color: var(--text); }
-.binding.selected { border-left: 2px solid var(--gpu); padding-left: 8px; }
+.binding.selected { border-left: 2px solid var(--sel); padding-left: 8px; }
 .binding-path { font-size: 12px; line-height: 1.35; margin-bottom: 4px; }
 .binding-path .source { color: var(--audio); }
 .binding-path .dest { color: var(--gpu); }
@@ -146,7 +165,7 @@ button:hover, button:focus { border-color: var(--line-hot); outline: none; }
 .clip-cell:hover { background: var(--cell-2); }
 .clip-cell:hover .clip-type { opacity: 1; }
 .clip-cell.active { box-shadow: inset 2px 0 0 var(--audio); }
-.clip-cell.selected { outline: 1px solid var(--gpu); outline-offset: -2px; }
+.clip-cell.selected { outline: 1px solid var(--sel); outline-offset: -2px; }
 .clip-cell.queued { box-shadow: inset 2px 0 0 var(--warn); }
 .clip-meta { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
 
@@ -169,7 +188,7 @@ button:hover, button:focus { border-color: var(--line-hot); outline: none; }
 /* ---- stage layer compositor (component skin; stack/canvas layout per-file) ---- */
 .layer { border: 1px solid var(--line); background: var(--cell); padding: 8px; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
 .layer:hover { background: var(--cell-2); }
-.layer.selected { outline: 2px solid var(--gpu); outline-offset: -3px; }
+.layer.selected { outline: 2px solid var(--sel); outline-offset: -3px; }
 .layer-vis { width: 10px; height: 10px; border: 1px solid var(--line-hot); background: var(--gpu); }
 .layer.off .layer-vis { background: transparent; }
 .layer-name { font-size: 12px; }
@@ -210,7 +229,7 @@ button:hover, button:focus { border-color: var(--line-hot); outline: none; }
   padding: 7px 8px; cursor: pointer; user-select: none;
 }
 .node:hover { background: var(--cell-2); border-color: var(--line-hot); }
-.node.selected { outline: 2px solid var(--gpu); outline-offset: -3px; }
+.node.selected { outline: 2px solid var(--sel); outline-offset: -3px; }
 .node-name { font-size: 12px; line-height: 1.2; margin-bottom: 5px; overflow-wrap: anywhere; }
 .node-badge { font-size: 9px; text-transform: uppercase; border: 1px solid var(--line); padding: 1px 4px; color: var(--muted); }
 .node-badge.core { color: var(--muted); border-color: var(--line); }

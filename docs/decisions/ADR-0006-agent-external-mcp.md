@@ -4,6 +4,9 @@ Status: accepted
 
 Date: 2026-06-17
 
+Refined by: [ADR-0008](ADR-0008-agent-capability-surface.md) — the intent surface may be embedded
+in the UI as long as the model stays external behind a swappable, vendor-agnostic adapter.
+
 ## Context
 
 Vivid 4 is agent-first, but the agent world changes fast: models, clients, protocols, and

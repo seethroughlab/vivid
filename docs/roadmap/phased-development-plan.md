@@ -29,7 +29,7 @@ task became easier, clearer, or more creatively powerful.
 | Phase | Name | Status | Current Evidence |
 |-------|------|--------|------------------|
 | 0 | Reboot Foundation | in progress | Vivid 4 branch, PRD, retained Classic lessons, commit-history lessons |
-| 1 | Disposable Session View Proof | in progress | HTML mock and Session View pressure-test plan |
+| 1 | Disposable Session View Proof | in progress | Three explored representations; variation-well grid chosen as spine (see verdict + experiments README) |
 | 2 | Agent Workflow Proof | not started | High-level MCP tool sketch only |
 | 3 | Minimal Native Session Shell | not started | None |
 | 4 | Music Authoring Core | not started | None |
@@ -105,10 +105,49 @@ Exit gate:
 
 Progress notes:
 
-- See `docs/experiments/session-view-pressure-test.md`.
-- Current prototype: `docs/experiments/session-view-pressure-test.html`.
+- See `docs/experiments/session-view-pressure-test.md` and the experiment index
+  `docs/experiments/README.md`.
 - Interface reset guidance: `docs/experiments/session-view-interface-reset.md`.
 - Full application shell explorations are parked until the Session View primary path passes.
+
+### Phase 1 convergence verdict (2026-06-21)
+
+Three Session View representations were explored against the same canonical one-song session:
+
+| Representation | File | Role |
+|---|---|---|
+| Peer-row grid | `session-view-pressure-test.html` | Original control / baseline |
+| Scene-as-AV-card | `session-view-scene-cards.html` | Alternative; source for the perception layer |
+| Variation-well grid | `session-view-variation-well.html` | **Chosen spine** |
+
+Decision: the **variation-well grid is the Session View spine.** It keeps the grid's matrix (a
+role's row across scenes is a built-in A/B/C/D comparison — the comparison half of the
+experimentation loop), makes each cell a *variation well* (audition / keep / branch), wears the
+Vivid Classic "Dark Steel" skin, and shows the agent-provider seam (ADR-0008).
+
+Phase 1 gate — represent, launch, select, inspect, with no graph vocabulary — **met by the
+spine** (verified in the mock): 7 tracks × 4 scenes representable; scene launches quantized to the
+bar; selection + inspector working; no node/graph/wire/operator vocabulary on the primary path.
+
+Findings that exceed Phase 1 and feed later phases:
+
+- Representation matters for AV parity: the Ableton-style peer-row grid flattens the
+  audio→binding→visual relationship into peer rows; the binding is the *subject*, not a peer row.
+  Feeds **Phase 5**.
+- The *variation well* (takes, live take, keep, branch) puts the experimentation loop in the cell;
+  Ableton has no equivalent. Feeds **Phase 4**.
+- Deterministic edits stay in core; only generative work crosses the provider seam (ADR-0008).
+  Feeds **Phase 2**.
+
+Known gap (the next fold-in, not a Phase 1 blocker): the spine does **not** yet surface binding
+legibility or visual perception — "what drives this visual," a live look, or "why is the Drop more
+intense." Those are **Phase 5** (Visual Bindings Core); the perception layer is prototyped in
+`session-view-scene-cards.html` and folds into the spine when Phase 5 opens.
+
+New vocabulary introduced this session is now in the glossary (Classic Lesson 1 — name concepts
+slowly, protect once proven): **variation well, take, live take, agent provider, agent adapter.**
+The authored-state shape these belong to is sketched in
+`docs/product/project-text-format.md` (the project text the prototype's JS `state` stands in for).
 
 ## Phase 2: Agent Workflow Proof
 
@@ -355,3 +394,7 @@ Use this section to record dated decisions and evidence as phases advance.
 
 - 2026-06-17: Created Vivid 4 phased development plan as a high-level proof ledger.
 - 2026-06-17: Added Vivid Classic commit-history lessons as reboot guardrails.
+- 2026-06-21: Explored three Session View representations (peer-row grid, scene-as-AV-card, variation-well grid) against the canonical one-song session.
+- 2026-06-21: Converged on the variation-well grid as the Session View spine; recorded the Phase 1 verdict and the Phase 4/5 fold-in gaps. Index: `docs/experiments/README.md`.
+- 2026-06-21: Added ADR-0008 (agent capability surface is embedded UI over a vendor-agnostic, swappable provider), refining ADR-0006.
+- 2026-06-21: Locked new vocabulary in the glossary (variation well, take, live take, agent provider, agent adapter) and sketched the authored project-text schema in `docs/product/project-text-format.md`.
