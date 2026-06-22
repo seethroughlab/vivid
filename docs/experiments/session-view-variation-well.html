@@ -91,8 +91,13 @@
       background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
       background-size: 40px 40px;
     }
+    .grid-stage { position: relative; min-width: 1110px; }
+    .wire-layer { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 5; }
+    .wire-layer path { fill: none; }
+    @keyframes wireflow { to { stroke-dashoffset: -18; } }
+    .wire-layer path.flow { stroke-dasharray: 5 4; animation: wireflow .8s linear infinite; }
     .session-grid {
-      min-width: 1080px; display: grid; grid-template-columns: 138px repeat(7, minmax(124px,1fr));
+      min-width: 1110px; display: grid; grid-template-columns: 168px repeat(7, minmax(124px,1fr));
       border-top: 1px solid var(--line); border-left: 1px solid var(--line);
     }
 
@@ -109,11 +114,13 @@
     .th.clickable:hover { background: #20252b; }
     .th.selected { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--sel); }
 
-    .scene { min-height: 80px; background: #1b1f24; padding: 9px; display: grid; grid-template-rows: auto 1fr auto; gap: 5px; cursor: pointer; }
+    .scene { min-height: 80px; background: #1b1f24; padding: 9px; display: grid; gap: 5px; align-content: start; cursor: pointer; }
     .scene:hover { background: #20252b; }
     .scene.selected { background: var(--sel-bg); box-shadow: inset 0 0 0 1px var(--sel); }
     .scene .sname { font-size: 13px; }
     .scene .sintent { color: var(--muted); font-size: 10px; line-height: 1.3; }
+    .scene-look { width: 100%; height: 40px; display: block; border: 1px solid var(--line); background: #0c0f13; margin-top: 2px; }
+    .look-cap { display: flex; justify-content: space-between; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
     .scene-actions { display: flex; align-items: center; gap: 6px; }
     .scene-actions button { width: 24px; height: 22px; padding: 0; background: transparent; border-color: var(--line); }
     .state { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
@@ -144,6 +151,17 @@
     .panel-head .htitle { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
     .panel-head .hmeta { font-size: 11px; color: var(--muted); }
     .panel-body { padding: 11px 12px; overflow: auto; }
+    .rail-scroll { min-height: 0; overflow: auto; }
+    .rail-scroll .panel { display: block; }
+    .rail-scroll .panel-body { overflow: visible; }
+
+    /* ---- visual bindings panel ---- */
+    .binding { border: 1px solid var(--line); background: #181b20; padding: 8px; margin-bottom: 8px; cursor: pointer; }
+    .binding:hover { border-color: var(--line-hot); }
+    .binding.selected { border-color: var(--sel); box-shadow: inset 3px 0 0 var(--sel); }
+    .binding-path { font-size: 12px; line-height: 1.35; }
+    .binding-path .source { color: var(--audio); }
+    .binding-path .dest { color: var(--gpu); }
 
     .big { font-size: 16px; line-height: 1.2; margin-bottom: 6px; }
     .copy { color: var(--muted); font-size: 11px; line-height: 1.5; margin-bottom: 8px; }
@@ -230,7 +248,10 @@
             <span class="pill">Intro / Verse / Chorus / Drop</span>
           </div>
         </div>
-        <div class="grid-wrap"><div class="session-grid" id="sessionGrid"></div></div>
+        <div class="grid-wrap"><div class="grid-stage" id="gridStage">
+          <div class="session-grid" id="sessionGrid"></div>
+          <svg class="wire-layer" id="wireLayer" aria-hidden="true"></svg>
+        </div></div>
       </section>
 
       <aside class="right">
@@ -238,9 +259,15 @@
           <div class="panel-head"><span class="accent"></span><span class="htitle">Selection</span><span class="hmeta" id="selectionKind">clip</span></div>
           <div class="panel-body" id="selectionPanel"></div>
         </div>
-        <div class="panel">
-          <div class="panel-head"><span class="accent"></span><span class="htitle">Variation Well</span><span class="hmeta" id="wellMeta">—</span></div>
-          <div class="panel-body" id="wellPanel"></div>
+        <div class="rail-scroll">
+          <div class="panel">
+            <div class="panel-head"><span class="accent"></span><span class="htitle">Variation Well</span><span class="hmeta" id="wellMeta">—</span></div>
+            <div class="panel-body" id="wellPanel"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><span class="accent" style="background:var(--gpu)"></span><span class="htitle">Visual Bindings</span><span class="hmeta" id="bindingCount">0</span></div>
+            <div class="panel-body" id="bindingPanel"></div>
+          </div>
         </div>
       </aside>
     </main>
@@ -254,6 +281,7 @@
         <div class="agent-actions">
           <button data-agent="bass">Vary Verse · Bass</button>
           <button data-agent="lead">Vary Drop · Lead</button>
+          <button data-agent="binding">Suggest a binding</button>
         </div>
         <div class="agent-foot">intents → provider → proposals applied to project text · no vendor SDK in core</div>
       </div>
@@ -284,10 +312,10 @@
         { id: "mapping", name: "AV Mapping", kind: "mapping", accent: "control" }
       ],
       scenes: [
-        { id: "intro", name: "Intro", intent: "Establish pulse with sparse visuals.", energy: 18 },
-        { id: "verse", name: "Verse", intent: "Tight groove, low visual density.", energy: 34 },
-        { id: "chorus", name: "Chorus", intent: "Open harmony, wider response.", energy: 66 },
-        { id: "drop", name: "Drop", intent: "High energy, heavy mappings.", energy: 94 }
+        { id: "intro", name: "Intro", intent: "Establish pulse with sparse visuals.", energy: 18, density: 14, motion: 8, color: 28 },
+        { id: "verse", name: "Verse", intent: "Tight groove, low visual density.", energy: 34, density: 30, motion: 15, color: 38 },
+        { id: "chorus", name: "Chorus", intent: "Open harmony, wider response.", energy: 66, density: 58, motion: 34, color: 64 },
+        { id: "drop", name: "Drop", intent: "High energy, heavy mappings.", energy: 94, density: 88, motion: 78, color: 82 }
       ],
       clips: {
         intro: {
@@ -335,7 +363,15 @@
           { name: "Hook", kind: "midi", tags: ["high"], pattern: "0010001000100010", kept: true },
           { name: "Sparse Answer", kind: "midi", tags: ["call/resp"], pattern: "0000100000001000", kept: false }
         ]}
-      }
+      },
+      // Visual bindings (perception layer). sourceTrack/destTrack pin the on-grid wire endpoints.
+      bindings: [
+        { id: "b1", scene: "verse", sourceTrack: "bass", destTrack: "particles", source: "Bass envelope", dest: "Particles / size", curve: "soft exponential", timing: "smoothed 80 ms", scope: "Verse + Chorus", reason: "Keeps verse movement tied to the groove without literal flashing." },
+        { id: "b2", scene: "chorus", sourceTrack: "drums", destTrack: "particles", source: "Snare transient", dest: "Particles / flash", curve: "fast peak", timing: "bar synced", scope: "Chorus + Drop", reason: "Makes the backbeat visible while the harmony opens." },
+        { id: "b3", scene: "drop", sourceTrack: "drums", destTrack: "particles", source: "Kick onset", dest: "Particles / burst count", curve: "hard gate", timing: "instant", scope: "Drop", reason: "Each kick increases particle density, making the Drop visibly heavier." },
+        { id: "b4", scene: "drop", sourceTrack: "scene", destTrack: "camera", source: "Scene energy", dest: "Camera / shake", curve: "limited ramp", timing: "2 bar fade", scope: "Drop", reason: "Camera movement rises with the arrangement instead of jittering randomly." },
+        { id: "b5", scene: "drop", sourceTrack: "chords", destTrack: "camera", source: "Chord brightness", dest: "Palette / amber-cyan mix", curve: "linear", timing: "per chord", scope: "Chorus + Drop", reason: "Harmony changes become color changes without leaving Session View." }
+      ]
     };
 
     const $ = id => document.getElementById(id);
@@ -349,6 +385,48 @@
     const PROVIDERS = ["Claude.app", "Codex", "Ollama (local)", "none"];
     const providerName = () => PROVIDERS[state.providerIdx];
     const hasProvider = () => providerName() !== "none";
+
+    // ---- bindings (perception layer; ported from the scene-card prototype) ----
+    const bindingById = id => state.bindings.find(b => b.id === id);
+    const bindingsForScene = sceneId => state.bindings.filter(b => b.scene === sceneId);
+    function bindingsForSelection() {
+      const s = state.selected;
+      if (s.type === "binding") return [bindingById(s.id)].filter(Boolean);
+      if (s.type === "scene") return bindingsForScene(s.id);
+      if (s.type === "track") {
+        const t = trackById(s.id);
+        if (!t) return [];
+        if (t.kind === "mapping") return state.bindings;
+        if (t.kind === "visual") return state.bindings.filter(b => b.destTrack === t.id);
+        return state.bindings.filter(b => b.sourceTrack === t.id);
+      }
+      const loc = locateClip(s.id);
+      if (!loc) return [];
+      if (loc.track.kind === "visual") return state.bindings.filter(b => b.destTrack === loc.track.id && b.scene === loc.scene.id);
+      if (loc.track.kind === "mapping") return bindingsForScene(loc.scene.id);
+      return state.bindings.filter(b => b.sourceTrack === loc.track.id && b.scene === loc.scene.id);
+    }
+
+    // paints a scene's look from its energy/density/motion/color (tuned for the small cell canvas)
+    function drawLook(canvas, scene) {
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d"), w = canvas.width, h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#0c0f13"; ctx.fillRect(0, 0, w, h);
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, `rgba(78,205,196,${0.12 + scene.color / 360})`);
+      grad.addColorStop(1, `rgba(240,160,48,${0.07 + scene.energy / 380})`);
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, w, h);
+      const count = Math.floor(6 + scene.density * 0.5);
+      for (let i = 0; i < count; i++) {
+        const x = (i * 37) % w, y = (i * 53 + scene.motion) % h;
+        const r = 0.8 + scene.energy / 90 + (i % 2);
+        ctx.globalAlpha = 0.28 + scene.energy / 260;
+        ctx.fillStyle = i % 2 ? "#4ecdc4" : "#f0a030";
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
 
     function locateClip(clipId) {
       for (const scene of state.scenes)
@@ -418,9 +496,11 @@
       for (const scene of state.scenes) {
         const active = scene.id === state.activeScene, queued = scene.id === state.queuedScene;
         const sSel = state.selected.type === "scene" && state.selected.id === scene.id ? "selected" : "";
-        html += `<div class="scene ${sSel}" data-select-type="scene" data-id="${scene.id}">
+        html += `<div class="scene ${sSel}" data-select-type="scene" data-id="${scene.id}" data-scene="${scene.id}" data-track="scene">
           <div class="sname">${scene.name}</div>
           <div class="sintent">${scene.intent}</div>
+          <canvas id="look_${scene.id}" class="scene-look" width="148" height="40"></canvas>
+          <div class="look-cap"><span>look</span><span>density ${scene.density}%</span></div>
           <div class="scene-actions"><button data-launch="${scene.id}" title="Launch ${scene.name}">&gt;</button>
           <span class="state ${active ? "on" : queued ? "q" : ""}">${active ? "active" : queued ? "queued" : "ready"}</span></div></div>`;
         for (const track of state.tracks) {
@@ -430,13 +510,49 @@
           const open = selected ? "open" : "";
           const cls = [selected ? "selected" : "", active ? "active" : "", queued ? "queued" : "", open].join(" ");
           const takesBadge = w.takes.length > 1 ? `<span class="takes" title="${w.takes.length} takes">▤ ${w.takes.length}</span>` : "";
-          html += `<div class="clip ${cls}" data-select-type="clip" data-id="${clip.id}">
+          html += `<div class="clip ${cls}" data-select-type="clip" data-id="${clip.id}" data-scene="${scene.id}" data-track="${track.id}">
             <div class="clip-head"><span class="clip-name">${take.name}</span>${takesBadge}</div>
             <div class="clip-kind">${take.kind}</div>
             ${pat(take.pattern, track.accent)}</div>`;
         }
       }
       grid.innerHTML = html;
+      for (const scene of state.scenes) drawLook($("look_" + scene.id), scene);
+    }
+
+    // ---- on-grid wires: for the active scene's row, audio cell → visual cell ----
+    const cellEl = (sceneId, trackId) => document.querySelector(`[data-scene="${sceneId}"][data-track="${trackId}"]`);
+    function drawWires() {
+      const svg = $("wireLayer"), stage = $("gridStage");
+      if (!svg || !stage) return;
+      const NS = "http://www.w3.org/2000/svg";
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      const sceneId = state.activeScene;
+      const stageBox = stage.getBoundingClientRect();
+      const selLoc = state.selected.type === "clip" ? locateClip(state.selected.id) : null;
+      bindingsForScene(sceneId).forEach((b, i) => {
+        const src = cellEl(sceneId, b.sourceTrack), dst = cellEl(sceneId, b.destTrack);
+        if (!src || !dst) return;
+        const sb = src.getBoundingClientRect(), db = dst.getBoundingClientRect();
+        const x1 = sb.right - stageBox.left, y1 = sb.top - stageBox.top + sb.height / 2;
+        const x2 = db.left - stageBox.left, y2 = db.top - stageBox.top + db.height / 2;
+        const lit = (state.selected.type === "binding" && state.selected.id === b.id)
+          || (selLoc && selLoc.scene.id === sceneId && selLoc.track.id === b.destTrack);
+        const dx = Math.max(26, (x2 - x1) * 0.4);
+        const bow = 16 + i * 12;  // stagger so multiple wires in a row don't merge
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", `M ${x1} ${y1} C ${x1 + dx} ${y1 + bow}, ${x2 - dx} ${y2 + bow}, ${x2} ${y2}`);
+        path.setAttribute("class", "flow");
+        path.setAttribute("stroke", lit ? "#6ea8ff" : "#9a93ff");
+        path.setAttribute("stroke-width", lit ? "3.2" : "2");
+        path.setAttribute("opacity", lit ? "1" : "0.92");
+        svg.appendChild(path);
+        for (const [x, y, c] of [[x1, y1, "#f0a030"], [x2, y2, "#4ecdc4"]]) {
+          const dot = document.createElementNS(NS, "circle");
+          dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", "4"); dot.setAttribute("fill", c);
+          svg.appendChild(dot);
+        }
+      });
     }
 
     function renderSelection() {
@@ -446,7 +562,9 @@
         const s = sceneById(state.selected.id);
         panel.innerHTML = `<div class="big">${s.name}</div><div class="copy">${s.intent}</div>
           <div class="row"><span>Launch</span><span>bar boundary</span></div>
-          <div class="row"><span>Energy</span><span>${s.energy}%</span></div>`;
+          <div class="row"><span>Energy</span><span>${s.energy}%</span></div>
+          <div class="row"><span>Visual density</span><span>${s.density}%</span></div>
+          <div class="row"><span>Bindings</span><span>${bindingsForScene(s.id).length}</span></div>`;
         return;
       }
       if (state.selected.type === "track") {
@@ -456,13 +574,40 @@
           <div class="row"><span>Scenes</span><span>${state.scenes.length}</span></div>`;
         return;
       }
+      if (state.selected.type === "binding") {
+        const b = bindingById(state.selected.id);
+        if (b) panel.innerHTML = `<div class="big">${b.source} → ${b.dest}</div>
+          <div class="copy">${b.reason}</div>
+          <div class="row"><span>Curve</span><span>${b.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${b.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${b.scope}</span></div>`;
+        return;
+      }
       const loc = locateClip(state.selected.id);
       if (!loc) { panel.innerHTML = `<div class="copy">Nothing selected.</div>`; return; }
       const w = getWell(loc.clip);
+      const rel = bindingsForSelection();
+      let relRow = "";
+      if (loc.track.kind === "visual") relRow = `<div class="row"><span>Driven by</span><span>${rel.map(b => b.source).join(", ") || "look only"}</span></div>`;
+      else if (loc.track.kind === "instrument" && rel.length) relRow = `<div class="row"><span>Drives</span><span>${rel.map(b => b.dest).join(", ")}</span></div>`;
       panel.innerHTML = `<div class="big">${loc.track.name} · ${loc.scene.name}</div>
-        <div class="copy">Live take drives this cell. ${w.takes.length} take${w.takes.length > 1 ? "s" : ""} in the well.</div>
+        <div class="copy">${w.takes.length} take${w.takes.length > 1 ? "s" : ""} in the well; the live take is the active clip.</div>
         <div class="row"><span>Live take</span><span>${w.takes[w.live].name}</span></div>
-        <div class="row"><span>Kept</span><span>${w.takes.filter(t => t.kept).length}</span></div>`;
+        <div class="row"><span>Kept</span><span>${w.takes.filter(t => t.kept).length}</span></div>
+        ${relRow}`;
+    }
+
+    function renderBindings() {
+      const list = bindingsForSelection();
+      $("bindingCount").textContent = String(list.length);
+      $("bindingPanel").innerHTML = list.map(b => `
+        <div class="binding ${state.selected.type === "binding" && state.selected.id === b.id ? "selected" : ""}" data-select-type="binding" data-id="${b.id}">
+          <div class="binding-path"><span class="source">${b.source}</span> → <span class="dest">${b.dest}</span></div>
+          <div class="copy" style="margin:4px 0 6px">${b.reason}</div>
+          <div class="row"><span>Curve</span><span>${b.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${b.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${b.scope}</span></div>
+        </div>`).join("") || `<div class="copy">No bindings for this selection.</div>`;
     }
 
     function renderWell() {
@@ -537,6 +682,18 @@
         state.selected = { type: "clip", id: clip.id };
         log(`<b>intent</b> vary Drop · Lead → <b>${p}</b> → 3 proposals applied to project text, preserving the glitch-hook role.`);
       }
+      if (action === "binding") {
+        const sceneId = state.selected.type === "scene" ? state.selected.id
+          : (state.selected.type === "clip" ? locateClip(state.selected.id)?.scene.id : null) || "drop";
+        const scene = sceneById(sceneId);
+        const id = "b" + (state.bindings.length + 1);
+        state.bindings.push({ id, scene: sceneId, sourceTrack: "drums", destTrack: "particles",
+          source: "Kick onset", dest: "Particles / burst count", curve: "hard gate", timing: "instant",
+          scope: scene.name, reason: `Each kick adds particles, making ${scene.name} visibly heavier.` });
+        scene.density = Math.min(100, scene.density + 18);
+        state.selected = { type: "binding", id };
+        log(`<b>intent</b> bind Kick onset → Particles in ${scene.name} → <b>${p}</b> → proposal applied; the look thickens in preview.`);
+      }
       renderAll();
     }
 
@@ -560,7 +717,10 @@
       document.querySelectorAll("[data-agent]").forEach(b => b.disabled = !hasProvider());
     }
 
-    function renderAll() { renderProvider(); renderTransport(); renderGrid(); renderSelection(); renderWell(); }
+    function renderAll() {
+      renderProvider(); renderTransport(); renderGrid(); renderSelection(); renderWell(); renderBindings();
+      drawWires();  // synchronous: getBoundingClientRect forces layout, so cells are measurable
+    }
 
     document.addEventListener("click", e => {
       if (e.target.id === "providerBtn") {
@@ -601,6 +761,7 @@
       if (target) select(target.dataset.selectType, target.dataset.id);
     });
 
+    window.addEventListener("resize", drawWires);
     renderPerf();
     renderAll();
   </script>

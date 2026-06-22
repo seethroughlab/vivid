@@ -139,10 +139,11 @@ Findings that exceed Phase 1 and feed later phases:
 - Deterministic edits stay in core; only generative work crosses the provider seam (ADR-0008).
   Feeds **Phase 2**.
 
-Known gap (the next fold-in, not a Phase 1 blocker): the spine does **not** yet surface binding
-legibility or visual perception — "what drives this visual," a live look, or "why is the Drop more
-intense." Those are **Phase 5** (Visual Bindings Core); the perception layer is prototyped in
-`session-view-scene-cards.html` and folds into the spine when Phase 5 opens.
+Perception fold-in (2026-06-21): the binding-legibility / visual-perception gap is now closed on
+the spine — per-scene look thumbnails, a Visual Bindings panel, on-grid signal wires for the
+active scene, an accurate "driven by" inspector, and a provider-gated "suggest a binding" intent.
+The spine now carries comparison + experimentation + perception together. This is **Phase 5**
+(Visual Bindings Core) groundwork proven on the disposable spine, ahead of native work.
 
 New vocabulary introduced this session is now in the glossary (Classic Lesson 1 — name concepts
 slowly, protect once proven): **variation well, take, live take, agent provider, agent adapter.**
@@ -398,3 +399,4 @@ Use this section to record dated decisions and evidence as phases advance.
 - 2026-06-21: Converged on the variation-well grid as the Session View spine; recorded the Phase 1 verdict and the Phase 4/5 fold-in gaps. Index: `docs/experiments/README.md`.
 - 2026-06-21: Added ADR-0008 (agent capability surface is embedded UI over a vendor-agnostic, swappable provider), refining ADR-0006.
 - 2026-06-21: Locked new vocabulary in the glossary (variation well, take, live take, agent provider, agent adapter) and sketched the authored project-text schema in `docs/product/project-text-format.md`.
+- 2026-06-21: Folded the perception layer into the spine — per-scene look thumbnails, Visual Bindings panel, on-grid signal wires (active scene), accurate "driven by" inspector, and a provider-gated "suggest a binding" intent. Phase 5 groundwork proven on the disposable spine.
