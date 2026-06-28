@@ -212,6 +212,9 @@ static void load_video_at(int i) {
     }
 }
 
+void draw_clip_preview(vivid::ui::Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
+                       const Rect& b, float ar, float ag, float ab, bool on);  // defined below
+
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
     ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
@@ -259,6 +262,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
             if (on) ui.draw_rect(r.x, r.y, 3.f, r.h, ar, ag, ab, 1.0f);
             if (q)  ui.draw_rect(r.x, r.y, r.w, 3.f, 0.95f, 0.75f, 0.20f, 1.0f);
             if (on) ui.draw_tri(r.x + 14.f, r.y + 18.f, r.x + 14.f, r.y + 32.f, r.x + 27.f, r.y + 25.f, 0.5f, 0.85f, 0.5f, 1.0f);
+            const Rect pv = { r.x + 8.f, r.y + 24.f, r.w - 14.f, r.h - 30.f };
+            draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
             char cn[16];
             const int abpm = vivid_poc::session_track_is_audio(s, t) ? vivid_poc::session_audio_clip_bpm(s, t, sc) : 0;
             if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
@@ -383,6 +388,38 @@ void draw_fx_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
         ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
         ui.draw_rect(m.x, iy, 3.f, 24.f, 0.31f, 0.70f, 0.80f, 1.0f);
         ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), 0.85f, 0.88f, 0.92f, 1.0f, 0.9f);
+    }
+}
+
+// Mini clip preview inside a session cell: a piano-roll for MIDI clips, a
+// waveform for audio clips. Drawn faintly so the clip name reads on top.
+void draw_clip_preview(vivid::ui::Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
+                       const Rect& b, float ar, float ag, float ab, bool on) {
+    const float alpha = on ? 0.85f : 0.5f;
+    if (vivid_poc::session_track_is_audio(s, t)) {
+        float bins[48];
+        const int n = vivid_poc::session_audio_waveform(s, t, sc, bins, 48);
+        if (n <= 0) return;
+        const float midy = b.y + b.h * 0.5f, colw = b.w / n;
+        for (int i = 0; i < n; ++i) {
+            const float a = std::min(1.f, std::max(0.f, bins[i])) * (b.h * 0.5f - 1.f);
+            ui.draw_rect(b.x + colw * i, midy - a, std::max(1.f, colw - 0.4f), a * 2.f + 1.f, ar, ag, ab, alpha);
+        }
+    } else {
+        vivid_poc::ClipNote buf[256];
+        const int n = vivid_poc::session_get_clip(s, t, sc, buf, 256);
+        const double len = vivid_poc::session_clip_length(s, t, sc);
+        if (n <= 0 || len <= 0.0) return;
+        int lo = 127, hi = 0;
+        for (int i = 0; i < n; ++i) { lo = std::min(lo, buf[i].pitch); hi = std::max(hi, buf[i].pitch); }
+        const int span = std::max(12, hi - lo + 1);            // at least an octave
+        const int base = lo - (span - (hi - lo + 1)) / 2;      // vertically centered
+        for (int i = 0; i < n; ++i) {
+            const float x0 = b.x + b.w * static_cast<float>(buf[i].start / len);
+            const float ww = b.w * static_cast<float>(buf[i].dur / len);
+            const float ny = b.y + b.h * (1.f - (static_cast<float>(buf[i].pitch - base) + 0.5f) / span);
+            ui.draw_rect(x0, ny - 1.f, std::max(1.5f, std::min(ww, b.x + b.w - x0)), 2.4f, ar, ag, ab, alpha);
+        }
     }
 }
 
