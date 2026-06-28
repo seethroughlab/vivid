@@ -45,6 +45,11 @@ public:
                 const float* plasma_uniforms, float feedback_decay, float blur_radius,
                 WGPUTextureView video_tex);
 
+    // Composite node idx's last-rendered output into a screen rect (live node
+    // thumbnail). loadOp=Load, so call after the UI pass. No-op for Output.
+    void blit_node(WGPUCommandEncoder enc, WGPUTextureView screen, int idx,
+                   float x, float y, float w, float h);
+
 private:
     void ensure_resources(size_t n);
 

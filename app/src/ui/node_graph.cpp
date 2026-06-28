@@ -85,12 +85,26 @@ static int param_count_of(VOp op) {
 static int op_input_rows(VOp op) { return (op_has_input(op) ? 1 : 0) + param_count_of(op); }
 static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
 
+static constexpr float kCardW  = 156.f;
+static constexpr float kThumbH = 46.f;                 // live-output thumbnail strip
+static bool op_has_thumb(VOp op) { return op != VOp::Output; }
+
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
-    w = 144.f;
+    w = kCardW;
     const VOp op = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op : VOp::Plasma;
-    h = 30.f + std::max(1, op_input_rows(op)) * 18.f + 6.f;
+    h = 30.f + std::max(1, op_input_rows(op)) * 18.f + (op_has_thumb(op) ? kThumbH + 8.f : 6.f);
+}
+
+int NodeGraph::op_thumb_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
+bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_thumb(vg_->nodes()[i].op)) return false;
+    float x, y, w, h; op_node_rect(i, x, y, w, h);
+    const int rows = std::max(1, op_input_rows(vg_->nodes()[i].op));
+    tx = x + 6.f; ty = y + 30.f + rows * 18.f + 2.f; tw = w - 12.f; th = kThumbH;
+    // The blit pass has no clip-rect, so only show fully-in-pane thumbnails.
+    return tx >= bx0_ && tx + tw <= bx1_ && ty >= by0_ && ty + th <= by1_;
 }
 
 // classic-style type accent (r,g,b) for an op.
@@ -293,6 +307,15 @@ void NodeGraph::draw(Renderer2D& r) {
         }
         if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
         if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
+        // thumbnail panel: a dark recessed frame; the live output blits on top
+        // (after the UI pass). Drawn even when off-pane so the card looks whole.
+        float tx, ty, tw, th;
+        if (op_has_thumb(op)) {
+            const int rows = std::max(1, op_input_rows(op));
+            tx = x + 6.f; ty = y + 30.f + rows * 18.f + 2.f; tw = w - 12.f; th = kThumbH;
+            r.draw_rect(tx - 1.f, ty - 1.f, tw + 2.f, th + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
+            r.draw_rect(tx, ty, tw, th, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
+        }
     }
     // param input ports + labels (down the owning op's left edge)
     for (int u = 0; u < kNumShaderUniforms; ++u) {
@@ -434,7 +457,7 @@ void NodeGraph::chooser_confirm() {
     if (e.is_op && vg_) {
         const int ni = vg_->add_node(VOp(e.code));
         sync_op_pos();  // grow op_pos_ for the new node, then place it at the cursor
-        if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { chooser_sx_ - 72.f, chooser_sy_ - 15.f };
+        if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { chooser_sx_ - kCardW * 0.5f, chooser_sy_ - 15.f };
     } else if (!e.is_op) {
         add_data_node(e.label, e.code);
         if (!data_.empty()) { data_.back().x = chooser_sx_ - 84.f; data_.back().y = chooser_sy_ - 36.f; }

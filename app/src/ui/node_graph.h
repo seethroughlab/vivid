@@ -49,6 +49,11 @@ public:
     void chain_load_set_input(int i, int input);
 
     void draw(Renderer2D& r);
+    // Live node thumbnails: op_thumb_rect(i) gives the on-screen strip for op
+    // node i (false for Output / off-pane); main blits each node's output there
+    // after the UI pass.
+    int  op_thumb_count() const;
+    bool op_thumb_rect(int i, float& x, float& y, float& w, float& h) const;
     bool on_down(double x, double y);
     void on_move(double x, double y);
     void on_up(double x, double y);

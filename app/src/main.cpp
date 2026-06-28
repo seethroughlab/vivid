@@ -898,6 +898,13 @@ int main() {
             draw_map_menu(ui, audio_state.map_menu);
             clip_editor.draw(ui);  // modal overlay on top
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
+            // Live per-node thumbnails: composite each op's output into its card
+            // strip on top of the flushed UI (loadOp=Load).
+            for (int i = 0; i < graph.op_thumb_count(); ++i) {
+                float tx, ty, tw, th;
+                if (graph.op_thumb_rect(i, tx, ty, tw, th))
+                    vgraph.blit_node(frame.encoder, frame.view, i, tx, ty, tw, th);
+            }
             gpu.end_frame(frame);
         }
         return true;
