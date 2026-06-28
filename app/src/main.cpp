@@ -1053,17 +1053,10 @@ int main() {
             const Rect vrp = viewer_rect();
             graph.set_bounds(g_split_x + 8.f, vrp.y + vrp.h + 16.f,
                              static_cast<float>(g_win_w) - 8.f, static_cast<float>(g_win_h) - 8.f);
-            graph.draw(ui);
-            // Pass 1: the base UI (DAW + node-graph cards/ports).
+            graph.draw(ui);   // includes live node thumbnails via draw_texture
+            // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
-            // Live per-node thumbnails: composite each op's output into its card
-            // strip on top of the base UI (loadOp=Load).
-            for (int i = 0; i < graph.op_thumb_count(); ++i) {
-                float tx, ty, tw, th, cx, cy, cw, ch;
-                if (graph.op_thumb_rect(i, tx, ty, tw, th, cx, cy, cw, ch))
-                    vgraph.blit_node(frame.encoder, frame.view, i, tx, ty, tw, th, cx, cy, cw, ch);
-            }
-            // Pass 2: floating overlays — drawn AFTER thumbnails so they sit on top.
+            // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
             graph.draw_overlays(ui);  // operator chooser
             draw_menu(ui, audio_state.menu,
                       audio_state.menu.src < 0 ? "Master"

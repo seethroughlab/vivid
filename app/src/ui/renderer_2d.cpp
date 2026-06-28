@@ -53,6 +53,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let alpha = textureSample(atlas_texture, atlas_sampler, in.uv).r;
     return vec4f(in.color.rgb, in.color.a * alpha);
 }
+
+// Full-colour textured quad: sample RGBA and tint by the vertex colour
+// (white tint = passthrough). Used by draw_texture for images/thumbnails.
+@fragment
+fn fs_tex(in: VertexOutput) -> @location(0) vec4f {
+    return textureSample(atlas_texture, atlas_sampler, in.uv) * in.color;
+}
 )";
 
 bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
@@ -412,6 +419,20 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
         return false;
     }
 
+    // Second pipeline: full-colour textured quads (draw_texture). Same layout,
+    // vertex stage, and blend — only the fragment entry point differs.
+    WGPUFragmentState fragment_tex = fragment;
+    fragment_tex.entryPoint = to_sv("fs_tex");
+    WGPURenderPipelineDescriptor rp_tex = rp_desc;
+    rp_tex.label = to_sv("Texture Pipeline");
+    rp_tex.fragment = &fragment_tex;
+    tex_pipeline_ = wgpuDeviceCreateRenderPipeline(device, &rp_tex);
+    if (!tex_pipeline_) {
+        std::fprintf(stderr, "[vivid] Renderer2D: failed to create texture pipeline\n");
+        shutdown();
+        return false;
+    }
+
     // Cache the solid-white UV (center of the 2x2 block at atlas origin)
     solid_u_ = 0.5f / kAtlasWidth;
     solid_v_ = 0.5f / kAtlasHeight;
@@ -609,7 +630,7 @@ void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickne
     vertices_.push_back({x2 - nx, y2 - ny, su, sv, r, g, b, a});
 }
 
-void Renderer2D::finalize_batch() {
+void Renderer2D::finalize_batch(WGPUTextureView tex) {
     uint32_t batch_start = 0;
     if (!batches_.empty()) {
         auto& last = batches_.back();
@@ -620,6 +641,7 @@ void Renderer2D::finalize_batch() {
         DrawBatch b;
         b.start = batch_start;
         b.count = verts_now - batch_start;
+        b.tex = tex;
         if (!clip_stack_.empty()) {
             b.has_scissor = true;
             b.sx = clip_stack_.back().sx;
@@ -629,6 +651,14 @@ void Renderer2D::finalize_batch() {
         }
         batches_.push_back(b);
     }
+}
+
+void Renderer2D::draw_texture(float x, float y, float w, float h, WGPUTextureView tex,
+                              float r, float g, float b, float a) {
+    if (!tex) return;
+    finalize_batch();                                       // close the pending atlas batch
+    push_quad(x, y, x + w, y + h, 0.f, 0.f, 1.f, 1.f, r, g, b, a);
+    finalize_batch(tex);                                    // tag this quad as a texture batch
 }
 
 void Renderer2D::push_clip_rect(float x, float y, float w, float h) {
@@ -780,13 +810,29 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
     rp_desc.colorAttachments = &color_att;
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp_desc);
-    wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, ring_byte_offset_, data_size);
 
-    // Draw batches with per-batch scissor rects
+    // Draw batches: per-batch pipeline (alpha atlas vs. full-colour texture),
+    // bind group, and scissor rect. Texture bind groups are transient (released
+    // after the pass — the command buffer retains them until submit).
+    std::vector<WGPUBindGroup> temp_bgs;
+    const void* bound_pipe = nullptr;
     for (const auto& batch : batches_) {
         if (batch.count == 0) continue;
+        WGPURenderPipeline pipe = batch.tex ? tex_pipeline_ : pipeline_;
+        if (pipe != bound_pipe) { wgpuRenderPassEncoderSetPipeline(pass, pipe); bound_pipe = pipe; }
+        if (batch.tex) {
+            WGPUBindGroupEntry be[3]{};
+            be[0].binding = 0; be[0].buffer = uniform_buf_; be[0].offset = 0; be[0].size = 8;
+            be[1].binding = 1; be[1].sampler = sampler_;
+            be[2].binding = 2; be[2].textureView = batch.tex;
+            WGPUBindGroupDescriptor bd{}; bd.layout = bind_layout_; bd.entryCount = 3; bd.entries = be;
+            WGPUBindGroup bg = wgpuDeviceCreateBindGroup(device_, &bd);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
+            temp_bgs.push_back(bg);
+        } else {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 0, nullptr);
+        }
         if (batch.has_scissor) {
             detail::PhysicalScissorRect rect{};
             if (!detail::clamp_physical_scissor_rect(batch.sx, batch.sy, batch.sw, batch.sh,
@@ -805,6 +851,7 @@ void Renderer2D::flush(WGPUCommandEncoder encoder, WGPUTextureView surface_view,
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+    for (WGPUBindGroup bg : temp_bgs) wgpuBindGroupRelease(bg);
 
     ring_byte_offset_ += data_size;
 
@@ -834,6 +881,7 @@ void Renderer2D::shutdown() {
     if (bind_group_)  { wgpuBindGroupRelease(bind_group_);        bind_group_  = nullptr; }
     if (uniform_buf_) { wgpuBufferRelease(uniform_buf_);         uniform_buf_ = nullptr; }
     if (pipeline_)    { wgpuRenderPipelineRelease(pipeline_);     pipeline_    = nullptr; }
+    if (tex_pipeline_){ wgpuRenderPipelineRelease(tex_pipeline_); tex_pipeline_ = nullptr; }
     if (bind_layout_) { wgpuBindGroupLayoutRelease(bind_layout_); bind_layout_ = nullptr; }
     if (sampler_)     { wgpuSamplerRelease(sampler_);             sampler_     = nullptr; }
     if (atlas_view_)  { wgpuTextureViewRelease(atlas_view_);      atlas_view_  = nullptr; }

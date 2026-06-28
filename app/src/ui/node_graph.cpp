@@ -110,24 +110,6 @@ void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) cons
     h = 30.f + std::max(1, op_input_rows(op)) * 18.f + (op_has_thumb(op) ? kThumbH + 8.f : 6.f);
 }
 
-int NodeGraph::op_thumb_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
-bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th,
-                              float& cx, float& cy, float& cw, float& ch) const {
-    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_thumb(vg_->nodes()[i].op)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h);   // world
-    const int rows = std::max(1, op_input_rows(vg_->nodes()[i].op));
-    // world strip -> screen (the GPU blit isn't part of the Renderer2D transform)
-    tx = (x + 6.f) * view_scale_ + view_ox_;
-    ty = (y + 30.f + rows * 18.f + 2.f) * view_scale_ + view_oy_;
-    tw = (w - 12.f) * view_scale_; th = kThumbH * view_scale_;
-    // Viewport must stay inside the window framebuffer (~pane + 8px margins).
-    const float winR = bx1_ + 8.f, winB = by1_ + 8.f;
-    if (tx < 0.f || ty < 0.f || tx + tw > winR || ty + th > winB) return false;
-    // Scissor = strip ∩ pane, so an edge thumbnail crops instead of vanishing.
-    cx = std::max(tx, bx0_); cy = std::max(ty, by0_);
-    cw = std::min(tx + tw, bx1_) - cx; ch = std::min(ty + th, by1_) - cy;
-    return cw > 0.5f && ch > 0.5f;
-}
 
 // classic-style type accent (r,g,b) for an op.
 static void op_accent(VOp op, float& r, float& g, float& b) {
@@ -362,14 +344,20 @@ void NodeGraph::draw(Renderer2D& r) {
         }
         if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
         if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
-        // thumbnail panel: a dark recessed frame; the live output blits on top
-        // (after the UI pass). Drawn even when off-pane so the card looks whole.
-        float tx, ty, tw, th;
+        // thumbnail: a recessed panel with the node's live output drawn on top via
+        // Renderer2D's textured-quad path (scales/pans with the view, clipped to the
+        // pane by the active clip-rect, letterboxed to the source aspect).
         if (op_has_thumb(op)) {
             const int rows = std::max(1, op_input_rows(op));
-            tx = x + 6.f; ty = y + 30.f + rows * 18.f + 2.f; tw = w - 12.f; th = kThumbH;
+            const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
             r.draw_rect(tx - 1.f, ty - 1.f, tw + 2.f, th + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
             r.draw_rect(tx, ty, tw, th, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
+            if (WGPUTextureView v = vg_->node_view(i)) {
+                const float srcA = vg_->rt_aspect(), dstA = tw / th;
+                float fw = tw, fh = th;
+                if (srcA > dstA) fh = tw / srcA; else fw = th * srcA;   // letterbox
+                r.draw_texture(tx + (tw - fw) * 0.5f, ty + (th - fh) * 0.5f, fw, fh, v);
+            }
         }
     }
     // param input ports + labels (down each node's left edge)

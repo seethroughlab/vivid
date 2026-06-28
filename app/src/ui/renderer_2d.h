@@ -83,6 +83,11 @@ public:
                           float r, float g, float b, float a = 1.0f);
     void draw_polyline(const float* xs, const float* ys, uint32_t count,
                        float thickness, float r, float g, float b, float a = 1.0f);
+    // Full-colour textured quad at (x,y,w,h) sampling `tex` (full 0..1 UV), tinted
+    // by (r,g,b,a). Respects the view transform + clip rect. The view must remain
+    // valid until the next flush(); blends as premultiplied-by-color alpha.
+    void draw_texture(float x, float y, float w, float h, WGPUTextureView tex,
+                      float r = 1.0f, float g = 1.0f, float b = 1.0f, float a = 1.0f);
     float text_width(const char* text, float scale = 1.0f) const;
     float line_height() const { return line_height_; }
 
@@ -120,12 +125,13 @@ private:
                    float r, float g, float b, float a);
     void push_tri(float x0, float y0, float x1, float y1, float x2, float y2,
                   float r, float g, float b, float a);
-    void finalize_batch();
+    void finalize_batch(WGPUTextureView tex = nullptr);
     static uint32_t decode_utf8(const char*& p);
     const GlyphInfo* lookup_glyph(uint32_t codepoint) const;
 
     WGPUDevice device_ = nullptr;
     WGPURenderPipeline pipeline_ = nullptr;
+    WGPURenderPipeline tex_pipeline_ = nullptr;   // full-colour textured quads
     WGPUBindGroupLayout bind_layout_ = nullptr;
     WGPUBuffer uniform_buf_ = nullptr;     // persistent 8-byte uniform (screen_size)
     WGPUBindGroup bind_group_ = nullptr;   // persistent bind group (uniforms + sampler + atlas)
@@ -156,6 +162,7 @@ private:
         uint32_t start = 0, count = 0;
         bool has_scissor = false;
         float sx = 0, sy = 0, sw = 0, sh = 0; // physical pixel coords
+        WGPUTextureView tex = nullptr;        // null = glyph atlas (alpha pipeline)
     };
     std::vector<DrawBatch> batches_;
     std::vector<DrawBatch> clip_stack_; // push/pop stack (reuses DrawBatch for rect storage)

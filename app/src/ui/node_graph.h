@@ -56,15 +56,8 @@ public:
     void chain_load_add(int op, int id, float x, float y);
     void chain_load_set_input(int i, int input);
 
-    void draw(Renderer2D& r);
-    void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the thumbnail pass
-    // Live node thumbnails: op_thumb_rect(i) gives the on-screen strip for op
-    // node i (false for Output / off-pane); main blits each node's output there
-    // after the UI pass.
-    int  op_thumb_count() const;
-    // Out: viewport rect (x,y,w,h) + pane-clipped scissor (cx,cy,cw,ch). False if off-pane.
-    bool op_thumb_rect(int i, float& x, float& y, float& w, float& h,
-                       float& cx, float& cy, float& cw, float& ch) const;
+    void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
+    void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
     bool on_down(double x, double y);
     void on_move(double x, double y);
     void on_up(double x, double y);

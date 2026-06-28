@@ -48,12 +48,14 @@ public:
                 float vx, float vy, float vw, float vh, float time,
                 WGPUTextureView video_tex);
 
-    // Composite node idx's last-rendered output into a screen rect (live node
-    // thumbnail), letterboxed. Optional scissor (scw>0) crops to a clip region.
-    // loadOp=Load, so call after the UI pass. No-op for Output.
-    void blit_node(WGPUCommandEncoder enc, WGPUTextureView screen, int idx,
-                   float x, float y, float w, float h,
-                   float scx = -1.f, float scy = 0.f, float scw = 0.f, float sch = 0.f);
+    // A node's last-rendered output view (for live thumbnails via Renderer2D's
+    // textured-quad path). nullptr for Output / out-of-range. Aspect for letterbox.
+    WGPUTextureView node_view(int idx) const {
+        if (idx < 0 || idx >= static_cast<int>(rts_.size())) return nullptr;
+        if (idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output) return nullptr;
+        return rts_[idx].view;
+    }
+    float rt_aspect() const { return rtH_ ? static_cast<float>(rtW_) / static_cast<float>(rtH_) : 1.f; }
 
 private:
     void ensure_resources(size_t n);
