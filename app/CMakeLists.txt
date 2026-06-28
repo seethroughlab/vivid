@@ -63,6 +63,7 @@ add_executable(vivid_poc
     src/main.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
+    src/gpu/shader_op.cpp
     src/audio/vst3_host.cpp
     src/ui/renderer_2d.cpp)
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)

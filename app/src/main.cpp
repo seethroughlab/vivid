@@ -16,6 +16,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
+#include "gpu/shader_op.h"
 #include "miniaudio.h"
 
 namespace {
@@ -92,6 +93,25 @@ inline Rect clip_cell_rect(int i) {
     return { gx, gy + i * (ch + gap), cw, ch };
 }
 
+// Viewer pane (right) where the visuals shader op renders.
+constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 548.f;
+
+// The visual: a GLSL fragment shader, compiled natively by wgpu-native (no glslang).
+static const char* kFragGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_reactive; };
+void main() {
+    vec2 uv = v_uv;
+    float t = u_time;
+    float v = sin(uv.x * 9.0 + t) + sin(uv.y * 9.0 + t * 1.3)
+            + sin((uv.x + uv.y) * 6.0 + t * 0.7)
+            + sin(length(uv - 0.5) * 16.0 - t * 2.0);
+    vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + v + u_reactive * 4.0);
+    o_color = vec4(col * (0.65 + u_reactive), 1.0);
+}
+)";
+
 // The Session view on Renderer2D: transport bar, a track column, and clickable
 // clip cells (active = blue + play glyph, queued = amber stripe, hover = lighter).
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
@@ -128,6 +148,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     }
     const float fy = (clips > 0) ? clip_cell_rect(clips - 1).y + 64.f : 130.f;
     ui.draw_text(48, fy, "click a clip to launch  ·  or press 1/2/3", 0.45f, 0.48f, 0.53f, 1.0f, 0.9f);
+
+    ui.draw_text(kViewX, 96, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
 }
 
 // Number keys 1..N launch clip 0..N-1 (applied on the next bar).
@@ -178,6 +200,10 @@ int main() {
     if (!ui.init(gpu.device(), gpu.surface_format(), VIVID_FONT_PATH, 15.0f))
         std::fprintf(stderr, "[vivid] Renderer2D init failed (UI disabled)\n");
 
+    vivid::ShaderOp shader;
+    if (!shader.init(gpu.device(), gpu.queue(), gpu.surface_format(), kFragGLSL))
+        std::fprintf(stderr, "[vivid] shader op init failed (viewer disabled)\n");
+
     Transport transport;
     AudioState audio_state{};
     audio_state.transport = &transport;  // player set after the device opens
@@ -220,6 +246,8 @@ int main() {
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
             clear_pass(frame.encoder, frame.view, 0.04f, pulse, b);
+            shader.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH,
+                          static_cast<float>(glfwGetTime()), 0.0f);
             draw_ui(ui, audio_state, beats, mx, my);
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
@@ -228,6 +256,7 @@ int main() {
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
+    shader.shutdown();
     ui.shutdown();
     gpu.shutdown();
     glfwDestroyWindow(window);
