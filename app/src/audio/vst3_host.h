@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
 // an anonymous-namespace header, so the work lives in vst3_host.cpp and main only
@@ -36,6 +37,13 @@ float session_track_transient(Session*, int track);  // per-track onset detector
 
 // Plugin editor (P10): the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);
+
+// MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
+// the audio thread applies the change at the top of the next process block.
+int    session_clip_note_count(Session*, int track, int scene);
+int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
+double session_clip_length(Session*, int track, int scene);
+void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, int n, double length);
 
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 bool session_process(Session*, float* out, uint32_t frames, uint32_t sample_rate,

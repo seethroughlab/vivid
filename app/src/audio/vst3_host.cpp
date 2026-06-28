@@ -9,6 +9,7 @@
 #include <memory>
 #include <string>
 #include <atomic>
+#include <mutex>
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -36,6 +37,12 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     uint64_t              steady = 0;
+    // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
+    // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
+    std::mutex            edit_mtx;
+    std::vector<MidiClip> edit_clips;
+    std::atomic<uint64_t> edit_gen{0};
+    uint64_t              edit_gen_seen = 0;
 };
 
 struct Session {
@@ -109,6 +116,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     }
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
+    t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     return t;
 }
 
@@ -197,6 +205,39 @@ void* session_track_controller(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
 }
 
+static bool clip_valid(Session* s, int t, int sc) {
+    return s && t >= 0 && t < static_cast<int>(s->tracks.size())
+           && sc >= 0 && sc < static_cast<int>(s->tracks[t]->edit_clips.size());
+}
+int session_clip_note_count(Session* s, int t, int sc) {
+    if (!clip_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    return static_cast<int>(s->tracks[t]->edit_clips[sc].notes.size());
+}
+int session_get_clip(Session* s, int t, int sc, ClipNote* out, int max) {
+    if (!clip_valid(s, t, sc) || !out || max <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    const auto& notes = s->tracks[t]->edit_clips[sc].notes;
+    const int n = std::min(static_cast<int>(notes.size()), max);
+    for (int i = 0; i < n; ++i) out[i] = notes[i];
+    return n;
+}
+double session_clip_length(Session* s, int t, int sc) {
+    if (!clip_valid(s, t, sc)) return 0.0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->edit_mtx);
+    return s->tracks[t]->edit_clips[sc].length;
+}
+void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, double length) {
+    if (!clip_valid(s, t, sc)) return;
+    Track& tr = *s->tracks[t];
+    {
+        std::lock_guard<std::mutex> lk(tr.edit_mtx);
+        tr.edit_clips[sc].notes.assign(notes, notes + (n > 0 ? n : 0));
+        tr.edit_clips[sc].length = length > 0 ? length : tr.edit_clips[sc].length;
+    }
+    tr.edit_gen.fetch_add(1, std::memory_order_release);
+}
+
 static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) {
     for (const NoteEvent& ne : nev) {
         Event e{};
@@ -235,6 +276,20 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         Track& t = *tp;
         if (!t.handle || !t.handle->processing) continue;
         any = true;
+
+        // Apply pending clip edits (element-wise so &clips[sc] — and the
+        // scheduler's clip pointer — stay valid). Only runs after a user edit.
+        if (t.edit_gen.load(std::memory_order_acquire) != t.edit_gen_seen) {
+            if (t.edit_mtx.try_lock()) {
+                const size_t ns = std::min(t.clips.size(), t.edit_clips.size());
+                for (size_t sc = 0; sc < ns; ++sc) {
+                    t.clips[sc].notes  = t.edit_clips[sc].notes;
+                    t.clips[sc].length = t.edit_clips[sc].length;
+                }
+                t.edit_gen_seen = t.edit_gen.load(std::memory_order_acquire);
+                t.edit_mtx.unlock();
+            }
+        }
         if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
         float* L = t.bl.data(); float* R = t.br.data();
         std::memset(L, 0, frames * sizeof(float));

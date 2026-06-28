@@ -72,7 +72,8 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp
     src/ui/renderer_2d.cpp
-    src/ui/node_graph.cpp)
+    src/ui/node_graph.cpp
+    src/ui/clip_editor.cpp)
 set_target_properties(vivid_poc PROPERTIES
     MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
     MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"

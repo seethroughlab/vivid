@@ -17,6 +17,7 @@
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
+#include "ui/clip_editor.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
 #include "platform/macos_frame_timer.h"
@@ -38,6 +39,8 @@ struct AudioState {
     CtxMenu menu;                           // characteristic picker (UI thread)
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
     Vst3PluginWindow* track_win[8] = {};    // open plugin editor windows, per track
+    vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
+    double last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;  // double-click detect
     float tr_baseline = 0.f;                // onset detector baseline (audio thread)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
@@ -295,7 +298,9 @@ void draw_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m, const char* track) {
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) {
     if (action != GLFW_PRESS) return;
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
-    if (!st || !st->session) return;
+    if (!st) return;
+    if (key == GLFW_KEY_ESCAPE && st->editor && st->editor->is_open()) { st->editor->close(); return; }
+    if (!st->session) return;
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         int idx = key - GLFW_KEY_1;
         if (idx < vivid_poc::session_scene_count(st->session)) {
@@ -303,6 +308,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
             std::fprintf(stderr, "[vivid] launch scene %c (queued for next bar)\n", 'A' + idx);
         }
     }
+}
+
+void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
+    auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
+    if (st && st->editor && st->editor->is_open()) st->editor->scroll(yoff);
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
@@ -320,6 +330,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     const int tracks = st->session ? vivid_poc::session_track_count(st->session) : 0;
     const int scenes = st->session ? vivid_poc::session_scene_count(st->session) : 0;
+
+    // Clip editor is modal: route mouse to it while open.
+    if (st->editor && st->editor->is_open()) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) st->editor->on_down(mx, my, glfwGetTime());
+        else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->editor->on_up(mx, my);
+        return;
+    }
 
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
@@ -378,10 +395,26 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         }
     }
     if (st->graph && st->graph->on_down(mx, my)) return;  // node graph consumed it
-    // clip cells -> launch a single clip
+    // clip cells -> single click launches; double click opens the MIDI editor
     for (int t = 0; t < tracks; ++t)
         for (int sc = 0; sc < scenes; ++sc)
-            if (hit(clip_cell_rect(t, sc), mx, my)) { vivid_poc::session_launch_clip(st->session, t, sc); return; }
+            if (hit(clip_cell_rect(t, sc), mx, my)) {
+                const double now = glfwGetTime();
+                if (st->editor && st->last_clip_track == t && st->last_clip_scene == sc && now - st->last_clip_t < 0.35) {
+                    vivid_poc::ClipNote buf[256];
+                    const int n = vivid_poc::session_get_clip(st->session, t, sc, buf, 256);
+                    const double len = vivid_poc::session_clip_length(st->session, t, sc);
+                    char title[80];
+                    std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c",
+                                  vivid_poc::session_track_name(st->session, t), 'A' + sc);
+                    st->editor->open(t, sc, title, buf, n, len);
+                    st->last_clip_t = -1;
+                    return;
+                }
+                st->last_clip_t = now; st->last_clip_track = t; st->last_clip_scene = sc;
+                vivid_poc::session_launch_clip(st->session, t, sc);
+                return;
+            }
     // scene launch buttons -> launch the whole row
     for (int sc = 0; sc < scenes; ++sc)
         if (hit(scene_launch_rect(sc), mx, my)) { vivid_poc::session_launch_scene(st->session, sc); return; }
@@ -421,11 +454,13 @@ int main() {
     blurOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kBlurGLSL, 1);
 
     vivid::ui::NodeGraph graph;
+    vivid::ui::ClipEditor clip_editor;
 
     Transport transport;
     AudioState audio_state{};
     audio_state.transport = &transport;  // player set after the device opens
     audio_state.graph = &graph;
+    audio_state.editor = &clip_editor;
 
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
@@ -447,6 +482,7 @@ int main() {
     glfwSetWindowUserPointer(window, &audio_state);
     glfwSetKeyCallback(window, key_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetScrollCallback(window, scroll_callback);
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
@@ -492,6 +528,14 @@ int main() {
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         graph.on_move(mx, my);  // continue any node/wire drag
+        if (clip_editor.is_open()) {           // continue a note drag, commit edits
+            clip_editor.on_move(mx, my);
+            if (clip_editor.take_dirty() && audio_state.session) {
+                const auto& nv = clip_editor.notes();
+                vivid_poc::session_set_clip(audio_state.session, clip_editor.track(), clip_editor.scene(),
+                                            nv.data(), static_cast<int>(nv.size()), clip_editor.length());
+            }
+        }
         if (audio_state.gain_drag >= 0 && audio_state.session) {  // continue a mixer gain drag
             const Rect gr = track_gain_rect(audio_state.gain_drag, vivid_poc::session_scene_count(audio_state.session));
             vivid_poc::session_set_track_gain(audio_state.session, audio_state.gain_drag,
@@ -524,6 +568,7 @@ int main() {
             draw_menu(ui, audio_state.menu,
                       audio_state.menu.src < 0 ? "Master"
                       : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
+            clip_editor.draw(ui);  // modal overlay on top
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }
