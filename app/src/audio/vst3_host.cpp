@@ -80,16 +80,57 @@ static std::vector<MidiClip> base_patterns() {
     return { a, b, c };
 }
 
-static Track* make_track(Vst3Handle* h, const std::string& name, int index) {
-    static const int kOffsets[3] = { 0, -12, 7 };  // lead / bass / harmony
+// GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat.
+static std::vector<MidiClip> drum_patterns() {
+    MidiClip a; a.length = 4.0;  // straight backbeat
+    a.notes = { {36,0.0,.2,.95f},{36,2.0,.2,.95f},{38,1.0,.2,.90f},{38,3.0,.2,.90f} };
+    for (double t = 0; t < 4; t += 0.5) a.notes.push_back({42, t, 0.1, 0.55f});
+    MidiClip b; b.length = 4.0;  // busier, 16th hats
+    b.notes = { {36,0.0,.2,.95f},{36,1.5,.2,.85f},{36,2.0,.2,.95f},{36,2.75,.2,.80f},
+                {38,1.0,.2,.90f},{38,3.0,.2,.90f} };
+    for (double t = 0; t < 4; t += 0.25) b.notes.push_back({42, t, 0.08, 0.5f});
+    MidiClip c; c.length = 4.0;  // half-time, open hats on the quarter
+    c.notes = { {36,0.0,.2,.95f},{38,2.0,.2,.90f} };
+    for (double t = 0; t < 4; t += 1.0) c.notes.push_back({46, t, 0.2, 0.5f});
+    return { a, b, c };
+}
+
+enum TrackKind { kLead = 0, kBass = 1, kDrums = 2 };
+
+static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
-    const int o = kOffsets[index % 3];
-    for (auto& bp : base_patterns()) t->clips.push_back(transpose(bp, o));
+    if (kind == kDrums) {
+        for (auto& p : drum_patterns()) t->clips.push_back(p);
+    } else {
+        const int off = (kind == kBass) ? -12 : 0;  // lead at pitch, bass an octave down
+        for (auto& bp : base_patterns()) t->clips.push_back(transpose(bp, off));
+    }
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
     return t;
+}
+
+// Load the first plugin matching a role's preference list (never "atoms" — no
+// license here), skipping anything that isn't an instrument with a MIDI input.
+static Vst3Handle* load_role(const std::vector<std::string>& bundles,
+                             const char* const* prefer, uint32_t sr,
+                             Vst3HostApp* host, std::string& out_name) {
+    for (int p = 0; prefer[p]; ++p) {
+        for (const auto& path : bundles) {
+            if (name_has(path, "atoms")) continue;
+            if (!name_has(path, prefer[p])) continue;
+            Vst3Handle* h = vst3_load_plugin(path.c_str(), "", sr, std::string(), host);
+            if (!h) continue;
+            if (!(h->component && h->component->getBusCount(kEvent, kInput) > 0)) { h->destroy(); delete h; continue; }
+            if (h->processor->setProcessing(true) != kResultOk) {}
+            h->processing = true;
+            out_name = h->plugin_name.empty() ? path : h->plugin_name;
+            return h;
+        }
+    }
+    return nullptr;
 }
 
 Session* session_create(uint32_t sample_rate) {
@@ -98,36 +139,22 @@ Session* session_create(uint32_t sample_rate) {
     if (const char* home = std::getenv("HOME"))
         list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
 
-    // Prefer Arturia Pigments as the primary instrument (track 0).
-    std::stable_sort(bundles.begin(), bundles.end(), [](const std::string& a, const std::string& b) {
-        return (name_has(a, "pigments") ? 0 : 1) < (name_has(b, "pigments") ? 0 : 1);
-    });
+    // Role-based assignment: lead synth, bass synth, drums. "" matches any
+    // remaining instrument as a last resort; drums has no synth fallback.
+    struct RoleSpec { const char* prefer[6]; int kind; };
+    static const RoleSpec kRoles[] = {
+        { { "pigments", "vital", "serum", "", nullptr }, kLead },
+        { { "serum", "vital", "pigments", "", nullptr }, kBass },
+        { { "ezdrummer", "drumcomputer", "battery", "drum", nullptr }, kDrums },
+    };
 
     auto* s = new Session();
-    const int kTarget = 3;
-    std::string first_path;
-
-    // Load up to kTarget distinct instruments.
-    for (const auto& path : bundles) {
-        if (static_cast<int>(s->tracks.size()) >= kTarget) break;
-        Vst3Handle* h = vst3_load_plugin(path.c_str(), "", sample_rate, std::string(), &s->host);
-        if (!h) continue;
-        if (!(h->component && h->component->getBusCount(kEvent, kInput) > 0)) { h->destroy(); delete h; continue; }
-        if (h->processor->setProcessing(true) != kResultOk) {}
-        h->processing = true;
-        const int idx = static_cast<int>(s->tracks.size());
-        s->tracks.emplace_back(make_track(h, h->plugin_name.empty() ? path : h->plugin_name, idx));
-        if (first_path.empty()) first_path = path;
-    }
-    // Top up with extra instances of the first instrument if we found too few.
-    while (static_cast<int>(s->tracks.size()) < kTarget && !first_path.empty()) {
-        Vst3Handle* h = vst3_load_plugin(first_path.c_str(), "", sample_rate, std::string(), &s->host);
-        if (!h) break;
-        if (h->processor->setProcessing(true) != kResultOk) {}
-        h->processing = true;
-        const int idx = static_cast<int>(s->tracks.size());
-        std::string nm = (h->plugin_name.empty() ? first_path : h->plugin_name) + " " + std::to_string(idx + 1);
-        s->tracks.emplace_back(make_track(h, nm, idx));
+    for (const auto& role : kRoles) {
+        std::string name;
+        Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
+        if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
+        s->tracks.emplace_back(make_track(h, name, role.kind));
+        std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
 
     if (s->tracks.empty()) { delete s; return nullptr; }
