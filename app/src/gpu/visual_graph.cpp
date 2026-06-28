@@ -1,8 +1,7 @@
 #include "gpu/visual_graph.h"
+#include <algorithm>
 
 namespace vivid {
-
-// ---- op shaders (moved here from main; the ops now belong to the graph) ----
 
 static const char* kPlasmaGLSL = R"(#version 450
 layout(location = 0) in vec2 v_uv;
@@ -64,8 +63,6 @@ layout(set = 0, binding = 2) uniform sampler   u_samp;
 void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
 )";
 
-// ----------------------------------------------------------------------------
-
 bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt,
                        uint32_t rtW, uint32_t rtH) {
     dev_ = device; q_ = queue; fmt_ = fmt; rtW_ = rtW; rtH_ = rtH;
@@ -73,64 +70,111 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     if (!feedback_.init(device, queue, fmt, kFeedbackGLSL, 2)) return false;
     if (!blur_.init(device, queue, fmt, kBlurGLSL, 1)) return false;
     if (!blit_.init(device, queue, fmt, kBlitGLSL, 1)) return false;
-    hist_[0].init(device, rtW, rtH, fmt);
-    hist_[1].init(device, rtW, rtH, fmt);
-    chain_ = { { VOp::Plasma }, { VOp::Feedback }, { VOp::Blur } };  // default chain
+    // Default chain: Plasma -> Feedback -> Blur -> Output.
+    nodes_ = { { VOp::Plasma, -1 }, { VOp::Feedback, 0 }, { VOp::Blur, 1 }, { VOp::Output, 2 } };
+    ensure_resources(nodes_.size());
     return true;
 }
 
-void VisualGraph::ensure_rts(size_t n) {
-    if (rts_.size() == n) return;
-    for (auto& r : rts_) r.release();
-    rts_.clear();
-    rts_.resize(n);
-    for (auto& r : rts_) r.init(dev_, rtW_, rtH_, fmt_);
+void VisualGraph::ensure_resources(size_t n) {
+    auto fit = [&](std::vector<RenderTarget>& v) {
+        while (v.size() > n) { v.back().release(); v.pop_back(); }
+        while (v.size() < n) { v.emplace_back(); v.back().init(dev_, rtW_, rtH_, fmt_); }
+    };
+    fit(rts_); fit(histA_); fit(histB_);
+    histCur_.resize(n, 0);
+}
+
+int VisualGraph::add_node(VOp op) {
+    nodes_.push_back({ op, -1 });
+    ensure_resources(nodes_.size());
+    return static_cast<int>(nodes_.size()) - 1;
+}
+void VisualGraph::remove_node(int i) {
+    if (i < 0 || i >= static_cast<int>(nodes_.size()) || nodes_[i].op == VOp::Output) return;
+    nodes_.erase(nodes_.begin() + i);
+    for (auto& n : nodes_) {
+        if (n.input == i) n.input = -1;
+        else if (n.input > i) --n.input;
+    }
+    ensure_resources(nodes_.size());
+}
+void VisualGraph::set_input(int node, int input) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
+    if (input == node) return;                       // no self-loops
+    nodes_[node].input = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
+}
+int VisualGraph::output_index() const {
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op == VOp::Output) return i;
+    return -1;
+}
+void VisualGraph::set_generator(VOp g) {
+    for (auto& n : nodes_) if (n.op == VOp::Plasma || n.op == VOp::Video) { n.op = g; return; }
+}
+VOp VisualGraph::generator() const {
+    for (const auto& n : nodes_) if (n.op == VOp::Plasma || n.op == VOp::Video) return n.op;
+    return VOp::Plasma;
 }
 
 void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
                          float vx, float vy, float vw, float vh, float time,
                          const float* pu, float decay, float radius, WGPUTextureView video_tex) {
-    if (chain_.empty()) return;
-    ensure_rts(chain_.size());
+    ensure_resources(nodes_.size());
     const float rtw = static_cast<float>(rtW_), rth = static_cast<float>(rtH_);
+    const int outIdx = output_index();
+    if (outIdx < 0) return;
+    const int feed = nodes_[outIdx].input;
 
-    for (size_t i = 0; i < chain_.size(); ++i) {
-        WGPUTextureView in0 = (i > 0) ? rts_[i - 1].view : nullptr;
-        switch (chain_[i].op) {
+    // Walk the input chain back from the node feeding Output, then reverse.
+    std::vector<int> order; std::vector<char> seen(nodes_.size(), 0);
+    for (int cur = feed; cur >= 0 && cur < static_cast<int>(nodes_.size()) && !seen[cur]; cur = nodes_[cur].input) {
+        seen[cur] = 1; order.push_back(cur);
+    }
+    std::reverse(order.begin(), order.end());
+
+    for (int idx : order) {
+        VisualNode& n = nodes_[idx];
+        const int in = n.input;
+        const bool hasIn = (in >= 0 && in < static_cast<int>(nodes_.size()));
+        switch (n.op) {
             case VOp::Plasma:
-                plasma_.render(enc, rts_[i].view, 0, 0, rtw, rth, time, pu, /*clear*/true);
+                plasma_.render(enc, rts_[idx].view, 0, 0, rtw, rth, time, pu, /*clear*/true);
                 break;
             case VOp::Video: {
-                WGPUTextureView in[1] = { video_tex };
-                blit_.render(enc, rts_[i].view, 0, 0, rtw, rth, /*clear*/true, in, 1, time, nullptr, 0);
+                WGPUTextureView v[1] = { video_tex };
+                blit_.render(enc, rts_[idx].view, 0, 0, rtw, rth, /*clear*/true, v, 1, time, nullptr, 0);
                 break;
             }
             case VOp::Feedback: {
-                RenderTarget& cur = hist_[histCur_]; RenderTarget& prev = hist_[histCur_ ^ 1];
-                WGPUTextureView fin[2] = { in0 ? in0 : rts_[i].view, prev.view };
+                RenderTarget& cur  = histCur_[idx] ? histB_[idx] : histA_[idx];
+                RenderTarget& prev = histCur_[idx] ? histA_[idx] : histB_[idx];
+                WGPUTextureView fin[2] = { hasIn ? rts_[in].view : rts_[idx].view, prev.view };
                 feedback_.render(enc, cur.view, 0, 0, rtw, rth, /*clear*/true, fin, 2, time, &decay, 1);
-                WGPUTextureView cin[1] = { cur.view };
-                blit_.render(enc, rts_[i].view, 0, 0, rtw, rth, /*clear*/true, cin, 1, time, nullptr, 0);
-                histCur_ ^= 1;
+                WGPUTextureView cv[1] = { cur.view };
+                blit_.render(enc, rts_[idx].view, 0, 0, rtw, rth, /*clear*/true, cv, 1, time, nullptr, 0);
+                histCur_[idx] ^= 1;
                 break;
             }
             case VOp::Blur: {
-                WGPUTextureView bin[1] = { in0 ? in0 : rts_[i].view };
-                blur_.render(enc, rts_[i].view, 0, 0, rtw, rth, /*clear*/true, bin, 1, time, &radius, 1);
+                WGPUTextureView b[1] = { hasIn ? rts_[in].view : rts_[idx].view };
+                blur_.render(enc, rts_[idx].view, 0, 0, rtw, rth, /*clear*/true, b, 1, time, &radius, 1);
                 break;
             }
+            case VOp::Output: break;
         }
     }
-    // Show the last node's output in the viewer sub-rect.
-    WGPUTextureView fin[1] = { rts_.back().view };
-    blit_.render(enc, screen, vx, vy, vw, vh, /*clear*/false, fin, 1, time, nullptr, 0);
+    if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
+        WGPUTextureView f[1] = { rts_[feed].view };
+        blit_.render(enc, screen, vx, vy, vw, vh, /*clear*/false, f, 1, time, nullptr, 0);
+    }
 }
 
 void VisualGraph::shutdown() {
     plasma_.shutdown(); feedback_.shutdown(); blur_.shutdown(); blit_.shutdown();
-    hist_[0].release(); hist_[1].release();
-    for (auto& r : rts_) r.release();
-    rts_.clear();
+    for (auto& r : rts_)   r.release();
+    for (auto& r : histA_) r.release();
+    for (auto& r : histB_) r.release();
+    rts_.clear(); histA_.clear(); histB_.clear(); histCur_.clear();
 }
 
 }  // namespace vivid
