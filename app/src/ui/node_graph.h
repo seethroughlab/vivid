@@ -35,6 +35,12 @@ public:
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt) { reg_.connect(src, dst, amt); }
+    // Chain (op type + input edge + position) persistence.
+    int  op_count() const;
+    void get_op(int i, int& op, int& input, float& x, float& y) const;
+    void chain_load_begin();
+    void chain_load_add(int op, float x, float y);
+    void chain_load_set_input(int i, int input);
 
     void draw(Renderer2D& r);
     bool on_down(double x, double y);

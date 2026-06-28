@@ -68,6 +68,12 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     for (const auto& m : g.mappings())
         maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount} });
     jg["mappings"] = maps;
+    json chain = json::array();
+    for (int i = 0; i < g.op_count(); ++i) {
+        int op = 0, in = -1; float x = 0.f, y = 0.f; g.get_op(i, op, in, x, y);
+        chain.push_back({ {"op", op}, {"in", in}, {"x", x}, {"y", y} });
+    }
+    jg["chain"] = chain;
     j["graph"] = jg;
 
     std::ofstream f(path);
@@ -122,6 +128,12 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     if (j.contains("graph")) {
         const json& jg = j["graph"];
         g.reset_nodes();
+        if (jg.contains("chain")) {
+            const json& ch = jg["chain"];
+            g.chain_load_begin();
+            for (const auto& jo : ch) g.chain_load_add(jo.value("op", 0), jo.value("x", 0.f), jo.value("y", 0.f));
+            for (int i = 0; i < static_cast<int>(ch.size()); ++i) g.chain_load_set_input(i, ch[i].value("in", -1));
+        }
         if (jg.contains("nodes"))
             for (const auto& jn : jg["nodes"])
                 g.add_node_raw(jn.value("title", std::string("node")), jn.value("char_id", 0),

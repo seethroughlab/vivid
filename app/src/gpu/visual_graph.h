@@ -31,6 +31,7 @@ public:
     const std::vector<VisualNode>& nodes() const { return nodes_; }
     int  add_node(VOp op);                 // returns new node index
     void remove_node(int i);               // (Output cannot be removed)
+    void clear_nodes() { nodes_.clear(); ensure_resources(0); }   // for load
     void set_input(int node, int input);   // wire input's output -> node's texture input
     int  output_index() const;             // index of the Output node, or -1
 

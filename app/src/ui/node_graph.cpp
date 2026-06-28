@@ -162,6 +162,22 @@ void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& t
     x = data_[i].x; y = data_[i].y; char_id = data_[i].char_id; title = data_[i].title;
 }
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); }
+
+int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
+void NodeGraph::get_op(int i, int& op, int& input, float& x, float& y) const {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
+    op = static_cast<int>(vg_->nodes()[i].op);
+    input = vg_->nodes()[i].input;
+    x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
+    y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
+}
+void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; }
+void NodeGraph::chain_load_add(int op, float x, float y) {
+    if (!vg_) return;
+    vg_->add_node(static_cast<vivid::VOp>(op));
+    op_pos_.push_back({ x, y });
+}
+void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
 }
