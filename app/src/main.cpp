@@ -16,6 +16,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
+#include "ui/node_graph.h"
 #include "gpu/shader_op.h"
 #include "miniaudio.h"
 
@@ -26,6 +27,7 @@ constexpr double kPi = 3.14159265358979323846;
 struct AudioState {
     Transport* transport = nullptr;
     vivid_poc::Session* session = nullptr;  // hosted instrument + clips (or null -> test tone)
+    vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
 };
@@ -94,7 +96,7 @@ inline Rect clip_cell_rect(int i) {
 }
 
 // Viewer pane (right) where the visuals shader op renders.
-constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 548.f;
+constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 300.f;
 
 // The visual: a GLSL fragment shader, compiled natively by wgpu-native (no glslang).
 static const char* kFragGLSL = R"(#version 450
@@ -166,12 +168,16 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
     }
 }
 
-// Left-click a clip cell to launch it (Proof A).
+// Left-click: route to the node graph first (drag wires / nodes), else launch a clip.
 void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
-    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+    if (button != GLFW_MOUSE_BUTTON_LEFT) return;
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
-    if (!st || !st->session) return;
+    if (!st) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
+    if (action == GLFW_RELEASE) { if (st->graph) st->graph->on_up(mx, my); return; }
+    if (action != GLFW_PRESS) return;
+    if (st->graph && st->graph->on_down(mx, my)) return;  // node graph consumed it
+    if (!st->session) return;
     const int clips = vivid_poc::session_clip_count(st->session);
     for (int i = 0; i < clips; ++i) {
         if (hit(clip_cell_rect(i), mx, my)) {
@@ -204,9 +210,12 @@ int main() {
     if (!shader.init(gpu.device(), gpu.queue(), gpu.surface_format(), kFragGLSL))
         std::fprintf(stderr, "[vivid] shader op init failed (viewer disabled)\n");
 
+    vivid::ui::NodeGraph graph;
+
     Transport transport;
     AudioState audio_state{};
     audio_state.transport = &transport;  // player set after the device opens
+    audio_state.graph = &graph;
 
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
@@ -238,20 +247,23 @@ int main() {
 
         const double beats = transport.beats.load(std::memory_order_relaxed);
         const float level = transport.level.load(std::memory_order_relaxed);
-        // Background pulses on the beat; a hint of the live audio level rides on top.
-        const float pulse = 0.10f + 0.10f * static_cast<float>(0.5 + 0.5 * std::cos(beats * 2.0 * kPi));
-        const float b = pulse + level * 2.0f;
-        // P6: smooth the live RMS into a 0..1 reactive value for the shader.
-        react += (std::min(1.0f, level * 3.5f) - react) * 0.25f;
+        // P6: smooth the live RMS (master output) into a 0..1 value for the shader.
+        // The beat is shown by the UI's beat dots; the background stays static so the
+        // shader's reaction (right pane) reads clearly.
+        react += (std::min(1.0f, level * 5.0f) - react) * 0.3f;
+        graph.set_data_value(react);
+        const float reactive = graph.shader_reactive();  // 0 when the wire is cut
 
-        double mx, my; glfwGetCursorPos(window, &mx, &my);  // for hover
+        double mx, my; glfwGetCursorPos(window, &mx, &my);
+        graph.on_move(mx, my);  // continue any node/wire drag
 
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
-            clear_pass(frame.encoder, frame.view, 0.04f, pulse, b);
+            clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark
             shader.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH,
-                          static_cast<float>(glfwGetTime()), react);
+                          static_cast<float>(glfwGetTime()), reactive);
             draw_ui(ui, audio_state, beats, mx, my);
+            graph.draw(ui);
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }
