@@ -225,8 +225,15 @@ bool GpuContext::begin_frame(FrameState& frame) {
             }
             return false;
         }
-        std::fprintf(stderr, "[vivid] Failed to acquire surface texture (status %d)\n",
-                     static_cast<int>(surface_tex.status));
+        // Transient (Timeout / Outdated / Lost) — common during window resize or
+        // when offscreen. Retry next frame; warn only once so the log isn't spammed.
+        static bool warned_acquire = false;
+        if (!warned_acquire) {
+            std::fprintf(stderr, "[vivid] surface texture unavailable (status %d) — retrying (silenced)\n",
+                         static_cast<int>(surface_tex.status));
+            warned_acquire = true;
+        }
+        if (surface_tex.texture) wgpuTextureRelease(surface_tex.texture);
         return false;
     }
 

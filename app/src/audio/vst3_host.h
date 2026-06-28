@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <string>
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
@@ -40,6 +41,11 @@ void* session_track_controller(Session*, int track);
 
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
+
+// Plugin preset state (P18): "z:<base64>" of the plugin's getState(); empty for
+// audio/handle-less tracks. set applies via setState. Call on the UI thread only.
+std::string session_get_track_state(Session*, int track);
+void        session_set_track_state(Session*, int track, const std::string& state);
 
 // Audio waveform editing (P15). Waveform = peak amplitude per bin (read-only).
 int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int n_bins);

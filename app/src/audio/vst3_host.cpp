@@ -284,6 +284,14 @@ void* session_track_controller(Session* s, int t) {
 bool session_track_is_audio(Session* s, int t) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio;
 }
+std::string session_get_track_state(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle) return {};
+    return vst3_save_state(s->tracks[t]->handle);
+}
+void session_set_track_state(Session* s, int t, const std::string& state) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle || state.empty()) return;
+    vst3_load_state(s->tracks[t]->handle, state);
+}
 int session_audio_clip_bpm(Session* s, int t, int sc) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
     Track& tr = *s->tracks[t];

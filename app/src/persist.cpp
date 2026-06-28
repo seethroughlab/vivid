@@ -47,6 +47,8 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
                 clips.push_back({ {"length", vivid_poc::session_clip_length(s, t, sc)}, {"notes", notes} });
             }
             jt["clips"] = clips;
+            const std::string state = vivid_poc::session_get_track_state(s, t);  // plugin preset
+            if (!state.empty()) jt["state"] = state;
         }
         tracks.push_back(jt);
     }
@@ -109,6 +111,8 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
                     vivid_poc::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
                 }
             }
+            if (jt.contains("state"))
+                vivid_poc::session_set_track_state(s, t, jt["state"].get<std::string>());
             const int act = jt.value("active", -1);
             if (act >= 0) vivid_poc::session_launch_clip(s, t, act);
         }
