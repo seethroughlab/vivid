@@ -110,6 +110,8 @@ Vst3PluginWindow* vst3_plugin_window_open(IEditController* controller, const cha
         // Show the window before attachment so the CALayer tree is fully committed
         // and a valid backing store exists when VSTGUI initialises its Metal layer.
         [win makeKeyAndOrderFront:nil];
+        // Become the foreground app so the editor window receives mouse/key events.
+        [NSApp activateIgnoringOtherApps:YES];
 
         Vst3PlugFrame* plug_frame = new Vst3PlugFrame(win);
         view->setFrame(plug_frame);

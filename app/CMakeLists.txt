@@ -59,7 +59,10 @@ add_library(vst3_iids STATIC
     src/audio/vst3_vstiids.cpp)
 target_link_libraries(vst3_iids PUBLIC vst3_headers)
 
-add_executable(vivid_poc
+# MACOSX_BUNDLE is required so hosted VST3 plugin GUI windows receive mouse
+# events: a non-bundled CLI process can't become a proper foreground app, so its
+# secondary NSWindows render but stay non-interactive.
+add_executable(vivid_poc MACOSX_BUNDLE
     src/main.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
@@ -68,6 +71,11 @@ add_executable(vivid_poc
     src/audio/vst3_plugin_window.mm
     src/ui/renderer_2d.cpp
     src/ui/node_graph.cpp)
+set_target_properties(vivid_poc PROPERTIES
+    MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
+    MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
 target_compile_definitions(vivid_poc PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf")
