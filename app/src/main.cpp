@@ -232,6 +232,7 @@ int main() {
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
+    float react = 0.f;  // smoothed audio level feeding the shader (P6)
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -240,6 +241,8 @@ int main() {
         // Background pulses on the beat; a hint of the live audio level rides on top.
         const float pulse = 0.10f + 0.10f * static_cast<float>(0.5 + 0.5 * std::cos(beats * 2.0 * kPi));
         const float b = pulse + level * 2.0f;
+        // P6: smooth the live RMS into a 0..1 reactive value for the shader.
+        react += (std::min(1.0f, level * 3.5f) - react) * 0.25f;
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);  // for hover
 
@@ -247,7 +250,7 @@ int main() {
         if (gpu.begin_frame(frame)) {
             clear_pass(frame.encoder, frame.view, 0.04f, pulse, b);
             shader.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH,
-                          static_cast<float>(glfwGetTime()), 0.0f);
+                          static_cast<float>(glfwGetTime()), react);
             draw_ui(ui, audio_state, beats, mx, my);
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
