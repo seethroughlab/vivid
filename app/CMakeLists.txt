@@ -67,6 +67,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
     src/gpu/shader_op.cpp
+    src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp

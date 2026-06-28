@@ -20,6 +20,8 @@
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
 #include "platform/macos_frame_timer.h"
+#include "gpu/effect_op.h"
+#include "gpu/render_target.h"
 #include "miniaudio.h"
 
 namespace {
@@ -147,6 +149,42 @@ void main() {
             + sin(length(w - 0.5) * dens * 1.8 - t * 2.0);
     vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + v + u_hue * 6.2832);
     o_color = vec4(col * (0.6 + u_glow), 1.0);
+}
+)";
+
+// FBO effect passes (P12b). Vulkan-GLSL separate texture/sampler bindings.
+// Feedback: max(gen, zoom(prev) * decay) — outward echoing trails.
+static const char* kFeedbackGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_decay; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_gen;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+layout(set = 0, binding = 3) uniform texture2D u_prev;
+void main() {
+    vec2 c = v_uv - 0.5;
+    vec2 puv = 0.5 + c * 0.985;   // slight zoom -> trail drifts outward
+    vec4 gen  = texture(sampler2D(u_gen,  u_samp), v_uv);
+    vec4 prev = texture(sampler2D(u_prev, u_samp), puv);
+    o_color = max(gen, prev * u_decay);
+}
+)";
+
+// Blur: 5-tap cross, radius scaled by u_radius.
+static const char* kBlurGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_radius; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_tex;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+void main() {
+    vec2 px = (1.0 / u_res) * (1.0 + u_radius * 8.0);
+    vec4 s = texture(sampler2D(u_tex, u_samp), v_uv) * 0.36;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2( px.x, 0.0)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(-px.x, 0.0)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(0.0,  px.y)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(0.0, -px.y)) * 0.16;
+    o_color = s;
 }
 )";
 
@@ -357,6 +395,17 @@ int main() {
     if (!shader.init(gpu.device(), gpu.queue(), gpu.surface_format(), kFragGLSL))
         std::fprintf(stderr, "[vivid] shader op init failed (viewer disabled)\n");
 
+    // FBO effect chain: plasma -> genRT -> feedback (ping-pong fb[2]) -> blur -> screen.
+    const uint32_t kRtW = static_cast<uint32_t>(kViewW), kRtH = static_cast<uint32_t>(kViewH);
+    vivid::RenderTarget genRT, fb[2];
+    genRT.init(gpu.device(), kRtW, kRtH, gpu.surface_format());
+    fb[0].init(gpu.device(), kRtW, kRtH, gpu.surface_format());
+    fb[1].init(gpu.device(), kRtW, kRtH, gpu.surface_format());
+    int fbCur = 0;
+    vivid::EffectOp feedbackOp, blurOp;
+    feedbackOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kFeedbackGLSL, 2);
+    blurOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kBlurGLSL, 1);
+
     vivid::ui::NodeGraph graph;
 
     Transport transport;
@@ -437,9 +486,25 @@ int main() {
 
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
-            clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark
-            shader.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH,
-                          static_cast<float>(glfwGetTime()), uniforms);
+            const float tsec = static_cast<float>(glfwGetTime());
+            const float rtw = static_cast<float>(kRtW), rth = static_cast<float>(kRtH);
+            // 1) plasma generator -> genRT (ports 0..3)
+            shader.render(frame.encoder, genRT.view, 0, 0, rtw, rth, tsec, uniforms, /*clear*/true);
+            // 2) feedback: genRT + previous history -> current history (port 4 = decay)
+            vivid::RenderTarget& cur = fb[fbCur];
+            vivid::RenderTarget& prev = fb[fbCur ^ 1];
+            const WGPUTextureView fbIn[2] = { genRT.view, prev.view };
+            const float decay = 0.82f + uniforms[4] * 0.16f;
+            feedbackOp.render(frame.encoder, cur.view, 0, 0, rtw, rth, /*clear*/true,
+                              fbIn, 2, tsec, &decay, 1);
+            // 3) blur current history -> screen viewport (port 5 = radius)
+            clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
+            const WGPUTextureView blIn[1] = { cur.view };
+            const float radius = uniforms[5];
+            blurOp.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH, /*clear*/false,
+                          blIn, 1, tsec, &radius, 1);
+            fbCur ^= 1;
+
             draw_ui(ui, audio_state, beats, mx, my);
             graph.draw(ui);
             draw_menu(ui, audio_state.menu,
@@ -455,6 +520,8 @@ int main() {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
+    feedbackOp.shutdown(); blurOp.shutdown();
+    genRT.release(); fb[0].release(); fb[1].release();
     shader.shutdown();
     ui.shutdown();
     gpu.shutdown();

@@ -8,7 +8,7 @@ NodeGraph::NodeGraph() {
     for (int i = 0; i < kNumShaderUniforms; ++i) connected_[i] = -1;
     // Start with the master output level wired to "glow" (out-of-box reactivity).
     data_.push_back({ 540.f, 470.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
-    connected_[kNumShaderUniforms - 1] = 0;  // glow <- level
+    connected_[3] = 0;  // glow <- level
 }
 
 void NodeGraph::set_value(int char_id, float v) {
@@ -70,8 +70,8 @@ void NodeGraph::draw(Renderer2D& r) {
     // Shader node — one input port per named uniform
     r.draw_rounded_rect(sx_, sy_, sw_, sh_, 6.f, 0.14f, 0.15f, 0.18f, 1.0f);
     r.draw_rect(sx_, sy_, sw_, 3.f, 0.35f, 0.55f, 0.95f, 1.0f);
-    r.draw_text(sx_ + 12.f, sy_ + 10.f, "Plasma", 0.90f, 0.92f, 0.95f, 1.0f);
-    r.draw_text(sx_ + 78.f, sy_ + 12.f, "shader op", 0.5f, 0.53f, 0.58f, 1.0f, 0.82f);
+    r.draw_text(sx_ + 12.f, sy_ + 10.f, "Visuals", 0.90f, 0.92f, 0.95f, 1.0f);
+    r.draw_text(sx_ + 80.f, sy_ + 12.f, "plasma + fx", 0.5f, 0.53f, 0.58f, 1.0f, 0.82f);
     for (int i = 0; i < kNumShaderUniforms; ++i) {
         float px, py; shader_in(i, px, py);
         const bool on = connected_[i] >= 0;
