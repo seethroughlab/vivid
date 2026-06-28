@@ -35,6 +35,7 @@ float session_track_gain(Session*, int track);
 void  session_set_track_gain(Session*, int track, float gain);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
+float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
 
 // Plugin editor (P10): the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);

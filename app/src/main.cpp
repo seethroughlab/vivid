@@ -57,6 +57,7 @@ struct AudioState {
     vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
     double last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;  // double-click detect
     float tr_baseline = 0.f;                // onset detector baseline (audio thread)
+    float m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states (audio thread)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
 };
@@ -88,12 +89,23 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
 
     if (st->transport) {
         st->transport->advance(frames, sr);
-        double sum_sq = 0.0;
-        for (ma_uint32 i = 0; i < frames; ++i)
-            sum_sq += static_cast<double>(fout[i * 2]) * fout[i * 2];
-        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / static_cast<float>(sr));
+        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / static_cast<float>(sr));
+        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+        for (ma_uint32 i = 0; i < frames; ++i) {
+            const float l = fout[i * 2];
+            sum_sq += static_cast<double>(l) * l;
+            st->m_flt_lo += (l - st->m_flt_lo) * a_lo;
+            st->m_flt_hi += (l - st->m_flt_hi) * a_hi;
+            const float lo = st->m_flt_lo, mi = st->m_flt_hi - st->m_flt_lo, hi = l - st->m_flt_hi;
+            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        }
+        const double inv = 1.0 / (frames > 0 ? frames : 1);
+        const float rms = static_cast<float>(std::sqrt(sum_sq * inv));
         st->transport->level.store(rms, std::memory_order_relaxed);
-        // transient = how far RMS jumps above its slow baseline (a simple onset detector)
+        st->transport->band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+        st->transport->band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+        st->transport->band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
         const float tr = std::max(0.0f, (rms - st->tr_baseline) * 6.0f);
         st->tr_baseline += (rms - st->tr_baseline) * 0.04f;
         st->transport->transient.store(std::min(1.0f, tr), std::memory_order_relaxed);
@@ -152,10 +164,11 @@ inline void track_accent(int t, float& r, float& g, float& b) {
 }
 // Right/left-click the MASTER meter opens a menu of audio characteristics (the bridge).
 struct CharItem { const char* label; int id; };
-constexpr CharItem kChars[] = { { "Level (RMS)", 0 }, { "Transient", 1 } };
-constexpr int kNumChars = 2;
-// Characteristic id encoding: master uses kind (0/1); track t uses 100 + t*2 + kind.
-inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 2 + kind; }
+constexpr CharItem kChars[] = {
+    { "Level (RMS)", 0 }, { "Transient", 1 }, { "Low band", 2 }, { "Mid band", 3 }, { "High band", 4 } };
+constexpr int kNumChars = 5;
+// Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
+inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
 
 // Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
 constexpr float kViewW = 720.f, kViewH = 300.f;
@@ -710,6 +723,9 @@ int main() {
         trHold = std::max(trHold, transport.transient.load(std::memory_order_relaxed));
         graph.set_value(0, react);                 // master level
         graph.set_value(1, std::min(1.0f, trHold)); // master transient
+        graph.set_value(2, std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
+        graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
+        graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
         for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session) && t < 8; ++t) {
             const float lv = vivid_poc::session_track_level(audio_state.session, t);
             trkReact[t] += (std::min(1.0f, lv * 5.0f) - trkReact[t]) * 0.3f;
@@ -717,6 +733,9 @@ int main() {
             trkTrHold[t] = std::max(trkTrHold[t], vivid_poc::session_track_transient(audio_state.session, t));
             graph.set_value(char_id_for(t, 0), trkReact[t]);
             graph.set_value(char_id_for(t, 1), std::min(1.0f, trkTrHold[t]));
+            graph.set_value(char_id_for(t, 2), std::min(1.0f, vivid_poc::session_track_band(audio_state.session, t, 0) * 5.0f));
+            graph.set_value(char_id_for(t, 3), std::min(1.0f, vivid_poc::session_track_band(audio_state.session, t, 1) * 8.0f));
+            graph.set_value(char_id_for(t, 4), std::min(1.0f, vivid_poc::session_track_band(audio_state.session, t, 2) * 12.0f));
         }
         float uniforms[vivid::kNumShaderUniforms];
         graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)

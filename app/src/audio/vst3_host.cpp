@@ -37,6 +37,8 @@ struct Track {
     std::atomic<float>    level{0.f};
     std::atomic<float>    transient{0.f};
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
+    std::atomic<float>    band_low{0.f}, band_mid{0.f}, band_high{0.f};  // 3-band energy
+    float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     uint64_t              steady = 0;
@@ -315,6 +317,13 @@ float session_track_level(Session* s, int t) {
 float session_track_transient(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->transient.load(std::memory_order_relaxed) : 0.f;
 }
+float session_track_band(Session* s, int t, int band) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0.f;
+    Track& tr = *s->tracks[t];
+    return band == 0 ? tr.band_low.load(std::memory_order_relaxed)
+         : band == 1 ? tr.band_mid.load(std::memory_order_relaxed)
+                     : tr.band_high.load(std::memory_order_relaxed);
+}
 void* session_track_controller(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
 }
@@ -540,12 +549,23 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         t.steady += frames;
 
         const float g = t.gain.load(std::memory_order_relaxed);
-        double sum_sq = 0.0;
+        const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
+        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
+        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
+        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
         for (uint32_t i = 0; i < frames; ++i) {
             const float l = L[i] * g, r = R[i] * g;
             out[2 * i] += l; out[2 * i + 1] += r;
             sum_sq += static_cast<double>(l) * l;
+            t.flt_lo += (l - t.flt_lo) * a_lo;
+            t.flt_hi += (l - t.flt_hi) * a_hi;
+            const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
+            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
         }
+        const float inv = 1.f / (frames > 0 ? frames : 1);
+        t.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+        t.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+        t.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
         const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
         t.level.store(rms, std::memory_order_relaxed);
         const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline

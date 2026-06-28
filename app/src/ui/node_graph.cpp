@@ -7,10 +7,11 @@ namespace vivid::ui {
 using vivid::VOp;
 
 // ---- data-source identity + uniform routing ----
-static std::string source_id_for(int char_id) {
-    if (char_id < 100) return char_id == 0 ? "master.level" : "master.transient";
-    const int t = (char_id - 100) / 2, kind = (char_id - 100) % 2;
-    return "track_" + std::to_string(t) + (kind == 0 ? ".level" : ".transient");
+static const char* kKindName[5] = { "level", "transient", "low", "mid", "high" };
+static std::string source_id_for(int char_id) {  // master=kind, track t = 100+t*8+kind
+    if (char_id < 100) return std::string("master.") + (char_id >= 0 && char_id < 5 ? kKindName[char_id] : "level");
+    const int t = (char_id - 100) / 8, kind = (char_id - 100) % 8;
+    return "track_" + std::to_string(t) + "." + (kind >= 0 && kind < 5 ? kKindName[kind] : "level");
 }
 static std::string port_dest(int p) { return std::string("uniform.") + kShaderUniformNames[p]; }
 

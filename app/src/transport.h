@@ -11,6 +11,9 @@ struct Transport {
     std::atomic<double> beats{0.0};   // total beats elapsed (audio thread writes)
     std::atomic<float>  level{0.0f};      // output RMS, 0..1 (audio thread writes)
     std::atomic<float>  transient{0.0f};  // onset/transient, 0..1 (audio thread writes)
+    std::atomic<float>  band_low{0.0f};   // 3-band energy (one-pole crossover, audio thread)
+    std::atomic<float>  band_mid{0.0f};
+    std::atomic<float>  band_high{0.0f};
 
     void advance(uint32_t frames, double sample_rate) {
         if (!playing.load(std::memory_order_relaxed)) return;
