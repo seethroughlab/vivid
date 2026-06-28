@@ -15,6 +15,7 @@
 #include "gpu/gpu_util.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
+#include "ui/renderer_2d.h"
 #include "miniaudio.h"
 
 namespace {
@@ -81,6 +82,39 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     wgpuRenderPassEncoderRelease(pass);
 }
 
+// A tiny status HUD on Renderer2D: instrument name, clip launch buttons (active
+// highlighted, queued marked), beat dots. Proves text + shapes draw on the GPU.
+void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats) {
+    ui.draw_rect(32, 32, 430, 168, 0.10f, 0.11f, 0.13f, 0.92f);
+    ui.draw_text(48, 42, "VIVID — C++ PoC", 0.92f, 0.94f, 0.97f, 1.0f, 1.2f);
+
+    const char* name = st.session ? vivid_poc::session_name(st.session) : "no instrument";
+    char line[160];
+    std::snprintf(line, sizeof line, "instrument: %s", name);
+    ui.draw_text(48, 74, line, 0.62f, 0.66f, 0.72f, 1.0f);
+
+    const int active = st.session ? vivid_poc::session_active_clip(st.session) : -1;
+    const int queued = st.session ? vivid_poc::session_queued_clip(st.session) : -1;
+    const int clips  = st.session ? vivid_poc::session_clip_count(st.session) : 0;
+    for (int i = 0; i < clips; ++i) {
+        const float x = 48 + i * 58.0f, y = 102;
+        const bool on = (i == active);
+        ui.draw_rect(x, y, 50, 38, on ? 0.18f : 0.14f, on ? 0.30f : 0.15f, on ? 0.44f : 0.17f, 1.0f);
+        if (i == queued) ui.draw_rect(x, y, 50, 3, 0.95f, 0.75f, 0.20f, 1.0f);  // queued marker
+        char n[8]; std::snprintf(n, sizeof n, "%d", i + 1);
+        ui.draw_text(x + 20, y + 11, n, on ? 0.95f : 0.6f, on ? 0.97f : 0.64f, 1.0f, 1.0f);
+    }
+    ui.draw_text(48, 162, "press 1/2/3 to launch a clip", 0.5f, 0.53f, 0.58f, 1.0f, 0.95f);
+
+    // beat dots
+    int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
+    for (int i = 0; i < 4; ++i) {
+        const bool ob = (i == beat);
+        ui.draw_rect(348 + i * 24.0f, 44, 16, 16,
+                     ob ? 0.95f : 0.22f, ob ? 0.70f : 0.24f, ob ? 0.20f : 0.27f, 1.0f);
+    }
+}
+
 // Number keys 1..N launch clip 0..N-1 (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) {
     if (action != GLFW_PRESS) return;
@@ -108,6 +142,10 @@ int main() {
         std::fprintf(stderr, "GpuContext init failed: %s\n", gpu.last_error().c_str());
         return 1;
     }
+
+    vivid::ui::Renderer2D ui;
+    if (!ui.init(gpu.device(), gpu.surface_format(), VIVID_FONT_PATH, 15.0f))
+        std::fprintf(stderr, "[vivid] Renderer2D init failed (UI disabled)\n");
 
     Transport transport;
     AudioState audio_state{};
@@ -148,12 +186,15 @@ int main() {
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
             clear_pass(frame.encoder, frame.view, 0.04f, pulse, b);
+            draw_ui(ui, audio_state, beats);
+            ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }
     }
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
+    ui.shutdown();
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();
