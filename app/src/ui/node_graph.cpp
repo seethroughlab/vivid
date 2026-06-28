@@ -55,14 +55,23 @@ void NodeGraph::sync_op_pos() {
         op_pos_.push_back({ bx0_ + 230.f + (static_cast<int>(op_pos_.size())) * 60.f, by0_ + 150.f });
     while (static_cast<int>(op_pos_.size()) > n) op_pos_.pop_back();
     for (auto& p : op_pos_) {
-        p.first  = std::clamp(p.first,  bx0_, std::max(bx0_, bx1_ - 122.f));
-        p.second = std::clamp(p.second, by0_, std::max(by0_, by1_ - 58.f));
+        p.first  = std::clamp(p.first,  bx0_, std::max(bx0_, bx1_ - 146.f));
+        p.second = std::clamp(p.second, by0_, std::max(by0_, by1_ - 116.f));
     }
 }
+static int param_count_of(VOp op) {
+    switch (op) { case VOp::Plasma: return 4; case VOp::Feedback: case VOp::Blur: return 1; default: return 0; }
+}
+// Total left-edge input rows: the texture input (if any) + one per param.
+static int op_input_rows(VOp op) { return (op_has_input(op) ? 1 : 0) + param_count_of(op); }
+static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
+
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
-    w = 140.f; h = 62.f;
+    w = 144.f;
+    const VOp op = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op : VOp::Plasma;
+    h = 30.f + std::max(1, op_input_rows(op)) * 18.f + 6.f;
 }
 
 // classic-style type accent (r,g,b) for an op.
@@ -76,11 +85,11 @@ static void op_accent(VOp op, float& r, float& g, float& b) {
 static void port_dot(Renderer2D& rr, float px, float py, float rad, float r, float g, float b) {
     rr.draw_rounded_rect(px - rad, py - rad, rad * 2.f, rad * 2.f, rad, r, g, b, 1.0f);  // filled circle
 }
-bool NodeGraph::op_in_port(int i, float& px, float& py) const {
+bool NodeGraph::op_in_port(int i, float& px, float& py) const {  // texture input: left, row 0
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_input(vg_->nodes()[i].op)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = y + h * 0.5f; return true;
+    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = op_row_y(y, 0); return true;
 }
-bool NodeGraph::op_out_port(int i, float& px, float& py) const {
+bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_output(vg_->nodes()[i].op)) return false;
     float x, y, w, h; op_node_rect(i, x, y, w, h); px = x + w; py = y + h * 0.5f; return true;
 }
@@ -89,13 +98,13 @@ int NodeGraph::first_node_of(VOp op) const {
     for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op == op) return i;
     return -1;
 }
-bool NodeGraph::param_port(int uniform, float& px, float& py) const {
-    const int ni = first_node_of(uniform_owner(uniform));
+bool NodeGraph::param_port(int uniform, float& px, float& py) const {  // param input: left edge
+    const VOp owner = uniform_owner(uniform);
+    const int ni = first_node_of(owner);
     if (ni < 0) return false;
-    int u[4]; const int count = op_param_uniforms(vg_->nodes()[ni].op, u);
     float x, y, w, h; op_node_rect(ni, x, y, w, h);
-    px = x + (uniform_local(uniform) + 1) * w / (count + 1);
-    py = y + h;
+    const int row = (op_has_input(owner) ? 1 : 0) + uniform_local(uniform);  // after the texture input
+    px = x; py = op_row_y(y, row);
     return true;
 }
 int NodeGraph::nearest_param(double x, double y, double maxd) const {
@@ -230,27 +239,28 @@ void NodeGraph::draw(Renderer2D& r) {
     for (int i = 0; i < n; ++i) {
         const VOp op = vg_->nodes()[i].op;
         float x, y, w, h; op_node_rect(i, x, y, w, h);
-        const bool gen = (op == VOp::Plasma || op == VOp::Video), out = (op == VOp::Output);
+        const bool out = (op == VOp::Output);
         float ar, ag, ab; op_accent(op, ar, ag, ab);
         r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
         r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
         r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                               // accent bar
         r.draw_text(x + 10.f, y + 6.f, op_name(op), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
-        r.draw_text(x + 10.f, y + 30.f, out ? "\xE2\x86\x92 viewer" : (gen ? "generator" : "effect"),
-                    0.52f, 0.55f, 0.6f, 1.0f, 0.78f);
-        if (gen) r.draw_text(x + 10.f, y + 44.f, "V switch \xC2\xB7 N clip", 0.42f, 0.45f, 0.5f, 1.0f, 0.66f);
+        if (out) r.draw_text(x + w - 56.f, y + 6.f, "\xE2\x86\x92 viewer", 0.6f, 0.55f, 0.4f, 1.0f, 0.72f);
         float px, py;
-        if (op_in_port(i, px, py))  port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
-        if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+        if (op_in_port(i, px, py)) {  // texture input
+            port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+            r.draw_text(px + 10.f, py - 5.f, "in", 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
+        }
+        if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
         if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
     }
-    // param ports + labels (on their owning op)
+    // param input ports + labels (down the owning op's left edge)
     for (int u = 0; u < kNumShaderUniforms; ++u) {
         float px, py; if (!param_port(u, px, py)) continue;
         const bool on = reg_.source_of(port_dest(u)) != nullptr;
         port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
-        r.draw_text(px - 10.f, py + 6.f, kShaderUniformNames[u],
-                    on ? 0.7f : 0.46f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.64f);
+        r.draw_text(px + 10.f, py - 5.f, kShaderUniformNames[u],
+                    on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.68f);
     }
 
     // data nodes (matching card style)
