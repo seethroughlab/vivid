@@ -55,10 +55,8 @@ void NodeGraph::sync_op_pos() {
     while (static_cast<int>(op_pos_.size()) < n)
         op_pos_.push_back({ bx0_ + 230.f + (static_cast<int>(op_pos_.size())) * 60.f, by0_ + 150.f });
     while (static_cast<int>(op_pos_.size()) > n) op_pos_.pop_back();
-    for (auto& p : op_pos_) {
-        p.first  = std::clamp(p.first,  bx0_, std::max(bx0_, bx1_ - 146.f));
-        p.second = std::clamp(p.second, by0_, std::max(by0_, by1_ - 116.f));
-    }
+    // No per-node clamp: nodes live in a pannable canvas and the pane clip-rect
+    // keeps drawing contained. Panning would otherwise be undone every frame.
 }
 static int param_count_of(VOp op) {
     switch (op) { case VOp::Plasma: return 4; case VOp::Feedback: case VOp::Blur: return 1; default: return 0; }
@@ -139,10 +137,8 @@ void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
         if (ddx != 0.f) { for (auto& n : data_) n.x += ddx; for (auto& p : op_pos_) p.first += ddx; }
     }
     bx0_ = x0; by0_ = y0; bx1_ = x1; by1_ = y1; bounds_init_ = true;
-    for (auto& n : data_) {
-        n.x = std::clamp(n.x, bx0_, std::max(bx0_, bx1_ - n.w));
-        n.y = std::clamp(n.y, by0_, std::max(by0_, by1_ - n.h));
-    }
+    // No per-node clamp (pannable canvas); the splitter shift above keeps nodes
+    // following the pane's left edge, and the clip-rect contains the drawing.
     sync_op_pos();
 }
 
@@ -223,6 +219,13 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
 void NodeGraph::draw(Renderer2D& r) {
     sync_op_pos();
     r.push_clip_rect(bx0_ - 6.f, by0_ - 18.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 28.f);
+    // grid background (scrolls with the canvas as you pan)
+    const float gs = 38.f;
+    const float gx0 = bx0_ - 6.f, gy0 = by0_ - 6.f, gx1 = bx1_ + 6.f, gy1 = by1_ + 6.f;
+    for (float gx = gx0 - std::fmod(std::fmod(grid_off_x_, gs) + gs, gs); gx < gx1; gx += gs)
+        r.draw_rect(gx, gy0, 1.f, gy1 - gy0, 0.105f, 0.115f, 0.14f, 1.0f);
+    for (float gy = gy0 - std::fmod(std::fmod(grid_off_y_, gs) + gs, gs); gy < gy1; gy += gs)
+        r.draw_rect(gx0, gy, gx1 - gx0, 1.f, 0.105f, 0.115f, 0.14f, 1.0f);
     r.draw_text(bx0_, by0_ - 16.f,
                 "NETWORK — wire op outputs (right) into inputs (left), ending in Output. Drag a data port onto an op param.",
                 0.45f, 0.48f, 0.53f, 1.0f, 0.86f);
@@ -334,6 +337,10 @@ bool NodeGraph::on_down(double x, double y) {
         if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, x, y)) {
             drag_mode_ = 1; drag_idx_ = i; dx_ = x - data_[i].x; dy_ = y - data_[i].y; return true;
         }
+    // empty canvas within the network pane -> pan (drag the grid + all nodes)
+    if (x >= bx0_ && x < bx1_ && y >= by0_ && y < by1_) {
+        drag_mode_ = 5; pan_last_x_ = float(x); pan_last_y_ = float(y); return true;
+    }
     return false;
 }
 
@@ -343,6 +350,12 @@ void NodeGraph::on_move(double x, double y) {
         data_[drag_idx_].x = float(x - dx_); data_[drag_idx_].y = float(y - dy_);
     } else if (drag_mode_ == 2 && drag_idx_ >= 0 && drag_idx_ < int(op_pos_.size())) {
         op_pos_[drag_idx_] = { float(x - dx_), float(y - dy_) };
+    } else if (drag_mode_ == 5) {  // pan: shift the whole canvas + the grid
+        const float ddx = float(x) - pan_last_x_, ddy = float(y) - pan_last_y_;
+        for (auto& nd : data_)   { nd.x += ddx; nd.y += ddy; }
+        for (auto& p : op_pos_)  { p.first += ddx; p.second += ddy; }
+        grid_off_x_ += ddx; grid_off_y_ += ddy;
+        pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 

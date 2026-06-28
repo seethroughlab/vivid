@@ -65,11 +65,13 @@ private:
     std::vector<std::pair<float, float>> op_pos_;
     bool op_pos_init_ = false;
 
-    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire
+    // 0 none, 1 data-node drag, 2 op-node drag, 3 data->param wire, 4 op->op wire, 5 pan
     int    drag_mode_ = 0;
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
+    float  grid_off_x_ = 0.f, grid_off_y_ = 0.f;     // grid scroll (follows panning)
+    float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
 
     vivid::VisualGraph* vg_ = nullptr;
 
