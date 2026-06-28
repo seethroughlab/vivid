@@ -1,35 +1,43 @@
 #pragma once
 #include <cstdint>
 
-// Minimal façade over the extracted VST3 host (vst3_host_common.h lives in an
-// anonymous namespace, so the real work happens in vst3_host.cpp and main only
+// Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
+// an anonymous-namespace header, so the work lives in vst3_host.cpp and main only
 // talks to these C-style entry points).
 //
-// P2: a Session = one hosted instrument + a list of launchable MIDI clips. Clip
-// launches are queued on the main thread and applied on the audio thread at the
-// next bar boundary (Ableton-style quantized launch).
+// A Session = N tracks. Each track hosts one VST3 instrument and has one MIDI
+// clip per scene. Clip launches are queued on the main thread and applied on the
+// audio thread at the next bar boundary (Ableton-style). The audio thread mixes
+// all tracks (per-track gain) into the master output.
 namespace vivid_poc {
 
 struct Session;  // opaque
 
-// Scan the standard macOS VST3 dirs, load the first instrument, set up its
-// clips, and setProcessing(true). Returns nullptr if no instrument is found.
 Session* session_create(uint32_t sample_rate);
+void     session_destroy(Session*);
 
-const char* session_name(Session*);
-int  session_clip_count(Session*);
-int  session_active_clip(Session*);   // currently playing (audio thread truth)
-int  session_queued_clip(Session*);   // -1 if none pending
+int  session_track_count(Session*);
+int  session_scene_count(Session*);
+const char* session_track_name(Session*, int track);
 
-// Main thread: request clip `index` — applied at the next bar boundary.
-void session_launch(Session*, int index);
+// Per-cell state (audio-thread truth).
+int  session_active_clip(Session*, int track);   // active scene index, -1 if stopped
+int  session_queued_clip(Session*, int track);   // -1 if nothing pending
 
-// Audio thread: render `frames` of interleaved stereo f32 into `out`, scheduling
-// the active clip and applying any queued launch on the bar. Returns false (and
-// writes nothing) if there is no plugin.
+// Launch (main thread, applied on the next bar).
+void session_launch_clip(Session*, int track, int scene);
+void session_launch_scene(Session*, int scene);   // launches scene on every track
+
+// Mixer.
+float session_track_gain(Session*, int track);
+void  session_set_track_gain(Session*, int track, float gain);
+float session_track_level(Session*, int track);   // per-track output RMS (meters)
+
+// Plugin editor (P10): the track's IEditController, as void* (cast in main).
+void* session_track_controller(Session*, int track);
+
+// Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 bool session_process(Session*, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar);
-
-void session_destroy(Session*);
 
 }  // namespace vivid_poc

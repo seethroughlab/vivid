@@ -1,12 +1,12 @@
-// Session — one hosted VST3 instrument + a list of launchable MIDI clips, with
-// transport-quantized (next-bar) clip switching driven from the audio thread.
-// Built on classic's extracted host (vst3_host_common.h, anonymous namespace),
-// so everything lives in this one TU.
+// Multi-track session — N tracks, each a hosted VST3 instrument + per-scene MIDI
+// clips, mixed (per-track gain) to the master output with bar-quantized launch.
+// Built on classic's extracted host (vst3_host_common.h, anonymous namespace).
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
 
 #include <vector>
+#include <memory>
 #include <string>
 #include <atomic>
 #include <cstring>
@@ -20,20 +20,25 @@ using namespace Steinberg::Vst;
 
 namespace vivid_poc {
 
-struct Session {
-    Vst3HostApp        host;
-    Vst3Handle*        handle = nullptr;
-    std::string        name;
-
-    std::vector<MidiClip> clips;
+struct Track {
+    Vst3Handle*           handle = nullptr;
+    std::string           name;
+    std::vector<MidiClip> clips;          // one per scene
     ClipScheduler         sched;
     std::atomic<int>      active{0};
     std::atomic<int>      queued{-1};
-    long long             last_bar = -1;
+    std::atomic<float>    gain{0.8f};
+    std::atomic<float>    level{0.f};
+    std::vector<float>    bl, br;          // planar scratch
+    std::vector<NoteEvent> nev;
+    uint64_t              steady = 0;
+};
 
-    std::vector<float>     buf_l, buf_r;   // planar scratch
-    std::vector<NoteEvent> nev;            // reusable per-block event buffer
-    uint64_t               steady = 0;
+struct Session {
+    Vst3HostApp host;
+    std::vector<std::unique_ptr<Track>> tracks;
+    int       scenes = 3;
+    long long last_bar = -1;
 };
 
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
@@ -48,17 +53,33 @@ static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
     closedir(d);
 }
 
-// Three obviously-different riffs so launching is audible.
-static std::vector<MidiClip> make_clips() {
-    MidiClip a; a.length = 4.0; a.notes = {  // mid Dm riff
-        {62,0.0,0.5,0.85f},{65,0.5,0.5,0.70f},{69,1.0,0.5,0.85f},
-        {65,1.5,0.5,0.70f},{74,2.0,1.0,0.90f},{69,3.0,0.9,0.75f} };
-    MidiClip b; b.length = 4.0; b.notes = {  // high sparse arp
-        {81,0.0,0.4,0.8f},{84,1.0,0.4,0.75f},{88,2.0,0.4,0.8f},{86,3.0,0.9,0.7f} };
-    MidiClip c; c.length = 4.0; c.notes = {  // low bass pulse (eighths)
-        {38,0.0,0.4,0.95f},{38,0.5,0.4,0.7f},{41,1.0,0.4,0.9f},{38,1.5,0.4,0.7f},
-        {36,2.0,0.4,0.95f},{36,2.5,0.4,0.7f},{43,3.0,0.4,0.9f},{41,3.5,0.4,0.7f} };
+static MidiClip transpose(const MidiClip& c, int semis) {
+    MidiClip o = c;
+    for (auto& n : o.notes) n.pitch += semis;
+    return o;
+}
+// Three riffs (scene A/B/C); each track plays them transposed to a role.
+static std::vector<MidiClip> base_patterns() {
+    MidiClip a; a.length = 4.0; a.notes = {
+        {62,0.0,0.5,.85f},{65,0.5,0.5,.70f},{69,1.0,0.5,.85f},{65,1.5,0.5,.70f},{74,2.0,1.0,.90f},{69,3.0,0.9,.75f} };
+    MidiClip b; b.length = 4.0; b.notes = {
+        {81,0.0,0.4,.80f},{84,1.0,0.4,.75f},{88,2.0,0.4,.80f},{86,3.0,0.9,.70f} };
+    MidiClip c; c.length = 4.0; c.notes = {
+        {38,0.0,0.4,.95f},{38,0.5,0.4,.70f},{41,1.0,0.4,.90f},{38,1.5,0.4,.70f},
+        {36,2.0,0.4,.95f},{36,2.5,0.4,.70f},{43,3.0,0.4,.90f},{41,3.5,0.4,.70f} };
     return { a, b, c };
+}
+
+static Track* make_track(Vst3Handle* h, const std::string& name, int index) {
+    static const int kOffsets[3] = { 0, -12, 7 };  // lead / bass / harmony
+    auto* t = new Track();
+    t->handle = h;
+    t->name = name;
+    const int o = kOffsets[index % 3];
+    for (auto& bp : base_patterns()) t->clips.push_back(transpose(bp, o));
+    t->sched.reset(&t->clips[0]);
+    t->nev.reserve(64);
+    return t;
 }
 
 Session* session_create(uint32_t sample_rate) {
@@ -68,37 +89,67 @@ Session* session_create(uint32_t sample_rate) {
         list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
 
     auto* s = new Session();
+    const int kTarget = 3;
+    std::string first_path;
+
+    // Load up to kTarget distinct instruments.
     for (const auto& path : bundles) {
+        if (static_cast<int>(s->tracks.size()) >= kTarget) break;
         Vst3Handle* h = vst3_load_plugin(path.c_str(), "", sample_rate, std::string(), &s->host);
         if (!h) continue;
-        if (h->component && h->component->getBusCount(kEvent, kInput) > 0) {  // an instrument
-            if (h->processor->setProcessing(true) != kResultOk)
-                std::fprintf(stderr, "[Session] setProcessing(true) failed\n");
-            h->processing = true;
-            s->handle = h;
-            s->name = h->plugin_name.empty() ? path : h->plugin_name;
-            s->clips = make_clips();
-            s->sched.reset(&s->clips[0]);
-            s->nev.reserve(64);
-            std::fprintf(stderr, "[Session] instrument: %s, %zu clips\n",
-                         s->name.c_str(), s->clips.size());
-            break;
-        }
-        h->destroy();
-        delete h;
+        if (!(h->component && h->component->getBusCount(kEvent, kInput) > 0)) { h->destroy(); delete h; continue; }
+        if (h->processor->setProcessing(true) != kResultOk) {}
+        h->processing = true;
+        const int idx = static_cast<int>(s->tracks.size());
+        s->tracks.emplace_back(make_track(h, h->plugin_name.empty() ? path : h->plugin_name, idx));
+        if (first_path.empty()) first_path = path;
     }
-    if (!s->handle) { delete s; return nullptr; }
+    // Top up with extra instances of the first instrument if we found too few.
+    while (static_cast<int>(s->tracks.size()) < kTarget && !first_path.empty()) {
+        Vst3Handle* h = vst3_load_plugin(first_path.c_str(), "", sample_rate, std::string(), &s->host);
+        if (!h) break;
+        if (h->processor->setProcessing(true) != kResultOk) {}
+        h->processing = true;
+        const int idx = static_cast<int>(s->tracks.size());
+        std::string nm = (h->plugin_name.empty() ? first_path : h->plugin_name) + " " + std::to_string(idx + 1);
+        s->tracks.emplace_back(make_track(h, nm, idx));
+    }
+
+    if (s->tracks.empty()) { delete s; return nullptr; }
+    std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
     return s;
 }
 
-const char* session_name(Session* s) { return (s && s->handle) ? s->name.c_str() : ""; }
-int session_clip_count(Session* s)   { return s ? static_cast<int>(s->clips.size()) : 0; }
-int session_active_clip(Session* s)  { return s ? s->active.load(std::memory_order_relaxed) : -1; }
-int session_queued_clip(Session* s)  { return s ? s->queued.load(std::memory_order_relaxed) : -1; }
-
-void session_launch(Session* s, int index) {
-    if (s && index >= 0 && index < static_cast<int>(s->clips.size()))
-        s->queued.store(index, std::memory_order_relaxed);
+int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.size()) : 0; }
+int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
+const char* session_track_name(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->name.c_str() : "";
+}
+int  session_active_clip(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;
+}
+int  session_queued_clip(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->queued.load(std::memory_order_relaxed) : -1;
+}
+void session_launch_clip(Session* s, int t, int scene) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && scene >= 0 && scene < s->scenes)
+        s->tracks[t]->queued.store(scene, std::memory_order_relaxed);
+}
+void session_launch_scene(Session* s, int scene) {
+    if (!s || scene < 0 || scene >= s->scenes) return;
+    for (auto& tp : s->tracks) tp->queued.store(scene, std::memory_order_relaxed);
+}
+float session_track_gain(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->gain.load(std::memory_order_relaxed) : 0.f;
+}
+void session_set_track_gain(Session* s, int t, float g) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) s->tracks[t]->gain.store(g, std::memory_order_relaxed);
+}
+float session_track_level(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->level.load(std::memory_order_relaxed) : 0.f;
+}
+void* session_track_controller(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
 }
 
 static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) {
@@ -126,85 +177,73 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) 
 
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar) {
-    if (!s || !s->handle || !s->handle->processing) return false;
-
-    if (s->buf_l.size() < frames) { s->buf_l.resize(frames); s->buf_r.resize(frames); }
-    float* L = s->buf_l.data();
-    float* R = s->buf_r.data();
-    std::memset(L, 0, frames * sizeof(float));
-    std::memset(R, 0, frames * sizeof(float));
-
-    Vst3EventList events;
-
-    // Quantized launch: apply any queued clip at the bar boundary.
-    long long bar = static_cast<long long>(std::floor(beats / (beats_per_bar > 0 ? beats_per_bar : 4)));
-    if (bar != s->last_bar) {
-        s->last_bar = bar;
-        int q = s->queued.load(std::memory_order_relaxed);
-        if (q >= 0) {
-            if (q != s->active.load(std::memory_order_relaxed) && q < static_cast<int>(s->clips.size())) {
-                s->nev.clear();
-                s->sched.flush(s->nev);                 // release the old clip's notes
-                emit_vst3(events, s->nev);
-                s->sched.reset(&s->clips[q]);
-                s->active.store(q, std::memory_order_relaxed);
-            }
-            s->queued.store(-1, std::memory_order_relaxed);
-        }
-    }
-
-    // Schedule the active clip for this block (transport-locked, sample-accurate).
+    if (!s || s->tracks.empty()) return false;
+    std::memset(out, 0, sizeof(float) * 2 * frames);
+    const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
+    const long long bar = static_cast<long long>(std::floor(beats / bpb));
+    const bool new_bar = bar != s->last_bar;
+    s->last_bar = bar;
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
-    s->nev.clear();
-    s->sched.emit(beats, delta, frames, s->nev);
-    emit_vst3(events, s->nev);
 
-    VividAudioContext ctx{};
-    ctx.sample_rate = sample_rate;
-    ctx.metronome_bpm = static_cast<float>(bpm);
-    ctx.metronome_beats_per_bar = beats_per_bar;
-    ctx.metronome_beats_elapsed = beats;
+    bool any = false;
+    for (auto& tp : s->tracks) {
+        Track& t = *tp;
+        if (!t.handle || !t.handle->processing) continue;
+        any = true;
+        if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
+        float* L = t.bl.data(); float* R = t.br.data();
+        std::memset(L, 0, frames * sizeof(float));
+        std::memset(R, 0, frames * sizeof(float));
 
-    float* channels[2] = { L, R };
-    AudioBusBuffers output_bus{};
-    output_bus.channelBuffers32 = channels;
-    output_bus.numChannels = 2;
-    output_bus.silenceFlags = 0;
+        Vst3EventList events;
+        if (new_bar) {
+            const int q = t.queued.load(std::memory_order_relaxed);
+            if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
+                t.nev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev);
+                t.sched.reset(&t.clips[q]);
+                t.active.store(q, std::memory_order_relaxed);
+            }
+            if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+        }
+        t.nev.clear(); t.sched.emit(beats, delta, frames, t.nev); emit_vst3(events, t.nev);
 
-    Vst3ParamChanges param_changes;
-    param_changes.clear();
+        VividAudioContext ctx{};
+        ctx.sample_rate = sample_rate;
+        ctx.metronome_bpm = static_cast<float>(bpm);
+        ctx.metronome_beats_per_bar = bpb;
+        ctx.metronome_beats_elapsed = beats;
+        float* ch[2] = { L, R };
+        AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
+        Vst3ParamChanges pc; pc.clear();
+        ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
+        ProcessData data{};
+        data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
+        data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
+        data.inputs = nullptr; data.outputs = &ob;
+        data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+        t.handle->processor->process(data);
+        t.steady += frames;
 
-    ProcessContext pctx = vst3_build_process_context(&ctx, s->steady);
-    ProcessData data{};
-    data.processMode = kRealtime;
-    data.symbolicSampleSize = kSample32;
-    data.numSamples = static_cast<int32>(frames);
-    data.numInputs = 0;
-    data.numOutputs = 1;
-    data.inputs = nullptr;
-    data.outputs = &output_bus;
-    data.inputEvents = &events;
-    data.outputEvents = nullptr;
-    data.inputParameterChanges = &param_changes;
-    data.outputParameterChanges = nullptr;
-    data.processContext = &pctx;
-
-    s->handle->processor->process(data);
-    s->steady += frames;
-
-    for (uint32_t i = 0; i < frames; ++i) {
-        out[i * 2 + 0] = L[i];
-        out[i * 2 + 1] = R[i];
+        const float g = t.gain.load(std::memory_order_relaxed);
+        double sum_sq = 0.0;
+        for (uint32_t i = 0; i < frames; ++i) {
+            const float l = L[i] * g, r = R[i] * g;
+            out[2 * i] += l; out[2 * i + 1] += r;
+            sum_sq += static_cast<double>(l) * l;
+        }
+        t.level.store(static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
     }
-    return true;
+    return any;
 }
 
 void session_destroy(Session* s) {
     if (!s) return;
-    if (s->handle) {
-        if (s->handle->processing) s->handle->processor->setProcessing(false);
-        s->handle->destroy();
-        delete s->handle;
+    for (auto& tp : s->tracks) {
+        if (tp->handle) {
+            if (tp->handle->processing) tp->handle->processor->setProcessing(false);
+            tp->handle->destroy();
+            delete tp->handle;
+        }
     }
     delete s;
 }
