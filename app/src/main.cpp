@@ -154,6 +154,7 @@ inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, static_cast<f
 // Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
 static int g_visual_source = 0;
 
+static vivid::VisualGraph*      g_vgraph = nullptr;   // source of truth for the generator
 // Video source: a folder of clips, cycled with N. (UI/main thread only.)
 static VideoPlayer*             g_video = nullptr;
 static std::vector<std::string> g_video_paths;
@@ -308,10 +309,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;
     }
-    if (key == GLFW_KEY_V) {  // toggle the visuals generator source
-        g_visual_source ^= 1;
-        if (g_video) video_play(g_video, g_visual_source == 1);
-        std::fprintf(stderr, "[vivid] visual source: %s\n", g_visual_source ? "texture/video" : "plasma");
+    if (key == GLFW_KEY_V && g_vgraph) {  // toggle the visuals generator (also via the generator node)
+        g_vgraph->set_generator(g_vgraph->generator() == vivid::VOp::Video ? vivid::VOp::Plasma : vivid::VOp::Video);
         return;
     }
     if (key == GLFW_KEY_N) { load_video_at(g_video_idx + 1); return; }  // next clip
@@ -476,6 +475,7 @@ int main() {
     vivid::VisualGraph vgraph;
     if (!vgraph.init(gpu.device(), gpu.queue(), gpu.surface_format(), kRtW, kRtH))
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");
+    g_vgraph = &vgraph;
 
     // Texture source (image/video) — seeded with a test pattern; P19b feeds video.
     vivid::TextureSource srcTex;
@@ -499,6 +499,7 @@ int main() {
     }
 
     vivid::ui::NodeGraph graph;
+    graph.set_visual_graph(&vgraph);   // show the op-chain; generator node toggles Plasma/Video
     vivid::ui::ClipEditor clip_editor;
 
     Transport transport;
@@ -607,6 +608,9 @@ int main() {
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
             const float tsec = static_cast<float>(glfwGetTime());
+            // the generator (set by V or the generator node) drives the video source
+            g_visual_source = (vgraph.generator() == vivid::VOp::Video) ? 1 : 0;
+            if (g_video) video_play(g_video, g_visual_source == 1);
             // pull the latest video frame into the source texture (if showing video)
             if (g_visual_source == 1 && g_video) {
                 const uint8_t* px = nullptr; uint32_t vw = 0, vh = 0;
@@ -619,7 +623,6 @@ int main() {
                 }
             }
             // composable visuals chain -> viewer (ports 0..3 plasma, 4 decay, 5 blur)
-            vgraph.set_generator(g_visual_source ? vivid::VOp::Video : vivid::VOp::Plasma);
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             const Rect vp = viewer_rect();
             const float pu[4] = { uniforms[0], uniforms[1], uniforms[2], uniforms[3] };

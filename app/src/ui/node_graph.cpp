@@ -1,4 +1,5 @@
 #include "ui/node_graph.h"
+#include "gpu/visual_graph.h"
 #include <cmath>
 #include <algorithm>
 
@@ -56,7 +57,27 @@ void NodeGraph::set_connected(int port, int idx) {
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
-void NodeGraph::shader_in(int port, float& px, float& py) const { px = sx_; py = sy_ + 36.f + port * 24.f; }
+
+// Op-node stack on the right of the visuals pane: 0=generator, 1=feedback, 2=blur,
+// 3=output. Heights sized to their param-port counts (gen has 4).
+void NodeGraph::op_box(int op, float& x, float& y, float& w, float& h) const {
+    static const float kOpW = 158.f, kGap = 12.f;
+    static const float hh[4] = { 32.f + 4 * 22.f, 54.f, 54.f, 40.f };
+    x = bx1_ - kOpW - 8.f;
+    y = by0_ + 4.f;
+    for (int k = 0; k < op && k < 4; ++k) y += hh[k] + kGap;
+    w = kOpW; h = hh[op < 0 ? 0 : (op > 3 ? 3 : op)];
+}
+// Param port -> the op-node that owns it (ports 0-3 generator, 4 feedback, 5 blur).
+void NodeGraph::shader_in(int port, float& px, float& py) const {
+    int op = 0, local = 0;
+    if (port <= 3) { op = 0; local = port; }
+    else if (port == 4) { op = 1; }
+    else { op = 2; }
+    float x, y, w, h; op_box(op, x, y, w, h);
+    px = x;
+    py = y + 30.f + local * 22.f;
+}
 int NodeGraph::nearest_shader_in(double x, double y, double max_dist) const {
     int best = -1; double bd = max_dist;
     for (int i = 0; i < kNumShaderUniforms; ++i) {
@@ -87,8 +108,8 @@ void NodeGraph::draw(Renderer2D& r) {
     // Confine all graph drawing to the visuals pane.
     r.push_clip_rect(bx0_ - 6.f, by0_ - 18.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 24.f);
     r.draw_text(bx0_, by0_ - 16.f,
-                "NETWORK — drag a data node's port onto a shader uniform (warp / hue / density / glow)",
-                0.45f, 0.48f, 0.53f, 1.0f, 0.9f);
+                "NETWORK — visuals chain on the right; drag a data port onto an op param. Click the generator to switch Plasma/Video.",
+                0.45f, 0.48f, 0.53f, 1.0f, 0.86f);
 
     // Wires first (under the nodes)
     for (int i = 0; i < kNumShaderUniforms; ++i) {
@@ -101,18 +122,31 @@ void NodeGraph::draw(Renderer2D& r) {
         draw_wire(r, ox, oy, float(cx_), float(cy_), 0.55f, 0.85f, 0.80f);
     }
 
-    // Shader node — one input port per named uniform
-    r.draw_rounded_rect(sx_, sy_, sw_, sh_, 6.f, 0.14f, 0.15f, 0.18f, 1.0f);
-    r.draw_rect(sx_, sy_, sw_, 3.f, 0.35f, 0.55f, 0.95f, 1.0f);
-    r.draw_text(sx_ + 12.f, sy_ + 10.f, "Visuals", 0.90f, 0.92f, 0.95f, 1.0f);
-    r.draw_text(sx_ + 80.f, sy_ + 12.f, "plasma + fx", 0.5f, 0.53f, 0.58f, 1.0f, 0.82f);
+    // Op-node chain: generator -> feedback -> blur -> output.
+    const bool video = vg_ && vg_->generator() == vivid::VOp::Video;
+    const char* op_title[4] = { video ? "Video" : "Plasma", "Feedback", "Blur", "Output" };
+    const char* op_sub[4]   = { video ? "source \xC2\xB7 V/N" : "generator \xC2\xB7 V", "fx", "fx", "\xE2\x86\x92 viewer" };
+    // chain flow connectors (top of each box to the next)
+    for (int op = 0; op < 3; ++op) {
+        float x0, y0, w0, h0, x1, y1, w1, h1; op_box(op, x0, y0, w0, h0); op_box(op + 1, x1, y1, w1, h1);
+        r.draw_rect(x0 + w0 * 0.5f - 1.f, y0 + h0, 2.f, (y1 - (y0 + h0)), 0.30f, 0.42f, 0.55f, 1.0f);
+    }
+    for (int op = 0; op < 4; ++op) {
+        float x, y, w, h; op_box(op, x, y, w, h);
+        const bool gen = (op == 0);
+        r.draw_rounded_rect(x, y, w, h, 6.f, gen ? 0.16f : 0.13f, 0.15f, gen ? 0.20f : 0.18f, 1.0f);
+        r.draw_rect(x, y, w, 3.f, gen ? 0.45f : 0.35f, gen ? 0.62f : 0.55f, 0.95f, 1.0f);
+        r.draw_text(x + 12.f, y + 9.f, op_title[op], 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
+        r.draw_text(x + w - 64.f, y + 11.f, op_sub[op], 0.5f, 0.53f, 0.58f, 1.0f, 0.78f);
+    }
+    // param ports on their owning op-nodes
     for (int i = 0; i < kNumShaderUniforms; ++i) {
         float px, py; shader_in(i, px, py);
         const bool on = connected_[i] >= 0;
         r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f,
                     on ? 0.45f : 0.30f, on ? 0.78f : 0.33f, on ? 0.85f : 0.38f, 1.0f);
         r.draw_text(px + 14.f, py - 7.f, kShaderUniformNames[i],
-                    on ? 0.85f : 0.55f, on ? 0.9f : 0.58f, on ? 0.95f : 0.63f, 1.0f, 0.9f);
+                    on ? 0.85f : 0.55f, on ? 0.9f : 0.58f, on ? 0.95f : 0.63f, 1.0f, 0.88f);
     }
 
     // Data nodes
@@ -139,7 +173,12 @@ bool NodeGraph::on_down(double x, double y) {
         float px, py; data_out(data_[i], px, py);
         if (std::hypot(x - px, y - py) < 14.0) { drag_mode_ = 3; wire_from_ = i; return true; }
     }
-    if (in_rect(sx_, sy_, sw_, sh_, x, y)) { drag_mode_ = 2; dx_ = x - sx_; dy_ = y - sy_; return true; }
+    // Click the generator op-node -> switch Plasma <-> Video.
+    { float gx, gy, gw, gh; op_box(0, gx, gy, gw, gh);
+      if (in_rect(gx, gy, gw, gh, x, y)) {
+          if (vg_) vg_->set_generator(vg_->generator() == vivid::VOp::Video ? vivid::VOp::Plasma : vivid::VOp::Video);
+          return true;
+      } }
     for (int i = 0; i < int(data_.size()); ++i) {
         if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, x, y)) {
             drag_mode_ = 1; drag_idx_ = i; dx_ = x - data_[i].x; dy_ = y - data_[i].y; return true;

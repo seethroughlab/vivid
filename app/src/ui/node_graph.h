@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 
+namespace vivid { class VisualGraph; }
+
 namespace vivid::ui {
 
 // A minimal custom node editor on Renderer2D (we build our own rather than
@@ -23,6 +25,10 @@ public:
     // Confine the graph to the visuals pane: shifts nodes when the pane's left
     // edge moves (splitter) and clamps them inside. Drawing is clipped to it.
     void set_bounds(float x0, float y0, float x1, float y1);
+
+    // The visuals chain shown as op-nodes (generator/feedback/blur/output); the
+    // generator node is clickable to switch Plasma<->Video.
+    void set_visual_graph(vivid::VisualGraph* vg) { vg_ = vg; }
 
     // Persistence accessors.
     int  node_count() const { return static_cast<int>(data_.size()); }
@@ -57,7 +63,10 @@ private:
     static void data_out(const DataNode& n, float& px, float& py);
     void  shader_in(int port, float& px, float& py) const;   // input port `port` position
     int   nearest_shader_in(double x, double y, double max_dist) const;  // -1 if none
+    void  op_box(int op, float& x, float& y, float& w, float& h) const;  // 0=gen 1=fb 2=blur 3=out
     static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);
+
+    vivid::VisualGraph* vg_ = nullptr;
 };
 
 }  // namespace vivid::ui
