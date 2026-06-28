@@ -417,10 +417,26 @@ void draw_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m, const char* track) {
 
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
-    if (action != GLFW_PRESS) return;
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
     if (!st) return;
+    // The operator chooser captures the keyboard while open (repeat allowed for nav).
+    if (st->graph && st->graph->chooser_open()) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+            if (key == GLFW_KEY_ESCAPE) st->graph->chooser_hide();
+            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) st->graph->chooser_confirm();
+            else if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) st->graph->chooser_move(+1);
+            else if (key == GLFW_KEY_UP) st->graph->chooser_move(-1);
+            else if (key == GLFW_KEY_BACKSPACE) st->graph->chooser_backspace();
+        }
+        return;  // swallow all keys while the chooser is up
+    }
+    if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE && st->editor && st->editor->is_open()) { st->editor->close(); return; }
+    // Tab -> open the operator chooser at the cursor (visuals pane only).
+    if (key == GLFW_KEY_TAB && st->graph) {
+        double mx, my; glfwGetCursorPos(w, &mx, &my);
+        if (mx >= g_split_x) { st->graph->chooser_show(mx, my); return; }
+    }
 
     // Cmd+S / Cmd+O -> save / load the session (~/vivid_session.json).
     if ((mods & GLFW_MOD_SUPER) && st->session && st->graph && (key == GLFW_KEY_S || key == GLFW_KEY_O)) {
@@ -450,6 +466,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
             std::fprintf(stderr, "[vivid] launch scene %c (queued for next bar)\n", 'A' + idx);
         }
     }
+}
+
+void char_callback(GLFWwindow* w, unsigned int cp) {
+    auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
+    if (st && st->graph && st->graph->chooser_open()) st->graph->chooser_char(cp);
 }
 
 void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
@@ -728,6 +749,7 @@ int main() {
     }
     glfwSetWindowUserPointer(window, &audio_state);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetCharCallback(window, char_callback);
     glfwSetMouseButtonCallback(window, mouse_button_callback);
     glfwSetScrollCallback(window, scroll_callback);
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",

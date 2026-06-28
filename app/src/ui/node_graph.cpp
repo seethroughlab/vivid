@@ -1,6 +1,7 @@
 #include "ui/node_graph.h"
 #include <cmath>
 #include <algorithm>
+#include <cctype>
 
 namespace vivid::ui {
 
@@ -12,6 +13,25 @@ static std::string source_id_for(int char_id) {  // master=kind, track t = 100+t
     if (char_id < 100) return std::string("master.") + (char_id >= 0 && char_id < 5 ? kKindName[char_id] : "level");
     const int t = (char_id - 100) / 8, kind = (char_id - 100) % 8;
     return "track_" + std::to_string(t) + "." + (kind >= 0 && kind < 5 ? kKindName[kind] : "level");
+}
+
+// ---- Tab chooser catalog: spawnable visuals ops + master audio sources ----
+struct ChooserEntry { const char* label; bool is_op; int code; int env; };  // env: 0 gpu, 1 audio
+static const ChooserEntry kChooser[] = {
+    { "Plasma",           true,  static_cast<int>(VOp::Plasma),   0 },
+    { "Video",            true,  static_cast<int>(VOp::Video),    0 },
+    { "Feedback",         true,  static_cast<int>(VOp::Feedback), 0 },
+    { "Blur",             true,  static_cast<int>(VOp::Blur),     0 },
+    { "Master Level",     false, 0, 1 },
+    { "Master Transient", false, 1, 1 },
+    { "Master Low",       false, 2, 1 },
+    { "Master Mid",       false, 3, 1 },
+    { "Master High",      false, 4, 1 },
+};
+static constexpr int kChooserCount = static_cast<int>(sizeof(kChooser) / sizeof(kChooser[0]));
+static std::string lower_str(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
 }
 static std::string port_dest(int p) { return std::string("uniform.") + kShaderUniformNames[p]; }
 
@@ -297,11 +317,24 @@ void NodeGraph::draw(Renderer2D& r) {
     }
 
     draw_op_palette(r);
+    draw_chooser(r);  // on top of everything
     r.pop_clip_rect();
 }
 
 bool NodeGraph::on_down(double x, double y) {
     cx_ = x; cy_ = y;
+    if (chooser_open_) {  // click a row to spawn it, click anywhere else to dismiss
+        const float w = 264.f, rowh = 20.f, hdr = 26.f;
+        const int total = int(chooser_hits_.size());
+        const int vis = std::max(1, std::min(total, 9));
+        const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
+        const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
+        if (x >= px && x < px + w && y >= py + hdr && y < py + hdr + vis * rowh) {
+            const int hi = first + int((y - (py + hdr)) / rowh);
+            if (hi >= 0 && hi < total) { chooser_sel_ = hi; chooser_confirm(); return true; }
+        }
+        chooser_hide(); return true;
+    }
     sync_op_pos();
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
 
@@ -368,6 +401,72 @@ void NodeGraph::on_up(double x, double y) {
         if (target >= 0 && vg_) vg_->set_input(target, wire_from_);
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
+}
+
+// ---- Tab chooser ----
+void NodeGraph::chooser_rebuild() {
+    chooser_hits_.clear();
+    const std::string f = lower_str(chooser_filter_);
+    for (int i = 0; i < kChooserCount; ++i)
+        if (f.empty() || lower_str(kChooser[i].label).find(f) != std::string::npos)
+            chooser_hits_.push_back(i);
+    chooser_sel_ = std::clamp(chooser_sel_, 0, std::max(0, int(chooser_hits_.size()) - 1));
+}
+void NodeGraph::chooser_show(double sx, double sy) {
+    chooser_open_ = true; chooser_filter_.clear(); chooser_sel_ = 0;
+    chooser_sx_ = float(sx); chooser_sy_ = float(sy);
+    chooser_rebuild();
+}
+void NodeGraph::chooser_move(int dir) {
+    if (chooser_hits_.empty()) return;
+    const int n = int(chooser_hits_.size());
+    chooser_sel_ = (chooser_sel_ + dir % n + n) % n;
+}
+void NodeGraph::chooser_backspace() {
+    if (!chooser_filter_.empty()) { chooser_filter_.pop_back(); chooser_rebuild(); }
+}
+void NodeGraph::chooser_char(unsigned int c) {
+    if (c >= 32 && c < 127) { chooser_filter_.push_back(char(c)); chooser_rebuild(); }
+}
+void NodeGraph::chooser_confirm() {
+    if (chooser_sel_ < 0 || chooser_sel_ >= int(chooser_hits_.size())) { chooser_hide(); return; }
+    const ChooserEntry& e = kChooser[chooser_hits_[chooser_sel_]];
+    if (e.is_op && vg_) {
+        const int ni = vg_->add_node(VOp(e.code));
+        sync_op_pos();  // grow op_pos_ for the new node, then place it at the cursor
+        if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { chooser_sx_ - 72.f, chooser_sy_ - 15.f };
+    } else if (!e.is_op) {
+        add_data_node(e.label, e.code);
+        if (!data_.empty()) { data_.back().x = chooser_sx_ - 84.f; data_.back().y = chooser_sy_ - 36.f; }
+    }
+    chooser_hide();
+}
+
+// Centred drop-down panel; layout shared with the click hit-test in on_down().
+void NodeGraph::draw_chooser(Renderer2D& r) {
+    if (!chooser_open_) return;
+    const float w = 264.f, rowh = 20.f, hdr = 26.f;
+    const int total = int(chooser_hits_.size());
+    const int vis = std::max(1, std::min(total, 9));
+    const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
+    const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
+    const float h = hdr + vis * rowh + 6.f;
+    r.draw_rounded_rect(px, py, w, h, 5.f, 0.11f, 0.12f, 0.145f, 0.98f);
+    r.draw_rect(px, py, w, 2.f, 0.35f, 0.62f, 0.95f, 1.0f);  // accent bar
+    const bool empty = chooser_filter_.empty();
+    const std::string f = empty ? std::string("type to filter\xE2\x80\xA6") : (chooser_filter_ + "_");
+    r.draw_text(px + 10.f, py + 7.f, f.c_str(), empty ? 0.45f : 0.9f, empty ? 0.47f : 0.92f, empty ? 0.5f : 0.95f, 1.0f, 0.92f);
+    if (total == 0) { r.draw_text(px + 10.f, py + hdr + 4.f, "no match", 0.55f, 0.45f, 0.45f, 1.0f, 0.86f); return; }
+    for (int vi = 0; vi < vis; ++vi) {
+        const int hi = first + vi; if (hi >= total) break;
+        const ChooserEntry& e = kChooser[chooser_hits_[hi]];
+        const float iy = py + hdr + vi * rowh;
+        if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, rowh, 0.20f, 0.28f, 0.40f, 0.9f);
+        const float dr = e.env == 0 ? 0.55f : 0.35f, dg = e.env == 0 ? 0.55f : 0.78f, db = e.env == 0 ? 0.95f : 0.55f;
+        r.draw_rounded_rect(px + 12.f, iy + rowh * 0.5f - 3.f, 6.f, 6.f, 3.f, dr, dg, db, 1.0f);
+        r.draw_text(px + 26.f, iy + 4.f, e.label, 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
+        r.draw_text(px + w - 42.f, iy + 4.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
+    }
 }
 
 }  // namespace vivid::ui

@@ -53,6 +53,15 @@ public:
     void on_move(double x, double y);
     void on_up(double x, double y);
 
+    // Operator chooser (Tab): a filtered palette that spawns a node at the cursor.
+    bool chooser_open() const { return chooser_open_; }
+    void chooser_show(double sx, double sy);  // open at the cursor
+    void chooser_hide() { chooser_open_ = false; }
+    void chooser_move(int dir);               // move selection (+1 down / -1 up)
+    void chooser_backspace();
+    void chooser_char(unsigned int c);        // typed filter character
+    void chooser_confirm();                   // spawn the selected entry
+
 private:
     struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash; };
     std::vector<DataNode> data_;
@@ -72,6 +81,15 @@ private:
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     float  grid_off_x_ = 0.f, grid_off_y_ = 0.f;     // grid scroll (follows panning)
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
+
+    // Tab chooser state.
+    bool        chooser_open_ = false;
+    std::string chooser_filter_;
+    int         chooser_sel_ = 0;                     // index into chooser_hits_
+    float       chooser_sx_ = 0.f, chooser_sy_ = 0.f; // cursor at open (spawn anchor)
+    std::vector<int> chooser_hits_;                   // catalog indices matching the filter
+    void chooser_rebuild();
+    void draw_chooser(Renderer2D& r);
 
     vivid::VisualGraph* vg_ = nullptr;
 
