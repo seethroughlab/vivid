@@ -618,9 +618,11 @@ void char_callback(GLFWwindow* w, unsigned int cp) {
 
 void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
-    if (!st || !st->editor || !st->editor->is_open()) return;
+    if (!st) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
-    if (st->editor->contains(mx, my)) st->editor->scroll(yoff);
+    if (st->editor && st->editor->is_open() && st->editor->contains(mx, my)) { st->editor->scroll(yoff); return; }
+    // Scroll over the visuals pane zooms the node graph around the cursor.
+    if (st->graph && mx >= g_split_x) st->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.

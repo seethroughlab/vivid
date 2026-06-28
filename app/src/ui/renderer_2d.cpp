@@ -426,6 +426,8 @@ void Renderer2D::push_quad(float x0, float y0, float x1, float y1,
                               float u0, float v0, float u1, float v1,
                               float r, float g, float b, float a) {
     if (vertices_.size() + 6 > kMaxVertices) { ++overflow_count_; return; }
+    x0 = x0 * tf_scale_ + tf_ox_; y0 = y0 * tf_scale_ + tf_oy_;
+    x1 = x1 * tf_scale_ + tf_ox_; y1 = y1 * tf_scale_ + tf_oy_;
     // Two triangles: TL, TR, BL, BL, TR, BR
     vertices_.push_back({x0, y0, u0, v0, r, g, b, a});
     vertices_.push_back({x1, y0, u1, v0, r, g, b, a});
@@ -438,6 +440,9 @@ void Renderer2D::push_quad(float x0, float y0, float x1, float y1,
 void Renderer2D::push_tri(float x0, float y0, float x1, float y1, float x2, float y2,
                              float r, float g, float b, float a) {
     if (vertices_.size() + 3 > kMaxVertices) { ++overflow_count_; return; }
+    x0 = x0 * tf_scale_ + tf_ox_; y0 = y0 * tf_scale_ + tf_oy_;
+    x1 = x1 * tf_scale_ + tf_ox_; y1 = y1 * tf_scale_ + tf_oy_;
+    x2 = x2 * tf_scale_ + tf_ox_; y2 = y2 * tf_scale_ + tf_oy_;
     vertices_.push_back({x0, y0, solid_u_, solid_v_, r, g, b, a});
     vertices_.push_back({x1, y1, solid_u_, solid_v_, r, g, b, a});
     vertices_.push_back({x2, y2, solid_u_, solid_v_, r, g, b, a});
@@ -584,6 +589,9 @@ void Renderer2D::draw_rect(float x, float y, float w, float h,
 void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickness,
                               float r, float g, float b, float a) {
     if (vertices_.size() + 6 > kMaxVertices) { ++overflow_count_; return; }
+    x1 = x1 * tf_scale_ + tf_ox_; y1 = y1 * tf_scale_ + tf_oy_;
+    x2 = x2 * tf_scale_ + tf_ox_; y2 = y2 * tf_scale_ + tf_oy_;
+    thickness *= tf_scale_;
     float dx = x2 - x1, dy = y2 - y1;
     float len = std::sqrt(dx * dx + dy * dy);
     if (len < 0.001f) return;

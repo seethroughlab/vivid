@@ -95,6 +95,11 @@ public:
     void push_clip_rect(float x, float y, float w, float h);
     void pop_clip_rect();
 
+    // CPU view transform applied to every subsequent vertex: screen = world*scale
+    // + (ox,oy). Used for pan/zoom of node-graph content; call set_transform(0,0,1)
+    // to return to identity before drawing chrome. Does not affect clip rects.
+    void set_transform(float ox, float oy, float scale) { tf_ox_ = ox; tf_oy_ = oy; tf_scale_ = scale; }
+
     // Flush all accumulated quads in a render pass on top of the given surface
     // view. Logical dimensions drive vertex-space uniforms; framebuffer
     // dimensions drive physical scissor clamping.
@@ -156,6 +161,7 @@ private:
     std::vector<DrawBatch> clip_stack_; // push/pop stack (reuses DrawBatch for rect storage)
     float dpi_scale_ = 1.0f;
     uint32_t overflow_count_ = 0; // quads dropped this frame due to full vertex buffer
+    float tf_ox_ = 0.0f, tf_oy_ = 0.0f, tf_scale_ = 1.0f;  // CPU view transform
 };
 
 

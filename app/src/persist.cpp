@@ -75,6 +75,8 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
         chain.push_back({ {"op", op}, {"in", in}, {"id", id}, {"x", x}, {"y", y} });
     }
     jg["chain"] = chain;
+    float vox = 0.f, voy = 0.f, vscale = 1.f; g.get_view(vox, voy, vscale);
+    jg["view"] = { {"ox", vox}, {"oy", voy}, {"scale", vscale} };
     j["graph"] = jg;
 
     std::ofstream f(path);
@@ -142,6 +144,10 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
                                jn.value("x", 560.f), jn.value("y", 488.f));
         if (jg.contains("shader") && jg["shader"].size() >= 2)
             g.set_shader(jg["shader"][0].get<float>(), jg["shader"][1].get<float>());
+        if (jg.contains("view")) {
+            const json& jv = jg["view"];
+            g.set_view(jv.value("ox", 0.f), jv.value("oy", 0.f), jv.value("scale", 1.f));
+        }
         if (jg.contains("mappings"))
             for (const auto& jm : jg["mappings"])
                 g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()),

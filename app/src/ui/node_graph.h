@@ -66,6 +66,9 @@ public:
     bool on_down(double x, double y);
     void on_move(double x, double y);
     void on_up(double x, double y);
+    void zoom_at(double sx, double sy, float factor);   // scroll-wheel zoom around the cursor
+    void get_view(float& ox, float& oy, float& scale) const { ox = view_ox_; oy = view_oy_; scale = view_scale_; }
+    void set_view(float ox, float oy, float scale) { view_ox_ = ox; view_oy_ = oy; view_scale_ = scale; }
 
     // Operator chooser (Tab): a filtered palette that spawns a node at the cursor.
     bool chooser_open() const { return chooser_open_; }
@@ -95,8 +98,11 @@ private:
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
-    float  grid_off_x_ = 0.f, grid_off_y_ = 0.f;     // grid scroll (follows panning)
+    float  view_ox_ = 0.f, view_oy_ = 0.f, view_scale_ = 1.f;  // world->screen pan/zoom
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
+    void to_world(double sx, double sy, double& wx, double& wy) const {
+        wx = (sx - view_ox_) / view_scale_; wy = (sy - view_oy_) / view_scale_;
+    }
 
     // Tab chooser state.
     bool        chooser_open_ = false;

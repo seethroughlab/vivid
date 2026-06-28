@@ -113,9 +113,12 @@ void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) cons
 int NodeGraph::op_thumb_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
 bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_thumb(vg_->nodes()[i].op)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h);
+    float x, y, w, h; op_node_rect(i, x, y, w, h);   // world
     const int rows = std::max(1, op_input_rows(vg_->nodes()[i].op));
-    tx = x + 6.f; ty = y + 30.f + rows * 18.f + 2.f; tw = w - 12.f; th = kThumbH;
+    // world strip -> screen (the GPU blit isn't part of the Renderer2D transform)
+    tx = (x + 6.f) * view_scale_ + view_ox_;
+    ty = (y + 30.f + rows * 18.f + 2.f) * view_scale_ + view_oy_;
+    tw = (w - 12.f) * view_scale_; th = kThumbH * view_scale_;
     // The blit pass has no clip-rect, so only show fully-in-pane thumbnails.
     return tx >= bx0_ && tx + tw <= bx1_ && ty >= by0_ && ty + th <= by1_;
 }
@@ -289,17 +292,22 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
 void NodeGraph::draw(Renderer2D& r) {
     sync_op_pos();
     r.push_clip_rect(bx0_ - 6.f, by0_ - 18.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 28.f);
-    // grid background (scrolls with the canvas as you pan)
-    const float gs = 38.f;
-    const float gx0 = bx0_ - 6.f, gy0 = by0_ - 6.f, gx1 = bx1_ + 6.f, gy1 = by1_ + 6.f;
-    // start offset ADDS the accumulated pan so the grid scrolls WITH the nodes
-    for (float gx = gx0 + std::fmod(std::fmod(grid_off_x_, gs) + gs, gs) - gs; gx < gx1; gx += gs)
-        r.draw_rect(gx, gy0, 1.f, gy1 - gy0, 0.105f, 0.115f, 0.14f, 1.0f);
-    for (float gy = gy0 + std::fmod(std::fmod(grid_off_y_, gs) + gs, gs) - gs; gy < gy1; gy += gs)
-        r.draw_rect(gx0, gy, gx1 - gx0, 1.f, 0.105f, 0.115f, 0.14f, 1.0f);
+    // NETWORK header is chrome — drawn at identity, before the view transform.
     r.draw_text(bx0_, by0_ - 16.f,
                 "NETWORK — wire op outputs (right) into inputs (left), ending in Output. Drag a data port onto an op param.",
                 0.45f, 0.48f, 0.53f, 1.0f, 0.86f);
+    // Everything below is graph content: drawn in WORLD space through the view
+    // transform (pan + zoom). Chrome (palette) resets the transform first.
+    r.set_transform(view_ox_, view_oy_, view_scale_);
+    // grid: cover the visible world region; 1px-on-screen line width = 1/scale world
+    const float gs = 38.f;
+    const float gx0 = bx0_ - 6.f, gy0 = by0_ - 6.f, gx1 = bx1_ + 6.f, gy1 = by1_ + 6.f;
+    double wl, wt, wr, wb; to_world(gx0, gy0, wl, wt); to_world(gx1, gy1, wr, wb);
+    const float lw = 1.f / view_scale_;
+    for (float gx = std::floor(float(wl) / gs) * gs; gx < float(wr); gx += gs)
+        r.draw_rect(gx, float(wt), lw, float(wb - wt), 0.105f, 0.115f, 0.14f, 1.0f);
+    for (float gy = std::floor(float(wt) / gs) * gs; gy < float(wb); gy += gs)
+        r.draw_rect(float(wl), gy, float(wr - wl), lw, 0.105f, 0.115f, 0.14f, 1.0f);
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input)
@@ -395,6 +403,7 @@ void NodeGraph::draw(Renderer2D& r) {
         port_dot(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
 
+    r.set_transform(0.f, 0.f, 1.f);   // back to identity for chrome
     draw_op_palette(r);
     r.pop_clip_rect();
 }
@@ -419,12 +428,17 @@ bool NodeGraph::on_down(double x, double y) {
     }
     sync_op_pos();
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
+    // Graph content lives in WORLD space; convert the cursor and keep hit radii
+    // constant on screen by dividing by the zoom.
+    double wx, wy; to_world(x, y, wx, wy);
+    cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
+    const double hr = 13.0 / view_scale_, pr = 12.0 / view_scale_;
 
     // disconnect an op input or a param port
-    int oi = nearest_op_in(x, y, 13.0);
+    int oi = nearest_op_in(wx, wy, hr);
     if (oi >= 0) { vg_->set_input(oi, -1); return true; }
     int pni, pl;
-    if (nearest_param(x, y, 12.0, pni, pl)) {
+    if (nearest_param(wx, wy, pr, pni, pl)) {
         reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
         return true;
     }
@@ -432,30 +446,30 @@ bool NodeGraph::on_down(double x, double y) {
     // start a wire from a data-node output port
     for (int i = 0; i < int(data_.size()); ++i) {
         float px, py; data_out(data_[i], px, py);
-        if (std::hypot(x - px, y - py) < 13.0) { drag_mode_ = 3; wire_from_ = i; return true; }
+        if (std::hypot(wx - px, wy - py) < hr) { drag_mode_ = 3; wire_from_ = i; return true; }
     }
     // start a wire from an op output port
-    int oo = nearest_op_out(x, y, 13.0);
+    int oo = nearest_op_out(wx, wy, hr);
     if (oo >= 0) { drag_mode_ = 4; wire_from_ = oo; return true; }
 
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
-        if (vg_->nodes()[i].op != VOp::Output && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, x, y)) {
+        if (vg_->nodes()[i].op != VOp::Output && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
             vg_->remove_node(i); sync_op_pos(); return true;
         }
-        if (in_rect(ox, oy, ow, oh, x, y)) { drag_mode_ = 2; drag_idx_ = i; dx_ = x - ox; dy_ = y - oy; return true; }
+        if (in_rect(ox, oy, ow, oh, wx, wy)) { drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true; }
     }
-    // palette -> add an op
+    // palette -> add an op (chrome: screen coords)
     int pj = palette_hit(x, y);
     if (pj >= 0 && vg_) { vg_->add_node(kPalette[pj]); sync_op_pos(); return true; }
 
     // data-node body drag
     for (int i = 0; i < int(data_.size()); ++i)
-        if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, x, y)) {
-            drag_mode_ = 1; drag_idx_ = i; dx_ = x - data_[i].x; dy_ = y - data_[i].y; return true;
+        if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, wx, wy)) {
+            drag_mode_ = 1; drag_idx_ = i; dx_ = wx - data_[i].x; dy_ = wy - data_[i].y; return true;
         }
-    // empty canvas within the network pane -> pan (drag the grid + all nodes)
+    // empty canvas within the network pane -> pan the view (screen coords)
     if (x >= bx0_ && x < bx1_ && y >= by0_ && y < by1_) {
         drag_mode_ = 5; pan_last_x_ = float(x); pan_last_y_ = float(y); return true;
     }
@@ -463,28 +477,34 @@ bool NodeGraph::on_down(double x, double y) {
 }
 
 void NodeGraph::on_move(double x, double y) {
-    cx_ = x; cy_ = y;
+    double wx, wy; to_world(x, y, wx, wy);
+    cx_ = wx; cy_ = wy;  // world cursor (drag-preview wires draw under the transform)
     if (drag_mode_ == 1 && drag_idx_ >= 0 && drag_idx_ < int(data_.size())) {
-        data_[drag_idx_].x = float(x - dx_); data_[drag_idx_].y = float(y - dy_);
+        data_[drag_idx_].x = float(wx - dx_); data_[drag_idx_].y = float(wy - dy_);
     } else if (drag_mode_ == 2 && drag_idx_ >= 0 && drag_idx_ < int(op_pos_.size())) {
-        op_pos_[drag_idx_] = { float(x - dx_), float(y - dy_) };
-    } else if (drag_mode_ == 5) {  // pan: shift the whole canvas + the grid
-        const float ddx = float(x) - pan_last_x_, ddy = float(y) - pan_last_y_;
-        for (auto& nd : data_)   { nd.x += ddx; nd.y += ddy; }
-        for (auto& p : op_pos_)  { p.first += ddx; p.second += ddy; }
-        grid_off_x_ += ddx; grid_off_y_ += ddy;
+        op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
+    } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
+        view_ox_ += float(x) - pan_last_x_; view_oy_ += float(y) - pan_last_y_;
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
+void NodeGraph::zoom_at(double sx, double sy, float factor) {
+    double wx, wy; to_world(sx, sy, wx, wy);              // world point under the cursor
+    view_scale_ = std::clamp(view_scale_ * factor, 0.35f, 3.0f);
+    view_ox_ = float(sx) - float(wx) * view_scale_;       // keep that point under the cursor
+    view_oy_ = float(sy) - float(wy) * view_scale_;
+}
+
 void NodeGraph::on_up(double x, double y) {
+    double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(x, y, 18.0, pni, pl))
+        if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl))
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int target = nearest_op_in(x, y, 18.0);
+        int target = nearest_op_in(wx, wy, 18.0 / view_scale_);
         if (target >= 0 && vg_) vg_->set_input(target, wire_from_);
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
