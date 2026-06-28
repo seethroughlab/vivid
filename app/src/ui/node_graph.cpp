@@ -111,7 +111,8 @@ void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) cons
 }
 
 int NodeGraph::op_thumb_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
-bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th) const {
+bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th,
+                              float& cx, float& cy, float& cw, float& ch) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_thumb(vg_->nodes()[i].op)) return false;
     float x, y, w, h; op_node_rect(i, x, y, w, h);   // world
     const int rows = std::max(1, op_input_rows(vg_->nodes()[i].op));
@@ -119,8 +120,13 @@ bool NodeGraph::op_thumb_rect(int i, float& tx, float& ty, float& tw, float& th)
     tx = (x + 6.f) * view_scale_ + view_ox_;
     ty = (y + 30.f + rows * 18.f + 2.f) * view_scale_ + view_oy_;
     tw = (w - 12.f) * view_scale_; th = kThumbH * view_scale_;
-    // The blit pass has no clip-rect, so only show fully-in-pane thumbnails.
-    return tx >= bx0_ && tx + tw <= bx1_ && ty >= by0_ && ty + th <= by1_;
+    // Viewport must stay inside the window framebuffer (~pane + 8px margins).
+    const float winR = bx1_ + 8.f, winB = by1_ + 8.f;
+    if (tx < 0.f || ty < 0.f || tx + tw > winR || ty + th > winB) return false;
+    // Scissor = strip ∩ pane, so an edge thumbnail crops instead of vanishing.
+    cx = std::max(tx, bx0_); cy = std::max(ty, by0_);
+    cw = std::min(tx + tw, bx1_) - cx; ch = std::min(ty + th, by1_) - cy;
+    return cw > 0.5f && ch > 0.5f;
 }
 
 // classic-style type accent (r,g,b) for an op.

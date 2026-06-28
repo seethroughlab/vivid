@@ -22,10 +22,13 @@ public:
 
     // Render into `target` at viewport (vx,vy,vw,vh). `inputs` holds num_inputs
     // texture views; `params` holds up to 4 floats for p0..p3 (u_res = viewport).
+    // Optional scissor (scw>0) crops output to (scx,scy,scw,sch) independently of
+    // the viewport — lets a blit be cropped to a clip region. Defaults to viewport.
     void render(WGPUCommandEncoder encoder, WGPUTextureView target,
                 float vx, float vy, float vw, float vh, bool clear,
                 const WGPUTextureView* inputs, int num_inputs,
-                float time, const float* params, int nparams);
+                float time, const float* params, int nparams,
+                float scx = -1.f, float scy = 0.f, float scw = 0.f, float sch = 0.f);
 
 private:
     WGPUDevice          device_   = nullptr;

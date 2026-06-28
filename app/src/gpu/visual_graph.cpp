@@ -178,7 +178,8 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
 }
 
 void VisualGraph::blit_node(WGPUCommandEncoder enc, WGPUTextureView screen, int idx,
-                            float x, float y, float w, float h) {
+                            float x, float y, float w, float h,
+                            float scx, float scy, float scw, float sch) {
     if (idx < 0 || idx >= static_cast<int>(rts_.size()) || !rts_[idx].view) return;
     if (idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output) return;  // no own texture
     if (w < 1.f || h < 1.f) return;
@@ -191,7 +192,7 @@ void VisualGraph::blit_node(WGPUCommandEncoder enc, WGPUTextureView screen, int 
     else             fw = h * srcA;   // source relatively taller -> bars left/right
     const float fx = x + (w - fw) * 0.5f, fy = y + (h - fh) * 0.5f;
     WGPUTextureView f[1] = { rts_[idx].view };
-    blit_.render(enc, screen, fx, fy, fw, fh, /*clear*/false, f, 1, 0.f, nullptr, 0);
+    blit_.render(enc, screen, fx, fy, fw, fh, /*clear*/false, f, 1, 0.f, nullptr, 0, scx, scy, scw, sch);
 }
 
 void VisualGraph::shutdown() {

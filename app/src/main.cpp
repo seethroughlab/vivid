@@ -1059,9 +1059,9 @@ int main() {
             // Live per-node thumbnails: composite each op's output into its card
             // strip on top of the base UI (loadOp=Load).
             for (int i = 0; i < graph.op_thumb_count(); ++i) {
-                float tx, ty, tw, th;
-                if (graph.op_thumb_rect(i, tx, ty, tw, th))
-                    vgraph.blit_node(frame.encoder, frame.view, i, tx, ty, tw, th);
+                float tx, ty, tw, th, cx, cy, cw, ch;
+                if (graph.op_thumb_rect(i, tx, ty, tw, th, cx, cy, cw, ch))
+                    vgraph.blit_node(frame.encoder, frame.view, i, tx, ty, tw, th, cx, cy, cw, ch);
             }
             // Pass 2: floating overlays — drawn AFTER thumbnails so they sit on top.
             graph.draw_overlays(ui);  // operator chooser

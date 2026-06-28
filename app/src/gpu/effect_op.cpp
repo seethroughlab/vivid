@@ -2,6 +2,7 @@
 #include "gpu/gpu_util.h"
 #include <cstdio>
 #include <cstdint>
+#include <algorithm>
 
 namespace vivid {
 
@@ -117,7 +118,8 @@ bool EffectOp::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target
 void EffectOp::render(WGPUCommandEncoder encoder, WGPUTextureView target,
                       float vx, float vy, float vw, float vh, bool clear,
                       const WGPUTextureView* inputs, int num_inputs,
-                      float time, const float* params, int nparams) {
+                      float time, const float* params, int nparams,
+                      float scx, float scy, float scw, float sch) {
     if (!pipeline_) return;
 
     EUniforms u{};
@@ -154,8 +156,13 @@ void EffectOp::render(WGPUCommandEncoder encoder, WGPUTextureView target,
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp);
     wgpuRenderPassEncoderSetViewport(pass, vx, vy, vw, vh, 0.0f, 1.0f);
-    wgpuRenderPassEncoderSetScissorRect(pass, static_cast<uint32_t>(vx), static_cast<uint32_t>(vy),
-                                        static_cast<uint32_t>(vw), static_cast<uint32_t>(vh));
+    // Scissor: explicit crop region when scw>0, else the viewport itself.
+    const float ssx = scw > 0.f ? scx : vx, ssy = scw > 0.f ? scy : vy;
+    const float ssw = scw > 0.f ? scw : vw, ssh = scw > 0.f ? sch : vh;
+    wgpuRenderPassEncoderSetScissorRect(pass, static_cast<uint32_t>(std::max(0.f, ssx)),
+                                        static_cast<uint32_t>(std::max(0.f, ssy)),
+                                        static_cast<uint32_t>(std::max(0.f, ssw)),
+                                        static_cast<uint32_t>(std::max(0.f, ssh)));
     wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bg, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);

@@ -49,9 +49,11 @@ public:
                 WGPUTextureView video_tex);
 
     // Composite node idx's last-rendered output into a screen rect (live node
-    // thumbnail). loadOp=Load, so call after the UI pass. No-op for Output.
+    // thumbnail), letterboxed. Optional scissor (scw>0) crops to a clip region.
+    // loadOp=Load, so call after the UI pass. No-op for Output.
     void blit_node(WGPUCommandEncoder enc, WGPUTextureView screen, int idx,
-                   float x, float y, float w, float h);
+                   float x, float y, float w, float h,
+                   float scx = -1.f, float scy = 0.f, float scw = 0.f, float sch = 0.f);
 
 private:
     void ensure_resources(size_t n);

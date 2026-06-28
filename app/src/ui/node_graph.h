@@ -62,7 +62,9 @@ public:
     // node i (false for Output / off-pane); main blits each node's output there
     // after the UI pass.
     int  op_thumb_count() const;
-    bool op_thumb_rect(int i, float& x, float& y, float& w, float& h) const;
+    // Out: viewport rect (x,y,w,h) + pane-clipped scissor (cx,cy,cw,ch). False if off-pane.
+    bool op_thumb_rect(int i, float& x, float& y, float& w, float& h,
+                       float& cx, float& cy, float& cw, float& ch) const;
     bool on_down(double x, double y);
     void on_move(double x, double y);
     void on_up(double x, double y);
