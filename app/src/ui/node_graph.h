@@ -20,6 +20,10 @@ public:
     void fill_uniforms(float* out) const;            // kNumShaderUniforms values (0 if unwired)
     void add_data_node(const std::string& title, int char_id);
 
+    // Confine the graph to the visuals pane: shifts nodes when the pane's left
+    // edge moves (splitter) and clamps them inside. Drawing is clipped to it.
+    void set_bounds(float x0, float y0, float x1, float y1);
+
     void draw(Renderer2D& r);
 
     // Mouse in screen px. on_down returns true if it consumed the event.
@@ -32,6 +36,8 @@ private:
     std::vector<DataNode> data_;
     float sx_, sy_, sw_, sh_;                    // shader node rect
     int   connected_[kNumShaderUniforms];        // per-uniform wired data-node index, or -1
+    float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;  // visuals-pane bounds
+    bool  bounds_init_ = false;
 
     int    drag_mode_ = 0;      // 0 none, 1 data-node, 2 shader-node, 3 wire
     int    drag_idx_ = -1;

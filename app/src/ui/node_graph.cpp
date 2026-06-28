@@ -1,14 +1,29 @@
 #include "ui/node_graph.h"
 #include <cmath>
+#include <algorithm>
 
 namespace vivid::ui {
 
 NodeGraph::NodeGraph() {
-    sx_ = 936.f; sy_ = 430.f; sw_ = 172.f; sh_ = 44.f + kNumShaderUniforms * 24.f;
+    sx_ = 900.f; sy_ = 488.f; sw_ = 172.f; sh_ = 44.f + kNumShaderUniforms * 24.f;
     for (int i = 0; i < kNumShaderUniforms; ++i) connected_[i] = -1;
     // Start with the master output level wired to "glow" (out-of-box reactivity).
-    data_.push_back({ 540.f, 470.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
+    data_.push_back({ 560.f, 488.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
     connected_[3] = 0;  // glow <- level
+}
+
+void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
+    if (bounds_init_) {
+        const float ddx = x0 - bx0_;  // pane left edge moved (splitter) -> carry nodes along
+        if (ddx != 0.f) { for (auto& n : data_) n.x += ddx; sx_ += ddx; }
+    }
+    bx0_ = x0; by0_ = y0; bx1_ = x1; by1_ = y1; bounds_init_ = true;
+    for (auto& n : data_) {
+        n.x = std::clamp(n.x, bx0_, std::max(bx0_, bx1_ - n.w));
+        n.y = std::clamp(n.y, by0_, std::max(by0_, by1_ - n.h));
+    }
+    sx_ = std::clamp(sx_, bx0_, std::max(bx0_, bx1_ - sw_));
+    sy_ = std::clamp(sy_, by0_, std::max(by0_, by1_ - sh_));
 }
 
 void NodeGraph::set_value(int char_id, float v) {
@@ -19,8 +34,9 @@ void NodeGraph::fill_uniforms(float* out) const {
         out[i] = (connected_[i] >= 0 && connected_[i] < int(data_.size())) ? data_[connected_[i]].value : 0.f;
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) {
-    float y = 470.f + data_.size() * 84.f;
-    data_.push_back({ 540.f, y, 168.f, 72.f, title, char_id, 0.f, 90 });
+    float y = by0_ + 22.f + data_.size() * 84.f;
+    if (y > by1_ - 72.f) y = by1_ - 72.f;
+    data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, char_id, 0.f, 90 });
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
@@ -52,7 +68,9 @@ static void draw_wire(Renderer2D& r, float x0, float y0, float x1, float y1,
 }
 
 void NodeGraph::draw(Renderer2D& r) {
-    r.draw_text(512.f, 452.f,
+    // Confine all graph drawing to the visuals pane.
+    r.push_clip_rect(bx0_ - 6.f, by0_ - 18.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 24.f);
+    r.draw_text(bx0_, by0_ - 16.f,
                 "NETWORK — drag a data node's port onto a shader uniform (warp / hue / density / glow)",
                 0.45f, 0.48f, 0.53f, 1.0f, 0.9f);
 
@@ -92,6 +110,7 @@ void NodeGraph::draw(Renderer2D& r) {
         float px, py; data_out(n, px, py);
         r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f, 0.31f, 0.80f, 0.75f, 1.0f);
     }
+    r.pop_clip_rect();
 }
 
 bool NodeGraph::on_down(double x, double y) {

@@ -217,6 +217,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     const int tracks = vivid_poc::session_track_count(s);
     const int scenes = vivid_poc::session_scene_count(s);
 
+    ui.push_clip_rect(0.f, 40.f, g_split_x, static_cast<float>(g_win_h) - 40.f);  // DAW pane
+    ui.draw_rect(0.f, 40.f, g_split_x, static_cast<float>(g_win_h) - 40.f, 0.065f, 0.072f, 0.085f, 1.0f);  // pane bg
     // track headers
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
@@ -285,9 +287,13 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
                  "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
                  0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
 
+    ui.pop_clip_rect();  // end DAW pane
+    // Visuals pane label (clipped to the right pane)
     const Rect vp = viewer_rect();
+    ui.push_clip_rect(g_split_x, 40.f, static_cast<float>(g_win_w) - g_split_x, static_cast<float>(g_win_h) - 40.f);
     ui.draw_text(vp.x, 80.f, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
-    // DAW | visuals splitter
+    ui.pop_clip_rect();
+    // DAW | visuals splitter (on top, unclipped)
     const Rect sp = splitter_rect();
     const bool sph = hit(sp, mx, my);
     ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? 0.30f : 0.16f, sph ? 0.34f : 0.17f, sph ? 0.40f : 0.20f, 1.0f);
@@ -614,6 +620,9 @@ int main() {
             fbCur ^= 1;
 
             draw_ui(ui, audio_state, beats, mx, my);
+            const Rect vrp = viewer_rect();
+            graph.set_bounds(g_split_x + 8.f, vrp.y + vrp.h + 16.f,
+                             static_cast<float>(g_win_w) - 8.f, static_cast<float>(g_win_h) - 8.f);
             graph.draw(ui);
             draw_menu(ui, audio_state.menu,
                       audio_state.menu.src < 0 ? "Master"
