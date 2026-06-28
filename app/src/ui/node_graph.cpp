@@ -42,7 +42,7 @@ static void draw_wire(Renderer2D& r, float x0, float y0, float x1, float y1,
 
 void NodeGraph::draw(Renderer2D& r) {
     r.draw_text(512.f, 452.f,
-                "NETWORK — right-click the track to send a characteristic here; drag its port to the shader",
+                "NETWORK — click the track to send a characteristic here; drag its port onto the shader",
                 0.45f, 0.48f, 0.53f, 1.0f, 0.9f);
 
     // Shader node

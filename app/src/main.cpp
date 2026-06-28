@@ -143,7 +143,7 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     }
 
     const char* name = st.session ? vivid_poc::session_name(st.session) : "—";
-    ui.draw_text(48, 80, "TRACK", 0.45f, 0.48f, 0.53f, 1.0f, 0.85f);
+    ui.draw_text(48, 80, "TRACK  \xC2\xB7  click to send a characteristic \xE2\x86\x92", 0.45f, 0.48f, 0.53f, 1.0f, 0.85f);
     ui.draw_rect(48, 94, 220, 24, 0.13f, 0.14f, 0.17f, 1.0f);
     ui.draw_text(58, 98, name, 0.85f, 0.88f, 0.92f, 1.0f);
 
@@ -226,6 +226,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             }
         }
         st->menu.open = false;
+        return;
+    }
+
+    // Click the track header to open its characteristic menu (right-click also works,
+    // but trackpad secondary-click is unreliable, so left-click opens it too).
+    if (st->session && hit(track_header_rect(), mx, my)) {
+        st->menu = { true, static_cast<float>(mx), static_cast<float>(my) };
         return;
     }
 
