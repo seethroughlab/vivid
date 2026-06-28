@@ -758,7 +758,8 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
                                      const char* uid_hex,
                                      uint32_t sample_rate,
                                      const std::string& saved_state,
-                                     Vst3HostApp* host_app) {
+                                     Vst3HostApp* host_app,
+                                     bool as_effect = false) {
     std::string b(bundle_path);
     while (!b.empty() && b.back() == '/') b.pop_back();
 
@@ -933,6 +934,11 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
         component->activateBus(kEvent, kInput, 0, true) != kResultOk)
         fprintf(stderr, "[Vst3] activateBus(kEvent, kInput, 0) failed\n");
 
+    // Effects process audio in -> out, so activate their audio input bus too.
+    if (as_effect && component->getBusCount(kAudio, kInput) > 0 &&
+        component->activateBus(kAudio, kInput, 0, true) != kResultOk)
+        fprintf(stderr, "[Vst3] activateBus(kAudio, kInput, 0) failed\n");
+
     IAudioProcessor* processor = nullptr;
     if (component->queryInterface(IAudioProcessor::iid, (void**)&processor) != kResultOk
         || !processor) {
@@ -945,10 +951,13 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     // instruments output silence until setBusArrangements tells them their
     // output speaker layout — this must happen while the component is inactive.
     {
-        SpeakerArrangement out_arr = SpeakerArr::kStereo;
-        if (processor->setBusArrangements(nullptr, 0, &out_arr, 1) != kResultOk)
-            fprintf(stderr, "[Vst3] setBusArrangements(stereo out) not accepted; "
-                            "plugin may use its default layout\n");
+        SpeakerArrangement in_arr = SpeakerArr::kStereo, out_arr = SpeakerArr::kStereo;
+        const bool ok = as_effect
+            ? (processor->setBusArrangements(&in_arr, 1, &out_arr, 1) == kResultOk)
+            : (processor->setBusArrangements(nullptr, 0, &out_arr, 1) == kResultOk);
+        if (!ok)
+            fprintf(stderr, "[Vst3] setBusArrangements(%s) not accepted; "
+                            "plugin may use its default layout\n", as_effect ? "stereo in/out" : "stereo out");
     }
 
     ProcessSetup setup{};

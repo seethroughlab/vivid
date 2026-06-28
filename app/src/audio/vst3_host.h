@@ -39,6 +39,11 @@ float session_track_transient(Session*, int track);  // per-track onset detector
 // Plugin editor (P10): the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);
 
+// Per-track effect chain (P22): instrument + N effects processed in series.
+int         session_effect_count(Session*, int track);
+const char* session_effect_name(Session*, int track, int effect);
+void*       session_effect_controller(Session*, int track, int effect);  // IEditController*
+
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
 

@@ -40,6 +40,8 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     uint64_t              steady = 0;
+    std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio in->out)
+    std::vector<float>    fxl, fxr;         // effect I/O scratch
     // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
     // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
     std::mutex            edit_mtx;
@@ -58,7 +60,16 @@ struct Session {
     std::vector<std::unique_ptr<Track>> tracks;
     int       scenes = 3;
     long long last_bar = -1;
+    uint32_t  sample_rate = 0;
 };
+
+static Vst3Handle* load_effect(const std::string& path, uint32_t sr, Vst3HostApp* host) {
+    Vst3Handle* h = vst3_load_plugin(path.c_str(), "", sr, std::string(), host, /*as_effect*/true);
+    if (!h) return nullptr;
+    if (h->processor->setProcessing(true) != kResultOk) {}
+    h->processing = true;
+    return h;
+}
 
 // Parse a loop's source tempo from its path (e.g. ".../140 BPM/..." or "112bpm").
 static double parse_bpm(const std::string& path) {
@@ -182,12 +193,29 @@ Session* session_create(uint32_t sample_rate) {
     };
 
     auto* s = new Session();
+    s->sample_rate = sample_rate;
     for (const auto& role : kRoles) {
         std::string name;
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
         s->tracks.emplace_back(make_track(h, name, role.kind));
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
+    }
+
+    // Auto-load one audio effect onto the lead track to prove the FX chain.
+    if (!s->tracks.empty()) {
+        static const char* fx_prefer[] = { "yak", "chowtape", "chow", "portal", "infiltrator", nullptr };
+        for (int p = 0; fx_prefer[p]; ++p) {
+            std::string fxpath;
+            for (const auto& b : bundles) if (!name_has(b, "atoms") && name_has(b, fx_prefer[p])) { fxpath = b; break; }
+            if (fxpath.empty()) continue;
+            if (Vst3Handle* fx = load_effect(fxpath, sample_rate, &s->host)) {
+                s->tracks[0]->effects.push_back(fx);
+                std::fprintf(stderr, "[Session] track 0 effect: %s\n",
+                             fx->plugin_name.empty() ? fxpath.c_str() : fx->plugin_name.c_str());
+                break;
+            }
+        }
     }
 
     // A built-in audio (sampler) track. Loads 3 real loops at distinct source
@@ -416,6 +444,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
+        VividAudioContext ctx{};   // shared by the instrument and the effect chain
+        ctx.sample_rate = sample_rate;
+        ctx.metronome_bpm = static_cast<float>(bpm);
+        ctx.metronome_beats_per_bar = bpb;
+        ctx.metronome_beats_elapsed = beats;
+
         if (t.is_audio) {
             // Bar-quantized scene switch, then render the active sample loop.
             if (new_bar) {
@@ -441,11 +475,6 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
             t.nev.clear(); t.sched.emit(beats, delta, frames, t.nev); emit_vst3(events, t.nev);
 
-            VividAudioContext ctx{};
-            ctx.sample_rate = sample_rate;
-            ctx.metronome_bpm = static_cast<float>(bpm);
-            ctx.metronome_beats_per_bar = bpb;
-            ctx.metronome_beats_elapsed = beats;
             float* ch[2] = { L, R };
             AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
             Vst3ParamChanges pc; pc.clear();
@@ -456,8 +485,29 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             data.inputs = nullptr; data.outputs = &ob;
             data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
             t.handle->processor->process(data);
-            t.steady += frames;
         }
+
+        // FX chain: process L/R through each effect in series (audio in -> out).
+        for (Vst3Handle* fx : t.effects) {
+            if (!fx || !fx->processing) continue;
+            if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+            float* oL = t.fxl.data(); float* oR = t.fxr.data();
+            float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
+            AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
+            AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
+            Vst3ParamChanges fpc; fpc.clear();
+            ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
+            ProcessData fd{};
+            fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
+            fd.numSamples = static_cast<int32>(frames);
+            fd.numInputs = 1; fd.inputs = &ib;
+            fd.numOutputs = 1; fd.outputs = &fob;
+            fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
+            fx->processor->process(fd);
+            std::memcpy(L, oL, frames * sizeof(float));
+            std::memcpy(R, oR, frames * sizeof(float));
+        }
+        t.steady += frames;
 
         const float g = t.gain.load(std::memory_order_relaxed);
         double sum_sq = 0.0;
@@ -478,6 +528,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
 void session_destroy(Session* s) {
     if (!s) return;
     for (auto& tp : s->tracks) {
+        for (Vst3Handle* fx : tp->effects) {
+            if (!fx) continue;
+            if (fx->processing) fx->processor->setProcessing(false);
+            fx->destroy(); delete fx;
+        }
         if (tp->handle) {
             if (tp->handle->processing) tp->handle->processor->setProcessing(false);
             tp->handle->destroy();
@@ -485,6 +540,20 @@ void session_destroy(Session* s) {
         }
     }
     delete s;
+}
+
+int session_effect_count(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? static_cast<int>(s->tracks[t]->effects.size()) : 0;
+}
+const char* session_effect_name(Session* s, int t, int e) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
+    auto& fx = s->tracks[t]->effects;
+    return (e >= 0 && e < static_cast<int>(fx.size()) && fx[e]) ? fx[e]->plugin_name.c_str() : "";
+}
+void* session_effect_controller(Session* s, int t, int e) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
+    auto& fx = s->tracks[t]->effects;
+    return (e >= 0 && e < static_cast<int>(fx.size()) && fx[e]) ? fx[e]->controller : nullptr;
 }
 
 }  // namespace vivid_poc
