@@ -312,7 +312,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
 
 void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
-    if (st && st->editor && st->editor->is_open()) st->editor->scroll(yoff);
+    if (!st || !st->editor || !st->editor->is_open()) return;
+    double mx, my; glfwGetCursorPos(w, &mx, &my);
+    if (st->editor->contains(mx, my)) st->editor->scroll(yoff);
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
@@ -331,11 +333,14 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     const int tracks = st->session ? vivid_poc::session_track_count(st->session) : 0;
     const int scenes = st->session ? vivid_poc::session_scene_count(st->session) : 0;
 
-    // Clip editor is modal: route mouse to it while open.
+    // Clip editor is non-modal: route presses inside its panel to it; clicks
+    // elsewhere pass through to the session. A release always ends any editor drag.
     if (st->editor && st->editor->is_open()) {
-        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) st->editor->on_down(mx, my, glfwGetTime());
-        else if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->editor->on_up(mx, my);
-        return;
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->editor->on_up(mx, my);
+        if (action == GLFW_PRESS && st->editor->contains(mx, my)) {
+            if (button == GLFW_MOUSE_BUTTON_LEFT) st->editor->on_down(mx, my, glfwGetTime());
+            return;
+        }
     }
 
     // Right-click a meter (master or per-track) -> open its characteristic menu.

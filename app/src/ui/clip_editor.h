@@ -28,23 +28,28 @@ public:
     void on_move(double x, double y);
     void on_up(double x, double y);
     void scroll(double dy);
+    bool contains(double x, double y) const;       // is (x,y) inside the panel?
 
 private:
-    bool   open_ = false, dirty_ = false;
+    bool   open_ = false, dirty_ = false, docked_ = false;
     int    track_ = 0, scene_ = 0;
     std::string title_;
     std::vector<vivid_poc::ClipNote> notes_;
     double length_ = 4.0;
     int    pitch_lo_ = 48;
     double cell_ = 0.25;          // grid = 1/16 note
+    float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
 
-    int    drag_ = 0;             // 0 none, 1 move, 2 resize
+    int    drag_ = 0;             // 0 none, 1 move, 2 resize, 3 pan-panel
     int    drag_idx_ = -1;
     double down_beat_ = 0; int down_pitch_ = 0;
     double orig_start_ = 0, orig_dur_ = 0; int orig_pitch_ = 0;
+    double down_off_x_ = 0, down_off_y_ = 0;       // panel-drag grab offset
     double last_down_ = -1; int last_idx_ = -1;   // double-click tracking
 
-    // Layout (pure functions of constants + pitch_lo_/length_).
+    // Panel geometry (floating uses px_/py_; docked = bottom strip).
+    void  panel(float& x, float& y, float& w, float& h) const;
+    // Layout helpers derive from panel() + pitch_lo_/length_.
     float gx() const, gy() const, gw() const, gh() const;
     float bw() const { return gw() / float(length_ > 0 ? length_ : 4.0); }
     float rh() const;
