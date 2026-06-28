@@ -50,6 +50,10 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             const std::string state = vivid_poc::session_get_track_state(s, t);  // plugin preset
             if (!state.empty()) jt["state"] = state;
         }
+        json fx = json::array();   // per-track effect chain (by display name)
+        for (int e = 0; e < vivid_poc::session_effect_count(s, t); ++e)
+            fx.push_back(vivid_poc::session_effect_name(s, t, e));
+        if (!fx.empty()) jt["fx"] = fx;
         tracks.push_back(jt);
     }
     j["tracks"] = tracks;
@@ -123,6 +127,17 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             }
             if (jt.contains("state"))
                 vivid_poc::session_set_track_state(s, t, jt["state"].get<std::string>());
+            if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
+                while (vivid_poc::session_effect_count(s, t) > 0)
+                    vivid_poc::session_remove_effect(s, t, vivid_poc::session_effect_count(s, t) - 1);
+                for (const auto& jn : jt["fx"]) {
+                    const std::string name = jn.get<std::string>();
+                    for (int k = 0; k < vivid_poc::session_available_effect_count(); ++k)
+                        if (name == vivid_poc::session_available_effect_name(k)) {
+                            vivid_poc::session_add_effect_by_index(s, t, k); break;
+                        }
+                }
+            }
             const int act = jt.value("active", -1);
             if (act >= 0) vivid_poc::session_launch_clip(s, t, act);
         }
