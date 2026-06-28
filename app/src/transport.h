@@ -9,7 +9,8 @@ struct Transport {
     std::atomic<bool>   playing{true};
     std::atomic<double> bpm{124.0};
     std::atomic<double> beats{0.0};   // total beats elapsed (audio thread writes)
-    std::atomic<float>  level{0.0f};  // output RMS, 0..1 (audio thread writes)
+    std::atomic<float>  level{0.0f};      // output RMS, 0..1 (audio thread writes)
+    std::atomic<float>  transient{0.0f};  // onset/transient, 0..1 (audio thread writes)
 
     void advance(uint32_t frames, double sample_rate) {
         if (!playing.load(std::memory_order_relaxed)) return;

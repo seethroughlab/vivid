@@ -24,10 +24,15 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
+// A right-click context menu of a track's audio characteristics (the bridge).
+struct CtxMenu { bool open = false; float x = 0, y = 0; };
+
 struct AudioState {
     Transport* transport = nullptr;
     vivid_poc::Session* session = nullptr;  // hosted instrument + clips (or null -> test tone)
     vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
+    CtxMenu menu;                           // characteristic picker (UI thread)
+    float tr_baseline = 0.f;                // onset detector baseline (audio thread)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
 };
@@ -62,9 +67,12 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
         double sum_sq = 0.0;
         for (ma_uint32 i = 0; i < frames; ++i)
             sum_sq += static_cast<double>(fout[i * 2]) * fout[i * 2];
-        st->transport->level.store(
-            static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1))),
-            std::memory_order_relaxed);
+        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+        st->transport->level.store(rms, std::memory_order_relaxed);
+        // transient = how far RMS jumps above its slow baseline (a simple onset detector)
+        const float tr = std::max(0.0f, (rms - st->tr_baseline) * 6.0f);
+        st->tr_baseline += (rms - st->tr_baseline) * 0.04f;
+        st->transport->transient.store(std::min(1.0f, tr), std::memory_order_relaxed);
     }
 }
 
@@ -94,6 +102,12 @@ inline Rect clip_cell_rect(int i) {
     const float gx = 48.f, gy = 120.f, cw = 220.f, ch = 52.f, gap = 8.f;
     return { gx, gy + i * (ch + gap), cw, ch };
 }
+
+// Right-clicking the track header opens a menu of its audio characteristics.
+inline Rect track_header_rect() { return { 40.f, 76.f, 232.f, 44.f }; }
+struct CharItem { const char* label; int id; };
+constexpr CharItem kChars[] = { { "Level (RMS)", 0 }, { "Transient", 1 } };
+constexpr int kNumChars = 2;
 
 // Viewer pane (right) where the visuals shader op renders.
 constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 300.f;
@@ -154,6 +168,21 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     ui.draw_text(kViewX, 96, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
 }
 
+// The characteristic context menu (the bridge entry point).
+void draw_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m, const char* track) {
+    if (!m.open) return;
+    const float w = 184.f;
+    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  →  visuals", track && *track ? track : "track");
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, hdr, 0.55f, 0.58f, 0.64f, 1.0f, 0.82f);
+    for (int j = 0; j < kNumChars; ++j) {
+        const float iy = m.y + j * 26.f;
+        ui.draw_rect(m.x, iy, w, 26.f, 0.16f, 0.17f, 0.20f, 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 26.f, 0.31f, 0.80f, 0.75f, 1.0f);
+        ui.draw_text(m.x + 14.f, iy + 6.f, kChars[j].label, 0.85f, 0.88f, 0.92f, 1.0f);
+    }
+}
+
 // Number keys 1..N launch clip 0..N-1 (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) {
     if (action != GLFW_PRESS) return;
@@ -168,14 +197,38 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
     }
 }
 
-// Left-click: route to the node graph first (drag wires / nodes), else launch a clip.
 void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
-    if (button != GLFW_MOUSE_BUTTON_LEFT) return;
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
     if (!st) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
+
+    // Right-click the track header -> open the characteristic menu (the bridge).
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
+        if (st->session && hit(track_header_rect(), mx, my)) {
+            st->menu = { true, static_cast<float>(mx), static_cast<float>(my) };
+        } else st->menu.open = false;
+        return;
+    }
+    if (button != GLFW_MOUSE_BUTTON_LEFT) return;
+
     if (action == GLFW_RELEASE) { if (st->graph) st->graph->on_up(mx, my); return; }
     if (action != GLFW_PRESS) return;
+
+    // Menu has priority: pick a characteristic -> spawn a data node in the graph.
+    if (st->menu.open) {
+        for (int j = 0; j < kNumChars; ++j) {
+            const Rect r = { st->menu.x, st->menu.y + j * 26.f, 184.f, 26.f };
+            if (hit(r, mx, my) && st->graph) {
+                std::string title = std::string(vivid_poc::session_name(st->session)) + "  " + kChars[j].label;
+                st->graph->add_data_node(title, kChars[j].id);
+                std::fprintf(stderr, "[vivid] bridge: spawned '%s' node\n", kChars[j].label);
+                break;
+            }
+        }
+        st->menu.open = false;
+        return;
+    }
+
     if (st->graph && st->graph->on_down(mx, my)) return;  // node graph consumed it
     if (!st->session) return;
     const int clips = vivid_poc::session_clip_count(st->session);
@@ -241,18 +294,19 @@ int main() {
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
-    float react = 0.f;  // smoothed audio level feeding the shader (P6)
+    float react = 0.f;   // smoothed master level
+    float trHold = 0.f;  // peak-held transient (so onsets are visible at frame rate)
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
         const double beats = transport.beats.load(std::memory_order_relaxed);
         const float level = transport.level.load(std::memory_order_relaxed);
-        // P6: smooth the live RMS (master output) into a 0..1 value for the shader.
-        // The beat is shown by the UI's beat dots; the background stays static so the
-        // shader's reaction (right pane) reads clearly.
-        react += (std::min(1.0f, level * 5.0f) - react) * 0.3f;
-        graph.set_data_value(react);
-        const float reactive = graph.shader_reactive();  // 0 when the wire is cut
+        react += (std::min(1.0f, level * 5.0f) - react) * 0.3f;            // smoothed level
+        trHold *= 0.85f;                                                   // decay the held peak
+        trHold = std::max(trHold, transport.transient.load(std::memory_order_relaxed));
+        graph.set_value(0, react);                 // characteristic 0: level
+        graph.set_value(1, std::min(1.0f, trHold)); // characteristic 1: transient
+        const float reactive = graph.shader_reactive();  // wired node's value (0 if unwired)
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         graph.on_move(mx, my);  // continue any node/wire drag
@@ -264,6 +318,8 @@ int main() {
                           static_cast<float>(glfwGetTime()), reactive);
             draw_ui(ui, audio_state, beats, mx, my);
             graph.draw(ui);
+            draw_menu(ui, audio_state.menu,
+                      audio_state.session ? vivid_poc::session_name(audio_state.session) : "");
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }

@@ -1,45 +1,44 @@
 #pragma once
 #include "ui/renderer_2d.h"
+#include <vector>
+#include <string>
 
 namespace vivid::ui {
 
 // A minimal custom node editor on Renderer2D (we build our own rather than
-// extract classic's 17K-LOC NodeGraphUI). For P7 it holds two fixed nodes — a
-// "Master RMS" data source and the "Plasma" shader op — and one wire between
-// them. The wire's presence drives whether the shader reacts: connected => the
-// shader's reactive uniform = the data value; disconnected => 0.
+// extract classic's 17K-LOC NodeGraphUI). Holds N data-source nodes (each
+// carrying a live audio characteristic) + one "Plasma" shader op, and a single
+// wire into the shader's reactive input. P8's bridge spawns data nodes via
+// add_data_node(); the wire selects which characteristic drives the visuals.
 class NodeGraph {
 public:
     NodeGraph();
 
-    void  set_data_value(float v) { data_value_ = v; }
-    float shader_reactive() const { return connected_ ? data_value_ : 0.f; }
-    bool  connected() const { return connected_; }
+    void  set_value(int char_id, float v);          // feed a live characteristic value
+    float shader_reactive() const;                  // wired node's value, else 0
+    void  add_data_node(const std::string& title, int char_id);
 
     void draw(Renderer2D& r);
 
-    // Mouse in screen pixels. on_down returns true if it consumed the event
-    // (so the caller doesn't also treat it as a session-grid click).
+    // Mouse in screen px. on_down returns true if it consumed the event.
     bool on_down(double x, double y);
     void on_move(double x, double y);
     void on_up(double x, double y);
 
 private:
-    struct Node { float x, y, w, h; const char* title; const char* sub; bool is_data; };
-    Node data_;
-    Node shader_;
-    bool  connected_ = true;     // start wired (matches the P6 default)
-    float data_value_ = 0.f;
+    struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash; };
+    std::vector<DataNode> data_;
+    float sx_, sy_, sw_, sh_;   // shader node rect
+    int   connected_ = -1;      // index in data_ wired to the shader, or -1
 
-    int     drag_mode_ = 0;      // 0 none, 1 node, 2 wire
-    Node*   drag_node_ = nullptr;
-    double  dx_ = 0, dy_ = 0;    // grab offset
-    double  cur_x_ = 0, cur_y_ = 0;
-    bool    wiring_ = false;     // dragging a wire out of the data port
+    int    drag_mode_ = 0;      // 0 none, 1 data-node, 2 shader-node, 3 wire
+    int    drag_idx_ = -1;
+    int    wire_from_ = -1;     // data node a wire is being dragged from
+    double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
 
-    static bool in_rect(const Node& n, double x, double y);
-    static void out_port(const Node& n, float& px, float& py);  // data → right
-    static void in_port(const Node& n, float& px, float& py);   // shader ← left
+    static void data_out(const DataNode& n, float& px, float& py);
+    void shader_in(float& px, float& py) const;
+    static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);
 };
 
 }  // namespace vivid::ui
