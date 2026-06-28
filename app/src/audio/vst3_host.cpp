@@ -13,6 +13,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
+#include <cctype>
+#include <algorithm>
 #include <dirent.h>
 
 using namespace Steinberg;
@@ -40,6 +42,12 @@ struct Session {
     int       scenes = 3;
     long long last_bar = -1;
 };
+
+static bool name_has(const std::string& path, const char* lower_needle) {
+    std::string p = path;
+    for (auto& c : p) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return p.find(lower_needle) != std::string::npos;
+}
 
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
     DIR* d = opendir(dir.c_str());
@@ -87,6 +95,11 @@ Session* session_create(uint32_t sample_rate) {
     list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
     if (const char* home = std::getenv("HOME"))
         list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
+
+    // Prefer Arturia Pigments as the primary instrument (track 0).
+    std::stable_sort(bundles.begin(), bundles.end(), [](const std::string& a, const std::string& b) {
+        return (name_has(a, "pigments") ? 0 : 1) < (name_has(b, "pigments") ? 0 : 1);
+    });
 
     auto* s = new Session();
     const int kTarget = 3;
