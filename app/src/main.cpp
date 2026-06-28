@@ -443,49 +443,87 @@ std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
     return dest;
 }
 
-// P28: the mapping overview — every source->dest mapping in one panel, with
-// per-row clear. Audio->visual (teal), visual->audio (amber), audio->audio (blue).
+// Shared geometry for the mapping overview (so draw + hit-test agree).
+struct OvGeom { float px, py, w, h, rowh, hdr; int vis; };
+inline OvGeom ov_geom(int n) {
+    OvGeom o; o.w = 624.f; o.rowh = 24.f; o.hdr = 58.f;
+    o.vis = std::max(1, std::min(n, 15));
+    o.h = o.hdr + o.vis * o.rowh + 14.f;
+    o.px = (g_win_w - o.w) * 0.5f; o.py = 84.f;
+    return o;
+}
+// Per-row control rects (right-anchored): invert chip, amount +/-, curve +/-, clear.
+struct OvRow { Rect inv, amtMinus, amtPlus, curMinus, curPlus, clear; float amtValX, curValX; };
+inline OvRow ov_row(float px, float w, float ry) {
+    return {
+        { px + w - 214.f, ry, 28.f, 18.f },   // inv
+        { px + w - 178.f, ry, 14.f, 18.f },   // amt -
+        { px + w - 128.f, ry, 14.f, 18.f },   // amt +
+        { px + w - 100.f, ry, 14.f, 18.f },   // curve -
+        { px + w -  50.f, ry, 14.f, 18.f },   // curve +
+        { px + w -  24.f, ry, 16.f, 18.f },   // clear
+        px + w - 172.f, px + w - 94.f         // amt / curve value text x
+    };
+}
+
+// P28: the mapping overview — every source->dest mapping in one panel, with per-row
+// amount/curve steppers + polarity toggle + clear. Direction-colored arrow.
 void draw_mapping_overview(vivid::ui::Renderer2D& ui, vivid::ui::NodeGraph* g, vivid_poc::Session* s) {
     if (!g) return;
     const auto& maps = g->mappings();
     const int n = static_cast<int>(maps.size());
-    const float w = 560.f, rowh = 22.f, hdr = 58.f;
-    const int vis = std::max(1, std::min(n, 16));
-    const float h = hdr + vis * rowh + 14.f;
-    const float px = (g_win_w - w) * 0.5f, py = 84.f;
+    const OvGeom o = ov_geom(n);
+    const float px = o.px, py = o.py, w = o.w, rowh = o.rowh, hdr = o.hdr;
     ui.draw_rect(0.f, 40.f, static_cast<float>(g_win_w), static_cast<float>(g_win_h) - 40.f, 0.f, 0.f, 0.f, 0.45f);  // scrim
-    ui.draw_rounded_rect(px, py, w, h, 6.f, 0.12f, 0.13f, 0.155f, 1.0f);
+    ui.draw_rounded_rect(px, py, w, o.h, 6.f, 0.12f, 0.13f, 0.155f, 1.0f);
     ui.draw_rect(px, py, w, 3.f, 0.45f, 0.62f, 0.85f, 1.0f);
     char title[48]; std::snprintf(title, sizeof title, "MAPPINGS  (%d)", n);
     ui.draw_text(px + 16.f, py + 12.f, title, 0.9f, 0.92f, 0.95f, 1.0f, 1.0f);
     ui.draw_text(px + w - 150.f, py + 14.f, "M or Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.78f);
-    ui.draw_text(px + 16.f, py + 38.f, "SOURCE", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
-    ui.draw_text(px + w * 0.46f, py + 38.f, "DESTINATION", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
-    ui.draw_text(px + w - 92.f, py + 38.f, "AMT", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
+    const OvRow hc = ov_row(px, w, py + 38.f);
+    ui.draw_text(px + 16.f, py + 38.f, "SOURCE \xE2\x86\x92 DEST", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
+    ui.draw_text(hc.inv.x, py + 38.f, "POL", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
+    ui.draw_text(hc.amtMinus.x + 2.f, py + 38.f, "AMT", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
+    ui.draw_text(hc.curMinus.x - 6.f, py + 38.f, "CURVE", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
     if (n == 0) {
         ui.draw_text(px + 16.f, py + hdr + 6.f, "No mappings yet \xE2\x80\x94 wire a data node to an op param, or map a device param (m).",
                      0.55f, 0.57f, 0.6f, 1.0f, 0.84f);
         return;
     }
-    for (int i = 0; i < vis; ++i) {
+    auto stepper = [&](const Rect& minus, const Rect& plus, float valX, float ry, const char* val) {
+        ui.draw_rect(minus.x, minus.y, minus.w, minus.h, 0.18f, 0.19f, 0.22f, 1.0f);
+        ui.draw_text(minus.x + 4.f, ry + 3.f, "-", 0.8f, 0.82f, 0.86f, 1.0f, 0.9f);
+        ui.draw_rect(plus.x, plus.y, plus.w, plus.h, 0.18f, 0.19f, 0.22f, 1.0f);
+        ui.draw_text(plus.x + 3.f, ry + 3.f, "+", 0.8f, 0.82f, 0.86f, 1.0f, 0.9f);
+        ui.draw_text(valX, ry + 4.f, val, 0.78f, 0.81f, 0.85f, 1.0f, 0.82f);
+    };
+    for (int i = 0; i < o.vis; ++i) {
         const auto& m = maps[i];
         const float ry = py + hdr + i * rowh;
         if (i & 1) ui.draw_rect(px + 2.f, ry - 2.f, w - 4.f, rowh, 0.14f, 0.15f, 0.18f, 0.5f);
-        const bool toUniform = m.dest.rfind("uniform.", 0) == 0;
+        const bool toVisual = m.dest.rfind("node:", 0) == 0 || m.dest.rfind("uniform.", 0) == 0;
         const bool fromViz = m.source.rfind("viz.", 0) == 0;
         float cr = 0.5f, cg = 0.7f, cb = 0.85f;                       // audio->audio
-        if (toUniform) { cr = 0.31f; cg = 0.80f; cb = 0.75f; }        // audio->visual
+        if (toVisual) { cr = 0.31f; cg = 0.80f; cb = 0.75f; }         // audio->visual
         else if (fromViz) { cr = 0.85f; cg = 0.7f; cb = 0.4f; }       // visual->audio
-        ui.draw_text(px + 16.f, ry + 4.f, m.source.c_str(), 0.85f, 0.88f, 0.92f, 1.0f, 0.86f);
-        ui.draw_text(px + w * 0.4f, ry + 3.f, "\xE2\x86\x92", cr, cg, cb, 1.0f, 0.95f);
-        ui.draw_text(px + w * 0.46f, ry + 4.f, mapping_dest_label(s, m.dest).c_str(), 0.82f, 0.85f, 0.9f, 1.0f, 0.86f);
-        char amt[12]; std::snprintf(amt, sizeof amt, "%.2f", m.amount);
-        ui.draw_text(px + w - 92.f, ry + 4.f, amt, 0.7f, 0.73f, 0.78f, 1.0f, 0.84f);
-        ui.draw_text(px + w - 26.f, ry + 3.f, "\xC3\x97", 0.75f, 0.45f, 0.45f, 1.0f, 0.95f);  // clear
+        const OvRow rc = ov_row(px, w, ry);
+        char src8[20]; std::snprintf(src8, sizeof src8, "%.18s", m.source.c_str());
+        ui.draw_text(px + 16.f, ry + 4.f, src8, 0.85f, 0.88f, 0.92f, 1.0f, 0.82f);
+        ui.draw_text(px + 150.f, ry + 3.f, "\xE2\x86\x92", cr, cg, cb, 1.0f, 0.92f);
+        char dst22[26]; std::snprintf(dst22, sizeof dst22, "%.24s", mapping_dest_label(s, m.dest).c_str());
+        ui.draw_text(px + 168.f, ry + 4.f, dst22, 0.82f, 0.85f, 0.9f, 1.0f, 0.82f);
+        // polarity chip
+        ui.draw_rect(rc.inv.x, rc.inv.y, rc.inv.w, rc.inv.h, m.invert ? 0.5f : 0.18f, m.invert ? 0.4f : 0.19f, m.invert ? 0.55f : 0.22f, 1.0f);
+        ui.draw_text(rc.inv.x + 5.f, ry + 3.f, "inv", m.invert ? 0.95f : 0.6f, 0.9f, 0.95f, 1.0f, 0.74f);
+        char amt[10]; std::snprintf(amt, sizeof amt, "%.2f", m.amount);
+        stepper(rc.amtMinus, rc.amtPlus, rc.amtValX, ry, amt);
+        char cur[10]; std::snprintf(cur, sizeof cur, "%+.2f", m.curve);
+        stepper(rc.curMinus, rc.curPlus, rc.curValX, ry, cur);
+        ui.draw_text(rc.clear.x + 2.f, ry + 3.f, "\xC3\x97", 0.75f, 0.45f, 0.45f, 1.0f, 0.95f);
     }
-    if (n > vis) {
-        char more[24]; std::snprintf(more, sizeof more, "+%d more\xE2\x80\xA6", n - vis);
-        ui.draw_text(px + 16.f, py + hdr + vis * rowh + 2.f, more, 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
+    if (n > o.vis) {
+        char more[24]; std::snprintf(more, sizeof more, "+%d more\xE2\x80\xA6", n - o.vis);
+        ui.draw_text(px + 16.f, py + hdr + o.vis * rowh + 2.f, more, 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
     }
 }
 
@@ -601,17 +639,23 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     const int tracks = st->session ? vivid_poc::session_track_count(st->session) : 0;
     const int scenes = st->session ? vivid_poc::session_scene_count(st->session) : 0;
 
-    // Mapping overview is modal while open: a row's × clears it, click-away closes.
+    // Mapping overview is modal while open: per-row steppers/toggle/clear; click-away closes.
     if (g_show_mappings && st->graph && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         const auto& maps = st->graph->mappings();
-        const float bw = 560.f, rowh = 22.f, hdr = 58.f;
-        const int n = static_cast<int>(maps.size());
-        const int vis = std::max(1, std::min(n, 16));
-        const float px = (g_win_w - bw) * 0.5f, py = 84.f, bh = hdr + vis * rowh + 14.f;
-        if (mx >= px && mx < px + bw && my >= py && my < py + bh) {
-            for (int i = 0; i < vis; ++i) {
-                const float ry = py + hdr + i * rowh;
-                if (mx >= px + bw - 32.f && my >= ry && my < ry + rowh) { st->graph->disconnect_dest(maps[i].dest); return; }
+        const OvGeom o = ov_geom(static_cast<int>(maps.size()));
+        if (mx >= o.px && mx < o.px + o.w && my >= o.py && my < o.py + o.h) {
+            for (int i = 0; i < o.vis; ++i) {
+                const float ry = o.py + o.hdr + i * o.rowh;
+                if (my < ry || my >= ry + o.rowh) continue;
+                const OvRow rc = ov_row(o.px, o.w, ry);
+                const std::string& d = maps[i].dest;
+                if (hit(rc.inv, mx, my))      { st->graph->toggle_mapping_invert(d); return; }
+                if (hit(rc.amtMinus, mx, my)) { st->graph->set_mapping_amount(d, std::max(0.f, maps[i].amount - 0.1f)); return; }
+                if (hit(rc.amtPlus, mx, my))  { st->graph->set_mapping_amount(d, std::min(4.f, maps[i].amount + 0.1f)); return; }
+                if (hit(rc.curMinus, mx, my)) { st->graph->set_mapping_curve(d, std::max(-1.f, maps[i].curve - 0.25f)); return; }
+                if (hit(rc.curPlus, mx, my))  { st->graph->set_mapping_curve(d, std::min(1.f, maps[i].curve + 0.25f)); return; }
+                if (hit(rc.clear, mx, my))    { st->graph->disconnect_dest(d); return; }
+                break;
             }
             return;  // click inside the panel: consume
         }

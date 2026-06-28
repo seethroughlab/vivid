@@ -34,7 +34,15 @@ public:
     void add_node_raw(const std::string& title, int char_id, float x, float y);
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
-    void add_mapping(const std::string& src, const std::string& dst, float amt) { reg_.connect(src, dst, amt); }
+    void add_mapping(const std::string& src, const std::string& dst, float amt,
+                     float curve = 0.f, bool invert = false) {
+        reg_.connect(src, dst, amt);
+        if (auto* m = reg_.find(dst)) { m->curve = curve; m->invert = invert; }
+    }
+    // Mapping shaping edits (from the M overview).
+    void set_mapping_amount(const std::string& dst, float a) { if (auto* m = reg_.find(dst)) m->amount = a; }
+    void set_mapping_curve(const std::string& dst, float c)  { if (auto* m = reg_.find(dst)) m->curve = c; }
+    void toggle_mapping_invert(const std::string& dst)       { if (auto* m = reg_.find(dst)) m->invert = !m->invert; }
     // Return path (P27): registry can drive any dest; main feeds extra sources
     // (the visuals' uniform values) and applies audio-param dests each frame.
     float dest_value(const std::string& dest) const { return reg_.dest_value(dest); }

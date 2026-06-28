@@ -3,19 +3,30 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <cmath>
 
 namespace vivid {
 
 // One wire in the unified mapping model: a named source drives a named
-// destination, scaled by `amount`. Source/dest IDs are strings so the same model
-// covers audio->visual ("track_2.transient" -> "uniform.warp") and, later,
-// visual->audio ("viz.feedback_energy" -> "track_0.dev1.param.123"). Mirrors
-// classic's ModAssignmentDef shape (amount; polarity/curve can follow).
+// destination. The source value (clamped 0..1) is optionally inverted (polarity),
+// gamma-shaped (curve), then scaled by `amount`. Source/dest IDs are strings so
+// the same model covers audio->visual ("track_2.transient" -> "node:0.warp") and
+// visual->audio ("viz.feedback" -> "param:0:1:3"). Mirrors classic's
+// ModAssignmentDef shape (amount + polarity + curve).
 struct Mapping {
     std::string source;
     std::string dest;
-    float       amount = 1.0f;
+    float       amount = 1.0f;   // output gain
+    float       curve  = 0.0f;   // -1 ease-out .. 0 linear .. +1 ease-in
+    bool        invert = false;  // polarity (1 - s)
 };
+
+// Gamma shaping: curve 0 = linear; >0 eases in (exp up to 4); <0 eases out.
+inline float mapping_shape(float s, float curve) {
+    if (curve == 0.0f) return s;
+    const float e = curve > 0.0f ? (1.0f + curve * 3.0f) : 1.0f / (1.0f - curve * 3.0f);
+    return std::pow(s < 0.0f ? 0.0f : s, e);
+}
 
 // Central registry: holds the mappings + the current value of every source.
 // One mapping per destination (matches the old one-wire-per-port behaviour).
@@ -40,9 +51,18 @@ public:
         for (const auto& m : maps_) if (m.dest == dst) return &m.source;
         return nullptr;
     }
-    // Current value driving `dst` (source value * amount), or 0 if unmapped.
+    Mapping* find(const std::string& dst) {           // mutable access for editing
+        for (auto& m : maps_) if (m.dest == dst) return &m;
+        return nullptr;
+    }
+    // Current value driving `dst`: clamp -> polarity -> curve -> gain. 0 if unmapped.
     float dest_value(const std::string& dst) const {
-        for (const auto& m : maps_) if (m.dest == dst) return source_value(m.source) * m.amount;
+        for (const auto& m : maps_) if (m.dest == dst) {
+            float s = source_value(m.source);
+            s = s < 0.f ? 0.f : (s > 1.f ? 1.f : s);
+            if (m.invert) s = 1.f - s;
+            return mapping_shape(s, m.curve) * m.amount;
+        }
         return 0.f;
     }
 

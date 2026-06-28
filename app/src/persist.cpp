@@ -66,7 +66,8 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     jg["nodes"] = nodes;
     json maps = json::array();
     for (const auto& m : g.mappings())
-        maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount} });
+        maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount},
+                         {"curve", m.curve}, {"inv", m.invert} });
     jg["mappings"] = maps;
     json chain = json::array();
     for (int i = 0; i < g.op_count(); ++i) {
@@ -143,7 +144,8 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             g.set_shader(jg["shader"][0].get<float>(), jg["shader"][1].get<float>());
         if (jg.contains("mappings"))
             for (const auto& jm : jg["mappings"])
-                g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()), jm.value("amt", 1.0f));
+                g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()),
+                              jm.value("amt", 1.0f), jm.value("curve", 0.0f), jm.value("inv", false));
     }
     return true;
 }
