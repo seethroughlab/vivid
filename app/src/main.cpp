@@ -23,7 +23,7 @@ constexpr double kPi = 3.14159265358979323846;
 
 struct AudioState {
     Transport* transport = nullptr;
-    vivid_poc::Vst3Player* player = nullptr;  // hosted instrument (or null -> test tone)
+    vivid_poc::Session* session = nullptr;  // hosted instrument + clips (or null -> test tone)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
 };
@@ -39,9 +39,9 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
     const double bpm   = st->transport ? st->transport->bpm.load(std::memory_order_relaxed) : 120.0;
 
     bool rendered = false;
-    if (st->player)
-        rendered = vivid_poc::vst3_player_process(st->player, fout, frames,
-                                                  static_cast<uint32_t>(sr), bpm, beats, 4);
+    if (st->session)
+        rendered = vivid_poc::session_process(st->session, fout, frames,
+                                              static_cast<uint32_t>(sr), bpm, beats, 4);
     if (!rendered) {
         const double inc = 2.0 * kPi * st->tone_hz / sr;
         for (ma_uint32 i = 0; i < frames; ++i) {
@@ -81,6 +81,20 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     wgpuRenderPassEncoderRelease(pass);
 }
 
+// Number keys 1..N launch clip 0..N-1 (applied on the next bar).
+void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) {
+    if (action != GLFW_PRESS) return;
+    auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
+    if (!st || !st->session) return;
+    if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
+        int idx = key - GLFW_KEY_1;
+        if (idx < vivid_poc::session_clip_count(st->session)) {
+            vivid_poc::session_launch(st->session, idx);
+            std::fprintf(stderr, "[vivid] launch clip %d (queued for next bar)\n", idx + 1);
+        }
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -110,12 +124,15 @@ int main() {
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
         // Now that we know the device sample rate, scan + load an instrument.
-        audio_state.player = vivid_poc::vst3_player_create(device.sampleRate);
-        std::fprintf(stderr, "[vivid] instrument: %s\n",
-                     audio_state.player ? vivid_poc::vst3_player_name(audio_state.player)
-                                        : "none — falling back to test tone");
+        audio_state.session = vivid_poc::session_create(device.sampleRate);
+        std::fprintf(stderr, "[vivid] instrument: %s (%d clips — press 1..N to launch)\n",
+                     audio_state.session ? vivid_poc::session_name(audio_state.session)
+                                         : "none — falling back to test tone",
+                     audio_state.session ? vivid_poc::session_clip_count(audio_state.session) : 0);
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
     }
+    glfwSetWindowUserPointer(window, &audio_state);
+    glfwSetKeyCallback(window, key_callback);
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
@@ -136,7 +153,7 @@ int main() {
     }
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
-    if (audio_state.player) vivid_poc::vst3_player_destroy(audio_state.player);
+    if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();

@@ -69,6 +69,13 @@ struct ClipScheduler {
             }
         }
     }
+
+    // Emit note-offs for everything currently sounding (used when swapping clips
+    // at a bar boundary so the old clip's notes don't hang).
+    void flush(std::vector<NoteEvent>& out) {
+        for (const auto& a : active) out.push_back({ 0u, false, a.pitch, 0.f, a.id });
+        active.clear();
+    }
 };
 
 }  // namespace vivid_poc
