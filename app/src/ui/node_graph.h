@@ -49,6 +49,7 @@ public:
     void chain_load_set_input(int i, int input);
 
     void draw(Renderer2D& r);
+    void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the thumbnail pass
     // Live node thumbnails: op_thumb_rect(i) gives the on-screen strip for op
     // node i (false for Output / off-pane); main blits each node's output there
     // after the UI pass.

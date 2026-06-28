@@ -396,9 +396,12 @@ void NodeGraph::draw(Renderer2D& r) {
     }
 
     draw_op_palette(r);
-    draw_chooser(r);  // on top of everything
     r.pop_clip_rect();
 }
+
+// Floating overlays that must sit ABOVE the thumbnail blit pass — drawn by main
+// in a second UI flush after thumbnails.
+void NodeGraph::draw_overlays(Renderer2D& r) { draw_chooser(r); }
 
 bool NodeGraph::on_down(double x, double y) {
     cx_ = x; cy_ = y;

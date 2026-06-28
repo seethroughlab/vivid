@@ -1008,21 +1008,25 @@ int main() {
             graph.set_bounds(g_split_x + 8.f, vrp.y + vrp.h + 16.f,
                              static_cast<float>(g_win_w) - 8.f, static_cast<float>(g_win_h) - 8.f);
             graph.draw(ui);
-            draw_menu(ui, audio_state.menu,
-                      audio_state.menu.src < 0 ? "Master"
-                      : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
-            draw_fx_menu(ui, audio_state.fx_menu);
-            draw_map_menu(ui, audio_state.map_menu);
-            clip_editor.draw(ui);  // modal overlay on top
-            if (g_show_mappings) draw_mapping_overview(ui, audio_state.graph, audio_state.session);
+            // Pass 1: the base UI (DAW + node-graph cards/ports).
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             // Live per-node thumbnails: composite each op's output into its card
-            // strip on top of the flushed UI (loadOp=Load).
+            // strip on top of the base UI (loadOp=Load).
             for (int i = 0; i < graph.op_thumb_count(); ++i) {
                 float tx, ty, tw, th;
                 if (graph.op_thumb_rect(i, tx, ty, tw, th))
                     vgraph.blit_node(frame.encoder, frame.view, i, tx, ty, tw, th);
             }
+            // Pass 2: floating overlays — drawn AFTER thumbnails so they sit on top.
+            graph.draw_overlays(ui);  // operator chooser
+            draw_menu(ui, audio_state.menu,
+                      audio_state.menu.src < 0 ? "Master"
+                      : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
+            draw_fx_menu(ui, audio_state.fx_menu);
+            draw_map_menu(ui, audio_state.map_menu);
+            clip_editor.draw(ui);  // editor window on top
+            if (g_show_mappings) draw_mapping_overview(ui, audio_state.graph, audio_state.session);
+            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             gpu.end_frame(frame);
         }
         return true;
