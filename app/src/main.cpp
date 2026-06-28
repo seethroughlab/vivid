@@ -108,7 +108,7 @@ inline bool hit(const Rect& r, double mx, double my) {
 }
 // Session grid: columns = tracks, rows = scenes; a mixer strip below.
 constexpr float kSceneColX = 14.f, kSceneColW = 58.f;
-constexpr float kTrackX0 = 78.f, kTrackW = 132.f, kTrackGap = 4.f;
+constexpr float kTrackX0 = 78.f, kTrackW = 102.f, kTrackGap = 4.f;
 constexpr float kHeaderY = 56.f, kHeaderH = 30.f;
 constexpr float kGridTopY = 92.f;
 constexpr float kRowH = 50.f, kRowGap = 4.f;
@@ -405,7 +405,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         for (int sc = 0; sc < scenes; ++sc)
             if (hit(clip_cell_rect(t, sc), mx, my)) {
                 const double now = glfwGetTime();
-                if (st->editor && st->last_clip_track == t && st->last_clip_scene == sc && now - st->last_clip_t < 0.35) {
+                if (st->editor && !vivid_poc::session_track_is_audio(st->session, t)
+                    && st->last_clip_track == t && st->last_clip_scene == sc && now - st->last_clip_t < 0.35) {
                     vivid_poc::ClipNote buf[256];
                     const int n = vivid_poc::session_get_clip(st->session, t, sc, buf, 256);
                     const double len = vivid_poc::session_clip_length(st->session, t, sc);

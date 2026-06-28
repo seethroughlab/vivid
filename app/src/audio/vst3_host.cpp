@@ -4,6 +4,7 @@
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
+#include "audio/sampler.h"
 
 #include <vector>
 #include <memory>
@@ -43,6 +44,9 @@ struct Track {
     std::vector<MidiClip> edit_clips;
     std::atomic<uint64_t> edit_gen{0};
     uint64_t              edit_gen_seen = 0;
+    // Audio track: no plugin; per-scene samples played transport-locked.
+    bool                  is_audio = false;
+    std::vector<Sampler>  aud_clips;
 };
 
 struct Session {
@@ -165,6 +169,21 @@ Session* session_create(uint32_t sample_rate) {
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
 
+    // A built-in audio (sampler) track: 3 transport-locked demo loops as scenes.
+    {
+        auto at = std::make_unique<Track>();
+        at->is_audio = true;
+        at->name = "Audio";
+        at->gain.store(0.7f, std::memory_order_relaxed);
+        at->aud_clips.push_back(gen_sub_pulse(sample_rate, 124.0));
+        at->aud_clips.push_back(gen_noise_sweep(sample_rate, 124.0));
+        at->aud_clips.push_back(gen_bell_loop(sample_rate, 124.0));
+        at->active.store(-1, std::memory_order_relaxed);  // start stopped
+        s->tracks.emplace_back(std::move(at));
+        std::fprintf(stderr, "[Session] track %zu: Audio (sampler, %zu loops)\n",
+                     s->tracks.size() - 1, s->tracks.back()->aud_clips.size());
+    }
+
     if (s->tracks.empty()) { delete s; return nullptr; }
     std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
     return s;
@@ -203,6 +222,9 @@ float session_track_transient(Session* s, int t) {
 }
 void* session_track_controller(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
+}
+bool session_track_is_audio(Session* s, int t) {
+    return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio;
 }
 
 static bool clip_valid(Session* s, int t, int sc) {
@@ -274,7 +296,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     bool any = false;
     for (auto& tp : s->tracks) {
         Track& t = *tp;
-        if (!t.handle || !t.handle->processing) continue;
+        if (!t.is_audio && (!t.handle || !t.handle->processing)) continue;
         any = true;
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
@@ -295,34 +317,46 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
-        Vst3EventList events;
-        if (new_bar) {
-            const int q = t.queued.load(std::memory_order_relaxed);
-            if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
-                t.nev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev);
-                t.sched.reset(&t.clips[q]);
-                t.active.store(q, std::memory_order_relaxed);
+        if (t.is_audio) {
+            // Bar-quantized scene switch, then render the active sample loop.
+            if (new_bar) {
+                const int q = t.queued.load(std::memory_order_relaxed);
+                if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
+                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
-        }
-        t.nev.clear(); t.sched.emit(beats, delta, frames, t.nev); emit_vst3(events, t.nev);
+            const int sc = t.active.load(std::memory_order_relaxed);
+            if (sc >= 0 && sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
+                t.aud_clips[sc].render(beats, delta, frames, L, R);
+        } else {
+            Vst3EventList events;
+            if (new_bar) {
+                const int q = t.queued.load(std::memory_order_relaxed);
+                if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
+                    t.nev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev);
+                    t.sched.reset(&t.clips[q]);
+                    t.active.store(q, std::memory_order_relaxed);
+                }
+                if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
+            }
+            t.nev.clear(); t.sched.emit(beats, delta, frames, t.nev); emit_vst3(events, t.nev);
 
-        VividAudioContext ctx{};
-        ctx.sample_rate = sample_rate;
-        ctx.metronome_bpm = static_cast<float>(bpm);
-        ctx.metronome_beats_per_bar = bpb;
-        ctx.metronome_beats_elapsed = beats;
-        float* ch[2] = { L, R };
-        AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
-        Vst3ParamChanges pc; pc.clear();
-        ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
-        ProcessData data{};
-        data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
-        data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
-        data.inputs = nullptr; data.outputs = &ob;
-        data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
-        t.handle->processor->process(data);
-        t.steady += frames;
+            VividAudioContext ctx{};
+            ctx.sample_rate = sample_rate;
+            ctx.metronome_bpm = static_cast<float>(bpm);
+            ctx.metronome_beats_per_bar = bpb;
+            ctx.metronome_beats_elapsed = beats;
+            float* ch[2] = { L, R };
+            AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
+            Vst3ParamChanges pc; pc.clear();
+            ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
+            ProcessData data{};
+            data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
+            data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
+            data.inputs = nullptr; data.outputs = &ob;
+            data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+            t.handle->processor->process(data);
+            t.steady += frames;
+        }
 
         const float g = t.gain.load(std::memory_order_relaxed);
         double sum_sq = 0.0;

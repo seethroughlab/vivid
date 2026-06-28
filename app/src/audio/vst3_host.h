@@ -38,6 +38,8 @@ float session_track_transient(Session*, int track);  // per-track onset detector
 // Plugin editor (P10): the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);
 
+bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
+
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
 int    session_clip_note_count(Session*, int track, int scene);
