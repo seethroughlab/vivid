@@ -1,7 +1,8 @@
 # Vivid C++ PoC — Phased Implementation Plan
 
-Status: active. See [ADR-0009](../decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md) for the
-pivot rationale. Code lives under `app/` on branch `poc-cpp-prototype`.
+Status: **COMPLETE** — P0–P8 proven on hardware (2026-06-28). See
+[ADR-0009](../decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md) for the pivot rationale. Code
+lives under `app/` on branch `poc-cpp-prototype` (commits `b23ba677` … `a63c9e21`).
 
 A real macOS C++ proof of concept of **two best-in-class surfaces + a bridge** — a DAW (Ableton
 Session View) and a node-based visuals platform (TouchDesigner), sharing one transport — leaning on
@@ -25,17 +26,31 @@ milestone ending in a concrete proof, ordered to de-risk the hard parts early.
 |-------|------|-------|
 | **P0 — Foundation** ✅ | GLFW window + `GpuContext` (WebGPU) + miniaudio + shared `Transport` + test tone | window pulses on the beat; tone plays |
 | **P1a — VST3 host** ✅ | Extract `vst3_host_common.h`; scan/load an instrument; audio thread plays a transport-synced arpeggio | a VST3 synth arpeggiates in time |
-| **P1b — MIDI clips** | Extract `note_types.h` + `midi_clip_core.h` scheduling; play a pattern `[{p,s,d,v}]` sample-accurately, transport-locked | a MIDI clip plays through the synth |
-| **P2 — Session model + launch** | In-memory tracks/clips/scenes; UI→audio clip-launch over a lock-free SPSC queue (`direct_param_queue.h`); transport-quantized | keys launch clips/scenes → audio changes |
-| **P3 — `Renderer2D`** | Extract `Renderer2D` + `stb_truetype` + a font; draw text/rects/lines; GLFW input | text + shapes render; clicks reported |
-| **P4 — Session grid UI** | Session View on `Renderer2D` (transport, tracks×scenes grid, mixer); click a clip → launch | **Proof A:** click a clip → hear it |
-| **P5 — Shader operator** | GLSL→SPIR-V (glslang/shaderc)→wgpu fullscreen pass into a viewer; std uniforms | a GLSL shader renders live |
-| **P6 — Analysis → shader** | RMS on master output → `Transport.level` bridge → shader uniform (hardcoded wire) | **Proof B:** shader reacts to audio |
-| **P7 — Node editor** | ~2K LOC custom editor on `Renderer2D`: nodes, bezier wires, drag-to-connect; wiring drives the shader | the visuals graph is editable |
-| **P8 — The bridge** | Right-click an audio characteristic → data-source node → wire to a shader uniform → VST output drives the shader | **the audio→visual bridge, end to end** |
+| **P1b — MIDI clips** ✅ | Minimal `MidiClip` + transport-locked `ClipScheduler` (fmod playhead, sample-offset note-on, deferred note-off) | a MIDI clip plays through the synth |
+| **P2 — Session model + launch** ✅ | Session = instrument + N clips; bar-quantized launch (atomic queue, audio-thread swap, note flush) | keys/clicks launch clips → audio changes |
+| **P3 — `Renderer2D`** ✅ | Extracted `Renderer2D` + `stb_truetype` + JetBrainsMono; text/rects/lines; GLFW input | a HUD renders; clicks reported |
+| **P4 — Session grid UI** ✅ | Session View on `Renderer2D` (transport, track, clip cells, hover/active/queued); click → launch | **Proof A:** click a clip → hear it |
+| **P5 — Shader operator** ✅ | GLSL fragment compiled **natively by wgpu-native** (`WGPUShaderSourceGLSL`, no glslang) into a viewport pass | a GLSL shader renders live |
+| **P6 — Analysis → shader** ✅ | RMS on master output → `Transport.level` → shader `u_reactive` | **Proof B:** shader reacts to audio |
+| **P7 — Node editor** ✅ | ~250-LOC custom editor on `Renderer2D`: nodes, bezier wires, drag-to-connect; the wire gates reactivity | the visuals graph is editable |
+| **P8 — The bridge** ✅ | Click a track characteristic (level / transient) → spawn a data node → wire to the shader | **the audio→visual bridge, end to end** |
 
-**PoC is declared proven at P8.** P9 (JSON persistence, threading hardening, optional VST3 plugin-GUI
-window) is post-PoC / optional.
+## Outcome
+
+**PoC proven at P8** and verified interactively on hardware. Notable as-built findings:
+
+- **GLSL needs no toolchain** — wgpu-native ingests GLSL natively (`WGPUShaderSourceGLSL`), so the
+  GLSL-authoring decision cost zero extra deps (no glslang/shaderc). The plan's `glslang` assumption
+  was unnecessary.
+- **The node editor was a ~250-LOC build**, not the feared extraction — building on `Renderer2D`
+  rather than adapting Classic's 17K-LOC `NodeGraphUI` was the right call.
+- **`Renderer2D` and `GpuContext` extracted almost verbatim**; only `vst3_host_common.h` needed real
+  surgery (and even that only swapped two Vivid-internal includes).
+- The "borrow subsystems, not mental models" approach (Classic Lesson 10 / ADR-0009) held: we reused
+  the hard parts (audio engine, VST3 host, WebGPU, 2D renderer, font atlas) and left the runtime.
+
+P9 (JSON persistence, threading hardening, VST3 plugin-GUI windows) and deepening the bridge are
+post-PoC; see the next-sprint plan.
 
 ## Classic subsystems borrowed (by phase)
 
