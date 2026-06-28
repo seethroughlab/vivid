@@ -27,7 +27,7 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 
 // A right-click context menu of a track's audio characteristics (the bridge).
-struct CtxMenu { bool open = false; float x = 0, y = 0; };
+struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
 
 struct AudioState {
     Transport* transport = nullptr;
@@ -123,6 +123,8 @@ inline void track_accent(int t, float& r, float& g, float& b) {
 struct CharItem { const char* label; int id; };
 constexpr CharItem kChars[] = { { "Level (RMS)", 0 }, { "Transient", 1 } };
 constexpr int kNumChars = 2;
+// Characteristic id encoding: master uses kind (0/1); track t uses 100 + t*2 + kind.
+inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 2 + kind; }
 
 // Viewer pane (right) where the visuals shader op renders.
 constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 300.f;
@@ -199,11 +201,12 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     }
     // mixer
     const float my0 = mixer_y(scenes);
-    ui.draw_text(kSceneColX, my0, "MIX", 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    ui.draw_text(kSceneColX, my0, "MIX  \xC2\xB7  click a meter \xE2\x86\x92 viz", 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
         const float lvl = std::min(1.0f, vivid_poc::session_track_level(s, t) * 4.0f);
-        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, 0.07f, 0.08f, 0.10f, 1.0f);
+        const bool mh = hit(mr, mx, my);  // meter is clickable -> spawn this track's characteristic
+        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, mh ? 0.12f : 0.07f, mh ? 0.14f : 0.08f, mh ? 0.18f : 0.10f, 1.0f);
         ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);
         const float g = vivid_poc::session_track_gain(s, t);
         ui.draw_rect(gr.x, gr.y, gr.w, gr.h, 0.10f, 0.11f, 0.13f, 1.0f);
@@ -213,7 +216,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     // master meter — the bridge entry point
     const Rect mm = master_meter_rect(scenes);
     const float ml = st.transport ? std::min(1.0f, st.transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
-    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, 0.07f, 0.08f, 0.10f, 1.0f);
+    const bool mmh = hit(mm, mx, my);
+    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, mmh ? 0.12f : 0.07f, mmh ? 0.14f : 0.08f, mmh ? 0.18f : 0.10f, 1.0f);
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, 0.31f, 0.80f, 0.75f, 1.0f);
     ui.draw_text(kSceneColX, mm.y + mm.h + 6.f, "MASTER", 0.55f, 0.78f, 0.85f, 1.0f, 0.8f);
     ui.draw_text(kSceneColX, mm.y + mm.h + 22.f, "click \xE2\x86\x92 visuals", 0.45f, 0.62f, 0.66f, 1.0f, 0.78f);
@@ -251,6 +255,13 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
     }
 }
 
+// Which meter is under (mx,my): -1 = master, >=0 = track index, -2 = none.
+int meter_hit(int tracks, int scenes, double mx, double my) {
+    if (hit(master_meter_rect(scenes), mx, my)) return -1;
+    for (int t = 0; t < tracks; ++t) if (hit(track_meter_rect(t, scenes), mx, my)) return t;
+    return -2;
+}
+
 void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
     if (!st) return;
@@ -258,10 +269,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     const int tracks = st->session ? vivid_poc::session_track_count(st->session) : 0;
     const int scenes = st->session ? vivid_poc::session_scene_count(st->session) : 0;
 
-    // Right-click the MASTER meter -> open the characteristic menu (the bridge).
+    // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-        if (st->session && hit(master_meter_rect(scenes), mx, my))
-            st->menu = { true, static_cast<float>(mx), static_cast<float>(my) };
+        const int src = st->session ? meter_hit(tracks, scenes, mx, my) : -2;
+        if (src != -2) st->menu = { true, static_cast<float>(mx), static_cast<float>(my), src };
         else st->menu.open = false;
         return;
     }
@@ -275,9 +286,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         for (int j = 0; j < kNumChars; ++j) {
             const Rect r = { st->menu.x, st->menu.y + j * 26.f, 184.f, 26.f };
             if (hit(r, mx, my) && st->graph) {
-                std::string title = std::string("Master  ") + kChars[j].label;
-                st->graph->add_data_node(title, kChars[j].id);
-                std::fprintf(stderr, "[vivid] bridge: spawned '%s' node\n", kChars[j].label);
+                const int src = st->menu.src;
+                const char* sname = src < 0 ? "Master" : vivid_poc::session_track_name(st->session, src);
+                std::string title = std::string(sname) + "  " + kChars[j].label;
+                st->graph->add_data_node(title, char_id_for(src, kChars[j].id));
+                std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[j].label);
                 break;
             }
         }
@@ -286,10 +299,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
     if (!st->session) return;
 
-    // MASTER meter -> open the characteristic menu (left-click; right-click also works).
-    if (hit(master_meter_rect(scenes), mx, my)) {
-        st->menu = { true, static_cast<float>(mx), static_cast<float>(my) };
-        return;
+    // A meter (master or per-track) -> open its characteristic menu (left-click).
+    {
+        const int src = meter_hit(tracks, scenes, mx, my);
+        if (src != -2) { st->menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return; }
     }
     // Click a track header -> open that track's plugin editor (change presets there).
     for (int t = 0; t < tracks; ++t) {
@@ -376,6 +389,7 @@ int main() {
 
     float react = 0.f;   // smoothed master level
     float trHold = 0.f;  // peak-held transient (so onsets are visible at frame rate)
+    float trkReact[8] = {0}, trkTrHold[8] = {0};  // per-track smoothed level / held transient
 
     // Event polling is split from rendering and driven by a CFRunLoopTimer (see
     // macos_run_frame_loop): rendering must keep firing while macOS runs a nested
@@ -400,8 +414,16 @@ int main() {
         react += (std::min(1.0f, level * 5.0f) - react) * 0.3f;            // smoothed level
         trHold *= 0.85f;                                                   // decay the held peak
         trHold = std::max(trHold, transport.transient.load(std::memory_order_relaxed));
-        graph.set_value(0, react);                 // characteristic 0: level
-        graph.set_value(1, std::min(1.0f, trHold)); // characteristic 1: transient
+        graph.set_value(0, react);                 // master level
+        graph.set_value(1, std::min(1.0f, trHold)); // master transient
+        for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session) && t < 8; ++t) {
+            const float lv = vivid_poc::session_track_level(audio_state.session, t);
+            trkReact[t] += (std::min(1.0f, lv * 5.0f) - trkReact[t]) * 0.3f;
+            trkTrHold[t] *= 0.85f;
+            trkTrHold[t] = std::max(trkTrHold[t], vivid_poc::session_track_transient(audio_state.session, t));
+            graph.set_value(char_id_for(t, 0), trkReact[t]);
+            graph.set_value(char_id_for(t, 1), std::min(1.0f, trkTrHold[t]));
+        }
         float uniforms[vivid::kNumShaderUniforms];
         graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)
 
@@ -420,7 +442,9 @@ int main() {
                           static_cast<float>(glfwGetTime()), uniforms);
             draw_ui(ui, audio_state, beats, mx, my);
             graph.draw(ui);
-            draw_menu(ui, audio_state.menu, "Master");
+            draw_menu(ui, audio_state.menu,
+                      audio_state.menu.src < 0 ? "Master"
+                      : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }

@@ -31,6 +31,8 @@ struct Track {
     std::atomic<int>      queued{-1};
     std::atomic<float>    gain{0.8f};
     std::atomic<float>    level{0.f};
+    std::atomic<float>    transient{0.f};
+    float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     uint64_t              steady = 0;
@@ -161,6 +163,9 @@ void session_set_track_gain(Session* s, int t, float g) {
 float session_track_level(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->level.load(std::memory_order_relaxed) : 0.f;
 }
+float session_track_transient(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->transient.load(std::memory_order_relaxed) : 0.f;
+}
 void* session_track_controller(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
 }
@@ -244,7 +249,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             out[2 * i] += l; out[2 * i + 1] += r;
             sum_sq += static_cast<double>(l) * l;
         }
-        t.level.store(static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1))), std::memory_order_relaxed);
+        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+        t.level.store(rms, std::memory_order_relaxed);
+        const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
+        t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
+        t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
     }
     return any;
 }
