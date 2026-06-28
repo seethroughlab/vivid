@@ -25,6 +25,11 @@
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
 #include "gpu/texture_source.h"
+#include "gpu/video_player.h"
+#include <dirent.h>
+#include <vector>
+#include <string>
+#include <algorithm>
 #include "miniaudio.h"
 
 namespace {
@@ -215,6 +220,22 @@ void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
 // Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
 static int g_visual_source = 0;
 
+// Video source: a folder of clips, cycled with N. (UI/main thread only.)
+static VideoPlayer*             g_video = nullptr;
+static std::vector<std::string> g_video_paths;
+static int                      g_video_idx = -1;
+static void load_video_at(int i) {
+    if (g_video_paths.empty()) return;
+    const int n = static_cast<int>(g_video_paths.size());
+    g_video_idx = ((i % n) + n) % n;
+    if (g_video) { video_close(g_video); g_video = nullptr; }
+    g_video = video_open(g_video_paths[g_video_idx].c_str());
+    if (g_video) {
+        video_play(g_video, g_visual_source == 1);
+        std::fprintf(stderr, "[vivid] video [%d/%d]: %s\n", g_video_idx + 1, n, g_video_paths[g_video_idx].c_str());
+    }
+}
+
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
     ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
@@ -306,8 +327,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     // Visuals pane label (clipped to the right pane)
     const Rect vp = viewer_rect();
     ui.push_clip_rect(g_split_x, 40.f, static_cast<float>(g_win_w) - g_split_x, static_cast<float>(g_win_h) - 40.f);
-    ui.draw_text(vp.x, 80.f, g_visual_source ? "VISUALS — texture source  ·  V: plasma"
-                                             : "VISUALS — plasma shader  ·  V: texture",
+    ui.draw_text(vp.x, 80.f, g_visual_source ? "VISUALS — video source  ·  V: plasma  ·  N: next clip"
+                                             : "VISUALS — plasma shader  ·  V: video",
                  0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
     ui.pop_clip_rect();
     // DAW | visuals splitter (on top, unclipped)
@@ -355,9 +376,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     }
     if (key == GLFW_KEY_V) {  // toggle the visuals generator source
         g_visual_source ^= 1;
-        std::fprintf(stderr, "[vivid] visual source: %s\n", g_visual_source ? "texture" : "plasma");
+        if (g_video) video_play(g_video, g_visual_source == 1);
+        std::fprintf(stderr, "[vivid] visual source: %s\n", g_visual_source ? "texture/video" : "plasma");
         return;
     }
+    if (key == GLFW_KEY_N) { load_video_at(g_video_idx + 1); return; }  // next clip
     if (!st->session) return;
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         int idx = key - GLFW_KEY_1;
@@ -535,6 +558,22 @@ int main() {
     srcTex.init(gpu.device(), 512, 288, gpu.surface_format());
     { auto pat = vivid::gen_test_pattern(512, 288); srcTex.upload(gpu.queue(), pat.data()); }
 
+    // Scan the video folder and open the first clip (N cycles, V shows it).
+    {
+        const char* dir = "/Users/jeff/Movies/Gero Individual Reel Files";
+        if (DIR* d = opendir(dir)) {
+            while (dirent* e = readdir(d)) {
+                std::string n = e->d_name;
+                if (n.size() > 4 && n.compare(n.size() - 4, 4, ".mp4") == 0)
+                    g_video_paths.push_back(std::string(dir) + "/" + n);
+            }
+            closedir(d);
+            std::sort(g_video_paths.begin(), g_video_paths.end());
+        }
+        if (!g_video_paths.empty()) load_video_at(0);
+        std::fprintf(stderr, "[vivid] %zu video clips found\n", g_video_paths.size());
+    }
+
     vivid::ui::NodeGraph graph;
     vivid::ui::ClipEditor clip_editor;
 
@@ -645,6 +684,17 @@ int main() {
         if (gpu.begin_frame(frame)) {
             const float tsec = static_cast<float>(glfwGetTime());
             const float rtw = static_cast<float>(kRtW), rth = static_cast<float>(kRtH);
+            // pull the latest video frame into the source texture (if showing video)
+            if (g_visual_source == 1 && g_video) {
+                const uint8_t* px = nullptr; uint32_t vw = 0, vh = 0;
+                if (video_next_frame(g_video, &px, &vw, &vh) && px) {
+                    if (vw != srcTex.w || vh != srcTex.h) {
+                        srcTex.release();
+                        srcTex.init(gpu.device(), vw, vh, gpu.surface_format());
+                    }
+                    srcTex.upload(gpu.queue(), px);
+                }
+            }
             // 1) generator -> genRT: plasma shader (ports 0..3) or the texture source
             if (g_visual_source == 1) {
                 const WGPUTextureView srcIn[1] = { srcTex.view };
@@ -687,6 +737,7 @@ int main() {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
+    if (g_video) { video_close(g_video); g_video = nullptr; }
     feedbackOp.shutdown(); blurOp.shutdown(); blitOp.shutdown();
     srcTex.release();
     genRT.release(); fb[0].release(); fb[1].release();

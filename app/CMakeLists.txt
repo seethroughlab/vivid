@@ -74,6 +74,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/main.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
+    src/gpu/video_player.mm
     src/gpu/shader_op.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
@@ -98,7 +99,8 @@ if(APPLE)
     target_link_libraries(vivid_poc PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework QuartzCore"
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
-        "-framework CoreFoundation")
+        "-framework CoreFoundation"
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.
