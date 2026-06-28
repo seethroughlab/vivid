@@ -292,9 +292,10 @@ void NodeGraph::draw(Renderer2D& r) {
     // grid background (scrolls with the canvas as you pan)
     const float gs = 38.f;
     const float gx0 = bx0_ - 6.f, gy0 = by0_ - 6.f, gx1 = bx1_ + 6.f, gy1 = by1_ + 6.f;
-    for (float gx = gx0 - std::fmod(std::fmod(grid_off_x_, gs) + gs, gs); gx < gx1; gx += gs)
+    // start offset ADDS the accumulated pan so the grid scrolls WITH the nodes
+    for (float gx = gx0 + std::fmod(std::fmod(grid_off_x_, gs) + gs, gs) - gs; gx < gx1; gx += gs)
         r.draw_rect(gx, gy0, 1.f, gy1 - gy0, 0.105f, 0.115f, 0.14f, 1.0f);
-    for (float gy = gy0 - std::fmod(std::fmod(grid_off_y_, gs) + gs, gs); gy < gy1; gy += gs)
+    for (float gy = gy0 + std::fmod(std::fmod(grid_off_y_, gs) + gs, gs) - gs; gy < gy1; gy += gs)
         r.draw_rect(gx0, gy, gx1 - gx0, 1.f, 0.105f, 0.115f, 0.14f, 1.0f);
     r.draw_text(bx0_, by0_ - 16.f,
                 "NETWORK — wire op outputs (right) into inputs (left), ending in Output. Drag a data port onto an op param.",
