@@ -82,37 +82,52 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     wgpuRenderPassEncoderRelease(pass);
 }
 
-// A tiny status HUD on Renderer2D: instrument name, clip launch buttons (active
-// highlighted, queued marked), beat dots. Proves text + shapes draw on the GPU.
-void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats) {
-    ui.draw_rect(32, 32, 430, 168, 0.10f, 0.11f, 0.13f, 0.92f);
-    ui.draw_text(48, 42, "VIVID — C++ PoC", 0.92f, 0.94f, 0.97f, 1.0f, 1.2f);
+struct Rect { float x, y, w, h; };
+inline bool hit(const Rect& r, double mx, double my) {
+    return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
+}
+// Session grid layout: one track column, one clip cell per scene row.
+inline Rect clip_cell_rect(int i) {
+    const float gx = 48.f, gy = 120.f, cw = 220.f, ch = 52.f, gap = 8.f;
+    return { gx, gy + i * (ch + gap), cw, ch };
+}
 
-    const char* name = st.session ? vivid_poc::session_name(st.session) : "no instrument";
-    char line[160];
-    std::snprintf(line, sizeof line, "instrument: %s", name);
-    ui.draw_text(48, 74, line, 0.62f, 0.66f, 0.72f, 1.0f);
+// The Session view on Renderer2D: transport bar, a track column, and clickable
+// clip cells (active = blue + play glyph, queued = amber stripe, hover = lighter).
+void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
+    ui.draw_rect(0, 0, 1280, 40, 0.07f, 0.08f, 0.10f, 1.0f);
+    ui.draw_text(20, 12, "VIVID — Session", 0.90f, 0.93f, 0.97f, 1.0f, 1.15f);
+    const double bpm = st.transport ? st.transport->bpm.load(std::memory_order_relaxed) : 120.0;
+    char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
+    ui.draw_text(190, 13, tb, 0.6f, 0.64f, 0.7f, 1.0f, 0.95f);
+    int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
+    for (int i = 0; i < 4; ++i) {
+        const bool ob = (i == beat);
+        ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? 0.95f : 0.22f, ob ? 0.7f : 0.24f, ob ? 0.2f : 0.27f, 1.0f);
+    }
+
+    const char* name = st.session ? vivid_poc::session_name(st.session) : "—";
+    ui.draw_text(48, 80, "TRACK", 0.45f, 0.48f, 0.53f, 1.0f, 0.85f);
+    ui.draw_rect(48, 94, 220, 24, 0.13f, 0.14f, 0.17f, 1.0f);
+    ui.draw_text(58, 98, name, 0.85f, 0.88f, 0.92f, 1.0f);
 
     const int active = st.session ? vivid_poc::session_active_clip(st.session) : -1;
     const int queued = st.session ? vivid_poc::session_queued_clip(st.session) : -1;
     const int clips  = st.session ? vivid_poc::session_clip_count(st.session) : 0;
     for (int i = 0; i < clips; ++i) {
-        const float x = 48 + i * 58.0f, y = 102;
-        const bool on = (i == active);
-        ui.draw_rect(x, y, 50, 38, on ? 0.18f : 0.14f, on ? 0.30f : 0.15f, on ? 0.44f : 0.17f, 1.0f);
-        if (i == queued) ui.draw_rect(x, y, 50, 3, 0.95f, 0.75f, 0.20f, 1.0f);  // queued marker
-        char n[8]; std::snprintf(n, sizeof n, "%d", i + 1);
-        ui.draw_text(x + 20, y + 11, n, on ? 0.95f : 0.6f, on ? 0.97f : 0.64f, 1.0f, 1.0f);
+        const Rect r = clip_cell_rect(i);
+        const bool on = (i == active), q = (i == queued);
+        const float br = hit(r, mx, my) ? 0.06f : 0.0f;  // hover lighten
+        if (on) ui.draw_rect(r.x, r.y, r.w, r.h, 0.17f + br, 0.28f + br, 0.40f + br, 1.0f);
+        else    ui.draw_rect(r.x, r.y, r.w, r.h, 0.13f + br, 0.14f + br, 0.16f + br, 1.0f);
+        if (on) ui.draw_rect(r.x, r.y, 3, r.h, 0.40f, 0.70f, 1.0f, 1.0f);        // active accent
+        if (q)  ui.draw_rect(r.x, r.y, r.w, 3, 0.95f, 0.75f, 0.20f, 1.0f);       // queued stripe
+        if (on) ui.draw_tri(r.x + 16, r.y + 18, r.x + 16, r.y + 34, r.x + 30, r.y + 26, 0.5f, 0.85f, 0.5f, 1.0f);
+        char cn[24]; std::snprintf(cn, sizeof cn, "Clip %d", i + 1);
+        ui.draw_text(r.x + 40, r.y + 18, cn, on ? 0.92f : 0.66f, on ? 0.95f : 0.70f, 1.0f, 1.0f);
     }
-    ui.draw_text(48, 162, "press 1/2/3 to launch a clip", 0.5f, 0.53f, 0.58f, 1.0f, 0.95f);
-
-    // beat dots
-    int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
-    for (int i = 0; i < 4; ++i) {
-        const bool ob = (i == beat);
-        ui.draw_rect(348 + i * 24.0f, 44, 16, 16,
-                     ob ? 0.95f : 0.22f, ob ? 0.70f : 0.24f, ob ? 0.20f : 0.27f, 1.0f);
-    }
+    const float fy = (clips > 0) ? clip_cell_rect(clips - 1).y + 64.f : 130.f;
+    ui.draw_text(48, fy, "click a clip to launch  ·  or press 1/2/3", 0.45f, 0.48f, 0.53f, 1.0f, 0.9f);
 }
 
 // Number keys 1..N launch clip 0..N-1 (applied on the next bar).
@@ -125,6 +140,22 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
         if (idx < vivid_poc::session_clip_count(st->session)) {
             vivid_poc::session_launch(st->session, idx);
             std::fprintf(stderr, "[vivid] launch clip %d (queued for next bar)\n", idx + 1);
+        }
+    }
+}
+
+// Left-click a clip cell to launch it (Proof A).
+void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
+    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS) return;
+    auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
+    if (!st || !st->session) return;
+    double mx, my; glfwGetCursorPos(w, &mx, &my);
+    const int clips = vivid_poc::session_clip_count(st->session);
+    for (int i = 0; i < clips; ++i) {
+        if (hit(clip_cell_rect(i), mx, my)) {
+            vivid_poc::session_launch(st->session, i);
+            std::fprintf(stderr, "[vivid] launch clip %d (click)\n", i + 1);
+            break;
         }
     }
 }
@@ -171,6 +202,7 @@ int main() {
     }
     glfwSetWindowUserPointer(window, &audio_state);
     glfwSetKeyCallback(window, key_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
@@ -183,10 +215,12 @@ int main() {
         const float pulse = 0.10f + 0.10f * static_cast<float>(0.5 + 0.5 * std::cos(beats * 2.0 * kPi));
         const float b = pulse + level * 2.0f;
 
+        double mx, my; glfwGetCursorPos(window, &mx, &my);  // for hover
+
         vivid::FrameState frame;
         if (gpu.begin_frame(frame)) {
             clear_pass(frame.encoder, frame.view, 0.04f, pulse, b);
-            draw_ui(ui, audio_state, beats);
+            draw_ui(ui, audio_state, beats, mx, my);
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }
