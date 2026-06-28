@@ -5,12 +5,26 @@
 
 namespace vivid::ui {
 
+// char_id (master=0/1, track t = 100+t*2+kind) -> canonical source id string.
+static std::string source_id_for(int char_id) {
+    if (char_id < 100) return char_id == 0 ? "master.level" : "master.transient";
+    const int t = (char_id - 100) / 2, kind = (char_id - 100) % 2;
+    return "track_" + std::to_string(t) + (kind == 0 ? ".level" : ".transient");
+}
+static std::string port_dest(int p) { return std::string("uniform.") + kShaderUniformNames[p]; }
+
 NodeGraph::NodeGraph() {
     sx_ = 900.f; sy_ = 488.f; sw_ = 172.f; sh_ = 44.f + kNumShaderUniforms * 24.f;
-    for (int i = 0; i < kNumShaderUniforms; ++i) connected_[i] = -1;
     // Start with the master output level wired to "glow" (out-of-box reactivity).
     data_.push_back({ 560.f, 488.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
-    connected_[3] = 0;  // glow <- level
+    reg_.connect("master.level", port_dest(3));  // glow <- level
+}
+
+// First data node whose characteristic matches `src` (for drawing its wire).
+int NodeGraph::find_source_node(const std::string& src) const {
+    for (int i = 0; i < int(data_.size()); ++i)
+        if (source_id_for(data_[i].char_id) == src) return i;
+    return -1;
 }
 
 void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
@@ -28,11 +42,11 @@ void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
 }
 
 void NodeGraph::set_value(int char_id, float v) {
-    for (auto& n : data_) if (n.char_id == char_id) n.value = v;
+    for (auto& n : data_) if (n.char_id == char_id) n.value = v;  // node bar display
+    reg_.set_source(source_id_for(char_id), v);                   // mapping source
 }
 void NodeGraph::fill_uniforms(float* out) const {
-    for (int i = 0; i < kNumShaderUniforms; ++i)
-        out[i] = (connected_[i] >= 0 && connected_[i] < int(data_.size())) ? data_[connected_[i]].value : 0.f;
+    for (int i = 0; i < kNumShaderUniforms; ++i) out[i] = reg_.dest_value(port_dest(i));
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) {
     float y = by0_ + 22.f + data_.size() * 84.f;
@@ -46,14 +60,10 @@ void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& t
 }
 void NodeGraph::reset_nodes() {
     data_.clear();
-    for (int i = 0; i < kNumShaderUniforms; ++i) connected_[i] = -1;
+    reg_.clear_mappings();
 }
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
-}
-void NodeGraph::set_connected(int port, int idx) {
-    if (port >= 0 && port < kNumShaderUniforms && idx >= -1 && idx < static_cast<int>(data_.size()))
-        connected_[port] = idx;
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
@@ -111,10 +121,13 @@ void NodeGraph::draw(Renderer2D& r) {
                 "NETWORK — visuals chain on the right; drag a data port onto an op param. Click the generator to switch Plasma/Video.",
                 0.45f, 0.48f, 0.53f, 1.0f, 0.86f);
 
-    // Wires first (under the nodes)
+    // Wires first (under the nodes): each mapped uniform -> its source data node.
     for (int i = 0; i < kNumShaderUniforms; ++i) {
-        if (connected_[i] < 0 || connected_[i] >= int(data_.size())) continue;
-        float ox, oy, ix, iy; data_out(data_[connected_[i]], ox, oy); shader_in(i, ix, iy);
+        const std::string* src = reg_.source_of(port_dest(i));
+        if (!src) continue;
+        const int ni = find_source_node(*src);
+        if (ni < 0) continue;
+        float ox, oy, ix, iy; data_out(data_[ni], ox, oy); shader_in(i, ix, iy);
         draw_wire(r, ox, oy, ix, iy, 0.45f, 0.78f, 0.85f);
     }
     if (wire_from_ >= 0 && wire_from_ < int(data_.size())) {
@@ -142,7 +155,7 @@ void NodeGraph::draw(Renderer2D& r) {
     // param ports on their owning op-nodes
     for (int i = 0; i < kNumShaderUniforms; ++i) {
         float px, py; shader_in(i, px, py);
-        const bool on = connected_[i] >= 0;
+        const bool on = reg_.source_of(port_dest(i)) != nullptr;
         r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f,
                     on ? 0.45f : 0.30f, on ? 0.78f : 0.33f, on ? 0.85f : 0.38f, 1.0f);
         r.draw_text(px + 14.f, py - 7.f, kShaderUniformNames[i],
@@ -167,7 +180,7 @@ bool NodeGraph::on_down(double x, double y) {
     cx_ = x; cy_ = y;
     // Click a shader input port -> disconnect it.
     int port = nearest_shader_in(x, y, 14.0);
-    if (port >= 0) { connected_[port] = -1; return true; }
+    if (port >= 0) { reg_.disconnect(port_dest(port)); return true; }
     // Drag from a data node's output port -> start a wire.
     for (int i = 0; i < int(data_.size()); ++i) {
         float px, py; data_out(data_[i], px, py);
@@ -197,9 +210,9 @@ void NodeGraph::on_move(double x, double y) {
 }
 
 void NodeGraph::on_up(double x, double y) {
-    if (drag_mode_ == 3 && wire_from_ >= 0) {
+    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size())) {
         int port = nearest_shader_in(x, y, 18.0);
-        if (port >= 0) connected_[port] = wire_from_;
+        if (port >= 0) reg_.connect(source_id_for(data_[wire_from_].char_id), port_dest(port));
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
 }

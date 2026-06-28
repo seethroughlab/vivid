@@ -64,9 +64,10 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
         nodes.push_back({ {"char_id", cid}, {"title", title}, {"x", x}, {"y", y} });
     }
     jg["nodes"] = nodes;
-    json wires = json::array();
-    for (int p = 0; p < kNumShaderUniforms; ++p) wires.push_back(g.get_connected(p));
-    jg["wires"] = wires;
+    json maps = json::array();
+    for (const auto& m : g.mappings())
+        maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount} });
+    jg["mappings"] = maps;
     j["graph"] = jg;
 
     std::ofstream f(path);
@@ -127,11 +128,9 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
                                jn.value("x", 560.f), jn.value("y", 488.f));
         if (jg.contains("shader") && jg["shader"].size() >= 2)
             g.set_shader(jg["shader"][0].get<float>(), jg["shader"][1].get<float>());
-        if (jg.contains("wires")) {
-            const json& w = jg["wires"];
-            for (int p = 0; p < static_cast<int>(w.size()) && p < kNumShaderUniforms; ++p)
-                g.set_connected(p, w[p].get<int>());
-        }
+        if (jg.contains("mappings"))
+            for (const auto& jm : jg["mappings"])
+                g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()), jm.value("amt", 1.0f));
     }
     return true;
 }
