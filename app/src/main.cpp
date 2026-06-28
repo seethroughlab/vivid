@@ -128,18 +128,23 @@ constexpr int kNumChars = 2;
 constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 300.f;
 
 // The visual: a GLSL fragment shader, compiled natively by wgpu-native (no glslang).
+// Named uniforms (P11): warp = domain distortion, hue = colour rotation,
+// density = pattern frequency, glow = brightness. Each is a wireable input port.
 static const char* kFragGLSL = R"(#version 450
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 o_color;
-layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_reactive; };
+layout(set = 0, binding = 0) uniform U {
+    vec2 u_res; float u_time; float u_warp; float u_hue; float u_density; float u_glow; };
 void main() {
     vec2 uv = v_uv;
     float t = u_time;
-    float v = sin(uv.x * 9.0 + t) + sin(uv.y * 9.0 + t * 1.3)
-            + sin((uv.x + uv.y) * 6.0 + t * 0.7)
-            + sin(length(uv - 0.5) * 16.0 - t * 2.0);
-    vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + v + u_reactive * 4.0);
-    o_color = vec4(col * (0.65 + u_reactive), 1.0);
+    float dens = 6.0 + u_density * 18.0;
+    vec2 w = uv + u_warp * 0.3 * vec2(sin(uv.y * 8.0 + t), cos(uv.x * 8.0 + t));
+    float v = sin(w.x * dens + t) + sin(w.y * dens + t * 1.3)
+            + sin((w.x + w.y) * dens * 0.6 + t * 0.7)
+            + sin(length(w - 0.5) * dens * 1.8 - t * 2.0);
+    vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + v + u_hue * 6.2832);
+    o_color = vec4(col * (0.6 + u_glow), 1.0);
 }
 )";
 
@@ -397,7 +402,8 @@ int main() {
         trHold = std::max(trHold, transport.transient.load(std::memory_order_relaxed));
         graph.set_value(0, react);                 // characteristic 0: level
         graph.set_value(1, std::min(1.0f, trHold)); // characteristic 1: transient
-        const float reactive = graph.shader_reactive();  // wired node's value (0 if unwired)
+        float uniforms[vivid::kNumShaderUniforms];
+        graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         graph.on_move(mx, my);  // continue any node/wire drag
@@ -411,7 +417,7 @@ int main() {
         if (gpu.begin_frame(frame)) {
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark
             shader.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH,
-                          static_cast<float>(glfwGetTime()), reactive);
+                          static_cast<float>(glfwGetTime()), uniforms);
             draw_ui(ui, audio_state, beats, mx, my);
             graph.draw(ui);
             draw_menu(ui, audio_state.menu, "Master");

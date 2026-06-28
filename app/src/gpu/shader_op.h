@@ -1,6 +1,7 @@
 #pragma once
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>   // native extensions: WGPUShaderSourceGLSL
+#include "gpu/shader_uniforms.h"
 
 namespace vivid {
 
@@ -11,7 +12,8 @@ namespace vivid {
 // The fragment must declare:
 //   layout(location=0) in  vec2 v_uv;
 //   layout(location=0) out vec4 o_color;
-//   layout(set=0, binding=0) uniform U { vec2 u_res; float u_time; float u_reactive; };
+//   layout(set=0, binding=0) uniform U {
+//       vec2 u_res; float u_time; float u_warp; float u_hue; float u_density; float u_glow; };
 class ShaderOp {
 public:
     bool init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target_format,
@@ -19,10 +21,11 @@ public:
     void shutdown();
     bool ok() const { return pipeline_ != nullptr; }
 
-    // Render the pass into (vx,vy,vw,vh) of `view` (LoadOp_Load), driving the
-    // u_time / u_reactive uniforms. u_res is set to the viewport size.
+    // Render the pass into (vx,vy,vw,vh) of `view` (LoadOp_Load). `uniforms` holds
+    // kNumShaderUniforms floats (the named u_* inputs); u_res = viewport size.
     void render(WGPUCommandEncoder encoder, WGPUTextureView view,
-                float vx, float vy, float vw, float vh, float time, float reactive);
+                float vx, float vy, float vw, float vh, float time,
+                const float* uniforms);
 
 private:
     WGPUDevice          device_   = nullptr;

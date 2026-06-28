@@ -5,7 +5,8 @@
 
 namespace vivid {
 
-struct Uniforms { float res[2]; float time; float reactive; };  // 16 bytes
+// std140: res@0, time@8, then kNumShaderUniforms floats @12.. ; padded to 16.
+struct Uniforms { float res[2]; float time; float u[kNumShaderUniforms]; float _pad; };
 
 // Fullscreen triangle — no vertex buffers; emits a vec2 uv in [0,1].
 static const char* kVertGLSL = R"(#version 450
@@ -100,9 +101,12 @@ bool ShaderOp::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target
 }
 
 void ShaderOp::render(WGPUCommandEncoder encoder, WGPUTextureView view,
-                      float vx, float vy, float vw, float vh, float time, float reactive) {
+                      float vx, float vy, float vw, float vh, float time,
+                      const float* uniforms) {
     if (!pipeline_) return;
-    Uniforms u{ { vw, vh }, time, reactive };
+    Uniforms u{};
+    u.res[0] = vw; u.res[1] = vh; u.time = time;
+    for (int i = 0; i < kNumShaderUniforms; ++i) u.u[i] = uniforms ? uniforms[i] : 0.f;
     wgpuQueueWriteBuffer(queue_, ubo_, 0, &u, sizeof u);
 
     WGPURenderPassColorAttachment att{};
