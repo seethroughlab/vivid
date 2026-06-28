@@ -117,6 +117,9 @@ inline float mixer_y(int scenes) { return kGridTopY + scenes * (kRowH + kRowGap)
 inline Rect track_meter_rect(int t, int scenes) { return { track_x(t) + 8.f, mixer_y(scenes) + 16.f, kTrackW - 16.f, 8.f }; }
 inline Rect track_gain_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 30.f, kTrackW - 16.f, 12.f }; }
 inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 16.f, kSceneColW, 26.f }; }
+// Explicit "send this source to the visuals graph" buttons (the bridge entry point).
+inline Rect track_viz_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 48.f, kTrackW - 16.f, 18.f }; }
+inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 18.f }; }
 inline void track_accent(int t, float& r, float& g, float& b) {
     static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
     r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
@@ -239,27 +242,36 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     }
     // mixer
     const float my0 = mixer_y(scenes);
-    ui.draw_text(kSceneColX, my0, "MIX  \xC2\xB7  click a meter \xE2\x86\x92 viz", 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    ui.draw_text(kSceneColX, my0, "MIX", 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    // A teal "+ VIZ" button = send this source into the visuals graph as a node.
+    auto viz_button = [&](const Rect& b, bool small) {
+        const bool h = hit(b, mx, my);
+        ui.draw_rounded_rect(b.x, b.y, b.w, b.h, 4.f, h ? 0.16f : 0.11f, h ? 0.26f : 0.18f, h ? 0.27f : 0.20f, 1.0f);
+        ui.draw_rect(b.x, b.y, 3.f, b.h, 0.31f, 0.80f, 0.75f, 1.0f);
+        ui.draw_text(b.x + (small ? 8.f : 10.f), b.y + 4.f, small ? "+VIZ" : "+ VIZ",
+                     0.55f, 0.85f, 0.82f, 1.0f, 0.82f);
+    };
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
         const float lvl = std::min(1.0f, vivid_poc::session_track_level(s, t) * 4.0f);
-        const bool mh = hit(mr, mx, my);  // meter is clickable -> spawn this track's characteristic
-        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, mh ? 0.12f : 0.07f, mh ? 0.14f : 0.08f, mh ? 0.18f : 0.10f, 1.0f);
+        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, 0.07f, 0.08f, 0.10f, 1.0f);
         ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);
         const float g = vivid_poc::session_track_gain(s, t);
         ui.draw_rect(gr.x, gr.y, gr.w, gr.h, 0.10f, 0.11f, 0.13f, 1.0f);
         ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, 0.32f, 0.46f, 0.66f, 1.0f);
         ui.draw_rect(gr.x + gr.w * g - 2.f, gr.y - 2.f, 4.f, gr.h + 4.f, 0.7f, 0.8f, 0.95f, 1.0f);
+        viz_button(track_viz_rect(t, scenes), false);
     }
-    // master meter — the bridge entry point
+    // master meter + its viz button
     const Rect mm = master_meter_rect(scenes);
     const float ml = st.transport ? std::min(1.0f, st.transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
-    const bool mmh = hit(mm, mx, my);
-    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, mmh ? 0.12f : 0.07f, mmh ? 0.14f : 0.08f, mmh ? 0.18f : 0.10f, 1.0f);
+    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, 0.07f, 0.08f, 0.10f, 1.0f);
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, 0.31f, 0.80f, 0.75f, 1.0f);
-    ui.draw_text(kSceneColX, mm.y + mm.h + 6.f, "MASTER", 0.55f, 0.78f, 0.85f, 1.0f, 0.8f);
-    ui.draw_text(kSceneColX, mm.y + mm.h + 22.f, "click \xE2\x86\x92 visuals", 0.45f, 0.62f, 0.66f, 1.0f, 0.78f);
-    ui.draw_text(kSceneColX, my0 + 78.f, "click a clip \xC2\xB7 A/B/C = launch row \xC2\xB7 click a track name \xE2\x86\x92 plugin editor", 0.42f, 0.45f, 0.5f, 1.0f, 0.85f);
+    ui.draw_text(kSceneColX, mm.y + 8.f, "MASTER", 0.85f, 0.9f, 0.92f, 1.0f, 0.78f);
+    viz_button(master_viz_rect(scenes), true);
+    ui.draw_text(kSceneColX, my0 + 78.f,
+                 "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
+                 0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
 
     ui.draw_text(kViewX, 96, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
 }
@@ -293,10 +305,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) 
     }
 }
 
-// Which meter is under (mx,my): -1 = master, >=0 = track index, -2 = none.
+// Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
+// The +VIZ button (or its meter) is the click target.
 int meter_hit(int tracks, int scenes, double mx, double my) {
-    if (hit(master_meter_rect(scenes), mx, my)) return -1;
-    for (int t = 0; t < tracks; ++t) if (hit(track_meter_rect(t, scenes), mx, my)) return t;
+    if (hit(master_viz_rect(scenes), mx, my) || hit(master_meter_rect(scenes), mx, my)) return -1;
+    for (int t = 0; t < tracks; ++t)
+        if (hit(track_viz_rect(t, scenes), mx, my) || hit(track_meter_rect(t, scenes), mx, my)) return t;
     return -2;
 }
 
