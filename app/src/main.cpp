@@ -19,6 +19,7 @@
 #include "ui/node_graph.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
+#include "platform/macos_frame_timer.h"
 #include "miniaudio.h"
 
 namespace {
@@ -370,8 +371,18 @@ int main() {
 
     float react = 0.f;   // smoothed master level
     float trHold = 0.f;  // peak-held transient (so onsets are visible at frame rate)
-    while (!glfwWindowShouldClose(window)) {
+
+    // Event polling is split from rendering and driven by a CFRunLoopTimer (see
+    // macos_run_frame_loop): rendering must keep firing while macOS runs a nested
+    // tracking run-loop (the one a hosted plugin GUI enters on mouse-down), and a
+    // plain glfwPollEvents busy-loop never services that nested loop — so plugin
+    // editor windows render but ignore clicks. The timer fires in tracking mode too.
+    auto poll_events = [&]() -> bool {
         glfwPollEvents();
+        return !glfwWindowShouldClose(window);
+    };
+    auto tick = [&]() -> bool {
+        if (glfwWindowShouldClose(window)) return false;
 
         // reap plugin editor windows the user closed
         for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session); ++t)
@@ -407,7 +418,9 @@ int main() {
             ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
             gpu.end_frame(frame);
         }
-    }
+        return true;
+    };
+    vivid::macos_run_frame_loop(poll_events, tick);
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
