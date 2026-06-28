@@ -12,6 +12,7 @@ namespace vivid_poc {
 struct Sampler {
     std::vector<float> L, R;       // PCM (R empty => mono)
     double             loop_beats = 4.0;
+    double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
     std::string        name;
 
     bool ok() const { return !L.empty(); }

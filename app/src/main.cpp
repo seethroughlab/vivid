@@ -239,7 +239,10 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
             if (on) ui.draw_rect(r.x, r.y, 3.f, r.h, ar, ag, ab, 1.0f);
             if (q)  ui.draw_rect(r.x, r.y, r.w, 3.f, 0.95f, 0.75f, 0.20f, 1.0f);
             if (on) ui.draw_tri(r.x + 14.f, r.y + 18.f, r.x + 14.f, r.y + 32.f, r.x + 27.f, r.y + 25.f, 0.5f, 0.85f, 0.5f, 1.0f);
-            char cn[16]; std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
+            char cn[16];
+            const int abpm = vivid_poc::session_track_is_audio(s, t) ? vivid_poc::session_audio_clip_bpm(s, t, sc) : 0;
+            if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
+            else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(r.x + 36.f, r.y + 17.f, cn, on ? 0.9f : 0.6f, on ? 0.93f : 0.64f, 1.0f, 0.95f);
         }
     }

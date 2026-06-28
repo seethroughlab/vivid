@@ -39,6 +39,7 @@ float session_track_transient(Session*, int track);  // per-track onset detector
 void* session_track_controller(Session*, int track);
 
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
+int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
 
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.

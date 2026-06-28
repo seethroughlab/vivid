@@ -17,6 +17,8 @@
 #include <cstdio>
 #include <cctype>
 #include <algorithm>
+#include <utility>
+#include <filesystem>
 #include <dirent.h>
 
 using namespace Steinberg;
@@ -55,6 +57,23 @@ struct Session {
     int       scenes = 3;
     long long last_bar = -1;
 };
+
+// Parse a loop's source tempo from its path (e.g. ".../140 BPM/..." or "112bpm").
+static double parse_bpm(const std::string& path) {
+    std::string p = path;
+    for (auto& c : p) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (size_t pos = p.find("bpm"); pos != std::string::npos; pos = p.find("bpm", pos + 1)) {
+        long i = static_cast<long>(pos) - 1;
+        while (i >= 0 && p[i] == ' ') --i;
+        long end = i;
+        while (i >= 0 && std::isdigit(static_cast<unsigned char>(p[i]))) --i;
+        if (end > i) {
+            int bpm = std::atoi(p.substr(i + 1, end - i).c_str());
+            if (bpm >= 40 && bpm <= 300) return bpm;
+        }
+    }
+    return 0.0;
+}
 
 static bool name_has(const std::string& path, const char* lower_needle) {
     std::string p = path;
@@ -169,15 +188,51 @@ Session* session_create(uint32_t sample_rate) {
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
 
-    // A built-in audio (sampler) track: 3 transport-locked demo loops as scenes.
+    // A built-in audio (sampler) track. Loads 3 real loops at distinct source
+    // tempos (warped to the session) from the Dan Mayo library if present, else
+    // falls back to the procedural demo loops.
     {
         auto at = std::make_unique<Track>();
         at->is_audio = true;
         at->name = "Audio";
         at->gain.store(0.7f, std::memory_order_relaxed);
-        at->aud_clips.push_back(gen_sub_pulse(sample_rate, 124.0));
-        at->aud_clips.push_back(gen_noise_sweep(sample_rate, 124.0));
-        at->aud_clips.push_back(gen_bell_loop(sample_rate, 124.0));
+
+        namespace fs = std::filesystem;
+        std::vector<std::pair<std::string, double>> loops;  // (path, source bpm)
+        if (const char* home = std::getenv("HOME")) {
+            std::error_code ec;
+            fs::path base = fs::path(home) / "Music/Ableton/User Library/Samples/Dan Mayo";
+            if (fs::exists(base, ec)) {
+                for (auto it = fs::recursive_directory_iterator(base, ec);
+                     it != fs::recursive_directory_iterator(); it.increment(ec)) {
+                    if (ec) break;
+                    if (!it->is_regular_file(ec)) continue;
+                    const std::string sp = it->path().string();
+                    if (sp.size() < 4 || (sp.compare(sp.size() - 4, 4, ".wav") != 0
+                                          && sp.compare(sp.size() - 4, 4, ".WAV") != 0)) continue;
+                    const double b = parse_bpm(sp);
+                    if (b > 0) loops.emplace_back(sp, b);
+                }
+            }
+        }
+        if (!loops.empty()) {
+            std::sort(loops.begin(), loops.end(), [](auto& a, auto& b) { return a.second < b.second; });
+            std::vector<double> bpms;
+            for (auto& l : loops) if (bpms.empty() || bpms.back() != l.second) bpms.push_back(l.second);
+            const double pick[3] = { bpms.front(), bpms[bpms.size() / 2], bpms.back() };
+            for (double tb : pick) {
+                for (auto& l : loops) if (l.second == tb) {
+                    Sampler smp;
+                    if (sampler_load_wav(l.first, sample_rate, tb, smp)) at->aud_clips.push_back(std::move(smp));
+                    break;
+                }
+            }
+        }
+        if (at->aud_clips.empty()) {  // no library found
+            at->aud_clips.push_back(gen_sub_pulse(sample_rate, 124.0));
+            at->aud_clips.push_back(gen_noise_sweep(sample_rate, 124.0));
+            at->aud_clips.push_back(gen_bell_loop(sample_rate, 124.0));
+        }
         at->active.store(-1, std::memory_order_relaxed);  // start stopped
         s->tracks.emplace_back(std::move(at));
         std::fprintf(stderr, "[Session] track %zu: Audio (sampler, %zu loops)\n",
@@ -225,6 +280,12 @@ void* session_track_controller(Session* s, int t) {
 }
 bool session_track_is_audio(Session* s, int t) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio;
+}
+int session_audio_clip_bpm(Session* s, int t, int sc) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    Track& tr = *s->tracks[t];
+    if (!tr.is_audio || sc < 0 || sc >= static_cast<int>(tr.aud_clips.size())) return 0;
+    return static_cast<int>(std::lround(tr.aud_clips[sc].src_bpm));
 }
 
 static bool clip_valid(Session* s, int t, int sc) {
