@@ -194,6 +194,7 @@ inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, static_cast<f
 
 // Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
 static int g_visual_source = 0;
+static bool g_show_mappings = false;   // P28: the mapping-overview overlay (toggle: M)
 
 static vivid::VisualGraph*      g_vgraph = nullptr;   // source of truth for the generator
 // Video source: a folder of clips, cycled with N. (UI/main thread only.)
@@ -423,6 +424,66 @@ void draw_clip_preview(vivid::ui::Renderer2D& ui, vivid_poc::Session* s, int t, 
     }
 }
 
+// Human-readable label for a mapping destination id.
+std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
+    if (dest.rfind("uniform.", 0) == 0) return dest.substr(8) + "  (visual)";
+    if (dest.rfind("param:", 0) == 0) {
+        int T = -1, D = 0, I = 0;
+        if (std::sscanf(dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && s) {
+            const char* pn = vivid_poc::session_param_name(s, T, D, I);
+            char buf[72]; std::snprintf(buf, sizeof buf, "T%d %s: %.20s", T, D == 0 ? "inst" : "fx", pn ? pn : "param");
+            return buf;
+        }
+    }
+    return dest;
+}
+
+// P28: the mapping overview — every source->dest mapping in one panel, with
+// per-row clear. Audio->visual (teal), visual->audio (amber), audio->audio (blue).
+void draw_mapping_overview(vivid::ui::Renderer2D& ui, vivid::ui::NodeGraph* g, vivid_poc::Session* s) {
+    if (!g) return;
+    const auto& maps = g->mappings();
+    const int n = static_cast<int>(maps.size());
+    const float w = 560.f, rowh = 22.f, hdr = 58.f;
+    const int vis = std::max(1, std::min(n, 16));
+    const float h = hdr + vis * rowh + 14.f;
+    const float px = (g_win_w - w) * 0.5f, py = 84.f;
+    ui.draw_rect(0.f, 40.f, static_cast<float>(g_win_w), static_cast<float>(g_win_h) - 40.f, 0.f, 0.f, 0.f, 0.45f);  // scrim
+    ui.draw_rounded_rect(px, py, w, h, 6.f, 0.12f, 0.13f, 0.155f, 1.0f);
+    ui.draw_rect(px, py, w, 3.f, 0.45f, 0.62f, 0.85f, 1.0f);
+    char title[48]; std::snprintf(title, sizeof title, "MAPPINGS  (%d)", n);
+    ui.draw_text(px + 16.f, py + 12.f, title, 0.9f, 0.92f, 0.95f, 1.0f, 1.0f);
+    ui.draw_text(px + w - 150.f, py + 14.f, "M or Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.78f);
+    ui.draw_text(px + 16.f, py + 38.f, "SOURCE", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
+    ui.draw_text(px + w * 0.46f, py + 38.f, "DESTINATION", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
+    ui.draw_text(px + w - 92.f, py + 38.f, "AMT", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
+    if (n == 0) {
+        ui.draw_text(px + 16.f, py + hdr + 6.f, "No mappings yet \xE2\x80\x94 wire a data node to an op param, or map a device param (m).",
+                     0.55f, 0.57f, 0.6f, 1.0f, 0.84f);
+        return;
+    }
+    for (int i = 0; i < vis; ++i) {
+        const auto& m = maps[i];
+        const float ry = py + hdr + i * rowh;
+        if (i & 1) ui.draw_rect(px + 2.f, ry - 2.f, w - 4.f, rowh, 0.14f, 0.15f, 0.18f, 0.5f);
+        const bool toUniform = m.dest.rfind("uniform.", 0) == 0;
+        const bool fromViz = m.source.rfind("viz.", 0) == 0;
+        float cr = 0.5f, cg = 0.7f, cb = 0.85f;                       // audio->audio
+        if (toUniform) { cr = 0.31f; cg = 0.80f; cb = 0.75f; }        // audio->visual
+        else if (fromViz) { cr = 0.85f; cg = 0.7f; cb = 0.4f; }       // visual->audio
+        ui.draw_text(px + 16.f, ry + 4.f, m.source.c_str(), 0.85f, 0.88f, 0.92f, 1.0f, 0.86f);
+        ui.draw_text(px + w * 0.4f, ry + 3.f, "\xE2\x86\x92", cr, cg, cb, 1.0f, 0.95f);
+        ui.draw_text(px + w * 0.46f, ry + 4.f, mapping_dest_label(s, m.dest).c_str(), 0.82f, 0.85f, 0.9f, 1.0f, 0.86f);
+        char amt[12]; std::snprintf(amt, sizeof amt, "%.2f", m.amount);
+        ui.draw_text(px + w - 92.f, ry + 4.f, amt, 0.7f, 0.73f, 0.78f, 1.0f, 0.84f);
+        ui.draw_text(px + w - 26.f, ry + 3.f, "\xC3\x97", 0.75f, 0.45f, 0.45f, 1.0f, 0.95f);  // clear
+    }
+    if (n > vis) {
+        char more[24]; std::snprintf(more, sizeof more, "+%d more\xE2\x80\xA6", n - vis);
+        ui.draw_text(px + 16.f, py + hdr + vis * rowh + 2.f, more, 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
+    }
+}
+
 // The "map this param from a source" picker (the return path).
 void draw_map_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
@@ -469,6 +530,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     }
     if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE && st->editor && st->editor->is_open()) { st->editor->close(); return; }
+    if (key == GLFW_KEY_ESCAPE && g_show_mappings) { g_show_mappings = false; return; }
+    if (key == GLFW_KEY_M) { g_show_mappings = !g_show_mappings; return; }  // mapping overview
     // Tab -> open the operator chooser at the cursor (visuals pane only).
     if (key == GLFW_KEY_TAB && st->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
@@ -532,6 +595,23 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     const int tracks = st->session ? vivid_poc::session_track_count(st->session) : 0;
     const int scenes = st->session ? vivid_poc::session_scene_count(st->session) : 0;
+
+    // Mapping overview is modal while open: a row's × clears it, click-away closes.
+    if (g_show_mappings && st->graph && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        const auto& maps = st->graph->mappings();
+        const float bw = 560.f, rowh = 22.f, hdr = 58.f;
+        const int n = static_cast<int>(maps.size());
+        const int vis = std::max(1, std::min(n, 16));
+        const float px = (g_win_w - bw) * 0.5f, py = 84.f, bh = hdr + vis * rowh + 14.f;
+        if (mx >= px && mx < px + bw && my >= py && my < py + bh) {
+            for (int i = 0; i < vis; ++i) {
+                const float ry = py + hdr + i * rowh;
+                if (mx >= px + bw - 32.f && my >= ry && my < ry + rowh) { st->graph->disconnect_dest(maps[i].dest); return; }
+            }
+            return;  // click inside the panel: consume
+        }
+        g_show_mappings = false; return;  // click outside: close
+    }
 
     // Clip editor is non-modal: route presses inside its panel to it; clicks
     // elsewhere pass through to the session. A release always ends any editor drag.
@@ -934,6 +1014,7 @@ int main() {
             draw_fx_menu(ui, audio_state.fx_menu);
             draw_map_menu(ui, audio_state.map_menu);
             clip_editor.draw(ui);  // modal overlay on top
+            if (g_show_mappings) draw_mapping_overview(ui, audio_state.graph, audio_state.session);
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             // Live per-node thumbnails: composite each op's output into its card
             // strip on top of the flushed UI (loadOp=Load).
