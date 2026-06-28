@@ -49,6 +49,8 @@ struct Track {
     // Audio track: no plugin; per-scene samples played transport-locked.
     bool                  is_audio = false;
     std::vector<Sampler>  aud_clips;
+    std::atomic<float>    aud_trim0[8];   // per-scene loop window (fractions)
+    std::atomic<float>    aud_trim1[8];
 };
 
 struct Session {
@@ -196,6 +198,7 @@ Session* session_create(uint32_t sample_rate) {
         at->is_audio = true;
         at->name = "Audio";
         at->gain.store(0.7f, std::memory_order_relaxed);
+        for (int i = 0; i < 8; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
 
         namespace fs = std::filesystem;
         std::vector<std::pair<std::string, double>> loops;  // (path, source bpm)
@@ -286,6 +289,33 @@ int session_audio_clip_bpm(Session* s, int t, int sc) {
     Track& tr = *s->tracks[t];
     if (!tr.is_audio || sc < 0 || sc >= static_cast<int>(tr.aud_clips.size())) return 0;
     return static_cast<int>(std::lround(tr.aud_clips[sc].src_bpm));
+}
+static bool aud_valid(Session* s, int t, int sc) {
+    return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio
+           && sc >= 0 && sc < static_cast<int>(s->tracks[t]->aud_clips.size());
+}
+int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
+    if (!aud_valid(s, t, sc) || !out || n <= 0) return 0;
+    const Sampler& smp = s->tracks[t]->aud_clips[sc];
+    if (!smp.ok()) return 0;
+    const size_t N = smp.L.size();
+    for (int i = 0; i < n; ++i) {
+        const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
+        float peak = 0.f;
+        for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
+        out[i] = peak;
+    }
+    return n;
+}
+void session_get_audio_trim(Session* s, int t, int sc, float* t0, float* t1) {
+    if (!aud_valid(s, t, sc)) { if (t0) *t0 = 0.f; if (t1) *t1 = 1.f; return; }
+    if (t0) *t0 = s->tracks[t]->aud_trim0[sc].load(std::memory_order_relaxed);
+    if (t1) *t1 = s->tracks[t]->aud_trim1[sc].load(std::memory_order_relaxed);
+}
+void session_set_audio_trim(Session* s, int t, int sc, float t0, float t1) {
+    if (!aud_valid(s, t, sc)) return;
+    s->tracks[t]->aud_trim0[sc].store(std::min(std::max(t0, 0.f), 1.f), std::memory_order_relaxed);
+    s->tracks[t]->aud_trim1[sc].store(std::min(std::max(t1, 0.f), 1.f), std::memory_order_relaxed);
 }
 
 static bool clip_valid(Session* s, int t, int sc) {
@@ -387,7 +417,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
             const int sc = t.active.load(std::memory_order_relaxed);
             if (sc >= 0 && sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
-                t.aud_clips[sc].render(beats, delta, frames, L, R);
+                t.aud_clips[sc].render(beats, delta, frames, L, R,
+                                       t.aud_trim0[sc].load(std::memory_order_relaxed),
+                                       t.aud_trim1[sc].load(std::memory_order_relaxed));
         } else {
             Vst3EventList events;
             if (new_bar) {

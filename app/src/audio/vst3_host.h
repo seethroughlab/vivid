@@ -41,6 +41,11 @@ void* session_track_controller(Session*, int track);
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
 
+// Audio waveform editing (P15). Waveform = peak amplitude per bin (read-only).
+int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int n_bins);
+void session_get_audio_trim(Session*, int track, int scene, float* t0, float* t1);   // loop window [0,1]
+void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
+
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
 int    session_clip_note_count(Session*, int track, int scene);

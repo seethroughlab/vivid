@@ -44,6 +44,17 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     if (lo > hi) pitch_lo_ = 48;
     else pitch_lo_ = std::clamp((lo + hi) / 2 - kNumRows / 2, 0, 127 - kNumRows);
     drag_ = 0; drag_idx_ = -1; last_idx_ = -1; dirty_ = false;
+    audio_ = false;
+    open_ = true;
+}
+
+void ClipEditor::open_audio(int track, int scene, const std::string& title,
+                            const float* bins, int n, float t0, float t1) {
+    track_ = track; scene_ = scene; title_ = title;
+    wave_.assign(bins, bins + (n > 0 ? n : 0));
+    t0_ = t0; t1_ = t1;
+    drag_ = 0; dirty_ = false;
+    audio_ = true;
     open_ = true;
 }
 
@@ -71,8 +82,13 @@ bool ClipEditor::on_down(double x, double y, double now) {
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }  // start move
         return true;
     }
-    // Grid.
+    // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
+        if (audio_) {  // drag the nearer trim handle
+            const float hx0 = gx() + t0_ * gw(), hx1 = gx() + t1_ * gw();
+            drag_ = (std::fabs(x - hx0) <= std::fabs(x - hx1)) ? 10 : 11;
+            return true;
+        }
         bool re; int idx = hit_note(x, y, re);
         if (idx >= 0) {
             if (last_idx_ == idx && now - last_down_ < 0.35) {     // double-click -> delete
@@ -105,6 +121,14 @@ void ClipEditor::on_move(double x, double y) {
         py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, kWinH - kHeaderH - 4.f);
         return;
     }
+    if (drag_ == 10 || drag_ == 11) {  // audio trim handles
+        const float f = std::clamp(static_cast<float>((x - gx()) / gw()), 0.f, 1.f);
+        if (drag_ == 10) t0_ = std::min(f, t1_ - 0.02f);
+        else             t1_ = std::max(f, t0_ + 0.02f);
+        t0_ = std::clamp(t0_, 0.f, 1.f); t1_ = std::clamp(t1_, 0.f, 1.f);
+        dirty_ = true;
+        return;
+    }
     if (drag_idx_ < 0 || drag_idx_ >= static_cast<int>(notes_.size())) return;
     auto& n = notes_[drag_idx_];
     if (drag_ == 1) {
@@ -135,32 +159,54 @@ void ClipEditor::draw(Renderer2D& r) {
     r.draw_text(px + pw - 56.f, py + 8.f, docked_ ? "float" : "dock", 0.6f, 0.72f, 0.78f, 1.0f, 0.8f);
     r.draw_text(px + pw - 22.f, py + 8.f, "X", 0.8f, 0.55f, 0.55f, 1.0f, 1.0f);
 
-    const float GX = gx(), GY = gy(), GW = gw(), GH = gh(), RH = rh();
+    const float GX = gx(), GY = gy(), GW = gw(), GH = gh();
     r.draw_rect(GX, GY, GW, GH, 0.07f, 0.08f, 0.10f, 1.0f);
-    for (int p = pitch_lo_; p < pitch_lo_ + kNumRows; ++p) {
-        const float y = yp(p);
-        if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
-        if (p % 12 == 0) {
-            r.draw_rect(GX, y, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
-            char lbl[8]; std::snprintf(lbl, sizeof lbl, "C%d", p / 12 - 1);
-            r.draw_text(GX + 2.f, y + RH * 0.5f - 5.f, lbl, 0.4f, 0.43f, 0.48f, 1.0f, 0.72f);
+
+    if (audio_) {
+        const float x0 = GX + t0_ * GW, x1 = GX + t1_ * GW;
+        const int n = static_cast<int>(wave_.size());
+        const float midY = GY + GH * 0.5f, bw_ = (n > 0) ? std::max(1.f, GW / n) : 1.f;
+        for (int i = 0; i < n; ++i) {
+            const float wx = GX + static_cast<float>(i) / n * GW;
+            const float h = std::min(wave_[i] * GH * 0.46f, GH * 0.49f);
+            const bool in = (static_cast<float>(i) / n >= t0_ && static_cast<float>(i) / n < t1_);
+            r.draw_rect(wx, midY - h, bw_, h * 2.f,
+                        in ? 0.32f : 0.16f, in ? 0.72f : 0.26f, in ? 0.78f : 0.30f, 1.0f);
         }
+        r.draw_rect(GX, GY, x0 - GX, GH, 0.0f, 0.0f, 0.0f, 0.45f);          // dim outside the loop
+        r.draw_rect(x1, GY, GX + GW - x1, GH, 0.0f, 0.0f, 0.0f, 0.45f);
+        r.draw_rect(x0 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);      // trim handles
+        r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
+        r.draw_text(px + 12.f, py + ph - 18.f,
+                    "drag the yellow handles to set the loop region  \xC2\xB7  drag header to move  \xC2\xB7  dock / X",
+                    0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
+    } else {
+        const float RH = rh();
+        for (int p = pitch_lo_; p < pitch_lo_ + kNumRows; ++p) {
+            const float y = yp(p);
+            if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
+            if (p % 12 == 0) {
+                r.draw_rect(GX, y, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
+                char lbl[8]; std::snprintf(lbl, sizeof lbl, "C%d", p / 12 - 1);
+                r.draw_text(GX + 2.f, y + RH * 0.5f - 5.f, lbl, 0.4f, 0.43f, 0.48f, 1.0f, 0.72f);
+            }
+        }
+        for (double b = 0; b <= length_ + 1e-6; b += cell_) {
+            const float x = xb(b);
+            const bool whole = std::fabs(b - std::round(b)) < 1e-6;
+            r.draw_rect(x, GY, 1.f, GH, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
+        }
+        for (const auto& n : notes_) {
+            if (n.pitch < pitch_lo_ || n.pitch >= pitch_lo_ + kNumRows) continue;
+            const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
+            const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);
+            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.30f * v + 0.1f, 0.78f * v, 0.80f * v, 1.0f);
+            r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
+        }
+        r.draw_text(px + 12.f, py + ph - 18.f,
+                    "click = add  \xC2\xB7  drag = move  \xC2\xB7  right edge = resize  \xC2\xB7  dbl-click = delete  \xC2\xB7  scroll = pitch  \xC2\xB7  dock/X",
+                    0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
     }
-    for (double b = 0; b <= length_ + 1e-6; b += cell_) {
-        const float x = xb(b);
-        const bool whole = std::fabs(b - std::round(b)) < 1e-6;
-        r.draw_rect(x, GY, 1.f, GH, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
-    }
-    for (const auto& n : notes_) {
-        if (n.pitch < pitch_lo_ || n.pitch >= pitch_lo_ + kNumRows) continue;
-        const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
-        const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);
-        r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.30f * v + 0.1f, 0.78f * v, 0.80f * v, 1.0f);
-        r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
-    }
-    r.draw_text(px + 12.f, py + ph - 18.f,
-                "click = add  \xC2\xB7  drag = move  \xC2\xB7  right edge = resize  \xC2\xB7  dbl-click = delete  \xC2\xB7  scroll = pitch  \xC2\xB7  drag header to move  \xC2\xB7  dock/X",
-                0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
 }
 
 }  // namespace vivid::ui

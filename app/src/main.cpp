@@ -408,15 +408,21 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         for (int sc = 0; sc < scenes; ++sc)
             if (hit(clip_cell_rect(t, sc), mx, my)) {
                 const double now = glfwGetTime();
-                if (st->editor && !vivid_poc::session_track_is_audio(st->session, t)
-                    && st->last_clip_track == t && st->last_clip_scene == sc && now - st->last_clip_t < 0.35) {
-                    vivid_poc::ClipNote buf[256];
-                    const int n = vivid_poc::session_get_clip(st->session, t, sc, buf, 256);
-                    const double len = vivid_poc::session_clip_length(st->session, t, sc);
+                if (st->editor && st->last_clip_track == t && st->last_clip_scene == sc && now - st->last_clip_t < 0.35) {
                     char title[80];
                     std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c",
                                   vivid_poc::session_track_name(st->session, t), 'A' + sc);
-                    st->editor->open(t, sc, title, buf, n, len);
+                    if (vivid_poc::session_track_is_audio(st->session, t)) {  // waveform editor
+                        float bins[512]; float a = 0.f, b = 1.f;
+                        const int nb = vivid_poc::session_audio_waveform(st->session, t, sc, bins, 512);
+                        vivid_poc::session_get_audio_trim(st->session, t, sc, &a, &b);
+                        st->editor->open_audio(t, sc, title, bins, nb, a, b);
+                    } else {                                                  // piano-roll editor
+                        vivid_poc::ClipNote buf[256];
+                        const int n = vivid_poc::session_get_clip(st->session, t, sc, buf, 256);
+                        const double len = vivid_poc::session_clip_length(st->session, t, sc);
+                        st->editor->open(t, sc, title, buf, n, len);
+                    }
                     st->last_clip_t = -1;
                     return;
                 }
@@ -537,12 +543,17 @@ int main() {
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         graph.on_move(mx, my);  // continue any node/wire drag
-        if (clip_editor.is_open()) {           // continue a note drag, commit edits
+        if (clip_editor.is_open()) {           // continue a drag, commit edits
             clip_editor.on_move(mx, my);
             if (clip_editor.take_dirty() && audio_state.session) {
-                const auto& nv = clip_editor.notes();
-                vivid_poc::session_set_clip(audio_state.session, clip_editor.track(), clip_editor.scene(),
-                                            nv.data(), static_cast<int>(nv.size()), clip_editor.length());
+                if (clip_editor.is_audio()) {
+                    float a, b; clip_editor.audio_trim(a, b);
+                    vivid_poc::session_set_audio_trim(audio_state.session, clip_editor.track(), clip_editor.scene(), a, b);
+                } else {
+                    const auto& nv = clip_editor.notes();
+                    vivid_poc::session_set_clip(audio_state.session, clip_editor.track(), clip_editor.scene(),
+                                                nv.data(), static_cast<int>(nv.size()), clip_editor.length());
+                }
             }
         }
         if (audio_state.gain_drag >= 0 && audio_state.session) {  // continue a mixer gain drag
