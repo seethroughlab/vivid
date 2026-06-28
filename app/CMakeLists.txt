@@ -39,6 +39,14 @@ FetchContent_MakeAvailable(glfw3webgpu)
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE deps/miniaudio)
 
+# --- nlohmann/json (header-only; session persistence) ---
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # --- VST3 SDK (header-only pluginterfaces + IID sources) ---
 # SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the
 # sources without running the SDK's own CMakeLists (hundreds of unwanted targets).
@@ -72,6 +80,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp
+    src/persist.cpp
     src/ui/renderer_2d.cpp
     src/ui/node_graph.cpp
     src/ui/clip_editor.cpp)
@@ -83,7 +92,7 @@ set_target_properties(vivid_poc PROPERTIES
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
 target_compile_definitions(vivid_poc PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf")
-target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z "-framework Cocoa")
+target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json "-framework Cocoa")
 
 if(APPLE)
     target_link_libraries(vivid_poc PRIVATE

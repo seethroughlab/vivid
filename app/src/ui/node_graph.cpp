@@ -39,6 +39,22 @@ void NodeGraph::add_data_node(const std::string& title, int char_id) {
     data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, char_id, 0.f, 90 });
 }
 
+void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& title) const {
+    if (i < 0 || i >= static_cast<int>(data_.size())) return;
+    x = data_[i].x; y = data_[i].y; char_id = data_[i].char_id; title = data_[i].title;
+}
+void NodeGraph::reset_nodes() {
+    data_.clear();
+    for (int i = 0; i < kNumShaderUniforms; ++i) connected_[i] = -1;
+}
+void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
+    data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
+}
+void NodeGraph::set_connected(int port, int idx) {
+    if (port >= 0 && port < kNumShaderUniforms && idx >= -1 && idx < static_cast<int>(data_.size()))
+        connected_[port] = idx;
+}
+
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
 void NodeGraph::shader_in(int port, float& px, float& py) const { px = sx_; py = sy_ + 36.f + port * 24.f; }
 int NodeGraph::nearest_shader_in(double x, double y, double max_dist) const {

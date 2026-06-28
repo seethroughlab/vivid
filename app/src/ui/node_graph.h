@@ -24,6 +24,16 @@ public:
     // edge moves (splitter) and clamps them inside. Drawing is clipped to it.
     void set_bounds(float x0, float y0, float x1, float y1);
 
+    // Persistence accessors.
+    int  node_count() const { return static_cast<int>(data_.size()); }
+    void get_node(int i, float& x, float& y, int& char_id, std::string& title) const;
+    void get_shader(float& x, float& y) const { x = sx_; y = sy_; }
+    int  get_connected(int port) const { return (port >= 0 && port < kNumShaderUniforms) ? connected_[port] : -1; }
+    void reset_nodes();                       // clear all data nodes + wiring
+    void add_node_raw(const std::string& title, int char_id, float x, float y);
+    void set_shader(float x, float y) { sx_ = x; sy_ = y; }
+    void set_connected(int port, int idx);
+
     void draw(Renderer2D& r);
 
     // Mouse in screen px. on_down returns true if it consumed the event.

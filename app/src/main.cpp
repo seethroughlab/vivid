@@ -18,6 +18,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "ui/clip_editor.h"
+#include "persist.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
 #include "platform/macos_frame_timer.h"
@@ -315,11 +316,27 @@ void draw_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m, const char* track) {
 }
 
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).
-void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int /*mods*/) {
+void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (action != GLFW_PRESS) return;
     auto* st = static_cast<AudioState*>(glfwGetWindowUserPointer(w));
     if (!st) return;
     if (key == GLFW_KEY_ESCAPE && st->editor && st->editor->is_open()) { st->editor->close(); return; }
+
+    // Cmd+S / Cmd+O -> save / load the session (~/vivid_session.json).
+    if ((mods & GLFW_MOD_SUPER) && st->session && st->graph && (key == GLFW_KEY_S || key == GLFW_KEY_O)) {
+        const char* home = std::getenv("HOME");
+        const std::string path = std::string(home ? home : ".") + "/vivid_session.json";
+        if (key == GLFW_KEY_S) {
+            const bool ok = vivid::save_session(path, st->session, *st->graph, g_win_w, g_win_h, g_split_x);
+            std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
+        } else {
+            int ww = g_win_w, wh = g_win_h; float sxx = g_split_x;
+            const bool ok = vivid::load_session(path, st->session, *st->graph, ww, wh, sxx);
+            if (ok) { g_split_x = sxx; glfwSetWindowSize(w, ww, wh); }
+            std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
+        }
+        return;
+    }
     if (!st->session) return;
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         int idx = key - GLFW_KEY_1;
