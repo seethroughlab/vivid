@@ -68,7 +68,9 @@ public:
     void chooser_confirm();                   // spawn the selected entry
 
 private:
-    struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash; };
+    static constexpr int kHistN = 64;   // data-node value history (rolling sparkline)
+    struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash;
+                      float hist[kHistN]; int hist_head; };
     std::vector<DataNode> data_;
     vivid::MappingRegistry reg_;
     float sx_ = 900.f, sy_ = 488.f, sw_ = 0.f, sh_ = 0.f;   // vestigial (persistence)

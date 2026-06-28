@@ -177,7 +177,11 @@ void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
 }
 
 void NodeGraph::set_value(int char_id, float v) {
-    for (auto& n : data_) if (n.char_id == char_id) n.value = v;
+    for (auto& n : data_) if (n.char_id == char_id) {
+        n.value = v;
+        n.hist[n.hist_head] = v;                       // push into the rolling history
+        n.hist_head = (n.hist_head + 1) % kHistN;
+    }
     reg_.set_source(source_id_for(char_id), v);
 }
 void NodeGraph::fill_uniforms(float* out) const {
@@ -333,8 +337,18 @@ void NodeGraph::draw(Renderer2D& r) {
         r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, 0.15f, 0.18f, 0.18f, 1.0f);  // header strip
         r.draw_rect(nd.x, nd.y, nd.w, 3.f, 0.31f, 0.80f, 0.75f, 1.0f);                     // accent
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), 0.90f, 0.92f, 0.95f, 1.0f, 0.92f);
-        r.draw_text(nd.x + 12.f, nd.y + 30.f, "data source", 0.5f, 0.53f, 0.58f, 1.0f, 0.8f);
-        r.draw_rect(nd.x + 12.f, nd.y + 50.f, (nd.w - 40.f) * (nd.value > 1 ? 1 : nd.value), 7.f, 0.31f, 0.80f, 0.75f, 1.0f);
+        // live value history (rolling bar sparkline) in a recessed panel
+        const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
+        r.draw_rect(gx - 1.f, gy - 1.f, gw + 2.f, gh + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
+        r.draw_rect(gx, gy, gw, gh, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
+        const float colw = gw / kHistN;
+        for (int j = 0; j < kHistN; ++j) {
+            const float v = std::clamp(nd.hist[(nd.hist_head + j) % kHistN], 0.f, 1.f);  // oldest..newest
+            const float bh = v * (gh - 2.f);
+            r.draw_rect(gx + colw * j, gy + gh - bh - 1.f, std::max(1.f, colw - 0.4f), bh, 0.28f, 0.74f, 0.70f, 0.95f);
+        }
+        // current-value readout bar under the panel
+        r.draw_rect(gx, nd.y + 62.f, gw * std::clamp(nd.value, 0.f, 1.f), 4.f, 0.31f, 0.80f, 0.75f, 1.0f);
         float px, py; data_out(nd, px, py);
         port_dot(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
