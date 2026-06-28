@@ -34,6 +34,7 @@ public:
     void on_up(double x, double y);
     void scroll(double dy);
     bool contains(double x, double y) const;       // is (x,y) inside the panel?
+    void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
 
 private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
@@ -46,6 +47,7 @@ private:
     int    pitch_lo_ = 48;
     double cell_ = 0.25;          // grid = 1/16 note
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
+    float  win_w_ = 1280.f, win_h_ = 800.f;   // current window size (for dock/clamp)
 
     int    drag_ = 0;             // 0 none, 1 move, 2 resize, 3 pan-panel
     int    drag_idx_ = -1;

@@ -38,6 +38,7 @@ struct AudioState {
     vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
     CtxMenu menu;                           // characteristic picker (UI thread)
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
+    bool split_drag = false;                // dragging the DAW|visuals splitter
     Vst3PluginWindow* track_win[8] = {};    // open plugin editor windows, per track
     vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
     double last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;  // double-click detect
@@ -134,8 +135,13 @@ constexpr int kNumChars = 2;
 // Characteristic id encoding: master uses kind (0/1); track t uses 100 + t*2 + kind.
 inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 2 + kind; }
 
-// Viewer pane (right) where the visuals shader op renders.
-constexpr float kViewX = 512.f, kViewY = 120.f, kViewW = 720.f, kViewH = 300.f;
+// Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
+constexpr float kViewW = 720.f, kViewH = 300.f;
+// Resizable shell: live window size + the draggable DAW|visuals splitter x.
+static int   g_win_w = 1280, g_win_h = 800;
+static float g_split_x = 512.f;
+inline Rect viewer_rect()   { return { g_split_x + 8.f, 100.f, static_cast<float>(g_win_w) - g_split_x - 16.f, 330.f }; }
+inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, static_cast<float>(g_win_h) - 44.f }; }
 
 // The visual: a GLSL fragment shader, compiled natively by wgpu-native (no glslang).
 // Named uniforms (P11): warp = domain distortion, hue = colour rotation,
@@ -196,7 +202,7 @@ void main() {
 
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
-    ui.draw_rect(0, 0, 1280, 40, 0.07f, 0.08f, 0.10f, 1.0f);
+    ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
     ui.draw_text(20, 12, "VIVID — Session", 0.90f, 0.93f, 0.97f, 1.0f, 1.15f);
     const double bpm = st.transport ? st.transport->bpm.load(std::memory_order_relaxed) : 120.0;
     char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
@@ -279,7 +285,12 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
                  "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
                  0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
 
-    ui.draw_text(kViewX, 96, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
+    const Rect vp = viewer_rect();
+    ui.draw_text(vp.x, 80.f, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
+    // DAW | visuals splitter
+    const Rect sp = splitter_rect();
+    const bool sph = hit(sp, mx, my);
+    ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? 0.30f : 0.16f, sph ? 0.34f : 0.17f, sph ? 0.40f : 0.20f, 1.0f);
 }
 
 // The characteristic context menu (the bridge entry point).
@@ -344,6 +355,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             if (button == GLFW_MOUSE_BUTTON_LEFT) st->editor->on_down(mx, my, glfwGetTime());
             return;
         }
+    }
+
+    // DAW | visuals splitter.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->split_drag = false;
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(splitter_rect(), mx, my)) {
+        st->split_drag = true; return;
     }
 
     // Right-click a meter (master or per-track) -> open its characteristic menu.
@@ -517,6 +534,16 @@ int main() {
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
 
+        // Resizable shell: reconfigure the surface when the window changes size.
+        { int ww = 0, wh = 0; glfwGetWindowSize(window, &ww, &wh);
+          if (ww > 0 && wh > 0 && (static_cast<uint32_t>(ww) != gpu.width() || static_cast<uint32_t>(wh) != gpu.height())) {
+              gpu.resize(static_cast<uint32_t>(ww), static_cast<uint32_t>(wh));
+              g_win_w = ww; g_win_h = wh;
+          }
+          g_split_x = std::min(g_split_x, static_cast<float>(g_win_w) - 220.f);
+          clip_editor.set_window(static_cast<float>(g_win_w), static_cast<float>(g_win_h));
+        }
+
         // reap plugin editor windows the user closed
         for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session); ++t)
             if (audio_state.track_win[t] && !vst3_plugin_window_is_open(audio_state.track_win[t])) {
@@ -542,6 +569,8 @@ int main() {
         graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
+        if (audio_state.split_drag)  // continue a splitter drag
+            g_split_x = std::clamp(static_cast<float>(mx), 500.f, static_cast<float>(g_win_w) - 220.f);
         graph.on_move(mx, my);  // continue any node/wire drag
         if (clip_editor.is_open()) {           // continue a drag, commit edits
             clip_editor.on_move(mx, my);
@@ -579,7 +608,8 @@ int main() {
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             const WGPUTextureView blIn[1] = { cur.view };
             const float radius = uniforms[5];
-            blurOp.render(frame.encoder, frame.view, kViewX, kViewY, kViewW, kViewH, /*clear*/false,
+            const Rect vp = viewer_rect();
+            blurOp.render(frame.encoder, frame.view, vp.x, vp.y, vp.w, vp.h, /*clear*/false,
                           blIn, 1, tsec, &radius, 1);
             fbCur ^= 1;
 
@@ -589,7 +619,7 @@ int main() {
                       audio_state.menu.src < 0 ? "Master"
                       : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
             clip_editor.draw(ui);  // modal overlay on top
-            ui.flush(frame.encoder, frame.view, 1280, 800, 1280, 800);
+            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             gpu.end_frame(frame);
         }
         return true;

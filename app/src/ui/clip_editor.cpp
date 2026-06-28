@@ -7,13 +7,12 @@ namespace vivid::ui {
 
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
-static constexpr float kWinW = 1280.f, kWinH = 800.f;
 static constexpr float kHeaderH = 30.f;
 static constexpr int   kNumRows = 37;   // ~3 octaves visible
 
 void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
-    if (docked_) { x = 8.f; y = kWinH - kDockH - 8.f; w = kWinW - 16.f; h = kDockH; }
-    else         { x = px_; y = py_;                  w = kFloatW;      h = kFloatH; }
+    if (docked_) { x = 8.f; y = win_h_ - kDockH - 8.f; w = win_w_ - 16.f; h = kDockH; }
+    else         { x = px_; y = py_;                   w = kFloatW;       h = kFloatH; }
 }
 float ClipEditor::gx() const { float x,y,w,h; panel(x,y,w,h); return x + 10.f; }
 float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kHeaderH + 10.f; }
@@ -117,8 +116,8 @@ bool ClipEditor::on_down(double x, double y, double now) {
 void ClipEditor::on_move(double x, double y) {
     if (!open_ || drag_ == 0) return;
     if (drag_ == 3) {  // move floating panel
-        px_ = std::clamp(static_cast<float>(x - down_off_x_), -kFloatW + 80.f, kWinW - 80.f);
-        py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, kWinH - kHeaderH - 4.f);
+        px_ = std::clamp(static_cast<float>(x - down_off_x_), -kFloatW + 80.f, win_w_ - 80.f);
+        py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, win_h_ - kHeaderH - 4.f);
         return;
     }
     if (drag_ == 10 || drag_ == 11) {  // audio trim handles
