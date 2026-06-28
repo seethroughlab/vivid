@@ -24,6 +24,7 @@
 #include "platform/macos_frame_timer.h"
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
+#include "gpu/texture_source.h"
 #include "miniaudio.h"
 
 namespace {
@@ -201,6 +202,19 @@ void main() {
 }
 )";
 
+// Passthrough blit: sample a source texture (image/video) into the chain.
+static const char* kBlitGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float p0; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_tex;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
+)";
+
+// Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
+static int g_visual_source = 0;
+
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
     ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
@@ -292,7 +306,9 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     // Visuals pane label (clipped to the right pane)
     const Rect vp = viewer_rect();
     ui.push_clip_rect(g_split_x, 40.f, static_cast<float>(g_win_w) - g_split_x, static_cast<float>(g_win_h) - 40.f);
-    ui.draw_text(vp.x, 80.f, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
+    ui.draw_text(vp.x, 80.f, g_visual_source ? "VISUALS — texture source  ·  V: plasma"
+                                             : "VISUALS — plasma shader  ·  V: texture",
+                 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
     ui.pop_clip_rect();
     // DAW | visuals splitter (on top, unclipped)
     const Rect sp = splitter_rect();
@@ -335,6 +351,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
             if (ok) { g_split_x = sxx; glfwSetWindowSize(w, ww, wh); }
             std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
         }
+        return;
+    }
+    if (key == GLFW_KEY_V) {  // toggle the visuals generator source
+        g_visual_source ^= 1;
+        std::fprintf(stderr, "[vivid] visual source: %s\n", g_visual_source ? "texture" : "plasma");
         return;
     }
     if (!st->session) return;
@@ -504,9 +525,15 @@ int main() {
     fb[0].init(gpu.device(), kRtW, kRtH, gpu.surface_format());
     fb[1].init(gpu.device(), kRtW, kRtH, gpu.surface_format());
     int fbCur = 0;
-    vivid::EffectOp feedbackOp, blurOp;
+    vivid::EffectOp feedbackOp, blurOp, blitOp;
     feedbackOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kFeedbackGLSL, 2);
     blurOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kBlurGLSL, 1);
+    blitOp.init(gpu.device(), gpu.queue(), gpu.surface_format(), kBlitGLSL, 1);
+
+    // Texture source (image/video) — seeded with a test pattern; P19b feeds video.
+    vivid::TextureSource srcTex;
+    srcTex.init(gpu.device(), 512, 288, gpu.surface_format());
+    { auto pat = vivid::gen_test_pattern(512, 288); srcTex.upload(gpu.queue(), pat.data()); }
 
     vivid::ui::NodeGraph graph;
     vivid::ui::ClipEditor clip_editor;
@@ -618,8 +645,13 @@ int main() {
         if (gpu.begin_frame(frame)) {
             const float tsec = static_cast<float>(glfwGetTime());
             const float rtw = static_cast<float>(kRtW), rth = static_cast<float>(kRtH);
-            // 1) plasma generator -> genRT (ports 0..3)
-            shader.render(frame.encoder, genRT.view, 0, 0, rtw, rth, tsec, uniforms, /*clear*/true);
+            // 1) generator -> genRT: plasma shader (ports 0..3) or the texture source
+            if (g_visual_source == 1) {
+                const WGPUTextureView srcIn[1] = { srcTex.view };
+                blitOp.render(frame.encoder, genRT.view, 0, 0, rtw, rth, /*clear*/true, srcIn, 1, tsec, nullptr, 0);
+            } else {
+                shader.render(frame.encoder, genRT.view, 0, 0, rtw, rth, tsec, uniforms, /*clear*/true);
+            }
             // 2) feedback: genRT + previous history -> current history (port 4 = decay)
             vivid::RenderTarget& cur = fb[fbCur];
             vivid::RenderTarget& prev = fb[fbCur ^ 1];
@@ -655,7 +687,8 @@ int main() {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
-    feedbackOp.shutdown(); blurOp.shutdown();
+    feedbackOp.shutdown(); blurOp.shutdown(); blitOp.shutdown();
+    srcTex.release();
     genRT.release(); fb[0].release(); fb[1].release();
     shader.shutdown();
     ui.shutdown();
