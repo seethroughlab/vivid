@@ -14,6 +14,7 @@
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "transport.h"
+#include "audio/vst3_host.h"
 #include "miniaudio.h"
 
 namespace {
@@ -22,32 +23,44 @@ constexpr double kPi = 3.14159265358979323846;
 
 struct AudioState {
     Transport* transport = nullptr;
+    vivid_poc::Vst3Player* player = nullptr;  // hosted instrument (or null -> test tone)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
 };
 
-// Real-time audio callback: write a quiet test tone, advance the transport,
-// and publish a block RMS level for the visuals to react to.
+// Real-time audio callback: render the hosted instrument's arpeggio (or a test
+// tone if no plugin), advance the transport, and publish a block RMS level.
 void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 frames) {
     auto* st = static_cast<AudioState*>(device->pUserData);
     auto* fout = static_cast<float*>(out);
     const double sr = device->sampleRate;
-    const double inc = 2.0 * kPi * st->tone_hz / sr;
-    const float amp = 0.05f;
 
-    double sum_sq = 0.0;
-    for (ma_uint32 i = 0; i < frames; ++i) {
-        float s = amp * static_cast<float>(std::sin(st->phase));
-        st->phase += inc;
-        if (st->phase > 2.0 * kPi) st->phase -= 2.0 * kPi;
-        fout[i * 2 + 0] = s;
-        fout[i * 2 + 1] = s;
-        sum_sq += static_cast<double>(s) * s;
+    const double beats = st->transport ? st->transport->beats.load(std::memory_order_relaxed) : 0.0;
+    const double bpm   = st->transport ? st->transport->bpm.load(std::memory_order_relaxed) : 120.0;
+
+    bool rendered = false;
+    if (st->player)
+        rendered = vivid_poc::vst3_player_process(st->player, fout, frames,
+                                                  static_cast<uint32_t>(sr), bpm, beats, 4);
+    if (!rendered) {
+        const double inc = 2.0 * kPi * st->tone_hz / sr;
+        for (ma_uint32 i = 0; i < frames; ++i) {
+            float s = 0.05f * static_cast<float>(std::sin(st->phase));
+            st->phase += inc;
+            if (st->phase > 2.0 * kPi) st->phase -= 2.0 * kPi;
+            fout[i * 2 + 0] = s;
+            fout[i * 2 + 1] = s;
+        }
     }
+
     if (st->transport) {
         st->transport->advance(frames, sr);
-        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
-        st->transport->level.store(rms, std::memory_order_relaxed);
+        double sum_sq = 0.0;
+        for (ma_uint32 i = 0; i < frames; ++i)
+            sum_sq += static_cast<double>(fout[i * 2]) * fout[i * 2];
+        st->transport->level.store(
+            static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1))),
+            std::memory_order_relaxed);
     }
 }
 
@@ -83,7 +96,8 @@ int main() {
     }
 
     Transport transport;
-    AudioState audio_state{ &transport, 0.0, 110.0 };
+    AudioState audio_state{};
+    audio_state.transport = &transport;  // player set after the device opens
 
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
@@ -94,7 +108,14 @@ int main() {
 
     ma_device device;
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
-    if (audio_ok && ma_device_start(&device) != MA_SUCCESS) { audio_ok = false; }
+    if (audio_ok) {
+        // Now that we know the device sample rate, scan + load an instrument.
+        audio_state.player = vivid_poc::vst3_player_create(device.sampleRate);
+        std::fprintf(stderr, "[vivid] instrument: %s\n",
+                     audio_state.player ? vivid_poc::vst3_player_name(audio_state.player)
+                                        : "none — falling back to test tone");
+        if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
+    }
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
@@ -114,7 +135,8 @@ int main() {
         }
     }
 
-    if (audio_ok) ma_device_uninit(&device);
+    if (audio_ok) ma_device_uninit(&device);  // stops the callback first
+    if (audio_state.player) vivid_poc::vst3_player_destroy(audio_state.player);
     gpu.shutdown();
     glfwDestroyWindow(window);
     glfwTerminate();
