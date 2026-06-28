@@ -18,6 +18,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "gpu/shader_op.h"
+#include "audio/vst3_plugin_window.h"
 #include "miniaudio.h"
 
 namespace {
@@ -33,6 +34,7 @@ struct AudioState {
     vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
     CtxMenu menu;                           // characteristic picker (UI thread)
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
+    Vst3PluginWindow* track_win[8] = {};    // open plugin editor windows, per track
     float tr_baseline = 0.f;                // onset detector baseline (audio thread)
     double phase = 0.0;       // test-tone oscillator phase
     double tone_hz = 110.0;   // low A
@@ -161,7 +163,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
         float ar, ag, ab; track_accent(t, ar, ag, ab);
-        ui.draw_rect(h.x, h.y, h.w, h.h, 0.12f, 0.13f, 0.16f, 1.0f);
+        const float hb = hit(h, mx, my) ? 0.04f : 0.f;  // hover: clickable -> editor
+        ui.draw_rect(h.x, h.y, h.w, h.h, 0.12f + hb, 0.13f + hb, 0.16f + hb, 1.0f);
         ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);
         char nm[40]; std::snprintf(nm, sizeof nm, "%.18s", vivid_poc::session_track_name(s, t));
         ui.draw_text(h.x + 8.f, h.y + 9.f, nm, 0.85f, 0.88f, 0.92f, 1.0f, 0.95f);
@@ -208,7 +211,7 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, 0.31f, 0.80f, 0.75f, 1.0f);
     ui.draw_text(kSceneColX, mm.y + mm.h + 6.f, "MASTER", 0.55f, 0.78f, 0.85f, 1.0f, 0.8f);
     ui.draw_text(kSceneColX, mm.y + mm.h + 22.f, "click \xE2\x86\x92 visuals", 0.45f, 0.62f, 0.66f, 1.0f, 0.78f);
-    ui.draw_text(kSceneColX, my0 + 78.f, "click a clip \xC2\xB7 A/B/C launches the row \xC2\xB7 keys 1-3", 0.42f, 0.45f, 0.5f, 1.0f, 0.85f);
+    ui.draw_text(kSceneColX, my0 + 78.f, "click a clip \xC2\xB7 A/B/C = launch row \xC2\xB7 click a track name \xE2\x86\x92 plugin editor", 0.42f, 0.45f, 0.5f, 1.0f, 0.85f);
 
     ui.draw_text(kViewX, 96, "VISUALS — GLSL shader op", 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
 }
@@ -281,6 +284,18 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     if (hit(master_meter_rect(scenes), mx, my)) {
         st->menu = { true, static_cast<float>(mx), static_cast<float>(my) };
         return;
+    }
+    // Click a track header -> open that track's plugin editor (change presets there).
+    for (int t = 0; t < tracks; ++t) {
+        if (hit(track_header_rect(t), mx, my)) {
+            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_track_controller(st->session, t));
+            if (ctrl) {
+                if (st->track_win[t]) { vst3_plugin_window_close(st->track_win[t]); st->track_win[t] = nullptr; }
+                st->track_win[t] = vst3_plugin_window_open(ctrl, vivid_poc::session_track_name(st->session, t));
+                std::fprintf(stderr, "[vivid] track %d editor: %s\n", t, st->track_win[t] ? "opened" : "no GUI");
+            }
+            return;
+        }
     }
     // mixer gain sliders
     for (int t = 0; t < tracks; ++t) {
@@ -358,6 +373,12 @@ int main() {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
+        // reap plugin editor windows the user closed
+        for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session); ++t)
+            if (audio_state.track_win[t] && !vst3_plugin_window_is_open(audio_state.track_win[t])) {
+                vst3_plugin_window_close(audio_state.track_win[t]); audio_state.track_win[t] = nullptr;
+            }
+
         const double beats = transport.beats.load(std::memory_order_relaxed);
         const float level = transport.level.load(std::memory_order_relaxed);
         react += (std::min(1.0f, level * 5.0f) - react) * 0.3f;            // smoothed level
@@ -389,6 +410,7 @@ int main() {
     }
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
+    for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
     shader.shutdown();
     ui.shutdown();
