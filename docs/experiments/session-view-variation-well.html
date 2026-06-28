@@ -162,6 +162,15 @@
     .binding-path { font-size: 12px; line-height: 1.35; }
     .binding-path .source { color: var(--audio); }
     .binding-path .dest { color: var(--gpu); }
+    select { font: inherit; font-size: 11px; background: var(--input); color: var(--text); border: 1px solid var(--line); padding: 3px 5px; }
+    select:hover, select:focus { border-color: var(--line-hot); outline: none; }
+    .bind-new { width: 100%; margin-bottom: 10px; }
+    .bind-edit { display: grid; gap: 6px; margin: -2px 0 10px; padding: 9px; border: 1px solid var(--line); border-top: 0; background: #14181d; }
+    .bind-title { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .bind-row { display: grid; grid-template-columns: 50px 1fr; gap: 8px; align-items: center; }
+    .bind-row > span { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .bind-actions { display: flex; gap: 6px; margin-top: 3px; }
+    .bind-actions button { font-size: 11px; padding: 4px 8px; }
 
     .big { font-size: 16px; line-height: 1.2; margin-bottom: 6px; }
     .copy { color: var(--muted); font-size: 11px; line-height: 1.5; margin-bottom: 8px; }
@@ -407,6 +416,47 @@
       return state.bindings.filter(b => b.sourceTrack === loc.track.id && b.scene === loc.scene.id);
     }
 
+    // ---- binding authoring (deterministic core edits; the catalog of signals + targets) ----
+    const SIGNALS = [
+      { label: "Kick onset", track: "drums" },
+      { label: "Snare transient", track: "drums" },
+      { label: "Bass envelope", track: "bass" },
+      { label: "Chord brightness", track: "chords" },
+      { label: "Scene energy", track: "scene" }
+    ];
+    const DESTS = [
+      { label: "Particles / size", track: "particles" },
+      { label: "Particles / flash", track: "particles" },
+      { label: "Particles / burst count", track: "particles" },
+      { label: "Camera / shake", track: "camera" },
+      { label: "Palette / amber-cyan mix", track: "camera" }
+    ];
+    const CURVES = ["linear", "soft exponential", "hard gate", "fast peak", "limited ramp"];
+    const TIMINGS = ["instant", "smoothed 80 ms", "bar synced", "2 bar fade", "per chord"];
+    let bindingFormOpen = false;
+    let bindingSeq = 5;
+    const newBindingId = () => "b" + (++bindingSeq);
+    const optionList = (arr, sel) => arr.map(o => { const v = typeof o === "string" ? o : o.label; return `<option ${v === sel ? "selected" : ""}>${v}</option>`; }).join("");
+
+    function createBinding(form) {
+      const sig = SIGNALS.find(s => s.label === form.source) || SIGNALS[0];
+      const dst = DESTS.find(d => d.label === form.dest) || DESTS[0];
+      const scene = sceneById(form.scene) || sceneById(state.activeScene);
+      const id = newBindingId();
+      state.bindings.push({ id, scene: scene.id, sourceTrack: sig.track, destTrack: dst.track,
+        source: sig.label, dest: dst.label, curve: form.curve, timing: form.timing,
+        scope: scene.name, reason: `${sig.label} drives ${dst.label} in ${scene.name}.` });
+      return id;
+    }
+    function editBinding(id, field, value) {
+      const b = bindingById(id); if (!b) return;
+      if (field === "source") { const s = SIGNALS.find(x => x.label === value); b.source = value; if (s) b.sourceTrack = s.track; }
+      else if (field === "dest") { const d = DESTS.find(x => x.label === value); b.dest = value; if (d) b.destTrack = d.track; }
+      else if (field === "scene") { const sc = sceneById(value); if (sc) { b.scene = sc.id; b.scope = sc.name; } }
+      else b[field] = value;  // curve | timing
+    }
+    const deleteBinding = id => { state.bindings = state.bindings.filter(b => b.id !== id); };
+
     // paints a scene's look from its energy/density/motion/color (tuned for the small cell canvas)
     function drawLook(canvas, scene) {
       if (!canvas) return;
@@ -597,17 +647,42 @@
         ${relRow}`;
     }
 
+    const sceneOptions = sel => state.scenes.map(s => `<option value="${s.id}" ${s.id === sel ? "selected" : ""}>${s.name}</option>`).join("");
+
     function renderBindings() {
       const list = bindingsForSelection();
       $("bindingCount").textContent = String(list.length);
-      $("bindingPanel").innerHTML = list.map(b => `
-        <div class="binding ${state.selected.type === "binding" && state.selected.id === b.id ? "selected" : ""}" data-select-type="binding" data-id="${b.id}">
-          <div class="binding-path"><span class="source">${b.source}</span> → <span class="dest">${b.dest}</span></div>
-          <div class="copy" style="margin:4px 0 6px">${b.reason}</div>
-          <div class="row"><span>Curve</span><span>${b.curve}</span></div>
-          <div class="row"><span>Timing</span><span>${b.timing}</span></div>
-          <div class="row"><span>Scope</span><span>${b.scope}</span></div>
-        </div>`).join("") || `<div class="copy">No bindings for this selection.</div>`;
+      const defScene = state.selected.type === "scene" ? state.selected.id : state.activeScene;
+      const head = bindingFormOpen ? `
+        <div class="bind-edit" data-bind-area>
+          <div class="bind-title">New binding · authored by hand</div>
+          <div class="bind-row"><span>Signal</span><select id="nf-source">${optionList(SIGNALS)}</select></div>
+          <div class="bind-row"><span>Target</span><select id="nf-dest">${optionList(DESTS)}</select></div>
+          <div class="bind-row"><span>Curve</span><select id="nf-curve">${optionList(CURVES)}</select></div>
+          <div class="bind-row"><span>Timing</span><select id="nf-timing">${optionList(TIMINGS)}</select></div>
+          <div class="bind-row"><span>Scene</span><select id="nf-scene">${sceneOptions(defScene)}</select></div>
+          <div class="bind-actions"><button data-bind-action="create">Create binding</button><button class="ghost" data-bind-action="cancel">Cancel</button></div>
+        </div>` : `<button class="bind-new" data-bind-action="new">+ New binding</button>`;
+
+      const rows = list.map(b => {
+        const sel = state.selected.type === "binding" && state.selected.id === b.id;
+        const edit = sel ? `
+          <div class="bind-edit" data-bind-area>
+            <div class="bind-row"><span>Signal</span><select data-bind-edit="source" data-id="${b.id}">${optionList(SIGNALS, b.source)}</select></div>
+            <div class="bind-row"><span>Target</span><select data-bind-edit="dest" data-id="${b.id}">${optionList(DESTS, b.dest)}</select></div>
+            <div class="bind-row"><span>Curve</span><select data-bind-edit="curve" data-id="${b.id}">${optionList(CURVES, b.curve)}</select></div>
+            <div class="bind-row"><span>Timing</span><select data-bind-edit="timing" data-id="${b.id}">${optionList(TIMINGS, b.timing)}</select></div>
+            <div class="bind-row"><span>Scene</span><select data-bind-edit="scene" data-id="${b.id}">${sceneOptions(b.scene)}</select></div>
+            <div class="bind-actions"><button class="ghost" data-bind-action="delete" data-id="${b.id}">Delete binding</button></div>
+          </div>` : "";
+        return `<div class="binding ${sel ? "selected" : ""}" data-select-type="binding" data-id="${b.id}">
+            <div class="binding-path"><span class="source">${b.source}</span> → <span class="dest">${b.dest}</span></div>
+            <div class="copy" style="margin:4px 0 ${sel ? 0 : 6}px">${b.reason}</div>
+            ${sel ? "" : `<div class="row"><span>Curve</span><span>${b.curve}</span></div><div class="row"><span>Timing</span><span>${b.timing}</span></div><div class="row"><span>Scope</span><span>${b.scope}</span></div>`}
+          </div>${edit}`;
+      }).join("") || `<div class="copy">No bindings for this selection.</div>`;
+
+      $("bindingPanel").innerHTML = head + rows;
     }
 
     function renderWell() {
@@ -686,7 +761,7 @@
         const sceneId = state.selected.type === "scene" ? state.selected.id
           : (state.selected.type === "clip" ? locateClip(state.selected.id)?.scene.id : null) || "drop";
         const scene = sceneById(sceneId);
-        const id = "b" + (state.bindings.length + 1);
+        const id = newBindingId();
         state.bindings.push({ id, scene: sceneId, sourceTrack: "drums", destTrack: "particles",
           source: "Kick onset", dest: "Particles / burst count", curve: "hard gate", timing: "instant",
           scope: scene.name, reason: `Each kick adds particles, making ${scene.name} visibly heavier.` });
@@ -757,8 +832,39 @@
         return;
       }
 
+      const bind = e.target.closest("[data-bind-action]");
+      if (bind) {
+        e.stopPropagation();
+        const act = bind.dataset.bindAction;
+        if (act === "new") { bindingFormOpen = true; renderBindings(); }
+        else if (act === "cancel") { bindingFormOpen = false; renderBindings(); }
+        else if (act === "create") {
+          const id = createBinding({ source: $("nf-source").value, dest: $("nf-dest").value, curve: $("nf-curve").value, timing: $("nf-timing").value, scene: $("nf-scene").value });
+          bindingFormOpen = false;
+          state.selected = { type: "binding", id };
+          const b = bindingById(id);
+          log(`<b>Created binding</b> ${b.source} → ${b.dest} in ${sceneById(b.scene).name} — a deterministic edit, no provider needed.`);
+          renderAll();
+        }
+        else if (act === "delete") {
+          deleteBinding(bind.dataset.id);
+          state.selected = { type: "scene", id: state.activeScene };
+          log("<b>Deleted binding.</b>");
+          renderAll();
+        }
+        return;
+      }
+
+      // clicks inside an edit/create form must not re-select (which would rebuild the open <select>)
+      if (e.target.closest("[data-bind-area]")) return;
+
       const target = e.target.closest("[data-select-type]");
       if (target) select(target.dataset.selectType, target.dataset.id);
+    });
+
+    document.addEventListener("change", e => {
+      const ed = e.target.closest("[data-bind-edit]");
+      if (ed) { editBinding(ed.dataset.id, ed.dataset.bindEdit, e.target.value); renderAll(); }
     });
 
     window.addEventListener("resize", drawWires);
