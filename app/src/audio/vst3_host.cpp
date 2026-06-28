@@ -396,6 +396,16 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
     tr.edit_gen.fetch_add(1, std::memory_order_release);
 }
 
+// Drain a device's pending UI parameter changes into its ParamChanges block.
+static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
+    ParamMsg m;
+    while (h->param_q.pop(m)) {
+        int32 idx = 0;
+        IParamValueQueue* q = pc.addParameterData(m.id, idx);
+        if (q) { int32 pt = 0; q->addPoint(0, m.value, pt); }
+    }
+}
+
 static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) {
     for (const NoteEvent& ne : nev) {
         Event e{};
@@ -496,6 +506,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             float* ch[2] = { L, R };
             AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
             Vst3ParamChanges pc; pc.clear();
+            drain_params(t.handle, pc);
             ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
             ProcessData data{};
             data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
@@ -514,6 +525,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
             AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
             Vst3ParamChanges fpc; fpc.clear();
+            drain_params(fx, fpc);
             ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
             ProcessData fd{};
             fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
@@ -613,6 +625,39 @@ bool session_add_effect_by_index(Session* s, int t, int i) {
     for (const auto& b : bundles)
         if (name_has(b, kEffectCatalog[i].match)) return session_add_effect(s, t, b.c_str());
     return false;
+}
+
+// --- Device parameters (P24). device: 0 = instrument, 1+ = effects. ---
+static Vst3Handle* device_handle(Session* s, int t, int dev) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
+    Track& tr = *s->tracks[t];
+    if (dev == 0) return tr.handle;
+    const int e = dev - 1;
+    return (e >= 0 && e < static_cast<int>(tr.effects_edit.size())) ? tr.effects_edit[e] : nullptr;
+}
+int session_param_count(Session* s, int t, int dev) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    return h ? static_cast<int>(h->params.size()) : 0;
+}
+const char* session_param_name(Session* s, int t, int dev, int i) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    return (h && i >= 0 && i < static_cast<int>(h->params.size())) ? h->params[i].name.c_str() : "";
+}
+uint32_t session_param_id(Session* s, int t, int dev, int i) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    return (h && i >= 0 && i < static_cast<int>(h->params.size())) ? static_cast<uint32_t>(h->params[i].id) : 0u;
+}
+float session_param_value(Session* s, int t, int dev, int i) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    if (!h || !h->controller || i < 0 || i >= static_cast<int>(h->params.size())) return 0.f;
+    return static_cast<float>(h->controller->getParamNormalized(h->params[i].id));
+}
+void session_set_param(Session* s, int t, int dev, uint32_t id, float value) {
+    Vst3Handle* h = device_handle(s, t, dev);
+    if (!h) return;
+    value = value < 0.f ? 0.f : (value > 1.f ? 1.f : value);
+    h->param_q.push(id, value);                                        // -> audio thread (process)
+    if (h->controller) h->controller->setParamNormalized(id, value);   // -> plugin GUI reflection
 }
 
 }  // namespace vivid_poc

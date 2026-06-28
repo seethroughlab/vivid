@@ -51,6 +51,13 @@ int         session_available_effect_count();
 const char* session_available_effect_name(int i);
 bool        session_add_effect_by_index(Session*, int track, int i);
 
+// Device parameters (P24). device: 0 = instrument, 1+ = effect index+1.
+int         session_param_count(Session*, int track, int device);
+const char* session_param_name(Session*, int track, int device, int i);
+uint32_t    session_param_id(Session*, int track, int device, int i);
+float       session_param_value(Session*, int track, int device, int i);  // normalized 0..1
+void        session_set_param(Session*, int track, int device, uint32_t param_id, float value);
+
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
 

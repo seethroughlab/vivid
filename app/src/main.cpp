@@ -47,6 +47,9 @@ struct AudioState {
     CtxMenu menu;                           // characteristic picker (UI thread)
     CtxMenu fx_menu;                        // "+ FX" picker (src = track)
     int sel_track = 0;                      // track whose device chain is shown
+    int sel_device = 0;                     // device whose params are shown (0=inst, 1+=fx)
+    int param_drag = -1;                    // param slider being dragged
+    double last_dev_t = -1; int last_dev_i = -1;  // device double-click detect
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
     bool split_drag = false;                // dragging the DAW|visuals splitter
     Vst3PluginWindow* track_win[8] = {};    // open instrument editor windows, per track
@@ -139,6 +142,10 @@ inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) +
 inline float device_y(int scenes) { return mixer_y(scenes) + 100.f; }
 inline Rect  device_box(int i, int scenes) { return { kSceneColX + i * 124.f, device_y(scenes) + 18.f, 116.f, 40.f }; }
 inline Rect  device_x_btn(int i, int scenes) { Rect b = device_box(i, scenes); return { b.x + b.w - 17.f, b.y + 3.f, 14.f, 14.f }; }
+// Params panel for the selected device (P24): a column of sliders.
+constexpr int kMaxShownParams = 12;
+inline float params_y(int scenes) { return device_y(scenes) + 78.f; }
+inline Rect  param_slider_rect(int i, int scenes) { return { kSceneColX + 110.f, params_y(scenes) + 20.f + i * 22.f, 170.f, 12.f }; }
 inline void track_accent(int t, float& r, float& g, float& b) {
     static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
     r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
@@ -293,7 +300,30 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
             ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
             ui.draw_text(xb.x + 3.f, xb.y + 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.85f);
         }
+        if (!isAdd && ((isInst && st.sel_device == 0) || (!isInst && st.sel_device == i))) {
+            ui.draw_rect(b.x, b.y + b.h - 3.f, b.w, 3.f, 0.9f, 0.8f, 0.4f, 1.0f);  // selected underline
+        }
     }
+    // Parameter panel for the selected device.
+    const int seldev = std::max(0, st.sel_device);
+    const int pc = vivid_poc::session_param_count(s, seltr, seldev);
+    const float py0 = params_y(scenes);
+    char ph[64];
+    const char* devname = (seldev == 0) ? vivid_poc::session_track_name(s, seltr)
+                                        : vivid_poc::session_effect_name(s, seltr, seldev - 1);
+    std::snprintf(ph, sizeof ph, "PARAMS \xC2\xB7 %.16s  (%d)", devname, pc);
+    ui.draw_text(kSceneColX, py0, ph, 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    const int shown = std::min(pc, kMaxShownParams);
+    for (int i = 0; i < shown; ++i) {
+        const Rect r = param_slider_rect(i, scenes);
+        const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
+        char nm[18]; std::snprintf(nm, sizeof nm, "%.15s", vivid_poc::session_param_name(s, seltr, seldev, i));
+        ui.draw_text(kSceneColX, r.y - 2.f, nm, 0.7f, 0.72f, 0.76f, 1.0f, 0.78f);
+        ui.draw_rect(r.x, r.y, r.w, r.h, 0.10f, 0.11f, 0.13f, 1.0f);
+        ui.draw_rect(r.x, r.y, r.w * v, r.h, 0.35f, 0.5f, 0.7f, 1.0f);
+        ui.draw_rect(r.x + r.w * v - 2.f, r.y - 2.f, 4.f, r.h + 4.f, 0.7f, 0.8f, 0.95f, 1.0f);
+    }
+    if (pc > shown) ui.draw_text(kSceneColX, py0 + 24.f + shown * 22.f, "...", 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
 
     ui.pop_clip_rect();  // end DAW pane
     // Visuals pane label (clipped to the right pane)
@@ -424,7 +454,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
-    if (action == GLFW_RELEASE) { st->gain_drag = -1; if (st->graph) st->graph->on_up(mx, my); return; }
+    if (action == GLFW_RELEASE) { st->gain_drag = -1; st->param_drag = -1; if (st->graph) st->graph->on_up(mx, my); return; }
     if (action != GLFW_PRESS) return;
 
     // Menu has priority: pick a characteristic -> spawn a data node in the graph.
@@ -463,32 +493,56 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     for (int t = 0; t < tracks; ++t)
         if (hit(track_header_rect(t), mx, my)) { st->sel_track = t; return; }
 
-    // Device chain of the selected track: instrument editor / effect editor / remove / + FX.
+    // Device chain of the selected track: single-click selects (shows params),
+    // double-click opens the plugin editor; x removes an effect; + FX adds one.
     {
         const int seltr = std::min(std::max(st->sel_track, 0), tracks - 1);
         const int nfx = vivid_poc::session_effect_count(st->session, seltr);
-        if (!vivid_poc::session_track_is_audio(st->session, seltr) && hit(device_box(0, scenes), mx, my)) {
-            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_track_controller(st->session, seltr));
-            if (ctrl) {
+        const double now = glfwGetTime();
+        auto open_dev = [&](int dev) {
+            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                dev == 0 ? vivid_poc::session_track_controller(st->session, seltr)
+                         : vivid_poc::session_effect_controller(st->session, seltr, dev - 1));
+            if (!ctrl) return;
+            const char* nm = dev == 0 ? vivid_poc::session_track_name(st->session, seltr)
+                                      : vivid_poc::session_effect_name(st->session, seltr, dev - 1);
+            if (dev == 0) {
                 if (st->track_win[seltr]) { vst3_plugin_window_close(st->track_win[seltr]); st->track_win[seltr] = nullptr; }
-                st->track_win[seltr] = vst3_plugin_window_open(ctrl, vivid_poc::session_track_name(st->session, seltr));
+                st->track_win[seltr] = vst3_plugin_window_open(ctrl, nm);
+            } else {
+                int slot = -1; for (int k = 0; k < 8; ++k) if (!st->fx_win[k]) { slot = k; break; }
+                if (slot >= 0) st->fx_win[slot] = vst3_plugin_window_open(ctrl, nm);
             }
-            return;
-        }
+        };
+        auto click_dev = [&](int dev) {
+            if (st->last_dev_i == dev && now - st->last_dev_t < 0.35) { open_dev(dev); st->last_dev_t = -1; }
+            else { st->sel_device = dev; st->last_dev_i = dev; st->last_dev_t = now; }
+        };
+        if (!vivid_poc::session_track_is_audio(st->session, seltr) && hit(device_box(0, scenes), mx, my)) { click_dev(0); return; }
         for (int e = 0; e < nfx; ++e) {
-            if (hit(device_x_btn(1 + e, scenes), mx, my)) { vivid_poc::session_remove_effect(st->session, seltr, e); return; }
-            if (hit(device_box(1 + e, scenes), mx, my)) {
-                auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_effect_controller(st->session, seltr, e));
-                if (ctrl) {
-                    int slot = -1; for (int k = 0; k < 8; ++k) if (!st->fx_win[k]) { slot = k; break; }
-                    if (slot >= 0) st->fx_win[slot] = vst3_plugin_window_open(ctrl, vivid_poc::session_effect_name(st->session, seltr, e));
-                }
+            if (hit(device_x_btn(1 + e, scenes), mx, my)) {
+                vivid_poc::session_remove_effect(st->session, seltr, e);
+                if (st->sel_device > nfx - 1) st->sel_device = 0;
                 return;
             }
+            if (hit(device_box(1 + e, scenes), mx, my)) { click_dev(1 + e); return; }
         }
         if (hit(device_box(1 + nfx, scenes), mx, my)) {
             st->fx_menu = { true, static_cast<float>(mx), static_cast<float>(my), seltr };
             return;
+        }
+        // parameter sliders for the selected device
+        const int seldev = std::max(0, st->sel_device);
+        const int npc = std::min(vivid_poc::session_param_count(st->session, seltr, seldev), kMaxShownParams);
+        for (int i = 0; i < npc; ++i) {
+            const Rect r = param_slider_rect(i, scenes);
+            if (hit(r, mx, my)) {
+                st->param_drag = i;
+                const float v = std::min(1.0, std::max(0.0, (mx - r.x) / r.w));
+                vivid_poc::session_set_param(st->session, seltr, seldev,
+                                             vivid_poc::session_param_id(st->session, seltr, seldev, i), v);
+                return;
+            }
         }
     }
     // mixer gain sliders
@@ -688,6 +742,16 @@ int main() {
             const Rect gr = track_gain_rect(audio_state.gain_drag, vivid_poc::session_scene_count(audio_state.session));
             vivid_poc::session_set_track_gain(audio_state.session, audio_state.gain_drag,
                                               std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
+        }
+        if (audio_state.param_drag >= 0 && audio_state.session) {  // continue a param slider drag
+            const int scenes = vivid_poc::session_scene_count(audio_state.session);
+            const int ntr = vivid_poc::session_track_count(audio_state.session);
+            const int seltr = std::min(std::max(audio_state.sel_track, 0), ntr - 1);
+            const int seldev = std::max(0, audio_state.sel_device);
+            const Rect r = param_slider_rect(audio_state.param_drag, scenes);
+            const float v = std::min(1.0, std::max(0.0, (mx - r.x) / r.w));
+            vivid_poc::session_set_param(audio_state.session, seltr, seldev,
+                                         vivid_poc::session_param_id(audio_state.session, seltr, seldev, audio_state.param_drag), v);
         }
 
         vivid::FrameState frame;

@@ -467,6 +467,31 @@ struct Vst3HostApp : IHostApplication {
 };
 
 // ---------------------------------------------------------------------------
+// Lock-free SPSC queue carrying UI->audio parameter changes (id, normalized).
+// ---------------------------------------------------------------------------
+struct ParamMsg { uint32_t id; float value; };
+struct ParamQueue {
+    static constexpr int N = 256;
+    ParamMsg buf[N];
+    std::atomic<int> head{0}, tail{0};
+    bool push(uint32_t id, float v) {           // UI thread
+        const int t = tail.load(std::memory_order_relaxed);
+        const int nt = (t + 1) % N;
+        if (nt == head.load(std::memory_order_acquire)) return false;  // full
+        buf[t] = { id, v };
+        tail.store(nt, std::memory_order_release);
+        return true;
+    }
+    bool pop(ParamMsg& m) {                      // audio thread
+        const int h = head.load(std::memory_order_relaxed);
+        if (h == tail.load(std::memory_order_acquire)) return false;   // empty
+        m = buf[h];
+        head.store((h + 1) % N, std::memory_order_release);
+        return true;
+    }
+};
+
+// ---------------------------------------------------------------------------
 // Vst3Handle — owns one loaded+initialized VST3 plugin instance
 // ---------------------------------------------------------------------------
 
@@ -490,6 +515,7 @@ struct Vst3Handle {
     bool               controller_is_owned   = false; // created separately; we must terminate+release
     bool               processing            = false;  // setProcessing(true) called
     Vst3ComponentHandler component_handler;           // stub for setComponentHandler
+    ParamQueue         param_q;                        // UI->audio parameter changes
 
     // Param info cache for macro mapping
     struct ParamEntry {
