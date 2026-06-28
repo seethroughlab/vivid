@@ -35,6 +35,12 @@ public:
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt) { reg_.connect(src, dst, amt); }
+    // Return path (P27): registry can drive any dest; main feeds extra sources
+    // (the visuals' uniform values) and applies audio-param dests each frame.
+    float dest_value(const std::string& dest) const { return reg_.dest_value(dest); }
+    const std::string* source_of(const std::string& dest) const { return reg_.source_of(dest); }
+    void  set_named_source(const std::string& id, float v) { reg_.set_source(id, v); }
+    void  disconnect_dest(const std::string& dest) { reg_.disconnect(dest); }
     // Chain (op type + input edge + position) persistence.
     int  op_count() const;
     void get_op(int i, int& op, int& input, float& x, float& y) const;

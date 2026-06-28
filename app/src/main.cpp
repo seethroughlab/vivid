@@ -46,6 +46,8 @@ struct AudioState {
     vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
     CtxMenu menu;                           // characteristic picker (UI thread)
     CtxMenu fx_menu;                        // "+ FX" picker (src = track)
+    CtxMenu map_menu;                       // param "map from source" picker
+    int map_param = -1;                     // param index the map menu targets
     int sel_track = 0;                      // track whose device chain is shown
     int sel_device = 0;                     // device whose params are shown (0=inst, 1+=fx)
     int param_drag = -1;                    // param slider being dragged
@@ -157,7 +159,19 @@ inline Rect  device_x_btn(int i, int scenes) { Rect b = device_box(i, scenes); r
 // Params panel for the selected device (P24): a column of sliders.
 constexpr int kMaxShownParams = 12;
 inline float params_y(int scenes) { return device_y(scenes) + 78.f; }
-inline Rect  param_slider_rect(int i, int scenes) { return { kSceneColX + 110.f, params_y(scenes) + 20.f + i * 22.f, 170.f, 12.f }; }
+inline Rect  param_slider_rect(int i, int scenes) { return { kSceneColX + 110.f, params_y(scenes) + 20.f + i * 22.f, 158.f, 12.f }; }
+inline Rect  param_map_btn(int i, int scenes)     { return { kSceneColX + 88.f,  params_y(scenes) + 20.f + i * 22.f, 16.f, 12.f }; }
+// Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
+struct MapSrc { const char* label; const char* id; };
+constexpr MapSrc kMapSources[] = {
+    { "Master Level", "master.level" }, { "Master Transient", "master.transient" },
+    { "Master Low", "master.low" }, { "Master Mid", "master.mid" }, { "Master High", "master.high" },
+    { "Viz Warp", "viz.warp" }, { "Viz Glow", "viz.glow" }, { "Viz Feedback", "viz.feedback" },
+    { "\xE2\x80\x94 clear \xE2\x80\x94", "" } };
+constexpr int kNumMapSources = 9;
+inline std::string param_dest(int track, int device, int i) {
+    return "param:" + std::to_string(track) + ":" + std::to_string(device) + ":" + std::to_string(i);
+}
 inline void track_accent(int t, float& r, float& g, float& b) {
     static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
     r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
@@ -330,10 +344,15 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     for (int i = 0; i < shown; ++i) {
         const Rect r = param_slider_rect(i, scenes);
         const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
-        char nm[18]; std::snprintf(nm, sizeof nm, "%.15s", vivid_poc::session_param_name(s, seltr, seldev, i));
+        char nm[14]; std::snprintf(nm, sizeof nm, "%.11s", vivid_poc::session_param_name(s, seltr, seldev, i));
         ui.draw_text(kSceneColX, r.y - 2.f, nm, 0.7f, 0.72f, 0.76f, 1.0f, 0.78f);
+        // map button (return path): driven if a source is mapped to this param
+        const Rect mb = param_map_btn(i, scenes);
+        const bool mapped = st.graph && st.graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
+        ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? 0.30f : 0.14f, mapped ? 0.55f : 0.16f, mapped ? 0.55f : 0.2f, 1.0f);
+        ui.draw_text(mb.x + 4.f, mb.y - 1.f, "m", mapped ? 0.95f : 0.6f, 0.95f, 0.95f, 1.0f, 0.7f);
         ui.draw_rect(r.x, r.y, r.w, r.h, 0.10f, 0.11f, 0.13f, 1.0f);
-        ui.draw_rect(r.x, r.y, r.w * v, r.h, 0.35f, 0.5f, 0.7f, 1.0f);
+        ui.draw_rect(r.x, r.y, r.w * v, r.h, mapped ? 0.45f : 0.35f, mapped ? 0.6f : 0.5f, mapped ? 0.5f : 0.7f, 1.0f);
         ui.draw_rect(r.x + r.w * v - 2.f, r.y - 2.f, 4.f, r.h + 4.f, 0.7f, 0.8f, 0.95f, 1.0f);
     }
     if (pc > shown) ui.draw_text(kSceneColX, py0 + 24.f + shown * 22.f, "...", 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
@@ -364,6 +383,20 @@ void draw_fx_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
         ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
         ui.draw_rect(m.x, iy, 3.f, 24.f, 0.31f, 0.70f, 0.80f, 1.0f);
         ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), 0.85f, 0.88f, 0.92f, 1.0f, 0.9f);
+    }
+}
+
+// The "map this param from a source" picker (the return path).
+void draw_map_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
+    if (!m.open) return;
+    const float w = 168.f;
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, "map param from:", 0.55f, 0.58f, 0.64f, 1.0f, 0.8f);
+    for (int j = 0; j < kNumMapSources; ++j) {
+        const float iy = m.y + j * 24.f;
+        ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, 0.85f, 0.7f, 0.4f, 1.0f);  // amber = return path
+        ui.draw_text(m.x + 12.f, iy + 5.f, kMapSources[j].label, 0.85f, 0.88f, 0.92f, 1.0f, 0.88f);
     }
 }
 
@@ -495,6 +528,22 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         st->fx_menu.open = false;
         return;
     }
+    // Map menu: pick a source to drive the selected param (the return path).
+    if (st->map_menu.open) {
+        const int seltr = std::min(std::max(st->sel_track, 0), tracks - 1);
+        const int seldev = std::max(0, st->sel_device);
+        for (int j = 0; j < kNumMapSources; ++j) {
+            const Rect rr = { st->map_menu.x, st->map_menu.y + j * 24.f, 168.f, 24.f };
+            if (hit(rr, mx, my) && st->graph) {
+                const std::string d = param_dest(seltr, seldev, st->map_param);
+                if (kMapSources[j].id[0] == '\0') st->graph->disconnect_dest(d);
+                else st->graph->add_mapping(kMapSources[j].id, d, 1.0f);
+                break;
+            }
+        }
+        st->map_menu.open = false;
+        return;
+    }
     if (!st->session) return;
 
     // A meter (master or per-track) -> open its characteristic menu (left-click).
@@ -548,6 +597,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         const int seldev = std::max(0, st->sel_device);
         const int npc = std::min(vivid_poc::session_param_count(st->session, seltr, seldev), kMaxShownParams);
         for (int i = 0; i < npc; ++i) {
+            if (hit(param_map_btn(i, scenes), mx, my)) {  // open the source picker for this param
+                st->map_menu = { true, static_cast<float>(mx), static_cast<float>(my), 0 };
+                st->map_param = i; return;
+            }
             const Rect r = param_slider_rect(i, scenes);
             if (hit(r, mx, my)) {
                 st->param_drag = i;
@@ -739,6 +792,19 @@ int main() {
         }
         float uniforms[vivid::kNumShaderUniforms];
         graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)
+        // Return path: expose the visuals' uniform values as sources, then apply
+        // any source -> audio-param mappings ("param:T:D:I").
+        for (int i = 0; i < vivid::kNumShaderUniforms; ++i)
+            graph.set_named_source(std::string("viz.") + vivid::kShaderUniformNames[i], uniforms[i]);
+        if (audio_state.session)
+            for (const auto& m : graph.mappings()) {
+                if (m.dest.rfind("param:", 0) != 0) continue;
+                int T = -1, D = 0, I = 0;
+                if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)
+                    vivid_poc::session_set_param(audio_state.session, T, D,
+                                                 vivid_poc::session_param_id(audio_state.session, T, D, I),
+                                                 graph.dest_value(m.dest));
+            }
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         if (audio_state.split_drag)  // continue a splitter drag
@@ -807,6 +873,7 @@ int main() {
                       audio_state.menu.src < 0 ? "Master"
                       : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
             draw_fx_menu(ui, audio_state.fx_menu);
+            draw_map_menu(ui, audio_state.map_menu);
             clip_editor.draw(ui);  // modal overlay on top
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             gpu.end_frame(frame);
