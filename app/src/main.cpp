@@ -45,9 +45,12 @@ struct AudioState {
     vivid_poc::Session* session = nullptr;  // hosted instrument + clips (or null -> test tone)
     vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
     CtxMenu menu;                           // characteristic picker (UI thread)
+    CtxMenu fx_menu;                        // "+ FX" picker (src = track)
+    int sel_track = 0;                      // track whose device chain is shown
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
     bool split_drag = false;                // dragging the DAW|visuals splitter
-    Vst3PluginWindow* track_win[8] = {};    // open plugin editor windows, per track
+    Vst3PluginWindow* track_win[8] = {};    // open instrument editor windows, per track
+    Vst3PluginWindow* fx_win[8] = {};       // open effect editor windows (pool)
     vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
     double last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;  // double-click detect
     float tr_baseline = 0.f;                // onset detector baseline (audio thread)
@@ -132,6 +135,10 @@ inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes)
 // Explicit "send this source to the visuals graph" buttons (the bridge entry point).
 inline Rect track_viz_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 48.f, kTrackW - 16.f, 18.f }; }
 inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 18.f }; }
+// Device chain (P23) for the selected track: instrument + effects + "+ FX".
+inline float device_y(int scenes) { return mixer_y(scenes) + 100.f; }
+inline Rect  device_box(int i, int scenes) { return { kSceneColX + i * 124.f, device_y(scenes) + 18.f, 116.f, 40.f }; }
+inline Rect  device_x_btn(int i, int scenes) { Rect b = device_box(i, scenes); return { b.x + b.w - 17.f, b.y + 3.f, 14.f, 14.f }; }
 inline void track_accent(int t, float& r, float& g, float& b) {
     static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
     r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
@@ -258,6 +265,36 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
                  "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
                  0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
 
+    // device chain for the selected track: [instrument] [fx... x] [+ FX]
+    const int seltr = std::min(std::max(st.sel_track, 0), tracks - 1);
+    const float dy = device_y(scenes);
+    char dl[64]; std::snprintf(dl, sizeof dl, "DEVICES \xC2\xB7 %s  (click a track header to select)", vivid_poc::session_track_name(s, seltr));
+    ui.draw_text(kSceneColX, dy, dl, 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    const int nfx = vivid_poc::session_effect_count(s, seltr);
+    for (int i = 0; i <= nfx + 1; ++i) {
+        const Rect b = device_box(i, scenes);
+        const bool hov = hit(b, mx, my);
+        const bool isInst = (i == 0), isAdd = (i == nfx + 1);
+        const bool aud = vivid_poc::session_track_is_audio(s, seltr);
+        if (isInst && aud) continue;  // sampler track has no instrument plugin
+        float br = hov ? 0.04f : 0.f;
+        ui.draw_rect(b.x, b.y, b.w, b.h, (isAdd ? 0.10f : 0.14f) + br, 0.15f + br, (isInst ? 0.20f : 0.17f) + br, 1.0f);
+        ui.draw_rect(b.x, b.y, b.w, 3.f, isInst ? 0.45f : (isAdd ? 0.31f : 0.62f), isInst ? 0.62f : 0.55f, isAdd ? 0.55f : 0.80f, 1.0f);
+        if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 13.f, "+ FX", 0.6f, 0.78f, 0.7f, 1.0f, 0.95f); }
+        else if (isInst) {
+            ui.draw_text(b.x + 8.f, b.y + 6.f, "INST", 0.5f, 0.53f, 0.6f, 1.0f, 0.72f);
+            char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", vivid_poc::session_track_name(s, seltr));
+            ui.draw_text(b.x + 8.f, b.y + 21.f, nm, 0.88f, 0.9f, 0.94f, 1.0f, 0.9f);
+        } else {
+            ui.draw_text(b.x + 8.f, b.y + 6.f, "FX", 0.5f, 0.53f, 0.6f, 1.0f, 0.72f);
+            char nm[24]; std::snprintf(nm, sizeof nm, "%.12s", vivid_poc::session_effect_name(s, seltr, i - 1));
+            ui.draw_text(b.x + 8.f, b.y + 21.f, nm, 0.88f, 0.9f, 0.94f, 1.0f, 0.9f);
+            const Rect xb = device_x_btn(i, scenes);
+            ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
+            ui.draw_text(xb.x + 3.f, xb.y + 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.85f);
+        }
+    }
+
     ui.pop_clip_rect();  // end DAW pane
     // Visuals pane label (clipped to the right pane)
     const Rect vp = viewer_rect();
@@ -270,6 +307,21 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     const Rect sp = splitter_rect();
     const bool sph = hit(sp, mx, my);
     ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? 0.30f : 0.16f, sph ? 0.34f : 0.17f, sph ? 0.40f : 0.20f, 1.0f);
+}
+
+// The "+ FX" effect picker for the device chain.
+void draw_fx_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
+    if (!m.open) return;
+    const float w = 150.f;
+    const int n = vivid_poc::session_available_effect_count();
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", 0.55f, 0.58f, 0.64f, 1.0f, 0.82f);
+    for (int j = 0; j < n; ++j) {
+        const float iy = m.y + j * 24.f;
+        ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, 0.31f, 0.70f, 0.80f, 1.0f);
+        ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), 0.85f, 0.88f, 0.92f, 1.0f, 0.9f);
+    }
 }
 
 // The characteristic context menu (the bridge entry point).
@@ -391,6 +443,15 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         st->menu.open = false;
         return;
     }
+    // FX menu has priority: pick an effect -> add it to the menu's track.
+    if (st->fx_menu.open) {
+        for (int j = 0; j < vivid_poc::session_available_effect_count(); ++j) {
+            const Rect r = { st->fx_menu.x, st->fx_menu.y + j * 24.f, 150.f, 24.f };
+            if (hit(r, mx, my)) { vivid_poc::session_add_effect_by_index(st->session, st->fx_menu.src, j); break; }
+        }
+        st->fx_menu.open = false;
+        return;
+    }
     if (!st->session) return;
 
     // A meter (master or per-track) -> open its characteristic menu (left-click).
@@ -398,15 +459,35 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         const int src = meter_hit(tracks, scenes, mx, my);
         if (src != -2) { st->menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return; }
     }
-    // Click a track header -> open that track's plugin editor (change presets there).
-    for (int t = 0; t < tracks; ++t) {
-        if (hit(track_header_rect(t), mx, my)) {
-            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_track_controller(st->session, t));
+    // Click a track header -> select it (its device chain shows in the DAW pane).
+    for (int t = 0; t < tracks; ++t)
+        if (hit(track_header_rect(t), mx, my)) { st->sel_track = t; return; }
+
+    // Device chain of the selected track: instrument editor / effect editor / remove / + FX.
+    {
+        const int seltr = std::min(std::max(st->sel_track, 0), tracks - 1);
+        const int nfx = vivid_poc::session_effect_count(st->session, seltr);
+        if (!vivid_poc::session_track_is_audio(st->session, seltr) && hit(device_box(0, scenes), mx, my)) {
+            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_track_controller(st->session, seltr));
             if (ctrl) {
-                if (st->track_win[t]) { vst3_plugin_window_close(st->track_win[t]); st->track_win[t] = nullptr; }
-                st->track_win[t] = vst3_plugin_window_open(ctrl, vivid_poc::session_track_name(st->session, t));
-                std::fprintf(stderr, "[vivid] track %d editor: %s\n", t, st->track_win[t] ? "opened" : "no GUI");
+                if (st->track_win[seltr]) { vst3_plugin_window_close(st->track_win[seltr]); st->track_win[seltr] = nullptr; }
+                st->track_win[seltr] = vst3_plugin_window_open(ctrl, vivid_poc::session_track_name(st->session, seltr));
             }
+            return;
+        }
+        for (int e = 0; e < nfx; ++e) {
+            if (hit(device_x_btn(1 + e, scenes), mx, my)) { vivid_poc::session_remove_effect(st->session, seltr, e); return; }
+            if (hit(device_box(1 + e, scenes), mx, my)) {
+                auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(vivid_poc::session_effect_controller(st->session, seltr, e));
+                if (ctrl) {
+                    int slot = -1; for (int k = 0; k < 8; ++k) if (!st->fx_win[k]) { slot = k; break; }
+                    if (slot >= 0) st->fx_win[slot] = vst3_plugin_window_open(ctrl, vivid_poc::session_effect_name(st->session, seltr, e));
+                }
+                return;
+            }
+        }
+        if (hit(device_box(1 + nfx, scenes), mx, my)) {
+            st->fx_menu = { true, static_cast<float>(mx), static_cast<float>(my), seltr };
             return;
         }
     }
@@ -558,10 +639,14 @@ int main() {
           clip_editor.set_window(static_cast<float>(g_win_w), static_cast<float>(g_win_h));
         }
 
-        // reap plugin editor windows the user closed
+        // reap plugin editor windows the user closed (instruments + effects)
         for (int t = 0; audio_state.session && t < vivid_poc::session_track_count(audio_state.session); ++t)
             if (audio_state.track_win[t] && !vst3_plugin_window_is_open(audio_state.track_win[t])) {
                 vst3_plugin_window_close(audio_state.track_win[t]); audio_state.track_win[t] = nullptr;
+            }
+        for (int k = 0; k < 8; ++k)
+            if (audio_state.fx_win[k] && !vst3_plugin_window_is_open(audio_state.fx_win[k])) {
+                vst3_plugin_window_close(audio_state.fx_win[k]); audio_state.fx_win[k] = nullptr;
             }
 
         const double beats = transport.beats.load(std::memory_order_relaxed);
@@ -638,6 +723,7 @@ int main() {
             draw_menu(ui, audio_state.menu,
                       audio_state.menu.src < 0 ? "Master"
                       : (audio_state.session ? vivid_poc::session_track_name(audio_state.session, audio_state.menu.src) : "track"));
+            draw_fx_menu(ui, audio_state.fx_menu);
             clip_editor.draw(ui);  // modal overlay on top
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             gpu.end_frame(frame);
@@ -648,6 +734,7 @@ int main() {
 
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
+    for (int k = 0; k < 8; ++k) if (audio_state.fx_win[k]) vst3_plugin_window_close(audio_state.fx_win[k]);
     if (audio_state.session) vivid_poc::session_destroy(audio_state.session);
     if (g_video) { video_close(g_video); g_video = nullptr; }
     vgraph.shutdown();

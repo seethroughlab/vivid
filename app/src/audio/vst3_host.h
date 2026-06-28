@@ -43,6 +43,13 @@ void* session_track_controller(Session*, int track);
 int         session_effect_count(Session*, int track);
 const char* session_effect_name(Session*, int track, int effect);
 void*       session_effect_controller(Session*, int track, int effect);  // IEditController*
+// Thread-safe runtime add/remove (P23). bundle = a .vst3 path.
+bool        session_add_effect(Session*, int track, const char* bundle);
+void        session_remove_effect(Session*, int track, int effect);
+// Catalog offered in the device-chain "+ FX" menu (resolved to a bundle on add).
+int         session_available_effect_count();
+const char* session_available_effect_name(int i);
+bool        session_add_effect_by_index(Session*, int track, int i);
 
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated

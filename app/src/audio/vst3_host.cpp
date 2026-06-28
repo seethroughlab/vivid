@@ -40,8 +40,15 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     uint64_t              steady = 0;
-    std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio in->out)
+    std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
     std::vector<float>    fxl, fxr;         // effect I/O scratch
+    // Thread-safe FX edits (mirror of the clip-edit pattern): the UI mutates
+    // effects_edit; the audio thread copies it into `effects` when fx_gen bumps.
+    std::mutex               fx_mtx;
+    std::vector<Vst3Handle*> effects_edit;
+    std::atomic<uint64_t>    fx_gen{0};
+    uint64_t                 fx_gen_seen = 0;
+    std::vector<Vst3Handle*> fx_retired;   // removed handles, freed at shutdown (no audio free)
     // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
     // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
     std::mutex            edit_mtx;
@@ -153,6 +160,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
+    t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
     return t;
 }
 
@@ -210,7 +218,8 @@ Session* session_create(uint32_t sample_rate) {
             for (const auto& b : bundles) if (!name_has(b, "atoms") && name_has(b, fx_prefer[p])) { fxpath = b; break; }
             if (fxpath.empty()) continue;
             if (Vst3Handle* fx = load_effect(fxpath, sample_rate, &s->host)) {
-                s->tracks[0]->effects.push_back(fx);
+                s->tracks[0]->effects_edit.push_back(fx);
+                s->tracks[0]->effects = s->tracks[0]->effects_edit;  // active immediately (pre-audio)
                 std::fprintf(stderr, "[Session] track 0 effect: %s\n",
                              fx->plugin_name.empty() ? fxpath.c_str() : fx->plugin_name.c_str());
                 break;
@@ -439,6 +448,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.edit_mtx.unlock();
             }
         }
+        // Apply pending FX-chain edits (copy the UI's pointer list into the working
+        // one; reserved capacity avoids a realloc). Only runs after an add/remove.
+        if (t.fx_gen.load(std::memory_order_acquire) != t.fx_gen_seen) {
+            if (t.fx_mtx.try_lock()) {
+                t.effects = t.effects_edit;
+                t.fx_gen_seen = t.fx_gen.load(std::memory_order_acquire);
+                t.fx_mtx.unlock();
+            }
+        }
         if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
         float* L = t.bl.data(); float* R = t.br.data();
         std::memset(L, 0, frames * sizeof(float));
@@ -525,35 +543,76 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     return any;
 }
 
+static void destroy_handle(Vst3Handle* h) {
+    if (!h) return;
+    if (h->processing) h->processor->setProcessing(false);
+    h->destroy(); delete h;
+}
 void session_destroy(Session* s) {
     if (!s) return;
     for (auto& tp : s->tracks) {
-        for (Vst3Handle* fx : tp->effects) {
-            if (!fx) continue;
-            if (fx->processing) fx->processor->setProcessing(false);
-            fx->destroy(); delete fx;
-        }
-        if (tp->handle) {
-            if (tp->handle->processing) tp->handle->processor->setProcessing(false);
-            tp->handle->destroy();
-            delete tp->handle;
-        }
+        for (Vst3Handle* fx : tp->effects_edit) destroy_handle(fx);  // authoritative FX list
+        for (Vst3Handle* fx : tp->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
+        destroy_handle(tp->handle);
     }
     delete s;
 }
 
+// Effect queries read the UI-owned list (the audio thread mirrors it).
 int session_effect_count(Session* s, int t) {
-    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? static_cast<int>(s->tracks[t]->effects.size()) : 0;
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? static_cast<int>(s->tracks[t]->effects_edit.size()) : 0;
 }
 const char* session_effect_name(Session* s, int t, int e) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
-    auto& fx = s->tracks[t]->effects;
+    auto& fx = s->tracks[t]->effects_edit;
     return (e >= 0 && e < static_cast<int>(fx.size()) && fx[e]) ? fx[e]->plugin_name.c_str() : "";
 }
 void* session_effect_controller(Session* s, int t, int e) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
-    auto& fx = s->tracks[t]->effects;
+    auto& fx = s->tracks[t]->effects_edit;
     return (e >= 0 && e < static_cast<int>(fx.size()) && fx[e]) ? fx[e]->controller : nullptr;
+}
+bool session_add_effect(Session* s, int t, const char* bundle) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !bundle) return false;
+    Vst3Handle* fx = load_effect(bundle, s->sample_rate, &s->host);  // load outside the lock (slow)
+    if (!fx) return false;
+    Track& tr = *s->tracks[t];
+    { std::lock_guard<std::mutex> lk(tr.fx_mtx); tr.effects_edit.push_back(fx); }
+    tr.fx_gen.fetch_add(1, std::memory_order_release);
+    std::fprintf(stderr, "[Session] track %d + effect: %s\n", t, fx->plugin_name.c_str());
+    return true;
+}
+void session_remove_effect(Session* s, int t, int e) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
+    Track& tr = *s->tracks[t];
+    {
+        std::lock_guard<std::mutex> lk(tr.fx_mtx);
+        if (e >= 0 && e < static_cast<int>(tr.effects_edit.size())) {
+            tr.fx_retired.push_back(tr.effects_edit[e]);   // freed at shutdown, not here
+            tr.effects_edit.erase(tr.effects_edit.begin() + e);
+        }
+    }
+    tr.fx_gen.fetch_add(1, std::memory_order_release);
+}
+
+// A small catalog of effects offered in the device-chain "+ FX" menu.
+static const struct { const char* label; const char* match; } kEffectCatalog[] = {
+    { "Yak Delay", "yak" }, { "CHOWTape", "chowtape" }, { "Portal", "portal" },
+    { "Infiltrator", "infiltrator" }, { "Airwindows", "airwindows" },
+};
+int session_available_effect_count() { return static_cast<int>(sizeof(kEffectCatalog) / sizeof(kEffectCatalog[0])); }
+const char* session_available_effect_name(int i) {
+    return (i >= 0 && i < session_available_effect_count()) ? kEffectCatalog[i].label : "";
+}
+bool session_add_effect_by_index(Session* s, int t, int i) {
+    if (!s || i < 0 || i >= session_available_effect_count()) return false;
+    std::vector<std::string> bundles;
+    list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
+    if (const char* home = std::getenv("HOME"))
+        list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
+    for (const auto& b : bundles)
+        if (name_has(b, kEffectCatalog[i].match)) return session_add_effect(s, t, b.c_str());
+    return false;
 }
 
 }  // namespace vivid_poc
