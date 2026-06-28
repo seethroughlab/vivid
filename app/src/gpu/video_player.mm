@@ -55,7 +55,17 @@ bool video_next_frame(VideoPlayer* vp, const uint8_t** out, uint32_t* ow, uint32
     if (!vp || !vp->output) return false;
     @autoreleasepool {
         CMTime t = [vp->output itemTimeForHostTime:CACurrentMediaTime()];
-        if (![vp->output hasNewPixelBufferForItemTime:t]) return false;
+        if (![vp->output hasNewPixelBufferForItemTime:t]) {
+            // No NEW frame for this render tick (normal between video frames). Only
+            // warn if the item is actually stalled (not ready / failed).
+            if (vp->item.status != AVPlayerItemStatusReadyToPlay) {
+                static int miss = 0;
+                if ((miss++ % 120) == 0)
+                    std::fprintf(stderr, "[video] stalled (item.status=%ld rate=%.2f)\n",
+                                 (long)vp->item.status, (double)vp->player.rate);
+            }
+            return false;
+        }
         CVPixelBufferRef pb = [vp->output copyPixelBufferForItemTime:t itemTimeForDisplay:nil];
         if (!pb) return false;
         CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
@@ -72,6 +82,8 @@ bool video_next_frame(VideoPlayer* vp, const uint8_t** out, uint32_t* ow, uint32
         CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
         CVPixelBufferRelease(pb);
         if (!vp->w) return false;
+        static bool announced = false;
+        if (!announced) { std::fprintf(stderr, "[video] first frame %ux%u\n", vp->w, vp->h); announced = true; }
         *out = vp->frame.data(); *ow = vp->w; *oh = vp->h;
         return true;
     }
