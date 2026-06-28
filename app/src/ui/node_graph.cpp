@@ -33,8 +33,8 @@ static std::string lower_str(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
 }
-static std::string port_dest(int p) { return std::string("uniform.") + kShaderUniformNames[p]; }
-
+// Canonical op-type / local-index for the 6 named uniforms (used only to publish
+// the back-compat viz.* return-path sources from the first node of each type).
 static VOp  uniform_owner(int u) { return u <= 3 ? VOp::Plasma : (u == 4 ? VOp::Feedback : VOp::Blur); }
 static int  uniform_local(int u) { return u <= 3 ? u : 0; }
 static bool op_has_input(VOp op)  { return op == VOp::Feedback || op == VOp::Blur || op == VOp::Output; }
@@ -43,18 +43,31 @@ static const char* op_name(VOp op) {
     switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
         case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
 }
-int NodeGraph::op_param_uniforms(VOp op, int out[4]) {
+// Per-node param identity. dest = "node:<id>.<name>".
+static const char* kPlasmaParamNames[4] = { "warp", "hue", "density", "glow" };
+static const char* op_param_name(VOp op, int local) {
     switch (op) {
-        case VOp::Plasma:   out[0]=0; out[1]=1; out[2]=2; out[3]=3; return 4;
-        case VOp::Feedback: out[0]=4; return 1;
-        case VOp::Blur:     out[0]=5; return 1;
-        default: return 0;
+        case VOp::Plasma:   return (local >= 0 && local < 4) ? kPlasmaParamNames[local] : "p";
+        case VOp::Feedback: return "decay";
+        case VOp::Blur:     return "radius";
+        default: return "p";
     }
+}
+static std::string node_param_dest(int id, const char* name) {
+    return "node:" + std::to_string(id) + "." + name;
 }
 
 NodeGraph::NodeGraph() {
     data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
-    reg_.connect("master.level", port_dest(3));  // glow <- level (out-of-box reactivity)
+    // out-of-box reactivity is seeded in set_visual_graph (needs the default chain's ids).
+}
+
+void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
+    vg_ = vg;
+    if (vg_ && reg_.mappings().empty()) {  // seed glow <- master level on the first Plasma
+        const int ni = first_node_of(VOp::Plasma);
+        if (ni >= 0) reg_.connect("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"));
+    }
 }
 
 int NodeGraph::find_source_node(const std::string& src) const {
@@ -131,22 +144,27 @@ int NodeGraph::first_node_of(VOp op) const {
     for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op == op) return i;
     return -1;
 }
-bool NodeGraph::param_port(int uniform, float& px, float& py) const {  // param input: left edge
-    const VOp owner = uniform_owner(uniform);
-    const int ni = first_node_of(owner);
-    if (ni < 0) return false;
-    float x, y, w, h; op_node_rect(ni, x, y, w, h);
-    const int row = (op_has_input(owner) ? 1 : 0) + uniform_local(uniform);  // after the texture input
+bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const {  // left edge, per node
+    if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
+    const VOp op = vg_->nodes()[node_idx].op;
+    if (local < 0 || local >= param_count_of(op)) return false;
+    float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
+    const int row = (op_has_input(op) ? 1 : 0) + local;  // after the texture input
     px = x; py = op_row_y(y, row);
     return true;
 }
-int NodeGraph::nearest_param(double x, double y, double maxd) const {
-    int best = -1; double bd = maxd;
-    for (int u = 0; u < kNumShaderUniforms; ++u) {
-        float px, py; if (!param_port(u, px, py)) continue;
-        double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = u; }
+bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, int& local) const {
+    bool found = false; double bd = maxd;
+    if (!vg_) return false;
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+        const int pc = param_count_of(vg_->nodes()[i].op);
+        for (int l = 0; l < pc; ++l) {
+            float px, py; if (!param_port(i, l, px, py)) continue;
+            double d = std::hypot(x - px, y - py);
+            if (d < bd) { bd = d; node_idx = i; local = l; found = true; }
+        }
     }
-    return best;
+    return found;
 }
 int NodeGraph::nearest_op_in(double x, double y, double maxd) const {
     int best = -1; double bd = maxd;
@@ -184,8 +202,21 @@ void NodeGraph::set_value(int char_id, float v) {
     }
     reg_.set_source(source_id_for(char_id), v);
 }
-void NodeGraph::fill_uniforms(float* out) const {
-    for (int i = 0; i < kNumShaderUniforms; ++i) out[i] = reg_.dest_value(port_dest(i));
+void NodeGraph::apply_params() {
+    if (!vg_) return;
+    auto& nodes = vg_->nodes();
+    for (auto& n : nodes) {
+        const int pc = param_count_of(n.op);
+        for (int l = 0; l < pc; ++l)
+            n.params[l] = reg_.dest_value(node_param_dest(n.id, op_param_name(n.op, l)));
+    }
+    // Back-compat return-path sources: the canonical six viz.<name>, taken from the
+    // first node of each op-type (keeps P27's static map-source catalog working).
+    for (int u = 0; u < kNumShaderUniforms; ++u) {
+        const int ni = first_node_of(uniform_owner(u));
+        const float v = (ni >= 0) ? nodes[ni].params[uniform_local(u)] : 0.f;
+        reg_.set_source(std::string("viz.") + kShaderUniformNames[u], v);
+    }
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) {
     float y = by0_ + 150.f + data_.size() * 84.f;
@@ -199,17 +230,18 @@ void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& t
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); }
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
-void NodeGraph::get_op(int i, int& op, int& input, float& x, float& y) const {
+void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
     op = static_cast<int>(vg_->nodes()[i].op);
     input = vg_->nodes()[i].input;
+    id = vg_->nodes()[i].id;
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
     y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
 }
 void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; }
-void NodeGraph::chain_load_add(int op, float x, float y) {
+void NodeGraph::chain_load_add(int op, int id, float x, float y) {
     if (!vg_) return;
-    vg_->add_node(static_cast<vivid::VOp>(op));
+    vg_->load_node(static_cast<vivid::VOp>(op), id);
     op_pos_.push_back({ x, y });
 }
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
@@ -276,14 +308,18 @@ void NodeGraph::draw(Renderer2D& r) {
         if (in >= 0 && in < n && op_out_port(in, ox, oy) && op_in_port(i, ix, iy))
             draw_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
     }
-    // param wires (data node -> uniform port)
-    for (int u = 0; u < kNumShaderUniforms; ++u) {
-        const std::string* src = reg_.source_of(port_dest(u));
-        if (!src) continue;
-        const int dn = find_source_node(*src);
-        float px, py; if (dn < 0 || !param_port(u, px, py)) continue;
-        float ox, oy; data_out(data_[dn], ox, oy);
-        draw_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
+    // param wires (data node -> per-node param port)
+    for (int i = 0; i < n; ++i) {
+        const VOp op = vg_->nodes()[i].op;
+        const int pc = param_count_of(op);
+        for (int l = 0; l < pc; ++l) {
+            const std::string* src = reg_.source_of(node_param_dest(vg_->nodes()[i].id, op_param_name(op, l)));
+            if (!src) continue;
+            const int dn = find_source_node(*src);
+            float px, py; if (dn < 0 || !param_port(i, l, px, py)) continue;
+            float ox, oy; data_out(data_[dn], ox, oy);
+            draw_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
+        }
     }
     // drag preview
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < n + int(data_.size())) {
@@ -321,13 +357,18 @@ void NodeGraph::draw(Renderer2D& r) {
             r.draw_rect(tx, ty, tw, th, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
         }
     }
-    // param input ports + labels (down the owning op's left edge)
-    for (int u = 0; u < kNumShaderUniforms; ++u) {
-        float px, py; if (!param_port(u, px, py)) continue;
-        const bool on = reg_.source_of(port_dest(u)) != nullptr;
-        port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
-        r.draw_text(px + 10.f, py - 5.f, kShaderUniformNames[u],
-                    on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.68f);
+    // param input ports + labels (down each node's left edge)
+    for (int i = 0; i < n; ++i) {
+        const VOp op = vg_->nodes()[i].op;
+        const int pc = param_count_of(op);
+        for (int l = 0; l < pc; ++l) {
+            float px, py; if (!param_port(i, l, px, py)) continue;
+            const char* name = op_param_name(op, l);
+            const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
+            port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
+            r.draw_text(px + 10.f, py - 5.f, name,
+                        on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.68f);
+        }
     }
 
     // data nodes (matching card style)
@@ -378,8 +419,11 @@ bool NodeGraph::on_down(double x, double y) {
     // disconnect an op input or a param port
     int oi = nearest_op_in(x, y, 13.0);
     if (oi >= 0) { vg_->set_input(oi, -1); return true; }
-    int up = nearest_param(x, y, 12.0);
-    if (up >= 0) { reg_.disconnect(port_dest(up)); return true; }
+    int pni, pl;
+    if (nearest_param(x, y, 12.0, pni, pl)) {
+        reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
+        return true;
+    }
 
     // start a wire from a data-node output port
     for (int i = 0; i < int(data_.size()); ++i) {
@@ -430,9 +474,11 @@ void NodeGraph::on_move(double x, double y) {
 }
 
 void NodeGraph::on_up(double x, double y) {
-    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size())) {
-        int u = nearest_param(x, y, 18.0);
-        if (u >= 0) reg_.connect(source_id_for(data_[wire_from_].char_id), port_dest(u));
+    if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
+        int pni, pl;
+        if (nearest_param(x, y, 18.0, pni, pl))
+            reg_.connect(source_id_for(data_[wire_from_].char_id),
+                         node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int target = nearest_op_in(x, y, 18.0);
         if (target >= 0 && vg_) vg_->set_input(target, wire_from_);

@@ -20,11 +20,11 @@ public:
     NodeGraph();
 
     void set_value(int char_id, float v);
-    void fill_uniforms(float* out) const;            // kNumShaderUniforms param values
+    void apply_params();   // resolve each node's params from the registry; publish viz.* sources
     void add_data_node(const std::string& title, int char_id);
 
     void set_bounds(float x0, float y0, float x1, float y1);
-    void set_visual_graph(vivid::VisualGraph* vg) { vg_ = vg; }
+    void set_visual_graph(vivid::VisualGraph* vg);   // also seeds the default mapping
 
     // Persistence + inspection.
     int  node_count() const { return static_cast<int>(data_.size()); }
@@ -41,11 +41,11 @@ public:
     const std::string* source_of(const std::string& dest) const { return reg_.source_of(dest); }
     void  set_named_source(const std::string& id, float v) { reg_.set_source(id, v); }
     void  disconnect_dest(const std::string& dest) { reg_.disconnect(dest); }
-    // Chain (op type + input edge + position) persistence.
+    // Chain (op type + input edge + id + position) persistence.
     int  op_count() const;
-    void get_op(int i, int& op, int& input, float& x, float& y) const;
+    void get_op(int i, int& op, int& input, int& id, float& x, float& y) const;
     void chain_load_begin();
-    void chain_load_add(int op, float x, float y);
+    void chain_load_add(int op, int id, float x, float y);
     void chain_load_set_input(int i, int input);
 
     void draw(Renderer2D& r);
@@ -102,7 +102,6 @@ private:
 
     static void data_out(const DataNode& n, float& px, float& py);
     static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);
-    static int  op_param_uniforms(vivid::VOp op, int out[4]);  // uniforms an op owns; count
     int  find_source_node(const std::string& src) const;
 
     void sync_op_pos();
@@ -110,8 +109,9 @@ private:
     bool op_in_port(int i, float& px, float& py) const;   // false if op has no input
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
     int  first_node_of(vivid::VOp op) const;              // -1 if none
-    bool param_port(int uniform, float& px, float& py) const;  // false if unowned
-    int  nearest_param(double x, double y, double maxd) const; // uniform index, -1
+    // Per-node param port: position of node_idx's local param row. False if out of range.
+    bool param_port(int node_idx, int local, float& px, float& py) const;
+    bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
     int  nearest_op_in(double x, double y, double maxd) const; // node index, -1
     int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
     void draw_op_palette(Renderer2D& r);

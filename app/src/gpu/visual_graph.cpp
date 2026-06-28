@@ -70,8 +70,9 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     if (!feedback_.init(device, queue, fmt, kFeedbackGLSL, 2)) return false;
     if (!blur_.init(device, queue, fmt, kBlurGLSL, 1)) return false;
     if (!blit_.init(device, queue, fmt, kBlitGLSL, 1)) return false;
-    // Default chain: Plasma -> Feedback -> Blur -> Output.
-    nodes_ = { { VOp::Plasma, -1 }, { VOp::Feedback, 0 }, { VOp::Blur, 1 }, { VOp::Output, 2 } };
+    // Default chain: Plasma -> Feedback -> Blur -> Output (ids 0..3).
+    nodes_ = { { VOp::Plasma, -1, 0 }, { VOp::Feedback, 0, 1 }, { VOp::Blur, 1, 2 }, { VOp::Output, 2, 3 } };
+    next_id_ = 4;
     ensure_resources(nodes_.size());
     return true;
 }
@@ -86,9 +87,14 @@ void VisualGraph::ensure_resources(size_t n) {
 }
 
 int VisualGraph::add_node(VOp op) {
-    nodes_.push_back({ op, -1 });
+    nodes_.push_back({ op, -1, next_id_++ });
     ensure_resources(nodes_.size());
     return static_cast<int>(nodes_.size()) - 1;
+}
+void VisualGraph::load_node(VOp op, int id) {
+    nodes_.push_back({ op, -1, id });
+    if (id >= next_id_) next_id_ = id + 1;
+    ensure_resources(nodes_.size());
 }
 void VisualGraph::remove_node(int i) {
     if (i < 0 || i >= static_cast<int>(nodes_.size()) || nodes_[i].op == VOp::Output) return;
@@ -118,7 +124,7 @@ VOp VisualGraph::generator() const {
 
 void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
                          float vx, float vy, float vw, float vh, float time,
-                         const float* pu, float decay, float radius, WGPUTextureView video_tex) {
+                         WGPUTextureView video_tex) {
     ensure_resources(nodes_.size());
     const float rtw = static_cast<float>(rtW_), rth = static_cast<float>(rtH_);
     const int outIdx = output_index();
@@ -138,7 +144,7 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         const bool hasIn = (in >= 0 && in < static_cast<int>(nodes_.size()));
         switch (n.op) {
             case VOp::Plasma:
-                plasma_.render(enc, rts_[idx].view, 0, 0, rtw, rth, time, pu, /*clear*/true);
+                plasma_.render(enc, rts_[idx].view, 0, 0, rtw, rth, time, n.params, /*clear*/true);
                 break;
             case VOp::Video: {
                 WGPUTextureView v[1] = { video_tex };
@@ -149,6 +155,7 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 RenderTarget& cur  = histCur_[idx] ? histB_[idx] : histA_[idx];
                 RenderTarget& prev = histCur_[idx] ? histA_[idx] : histB_[idx];
                 WGPUTextureView fin[2] = { hasIn ? rts_[in].view : rts_[idx].view, prev.view };
+                const float decay = 0.82f + n.params[0] * 0.16f;   // normalized 0..1 -> 0.82..0.98
                 feedback_.render(enc, cur.view, 0, 0, rtw, rth, /*clear*/true, fin, 2, time, &decay, 1);
                 WGPUTextureView cv[1] = { cur.view };
                 blit_.render(enc, rts_[idx].view, 0, 0, rtw, rth, /*clear*/true, cv, 1, time, nullptr, 0);
@@ -157,6 +164,7 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
             }
             case VOp::Blur: {
                 WGPUTextureView b[1] = { hasIn ? rts_[in].view : rts_[idx].view };
+                const float radius = n.params[0];
                 blur_.render(enc, rts_[idx].view, 0, 0, rtw, rth, /*clear*/true, b, 1, time, &radius, 1);
                 break;
             }

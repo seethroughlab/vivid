@@ -16,6 +16,8 @@ enum class VOp { Plasma, Video, Feedback, Blur, Output };
 struct VisualNode {
     VOp op;
     int input = -1;
+    int id = 0;              // stable identity (params + mappings + persistence key off this)
+    float params[4] = {};    // per-node resolved param values (Plasma 0..3; Feedback/Blur [0])
 };
 
 // The composable visuals graph: nodes connected by texture edges, terminating in
@@ -29,9 +31,10 @@ public:
 
     std::vector<VisualNode>&       nodes()       { return nodes_; }
     const std::vector<VisualNode>& nodes() const { return nodes_; }
-    int  add_node(VOp op);                 // returns new node index
+    int  add_node(VOp op);                 // returns new node index (assigns a fresh id)
+    void load_node(VOp op, int id);        // append with a persisted id (for load)
     void remove_node(int i);               // (Output cannot be removed)
-    void clear_nodes() { nodes_.clear(); ensure_resources(0); }   // for load
+    void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }   // for load
     void set_input(int node, int input);   // wire input's output -> node's texture input
     int  output_index() const;             // index of the Output node, or -1
 
@@ -40,9 +43,9 @@ public:
     void set_generator(VOp g);
     VOp  generator() const;
 
+    // Params are read per-node from each VisualNode::params (set by NodeGraph::apply_params).
     void render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 float vx, float vy, float vw, float vh, float time,
-                const float* plasma_uniforms, float feedback_decay, float blur_radius,
                 WGPUTextureView video_tex);
 
     // Composite node idx's last-rendered output into a screen rect (live node
@@ -59,6 +62,7 @@ private:
     uint32_t          rtW_ = 0, rtH_ = 0;
 
     std::vector<VisualNode>   nodes_;
+    int                       next_id_ = 0;   // monotonic node-id allocator
     std::vector<RenderTarget> rts_;          // node output (parallel to nodes_)
     std::vector<RenderTarget> histA_, histB_;// per-node feedback history
     std::vector<int>          histCur_;

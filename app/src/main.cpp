@@ -426,6 +426,11 @@ void draw_clip_preview(vivid::ui::Renderer2D& ui, vivid_poc::Session* s, int t, 
 
 // Human-readable label for a mapping destination id.
 std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
+    if (dest.rfind("node:", 0) == 0) {  // "node:<id>.<name>" -> "node <id> · <name> (visual)"
+        const size_t dot = dest.find('.', 5);
+        if (dot != std::string::npos)
+            return "node " + dest.substr(5, dot - 5) + " \xC2\xB7 " + dest.substr(dot + 1) + "  (visual)";
+    }
     if (dest.rfind("uniform.", 0) == 0) return dest.substr(8) + "  (visual)";
     if (dest.rfind("param:", 0) == 0) {
         int T = -1, D = 0, I = 0;
@@ -929,12 +934,10 @@ int main() {
             graph.set_value(char_id_for(t, 3), std::min(1.0f, vivid_poc::session_track_band(audio_state.session, t, 1) * 8.0f));
             graph.set_value(char_id_for(t, 4), std::min(1.0f, vivid_poc::session_track_band(audio_state.session, t, 2) * 12.0f));
         }
-        float uniforms[vivid::kNumShaderUniforms];
-        graph.fill_uniforms(uniforms);             // per-uniform wired values (0 if unwired)
-        // Return path: expose the visuals' uniform values as sources, then apply
-        // any source -> audio-param mappings ("param:T:D:I").
-        for (int i = 0; i < vivid::kNumShaderUniforms; ++i)
-            graph.set_named_source(std::string("viz.") + vivid::kShaderUniformNames[i], uniforms[i]);
+        // Resolve each visual node's params from the registry (writes into the
+        // VisualGraph nodes) and publish the viz.* return-path sources.
+        graph.apply_params();
+        // Apply any source -> audio-param mappings ("param:T:D:I").
         if (audio_state.session)
             for (const auto& m : graph.mappings()) {
                 if (m.dest.rfind("param:", 0) != 0) continue;
@@ -995,13 +998,10 @@ int main() {
                     srcTex.upload(gpu.queue(), px);
                 }
             }
-            // composable visuals chain -> viewer (ports 0..3 plasma, 4 decay, 5 blur)
+            // composable visuals chain -> viewer (per-node params, set by apply_params)
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             const Rect vp = viewer_rect();
-            const float pu[4] = { uniforms[0], uniforms[1], uniforms[2], uniforms[3] };
-            const float decay = 0.82f + uniforms[4] * 0.16f;
-            vgraph.render(frame.encoder, frame.view, vp.x, vp.y, vp.w, vp.h, tsec,
-                          pu, decay, uniforms[5], srcTex.view);
+            vgraph.render(frame.encoder, frame.view, vp.x, vp.y, vp.w, vp.h, tsec, srcTex.view);
 
             draw_ui(ui, audio_state, beats, mx, my);
             const Rect vrp = viewer_rect();
