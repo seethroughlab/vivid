@@ -62,7 +62,19 @@ void NodeGraph::sync_op_pos() {
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
-    w = 120.f; h = 50.f;
+    w = 140.f; h = 62.f;
+}
+
+// classic-style type accent (r,g,b) for an op.
+static void op_accent(VOp op, float& r, float& g, float& b) {
+    switch (op) {
+        case VOp::Plasma: case VOp::Video: r = 0.35f; g = 0.55f; b = 0.95f; break;  // generator: blue
+        case VOp::Output: r = 0.93f; g = 0.78f; b = 0.38f; break;                   // output: amber
+        default:          r = 0.60f; g = 0.45f; b = 0.85f; break;                   // effect: violet
+    }
+}
+static void port_dot(Renderer2D& rr, float px, float py, float rad, float r, float g, float b) {
+    rr.draw_rounded_rect(px - rad, py - rad, rad * 2.f, rad * 2.f, rad, r, g, b, 1.0f);  // filled circle
 }
 bool NodeGraph::op_in_port(int i, float& px, float& py) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_input(vg_->nodes()[i].op)) return false;
@@ -195,7 +207,7 @@ void NodeGraph::draw(Renderer2D& r) {
         const int in = vg_->nodes()[i].input;
         float ox, oy, ix, iy;
         if (in >= 0 && in < n && op_out_port(in, ox, oy) && op_in_port(i, ix, iy))
-            draw_wire(r, ox, oy, ix, iy, 0.40f, 0.58f, 0.85f);
+            draw_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
     }
     // param wires (data node -> uniform port)
     for (int u = 0; u < kNumShaderUniforms; ++u) {
@@ -214,42 +226,44 @@ void NodeGraph::draw(Renderer2D& r) {
         float ox, oy; if (op_out_port(wire_from_, ox, oy)) draw_wire(r, ox, oy, float(cx_), float(cy_), 0.5f, 0.65f, 0.9f);
     }
 
-    // op-nodes
+    // op-nodes (classic-style cards)
     for (int i = 0; i < n; ++i) {
         const VOp op = vg_->nodes()[i].op;
         float x, y, w, h; op_node_rect(i, x, y, w, h);
         const bool gen = (op == VOp::Plasma || op == VOp::Video), out = (op == VOp::Output);
-        r.draw_rounded_rect(x, y, w, h, 6.f, out ? 0.18f : (gen ? 0.16f : 0.13f), 0.15f, out ? 0.16f : 0.18f, 1.0f);
-        r.draw_rect(x, y, w, 3.f, out ? 0.9f : (gen ? 0.45f : 0.35f), out ? 0.7f : 0.6f, out ? 0.4f : 0.9f, 1.0f);
-        r.draw_text(x + 10.f, y + 8.f, op_name(op), 0.90f, 0.92f, 0.95f, 1.0f, 0.92f);
-        if (gen) r.draw_text(x + 10.f, y + 26.f, "V/N", 0.5f, 0.53f, 0.58f, 1.0f, 0.72f);
-        if (out) r.draw_text(x + 10.f, y + 26.f, "\xE2\x86\x92 viewer", 0.5f, 0.6f, 0.55f, 1.0f, 0.72f);
-        // ports
+        float ar, ag, ab; op_accent(op, ar, ag, ab);
+        r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
+        r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
+        r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                               // accent bar
+        r.draw_text(x + 10.f, y + 6.f, op_name(op), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
+        r.draw_text(x + 10.f, y + 30.f, out ? "\xE2\x86\x92 viewer" : (gen ? "generator" : "effect"),
+                    0.52f, 0.55f, 0.6f, 1.0f, 0.78f);
+        if (gen) r.draw_text(x + 10.f, y + 44.f, "V switch \xC2\xB7 N clip", 0.42f, 0.45f, 0.5f, 1.0f, 0.66f);
         float px, py;
-        if (op_in_port(i, px, py))  r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f, 0.40f, 0.58f, 0.85f, 1.0f);
-        if (op_out_port(i, px, py)) r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f, 0.40f, 0.58f, 0.85f, 1.0f);
-        // x button (not on Output)
-        if (!out) { r.draw_rect(x + w - 15.f, y + 3.f, 12.f, 12.f, 0.4f, 0.18f, 0.18f, 1.0f);
-                    r.draw_text(x + w - 12.f, y + 4.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f); }
+        if (op_in_port(i, px, py))  port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+        if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+        if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
     }
     // param ports + labels (on their owning op)
     for (int u = 0; u < kNumShaderUniforms; ++u) {
         float px, py; if (!param_port(u, px, py)) continue;
         const bool on = reg_.source_of(port_dest(u)) != nullptr;
-        r.draw_rect(px - 5.f, py - 5.f, 10.f, 10.f, on ? 0.45f : 0.30f, on ? 0.78f : 0.33f, on ? 0.85f : 0.38f, 1.0f);
-        r.draw_text(px - 12.f, py + 7.f, kShaderUniformNames[u], on ? 0.8f : 0.5f, on ? 0.85f : 0.53f, on ? 0.9f : 0.58f, 1.0f, 0.7f);
+        port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
+        r.draw_text(px - 10.f, py + 6.f, kShaderUniformNames[u],
+                    on ? 0.7f : 0.46f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.64f);
     }
 
-    // data nodes
+    // data nodes (matching card style)
     for (auto& nd : data_) {
-        if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        r.draw_rounded_rect(nd.x, nd.y, nd.w, nd.h, 6.f, 0.14f, 0.15f, 0.18f, 1.0f);
-        r.draw_rect(nd.x, nd.y, nd.w, 3.f, 0.31f, 0.80f, 0.75f, 1.0f);
-        r.draw_text(nd.x + 12.f, nd.y + 12.f, nd.title.c_str(), 0.90f, 0.92f, 0.95f, 1.0f);
-        r.draw_text(nd.x + 12.f, nd.y + 32.f, "data source", 0.5f, 0.53f, 0.58f, 1.0f, 0.85f);
-        r.draw_rect(nd.x + 12.f, nd.y + 52.f, (nd.w - 40.f) * (nd.value > 1 ? 1 : nd.value), 7.f, 0.31f, 0.80f, 0.75f, 1.0f);
+        if (nd.flash > 0) { r.draw_rounded_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
+        r.draw_rounded_rect(nd.x, nd.y, nd.w, nd.h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);
+        r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, 0.15f, 0.18f, 0.18f, 1.0f);  // header strip
+        r.draw_rect(nd.x, nd.y, nd.w, 3.f, 0.31f, 0.80f, 0.75f, 1.0f);                     // accent
+        r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), 0.90f, 0.92f, 0.95f, 1.0f, 0.92f);
+        r.draw_text(nd.x + 12.f, nd.y + 30.f, "data source", 0.5f, 0.53f, 0.58f, 1.0f, 0.8f);
+        r.draw_rect(nd.x + 12.f, nd.y + 50.f, (nd.w - 40.f) * (nd.value > 1 ? 1 : nd.value), 7.f, 0.31f, 0.80f, 0.75f, 1.0f);
         float px, py; data_out(nd, px, py);
-        r.draw_rect(px - 6.f, py - 6.f, 12.f, 12.f, 0.31f, 0.80f, 0.75f, 1.0f);
+        port_dot(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
 
     draw_op_palette(r);
