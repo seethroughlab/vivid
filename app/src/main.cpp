@@ -51,7 +51,10 @@ struct AudioState {
     int map_param = -1;                     // param index the map menu targets
     int sel_track = 0;                      // track whose device chain is shown
     int sel_device = 0;                     // device whose params are shown (0=inst, 1+=fx)
-    int param_drag = -1;                    // param slider being dragged
+    int param_drag = -1;                    // device param (knob) being dragged
+    float param_drag_v0 = 0.f;              // value + cursor-y at knob grab (vertical drag)
+    double param_drag_y0 = 0.0;
+    bool dock_drag = false;                 // dragging the device-dock resize handle
     double last_dev_t = -1; int last_dev_i = -1;  // device double-click detect
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
     bool split_drag = false;                // dragging the DAW|visuals splitter
@@ -154,15 +157,6 @@ inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes)
 // Explicit "send this source to the visuals graph" buttons (the bridge entry point).
 inline Rect track_viz_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 48.f, kTrackW - 16.f, 18.f }; }
 inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 18.f }; }
-// Device chain (P23) for the selected track: instrument + effects + "+ FX".
-inline float device_y(int scenes) { return mixer_y(scenes) + 100.f; }
-inline Rect  device_box(int i, int scenes) { return { kSceneColX + i * 124.f, device_y(scenes) + 18.f, 116.f, 40.f }; }
-inline Rect  device_x_btn(int i, int scenes) { Rect b = device_box(i, scenes); return { b.x + b.w - 17.f, b.y + 3.f, 14.f, 14.f }; }
-// Params panel for the selected device (P24): a column of sliders.
-constexpr int kMaxShownParams = 12;
-inline float params_y(int scenes) { return device_y(scenes) + 78.f; }
-inline Rect  param_slider_rect(int i, int scenes) { return { kSceneColX + 110.f, params_y(scenes) + 20.f + i * 22.f, 158.f, 12.f }; }
-inline Rect  param_map_btn(int i, int scenes)     { return { kSceneColX + 88.f,  params_y(scenes) + 20.f + i * 22.f, 16.f, 12.f }; }
 // Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
 struct MapSrc { const char* label; const char* id; };
 constexpr MapSrc kMapSources[] = {
@@ -191,8 +185,28 @@ constexpr float kViewW = 720.f, kViewH = 300.f;
 // Resizable shell: live window size + the draggable DAW|visuals splitter x.
 static int   g_win_w = 1280, g_win_h = 800;
 static float g_split_x = 512.f;
+static float g_dock_h  = 210.f;   // bottom device-view dock height
+inline float dock_top() { return g_win_h - g_dock_h; }   // y where the dock begins
 inline Rect viewer_rect()   { return { g_split_x + 8.f, 100.f, static_cast<float>(g_win_w) - g_split_x - 16.f, 330.f }; }
-inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, static_cast<float>(g_win_h) - 44.f }; }
+inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, dock_top() - 44.f }; }
+inline Rect dock_resize_rect() { return { 0.f, dock_top() - 3.f, static_cast<float>(g_win_w), 7.f }; }
+// Bottom device-view dock: device chips (instrument + FX + "+FX") + a knob grid
+// of the selected device's params. Geometry shared by draw + hit-test.
+struct DockGeom { float y0, gridY0, cellW, cellH, knobOff; int cols, maxRows; };
+inline DockGeom dock_geom() {
+    DockGeom d; d.y0 = dock_top();
+    d.gridY0 = d.y0 + 62.f; d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;
+    d.cols = std::max(1, static_cast<int>((g_win_w - 24.f) / d.cellW));
+    d.maxRows = std::max(1, static_cast<int>((d.y0 + g_dock_h - 6.f - d.gridY0) / d.cellH));
+    return d;
+}
+inline Rect dock_chip(int i)   { return { 12.f + i * 128.f, dock_top() + 22.f, 120.f, 32.f }; }
+inline Rect dock_chip_x(int i) { Rect b = dock_chip(i); return { b.x + b.w - 16.f, b.y + 3.f, 13.f, 13.f }; }
+inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
+    cx = 12.f + (i % d.cols) * d.cellW + d.cellW * 0.5f;
+    cy = d.gridY0 + (i / d.cols) * d.cellH + d.knobOff;
+}
+inline Rect dock_knob_map(int i, const DockGeom& d) { float cx, cy; dock_knob(i, d, cx, cy); return { cx + 13.f, cy - 24.f, 9.f, 9.f }; }
 
 // Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
 static int g_visual_source = 0;
@@ -218,6 +232,69 @@ static void load_video_at(int i) {
 void draw_clip_preview(vivid::ui::Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
                        const Rect& b, float ar, float ag, float ab, bool on);  // defined below
 
+// The bottom device-view dock: device chips for the selected track + a knob grid
+// of the selected device's params. Full window width; resizable via its top edge.
+void draw_device_dock(vivid::ui::Renderer2D& ui, const AudioState& st, double mx, double my) {
+    vivid_poc::Session* s = st.session;
+    if (!s) return;
+    const vivid::ui::Style& sty = vivid::ui::style();
+    const DockGeom d = dock_geom();
+    const float y0 = d.y0;
+    ui.draw_rect(0.f, y0, static_cast<float>(g_win_w), g_dock_h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    const bool rhov = hit(dock_resize_rect(), mx, my);
+    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(g_win_w), 2.f,
+                 rhov ? 0.40f : sty.sep[0], rhov ? 0.46f : sty.sep[1], rhov ? 0.52f : sty.sep[2], 1.0f);
+
+    const int tracks = vivid_poc::session_track_count(s);
+    const int seltr = std::min(std::max(st.sel_track, 0), tracks - 1);
+    const bool aud = vivid_poc::session_track_is_audio(s, seltr);
+    char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid_poc::session_track_name(s, seltr));
+    vivid::ui::section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
+
+    // device chips: instrument (0) + effects (1..nfx) + "+ FX"
+    const int nfx = vivid_poc::session_effect_count(s, seltr);
+    for (int i = 0; i <= nfx + 1; ++i) {
+        const bool isInst = (i == 0), isAdd = (i == nfx + 1);
+        if (isInst && aud) continue;  // sampler track has no instrument plugin
+        const Rect b = dock_chip(i);
+        const bool sel = !isAdd && st.sel_device == (isInst ? 0 : i);
+        const float* acc = isAdd ? sty.control : (isInst ? sty.audio : sty.fx);
+        vivid::ui::draw_card(ui, b.x, b.y, b.w, b.h, acc, hit(b, mx, my) || sel);
+        if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+        if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 11.f, "+ FX", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f); continue; }
+        ui.draw_text(b.x + 8.f, b.y + 6.f, isInst ? "INST" : "FX", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
+        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", isInst ? vivid_poc::session_track_name(s, seltr)
+                                                                  : vivid_poc::session_effect_name(s, seltr, i - 1));
+        ui.draw_text(b.x + 8.f, b.y + 17.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
+        if (!isInst) {
+            const Rect xb = dock_chip_x(i);
+            ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
+            ui.draw_text(xb.x + 3.f, xb.y, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f);
+        }
+    }
+
+    // knob grid for the selected device's params
+    const int seldev = std::max(0, st.sel_device);
+    const int pc = vivid_poc::session_param_count(s, seltr, seldev);
+    const float* pacc = (seldev == 0) ? sty.audio : sty.fx;
+    const int shown = std::min(pc, d.cols * d.maxRows);
+    for (int i = 0; i < shown; ++i) {
+        float cx, cy; dock_knob(i, d, cx, cy);
+        const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
+        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", vivid_poc::session_param_name(s, seltr, seldev, i));
+        char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", v);
+        const bool mapped = st.graph && st.graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
+        vivid::ui::knob(ui, cx, cy, 15.f, v, nm, vt, pacc, mapped);
+        const Rect mb = dock_knob_map(i, d);   // small map affordance (amber=unmapped, teal=mapped)
+        ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? sty.teal[0] : 0.55f, mapped ? sty.teal[1] : 0.45f,
+                     mapped ? sty.teal[2] : 0.22f, mapped ? 1.0f : 0.7f);
+    }
+    if (pc > shown) {
+        char more[48]; std::snprintf(more, sizeof more, "+%d more \xE2\x80\x94 drag the dock taller", pc - shown);
+        ui.draw_text(12.f, y0 + g_dock_h - 13.f, more, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.68f);
+    }
+}
+
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
     ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
@@ -235,8 +312,8 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     const int tracks = vivid_poc::session_track_count(s);
     const int scenes = vivid_poc::session_scene_count(s);
 
-    ui.push_clip_rect(0.f, 40.f, g_split_x, static_cast<float>(g_win_h) - 40.f);  // DAW pane
-    ui.draw_rect(0.f, 40.f, g_split_x, static_cast<float>(g_win_h) - 40.f, 0.065f, 0.072f, 0.085f, 1.0f);  // pane bg
+    ui.push_clip_rect(0.f, 40.f, g_split_x, dock_top() - 40.f);  // DAW pane (above the dock)
+    ui.draw_rect(0.f, 40.f, g_split_x, dock_top() - 40.f, 0.065f, 0.072f, 0.085f, 1.0f);  // pane bg
     // track headers
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
@@ -314,68 +391,10 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
                  "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
                  0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
 
-    // device chain for the selected track: [instrument] [fx... x] [+ FX]
-    const int seltr = std::min(std::max(st.sel_track, 0), tracks - 1);
-    const float dy = device_y(scenes);
-    char dl[64]; std::snprintf(dl, sizeof dl, "DEVICES \xC2\xB7 %s  (click a track header to select)", vivid_poc::session_track_name(s, seltr));
-    ui.draw_text(kSceneColX, dy, dl, 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
-    const int nfx = vivid_poc::session_effect_count(s, seltr);
-    for (int i = 0; i <= nfx + 1; ++i) {
-        const Rect b = device_box(i, scenes);
-        const bool hov = hit(b, mx, my);
-        const bool isInst = (i == 0), isAdd = (i == nfx + 1);
-        const bool aud = vivid_poc::session_track_is_audio(s, seltr);
-        if (isInst && aud) continue;  // sampler track has no instrument plugin
-        float br = hov ? 0.04f : 0.f;
-        ui.draw_rect(b.x, b.y, b.w, b.h, (isAdd ? 0.10f : 0.14f) + br, 0.15f + br, (isInst ? 0.20f : 0.17f) + br, 1.0f);
-        ui.draw_rect(b.x, b.y, b.w, 3.f, isInst ? 0.45f : (isAdd ? 0.31f : 0.62f), isInst ? 0.62f : 0.55f, isAdd ? 0.55f : 0.80f, 1.0f);
-        if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 13.f, "+ FX", 0.6f, 0.78f, 0.7f, 1.0f, 0.95f); }
-        else if (isInst) {
-            ui.draw_text(b.x + 8.f, b.y + 6.f, "INST", 0.5f, 0.53f, 0.6f, 1.0f, 0.72f);
-            char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", vivid_poc::session_track_name(s, seltr));
-            ui.draw_text(b.x + 8.f, b.y + 21.f, nm, 0.88f, 0.9f, 0.94f, 1.0f, 0.9f);
-        } else {
-            ui.draw_text(b.x + 8.f, b.y + 6.f, "FX", 0.5f, 0.53f, 0.6f, 1.0f, 0.72f);
-            char nm[24]; std::snprintf(nm, sizeof nm, "%.12s", vivid_poc::session_effect_name(s, seltr, i - 1));
-            ui.draw_text(b.x + 8.f, b.y + 21.f, nm, 0.88f, 0.9f, 0.94f, 1.0f, 0.9f);
-            const Rect xb = device_x_btn(i, scenes);
-            ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
-            ui.draw_text(xb.x + 3.f, xb.y + 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.85f);
-        }
-        if (!isAdd && ((isInst && st.sel_device == 0) || (!isInst && st.sel_device == i))) {
-            ui.draw_rect(b.x, b.y + b.h - 3.f, b.w, 3.f, 0.9f, 0.8f, 0.4f, 1.0f);  // selected underline
-        }
-    }
-    // Parameter panel for the selected device.
-    const int seldev = std::max(0, st.sel_device);
-    const int pc = vivid_poc::session_param_count(s, seltr, seldev);
-    const float py0 = params_y(scenes);
-    char ph[64];
-    const char* devname = (seldev == 0) ? vivid_poc::session_track_name(s, seltr)
-                                        : vivid_poc::session_effect_name(s, seltr, seldev - 1);
-    std::snprintf(ph, sizeof ph, "PARAMS \xC2\xB7 %.16s  (%d)", devname, pc);
-    ui.draw_text(kSceneColX, py0, ph, 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
-    const int shown = std::min(pc, kMaxShownParams);
-    for (int i = 0; i < shown; ++i) {
-        const Rect r = param_slider_rect(i, scenes);
-        const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
-        char nm[14]; std::snprintf(nm, sizeof nm, "%.11s", vivid_poc::session_param_name(s, seltr, seldev, i));
-        ui.draw_text(kSceneColX, r.y - 2.f, nm, 0.7f, 0.72f, 0.76f, 1.0f, 0.78f);
-        // map button (return path): driven if a source is mapped to this param
-        const Rect mb = param_map_btn(i, scenes);
-        const bool mapped = st.graph && st.graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
-        ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? 0.30f : 0.14f, mapped ? 0.55f : 0.16f, mapped ? 0.55f : 0.2f, 1.0f);
-        ui.draw_text(mb.x + 4.f, mb.y - 1.f, "m", mapped ? 0.95f : 0.6f, 0.95f, 0.95f, 1.0f, 0.7f);
-        ui.draw_rect(r.x, r.y, r.w, r.h, 0.10f, 0.11f, 0.13f, 1.0f);
-        ui.draw_rect(r.x, r.y, r.w * v, r.h, mapped ? 0.45f : 0.35f, mapped ? 0.6f : 0.5f, mapped ? 0.5f : 0.7f, 1.0f);
-        ui.draw_rect(r.x + r.w * v - 2.f, r.y - 2.f, 4.f, r.h + 4.f, 0.7f, 0.8f, 0.95f, 1.0f);
-    }
-    if (pc > shown) ui.draw_text(kSceneColX, py0 + 24.f + shown * 22.f, "...", 0.5f, 0.52f, 0.56f, 1.0f, 0.8f);
-
-    ui.pop_clip_rect();  // end DAW pane
+    ui.pop_clip_rect();  // end DAW pane (device chain + params now live in the bottom dock)
     // Visuals pane label (clipped to the right pane)
     const Rect vp = viewer_rect();
-    ui.push_clip_rect(g_split_x, 40.f, static_cast<float>(g_win_w) - g_split_x, static_cast<float>(g_win_h) - 40.f);
+    ui.push_clip_rect(g_split_x, 40.f, static_cast<float>(g_win_w) - g_split_x, dock_top() - 40.f);
     ui.draw_text(vp.x, 80.f, g_visual_source ? "VISUALS — video source  ·  V: plasma  ·  N: next clip"
                                              : "VISUALS — plasma shader  ·  V: video",
                  0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
@@ -608,12 +627,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         const char* home = std::getenv("HOME");
         const std::string path = std::string(home ? home : ".") + "/vivid_session.json";
         if (key == GLFW_KEY_S) {
-            const bool ok = vivid::save_session(path, st->session, *st->graph, g_win_w, g_win_h, g_split_x);
+            const bool ok = vivid::save_session(path, st->session, *st->graph, g_win_w, g_win_h, g_split_x, g_dock_h);
             std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
         } else {
-            int ww = g_win_w, wh = g_win_h; float sxx = g_split_x;
-            const bool ok = vivid::load_session(path, st->session, *st->graph, ww, wh, sxx);
-            if (ok) { g_split_x = sxx; glfwSetWindowSize(w, ww, wh); }
+            int ww = g_win_w, wh = g_win_h; float sxx = g_split_x, dh = g_dock_h;
+            const bool ok = vivid::load_session(path, st->session, *st->graph, ww, wh, sxx, dh);
+            if (ok) { g_split_x = sxx; g_dock_h = dh; glfwSetWindowSize(w, ww, wh); }
             std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
         }
         return;
@@ -701,7 +720,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
 
     // DAW | visuals splitter.
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->split_drag = false;
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) { st->split_drag = false; st->dock_drag = false; }
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(dock_resize_rect(), mx, my)) {
+        st->dock_drag = true; return;
+    }
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(splitter_rect(), mx, my)) {
         const double now = glfwGetTime();
         if (now - st->split_last_t < 0.35) { g_split_x = std::round(g_win_w * 0.46f); st->split_drag = false; st->split_last_t = -1.0; }
@@ -798,33 +820,34 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             if (st->last_dev_i == dev && now - st->last_dev_t < 0.35) { open_dev(dev); st->last_dev_t = -1; }
             else { st->sel_device = dev; st->last_dev_i = dev; st->last_dev_t = now; }
         };
-        if (!vivid_poc::session_track_is_audio(st->session, seltr) && hit(device_box(0, scenes), mx, my)) { click_dev(0); return; }
+        // device chips in the bottom dock
+        if (!vivid_poc::session_track_is_audio(st->session, seltr) && hit(dock_chip(0), mx, my)) { click_dev(0); return; }
         for (int e = 0; e < nfx; ++e) {
-            if (hit(device_x_btn(1 + e, scenes), mx, my)) {
+            if (hit(dock_chip_x(1 + e), mx, my)) {
                 vivid_poc::session_remove_effect(st->session, seltr, e);
                 if (st->sel_device > nfx - 1) st->sel_device = 0;
                 return;
             }
-            if (hit(device_box(1 + e, scenes), mx, my)) { click_dev(1 + e); return; }
+            if (hit(dock_chip(1 + e), mx, my)) { click_dev(1 + e); return; }
         }
-        if (hit(device_box(1 + nfx, scenes), mx, my)) {
+        if (hit(dock_chip(1 + nfx), mx, my)) {
             st->fx_menu = { true, static_cast<float>(mx), static_cast<float>(my), seltr };
             return;
         }
-        // parameter sliders for the selected device
+        // param knobs of the selected device (vertical drag; small map affordance)
         const int seldev = std::max(0, st->sel_device);
-        const int npc = std::min(vivid_poc::session_param_count(st->session, seltr, seldev), kMaxShownParams);
+        const DockGeom d = dock_geom();
+        const int npc = std::min(vivid_poc::session_param_count(st->session, seltr, seldev), d.cols * d.maxRows);
         for (int i = 0; i < npc; ++i) {
-            if (hit(param_map_btn(i, scenes), mx, my)) {  // open the source picker for this param
+            if (hit(dock_knob_map(i, d), mx, my)) {
                 st->map_menu = { true, static_cast<float>(mx), static_cast<float>(my), 0 };
                 st->map_param = i; return;
             }
-            const Rect r = param_slider_rect(i, scenes);
-            if (hit(r, mx, my)) {
+            float cx, cy; dock_knob(i, d, cx, cy);
+            if (std::hypot(mx - cx, my - cy) <= 16.0) {
                 st->param_drag = i;
-                const float v = std::min(1.0, std::max(0.0, (mx - r.x) / r.w));
-                vivid_poc::session_set_param(st->session, seltr, seldev,
-                                             vivid_poc::session_param_id(st->session, seltr, seldev, i), v);
+                st->param_drag_v0 = vivid_poc::session_param_value(st->session, seltr, seldev, i);
+                st->param_drag_y0 = my;
                 return;
             }
         }
@@ -1026,6 +1049,8 @@ int main() {
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         if (audio_state.split_drag)  // continue a splitter drag (either pane can collapse)
             g_split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(g_win_w) - 40.f);
+        if (audio_state.dock_drag)   // continue a device-dock resize
+            g_dock_h = std::clamp(static_cast<float>(g_win_h) - static_cast<float>(my), 120.f, g_win_h * 0.5f);
         graph.on_move(mx, my);  // continue any node/wire drag
         if (clip_editor.is_open()) {           // continue a drag, commit edits
             clip_editor.on_move(mx, my);
@@ -1045,13 +1070,12 @@ int main() {
             vivid_poc::session_set_track_gain(audio_state.session, audio_state.gain_drag,
                                               std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
         }
-        if (audio_state.param_drag >= 0 && audio_state.session) {  // continue a param slider drag
-            const int scenes = vivid_poc::session_scene_count(audio_state.session);
+        if (audio_state.param_drag >= 0 && audio_state.session) {  // continue a knob drag (vertical)
             const int ntr = vivid_poc::session_track_count(audio_state.session);
             const int seltr = std::min(std::max(audio_state.sel_track, 0), ntr - 1);
             const int seldev = std::max(0, audio_state.sel_device);
-            const Rect r = param_slider_rect(audio_state.param_drag, scenes);
-            const float v = std::min(1.0, std::max(0.0, (mx - r.x) / r.w));
+            const float v = std::clamp(audio_state.param_drag_v0 +
+                                       static_cast<float>(audio_state.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
             vivid_poc::session_set_param(audio_state.session, seltr, seldev,
                                          vivid_poc::session_param_id(audio_state.session, seltr, seldev, audio_state.param_drag), v);
         }
@@ -1081,8 +1105,9 @@ int main() {
             draw_ui(ui, audio_state, beats, mx, my);
             const Rect vrp = viewer_rect();
             graph.set_bounds(g_split_x + 8.f, vrp.y + vrp.h + 16.f,
-                             static_cast<float>(g_win_w) - 8.f, static_cast<float>(g_win_h) - 8.f);
+                             static_cast<float>(g_win_w) - 8.f, dock_top() - 8.f);
             graph.draw(ui);   // includes live node thumbnails via draw_texture
+            draw_device_dock(ui, audio_state, mx, my);   // bottom device-view dock (full width)
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.

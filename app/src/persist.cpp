@@ -13,11 +13,11 @@ using json = nlohmann::json;
 namespace vivid {
 
 bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int win_w, int win_h, float split_x) {
+                  int win_w, int win_h, float split_x, float dock_h) {
     if (!s) return false;
     json j;
     j["version"] = 1;
-    j["window"] = { {"w", win_w}, {"h", win_h}, {"split", split_x} };
+    j["window"] = { {"w", win_w}, {"h", win_h}, {"split", split_x}, {"dock", dock_h} };
 
     const int nt = vivid_poc::session_track_count(s);
     const int ns = vivid_poc::session_scene_count(s);
@@ -98,7 +98,7 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
 }
 
 bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int& win_w, int& win_h, float& split_x) {
+                  int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
     std::ifstream f(path);
     if (!f) return false;
@@ -109,6 +109,7 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
         win_w   = j["window"].value("w", win_w);
         win_h   = j["window"].value("h", win_h);
         split_x = j["window"].value("split", split_x);
+        dock_h  = j["window"].value("dock", dock_h);
     }
 
     if (j.contains("tracks")) {

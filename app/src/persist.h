@@ -11,8 +11,8 @@ namespace vivid {
 // track set itself is NOT persisted — it's rebuilt deterministically at startup
 // (role-based), so load restores state onto the existing tracks by index.
 bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int win_w, int win_h, float split_x);
+                  int win_w, int win_h, float split_x, float dock_h);
 bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int& win_w, int& win_h, float& split_x);
+                  int& win_w, int& win_h, float& split_x, float& dock_h);
 
 }  // namespace vivid
