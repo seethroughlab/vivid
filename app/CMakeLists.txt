@@ -26,6 +26,16 @@ if(VIVID_SANITIZE_THREAD)
     add_link_options(-fsanitize=thread)
 endif()
 
+# nlohmann/json is header-only and shared by the app AND the headless tests
+# (control-server JSON shape, persistence), so fetch it before the app guard.
+include(FetchContent)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_Declare(nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(nlohmann_json)
+
 if(VIVID_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -34,8 +44,6 @@ endif()
 if(NOT VIVID_BUILD_APP)
     return()  # tests-only configure: skip all the heavy app deps + target below
 endif()
-
-include(FetchContent)
 
 # --- wgpu-native via eliemichel's WebGPU-distribution (precompiled) ---
 set(WGPU_VERSION "v29.0.0.0" CACHE STRING "wgpu-native release" FORCE)
@@ -71,13 +79,7 @@ FetchContent_MakeAvailable(glfw3webgpu)
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE deps/miniaudio)
 
-# --- nlohmann/json (header-only; session persistence) ---
-set(JSON_BuildTests OFF CACHE INTERNAL "")
-FetchContent_Declare(nlohmann_json
-    GIT_REPOSITORY https://github.com/nlohmann/json
-    GIT_TAG        v3.11.3
-    GIT_SHALLOW    TRUE)
-FetchContent_MakeAvailable(nlohmann_json)
+# --- nlohmann/json: fetched above the app guard (shared with headless tests) ---
 
 # --- cpp-httplib (header-only; loopback control server for MCP) ---
 set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE OFF CACHE BOOL "" FORCE)

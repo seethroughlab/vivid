@@ -1,4 +1,6 @@
 #include "cli/control_server.h"
+#include "cli/control_errors.h"
+#include "cli/control_parse.h"
 
 #include <httplib.h>
 
@@ -13,6 +15,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
 using nlohmann::json;
@@ -20,8 +23,11 @@ using nlohmann::json;
 namespace vivid {
 namespace {
 
-json ok(json extra = json::object()) { extra["ok"] = true; return extra; }
-json err(const std::string& m) { return json{ {"ok", false}, {"error", m} }; }
+using control::ok;
+using control::err;
+using control::in_range;
+using control::char_id_from_source;
+namespace code = control::code;
 
 bool parse_vop(const std::string& s, VOp& out) {
     if (s == "Plasma") out = VOp::Plasma;
@@ -42,20 +48,21 @@ int op_index_by_id(VisualGraph* vg, int id) {
     for (int i = 0; i < static_cast<int>(ns.size()); ++i) if (ns[i].id == id) return i;
     return -1;
 }
-int kind_index(const std::string& k) {
-    if (k == "level") return 0; if (k == "transient") return 1; if (k == "low") return 2;
-    if (k == "mid") return 3;   if (k == "high") return 4;      return -1;
+
+// Index validation against the live session. On failure, fills `e` with a
+// stable out_of_range error and returns false (so handlers report the truth
+// instead of silently no-op'ing and falsely reporting success).
+bool need_track(vivid_poc::Session* s, int t, json& e) {
+    const int n = vivid_poc::session_track_count(s);
+    if (in_range(t, n)) return true;
+    e = err(code::kOutOfRange, "track " + std::to_string(t) + " out of range [0," + std::to_string(n) + ")");
+    return false;
 }
-// "master.<kind>" | "track_<n>.<kind>" -> char_id (master=kind, track t = 100 + t*8 + kind)
-int char_id_from_source(const std::string& src) {
-    const auto dot = src.find('.');
-    if (dot == std::string::npos) return -1;
-    const std::string head = src.substr(0, dot);
-    const int ki = kind_index(src.substr(dot + 1));
-    if (ki < 0) return -1;
-    if (head == "master") return ki;
-    if (head.rfind("track_", 0) == 0) return 100 + std::atoi(head.c_str() + 6) * 8 + ki;
-    return -1;
+bool need_scene(vivid_poc::Session* s, int sc, json& e) {
+    const int n = vivid_poc::session_scene_count(s);
+    if (in_range(sc, n)) return true;
+    e = err(code::kOutOfRange, "scene " + std::to_string(sc) + " out of range [0," + std::to_string(n) + ")");
+    return false;
 }
 
 }  // namespace
@@ -72,7 +79,7 @@ bool ControlServer::start(int port) {
         json body = json::object();
         if (!req.body.empty()) {
             try { body = json::parse(req.body); }
-            catch (...) { res.set_content(err("invalid JSON body").dump(), "application/json"); return; }
+            catch (...) { res.set_content(err(code::kBadJson, "invalid JSON body").dump(), "application/json"); return; }
         }
         Pending p; p.method = method; p.body = std::move(body);
         auto fut = p.reply.get_future();
@@ -80,7 +87,7 @@ bool ControlServer::start(int port) {
         if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::ready)
             res.set_content(fut.get().dump(), "application/json");
         else
-            res.set_content(err("timeout (main loop not draining)").dump(), "application/json");
+            res.set_content(err(code::kTimeout, "main loop not draining").dump(), "application/json");
     });
     running_ = true;
     thread_ = std::thread([this, svr]() {
@@ -111,11 +118,11 @@ void ControlServer::process_pending(const ControlCtx& ctx) {
     for (auto& p : local) {
         json reply;
         auto it = handlers_.find(p.method);
-        if (it == handlers_.end()) reply = err("unknown method: " + p.method);
+        if (it == handlers_.end()) reply = err(code::kUnknownMethod, "unknown method: " + p.method);
         else {
             try { reply = it->second(ctx, p.body); }
-            catch (const std::exception& e) { reply = err(e.what()); }
-            catch (...) { reply = err("handler exception"); }
+            catch (const std::exception& e) { reply = err(code::kInternal, e.what()); }
+            catch (...) { reply = err(code::kInternal, "handler exception"); }
         }
         p.reply.set_value(std::move(reply));
     }
@@ -135,13 +142,13 @@ void ControlServer::register_handlers() {
         return r;
     };
     handlers_["get_session"] = [](const ControlCtx& c, const json&) {
-        if (!c.session || !c.graph) return err("no session");
+        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
         json r = ok();
         r["session"] = session_to_json(c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h);
         return r;
     };
     handlers_["list_tracks"] = [](const ControlCtx& c, const json&) {
-        if (!c.session) return err("no session");
+        if (!c.session) return err(code::kNoSession, "no session");
         Session* s = c.session;
         json arr = json::array();
         for (int t = 0; t < P::session_track_count(s); ++t) {
@@ -165,9 +172,10 @@ void ControlServer::register_handlers() {
         json r = ok(); r["tracks"] = arr; return r;
     };
     handlers_["list_params"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
+        if (!c.session) return err(code::kNoSession, "no session");
         Session* s = c.session;
         const int track = b.value("track", 0), device = b.value("device", 0);
+        json e; if (!need_track(s, track, e)) return e;
         const int limit = b.value("limit", 64);
         std::string filter = b.value("filter", std::string());
         for (auto& ch : filter) ch = static_cast<char>(std::tolower((unsigned char)ch));
@@ -185,7 +193,7 @@ void ControlServer::register_handlers() {
         json r = ok(); r["count"] = pc; r["params"] = arr; return r;
     };
     handlers_["get_graph"] = [](const ControlCtx& c, const json&) {
-        if (!c.graph) return err("no graph");
+        if (!c.graph) return err(code::kNoGraph, "no graph");
         auto& g = *c.graph;
         json nodes = json::array();
         for (int i = 0; i < g.op_count(); ++i) {
@@ -208,7 +216,7 @@ void ControlServer::register_handlers() {
         return r;
     };
     handlers_["get_mappings"] = [](const ControlCtx& c, const json&) {
-        if (!c.graph) return err("no graph");
+        if (!c.graph) return err(code::kNoGraph, "no graph");
         json arr = json::array();
         for (const auto& m : c.graph->mappings())
             arr.push_back({ {"src", m.source}, {"dst", m.dest}, {"amount", m.amount},
@@ -218,127 +226,149 @@ void ControlServer::register_handlers() {
 
     // ---------------- visuals construction ----------------
     handlers_["add_node"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err("no vgraph");
-        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err("bad op (Plasma|Video|Feedback|Blur|Output)");
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op (Plasma|Video|Feedback|Blur|Output)");
         const int idx = c.vgraph->add_node(op);
         json r = ok(); r["id"] = c.vgraph->nodes()[idx].id; r["index"] = idx; return r;
     };
     handlers_["remove_node"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err("no vgraph");
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
         const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
-        if (idx < 0) return err("no node with that id");
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
         c.vgraph->remove_node(idx);
         return ok();
     };
     handlers_["connect_nodes"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err("no vgraph");
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
         const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
-        if (idx < 0) return err("no node_id");
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
         const int in_id = b.value("input_id", -1);
         const int in_idx = (in_id < 0) ? -1 : op_index_by_id(c.vgraph, in_id);
+        if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
         c.vgraph->set_input(idx, in_idx);
         return ok();
     };
     handlers_["set_generator"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err("no vgraph");
-        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err("bad op");
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op");
         c.vgraph->set_generator(op);
         return ok();
     };
     handlers_["set_active_output"] = [](const ControlCtx& c, const json& b) {
-        if (!c.vgraph) return err("no vgraph");
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
         const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
-        if (idx < 0) return err("no node with that id");
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
         c.vgraph->set_active_output(idx);
         return ok();
     };
     handlers_["set_node_param"] = [](const ControlCtx& c, const json& b) {
-        if (!c.graph || !c.vgraph) return err("no graph");
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
         const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
-        if (idx < 0) return err("no node_id");
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
         const std::string name = b.value("name", std::string());
         int local = -1;
         for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
             if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
-        if (local < 0) return err("no param '" + name + "' on that node");
+        if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
         c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
         return ok();
     };
     handlers_["add_data_node"] = [](const ControlCtx& c, const json& b) {
-        if (!c.graph) return err("no graph");
+        if (!c.graph) return err(code::kNoGraph, "no graph");
         const std::string src = b.value("source", std::string());
         const int cid = char_id_from_source(src);
-        if (cid < 0) return err("bad source (e.g. master.transient, track_2.low)");
+        if (cid < 0) return err(code::kBadArg, "bad source (e.g. master.transient, track_2.low)");
         c.graph->add_data_node(src, cid);
         return ok();
     };
 
     // ---------------- mapping (the bridge) ----------------
     handlers_["connect_mapping"] = [](const ControlCtx& c, const json& b) {
-        if (!c.graph) return err("no graph");
+        if (!c.graph) return err(code::kNoGraph, "no graph");
         const std::string src = b.value("src", std::string()), dst = b.value("dst", std::string());
-        if (src.empty() || dst.empty()) return err("need src and dst");
+        if (src.empty() || dst.empty()) return err(code::kBadArg, "need src and dst");
         c.graph->add_mapping(src, dst, b.value("amount", 1.0f), b.value("curve", 0.0f),
                              b.value("invert", false), b.value("lo", 0.0f), b.value("hi", 1.0f));
         return ok();
     };
     handlers_["disconnect_mapping"] = [](const ControlCtx& c, const json& b) {
-        if (!c.graph) return err("no graph");
-        c.graph->disconnect_dest(b.value("dst", std::string()));
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        const std::string dst = b.value("dst", std::string());
+        if (dst.empty()) return err(code::kBadArg, "need dst");
+        c.graph->disconnect_dest(dst);
         return ok();
     };
 
     // ---------------- audio authoring ----------------
     handlers_["set_bpm"] = [](const ControlCtx& c, const json& b) {
-        if (!c.transport) return err("no transport");
-        c.transport->bpm.store(b.value("bpm", 120.0), std::memory_order_relaxed);
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        const double bpm = b.value("bpm", 120.0);
+        if (!(bpm > 0.0) || bpm > 1000.0) return err(code::kBadArg, "bpm out of range (0, 1000]");
+        c.transport->bpm.store(bpm, std::memory_order_relaxed);
         return ok();
     };
     handlers_["launch_clip"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
-        P::session_launch_clip(c.session, b.value("track", 0), b.value("scene", 0));
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        P::session_launch_clip(c.session, track, scene);
         return ok();
     };
     handlers_["launch_scene"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
-        P::session_launch_scene(c.session, b.value("scene", 0));
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int scene = b.value("scene", 0);
+        json e; if (!need_scene(c.session, scene, e)) return e;
+        P::session_launch_scene(c.session, scene);
         return ok();
     };
     handlers_["set_track_gain"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
-        P::session_set_track_gain(c.session, b.value("track", 0), b.value("gain", 0.8f));
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_set_track_gain(c.session, track, b.value("gain", 0.8f));
         return ok();
     };
     handlers_["set_param"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
+        if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), device = b.value("device", 0), index = b.value("param", 0);
-        if (index < 0 || index >= P::session_param_count(c.session, track, device)) return err("param index out of range");
+        json e; if (!need_track(c.session, track, e)) return e;
+        const int pc = P::session_param_count(c.session, track, device);
+        if (pc == 0) return err(code::kOutOfRange, "device " + std::to_string(device) + " has no params (or out of range)");
+        if (!in_range(index, pc)) return err(code::kOutOfRange, "param index " + std::to_string(index) + " out of range [0," + std::to_string(pc) + ")");
         P::session_set_param(c.session, track, device, P::session_param_id(c.session, track, device, index), b.value("value", 0.f));
         return ok();
     };
     handlers_["set_clip"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
         std::vector<P::ClipNote> notes;
         if (b.contains("notes"))
             for (const auto& jn : b["notes"])
                 notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
-        P::session_set_clip(c.session, b.value("track", 0), b.value("scene", 0),
+        P::session_set_clip(c.session, track, scene,
                             notes.data(), static_cast<int>(notes.size()), b.value("length", 4.0));
         json r = ok(); r["notes"] = static_cast<int>(notes.size()); return r;
     };
     handlers_["add_effect"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
         const std::string name = b.value("name", std::string());
         for (int k = 0; k < P::session_available_effect_count(); ++k)
             if (name == P::session_available_effect_name(k)) {
-                const bool okk = P::session_add_effect_by_index(c.session, b.value("track", 0), k);
-                return okk ? ok() : err("add failed");
+                const bool okk = P::session_add_effect_by_index(c.session, track, k);
+                return okk ? ok() : err(code::kInternal, "add failed");
             }
-        return err("unknown effect '" + name + "'");
+        return err(code::kNotFound, "unknown effect '" + name + "'");
     };
     handlers_["remove_effect"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session) return err("no session");
-        P::session_remove_effect(c.session, b.value("track", 0), b.value("effect", 0));
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), effect = b.value("effect", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!in_range(effect, P::session_effect_count(c.session, track)))
+            return err(code::kOutOfRange, "effect index " + std::to_string(effect) + " out of range");
+        P::session_remove_effect(c.session, track, effect);
         return ok();
     };
     handlers_["list_effects"] = [](const ControlCtx&, const json&) {
@@ -349,20 +379,23 @@ void ControlServer::register_handlers() {
 
     // ---------------- session author / persist ----------------
     handlers_["save_session"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session || !c.graph) return err("no session");
+        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", std::string());
-        if (path.empty()) return err("need path");
-        return save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h) ? ok() : err("write failed");
+        if (path.empty()) return err(code::kBadArg, "need path");
+        return save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h)
+                   ? ok() : err(code::kIoError, "write failed");
     };
     handlers_["load_session"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session || !c.graph) return err("no session");
+        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
         int ww = *c.win_w, wh = *c.win_h;   // don't resize the window via MCP
         if (b.contains("session")) {        // inline JSON
-            return session_from_json(b["session"], c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h) ? ok() : err("load failed");
+            return session_from_json(b["session"], c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
+                       ? ok() : err(code::kBadArg, "load failed");
         }
         const std::string path = b.value("path", std::string());
-        if (path.empty()) return err("need path or session");
-        return load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h) ? ok() : err("read failed");
+        if (path.empty()) return err(code::kBadArg, "need path or session");
+        return load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
+                   ? ok() : err(code::kIoError, "read failed");
     };
 }
 

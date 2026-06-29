@@ -225,6 +225,11 @@ def get_authoring_guide() -> dict:
             "8. VERIFY: get_graph / get_mappings to confirm; read list_tracks for live level/bands.",
             "9. PERSIST: save_session(path) / load_session(path or inline session).",
         ],
+        "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
+                  "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
+                  "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
+                  "timeout), not the human `error` text. An out-of-range track/scene/device index "
+                  "now returns out_of_range instead of silently succeeding.",
         "gotchas": {
             "params_are_huge": "Plugins expose thousands of params; always filter+limit list_params.",
             "param_index": "set_param takes the *index* from list_params (mapped to the VST id internally).",
