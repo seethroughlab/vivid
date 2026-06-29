@@ -31,5 +31,10 @@ The PoC is **proven, not yet a product base**. Target is an extensible, cross-pl
 (≈ vivid-classic's architecture). Strategy (ADR-0011, **accepted**): **keep `app/` as the trunk and adopt
 classic's platform by *selective lift*** — an entanglement audit found `operator_api`, the operator
 loader/hot-reload, and the package-system core all LIFT-CLEAN, while the renderer/UI stay ours and the
-7-pass graph compiler is built fresh (right-sized). P0 hygiene (decompose `main.cpp`, tests/CI/sanitizers,
-control-server input validation, `app/` docs) is real trunk work and starts first.
+7-pass graph compiler is built fresh (right-sized).
+
+**P0 hygiene COMPLETE** (all on the trunk): `main.cpp` decomposed 1214→157 LOC into App/Window + modules
+(App = shared engine, Window = per-view — the multi-window seam); headless test lib + ctest + GitHub Actions
+CI + ASan/UBSan/TSan options; control-server named error codes + index validation; `glfw3webgpu` pinned;
+`app/` docs (README, ARCHITECTURE, thread-safety guide, per-dir CLAUDE.md). Next is P1 (lift `operator_api`
++ build the right-sized graph model, with the ABI↔graph seam spike) — see [roadmap](docs/roadmap/poc-to-product.md).
