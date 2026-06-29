@@ -225,6 +225,9 @@ void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) 
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
     y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
 }
+std::string NodeGraph::op_type_at(int i) const {
+    return (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op_type : std::string();
+}
 void NodeGraph::get_op_base(int i, float out[4]) const {
     for (int l = 0; l < 4; ++l) out[l] = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].base[l] : 0.f;
 }
@@ -252,9 +255,9 @@ bool NodeGraph::op_param_wired_at(int i, int local) const {
 }
 
 void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; sel_op_ = -1; }
-void NodeGraph::chain_load_add(int op, int id, float x, float y) {
+void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, float y) {
     if (!vg_) return;
-    vg_->load_node(static_cast<vivid::VOp>(op), id);
+    vg_->load_node(op_type, id);
     op_pos_.push_back({ x, y });
 }
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }

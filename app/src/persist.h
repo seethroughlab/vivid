@@ -7,6 +7,13 @@ namespace vivid::ui { class NodeGraph; }
 
 namespace vivid {
 
+// Pre-P1 sessions stored a visual node's op as the legacy VOp enum int ("op").
+// Map it to the operator type name ("op_type") for loading. Out-of-range -> Plasma.
+inline const char* legacy_vop_name(int op) {
+    static const char* kNames[] = { "Plasma", "Video", "Feedback", "Blur", "Output" };
+    return kNames[(op >= 0 && op < 5) ? op : 0];
+}
+
 // In-memory session <-> JSON: window + splitter/dock, per-track gain/active +
 // MIDI clip notes (or audio trims) + FX chain, and the node graph (data nodes,
 // op chain + base params, mappings, view). The track set itself is NOT persisted

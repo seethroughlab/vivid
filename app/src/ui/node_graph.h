@@ -58,9 +58,10 @@ public:
     // Chain (op type + input edge + id + position + base params) persistence.
     int  op_count() const;
     void get_op(int i, int& op, int& input, int& id, float& x, float& y) const;
+    std::string op_type_at(int i) const;   // the node's operator name (persist key)
     void get_op_base(int i, float out[4]) const;
     void chain_load_begin();
-    void chain_load_add(int op, int id, float x, float y);
+    void chain_load_add(const std::string& op_type, int id, float x, float y);
     void chain_load_set_input(int i, int input);
 
     // Visual-node selection + inspector: the bottom dock edits the selected node's

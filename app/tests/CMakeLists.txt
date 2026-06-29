@@ -34,3 +34,7 @@ vivid_add_test(test_op_registry)
 target_sources(test_op_registry PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+
+# Pre-P1 session migration (legacy VOp-int -> op-name). persist.h pulls nlohmann.
+vivid_add_test(test_persist_chain_migration)
+target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)

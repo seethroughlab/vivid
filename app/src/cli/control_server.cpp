@@ -136,6 +136,7 @@ void ControlServer::register_handlers() {
         if (c.transport) { r["bpm"] = c.transport->bpm.load(std::memory_order_relaxed);
                            r["beats"] = c.transport->beats.load(std::memory_order_relaxed); }
         r["ops"] = c.graph ? c.graph->op_count() : 0;
+        if (c.vgraph && c.vgraph->registry()) r["op_types"] = c.vgraph->registry()->type_names();  // spawnable ops
         return r;
     };
     handlers_["get_session"] = [](const ControlCtx& c, const json&) {
@@ -224,8 +225,13 @@ void ControlServer::register_handlers() {
     // ---------------- visuals construction ----------------
     handlers_["add_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
-        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op (Plasma|Video|Feedback|Blur|Output)");
-        const int idx = c.vgraph->add_node(op);
+        const std::string op = b.value("op", std::string());
+        OpRegistry* reg = c.vgraph->registry();
+        if (!reg || !reg->has(op)) {
+            std::string types; for (const auto& t : (reg ? reg->type_names() : std::vector<std::string>{})) { if (!types.empty()) types += ", "; types += t; }
+            return err(code::kBadArg, "unknown op '" + op + "' (valid: " + types + ")");
+        }
+        const int idx = c.vgraph->add_node(op);   // operator-driven: any registered op type
         json r = ok(); r["id"] = c.vgraph->nodes()[idx].id; r["index"] = idx; return r;
     };
     handlers_["remove_node"] = [](const ControlCtx& c, const json& b) {

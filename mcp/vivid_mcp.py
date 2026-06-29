@@ -75,8 +75,10 @@ def list_effects() -> dict:
 # ---------------- visuals construction ----------------
 @mcp.tool
 def add_node(op: str) -> dict:
-    """Add a visual op node. op = Plasma | Video | Feedback | Blur | Output. Returns its stable id.
-    Wire it with connect_nodes and feed the viewer via the Output node (set_active_output)."""
+    """Add a visual op node by operator type name. The built-ins are Plasma | Video |
+    Feedback | Blur | Output | Tint (Tint is a WGSL example op); the full live list is
+    status()['op_types']. Unknown types return bad_arg listing the valid ones. Returns
+    the node's stable id. Wire it with connect_nodes; feed the viewer via Output."""
     return _post("add_node", {"op": op})
 
 
