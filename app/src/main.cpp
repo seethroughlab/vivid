@@ -828,7 +828,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     // inspector: knobs edit the node's base param values (vertical drag).
     {
         const int selop = st->graph ? st->graph->selected_op() : -1;
-        if (selop >= 0) {
+        if (selop >= 0 && my >= dock_top()) {   // only consume clicks inside the dock
             const DockGeom d = dock_geom();
             const int pc = st->graph->op_param_count_at(selop);
             for (int i = 0; i < pc; ++i) {
