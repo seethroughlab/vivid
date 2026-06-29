@@ -183,7 +183,9 @@ inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 
 // Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
 constexpr float kViewW = 720.f, kViewH = 300.f;
 // Resizable shell: live window size + the draggable DAW|visuals splitter x.
-static int   g_win_w = 1280, g_win_h = 800;
+static int   g_win_w = 1280, g_win_h = 800;   // logical (point) size — all UI layout
+static int   g_fb_w  = 1280, g_fb_h  = 800;   // framebuffer (physical) size — the surface
+static float g_dpi   = 1.0f;                   // g_fb_w / g_win_w (2.0 on retina)
 static float g_split_x = 512.f;
 static float g_dock_h  = 210.f;   // bottom device-view dock height
 inline float dock_top() { return g_win_h - g_dock_h; }   // y where the dock begins
@@ -902,14 +904,20 @@ int main() {
     GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid PoC — foundation", nullptr, nullptr);
     if (!window) { std::fprintf(stderr, "glfwCreateWindow failed\n"); glfwTerminate(); return 1; }
 
+    // Retina/HiDPI: render at the framebuffer (physical) resolution; lay out the UI
+    // in logical points. g_dpi bridges them (2.0 on retina) -> crisp text + shapes.
+    glfwGetWindowSize(window, &g_win_w, &g_win_h);
+    glfwGetFramebufferSize(window, &g_fb_w, &g_fb_h);
+    g_dpi = (g_win_w > 0) ? static_cast<float>(g_fb_w) / static_cast<float>(g_win_w) : 1.0f;
+
     vivid::GpuContext gpu;
-    if (!gpu.init(window, 1280, 800)) {
+    if (!gpu.init(window, static_cast<uint32_t>(g_fb_w), static_cast<uint32_t>(g_fb_h))) {
         std::fprintf(stderr, "GpuContext init failed: %s\n", gpu.last_error().c_str());
         return 1;
     }
 
     vivid::ui::Renderer2D ui;
-    if (!ui.init(gpu.device(), gpu.surface_format(), VIVID_FONT_PATH, 15.0f))
+    if (!ui.init(gpu.device(), gpu.surface_format(), VIVID_FONT_PATH, 15.0f, g_dpi))
         std::fprintf(stderr, "[vivid] Renderer2D init failed (UI disabled)\n");
 
     // Composable visuals chain (generator -> feedback -> blur -> viewer).
@@ -991,11 +999,14 @@ int main() {
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
 
-        // Resizable shell: reconfigure the surface when the window changes size.
-        { int ww = 0, wh = 0; glfwGetWindowSize(window, &ww, &wh);
-          if (ww > 0 && wh > 0 && (static_cast<uint32_t>(ww) != gpu.width() || static_cast<uint32_t>(wh) != gpu.height())) {
-              gpu.resize(static_cast<uint32_t>(ww), static_cast<uint32_t>(wh));
-              g_win_w = ww; g_win_h = wh;
+        // Resizable shell: reconfigure the surface (at framebuffer res) on resize.
+        { int fbw = 0, fbh = 0; glfwGetFramebufferSize(window, &fbw, &fbh);
+          if (fbw > 0 && fbh > 0 && (static_cast<uint32_t>(fbw) != gpu.width() || static_cast<uint32_t>(fbh) != gpu.height())) {
+              gpu.resize(static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh));
+              int ww = 0, wh = 0; glfwGetWindowSize(window, &ww, &wh);
+              g_win_w = ww > 0 ? ww : fbw; g_win_h = wh > 0 ? wh : fbh;
+              g_fb_w = fbw; g_fb_h = fbh;
+              g_dpi = (g_win_w > 0) ? static_cast<float>(g_fb_w) / static_cast<float>(g_win_w) : 1.0f;
           }
           g_split_x = std::clamp(g_split_x, 40.f, static_cast<float>(g_win_w) - 40.f);
           clip_editor.set_window(static_cast<float>(g_win_w), static_cast<float>(g_win_h));
@@ -1100,7 +1111,7 @@ int main() {
             // composable visuals chain -> viewer (per-node params, set by apply_params)
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             const Rect vp = viewer_rect();
-            vgraph.render(frame.encoder, frame.view, vp.x, vp.y, vp.w, vp.h, tsec, srcTex.view);
+            vgraph.render(frame.encoder, frame.view, vp.x * g_dpi, vp.y * g_dpi, vp.w * g_dpi, vp.h * g_dpi, tsec, srcTex.view);
 
             draw_ui(ui, audio_state, beats, mx, my);
             const Rect vrp = viewer_rect();
@@ -1109,7 +1120,7 @@ int main() {
             graph.draw(ui);   // includes live node thumbnails via draw_texture
             draw_device_dock(ui, audio_state, mx, my);   // bottom device-view dock (full width)
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
-            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
+            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_fb_w, g_fb_h);
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
             graph.draw_overlays(ui);  // operator chooser
             draw_menu(ui, audio_state.menu,
@@ -1119,7 +1130,7 @@ int main() {
             draw_map_menu(ui, audio_state.map_menu);
             clip_editor.draw(ui);  // editor window on top
             if (g_show_mappings) draw_mapping_overview(ui, audio_state.graph, audio_state.session);
-            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_win_w, g_win_h);
+            ui.flush(frame.encoder, frame.view, g_win_w, g_win_h, g_fb_w, g_fb_h);
             gpu.end_frame(frame);
         }
         return true;
