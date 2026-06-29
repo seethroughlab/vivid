@@ -446,23 +446,30 @@ std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
 // Shared geometry for the mapping overview (so draw + hit-test agree).
 struct OvGeom { float px, py, w, h, rowh, hdr; int vis; };
 inline OvGeom ov_geom(int n) {
-    OvGeom o; o.w = 624.f; o.rowh = 24.f; o.hdr = 58.f;
+    OvGeom o; o.w = 772.f; o.rowh = 24.f; o.hdr = 58.f;
     o.vis = std::max(1, std::min(n, 15));
     o.h = o.hdr + o.vis * o.rowh + 14.f;
     o.px = (g_win_w - o.w) * 0.5f; o.py = 84.f;
     return o;
 }
-// Per-row control rects (right-anchored): invert chip, amount +/-, curve +/-, clear.
-struct OvRow { Rect inv, amtMinus, amtPlus, curMinus, curPlus, clear; float amtValX, curValX; };
+// Per-row control rects (right-anchored): invert chip, amount/curve/lo/hi +/- steppers, clear.
+struct OvRow {
+    Rect inv, amtMinus, amtPlus, curMinus, curPlus, loMinus, loPlus, hiMinus, hiPlus, clear;
+    float amtValX, curValX, loValX, hiValX;
+};
 inline OvRow ov_row(float px, float w, float ry) {
     return {
-        { px + w - 214.f, ry, 28.f, 18.f },   // inv
-        { px + w - 178.f, ry, 14.f, 18.f },   // amt -
-        { px + w - 128.f, ry, 14.f, 18.f },   // amt +
-        { px + w - 100.f, ry, 14.f, 18.f },   // curve -
-        { px + w -  50.f, ry, 14.f, 18.f },   // curve +
-        { px + w -  24.f, ry, 16.f, 18.f },   // clear
-        px + w - 172.f, px + w - 94.f         // amt / curve value text x
+        { px + w - 330.f, ry, 26.f, 18.f },   // inv
+        { px + w - 296.f, ry, 13.f, 18.f },   // amt -
+        { px + w - 250.f, ry, 13.f, 18.f },   // amt +
+        { px + w - 228.f, ry, 13.f, 18.f },   // curve -
+        { px + w - 182.f, ry, 13.f, 18.f },   // curve +
+        { px + w - 160.f, ry, 13.f, 18.f },   // lo -
+        { px + w - 114.f, ry, 13.f, 18.f },   // lo +
+        { px + w -  92.f, ry, 13.f, 18.f },   // hi -
+        { px + w -  46.f, ry, 13.f, 18.f },   // hi +
+        { px + w -  22.f, ry, 14.f, 18.f },   // clear
+        px + w - 292.f, px + w - 224.f, px + w - 156.f, px + w - 88.f  // value text x: amt/curve/lo/hi
     };
 }
 
@@ -484,7 +491,9 @@ void draw_mapping_overview(vivid::ui::Renderer2D& ui, vivid::ui::NodeGraph* g, v
     ui.draw_text(px + 16.f, py + 38.f, "SOURCE \xE2\x86\x92 DEST", 0.45f, 0.48f, 0.53f, 1.0f, 0.74f);
     ui.draw_text(hc.inv.x, py + 38.f, "POL", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
     ui.draw_text(hc.amtMinus.x + 2.f, py + 38.f, "AMT", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
-    ui.draw_text(hc.curMinus.x - 6.f, py + 38.f, "CURVE", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
+    ui.draw_text(hc.curMinus.x - 2.f, py + 38.f, "CURVE", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
+    ui.draw_text(hc.loMinus.x + 4.f, py + 38.f, "LO", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
+    ui.draw_text(hc.hiMinus.x + 4.f, py + 38.f, "HI", 0.45f, 0.48f, 0.53f, 1.0f, 0.72f);
     if (n == 0) {
         ui.draw_text(px + 16.f, py + hdr + 6.f, "No mappings yet \xE2\x80\x94 wire a data node to an op param, or map a device param (m).",
                      0.55f, 0.57f, 0.6f, 1.0f, 0.84f);
@@ -519,6 +528,10 @@ void draw_mapping_overview(vivid::ui::Renderer2D& ui, vivid::ui::NodeGraph* g, v
         stepper(rc.amtMinus, rc.amtPlus, rc.amtValX, ry, amt);
         char cur[10]; std::snprintf(cur, sizeof cur, "%+.2f", m.curve);
         stepper(rc.curMinus, rc.curPlus, rc.curValX, ry, cur);
+        char lo[10]; std::snprintf(lo, sizeof lo, "%.2f", m.out_lo);
+        stepper(rc.loMinus, rc.loPlus, rc.loValX, ry, lo);
+        char hi[10]; std::snprintf(hi, sizeof hi, "%.2f", m.out_hi);
+        stepper(rc.hiMinus, rc.hiPlus, rc.hiValX, ry, hi);
         ui.draw_text(rc.clear.x + 2.f, ry + 3.f, "\xC3\x97", 0.75f, 0.45f, 0.45f, 1.0f, 0.95f);
     }
     if (n > o.vis) {
@@ -656,6 +669,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
                 if (hit(rc.amtPlus, mx, my))  { st->graph->set_mapping_amount(d, std::min(4.f, maps[i].amount + 0.1f)); return; }
                 if (hit(rc.curMinus, mx, my)) { st->graph->set_mapping_curve(d, std::max(-1.f, maps[i].curve - 0.25f)); return; }
                 if (hit(rc.curPlus, mx, my))  { st->graph->set_mapping_curve(d, std::min(1.f, maps[i].curve + 0.25f)); return; }
+                if (hit(rc.loMinus, mx, my))  { st->graph->set_mapping_lo(d, std::max(0.f, maps[i].out_lo - 0.1f)); return; }
+                if (hit(rc.loPlus, mx, my))   { st->graph->set_mapping_lo(d, std::min(1.f, maps[i].out_lo + 0.1f)); return; }
+                if (hit(rc.hiMinus, mx, my))  { st->graph->set_mapping_hi(d, std::max(0.f, maps[i].out_hi - 0.1f)); return; }
+                if (hit(rc.hiPlus, mx, my))   { st->graph->set_mapping_hi(d, std::min(1.f, maps[i].out_hi + 0.1f)); return; }
                 if (hit(rc.clear, mx, my))    { st->graph->disconnect_dest(d); return; }
                 break;
             }

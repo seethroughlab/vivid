@@ -19,6 +19,8 @@ struct Mapping {
     float       amount = 1.0f;   // output gain
     float       curve  = 0.0f;   // -1 ease-out .. 0 linear .. +1 ease-in
     bool        invert = false;  // polarity (1 - s)
+    float       out_lo = 0.0f;   // output range: shaped 0..1 maps to [out_lo, out_hi]
+    float       out_hi = 1.0f;
 };
 
 // Gamma shaping: curve 0 = linear; >0 eases in (exp up to 4); <0 eases out.
@@ -61,7 +63,8 @@ public:
             float s = source_value(m.source);
             s = s < 0.f ? 0.f : (s > 1.f ? 1.f : s);
             if (m.invert) s = 1.f - s;
-            return mapping_shape(s, m.curve) * m.amount;
+            const float shaped = mapping_shape(s, m.curve);
+            return (m.out_lo + (m.out_hi - m.out_lo) * shaped) * m.amount;  // range, then gain
         }
         return 0.f;
     }
