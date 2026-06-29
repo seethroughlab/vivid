@@ -1,8 +1,8 @@
 # PoC → Product: Readiness Assessment & Roadmap
 
 Companion to [ADR-0011](../decisions/ADR-0011-poc-to-product-architecture.md). Target (ratified): an
-**extensible, cross-platform-capable platform**. Trunk strategy (recommended, evidence-based): **keep our
-codebase (`app/`) as the trunk and adopt vivid-classic's platform by *selective lift*** — not a
+**extensible, cross-platform-capable platform**. Trunk strategy (**accepted 2026-06-29**, evidence-based):
+**keep our codebase (`app/`) as the trunk and adopt vivid-classic's platform by *selective lift*** — not a
 whole-trunk swap to classic. See §1d for the entanglement audit that decided this.
 
 Date: 2026-06-29 · Scope: `app/` (branch `poc-cpp-prototype`), benchmarked against the `vivid-classic`
@@ -142,7 +142,7 @@ subsystem (per §1d) onto it, builds the right-sized graph model fresh, and adop
 
 ## 4. Immediate next step
 
-Ratify the strategy in ADR-0011 (**keep our trunk + selective lift**) to flip it to accepted. Because the
+The strategy in ADR-0011 (**keep our trunk + selective lift**) is accepted. Because the
 trunk is ours, **P0 hygiene is real, non-throwaway work and starts first**; P1 (lift `operator_api` +
 build the right-sized graph model, with the ABI↔graph seam spike) is the first platform step. The audit
 transcripts backing §1/§1d live in this session's history; their findings are distilled above.

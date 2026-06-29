@@ -1,12 +1,12 @@
 # ADR-0011: PoC → Product — Keep Our Trunk; Adopt Classic's Platform by Selective Lift
 
-Status: proposed
+Status: accepted
 
 Date: 2026-06-29
 
 Follows: [ADR-0010](ADR-0010-poc-proven-production-seed.md)
 
-Recommended: **the PoC codebase (`app/`) stays the trunk**; we adopt vivid-classic's platform machinery by
+Decided: **the PoC codebase (`app/`) stays the trunk**; we adopt vivid-classic's platform machinery by
 **selective lift** (not a whole-trunk swap), and **build a right-sized graph model fresh**.
 
 ## Context
@@ -77,10 +77,11 @@ A/B/C choice.
   sanitizers, control-server validation, docs) is **real, non-throwaway work on the trunk** and should
   start first; the operator-ABI lift (P1) is the first platform step and front-loads the
   graph-model/ABI-seam spike to de-risk it.
-- **Follow-up:** ratify this recommendation to flip Status → **accepted**; then the roadmap in
-  [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) executes P0 → P4.
+- **Follow-up:** the roadmap in [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) executes
+  P0 → P4; P0 starts first as real trunk work.
 
 ## Status note
 
-Marked **proposed**, with a clear evidence-based recommendation (keep our trunk + selective lift). This
-reverses the earlier lean toward Option B. Flip to **accepted** once ratified.
+**Accepted (2026-06-29): keep our trunk + selective lift.** This reverses the earlier lean toward Option B
+(swap to classic's runtime), on the evidence of the §1d entanglement audit. The per-subsystem disposition
+table above is binding. Next: P0 hygiene on the trunk.
