@@ -22,6 +22,7 @@ static const ChooserEntry kChooser[] = {
     { "Video",            true,  static_cast<int>(VOp::Video),    0 },
     { "Feedback",         true,  static_cast<int>(VOp::Feedback), 0 },
     { "Blur",             true,  static_cast<int>(VOp::Blur),     0 },
+    { "Output",           true,  static_cast<int>(VOp::Output),   0 },
     { "Master Level",     false, 0, 1 },
     { "Master Transient", false, 1, 1 },
     { "Master Low",       false, 2, 1 },
@@ -327,16 +328,21 @@ void NodeGraph::draw(Renderer2D& r) {
     }
 
     // op-nodes (classic-style cards)
+    const int active_out_idx = vg_ ? vg_->output_index() : -1;
     for (int i = 0; i < n; ++i) {
         const VOp op = vg_->nodes()[i].op;
         float x, y, w, h; op_node_rect(i, x, y, w, h);
         const bool out = (op == VOp::Output);
+        const bool active_out = out && i == active_out_idx;   // drives the viewer
         float ar, ag, ab; op_accent(op, ar, ag, ab);
+        if (active_out)  // highlight ring on the active output
+            r.draw_rounded_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, 6.f, ar, ag, ab, 1.0f);
         r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
         r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
         r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                               // accent bar
         r.draw_text(x + 10.f, y + 6.f, op_name(op), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
-        if (out) r.draw_text(x + w - 56.f, y + 6.f, "\xE2\x86\x92 viewer", 0.6f, 0.55f, 0.4f, 1.0f, 0.72f);
+        if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
+                             active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
         if (op_in_port(i, px, py)) {  // texture input
             port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
@@ -452,7 +458,10 @@ bool NodeGraph::on_down(double x, double y) {
         if (vg_->nodes()[i].op != VOp::Output && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
             vg_->remove_node(i); sync_op_pos(); return true;
         }
-        if (in_rect(ox, oy, ow, oh, wx, wy)) { drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true; }
+        if (in_rect(ox, oy, ow, oh, wx, wy)) {
+            if (vg_->nodes()[i].op == VOp::Output) vg_->set_active_output(i);  // clicking selects the viewer source
+            drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
+        }
     }
     // palette -> add an op (chrome: screen coords)
     int pj = palette_hit(x, y);

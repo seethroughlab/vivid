@@ -73,6 +73,7 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     // Default chain: Plasma -> Feedback -> Blur -> Output (ids 0..3).
     nodes_ = { { VOp::Plasma, -1, 0 }, { VOp::Feedback, 0, 1 }, { VOp::Blur, 1, 2 }, { VOp::Output, 2, 3 } };
     next_id_ = 4;
+    active_output_id_ = 3;   // default Output is the active one
     ensure_resources(nodes_.size());
     return true;
 }
@@ -97,7 +98,11 @@ void VisualGraph::load_node(VOp op, int id) {
     ensure_resources(nodes_.size());
 }
 void VisualGraph::remove_node(int i) {
-    if (i < 0 || i >= static_cast<int>(nodes_.size()) || nodes_[i].op == VOp::Output) return;
+    if (i < 0 || i >= static_cast<int>(nodes_.size())) return;
+    if (nodes_[i].op == VOp::Output) {               // keep at least one Output
+        int outs = 0; for (auto& n : nodes_) if (n.op == VOp::Output) ++outs;
+        if (outs <= 1) return;
+    }
     nodes_.erase(nodes_.begin() + i);
     for (auto& n : nodes_) {
         if (n.input == i) n.input = -1;
@@ -110,9 +115,18 @@ void VisualGraph::set_input(int node, int input) {
     if (input == node) return;                       // no self-loops
     nodes_[node].input = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
 }
+// The active Output (the one the viewer shows). Falls back to the first Output.
 int VisualGraph::output_index() const {
-    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op == VOp::Output) return i;
-    return -1;
+    int first = -1;
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op == VOp::Output) {
+        if (first < 0) first = i;
+        if (nodes_[i].id == active_output_id_) return i;
+    }
+    return first;
+}
+void VisualGraph::set_active_output(int idx) {
+    if (idx >= 0 && idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output)
+        active_output_id_ = nodes_[idx].id;
 }
 void VisualGraph::set_generator(VOp g) {
     for (auto& n : nodes_) if (n.op == VOp::Plasma || n.op == VOp::Video) { n.op = g; return; }

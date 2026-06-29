@@ -36,7 +36,9 @@ public:
     void remove_node(int i);               // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }   // for load
     void set_input(int node, int input);   // wire input's output -> node's texture input
-    int  output_index() const;             // index of the Output node, or -1
+    int  output_index() const;             // index of the ACTIVE Output node, or -1
+    void set_active_output(int idx);       // make node idx (if an Output) drive the viewer
+    int  active_output_id() const { return active_output_id_; }
 
     // Generator convenience (V key / generator-node click): toggle the first
     // generator node between Plasma and Video.
@@ -66,7 +68,8 @@ private:
     uint32_t          rtW_ = 0, rtH_ = 0;
 
     std::vector<VisualNode>   nodes_;
-    int                       next_id_ = 0;   // monotonic node-id allocator
+    int                       next_id_ = 0;          // monotonic node-id allocator
+    int                       active_output_id_ = -1; // which Output drives the viewer
     std::vector<RenderTarget> rts_;          // node output (parallel to nodes_)
     std::vector<RenderTarget> histA_, histB_;// per-node feedback history
     std::vector<int>          histCur_;
