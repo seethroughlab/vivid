@@ -18,6 +18,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "ui/ui_style.h"
+#include "cli/control_server.h"
 #include "ui/clip_editor.h"
 #include "persist.h"
 #include "gpu/shader_op.h"
@@ -1028,6 +1029,13 @@ int main() {
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 
+    // MCP control server: a loopback HTTP endpoint the agent bridge drives. Commands
+    // are queued on the HTTP thread and applied on the main thread each frame.
+    vivid::ControlServer control;
+    vivid::ControlCtx cctx{ audio_state.session, &graph, &vgraph, &transport,
+                            &g_win_w, &g_win_h, &g_split_x, &g_dock_h };
+    { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
+
     float react = 0.f;   // smoothed master level
     float trHold = 0.f;  // peak-held transient (so onsets are visible at frame rate)
     float trkReact[8] = {0}, trkTrHold[8] = {0};  // per-track smoothed level / held transient
@@ -1043,6 +1051,8 @@ int main() {
     };
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
+        cctx.session = audio_state.session;
+        control.process_pending(cctx);   // apply queued MCP commands on the main thread
 
         // Resizable shell: reconfigure the surface (at framebuffer res) on resize.
         { int fbw = 0, fbh = 0; glfwGetFramebufferSize(window, &fbw, &fbh);
@@ -1187,6 +1197,7 @@ int main() {
     };
     vivid::macos_run_frame_loop(poll_events, tick);
 
+    control.stop();   // stop the MCP control server thread before tearing down state
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (audio_state.track_win[t]) vst3_plugin_window_close(audio_state.track_win[t]);
     for (int k = 0; k < 8; ++k) if (audio_state.fx_win[k]) vst3_plugin_window_close(audio_state.fx_win[k]);

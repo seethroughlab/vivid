@@ -47,6 +47,16 @@ FetchContent_Declare(nlohmann_json
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# --- cpp-httplib (header-only; loopback control server for MCP) ---
+set(HTTPLIB_USE_OPENSSL_IF_AVAILABLE OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_USE_ZLIB_IF_AVAILABLE    OFF CACHE BOOL "" FORCE)
+set(HTTPLIB_USE_BROTLI_IF_AVAILABLE  OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(cpp_httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
+    GIT_TAG        v0.18.3
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(cpp_httplib)
+
 # --- VST3 SDK (header-only pluginterfaces + IID sources) ---
 # SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the
 # sources without running the SDK's own CMakeLists (hundreds of unwanted targets).
@@ -83,6 +93,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp
     src/persist.cpp
+    src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/node_graph.cpp
     src/ui/clip_editor.cpp)
@@ -94,7 +105,7 @@ set_target_properties(vivid_poc PROPERTIES
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
 target_compile_definitions(vivid_poc PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf")
-target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json "-framework Cocoa")
+target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib "-framework Cocoa")
 
 if(APPLE)
     target_link_libraries(vivid_poc PRIVATE

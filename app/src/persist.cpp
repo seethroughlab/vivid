@@ -12,10 +12,10 @@ using json = nlohmann::json;
 
 namespace vivid {
 
-bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int win_w, int win_h, float split_x, float dock_h) {
-    if (!s) return false;
+json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+                     int win_w, int win_h, float split_x, float dock_h) {
     json j;
+    if (!s) return j;
     j["version"] = 1;
     j["window"] = { {"w", win_w}, {"h", win_h}, {"split", split_x}, {"dock", dock_h} };
 
@@ -92,20 +92,12 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     float vox = 0.f, voy = 0.f, vscale = 1.f; g.get_view(vox, voy, vscale);
     jg["view"] = { {"ox", vox}, {"oy", voy}, {"scale", vscale} };
     j["graph"] = jg;
-
-    std::ofstream f(path);
-    if (!f) return false;
-    f << j.dump(2);
-    return static_cast<bool>(f);
+    return j;
 }
 
-bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
-                  int& win_w, int& win_h, float& split_x, float& dock_h) {
+bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+                       int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
-    std::ifstream f(path);
-    if (!f) return false;
-    json j;
-    try { f >> j; } catch (...) { return false; }
 
     if (j.contains("window")) {
         win_w   = j["window"].value("w", win_w);
@@ -194,6 +186,26 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
                               jm.value("lo", 0.0f), jm.value("hi", 1.0f));
     }
     return true;
+}
+
+bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+                  int win_w, int win_h, float split_x, float dock_h) {
+    if (!s) return false;
+    const json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
+    std::ofstream f(path);
+    if (!f) return false;
+    f << j.dump(2);
+    return static_cast<bool>(f);
+}
+
+bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+                  int& win_w, int& win_h, float& split_x, float& dock_h) {
+    if (!s) return false;
+    std::ifstream f(path);
+    if (!f) return false;
+    json j;
+    try { f >> j; } catch (...) { return false; }
+    return session_from_json(j, s, g, win_w, win_h, split_x, dock_h);
 }
 
 }  // namespace vivid
