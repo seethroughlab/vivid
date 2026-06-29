@@ -9,6 +9,10 @@
 
 namespace vivid::ui {
 
+// One Tab-chooser row: a spawnable visuals op (op_type from the registry) or an
+// audio data-source (char_id). env: 0 = gpu op, 1 = audio source.
+struct ChooserEntry { std::string label; bool is_op; std::string op_type; int char_id; int env; };
+
 // A minimal node editor on Renderer2D. Left: audio data-source nodes (each a live
 // characteristic). Right: the rewireable visuals chain — op-nodes (Plasma/Video/
 // Feedback/Blur) with texture input (left) and output (right) ports that you wire
@@ -121,8 +125,10 @@ private:
     std::string chooser_filter_;
     int         chooser_sel_ = 0;                     // index into chooser_hits_
     float       chooser_sx_ = 0.f, chooser_sy_ = 0.f; // cursor at open (spawn anchor)
+    std::vector<ChooserEntry> chooser_catalog_;       // registry ops + audio sources (built on open)
     std::vector<int> chooser_hits_;                   // catalog indices matching the filter
     void chooser_rebuild();
+    void chooser_build_catalog();
     void draw_chooser(Renderer2D& r);
 
     vivid::VisualGraph* vg_ = nullptr;

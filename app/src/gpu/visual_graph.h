@@ -55,6 +55,7 @@ public:
 
     void set_generator(VOp g);                 // toggle first generator Plasma<->Video
     VOp  generator() const;
+    OpRegistry* registry() const { return reg_; }   // the op catalog (for the Tab chooser)
 
     void render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 float vx, float vy, float vw, float vh, float time,
