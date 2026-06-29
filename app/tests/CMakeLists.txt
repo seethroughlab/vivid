@@ -28,3 +28,9 @@ target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_descriptor_validation)
 target_sources(test_descriptor_validation PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+
+# In-process operator runtime (gpu/op_runtime is wgpu-free → headless).
+vivid_add_test(test_op_registry)
+target_sources(test_op_registry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)

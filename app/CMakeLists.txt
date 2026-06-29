@@ -132,6 +132,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/platform/macos_frame_timer.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
+    src/gpu/op_runtime.cpp
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
