@@ -1,6 +1,7 @@
 #include "gpu/visual_graph.h"
 
 #include "operator_api/gpu_operator.h"
+#include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
 
@@ -62,7 +63,8 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
 bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt,
                        uint32_t rtW, uint32_t rtH, OpRegistry* registry) {
     dev_ = device; q_ = queue; fmt_ = fmt; rtW_ = rtW; rtH_ = rtH; reg_ = registry;
-    if (!blit_.init(device, queue, fmt, kBlitGLSL, 1)) return false;
+    // Present blit draws into the frame's 4x MSAA color target (op RTs stay 1x).
+    if (!blit_.init(device, queue, fmt, kBlitGLSL, 1, kMsaaSamples)) return false;
     fallback_.init(device, rtW, rtH, fmt);
     // Default chain: Plasma -> Feedback -> Blur -> Output (ids 0..3).
     nodes_.clear(); next_id_ = 0;

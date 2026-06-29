@@ -15,8 +15,10 @@ namespace vivid {
 // and sample via texture(sampler2D(u_tex0, u_samp), uv).
 class EffectOp {
 public:
+    // sample_count must match the render target this op draws into: 1 for offscreen
+    // RTs (the default), kMsaaSamples for the final present blit into the frame view.
     bool init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target_format,
-              const char* glsl_fragment, int num_inputs);
+              const char* glsl_fragment, int num_inputs, int sample_count = 1);
     void shutdown();
     bool ok() const { return pipeline_ != nullptr; }
 

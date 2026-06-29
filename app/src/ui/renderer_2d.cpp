@@ -408,7 +408,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
     rp_desc.primitive.cullMode = WGPUCullMode_None;
-    rp_desc.multisample.count = 1;
+    rp_desc.multisample.count = kMsaaSamples;  // draws into the frame's MSAA color target
     rp_desc.multisample.mask = 0xFFFFFFFF;
     rp_desc.fragment = &fragment;
 

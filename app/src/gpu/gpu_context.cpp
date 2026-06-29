@@ -191,8 +191,41 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
 
     width_ = width;
     height_ = height;
-    std::fprintf(stderr, "[vivid] GPU context initialized (%ux%u)\n", width, height);
+    ensure_msaa(width, height);   // 4x MSAA color target (resolves to the surface)
+    std::fprintf(stderr, "[vivid] GPU context initialized (%ux%u, %ux MSAA)\n",
+                 width, height, kMsaaSamples);
     return true;
+}
+
+// (Re)create the multisampled color target that the whole frame renders into.
+// Same size/format as the surface; resolved to the surface view in end_frame.
+void GpuContext::ensure_msaa(uint32_t width, uint32_t height) {
+    if (!device_ || width == 0 || height == 0) return;
+    if (msaa_view_ && width == msaa_w_ && height == msaa_h_) return;  // size unchanged
+    if (msaa_view_) { wgpuTextureViewRelease(msaa_view_); msaa_view_ = nullptr; }
+    if (msaa_tex_)  { wgpuTextureRelease(msaa_tex_);      msaa_tex_  = nullptr; }
+
+    WGPUTextureDescriptor td{};
+    td.label = to_sv("Frame MSAA Color");
+    td.usage = WGPUTextureUsage_RenderAttachment;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{ width, height, 1 };
+    td.format = surface_format_;
+    td.mipLevelCount = 1;
+    td.sampleCount = kMsaaSamples;
+    msaa_tex_ = wgpuDeviceCreateTexture(device_, &td);
+    if (!msaa_tex_) { std::fprintf(stderr, "[vivid] Failed to create MSAA texture\n"); return; }
+
+    WGPUTextureViewDescriptor vd{};
+    vd.label = to_sv("Frame MSAA View");
+    vd.format = surface_format_;
+    vd.dimension = WGPUTextureViewDimension_2D;
+    vd.baseMipLevel = 0;  vd.mipLevelCount = 1;
+    vd.baseArrayLayer = 0; vd.arrayLayerCount = 1;
+    vd.aspect = WGPUTextureAspect_All;
+    msaa_view_ = wgpuTextureCreateView(msaa_tex_, &vd);
+    msaa_w_ = width;
+    msaa_h_ = height;
 }
 
 void GpuContext::resize(uint32_t width, uint32_t height) {
@@ -209,6 +242,7 @@ void GpuContext::resize(uint32_t width, uint32_t height) {
     wgpuSurfaceConfigure(surface_, &config);
     width_ = width;
     height_ = height;
+    ensure_msaa(width, height);   // resize the MSAA target to match the surface
 }
 
 bool GpuContext::begin_frame(FrameState& frame) {
@@ -248,9 +282,18 @@ bool GpuContext::begin_frame(FrameState& frame) {
     view_desc.arrayLayerCount = 1;
     view_desc.aspect = WGPUTextureAspect_All;
     frame.texture = surface_tex.texture;
-    frame.view = wgpuTextureCreateView(surface_tex.texture, &view_desc);
-    if (!frame.view) {
+    // The surface view is the MSAA *resolve* target; the app renders into the
+    // multisampled view (frame.view), which gpu_context owns and reuses per frame.
+    WGPUTextureView surface_view = wgpuTextureCreateView(surface_tex.texture, &view_desc);
+    if (!surface_view) {
         std::fprintf(stderr, "[vivid] Failed to create surface texture view\n");
+        wgpuTextureRelease(frame.texture);
+        frame.texture = nullptr;
+        return false;
+    }
+    if (!msaa_view_) {  // MSAA target missing (alloc failed) — can't render this frame
+        std::fprintf(stderr, "[vivid] MSAA target unavailable — dropping frame\n");
+        wgpuTextureViewRelease(surface_view);
         wgpuTextureRelease(frame.texture);
         frame.texture = nullptr;
         return false;
@@ -262,13 +305,14 @@ bool GpuContext::begin_frame(FrameState& frame) {
     frame.encoder = wgpuDeviceCreateCommandEncoder(device_, &enc_desc);
     if (!frame.encoder) {
         std::fprintf(stderr, "[vivid] Failed to create frame encoder\n");
-        wgpuTextureViewRelease(frame.view);
+        wgpuTextureViewRelease(surface_view);
         wgpuTextureRelease(frame.texture);
-        frame.view = nullptr;
         frame.texture = nullptr;
         return false;
     }
 
+    frame.resolve_view = surface_view;   // resolves here in end_frame, then presents
+    frame.view = msaa_view_;             // gpu_context-owned; NOT released per frame
     return true;
 }
 
@@ -278,20 +322,39 @@ bool GpuContext::end_frame(const FrameState& frame) {
         return false;
     }
 
+    // Resolve the multisampled frame into the swap-chain surface. A draw-less
+    // render pass whose resolveTarget is the surface view performs the MSAA
+    // downsample at endPass; everything the app drew lives in frame.view (MSAA).
+    {
+        WGPURenderPassColorAttachment att{};
+        att.view = frame.view;                    // 4x MSAA color
+        att.resolveTarget = frame.resolve_view;   // -> surface (1x)
+        att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        att.loadOp = WGPULoadOp_Load;             // keep what the frame drew
+        att.storeOp = WGPUStoreOp_Store;
+        WGPURenderPassDescriptor rp{};
+        rp.colorAttachmentCount = 1;
+        rp.colorAttachments = &att;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp);
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+    }
+
     if (!gpu_submit(device_, queue_, frame.encoder, "Frame Commands")) {
         // Encoder was in an error state (e.g. surface texture invalidated mid-frame
         // during resize, fullscreen, or macOS drag-tracking transitions).
         std::fprintf(stderr, "[vivid] Frame submit failed — dropping frame"
                      " (last error: %s)\n", last_error_.c_str());
-        wgpuTextureViewRelease(frame.view);
+        if (frame.resolve_view) wgpuTextureViewRelease(frame.resolve_view);
         wgpuTextureRelease(frame.texture);
         return false;
     }
 
-    // Present BEFORE releasing the surface texture/view
+    // Present BEFORE releasing the surface texture/view. frame.view (MSAA) is
+    // gpu_context-owned and reused — only the per-frame surface view/texture go.
     wgpuSurfacePresent(surface_);
 
-    wgpuTextureViewRelease(frame.view);
+    if (frame.resolve_view) wgpuTextureViewRelease(frame.resolve_view);
     wgpuTextureRelease(frame.texture);
     return true;
 }
@@ -300,11 +363,13 @@ void GpuContext::discard_frame(const FrameState& frame) {
     // Drop acquired surface frame without submit/present when the surface is
     // transiently invalid (resize, fullscreen transition, drag-tracking runloop).
     if (frame.encoder) wgpuCommandEncoderRelease(frame.encoder);
-    if (frame.view) wgpuTextureViewRelease(frame.view);
+    if (frame.resolve_view) wgpuTextureViewRelease(frame.resolve_view);  // frame.view is MSAA (owned)
     if (frame.texture) wgpuTextureRelease(frame.texture);
 }
 
 void GpuContext::shutdown() {
+    if (msaa_view_) { wgpuTextureViewRelease(msaa_view_); msaa_view_ = nullptr; }
+    if (msaa_tex_)  { wgpuTextureRelease(msaa_tex_);      msaa_tex_  = nullptr; }
     if (surface_) {
         wgpuSurfaceUnconfigure(surface_);
         wgpuSurfaceRelease(surface_);

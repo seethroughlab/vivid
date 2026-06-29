@@ -33,7 +33,7 @@ static WGPUShaderModule make_glsl(WGPUDevice d, WGPUShaderStage stage,
 }
 
 bool EffectOp::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target_format,
-                    const char* glsl_fragment, int num_inputs) {
+                    const char* glsl_fragment, int num_inputs, int sample_count) {
     device_ = device;
     queue_  = queue;
     num_inputs_ = (num_inputs < 1) ? 1 : (num_inputs > 2 ? 2 : num_inputs);
@@ -106,7 +106,7 @@ bool EffectOp::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat target
     pd.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pd.primitive.cullMode = WGPUCullMode_None;
     pd.primitive.frontFace = WGPUFrontFace_CCW;
-    pd.multisample.count = 1;
+    pd.multisample.count = static_cast<uint32_t>(sample_count);
     pd.multisample.mask = 0xFFFFFFFFu;
     pipeline_ = wgpuDeviceCreateRenderPipeline(device_, &pd);
     if (!pipeline_) { std::fprintf(stderr, "[EffectOp] pipeline creation failed\n"); return false; }
