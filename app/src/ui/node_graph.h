@@ -51,12 +51,26 @@ public:
     const std::string* source_of(const std::string& dest) const { return reg_.source_of(dest); }
     void  set_named_source(const std::string& id, float v) { reg_.set_source(id, v); }
     void  disconnect_dest(const std::string& dest) { reg_.disconnect(dest); }
-    // Chain (op type + input edge + id + position) persistence.
+    // Chain (op type + input edge + id + position + base params) persistence.
     int  op_count() const;
     void get_op(int i, int& op, int& input, int& id, float& x, float& y) const;
+    void get_op_base(int i, float out[4]) const;
     void chain_load_begin();
     void chain_load_add(int op, int id, float x, float y);
     void chain_load_set_input(int i, int input);
+
+    // Visual-node selection + inspector: the bottom dock edits the selected node's
+    // base param values (the resolved value = clamp(base + live modulation)).
+    int  selected_op() const { return sel_op_; }
+    void select_op(int i) { sel_op_ = i; }
+    int  op_kind(int i) const;                            // VOp as int, -1 if invalid
+    const char* op_kind_name(int i) const;               // "Plasma" / "Feedback" / ...
+    int  op_param_count_at(int i) const;
+    const char* op_param_label_at(int i, int local) const;
+    float op_param_base_at(int i, int local) const;
+    void  set_op_param_base_at(int i, int local, float v);
+    float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
+    bool  op_param_wired_at(int i, int local) const;     // a data source drives it
 
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
@@ -95,6 +109,7 @@ private:
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
+    int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
     float  view_ox_ = 0.f, view_oy_ = 0.f, view_scale_ = 1.f;  // world->screen pan/zoom
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
     void to_world(double sx, double sy, double& wx, double& wy) const {

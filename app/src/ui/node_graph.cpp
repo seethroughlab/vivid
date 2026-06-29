@@ -199,8 +199,10 @@ void NodeGraph::apply_params() {
     auto& nodes = vg_->nodes();
     for (auto& n : nodes) {
         const int pc = param_count_of(n.op);
-        for (int l = 0; l < pc; ++l)
-            n.params[l] = reg_.dest_value(node_param_dest(n.id, op_param_name(n.op, l)));
+        for (int l = 0; l < pc; ++l) {
+            const float mod = reg_.dest_value(node_param_dest(n.id, op_param_name(n.op, l)));
+            n.params[l] = std::clamp(n.base[l] + mod, 0.f, 1.f);  // manual base + live modulation
+        }
     }
     // Back-compat return-path sources: the canonical six viz.<name>, taken from the
     // first node of each op-type (keeps P27's static map-source catalog working).
@@ -230,7 +232,35 @@ void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) 
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
     y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
 }
-void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; }
+void NodeGraph::get_op_base(int i, float out[4]) const {
+    for (int l = 0; l < 4; ++l) out[l] = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].base[l] : 0.f;
+}
+
+// ---- visual-node inspector accessors ----
+static bool op_node_valid(const vivid::VisualGraph* vg, int i) {
+    return vg && i >= 0 && i < int(vg->nodes().size());
+}
+int NodeGraph::op_kind(int i) const { return op_node_valid(vg_, i) ? int(vg_->nodes()[i].op) : -1; }
+const char* NodeGraph::op_kind_name(int i) const { return op_node_valid(vg_, i) ? op_name(vg_->nodes()[i].op) : ""; }
+int NodeGraph::op_param_count_at(int i) const { return op_node_valid(vg_, i) ? param_count_of(vg_->nodes()[i].op) : 0; }
+const char* NodeGraph::op_param_label_at(int i, int local) const {
+    return op_node_valid(vg_, i) ? op_param_name(vg_->nodes()[i].op, local) : "";
+}
+float NodeGraph::op_param_base_at(int i, int local) const {
+    return (op_node_valid(vg_, i) && local >= 0 && local < 4) ? vg_->nodes()[i].base[local] : 0.f;
+}
+void NodeGraph::set_op_param_base_at(int i, int local, float v) {
+    if (op_node_valid(vg_, i) && local >= 0 && local < 4) vg_->nodes()[i].base[local] = std::clamp(v, 0.f, 1.f);
+}
+float NodeGraph::op_param_value_at(int i, int local) const {
+    return (op_node_valid(vg_, i) && local >= 0 && local < 4) ? vg_->nodes()[i].params[local] : 0.f;
+}
+bool NodeGraph::op_param_wired_at(int i, int local) const {
+    if (!op_node_valid(vg_, i)) return false;
+    return reg_.source_of(node_param_dest(vg_->nodes()[i].id, op_param_name(vg_->nodes()[i].op, local))) != nullptr;
+}
+
+void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; sel_op_ = -1; }
 void NodeGraph::chain_load_add(int op, int id, float x, float y) {
     if (!vg_) return;
     vg_->load_node(static_cast<vivid::VOp>(op), id);
@@ -329,13 +359,16 @@ void NodeGraph::draw(Renderer2D& r) {
 
     // op-nodes (classic-style cards)
     const int active_out_idx = vg_ ? vg_->output_index() : -1;
+    if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (node removed/reloaded)
     for (int i = 0; i < n; ++i) {
         const VOp op = vg_->nodes()[i].op;
         float x, y, w, h; op_node_rect(i, x, y, w, h);
         const bool out = (op == VOp::Output);
         const bool active_out = out && i == active_out_idx;   // drives the viewer
         float ar, ag, ab; op_accent(op, ar, ag, ab);
-        if (active_out)  // highlight ring on the active output
+        if (i == sel_op_)  // selection ring (inspector target) — bright outline
+            r.draw_rounded_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, 7.f, 0.95f, 0.82f, 0.38f, 1.0f);
+        else if (active_out)  // highlight ring on the active output
             r.draw_rounded_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, 6.f, ar, ag, ab, 1.0f);
         r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
         r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
@@ -456,10 +489,11 @@ bool NodeGraph::on_down(double x, double y) {
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
         if (vg_->nodes()[i].op != VOp::Output && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
-            vg_->remove_node(i); sync_op_pos(); return true;
+            vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); return true;
         }
         if (in_rect(ox, oy, ow, oh, wx, wy)) {
             if (vg_->nodes()[i].op == VOp::Output) vg_->set_active_output(i);  // clicking selects the viewer source
+            sel_op_ = i;  // select for the inspector (dock)
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
         }
     }

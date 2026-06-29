@@ -18,6 +18,7 @@ struct VisualNode {
     int input = -1;
     int id = 0;              // stable identity (params + mappings + persistence key off this)
     float params[4] = {};    // per-node resolved param values (Plasma 0..3; Feedback/Blur [0])
+    float base[4]   = {};    // manual base values (inspector knobs); resolved = clamp(base + modulation)
 };
 
 // The composable visuals graph: nodes connected by texture edges, terminating in

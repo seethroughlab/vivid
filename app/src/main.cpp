@@ -51,7 +51,8 @@ struct AudioState {
     int map_param = -1;                     // param index the map menu targets
     int sel_track = 0;                      // track whose device chain is shown
     int sel_device = 0;                     // device whose params are shown (0=inst, 1+=fx)
-    int param_drag = -1;                    // device param (knob) being dragged
+    int param_drag = -1;                    // device/node param (knob) being dragged
+    bool param_is_node = false;             // knob targets the selected visual node's base
     float param_drag_v0 = 0.f;              // value + cursor-y at knob grab (vertical drag)
     double param_drag_y0 = 0.0;
     bool dock_drag = false;                 // dragging the device-dock resize handle
@@ -246,6 +247,26 @@ void draw_device_dock(vivid::ui::Renderer2D& ui, const AudioState& st, double mx
     const bool rhov = hit(dock_resize_rect(), mx, my);
     ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(g_win_w), 2.f,
                  rhov ? 0.40f : sty.sep[0], rhov ? 0.46f : sty.sep[1], rhov ? 0.52f : sty.sep[2], 1.0f);
+
+    // When a visual node is selected in the graph, the dock becomes its inspector.
+    const int selop = st.graph ? st.graph->selected_op() : -1;
+    if (selop >= 0) {
+        char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", st.graph->op_kind_name(selop));
+        vivid::ui::section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
+        ui.draw_text(120.f, y0 + 7.f, "drag knobs to set the base value \xC2\xB7 teal = wired (modulated) \xC2\xB7 click a track header for devices",
+                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.7f);
+        const DockGeom d = dock_geom();
+        const int pc = st.graph->op_param_count_at(selop);
+        for (int i = 0; i < pc; ++i) {
+            float cx, cy; dock_knob(i, d, cx, cy);
+            const float base = st.graph->op_param_base_at(selop, i);
+            const bool wired = st.graph->op_param_wired_at(selop, i);
+            char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
+            vivid::ui::knob(ui, cx, cy, 15.f, base, st.graph->op_param_label_at(selop, i), vt, sty.gpu, wired);
+        }
+        if (pc == 0) ui.draw_text(12.f, y0 + 40.f, "this node has no parameters", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
+        return;
+    }
 
     const int tracks = vivid_poc::session_track_count(s);
     const int seltr = std::min(std::max(st.sel_track, 0), tracks - 1);
@@ -795,10 +816,28 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
     // Click a track header -> select it (its device chain shows in the DAW pane).
     for (int t = 0; t < tracks; ++t)
-        if (hit(track_header_rect(t), mx, my)) { st->sel_track = t; return; }
+        if (hit(track_header_rect(t), mx, my)) { st->sel_track = t; if (st->graph) st->graph->select_op(-1); return; }
 
-    // Device chain of the selected track: single-click selects (shows params),
-    // double-click opens the plugin editor; x removes an effect; + FX adds one.
+    // Bottom dock interactions. If a visual node is selected, the dock is its
+    // inspector: knobs edit the node's base param values (vertical drag).
+    {
+        const int selop = st->graph ? st->graph->selected_op() : -1;
+        if (selop >= 0) {
+            const DockGeom d = dock_geom();
+            const int pc = st->graph->op_param_count_at(selop);
+            for (int i = 0; i < pc; ++i) {
+                float cx, cy; dock_knob(i, d, cx, cy);
+                if (std::hypot(mx - cx, my - cy) <= 16.0) {
+                    st->param_drag = i; st->param_is_node = true;
+                    st->param_drag_v0 = st->graph->op_param_base_at(selop, i);
+                    st->param_drag_y0 = my; return;
+                }
+            }
+            return;  // node inspector showing — consume dock clicks
+        }
+    }
+    // Otherwise the dock is the selected track's device chain: single-click selects
+    // (shows params), double-click opens the plugin editor; x removes; + FX adds.
     {
         const int seltr = std::min(std::max(st->sel_track, 0), tracks - 1);
         const int nfx = vivid_poc::session_effect_count(st->session, seltr);
@@ -847,7 +886,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             }
             float cx, cy; dock_knob(i, d, cx, cy);
             if (std::hypot(mx - cx, my - cy) <= 16.0) {
-                st->param_drag = i;
+                st->param_drag = i; st->param_is_node = false;
                 st->param_drag_v0 = vivid_poc::session_param_value(st->session, seltr, seldev, i);
                 st->param_drag_y0 = my;
                 return;
@@ -1081,14 +1120,19 @@ int main() {
             vivid_poc::session_set_track_gain(audio_state.session, audio_state.gain_drag,
                                               std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
         }
-        if (audio_state.param_drag >= 0 && audio_state.session) {  // continue a knob drag (vertical)
-            const int ntr = vivid_poc::session_track_count(audio_state.session);
-            const int seltr = std::min(std::max(audio_state.sel_track, 0), ntr - 1);
-            const int seldev = std::max(0, audio_state.sel_device);
+        if (audio_state.param_drag >= 0) {  // continue a knob drag (vertical)
             const float v = std::clamp(audio_state.param_drag_v0 +
                                        static_cast<float>(audio_state.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
-            vivid_poc::session_set_param(audio_state.session, seltr, seldev,
-                                         vivid_poc::session_param_id(audio_state.session, seltr, seldev, audio_state.param_drag), v);
+            if (audio_state.param_is_node) {       // selected visual node's base param
+                if (audio_state.graph) audio_state.graph->set_op_param_base_at(
+                    audio_state.graph->selected_op(), audio_state.param_drag, v);
+            } else if (audio_state.session) {      // audio device param
+                const int ntr = vivid_poc::session_track_count(audio_state.session);
+                const int seltr = std::min(std::max(audio_state.sel_track, 0), ntr - 1);
+                const int seldev = std::max(0, audio_state.sel_device);
+                vivid_poc::session_set_param(audio_state.session, seltr, seldev,
+                                             vivid_poc::session_param_id(audio_state.session, seltr, seldev, audio_state.param_drag), v);
+            }
         }
 
         vivid::FrameState frame;

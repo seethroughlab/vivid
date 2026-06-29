@@ -84,7 +84,9 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     json chain = json::array();
     for (int i = 0; i < g.op_count(); ++i) {
         int op = 0, in = -1, id = 0; float x = 0.f, y = 0.f; g.get_op(i, op, in, id, x, y);
-        chain.push_back({ {"op", op}, {"in", in}, {"id", id}, {"x", x}, {"y", y} });
+        float base[4]; g.get_op_base(i, base);
+        chain.push_back({ {"op", op}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
+                          {"base", { base[0], base[1], base[2], base[3] }} });
     }
     jg["chain"] = chain;
     float vox = 0.f, voy = 0.f, vscale = 1.f; g.get_view(vox, voy, vscale);
@@ -166,7 +168,14 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             g.chain_load_begin();
             for (int i = 0; i < static_cast<int>(ch.size()); ++i)
                 g.chain_load_add(ch[i].value("op", 0), ch[i].value("id", i), ch[i].value("x", 0.f), ch[i].value("y", 0.f));
-            for (int i = 0; i < static_cast<int>(ch.size()); ++i) g.chain_load_set_input(i, ch[i].value("in", -1));
+            for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
+                g.chain_load_set_input(i, ch[i].value("in", -1));
+                if (ch[i].contains("base")) {
+                    const json& jb = ch[i]["base"];
+                    for (int l = 0; l < 4 && l < static_cast<int>(jb.size()); ++l)
+                        g.set_op_param_base_at(i, l, jb[l].get<float>());
+                }
+            }
         }
         if (jg.contains("nodes"))
             for (const auto& jn : jg["nodes"])
