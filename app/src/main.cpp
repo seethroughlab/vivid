@@ -22,6 +22,7 @@
 #include "app/window.h"
 #include "app/input.h"
 #include "app/frame.h"
+#include "gpu/builtin_ops.h"
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
 #include "ui/session_view.h"
@@ -54,6 +55,20 @@ int main() {
     vivid::Window win;     // this window's view + interaction state
     win.app = &app;
     win.glfw = window;
+
+    // Register the built-in visual operators + validate their descriptors (the
+    // operator-based visuals model; VisualGraph drives them from P1.3). A loud
+    // startup check that the real ops are well-formed (named codes).
+    vivid::register_builtin_ops(app.op_registry);
+    { int bad = 0;
+      for (const auto& nm : app.op_registry.type_names()) {
+          std::vector<vivid::DescriptorValidationIssue> iss;
+          app.op_registry.create(nm, iss);
+          for (const auto& i : iss) { std::fprintf(stderr, "[vivid] op '%s' descriptor: %s — %s\n", nm.c_str(), i.code.c_str(), i.message.c_str()); ++bad; }
+      }
+      std::fprintf(stderr, "[vivid] registered %zu visual ops%s\n",
+                   app.op_registry.type_names().size(), bad ? " (WITH ISSUES)" : " (all valid)");
+    }
 
     // Retina/HiDPI: render at the framebuffer (physical) resolution; lay out the UI
     // in logical points. win.dpi bridges them (2.0 on retina) -> crisp text + shapes.
