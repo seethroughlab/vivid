@@ -28,6 +28,8 @@ uv run --directory mcp vivid_mcp.py                      # the MCP bridge (app m
 
 ## Status (2026-06-29)
 The PoC is **proven, not yet a product base**. Target is an extensible, cross-platform platform
-(≈ vivid-classic's architecture). The pivotal open decision is the **trunk** (grow `app/` vs. port the
-product layer onto classic's runtime) — see ADR-0011; P0 hygiene (decompose `main.cpp`, tests/CI/
-sanitizers, control-server input validation, `app/` docs) is trunk-agnostic and can start first.
+(≈ vivid-classic's architecture). Strategy (ADR-0011, recommended): **keep `app/` as the trunk and adopt
+classic's platform by *selective lift*** — an entanglement audit found `operator_api`, the operator
+loader/hot-reload, and the package-system core all LIFT-CLEAN, while the renderer/UI stay ours and the
+7-pass graph compiler is built fresh (right-sized). P0 hygiene (decompose `main.cpp`, tests/CI/sanitizers,
+control-server input validation, `app/` docs) is real trunk work and starts first.

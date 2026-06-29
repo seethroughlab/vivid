@@ -1,4 +1,4 @@
-# ADR-0011: PoC → Product — Target the Platform Architecture; Choose the Trunk
+# ADR-0011: PoC → Product — Keep Our Trunk; Adopt Classic's Platform by Selective Lift
 
 Status: proposed
 
@@ -6,77 +6,81 @@ Date: 2026-06-29
 
 Follows: [ADR-0010](ADR-0010-poc-proven-production-seed.md)
 
+Recommended: **the PoC codebase (`app/`) stays the trunk**; we adopt vivid-classic's platform machinery by
+**selective lift** (not a whole-trunk swap), and **build a right-sized graph model fresh**.
+
 ## Context
 
-[ADR-0010](ADR-0010-poc-proven-production-seed.md) declared the C++ PoC (`app/`) proven and proposed
-promoting it to the production seed. The next question is what "product" means and what it takes to ship
-one. The decision: the product should be an **extensible platform** (operators-as-plugins, hot-reload,
-packages) and should be **architected for cross-platform**, not macOS-only.
+[ADR-0010](ADR-0010-poc-proven-production-seed.md) declared the PoC proven and promoted it to the seed.
+The target (ratified): an **extensible, cross-platform-capable platform** — which ≈ vivid-classic's
+architecture (operator/ABI boundary, graph model, codegen, hot-reload, packages, cross-cadence bridge,
+test partitioning, production gate, docs culture). Classic has all of it; the PoC has little of it.
 
-Two audits this session (recorded in [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md))
-establish the gap:
+The initial recommendation (an earlier draft of this ADR) was **Option B — make classic the trunk and
+port the PoC's product layer onto it.** That was reconsidered: B would inherit classic's ~4,500-file
+codebase (including the large parts irrelevant to this product) and would **discard the PoC's hard-won
+low-level work** — the `Renderer2D` drawing library, `ui_style`, the GPU/audio stacks, the thread-safety
+discipline — because classic has its own equivalents. That maximizes both inherited cruft *and* lost work.
 
-- The PoC validated the **product** (two best-in-class surfaces + a bidirectional bridge + MCP-native
-  control) and several **subsystems** (VST3 host, master transport, the string-keyed mapping registry,
-  the generation-counter/SPSC thread-safety discipline, the cpp-httplib control server, `ui_style`).
-- But it is **not a product base**: `app/src/main.cpp` is a 1,213-line god file (15+ responsibilities,
-  30+ globals); there are **no tests, no CI, no sanitizers**; error handling is sparse (the MCP control
-  server passes unvalidated indices to the C API — crash vectors); `app/` has no README/ARCHITECTURE
-  docs; and ~20% of the code is macOS-locked with no abstraction seams.
-
-Crucially, the chosen target — *extensible + cross-platform* — **is essentially vivid-classic's
-architecture**: an `operator_api`/ABI boundary, a graph compiler, codegen, hot-reload, a package system,
-a cross-cadence bridge, test partitioning, a production gate, platform abstraction, and a deep docs
-culture. **Classic already has all of this; the PoC has none of it.** So the central decision is not a
-task list — it is *which codebase is the trunk*.
+So we ran an **entanglement audit** (three read-only probes of vivid-classic, recorded in
+[`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) §1d) to answer the deciding question: *can
+classic's valuable subsystems be lifted cleanly, or are they welded to its runtime?* The answer is that
+classic's strict dependency direction makes the important pieces **lift cleanly** — which collapses the
+A/B/C choice.
 
 ## Decision
 
-1. **Target an extensible, cross-platform-capable platform** (ratified by the user). This commits us to
-   classic-grade machinery: a plugin/ABI contract, codegen, hot-reload, packages, platform abstraction,
-   tests/CI/sanitizers, a production gate, and a documentation culture.
+1. **Target:** an extensible, cross-platform-capable platform (ratified).
 
-2. **Choose the trunk** (the pivotal, still-open decision — see Alternatives). **Recommendation: Option
-   B** — port the PoC's distinctive product layer onto classic's existing runtime — with **Option C**
-   (hybrid lift) as the fallback. Rationale: don't re-pay the years of platform engineering classic has
-   already proven; the PoC's unique value is the *product* (two-surface DAW-side UX, session/clip model,
-   MCP-native control, `ui_style`), not the platform plumbing.
+2. **Trunk: our codebase (`app/`) stays the trunk.** We do **not** swap to classic's runtime (Option B
+   rejected — see Alternatives). This keeps the PoC's validated low-level work — `Renderer2D`/`ui_style`,
+   the GPU/audio stacks, the thread-safety discipline, the mapping bridge, the two-surface product — and
+   avoids inheriting classic's irrelevant breadth as cruft.
 
-3. **Execute the P0–P4 roadmap** (detailed in [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md)):
-   P0 engineering hygiene (decompose `main.cpp`, headless tests + CI + sanitizers, index validation +
-   named error codes, `app/` docs) → P1 layering + operator/ABI contract → P2 codegen + hot-reload +
-   packages → P3 cross-platform seams → P4 release engineering + production gate. **P1+ are gated on the
-   trunk decision; P0 is trunk-agnostic and may start immediately.**
+3. **Strategy: selective lift, evidence-based.** Adopt classic's hardest-won, cleanly-separable platform
+   machinery by lifting its actual code; build the rest fresh; adopt its engineering practices as
+   patterns. The per-subsystem disposition (from the entanglement audit) is the binding part of this
+   decision:
 
-## Alternatives Considered (the trunk decision)
+   | Subsystem (vivid-classic) | Disposition | Why / cost |
+   |---|---|---|
+   | `operator_api/` — the operator ABI + **type-erased draw table** | **LIFT-CLEAN** | 37 headers, `operator_api/**`+stdlib+WebGPU only, **zero** `runtime/` coupling; the `void* opaque` draw table means **our `Renderer2D` stays the host impl** — the ABI does not drag classic's renderer in. ~<1hr. |
+   | Operator **loader + hot-reload** (loader, `HotReloader`, `FileWatcher`) | **LIFT-CLEAN** | pure dlopen/ABI wrapper + build queue + file-event pump; graph compiler is *late-bound* (only at a recompile decision). ~15 files / 3k LoC; drag = operator_api + stdlib. |
+   | **Package system — core** (manager, compiler, manifest, scan/install) | **LIFT-CLEAN** | depends only on the operator registry; clang++/cmake invocation + JSON manifest. ~25 files / 8k LoC. |
+   | `tools/operator_codegen` (tree-sitter) | **LIFT-ADAPT** | self-contained parser; generated code references `operator_api` types only. Retarget the descriptor-emit template to our descriptor shape. ~4–6hr. |
+   | `AudioFrameBridge` (cross-cadence snapshot) | **LIFT-ADAPT** | lock-free double-buffer; reads `CompiledGraph` struct fields only. Refactor `build(CompiledGraph&)` → a lean layout struct. ~1.2k LoC. |
+   | Test tiers / production-gate / sanitizer flags / CI workflows / `test_helpers` | **ADOPT-PATTERN** | re-author for our targets; `-DVIVID_SANITIZE[_THREAD]` flags copy verbatim. |
+   | **Graph model / compiler** (the 7-pass lane/multiplicity engine) | **BUILD-FRESH, right-sized** | the deliberate no-cruft call: it's more than this product needs, and **nothing above forces it in**. Our `VisualGraph` executor is the seed. |
+   | Package **lockfile** (Phase 6a strict-mode) | **BUILD-FRESH / defer** | the one piece wedged into compiled-graph state; rebuild against our graph model when needed. |
+   | `Renderer2D`, `ui_style`/theme, `vivid_runtime_testlib` | **KEEP OURS / DON'T LIFT** | classic's are full WGPU-coupled *replacements*; adopting them would discard our drawing library and pull the whole runtime. |
 
-- **Option A — Grow the PoC into the platform.** Reimplement the operator ABI, graph compiler, codegen,
-  hot-reload, packages, and cross-platform backends inside `app/`, borrowing classic's *designs*. Keeps
-  PoC product code central but re-pays years of platform engineering. Highest cost/risk. *Rejected as the
-  default.*
-- **Option B — Port the PoC's product layer onto classic's runtime (recommended).** Reuse classic's
-  proven platform (operator_api / ABI 10, graph compiler, codegen, package system, AudioFrameBridge,
-  production gate, CI); rebuild the two-surface UX, session/clip model, MCP surface, and `ui_style` as the
-  product layer on top — much of it expressible as operators + a session/UI layer.
-- **Option C — Hybrid lift.** Keep `app/` as trunk but vendor classic's hardest-won subsystems wholesale
-  (`operator_api`, `tools/operator_codegen`, the package/loader, the cross-cadence bridge, the test/CI
-  harness). Middle cost; risks a seam between two designs. *Fallback if B proves awkward.*
+## Alternatives Considered
+
+- **Option A — Grow the PoC, reimplement classic's designs.** Rejected: needlessly *reimplements* code
+  (operator ABI, loader, packages) that the audit shows lifts cleanly — slower, and re-derives subtle
+  lessons we can just copy.
+- **Option B — Make classic the trunk; port the product layer onto it.** *Rejected.* Inherits classic's
+  full breadth as cruft and discards the PoC's low-level work (renderer, style, GPU/audio, thread-safety)
+  in favor of classic's equivalents. Optimizes against both of the user's stated goals.
+- **Option C — Selective lift onto our trunk (chosen, refined by the audit).** Keep `app/` as trunk; lift
+  the cleanly-separable platform pieces; build the graph model fresh; adopt practices as patterns. Gains
+  classic's proven machinery *and* keeps our work *and* avoids cruft.
 
 ## Consequences
 
-- **Positive:** under B/C we inherit classic's meticulous planning (layering, ABI, codegen, packages,
-  production gate, docs) instead of recreating it; the PoC's validated product framing and subsystems
-  carry forward as the differentiator.
-- **Cost / risk:** this is a multi-month, rebuild-scale effort regardless of trunk. Under B, the risk is
-  whether the PoC's product layer (DAW-style session view, the bridge UX, MCP-native authoring) maps
-  cleanly onto classic's runtime; the roadmap front-loads a P1 spike to de-risk this before committing.
-- **Carry-forward vs. rework:** mapping registry, transport, thread-safety patterns, the MCP
-  control-server *shape*, and `ui_style` carry forward; `main.cpp`, the fixed `VisualGraph`, and the
-  macOS-locked `.mm`/CFRunLoop code are reworked or replaced.
-- **Follow-up:** the trunk decision (A/B/C) must be ratified before P1; this ADR flips to **accepted**
-  once it is. P0 hygiene can proceed under any trunk.
+- **Positive:** we keep every validated PoC asset and inherit classic's proven ABI/loader/packages with
+  minimal drag; no ~4,500-file cruft; the graph model is built to this product's actual needs.
+- **Cost / risk:** integration **seams** where lifted code meets ours — chiefly the `operator_api`
+  descriptor model ↔ our (new, right-sized) graph model, the `operator_codegen` template retarget, and
+  the `AudioFrameBridge` signature refactor. These are bounded and identified, not open-ended.
+- **Sequencing implication:** because the trunk is ours, P0 hygiene (decompose `main.cpp`, tests/CI/
+  sanitizers, control-server validation, docs) is **real, non-throwaway work on the trunk** and should
+  start first; the operator-ABI lift (P1) is the first platform step and front-loads the
+  graph-model/ABI-seam spike to de-risk it.
+- **Follow-up:** ratify this recommendation to flip Status → **accepted**; then the roadmap in
+  [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) executes P0 → P4.
 
 ## Status note
 
-Marked **proposed**: the target (extensible + cross-platform) is ratified, but the **trunk decision
-(A/B/C)** is the user's to make. Flip to **accepted** once the trunk is chosen.
+Marked **proposed**, with a clear evidence-based recommendation (keep our trunk + selective lift). This
+reverses the earlier lean toward Option B. Flip to **accepted** once ratified.
