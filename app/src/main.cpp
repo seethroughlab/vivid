@@ -320,15 +320,18 @@ void draw_device_dock(vivid::ui::Renderer2D& ui, const AudioState& st, double mx
 
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, double mx, double my) {
-    ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, 0.07f, 0.08f, 0.10f, 1.0f);
-    ui.draw_text(20, 12, "VIVID — Session", 0.90f, 0.93f, 0.97f, 1.0f, 1.15f);
+    const vivid::ui::Style& sty = vivid::ui::style();
+    ui.draw_rect(0, 0, static_cast<float>(g_win_w), 40, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_rect(0, 39, static_cast<float>(g_win_w), 1, sty.sep[0], sty.sep[1], sty.sep[2], 1.0f);  // header rule
+    ui.draw_text(20, 12, "VIVID \xE2\x80\x94 Session", sty.text[0], sty.text[1], sty.text[2], 1.0f, 1.15f);
     const double bpm = st.transport ? st.transport->bpm.load(std::memory_order_relaxed) : 120.0;
     char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
-    ui.draw_text(190, 13, tb, 0.6f, 0.64f, 0.7f, 1.0f, 0.95f);
+    ui.draw_text(190, 13, tb, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.95f);
     int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
     for (int i = 0; i < 4; ++i) {
         const bool ob = (i == beat);
-        ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? 0.95f : 0.22f, ob ? 0.7f : 0.24f, ob ? 0.2f : 0.27f, 1.0f);
+        ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? sty.gold[0] : sty.card[0],
+                     ob ? sty.gold[1] : sty.card[1], ob ? sty.gold[2] : sty.card[2], 1.0f);
     }
     if (!st.session) return;
     auto* s = st.session;
@@ -336,24 +339,25 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     const int scenes = vivid_poc::session_scene_count(s);
 
     ui.push_clip_rect(0.f, 40.f, g_split_x, dock_top() - 40.f);  // DAW pane (above the dock)
-    ui.draw_rect(0.f, 40.f, g_split_x, dock_top() - 40.f, 0.065f, 0.072f, 0.085f, 1.0f);  // pane bg
+    ui.draw_rect(0.f, 40.f, g_split_x, dock_top() - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
     // track headers
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
         float ar, ag, ab; track_accent(t, ar, ag, ab);
-        const float hb = hit(h, mx, my) ? 0.04f : 0.f;  // hover: clickable -> editor
-        ui.draw_rect(h.x, h.y, h.w, h.h, 0.12f + hb, 0.13f + hb, 0.16f + hb, 1.0f);
-        ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);
+        const bool hov = hit(h, mx, my);  // hover: clickable -> editor
+        vivid::ui::draw_card(ui, h.x, h.y, h.w, h.h, sty.control, hov);
+        ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);  // track accent overrides the card bar
         char nm[40]; std::snprintf(nm, sizeof nm, "%.18s", vivid_poc::session_track_name(s, t));
-        ui.draw_text(h.x + 8.f, h.y + 9.f, nm, 0.85f, 0.88f, 0.92f, 1.0f, 0.95f);
+        ui.draw_text(h.x + 8.f, h.y + 9.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.95f);
     }
     // scene rows + clip cells
     for (int sc = 0; sc < scenes; ++sc) {
         const Rect sb = scene_launch_rect(sc);
-        ui.draw_rect(sb.x, sb.y, sb.w, sb.h, hit(sb, mx, my) ? 0.17f : 0.12f, 0.13f, 0.15f, 1.0f);
+        const bool sh = hit(sb, mx, my);
+        ui.draw_rect(sb.x, sb.y, sb.w, sb.h, sh ? sty.card_hi[0] : sty.card[0], sh ? sty.card_hi[1] : sty.card[1], sh ? sty.card_hi[2] : sty.card[2], 1.0f);
         char sl[4]; std::snprintf(sl, sizeof sl, "%c", 'A' + sc);
-        ui.draw_text(sb.x + 10.f, sb.y + 8.f, sl, 0.8f, 0.82f, 0.86f, 1.0f);
-        ui.draw_tri(sb.x + 12.f, sb.y + 30.f, sb.x + 12.f, sb.y + 42.f, sb.x + 23.f, sb.y + 36.f, 0.55f, 0.6f, 0.66f, 1.0f);
+        ui.draw_text(sb.x + 10.f, sb.y + 8.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+        ui.draw_tri(sb.x + 12.f, sb.y + 30.f, sb.x + 12.f, sb.y + 42.f, sb.x + 23.f, sb.y + 36.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
         for (int t = 0; t < tracks; ++t) {
             const Rect r = clip_cell_rect(t, sc);
             const bool on = vivid_poc::session_active_clip(s, t) == sc;
@@ -383,36 +387,35 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
     }
     // mixer
     const float my0 = mixer_y(scenes);
-    ui.draw_text(kSceneColX, my0, "MIX", 0.45f, 0.48f, 0.53f, 1.0f, 0.82f);
+    vivid::ui::section_header(ui, kSceneColX, my0, "MIX", sty.audio);
     // A teal "+ VIZ" button = send this source into the visuals graph as a node.
     auto viz_button = [&](const Rect& b, bool small) {
         const bool h = hit(b, mx, my);
-        ui.draw_rounded_rect(b.x, b.y, b.w, b.h, 4.f, h ? 0.16f : 0.11f, h ? 0.26f : 0.18f, h ? 0.27f : 0.20f, 1.0f);
-        ui.draw_rect(b.x, b.y, 3.f, b.h, 0.31f, 0.80f, 0.75f, 1.0f);
-        ui.draw_text(b.x + (small ? 8.f : 10.f), b.y + 4.f, small ? "+VIZ" : "+ VIZ",
-                     0.55f, 0.85f, 0.82f, 1.0f, 0.82f);
+        vivid::ui::draw_card(ui, b.x, b.y, b.w, b.h, sty.teal, h);
+        ui.draw_text(b.x + (small ? 8.f : 10.f), b.y + 5.f, small ? "+VIZ" : "+ VIZ",
+                     sty.teal[0], sty.teal[1], sty.teal[2], 1.0f, 0.82f);
     };
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
         const float lvl = std::min(1.0f, vivid_poc::session_track_level(s, t) * 4.0f);
-        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, 0.07f, 0.08f, 0.10f, 1.0f);
-        ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);
+        ui.draw_rect(mr.x, mr.y, mr.w, mr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+        ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);  // green level
         const float g = vivid_poc::session_track_gain(s, t);
-        ui.draw_rect(gr.x, gr.y, gr.w, gr.h, 0.10f, 0.11f, 0.13f, 1.0f);
-        ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, 0.32f, 0.46f, 0.66f, 1.0f);
-        ui.draw_rect(gr.x + gr.w * g - 2.f, gr.y - 2.f, 4.f, gr.h + 4.f, 0.7f, 0.8f, 0.95f, 1.0f);
+        ui.draw_rect(gr.x, gr.y, gr.w, gr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+        ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.8f, sty.gpu[1] * 0.8f, sty.gpu[2] * 0.85f, 1.0f);
+        ui.draw_rect(gr.x + gr.w * g - 2.f, gr.y - 2.f, 4.f, gr.h + 4.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);
         viz_button(track_viz_rect(t, scenes), false);
     }
     // master meter + its viz button
     const Rect mm = master_meter_rect(scenes);
     const float ml = st.transport ? std::min(1.0f, st.transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
-    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, 0.07f, 0.08f, 0.10f, 1.0f);
-    ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, 0.31f, 0.80f, 0.75f, 1.0f);
-    ui.draw_text(kSceneColX, mm.y + 8.f, "MASTER", 0.85f, 0.9f, 0.92f, 1.0f, 0.78f);
+    ui.draw_rect(mm.x, mm.y, mm.w, mm.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+    ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+    ui.draw_text(kSceneColX, mm.y + 8.f, "MASTER", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.78f);
     viz_button(master_viz_rect(scenes), true);
     ui.draw_text(kSceneColX, my0 + 78.f,
                  "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
-                 0.42f, 0.55f, 0.56f, 1.0f, 0.85f);
+                 sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
 
     ui.pop_clip_rect();  // end DAW pane (device chain + params now live in the bottom dock)
     // Visuals pane label (clipped to the right pane)
@@ -431,15 +434,16 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
 // The "+ FX" effect picker for the device chain.
 void draw_fx_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
+    const vivid::ui::Style& sty = vivid::ui::style();
     const float w = 150.f;
     const int n = vivid_poc::session_available_effect_count();
-    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
-    ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", 0.55f, 0.58f, 0.64f, 1.0f, 0.82f);
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
     for (int j = 0; j < n; ++j) {
         const float iy = m.y + j * 24.f;
-        ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
-        ui.draw_rect(m.x, iy, 3.f, 24.f, 0.31f, 0.70f, 0.80f, 1.0f);
-        ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), 0.85f, 0.88f, 0.92f, 1.0f, 0.9f);
+        ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, sty.fx[0], sty.fx[1], sty.fx[2], 1.0f);
+        ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
     }
 }
 
@@ -594,29 +598,31 @@ void draw_mapping_overview(vivid::ui::Renderer2D& ui, vivid::ui::NodeGraph* g, v
 // The "map this param from a source" picker (the return path).
 void draw_map_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
+    const vivid::ui::Style& sty = vivid::ui::style();
     const float w = 168.f;
-    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
-    ui.draw_text(m.x + 10.f, m.y - 18.f, "map param from:", 0.55f, 0.58f, 0.64f, 1.0f, 0.8f);
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, "map param from:", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
     for (int j = 0; j < kNumMapSources; ++j) {
         const float iy = m.y + j * 24.f;
-        ui.draw_rect(m.x, iy, w, 24.f, 0.16f, 0.17f, 0.20f, 1.0f);
-        ui.draw_rect(m.x, iy, 3.f, 24.f, 0.85f, 0.7f, 0.4f, 1.0f);  // amber = return path
-        ui.draw_text(m.x + 12.f, iy + 5.f, kMapSources[j].label, 0.85f, 0.88f, 0.92f, 1.0f, 0.88f);
+        ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);  // gold = return path
+        ui.draw_text(m.x + 12.f, iy + 5.f, kMapSources[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
     }
 }
 
 // The characteristic context menu (the bridge entry point).
 void draw_menu(vivid::ui::Renderer2D& ui, const CtxMenu& m, const char* track) {
     if (!m.open) return;
+    const vivid::ui::Style& sty = vivid::ui::style();
     const float w = 184.f;
-    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  →  visuals", track && *track ? track : "track");
-    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, 0.09f, 0.10f, 0.12f, 1.0f);
-    ui.draw_text(m.x + 10.f, m.y - 18.f, hdr, 0.55f, 0.58f, 0.64f, 1.0f, 0.82f);
+    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", track && *track ? track : "track");
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, hdr, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
     for (int j = 0; j < kNumChars; ++j) {
         const float iy = m.y + j * 26.f;
-        ui.draw_rect(m.x, iy, w, 26.f, 0.16f, 0.17f, 0.20f, 1.0f);
-        ui.draw_rect(m.x, iy, 3.f, 26.f, 0.31f, 0.80f, 0.75f, 1.0f);
-        ui.draw_text(m.x + 14.f, iy + 6.f, kChars[j].label, 0.85f, 0.88f, 0.92f, 1.0f);
+        ui.draw_rect(m.x, iy, w, 26.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 26.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);  // teal = audio->visual
+        ui.draw_text(m.x + 14.f, iy + 6.f, kChars[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
     }
 }
 
