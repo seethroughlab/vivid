@@ -8,6 +8,33 @@ if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "" FORCE)
 endif()
 
+# ---- build options ----
+# The GUI app pulls heavy, partly macOS-only deps (wgpu/glfw/VST3/AVFoundation);
+# the headless test suite needs none of them. Keeping them separable lets CI
+# build+run the tests fast and cross-platform (VIVID_BUILD_APP=OFF).
+option(VIVID_BUILD_APP   "Build the GUI/GPU/audio app (heavy deps; macOS)" ON)
+option(VIVID_BUILD_TESTS "Build the headless test suite (cheap, portable)"  ON)
+option(VIVID_SANITIZE        "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
+option(VIVID_SANITIZE_THREAD "Enable ThreadSanitizer (mutually exclusive with VIVID_SANITIZE)" OFF)
+
+if(VIVID_SANITIZE)
+    add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+if(VIVID_SANITIZE_THREAD)
+    add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=thread)
+endif()
+
+if(VIVID_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+if(NOT VIVID_BUILD_APP)
+    return()  # tests-only configure: skip all the heavy app deps + target below
+endif()
+
 include(FetchContent)
 
 # --- wgpu-native via eliemichel's WebGPU-distribution (precompiled) ---

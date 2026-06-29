@@ -1,0 +1,31 @@
+name: headless-tests
+
+# Builds and runs only the headless test suite (VIVID_BUILD_APP=OFF), so it needs
+# none of the heavy GUI/GPU/audio/VST deps and runs fast on Linux — which also
+# proves the tested code is platform-agnostic (a cross-platform goal of ADR-0011).
+on:
+  push:
+    branches: [poc-cpp-prototype, master]
+  pull_request:
+
+jobs:
+  headless:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ["OFF", "ON"]   # ON = AddressSanitizer + UndefinedBehaviorSanitizer
+    name: tests (sanitize=${{ matrix.sanitize }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S app -B build
+          -DVIVID_BUILD_APP=OFF
+          -DVIVID_BUILD_TESTS=ON
+          -DVIVID_SANITIZE=${{ matrix.sanitize }}
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
