@@ -116,7 +116,7 @@ target_link_libraries(vst3_iids PUBLIC vst3_headers)
 # secondary NSWindows render but stay non-interactive.
 add_executable(vivid_poc MACOSX_BUNDLE
     src/main.cpp
-    src/app/shell.cpp
+    src/app/app.cpp
     src/app/input.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp

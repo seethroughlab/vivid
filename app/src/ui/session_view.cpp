@@ -1,6 +1,7 @@
 #include "ui/session_view.h"
 
-#include "app/app_state.h"
+#include "app/app.h"
+#include "app/window.h"
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
@@ -63,39 +64,38 @@ void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
 // of the selected device's params. Full window width; resizable via its top edge.
-void draw_device_dock(Renderer2D& ui, const AudioState& st, double mx, double my,
-                      int win_w, int win_h, float dock_h) {
-    vivid_poc::Session* s = st.session;
+void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
+    vivid_poc::Session* s = w.app->session;
     if (!s) return;
     const Style& sty = style();
-    const DockGeom d = dock_geom(win_w, win_h, dock_h);
+    const DockGeom d = w.dock_geom();
     const float y0 = d.y0;
-    ui.draw_rect(0.f, y0, static_cast<float>(win_w), dock_h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
-    const bool rhov = hit(dock_resize_rect(win_w, win_h, dock_h), mx, my);
-    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(win_w), 2.f,
+    ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), w.dock_h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    const bool rhov = hit(w.dock_resize_rect(), mx, my);
+    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(w.win_w), 2.f,
                  rhov ? 0.40f : sty.sep[0], rhov ? 0.46f : sty.sep[1], rhov ? 0.52f : sty.sep[2], 1.0f);
 
     // When a visual node is selected in the graph, the dock becomes its inspector.
-    const int selop = st.graph ? st.graph->selected_op() : -1;
+    const int selop = w.app->graph ? w.app->graph->selected_op() : -1;
     if (selop >= 0) {
-        char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", st.graph->op_kind_name(selop));
+        char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", w.app->graph->op_kind_name(selop));
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
         ui.draw_text(120.f, y0 + 7.f, "drag knobs to set the base value \xC2\xB7 teal = wired (modulated) \xC2\xB7 click a track header for devices",
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.7f);
-        const int pc = st.graph->op_param_count_at(selop);
+        const int pc = w.app->graph->op_param_count_at(selop);
         for (int i = 0; i < pc; ++i) {
             float cx, cy; dock_knob(i, d, cx, cy);
-            const float base = st.graph->op_param_base_at(selop, i);
-            const bool wired = st.graph->op_param_wired_at(selop, i);
+            const float base = w.app->graph->op_param_base_at(selop, i);
+            const bool wired = w.app->graph->op_param_wired_at(selop, i);
             char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
-            knob(ui, cx, cy, 15.f, base, st.graph->op_param_label_at(selop, i), vt, sty.gpu, wired);
+            knob(ui, cx, cy, 15.f, base, w.app->graph->op_param_label_at(selop, i), vt, sty.gpu, wired);
         }
         if (pc == 0) ui.draw_text(12.f, y0 + 40.f, "this node has no parameters", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
         return;
     }
 
     const int tracks = vivid_poc::session_track_count(s);
-    const int seltr = std::min(std::max(st.sel_track, 0), tracks - 1);
+    const int seltr = std::min(std::max(w.sel_track, 0), tracks - 1);
     const bool aud = vivid_poc::session_track_is_audio(s, seltr);
     char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid_poc::session_track_name(s, seltr));
     section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
@@ -105,8 +105,8 @@ void draw_device_dock(Renderer2D& ui, const AudioState& st, double mx, double my
     for (int i = 0; i <= nfx + 1; ++i) {
         const bool isInst = (i == 0), isAdd = (i == nfx + 1);
         if (isInst && aud) continue;  // sampler track has no instrument plugin
-        const Rect b = dock_chip(i, win_h, dock_h);
-        const bool sel = !isAdd && st.sel_device == (isInst ? 0 : i);
+        const Rect b = w.dock_chip(i);
+        const bool sel = !isAdd && w.sel_device == (isInst ? 0 : i);
         const float* acc = isAdd ? sty.control : (isInst ? sty.audio : sty.fx);
         draw_card(ui, b.x, b.y, b.w, b.h, acc, hit(b, mx, my) || sel);
         if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
@@ -116,14 +116,14 @@ void draw_device_dock(Renderer2D& ui, const AudioState& st, double mx, double my
                                                                   : vivid_poc::session_effect_name(s, seltr, i - 1));
         ui.draw_text(b.x + 8.f, b.y + 17.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
         if (!isInst) {
-            const Rect xb = dock_chip_x(i, win_h, dock_h);
+            const Rect xb = w.dock_chip_x(i);
             ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
             ui.draw_text(xb.x + 3.f, xb.y, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f);
         }
     }
 
     // knob grid for the selected device's params
-    const int seldev = std::max(0, st.sel_device);
+    const int seldev = std::max(0, w.sel_device);
     const int pc = vivid_poc::session_param_count(s, seltr, seldev);
     const float* pacc = (seldev == 0) ? sty.audio : sty.fx;
     const int shown = std::min(pc, d.cols * d.maxRows);
@@ -132,7 +132,7 @@ void draw_device_dock(Renderer2D& ui, const AudioState& st, double mx, double my
         const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
         char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", vivid_poc::session_param_name(s, seltr, seldev, i));
         char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", v);
-        const bool mapped = st.graph && st.graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
+        const bool mapped = w.app->graph && w.app->graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
         knob(ui, cx, cy, 15.f, v, nm, vt, pacc, mapped);
         const Rect mb = dock_knob_map(i, d);   // small map affordance (amber=unmapped, teal=mapped)
         ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? sty.teal[0] : 0.55f, mapped ? sty.teal[1] : 0.45f,
@@ -140,18 +140,17 @@ void draw_device_dock(Renderer2D& ui, const AudioState& st, double mx, double my
     }
     if (pc > shown) {
         char more[48]; std::snprintf(more, sizeof more, "+%d more \xE2\x80\x94 drag the dock taller", pc - shown);
-        ui.draw_text(12.f, y0 + dock_h - 13.f, more, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.68f);
+        ui.draw_text(12.f, y0 + w.dock_h - 13.f, more, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.68f);
     }
 }
 
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
-void draw_ui(Renderer2D& ui, const AudioState& st, double beats, double mx, double my,
-             int win_w, int win_h, float split_x, float dock_h, int visual_source) {
+void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
     const Style& sty = style();
-    ui.draw_rect(0, 0, static_cast<float>(win_w), 40, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
-    ui.draw_rect(0, 39, static_cast<float>(win_w), 1, sty.sep[0], sty.sep[1], sty.sep[2], 1.0f);  // header rule
+    ui.draw_rect(0, 0, static_cast<float>(w.win_w), 40, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_rect(0, 39, static_cast<float>(w.win_w), 1, sty.sep[0], sty.sep[1], sty.sep[2], 1.0f);  // header rule
     ui.draw_text(20, 12, "VIVID \xE2\x80\x94 Session", sty.text[0], sty.text[1], sty.text[2], 1.0f, 1.15f);
-    const double bpm = st.transport ? st.transport->bpm.load(std::memory_order_relaxed) : 120.0;
+    const double bpm = w.app->transport ? w.app->transport->bpm.load(std::memory_order_relaxed) : 120.0;
     char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
     ui.draw_text(190, 13, tb, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.95f);
     int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
@@ -160,13 +159,13 @@ void draw_ui(Renderer2D& ui, const AudioState& st, double beats, double mx, doub
         ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? sty.gold[0] : sty.card[0],
                      ob ? sty.gold[1] : sty.card[1], ob ? sty.gold[2] : sty.card[2], 1.0f);
     }
-    if (!st.session) return;
-    auto* s = st.session;
+    if (!w.app->session) return;
+    auto* s = w.app->session;
     const int tracks = vivid_poc::session_track_count(s);
     const int scenes = vivid_poc::session_scene_count(s);
 
-    ui.push_clip_rect(0.f, 40.f, split_x, dock_top(win_h, dock_h) - 40.f);  // DAW pane (above the dock)
-    ui.draw_rect(0.f, 40.f, split_x, dock_top(win_h, dock_h) - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
+    ui.push_clip_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f);  // DAW pane (above the dock)
+    ui.draw_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
     // track headers
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
@@ -235,7 +234,7 @@ void draw_ui(Renderer2D& ui, const AudioState& st, double beats, double mx, doub
     }
     // master meter + its viz button
     const Rect mm = master_meter_rect(scenes);
-    const float ml = st.transport ? std::min(1.0f, st.transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
+    const float ml = w.app->transport ? std::min(1.0f, w.app->transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
     ui.draw_rect(mm.x, mm.y, mm.w, mm.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
     ui.draw_text(kSceneColX, mm.y + 8.f, "MASTER", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.78f);
@@ -246,14 +245,14 @@ void draw_ui(Renderer2D& ui, const AudioState& st, double beats, double mx, doub
 
     ui.pop_clip_rect();  // end DAW pane (device chain + params now live in the bottom dock)
     // Visuals pane label (clipped to the right pane)
-    const Rect vp = viewer_rect(win_w, split_x);
-    ui.push_clip_rect(split_x, 40.f, static_cast<float>(win_w) - split_x, dock_top(win_h, dock_h) - 40.f);
-    ui.draw_text(vp.x, 80.f, visual_source ? "VISUALS — video source  ·  V: plasma  ·  N: next clip"
-                                           : "VISUALS — plasma shader  ·  V: video",
+    const Rect vp = w.viewer_rect();
+    ui.push_clip_rect(w.split_x, 40.f, static_cast<float>(w.win_w) - w.split_x, w.dock_top() - 40.f);
+    ui.draw_text(vp.x, 80.f, w.app->visual_source ? "VISUALS — video source  ·  V: plasma  ·  N: next clip"
+                                                  : "VISUALS — plasma shader  ·  V: video",
                  0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
     ui.pop_clip_rect();
     // DAW | visuals splitter (on top, unclipped)
-    const Rect sp = splitter_rect(win_h, dock_h, split_x);
+    const Rect sp = w.splitter_rect();
     const bool sph = hit(sp, mx, my);
     ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? 0.30f : 0.16f, sph ? 0.34f : 0.17f, sph ? 0.40f : 0.20f, 1.0f);
 }
