@@ -18,6 +18,9 @@
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "ui/ui_style.h"
+#include "ui/layout.h"
+#include "app/app_state.h"
+#include "audio/audio_callback.h"
 #include "cli/control_server.h"
 #include "ui/clip_editor.h"
 #include "persist.h"
@@ -37,89 +40,10 @@
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
+using namespace vivid::ui;  // Rect/hit, grid + dock geometry, constants (ui/layout.h)
 
-// A right-click context menu of a track's audio characteristics (the bridge).
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
-
-struct AudioState {
-    Transport* transport = nullptr;
-    vivid_poc::Session* session = nullptr;  // hosted instrument + clips (or null -> test tone)
-    vivid::ui::NodeGraph* graph = nullptr;  // visuals node editor (UI thread)
-    CtxMenu menu;                           // characteristic picker (UI thread)
-    CtxMenu fx_menu;                        // "+ FX" picker (src = track)
-    CtxMenu map_menu;                       // param "map from source" picker
-    int map_param = -1;                     // param index the map menu targets
-    int sel_track = 0;                      // track whose device chain is shown
-    int sel_device = 0;                     // device whose params are shown (0=inst, 1+=fx)
-    int param_drag = -1;                    // device/node param (knob) being dragged
-    bool param_is_node = false;             // knob targets the selected visual node's base
-    float param_drag_v0 = 0.f;              // value + cursor-y at knob grab (vertical drag)
-    double param_drag_y0 = 0.0;
-    bool dock_drag = false;                 // dragging the device-dock resize handle
-    double last_dev_t = -1; int last_dev_i = -1;  // device double-click detect
-    int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
-    bool split_drag = false;                // dragging the DAW|visuals splitter
-    double split_last_t = -1.0;             // last splitter press (double-click reset)
-    Vst3PluginWindow* track_win[8] = {};    // open instrument editor windows, per track
-    Vst3PluginWindow* fx_win[8] = {};       // open effect editor windows (pool)
-    vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
-    double last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;  // double-click detect
-    float tr_baseline = 0.f;                // onset detector baseline (audio thread)
-    float m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states (audio thread)
-    double phase = 0.0;       // test-tone oscillator phase
-    double tone_hz = 110.0;   // low A
-};
-
-// Real-time audio callback: render the hosted instrument's arpeggio (or a test
-// tone if no plugin), advance the transport, and publish a block RMS level.
-void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 frames) {
-    auto* st = static_cast<AudioState*>(device->pUserData);
-    auto* fout = static_cast<float*>(out);
-    const double sr = device->sampleRate;
-
-    const double beats = st->transport ? st->transport->beats.load(std::memory_order_relaxed) : 0.0;
-    const double bpm   = st->transport ? st->transport->bpm.load(std::memory_order_relaxed) : 120.0;
-
-    bool rendered = false;
-    if (st->session)
-        rendered = vivid_poc::session_process(st->session, fout, frames,
-                                              static_cast<uint32_t>(sr), bpm, beats, 4);
-    if (!rendered) {
-        const double inc = 2.0 * kPi * st->tone_hz / sr;
-        for (ma_uint32 i = 0; i < frames; ++i) {
-            float s = 0.05f * static_cast<float>(std::sin(st->phase));
-            st->phase += inc;
-            if (st->phase > 2.0 * kPi) st->phase -= 2.0 * kPi;
-            fout[i * 2 + 0] = s;
-            fout[i * 2 + 1] = s;
-        }
-    }
-
-    if (st->transport) {
-        st->transport->advance(frames, sr);
-        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / static_cast<float>(sr));
-        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / static_cast<float>(sr));
-        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
-        for (ma_uint32 i = 0; i < frames; ++i) {
-            const float l = fout[i * 2];
-            sum_sq += static_cast<double>(l) * l;
-            st->m_flt_lo += (l - st->m_flt_lo) * a_lo;
-            st->m_flt_hi += (l - st->m_flt_hi) * a_hi;
-            const float lo = st->m_flt_lo, mi = st->m_flt_hi - st->m_flt_lo, hi = l - st->m_flt_hi;
-            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
-        }
-        const double inv = 1.0 / (frames > 0 ? frames : 1);
-        const float rms = static_cast<float>(std::sqrt(sum_sq * inv));
-        st->transport->level.store(rms, std::memory_order_relaxed);
-        st->transport->band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
-        st->transport->band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
-        st->transport->band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
-        const float tr = std::max(0.0f, (rms - st->tr_baseline) * 6.0f);
-        st->tr_baseline += (rms - st->tr_baseline) * 0.04f;
-        st->transport->transient.store(std::min(1.0f, tr), std::memory_order_relaxed);
-    }
-}
+// CtxMenu + AudioState moved to app/app_state.h; audio_callback to
+// audio/audio_callback.cpp (both shared with the extracted modules).
 
 // Record a single render pass that clears `view` to (r,g,b).
 void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float g, float b) {
@@ -138,79 +62,25 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     wgpuRenderPassEncoderRelease(pass);
 }
 
-struct Rect { float x, y, w, h; };
-inline bool hit(const Rect& r, double mx, double my) {
-    return mx >= r.x && mx < r.x + r.w && my >= r.y && my < r.y + r.h;
-}
-// Session grid: columns = tracks, rows = scenes; a mixer strip below.
-constexpr float kSceneColX = 14.f, kSceneColW = 58.f;
-constexpr float kTrackX0 = 78.f, kTrackW = 102.f, kTrackGap = 4.f;
-constexpr float kHeaderY = 56.f, kHeaderH = 30.f;
-constexpr float kGridTopY = 92.f;
-constexpr float kRowH = 56.f, kRowGap = 4.f;
-inline float track_x(int t) { return kTrackX0 + t * (kTrackW + kTrackGap); }
-inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGridTopY + scene * (kRowH + kRowGap), kTrackW, kRowH }; }
-inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
-inline Rect scene_launch_rect(int scene) { return { kSceneColX, kGridTopY + scene * (kRowH + kRowGap), kSceneColW, kRowH }; }
-inline float mixer_y(int scenes) { return kGridTopY + scenes * (kRowH + kRowGap) + 18.f; }
-inline Rect track_meter_rect(int t, int scenes) { return { track_x(t) + 8.f, mixer_y(scenes) + 16.f, kTrackW - 16.f, 8.f }; }
-inline Rect track_gain_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 30.f, kTrackW - 16.f, 12.f }; }
-inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 16.f, kSceneColW, 26.f }; }
-// Explicit "send this source to the visuals graph" buttons (the bridge entry point).
-inline Rect track_viz_rect(int t, int scenes)  { return { track_x(t) + 8.f, mixer_y(scenes) + 48.f, kTrackW - 16.f, 18.f }; }
-inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 18.f }; }
-// Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
-struct MapSrc { const char* label; const char* id; };
-constexpr MapSrc kMapSources[] = {
-    { "Master Level", "master.level" }, { "Master Transient", "master.transient" },
-    { "Master Low", "master.low" }, { "Master Mid", "master.mid" }, { "Master High", "master.high" },
-    { "Viz Warp", "viz.warp" }, { "Viz Glow", "viz.glow" }, { "Viz Feedback", "viz.feedback" },
-    { "\xE2\x80\x94 clear \xE2\x80\x94", "" } };
-constexpr int kNumMapSources = 9;
-inline std::string param_dest(int track, int device, int i) {
-    return "param:" + std::to_string(track) + ":" + std::to_string(device) + ":" + std::to_string(i);
-}
-inline void track_accent(int t, float& r, float& g, float& b) {
-    static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
-    r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
-}
-// Right/left-click the MASTER meter opens a menu of audio characteristics (the bridge).
-struct CharItem { const char* label; int id; };
-constexpr CharItem kChars[] = {
-    { "Level (RMS)", 0 }, { "Transient", 1 }, { "Low band", 2 }, { "Mid band", 3 }, { "High band", 4 } };
-constexpr int kNumChars = 5;
-// Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
-inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
+// Rect/hit, the session-grid + dock geometry, and shared constants now live in
+// ui/layout.h (brought in unqualified by `using namespace vivid::ui` above).
 
-// Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
-constexpr float kViewW = 720.f, kViewH = 300.f;
 // Resizable shell: live window size + the draggable DAW|visuals splitter x.
 static int   g_win_w = 1280, g_win_h = 800;   // logical (point) size — all UI layout
 static int   g_fb_w  = 1280, g_fb_h  = 800;   // framebuffer (physical) size — the surface
 static float g_dpi   = 1.0f;                   // g_fb_w / g_win_w (2.0 on retina)
 static float g_split_x = 512.f;
 static float g_dock_h  = 210.f;   // bottom device-view dock height
-inline float dock_top() { return g_win_h - g_dock_h; }   // y where the dock begins
-inline Rect viewer_rect()   { return { g_split_x + 8.f, 100.f, static_cast<float>(g_win_w) - g_split_x - 16.f, 330.f }; }
-inline Rect splitter_rect() { return { g_split_x - 3.f, 44.f, 6.f, dock_top() - 44.f }; }
-inline Rect dock_resize_rect() { return { 0.f, dock_top() - 3.f, static_cast<float>(g_win_w), 7.f }; }
-// Bottom device-view dock: device chips (instrument + FX + "+FX") + a knob grid
-// of the selected device's params. Geometry shared by draw + hit-test.
-struct DockGeom { float y0, gridY0, cellW, cellH, knobOff; int cols, maxRows; };
-inline DockGeom dock_geom() {
-    DockGeom d; d.y0 = dock_top();
-    d.gridY0 = d.y0 + 62.f; d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;
-    d.cols = std::max(1, static_cast<int>((g_win_w - 24.f) / d.cellW));
-    d.maxRows = std::max(1, static_cast<int>((d.y0 + g_dock_h - 6.f - d.gridY0) / d.cellH));
-    return d;
-}
-inline Rect dock_chip(int i)   { return { 12.f + i * 128.f, dock_top() + 22.f, 120.f, 32.f }; }
-inline Rect dock_chip_x(int i) { Rect b = dock_chip(i); return { b.x + b.w - 16.f, b.y + 3.f, 13.f, 13.f }; }
-inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
-    cx = 12.f + (i % d.cols) * d.cellW + d.cellW * 0.5f;
-    cy = d.gridY0 + (i / d.cols) * d.cellH + d.knobOff;
-}
-inline Rect dock_knob_map(int i, const DockGeom& d) { float cx, cy; dock_knob(i, d, cx, cy); return { cx + 13.f, cy - 24.f, 9.f, 9.f }; }
+// Thin wrappers binding ui/layout.h's window-relative geometry to the live shell
+// globals, so existing call sites stay parameterless. (DockGeom, dock_knob, and
+// dock_knob_map need no window state and are used directly from ui/layout.h.)
+inline float dock_top()        { return vivid::ui::dock_top(g_win_h, g_dock_h); }
+inline Rect viewer_rect()      { return vivid::ui::viewer_rect(g_win_w, g_split_x); }
+inline Rect splitter_rect()    { return vivid::ui::splitter_rect(g_win_h, g_dock_h, g_split_x); }
+inline Rect dock_resize_rect() { return vivid::ui::dock_resize_rect(g_win_w, g_win_h, g_dock_h); }
+inline DockGeom dock_geom()    { return vivid::ui::dock_geom(g_win_w, g_win_h, g_dock_h); }
+inline Rect dock_chip(int i)   { return vivid::ui::dock_chip(i, g_win_h, g_dock_h); }
+inline Rect dock_chip_x(int i) { return vivid::ui::dock_chip_x(i, g_win_h, g_dock_h); }
 
 // Visuals generator source: 0 = plasma shader, 1 = texture (image/video). UI thread.
 static int g_visual_source = 0;
