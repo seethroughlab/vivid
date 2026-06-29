@@ -5,8 +5,10 @@
 #include "gpu/effect_op.h"
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
+#include "operator_api/gpu_common.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 // The built-in visuals operators, expressed against the lifted operator ABI.
@@ -188,6 +190,68 @@ struct FeedbackOp : OperatorBase, GpuProcessable {
     }
 };
 
+// --- Tint: a generator authored in WGSL (proves both shader paths coexist under
+// one runtime — GLSL ops above + this WGSL op, both naga-lowered). Uses the lifted
+// gpu_common helpers (fullscreen vs_main/fs_main + a uniform). ---
+const char* kTintWGSL = R"(
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput {
+    return fullscreenTriangle(vi, false);
+}
+struct U { res: vec2f, time: f32, hue: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    let c = 0.5 + 0.5 * cos(vec3f(0.0, 2.0, 4.0) + inp.uv.x * 6.2831853 + u.time * 0.5 + u.hue * 6.2831853);
+    return vec4f(c, 1.0);
+}
+)";
+
+struct TintOp : OperatorBase, GpuProcessable {
+    Param<float> hue{"hue", 0.5f, 0.f, 1.f};
+    bool tried_ = false;
+    WGPUShaderModule    sh_   = nullptr;
+    WGPUBindGroupLayout bgl_  = nullptr;
+    WGPUPipelineLayout  pl_   = nullptr;
+    WGPURenderPipeline  pipe_ = nullptr;
+    WGPUBuffer          ubo_  = nullptr;
+    WGPUBindGroup       bg_   = nullptr;
+    ~TintOp() override {
+        if (bg_)   wgpuBindGroupRelease(bg_);
+        if (ubo_)  wgpuBufferRelease(ubo_);
+        if (pipe_) wgpuRenderPipelineRelease(pipe_);
+        if (pl_)   wgpuPipelineLayoutRelease(pl_);
+        if (bgl_)  wgpuBindGroupLayoutRelease(bgl_);
+        if (sh_)   wgpuShaderModuleRelease(sh_);
+    }
+    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&hue); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
+    bool lazy_init(const VividGpuContext* c) {
+        std::string err;
+        sh_ = gpu::create_shader_checked(c->device, kTintWGSL, "Tint", err);
+        if (!sh_ || !err.empty()) return false;
+        ubo_ = gpu::create_uniform_buffer(c->device, 16, "Tint U");
+        WGPUBindGroupLayoutEntry e{};
+        e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 16;
+        WGPUBindGroupLayoutDescriptor ld{}; ld.entryCount = 1; ld.entries = &e;
+        bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
+        WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
+        pl_ = wgpuDeviceCreatePipelineLayout(c->device, &pld);
+        pipe_ = gpu::create_pipeline(c->device, sh_, pl_, c->output_format, "Tint Pipeline");
+        WGPUBindGroupEntry be{}; be.binding = 0; be.buffer = ubo_; be.size = 16;
+        WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 1; bd.entries = &be;
+        bg_ = wgpuDeviceCreateBindGroup(c->device, &bd);
+        return pipe_ != nullptr;
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; lazy_init(c); }
+        if (!pipe_) return;
+        float u[4] = { float(c->output_width), float(c->output_height), float(c->time),
+                       c->param_values ? c->param_values[0] : hue.value };
+        wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
+        gpu::run_pass(c->command_encoder, pipe_, bg_, c->output_texture_view, "Tint");
+    }
+};
+
 }  // namespace
 
 void register_builtin_ops(OpRegistry& reg) {
@@ -196,6 +260,7 @@ void register_builtin_ops(OpRegistry& reg) {
     reg.register_type("Feedback", [] { return std::unique_ptr<OperatorBase>(new FeedbackOp); });
     reg.register_type("Blur",     [] { return std::unique_ptr<OperatorBase>(new BlurOp); });
     reg.register_type("Output",   [] { return std::unique_ptr<OperatorBase>(new OutputOp); });
+    reg.register_type("Tint",     [] { return std::unique_ptr<OperatorBase>(new TintOp); });   // WGSL example
 }
 
 }  // namespace vivid
