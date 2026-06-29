@@ -22,3 +22,9 @@ vivid_add_test(test_mapping)
 vivid_add_test(test_control_parse)
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)
+
+# Operator descriptor validation (lifted operator_api) — compiles the validator
+# .cpp into the test (header + stdlib only, so still headless/portable).
+vivid_add_test(test_descriptor_validation)
+target_sources(test_descriptor_validation PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
