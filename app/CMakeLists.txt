@@ -56,10 +56,15 @@ FetchContent_Declare(glfw
 FetchContent_MakeAvailable(glfw)
 
 # --- glfw3webgpu (GLFW <-> WebGPU surface bridge) ---
+# Pinned to a specific commit (was tracking `main`) for reproducible builds. This
+# is the exact commit the PoC has been building against; the project's latest tag
+# (v1.2.0) is newer and untested here, so bump deliberately, not implicitly.
+# GIT_SHALLOW is FALSE here: a shallow clone can't reliably fetch a commit that
+# isn't a branch/tag tip, and this is a mid-history SHA. The repo is tiny.
 FetchContent_Declare(glfw3webgpu
     GIT_REPOSITORY https://github.com/eliemichel/glfw3webgpu
-    GIT_TAG        main
-    GIT_SHALLOW    TRUE)
+    GIT_TAG        8f14534e79c590e8a7f7795ea42e01bedea9e137
+    GIT_SHALLOW    FALSE)
 FetchContent_MakeAvailable(glfw3webgpu)
 
 # --- miniaudio (vendored, header-only) ---
