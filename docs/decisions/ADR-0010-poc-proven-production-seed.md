@@ -1,10 +1,14 @@
 # ADR-0010: The C++ PoC Is Proven; Promote It to the Production Seed
 
-Status: proposed
+Status: accepted
 
-Date: 2026-06-28
+Date: 2026-06-28 (accepted 2026-06-29)
 
 Follows: [ADR-0009](ADR-0009-two-surface-bridge-and-cpp-poc.md)
+
+Superseded-in-part-by: [ADR-0011](ADR-0011-poc-to-product-architecture.md) — the productization target
+(extensible + cross-platform) and the trunk question (grow the PoC vs. port onto vivid-classic's runtime)
+are decided there.
 
 ## Context
 
@@ -111,6 +115,7 @@ as disposable or restarting from the reboot-docs track. Concretely:
 
 ## Status note
 
-Marked **proposed**: this records the recommendation and the learnings, but the promote-vs-rewrite
-call and the hardening sequence are the author's to ratify. Flip to **accepted** once that decision
-is taken.
+**Accepted (2026-06-29).** The PoC is the seed; its ADR-0010 debt list was retired in full this
+session. The productization target and the trunk question (keep growing `app/` vs. port the product
+layer onto vivid-classic's runtime) are taken up in [ADR-0011](ADR-0011-poc-to-product-architecture.md)
+with the [PoC → Product roadmap](../roadmap/poc-to-product.md).
