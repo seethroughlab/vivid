@@ -17,6 +17,7 @@
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
+#include "ui/ui_style.h"
 #include "ui/clip_editor.h"
 #include "persist.h"
 #include "gpu/shader_op.h"
@@ -54,6 +55,7 @@ struct AudioState {
     double last_dev_t = -1; int last_dev_i = -1;  // device double-click detect
     int gain_drag = -1;                     // mixer gain slider being dragged (UI thread)
     bool split_drag = false;                // dragging the DAW|visuals splitter
+    double split_last_t = -1.0;             // last splitter press (double-click reset)
     Vst3PluginWindow* track_win[8] = {};    // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[8] = {};       // open effect editor windows (pool)
     vivid::ui::ClipEditor* editor = nullptr;       // MIDI piano-roll (UI thread)
@@ -140,7 +142,7 @@ constexpr float kSceneColX = 14.f, kSceneColW = 58.f;
 constexpr float kTrackX0 = 78.f, kTrackW = 102.f, kTrackGap = 4.f;
 constexpr float kHeaderY = 56.f, kHeaderH = 30.f;
 constexpr float kGridTopY = 92.f;
-constexpr float kRowH = 50.f, kRowGap = 4.f;
+constexpr float kRowH = 56.f, kRowGap = 4.f;
 inline float track_x(int t) { return kTrackX0 + t * (kTrackW + kTrackGap); }
 inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGridTopY + scene * (kRowH + kRowGap), kTrackW, kRowH }; }
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
@@ -256,20 +258,27 @@ void draw_ui(vivid::ui::Renderer2D& ui, const AudioState& st, double beats, doub
             const Rect r = clip_cell_rect(t, sc);
             const bool on = vivid_poc::session_active_clip(s, t) == sc;
             const bool q  = vivid_poc::session_queued_clip(s, t) == sc;
-            const float br = hit(r, mx, my) ? 0.05f : 0.f;
+            const bool hov = hit(r, mx, my);
             float ar, ag, ab; track_accent(t, ar, ag, ab);
-            if (on) ui.draw_rect(r.x, r.y, r.w, r.h, 0.16f + br, 0.20f + br, 0.26f + br, 1.0f);
-            else    ui.draw_rect(r.x, r.y, r.w, r.h, 0.115f + br, 0.125f + br, 0.145f + br, 1.0f);
-            if (on) ui.draw_rect(r.x, r.y, 3.f, r.h, ar, ag, ab, 1.0f);
-            if (q)  ui.draw_rect(r.x, r.y, r.w, 3.f, 0.95f, 0.75f, 0.20f, 1.0f);
-            if (on) ui.draw_tri(r.x + 14.f, r.y + 18.f, r.x + 14.f, r.y + 32.f, r.x + 27.f, r.y + 25.f, 0.5f, 0.85f, 0.5f, 1.0f);
-            const Rect pv = { r.x + 8.f, r.y + 24.f, r.w - 14.f, r.h - 30.f };
-            draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
+            const float tbh = 15.f;  // title-bar height
+            // cell body (the preview well sits below the title bar)
+            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, 4.f, on ? 0.12f : 0.085f, on ? 0.135f : 0.095f, on ? 0.16f : 0.11f, 1.0f);
+            // title bar: accent-tinted, brighter when active
+            ui.draw_rect(r.x + 1.f, r.y + 1.f, r.w - 2.f, tbh, ar * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f),
+                         ag * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f), ab * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f), 1.0f);
+            if (q) ui.draw_rect(r.x, r.y, r.w, 2.f, 0.95f, 0.75f, 0.20f, 1.0f);  // queued = gold top edge
+            // play glyph (active) then the clip name in the title bar
+            float tx = r.x + 6.f;
+            if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 11.f, r.x + 11.f, r.y + 7.5f, 0.6f, 0.95f, 0.6f, 1.0f); tx = r.x + 15.f; }
             char cn[16];
             const int abpm = vivid_poc::session_track_is_audio(s, t) ? vivid_poc::session_audio_clip_bpm(s, t, sc) : 0;
             if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
-            ui.draw_text(r.x + 36.f, r.y + 17.f, cn, on ? 0.9f : 0.6f, on ? 0.93f : 0.64f, 1.0f, 0.95f);
+            ui.draw_text(tx, r.y + 3.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, 0.72f);
+            // preview fills the body beneath the title bar
+            const Rect pv = { r.x + 5.f, r.y + tbh + 4.f, r.w - 10.f, r.h - tbh - 8.f };
+            ui.draw_rect(pv.x, pv.y, pv.w, pv.h, 0.03f, 0.035f, 0.045f, 1.0f);
+            draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
         }
     }
     // mixer
@@ -694,7 +703,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     // DAW | visuals splitter.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) st->split_drag = false;
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(splitter_rect(), mx, my)) {
-        st->split_drag = true; return;
+        const double now = glfwGetTime();
+        if (now - st->split_last_t < 0.35) { g_split_x = std::round(g_win_w * 0.46f); st->split_drag = false; st->split_last_t = -1.0; }
+        else { st->split_drag = true; st->split_last_t = now; }
+        return;
     }
 
     // Right-click a meter (master or per-track) -> open its characteristic menu.
@@ -962,7 +974,7 @@ int main() {
               gpu.resize(static_cast<uint32_t>(ww), static_cast<uint32_t>(wh));
               g_win_w = ww; g_win_h = wh;
           }
-          g_split_x = std::min(g_split_x, static_cast<float>(g_win_w) - 220.f);
+          g_split_x = std::clamp(g_split_x, 40.f, static_cast<float>(g_win_w) - 40.f);
           clip_editor.set_window(static_cast<float>(g_win_w), static_cast<float>(g_win_h));
         }
 
@@ -1012,8 +1024,8 @@ int main() {
             }
 
         double mx, my; glfwGetCursorPos(window, &mx, &my);
-        if (audio_state.split_drag)  // continue a splitter drag
-            g_split_x = std::clamp(static_cast<float>(mx), 500.f, static_cast<float>(g_win_w) - 220.f);
+        if (audio_state.split_drag)  // continue a splitter drag (either pane can collapse)
+            g_split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(g_win_w) - 40.f);
         graph.on_move(mx, my);  // continue any node/wire drag
         if (clip_editor.is_open()) {           // continue a drag, commit edits
             clip_editor.on_move(mx, my);
