@@ -15,21 +15,12 @@ static std::string source_id_for(int char_id) {  // master=kind, track t = 100+t
     return "track_" + std::to_string(t) + "." + (kind >= 0 && kind < 5 ? kKindName[kind] : "level");
 }
 
-// ---- Tab chooser catalog: spawnable visuals ops + master audio sources ----
-struct ChooserEntry { const char* label; bool is_op; int code; int env; };  // env: 0 gpu, 1 audio
-static const ChooserEntry kChooser[] = {
-    { "Plasma",           true,  static_cast<int>(VOp::Plasma),   0 },
-    { "Video",            true,  static_cast<int>(VOp::Video),    0 },
-    { "Feedback",         true,  static_cast<int>(VOp::Feedback), 0 },
-    { "Blur",             true,  static_cast<int>(VOp::Blur),     0 },
-    { "Output",           true,  static_cast<int>(VOp::Output),   0 },
-    { "Master Level",     false, 0, 1 },
-    { "Master Transient", false, 1, 1 },
-    { "Master Low",       false, 2, 1 },
-    { "Master Mid",       false, 3, 1 },
-    { "Master High",      false, 4, 1 },
+// ---- Tab chooser: the op entries come from the operator registry (so new ops
+// appear automatically); these are the static master audio-source entries. ----
+struct SourceEntry { const char* label; int char_id; };
+static const SourceEntry kSources[] = {
+    { "Master Level", 0 }, { "Master Transient", 1 }, { "Master Low", 2 }, { "Master Mid", 3 }, { "Master High", 4 },
 };
-static constexpr int kChooserCount = static_cast<int>(sizeof(kChooser) / sizeof(kChooser[0]));
 static std::string lower_str(std::string s) {
     for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return s;
@@ -44,15 +35,17 @@ static const char* op_name(VOp op) {
     switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
         case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
 }
-// Per-node param identity. dest = "node:<id>.<name>".
-static const char* kPlasmaParamNames[4] = { "warp", "hue", "density", "glow" };
-static const char* op_param_name(VOp op, int local) {
-    switch (op) {
-        case VOp::Plasma:   return (local >= 0 && local < 4) ? kPlasmaParamNames[local] : "p";
-        case VOp::Feedback: return "decay";
-        case VOp::Blur:     return "radius";
-        default: return "p";
-    }
+// Per-node param identity, now operator-driven: param count + names come from the
+// node's hosted operator descriptor (inst.param_ptrs), so new ops' params appear
+// automatically. Storage (params[4]/base[4]) caps at 4 for now.
+static int node_pcount(const vivid::VisualGraph* vg, int i) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
+    return std::min(4, int(vg->nodes()[i].inst.param_ptrs.size()));
+}
+static const char* node_plabel(const vivid::VisualGraph* vg, int i, int local) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return "";
+    const auto& pp = vg->nodes()[i].inst.param_ptrs;
+    return (local >= 0 && local < int(pp.size())) ? pp[local]->name : "";
 }
 static std::string node_param_dest(int id, const char* name) {
     return "node:" + std::to_string(id) + "." + name;
@@ -92,11 +85,11 @@ void NodeGraph::sync_op_pos() {
     // No per-node clamp: nodes live in a pannable canvas and the pane clip-rect
     // keeps drawing contained. Panning would otherwise be undone every frame.
 }
-static int param_count_of(VOp op) {
-    switch (op) { case VOp::Plasma: return 4; case VOp::Feedback: case VOp::Blur: return 1; default: return 0; }
-}
 // Total left-edge input rows: the texture input (if any) + one per param.
-static int op_input_rows(VOp op) { return (op_has_input(op) ? 1 : 0) + param_count_of(op); }
+static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
+    return (op_has_input(vg->nodes()[i].op) ? 1 : 0) + node_pcount(vg, i);
+}
 static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
 
 static constexpr float kCardW  = 156.f;
@@ -108,7 +101,7 @@ void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) cons
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
     w = kCardW;
     const VOp op = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op : VOp::Plasma;
-    h = 30.f + std::max(1, op_input_rows(op)) * 18.f + (op_has_thumb(op) ? kThumbH + 8.f : 6.f);
+    h = 30.f + std::max(1, op_input_rows_at(vg_, i)) * 18.f + (op_has_thumb(op) ? kThumbH + 8.f : 6.f);
 }
 
 
@@ -139,7 +132,7 @@ int NodeGraph::first_node_of(VOp op) const {
 bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const {  // left edge, per node
     if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
     const VOp op = vg_->nodes()[node_idx].op;
-    if (local < 0 || local >= param_count_of(op)) return false;
+    if (local < 0 || local >= node_pcount(vg_, node_idx)) return false;
     float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
     const int row = (op_has_input(op) ? 1 : 0) + local;  // after the texture input
     px = x; py = op_row_y(y, row);
@@ -149,7 +142,7 @@ bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, in
     bool found = false; double bd = maxd;
     if (!vg_) return false;
     for (int i = 0; i < int(vg_->nodes().size()); ++i) {
-        const int pc = param_count_of(vg_->nodes()[i].op);
+        const int pc = node_pcount(vg_, i);
         for (int l = 0; l < pc; ++l) {
             float px, py; if (!param_port(i, l, px, py)) continue;
             double d = std::hypot(x - px, y - py);
@@ -198,9 +191,9 @@ void NodeGraph::apply_params() {
     if (!vg_) return;
     auto& nodes = vg_->nodes();
     for (auto& n : nodes) {
-        const int pc = param_count_of(n.op);
+        const int pc = std::min(4, int(n.inst.param_ptrs.size()));  // operator-declared params
         for (int l = 0; l < pc; ++l) {
-            const float mod = reg_.dest_value(node_param_dest(n.id, op_param_name(n.op, l)));
+            const float mod = reg_.dest_value(node_param_dest(n.id, n.inst.param_ptrs[l]->name));
             n.params[l] = std::clamp(n.base[l] + mod, 0.f, 1.f);  // manual base + live modulation
         }
     }
@@ -232,6 +225,9 @@ void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) 
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
     y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
 }
+std::string NodeGraph::op_type_at(int i) const {
+    return (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op_type : std::string();
+}
 void NodeGraph::get_op_base(int i, float out[4]) const {
     for (int l = 0; l < 4; ++l) out[l] = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].base[l] : 0.f;
 }
@@ -241,11 +237,9 @@ static bool op_node_valid(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size());
 }
 int NodeGraph::op_kind(int i) const { return op_node_valid(vg_, i) ? int(vg_->nodes()[i].op) : -1; }
-const char* NodeGraph::op_kind_name(int i) const { return op_node_valid(vg_, i) ? op_name(vg_->nodes()[i].op) : ""; }
-int NodeGraph::op_param_count_at(int i) const { return op_node_valid(vg_, i) ? param_count_of(vg_->nodes()[i].op) : 0; }
-const char* NodeGraph::op_param_label_at(int i, int local) const {
-    return op_node_valid(vg_, i) ? op_param_name(vg_->nodes()[i].op, local) : "";
-}
+const char* NodeGraph::op_kind_name(int i) const { return op_node_valid(vg_, i) ? vg_->nodes()[i].op_type.c_str() : ""; }
+int NodeGraph::op_param_count_at(int i) const { return node_pcount(vg_, i); }
+const char* NodeGraph::op_param_label_at(int i, int local) const { return node_plabel(vg_, i, local); }
 float NodeGraph::op_param_base_at(int i, int local) const {
     return (op_node_valid(vg_, i) && local >= 0 && local < 4) ? vg_->nodes()[i].base[local] : 0.f;
 }
@@ -257,13 +251,13 @@ float NodeGraph::op_param_value_at(int i, int local) const {
 }
 bool NodeGraph::op_param_wired_at(int i, int local) const {
     if (!op_node_valid(vg_, i)) return false;
-    return reg_.source_of(node_param_dest(vg_->nodes()[i].id, op_param_name(vg_->nodes()[i].op, local))) != nullptr;
+    return reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr;
 }
 
 void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; sel_op_ = -1; }
-void NodeGraph::chain_load_add(int op, int id, float x, float y) {
+void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, float y) {
     if (!vg_) return;
-    vg_->load_node(static_cast<vivid::VOp>(op), id);
+    vg_->load_node(op_type, id);
     op_pos_.push_back({ x, y });
 }
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
@@ -338,10 +332,9 @@ void NodeGraph::draw(Renderer2D& r) {
     }
     // param wires (data node -> per-node param port)
     for (int i = 0; i < n; ++i) {
-        const VOp op = vg_->nodes()[i].op;
-        const int pc = param_count_of(op);
+        const int pc = node_pcount(vg_, i);
         for (int l = 0; l < pc; ++l) {
-            const std::string* src = reg_.source_of(node_param_dest(vg_->nodes()[i].id, op_param_name(op, l)));
+            const std::string* src = reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, l)));
             if (!src) continue;
             const int dn = find_source_node(*src);
             float px, py; if (dn < 0 || !param_port(i, l, px, py)) continue;
@@ -373,7 +366,7 @@ void NodeGraph::draw(Renderer2D& r) {
         r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
         r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
         r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                               // accent bar
-        r.draw_text(x + 10.f, y + 6.f, op_name(op), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
+        r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
@@ -387,7 +380,7 @@ void NodeGraph::draw(Renderer2D& r) {
         // Renderer2D's textured-quad path (scales/pans with the view, clipped to the
         // pane by the active clip-rect, letterboxed to the source aspect).
         if (op_has_thumb(op)) {
-            const int rows = std::max(1, op_input_rows(op));
+            const int rows = std::max(1, op_input_rows_at(vg_, i));
             const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
             r.draw_rect(tx - 1.f, ty - 1.f, tw + 2.f, th + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
             r.draw_rect(tx, ty, tw, th, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
@@ -401,11 +394,10 @@ void NodeGraph::draw(Renderer2D& r) {
     }
     // param input ports + labels (down each node's left edge)
     for (int i = 0; i < n; ++i) {
-        const VOp op = vg_->nodes()[i].op;
-        const int pc = param_count_of(op);
+        const int pc = node_pcount(vg_, i);
         for (int l = 0; l < pc; ++l) {
             float px, py; if (!param_port(i, l, px, py)) continue;
-            const char* name = op_param_name(op, l);
+            const char* name = node_plabel(vg_, i, l);
             const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
             port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
             r.draw_text(px + 10.f, py - 5.f, name,
@@ -472,7 +464,7 @@ bool NodeGraph::on_down(double x, double y) {
     if (oi >= 0) { vg_->set_input(oi, -1); return true; }
     int pni, pl;
     if (nearest_param(wx, wy, pr, pni, pl)) {
-        reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
+        reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
         return true;
     }
 
@@ -539,7 +531,7 @@ void NodeGraph::on_up(double x, double y) {
         int pni, pl;
         if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl))
             reg_.connect(source_id_for(data_[wire_from_].char_id),
-                         node_param_dest(vg_->nodes()[pni].id, op_param_name(vg_->nodes()[pni].op, pl)));
+                         node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int target = nearest_op_in(wx, wy, 18.0 / view_scale_);
         if (target >= 0 && vg_) vg_->set_input(target, wire_from_);
@@ -548,17 +540,26 @@ void NodeGraph::on_up(double x, double y) {
 }
 
 // ---- Tab chooser ----
+void NodeGraph::chooser_build_catalog() {
+    chooser_catalog_.clear();
+    if (vg_ && vg_->registry())                       // spawnable ops, straight from the registry
+        for (const auto& nm : vg_->registry()->type_names())
+            chooser_catalog_.push_back({ nm, true, nm, -1, 0 });
+    for (const auto& s : kSources)                     // audio data sources
+        chooser_catalog_.push_back({ s.label, false, std::string(), s.char_id, 1 });
+}
 void NodeGraph::chooser_rebuild() {
     chooser_hits_.clear();
     const std::string f = lower_str(chooser_filter_);
-    for (int i = 0; i < kChooserCount; ++i)
-        if (f.empty() || lower_str(kChooser[i].label).find(f) != std::string::npos)
+    for (int i = 0; i < int(chooser_catalog_.size()); ++i)
+        if (f.empty() || lower_str(chooser_catalog_[i].label).find(f) != std::string::npos)
             chooser_hits_.push_back(i);
     chooser_sel_ = std::clamp(chooser_sel_, 0, std::max(0, int(chooser_hits_.size()) - 1));
 }
 void NodeGraph::chooser_show(double sx, double sy) {
     chooser_open_ = true; chooser_filter_.clear(); chooser_sel_ = 0;
     chooser_sx_ = float(sx); chooser_sy_ = float(sy);
+    chooser_build_catalog();
     chooser_rebuild();
 }
 void NodeGraph::chooser_move(int dir) {
@@ -574,13 +575,13 @@ void NodeGraph::chooser_char(unsigned int c) {
 }
 void NodeGraph::chooser_confirm() {
     if (chooser_sel_ < 0 || chooser_sel_ >= int(chooser_hits_.size())) { chooser_hide(); return; }
-    const ChooserEntry& e = kChooser[chooser_hits_[chooser_sel_]];
+    const ChooserEntry& e = chooser_catalog_[chooser_hits_[chooser_sel_]];
     if (e.is_op && vg_) {
-        const int ni = vg_->add_node(VOp(e.code));
+        const int ni = vg_->add_node(e.op_type);   // spawn by name (registry)
         sync_op_pos();  // grow op_pos_ for the new node, then place it at the cursor
         if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { chooser_sx_ - kCardW * 0.5f, chooser_sy_ - 15.f };
     } else if (!e.is_op) {
-        add_data_node(e.label, e.code);
+        add_data_node(e.label, e.char_id);
         if (!data_.empty()) { data_.back().x = chooser_sx_ - 84.f; data_.back().y = chooser_sy_ - 36.f; }
     }
     chooser_hide();
@@ -603,12 +604,12 @@ void NodeGraph::draw_chooser(Renderer2D& r) {
     if (total == 0) { r.draw_text(px + 10.f, py + hdr + 4.f, "no match", 0.55f, 0.45f, 0.45f, 1.0f, 0.86f); return; }
     for (int vi = 0; vi < vis; ++vi) {
         const int hi = first + vi; if (hi >= total) break;
-        const ChooserEntry& e = kChooser[chooser_hits_[hi]];
+        const ChooserEntry& e = chooser_catalog_[chooser_hits_[hi]];
         const float iy = py + hdr + vi * rowh;
         if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, rowh, 0.20f, 0.28f, 0.40f, 0.9f);
         const float dr = e.env == 0 ? 0.55f : 0.35f, dg = e.env == 0 ? 0.55f : 0.78f, db = e.env == 0 ? 0.95f : 0.55f;
         r.draw_rounded_rect(px + 12.f, iy + rowh * 0.5f - 3.f, 6.f, 6.f, 3.f, dr, dg, db, 1.0f);
-        r.draw_text(px + 26.f, iy + 4.f, e.label, 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
+        r.draw_text(px + 26.f, iy + 4.f, e.label.c_str(), 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
         r.draw_text(px + w - 42.f, iy + 4.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
     }
 }

@@ -408,7 +408,7 @@ bool Renderer2D::init(WGPUDevice device, WGPUTextureFormat surface_format,
     rp_desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     rp_desc.primitive.frontFace = WGPUFrontFace_CCW;
     rp_desc.primitive.cullMode = WGPUCullMode_None;
-    rp_desc.multisample.count = 1;
+    rp_desc.multisample.count = kMsaaSamples;  // draws into the frame's MSAA color target
     rp_desc.multisample.mask = 0xFFFFFFFF;
     rp_desc.fragment = &fragment;
 
@@ -478,6 +478,13 @@ void Renderer2D::draw_arc(float cx, float cy, float radius,
                            float start_angle, float end_angle,
                            float thickness, int segments,
                            float r, float g, float b, float a) {
+    // segments <= 0 => auto-tessellate from the arc's on-screen pixel length
+    // (radius * dpi), so curves stay smooth on retina instead of looking polygonal.
+    if (segments <= 0) {
+        const float arc_px = std::fabs(end_angle - start_angle) * radius * dpi_scale_;
+        segments = static_cast<int>(arc_px / 2.0f);                 // ~2 physical px per segment
+        segments = segments < 8 ? 8 : (segments > 256 ? 256 : segments);
+    }
     if (segments < 1) return;
     float angle_step = (end_angle - start_angle) / segments;
     for (int i = 0; i < segments; ++i) {

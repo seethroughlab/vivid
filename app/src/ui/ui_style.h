@@ -57,12 +57,12 @@ inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,
     const Style& s = style();
     const float a0 = 2.3562f;                 // 135 deg (lower-left), sweeping CW (y-down)
     const float sweep = 4.7124f;              // 270 deg
-    r.draw_arc(cx, cy, rad, a0, a0 + sweep, 2.6f, 28, s.recess[0] + 0.06f, s.recess[1] + 0.06f, s.recess[2] + 0.07f, 1.0f);
+    r.draw_arc(cx, cy, rad, a0, a0 + sweep, 2.6f, 0, s.recess[0] + 0.06f, s.recess[1] + 0.06f, s.recess[2] + 0.07f, 1.0f);  // 0 = auto (dpi-aware)
     const float vr = mapped ? s.teal[0] : accent[0];
     const float vg = mapped ? s.teal[1] : accent[1];
     const float vb = mapped ? s.teal[2] : accent[2];
     if (v01 > 0.001f)
-        r.draw_arc(cx, cy, rad, a0, a0 + sweep * v01, 2.6f, std::max(2, int(28 * v01)), vr, vg, vb, 1.0f);
+        r.draw_arc(cx, cy, rad, a0, a0 + sweep * v01, 2.6f, 0, vr, vg, vb, 1.0f);
     const float pa = a0 + sweep * v01;        // pointer to the current value
     r.draw_line(cx, cy, cx + std::cos(pa) * (rad - 2.f), cy + std::sin(pa) * (rad - 2.f), 2.0f, s.text[0], s.text[1], s.text[2], 1.0f);
     if (label) {

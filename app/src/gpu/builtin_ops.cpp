@@ -1,0 +1,266 @@
+#include "gpu/builtin_ops.h"
+
+#include "gpu/op_runtime.h"
+#include "gpu/shader_op.h"
+#include "gpu/effect_op.h"
+#include "operator_api/operator.h"
+#include "operator_api/gpu_operator.h"
+#include "operator_api/gpu_common.h"
+
+#include <memory>
+#include <string>
+#include <vector>
+
+// The built-in visuals operators, expressed against the lifted operator ABI.
+// Each owns a GLSL ShaderOp/EffectOp (proven primitives) and renders it in
+// process_gpu from the VividGpuContext. Shaders authored in GLSL — wgpu-native's
+// naga translates them; WGSL operators (the other authoring path) coexist under
+// the same runtime. This file is GPU-linked (only compiled into vivid_poc).
+namespace vivid {
+namespace {
+
+// --- shared GLSL (the ops' rightful home; VisualGraph's copies go away in P1.3) ---
+const char* kPlasmaGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U {
+    vec2 u_res; float u_time; float u_warp; float u_hue; float u_density; float u_glow; };
+void main() {
+    vec2 uv = v_uv;
+    float t = u_time;
+    float dens = 6.0 + u_density * 18.0;
+    vec2 w = uv + u_warp * 0.3 * vec2(sin(uv.y * 8.0 + t), cos(uv.x * 8.0 + t));
+    float v = sin(w.x * dens + t) + sin(w.y * dens + t * 1.3)
+            + sin((w.x + w.y) * dens * 0.6 + t * 0.7)
+            + sin(length(w - 0.5) * dens * 1.8 - t * 2.0);
+    vec3 col = 0.5 + 0.5 * cos(vec3(0.0, 2.0, 4.0) + v + u_hue * 6.2832);
+    o_color = vec4(col * (0.6 + u_glow), 1.0);
+}
+)";
+
+const char* kFeedbackGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_decay; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_gen;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+layout(set = 0, binding = 3) uniform texture2D u_prev;
+void main() {
+    vec2 c = v_uv - 0.5;
+    vec2 puv = 0.5 + c * 0.985;
+    vec4 gen  = texture(sampler2D(u_gen,  u_samp), v_uv);
+    vec4 prev = texture(sampler2D(u_prev, u_samp), puv);
+    o_color = max(gen, prev * u_decay);
+}
+)";
+
+const char* kBlurGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_radius; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_tex;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+void main() {
+    vec2 px = (1.0 / u_res) * (1.0 + u_radius * 8.0);
+    vec4 s = texture(sampler2D(u_tex, u_samp), v_uv) * 0.36;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2( px.x, 0.0)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(-px.x, 0.0)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(0.0,  px.y)) * 0.16;
+    s += texture(sampler2D(u_tex, u_samp), v_uv + vec2(0.0, -px.y)) * 0.16;
+    o_color = s;
+}
+)";
+
+const char* kBlitGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float p0; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_tex;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
+)";
+
+VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
+    VividPortDescriptor p{};
+    p.name = name; p.type = VIVID_PORT_TEXTURE; p.direction = dir;
+    p.value_type = VIVID_VALUE_TEXTURE; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+    return p;
+}
+
+// --- Plasma: GLSL generator (4 params, 1 texture out) ---
+struct PlasmaOp : OperatorBase, GpuProcessable {
+    Param<float> warp   {"warp",    0.5f, 0.f, 1.f};
+    Param<float> hue    {"hue",     0.0f, 0.f, 1.f};
+    Param<float> density{"density", 0.5f, 0.f, 1.f};
+    Param<float> glow   {"glow",    0.5f, 0.f, 1.f};
+    ShaderOp shader_; bool tried_ = false;
+    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&warp); o.push_back(&hue); o.push_back(&density); o.push_back(&glow); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; shader_.init(c->device, c->queue, c->output_format, kPlasmaGLSL); }
+        if (!shader_.ok()) return;
+        shader_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
+                       float(c->output_width), float(c->output_height), float(c->time),
+                       c->param_values, /*clear*/true);
+    }
+};
+
+// --- A 1-input GLSL blit (Video source-in / Output sink): passes input -> output ---
+struct BlitOp : OperatorBase, GpuProcessable {
+    EffectOp fx_; bool tried_ = false;
+    void collect_params(std::vector<ParamBase*>&) override {}
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(tex_port("input", VIVID_PORT_INPUT));
+        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; fx_.init(c->device, c->queue, c->output_format, kBlitGLSL, 1); }
+        if (!fx_.ok() || c->input_texture_count < 1) return;
+        const WGPUTextureView in = c->input_texture_views[0];
+        fx_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
+                   float(c->output_width), float(c->output_height), /*clear*/true,
+                   &in, 1, float(c->time), nullptr, 0);
+    }
+};
+struct VideoOp  : BlitOp { };   // generator fed an external source texture (P1.3 wires srcTex)
+struct OutputOp : BlitOp { };   // sink / passthrough to the viewer
+
+// --- Blur: 1-input GLSL effect (1 param) ---
+struct BlurOp : OperatorBase, GpuProcessable {
+    Param<float> radius{"radius", 0.3f, 0.f, 1.f};
+    EffectOp fx_; bool tried_ = false;
+    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&radius); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(tex_port("input", VIVID_PORT_INPUT));
+        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; fx_.init(c->device, c->queue, c->output_format, kBlurGLSL, 1); }
+        if (!fx_.ok() || c->input_texture_count < 1) return;
+        const WGPUTextureView in = c->input_texture_views[0];
+        const float r = c->param_values ? c->param_values[0] : radius.value;
+        fx_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
+                   float(c->output_width), float(c->output_height), /*clear*/true,
+                   &in, 1, float(c->time), &r, 1);
+    }
+};
+
+// --- Feedback: 2-input GLSL effect (gen + own prev-frame history texture) ---
+struct FeedbackOp : OperatorBase, GpuProcessable {
+    Param<float> decay{"decay", 0.5f, 0.f, 1.f};
+    EffectOp fx_; bool tried_ = false;
+    WGPUTexture hist_ = nullptr; WGPUTextureView hist_view_ = nullptr;
+    uint32_t hw_ = 0, hh_ = 0;
+    ~FeedbackOp() override { if (hist_view_) wgpuTextureViewRelease(hist_view_); if (hist_) wgpuTextureRelease(hist_); }
+    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&decay); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(tex_port("input", VIVID_PORT_INPUT));
+        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+    }
+    void ensure_hist(const VividGpuContext* c) {
+        if (hist_ && hw_ == c->output_width && hh_ == c->output_height) return;
+        if (hist_view_) wgpuTextureViewRelease(hist_view_);
+        if (hist_) wgpuTextureRelease(hist_);
+        WGPUTextureDescriptor td{};
+        td.size = { c->output_width, c->output_height, 1 };
+        td.mipLevelCount = 1; td.sampleCount = 1; td.dimension = WGPUTextureDimension_2D;
+        td.format = c->output_format;
+        td.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        hist_ = wgpuDeviceCreateTexture(c->device, &td);
+        WGPUTextureViewDescriptor vd{};
+        vd.format = c->output_format; vd.dimension = WGPUTextureViewDimension_2D;
+        vd.mipLevelCount = 1; vd.arrayLayerCount = 1; vd.aspect = WGPUTextureAspect_All;
+        hist_view_ = wgpuTextureCreateView(hist_, &vd);
+        hw_ = c->output_width; hh_ = c->output_height;
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; fx_.init(c->device, c->queue, c->output_format, kFeedbackGLSL, 2); }
+        if (!fx_.ok() || c->input_texture_count < 1) return;
+        ensure_hist(c);
+        const float d = 0.82f + (c->param_values ? c->param_values[0] : decay.value) * 0.16f;  // 0.82..0.98
+        const WGPUTextureView ins[2] = { c->input_texture_views[0], hist_view_ };
+        fx_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
+                   float(c->output_width), float(c->output_height), /*clear*/true,
+                   ins, 2, float(c->time), &d, 1);
+        // Copy output -> history for next frame.
+        WGPUTexelCopyTextureInfo src{}; src.texture = c->output_texture;
+        WGPUTexelCopyTextureInfo dst{}; dst.texture = hist_;
+        WGPUExtent3D ext = { c->output_width, c->output_height, 1 };
+        wgpuCommandEncoderCopyTextureToTexture(c->command_encoder, &src, &dst, &ext);
+    }
+};
+
+// --- Tint: a generator authored in WGSL (proves both shader paths coexist under
+// one runtime — GLSL ops above + this WGSL op, both naga-lowered). Uses the lifted
+// gpu_common helpers (fullscreen vs_main/fs_main + a uniform). ---
+const char* kTintWGSL = R"(
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput {
+    return fullscreenTriangle(vi, false);
+}
+struct U { res: vec2f, time: f32, hue: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    let c = 0.5 + 0.5 * cos(vec3f(0.0, 2.0, 4.0) + inp.uv.x * 6.2831853 + u.time * 0.5 + u.hue * 6.2831853);
+    return vec4f(c, 1.0);
+}
+)";
+
+struct TintOp : OperatorBase, GpuProcessable {
+    Param<float> hue{"hue", 0.5f, 0.f, 1.f};
+    bool tried_ = false;
+    WGPUShaderModule    sh_   = nullptr;
+    WGPUBindGroupLayout bgl_  = nullptr;
+    WGPUPipelineLayout  pl_   = nullptr;
+    WGPURenderPipeline  pipe_ = nullptr;
+    WGPUBuffer          ubo_  = nullptr;
+    WGPUBindGroup       bg_   = nullptr;
+    ~TintOp() override {
+        if (bg_)   wgpuBindGroupRelease(bg_);
+        if (ubo_)  wgpuBufferRelease(ubo_);
+        if (pipe_) wgpuRenderPipelineRelease(pipe_);
+        if (pl_)   wgpuPipelineLayoutRelease(pl_);
+        if (bgl_)  wgpuBindGroupLayoutRelease(bgl_);
+        if (sh_)   wgpuShaderModuleRelease(sh_);
+    }
+    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&hue); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
+    bool lazy_init(const VividGpuContext* c) {
+        std::string err;
+        sh_ = gpu::create_shader_checked(c->device, kTintWGSL, "Tint", err);
+        if (!sh_ || !err.empty()) return false;
+        ubo_ = gpu::create_uniform_buffer(c->device, 16, "Tint U");
+        WGPUBindGroupLayoutEntry e{};
+        e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 16;
+        WGPUBindGroupLayoutDescriptor ld{}; ld.entryCount = 1; ld.entries = &e;
+        bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
+        WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
+        pl_ = wgpuDeviceCreatePipelineLayout(c->device, &pld);
+        pipe_ = gpu::create_pipeline(c->device, sh_, pl_, c->output_format, "Tint Pipeline");
+        WGPUBindGroupEntry be{}; be.binding = 0; be.buffer = ubo_; be.size = 16;
+        WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 1; bd.entries = &be;
+        bg_ = wgpuDeviceCreateBindGroup(c->device, &bd);
+        return pipe_ != nullptr;
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; lazy_init(c); }
+        if (!pipe_) return;
+        float u[4] = { float(c->output_width), float(c->output_height), float(c->time),
+                       c->param_values ? c->param_values[0] : hue.value };
+        wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
+        gpu::run_pass(c->command_encoder, pipe_, bg_, c->output_texture_view, "Tint");
+    }
+};
+
+}  // namespace
+
+void register_builtin_ops(OpRegistry& reg) {
+    reg.register_type("Plasma",   [] { return std::unique_ptr<OperatorBase>(new PlasmaOp); });
+    reg.register_type("Video",    [] { return std::unique_ptr<OperatorBase>(new VideoOp); });
+    reg.register_type("Feedback", [] { return std::unique_ptr<OperatorBase>(new FeedbackOp); });
+    reg.register_type("Blur",     [] { return std::unique_ptr<OperatorBase>(new BlurOp); });
+    reg.register_type("Output",   [] { return std::unique_ptr<OperatorBase>(new OutputOp); });
+    reg.register_type("Tint",     [] { return std::unique_ptr<OperatorBase>(new TintOp); });   // WGSL example
+}
+
+}  // namespace vivid

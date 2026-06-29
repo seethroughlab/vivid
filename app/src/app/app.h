@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 
+#include "gpu/op_runtime.h"   // OpRegistry (operator-based visuals)
+
 namespace vivid {
 class GpuContext;
 class VisualGraph;
@@ -27,6 +29,7 @@ struct App {
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server
     TextureSource*      srcTex    = nullptr;   // shared visuals source texture
+    OpRegistry          op_registry;           // built-in + (future) loaded operators
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
 

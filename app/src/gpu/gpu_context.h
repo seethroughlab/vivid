@@ -3,14 +3,16 @@
 #include <webgpu/webgpu.h>
 #include <cstdint>
 #include <string>
+#include "gpu/gpu_util.h"   // kMsaaSamples, to_sv
 
 struct GLFWwindow;
 
 namespace vivid {
 
 struct FrameState {
-    WGPUTexture texture = nullptr;
-    WGPUTextureView view = nullptr;
+    WGPUTexture texture = nullptr;          // swap-chain surface texture (present target)
+    WGPUTextureView view = nullptr;         // what the app renders into (4x MSAA color)
+    WGPUTextureView resolve_view = nullptr; // surface view; MSAA resolves here in end_frame
     WGPUCommandEncoder encoder = nullptr;
 };
 
@@ -29,6 +31,8 @@ public:
     bool end_frame(const FrameState& frame);
     void discard_frame(const FrameState& frame);
     void shutdown();
+
+    uint32_t sample_count() const { return kMsaaSamples; }
 
     WGPUInstance instance() const { return instance_; }
     WGPUAdapter adapter() const { return adapter_; }
@@ -54,6 +58,14 @@ private:
     bool device_lost_ = false;
     uint32_t width_ = 0;
     uint32_t height_ = 0;
+
+    // 4x MSAA color target the whole frame renders into; resolved to the surface
+    // in end_frame. Recreated on resize. (void ensure_msaa below.)
+    WGPUTexture msaa_tex_ = nullptr;
+    WGPUTextureView msaa_view_ = nullptr;
+    uint32_t msaa_w_ = 0;
+    uint32_t msaa_h_ = 0;
+    void ensure_msaa(uint32_t width, uint32_t height);
 
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;

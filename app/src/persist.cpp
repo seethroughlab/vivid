@@ -85,7 +85,7 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
     for (int i = 0; i < g.op_count(); ++i) {
         int op = 0, in = -1, id = 0; float x = 0.f, y = 0.f; g.get_op(i, op, in, id, x, y);
         float base[4]; g.get_op_base(i, base);
-        chain.push_back({ {"op", op}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
+        chain.push_back({ {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
                           {"base", { base[0], base[1], base[2], base[3] }} });
     }
     jg["chain"] = chain;
@@ -158,8 +158,13 @@ bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGrap
         if (jg.contains("chain")) {
             const json& ch = jg["chain"];
             g.chain_load_begin();
-            for (int i = 0; i < static_cast<int>(ch.size()); ++i)
-                g.chain_load_add(ch[i].value("op", 0), ch[i].value("id", i), ch[i].value("x", 0.f), ch[i].value("y", 0.f));
+            // Ops persist by name ("op_type"). Migrate pre-P1 sessions that stored
+            // the legacy VOp int ("op") via legacy_vop_name().
+            for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
+                std::string type = ch[i].value("op_type", std::string());
+                if (type.empty()) type = legacy_vop_name(ch[i].value("op", 0));
+                g.chain_load_add(type, ch[i].value("id", i), ch[i].value("x", 0.f), ch[i].value("y", 0.f));
+            }
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 g.chain_load_set_input(i, ch[i].value("in", -1));
                 if (ch[i].contains("base")) {
