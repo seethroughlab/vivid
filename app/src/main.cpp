@@ -91,7 +91,7 @@ int main() {
     // Composable visuals chain (generator -> feedback -> blur -> viewer).
     const uint32_t kRtW = static_cast<uint32_t>(kViewW), kRtH = static_cast<uint32_t>(kViewH);
     vivid::VisualGraph vgraph;
-    if (!vgraph.init(gpu.device(), gpu.queue(), gpu.surface_format(), kRtW, kRtH))
+    if (!vgraph.init(gpu.device(), gpu.queue(), gpu.surface_format(), kRtW, kRtH, &app.op_registry))
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");
     app.vgraph = &vgraph;
 

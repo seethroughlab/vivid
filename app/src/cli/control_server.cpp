@@ -38,10 +38,7 @@ bool parse_vop(const std::string& s, VOp& out) {
     else return false;
     return true;
 }
-const char* vop_name(VOp op) {
-    switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
-        case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
-}
+// vop_name now comes from gpu/visual_graph.h (vivid::vop_name).
 int op_index_by_id(VisualGraph* vg, int id) {
     if (!vg) return -1;
     auto& ns = vg->nodes();
