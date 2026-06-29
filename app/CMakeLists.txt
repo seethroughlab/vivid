@@ -131,6 +131,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
+    src/ui/session_view.cpp
     src/ui/node_graph.cpp
     src/ui/clip_editor.cpp)
 set_target_properties(vivid_poc PROPERTIES
