@@ -50,9 +50,17 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             const std::string state = vivid_poc::session_get_track_state(s, t);  // plugin preset
             if (!state.empty()) jt["state"] = state;
         }
-        json fx = json::array();   // per-track effect chain (by display name)
-        for (int e = 0; e < vivid_poc::session_effect_count(s, t); ++e)
-            fx.push_back(vivid_poc::session_effect_name(s, t, e));
+        json fx = json::array();   // per-track effect chain (name + exposed param values)
+        for (int e = 0; e < vivid_poc::session_effect_count(s, t); ++e) {
+            json je; je["name"] = vivid_poc::session_effect_name(s, t, e);
+            json ps = json::array();
+            const int pc = vivid_poc::session_param_count(s, t, e + 1);  // device = effect+1
+            for (int p = 0; p < pc; ++p)
+                ps.push_back({ {"id", vivid_poc::session_param_id(s, t, e + 1, p)},
+                               {"v",  vivid_poc::session_param_value(s, t, e + 1, p)} });
+            if (!ps.empty()) je["params"] = ps;
+            fx.push_back(je);
+        }
         if (!fx.empty()) jt["fx"] = fx;
         tracks.push_back(jt);
     }
@@ -130,12 +138,18 @@ bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
             if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
                 while (vivid_poc::session_effect_count(s, t) > 0)
                     vivid_poc::session_remove_effect(s, t, vivid_poc::session_effect_count(s, t) - 1);
+                int added = 0;   // positional device index of the next effect (device = added+1)
                 for (const auto& jn : jt["fx"]) {
-                    const std::string name = jn.get<std::string>();
+                    const std::string name = jn.is_string() ? jn.get<std::string>() : jn.value("name", std::string());
+                    bool ok = false;
                     for (int k = 0; k < vivid_poc::session_available_effect_count(); ++k)
                         if (name == vivid_poc::session_available_effect_name(k)) {
-                            vivid_poc::session_add_effect_by_index(s, t, k); break;
+                            ok = vivid_poc::session_add_effect_by_index(s, t, k); break;
                         }
+                    if (ok && jn.is_object() && jn.contains("params"))
+                        for (const auto& jp : jn["params"])
+                            vivid_poc::session_set_param(s, t, added + 1, jp.value("id", 0u), jp.value("v", 0.f));
+                    if (ok) ++added;
                 }
             }
             const int act = jt.value("active", -1);
