@@ -121,16 +121,17 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/app/frame.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
-    src/gpu/video_player.mm
+    src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/audio_callback.cpp
     src/audio/sampler.cpp
-    src/audio/vst3_plugin_window.mm
-    src/platform/macos_frame_timer.cpp
-    src/platform/macos_app_nap.mm
+    src/audio/vst3_plugin_window_stub.cpp
+    src/platform/platform.cpp
+    src/platform/frame_loop_generic.cpp
+    src/platform/app_nap_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -150,11 +151,22 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/ui/session_view.cpp
     src/ui/node_graph.cpp
     src/ui/clip_editor.cpp)
-set_target_properties(vivid_poc PROPERTIES
-    MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
-    MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+# macOS-only backends: AVFoundation video, Cocoa VST3-GUI, the CFRunLoop frame loop,
+# and App-Nap. Their portable counterparts (the *_stub.cpp / frame_loop_generic.cpp /
+# app_nap_stub.cpp above) are compiled on every OS and select via #ifdef, so exactly
+# one backend of each is linked per platform.
+if(APPLE)
+    target_sources(vivid_poc PRIVATE
+        src/gpu/video_player.mm
+        src/audio/vst3_plugin_window.mm
+        src/platform/macos_frame_timer.cpp
+        src/platform/macos_app_nap.mm)
+    set_target_properties(vivid_poc PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
+        MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+endif()
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
 # the toolchain + the in-tree operator_api headers + the wgpu include/lib dirs.
@@ -170,7 +182,7 @@ target_compile_definitions(vivid_poc PRIVATE
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib "-framework Cocoa")
+target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
 
 if(APPLE)
     target_link_libraries(vivid_poc PRIVATE

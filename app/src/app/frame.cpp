@@ -17,7 +17,7 @@
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
 #include "cli/control_server.h"
-#include "platform/macos_frame_timer.h"
+#include "platform/frame_loop.h"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -222,7 +222,7 @@ void run_frame_loop(App& app, Window& win) {
         }
         return true;
     };
-    macos_run_frame_loop(poll_events, tick);
+    run_platform_frame_loop(poll_events, tick);
 }
 
 }  // namespace vivid

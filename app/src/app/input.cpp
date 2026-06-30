@@ -1,4 +1,6 @@
 #include "app/input.h"
+#include "platform/platform.h"
+#include <filesystem>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -51,10 +53,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (mx >= win->split_x) { app->graph->chooser_show(mx, my); return; }
     }
 
-    // Cmd+S / Cmd+O -> save / load the session (~/vivid_session.json).
+    // Cmd+S / Cmd+O -> save / load the session (in the per-user data dir).
     if ((mods & GLFW_MOD_SUPER) && app->session && app->graph && (key == GLFW_KEY_S || key == GLFW_KEY_O)) {
-        const char* home = std::getenv("HOME");
-        const std::string path = std::string(home ? home : ".") + "/vivid_session.json";
+        const std::string path = (std::filesystem::path(vivid::platform::user_data_dir()) / "vivid_session.json").string();
         if (key == GLFW_KEY_S) {
             const bool ok = vivid::save_session(path, app->session, *app->graph, win->win_w, win->win_h, win->split_x, win->dock_h);
             std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");

@@ -1,4 +1,5 @@
 #include "packages/package_compiler.h"
+#include "platform/platform.h"
 
 #include <filesystem>
 #include <cstdio>
@@ -74,7 +75,7 @@ PackageCompileResult PackageCompiler::compile_operator(const std::string& packag
     }
     std::error_code ec;
     fs::create_directories(out_dir, ec);
-    const fs::path out = fs::path(out_dir) / (op.name + ".dylib");
+    const fs::path out = fs::path(out_dir) / (op.name + platform::plugin_suffix());
     r.dylib_path = out.string();
 
     std::vector<std::string> argv = { VIVID_PKG_CXX, "-std=c++17", "-shared", "-fPIC", "-O2" };

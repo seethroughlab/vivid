@@ -31,7 +31,7 @@
 #include "persist.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
-#include "platform/macos_frame_timer.h"
+#include "platform/app_nap.h"
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
 #include "gpu/visual_graph.h"
@@ -39,7 +39,7 @@
 #include "gpu/video_player.h"
 #include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
 #include "packages/package_manager.h"  // P2.3: the managed installed-operators dir
-#include <mach-o/dyld.h>         // _NSGetExecutablePath (locate the bundle PlugIns/)
+#include "platform/platform.h"   // P3: executable_path (locate the bundle PlugIns/)
 #include <filesystem>
 #include <dirent.h>
 #include <vector>
@@ -63,7 +63,7 @@ int main() {
     // Keep the frame loop (and the control-server drain it runs each tick) pumping
     // even when the app is backgrounded, so an agent can drive it over MCP without
     // the window being frontmost.
-    vivid::macos_disable_app_nap("Vivid control server / agent-driven rendering");
+    vivid::disable_app_nap("Vivid control server / agent-driven rendering");
 
     // Register the built-in visual operators + validate their descriptors (the
     // operator-based visuals model; VisualGraph drives them from P1.3). A loud
@@ -75,9 +75,12 @@ int main() {
     { namespace fs = std::filesystem;
       std::vector<std::string> dirs;
       dirs.push_back(vivid::user_operators_dir());   // installed packages (or $VIVID_OPERATORS_DIR)
-      char exe[4096]; uint32_t sz = sizeof(exe);
-      if (_NSGetExecutablePath(exe, &sz) == 0)
-          dirs.push_back((fs::path(exe).parent_path() / ".." / "PlugIns").lexically_normal().string());
+      const std::string exe = vivid::platform::executable_path();
+      if (!exe.empty()) {
+          const fs::path exe_dir = fs::path(exe).parent_path();
+          dirs.push_back((exe_dir / ".." / "PlugIns").lexically_normal().string());  // macOS .app bundle
+          dirs.push_back((exe_dir / "PlugIns").lexically_normal().string());          // non-bundle (Linux/Windows)
+      }
       int loaded = 0;
       for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
 

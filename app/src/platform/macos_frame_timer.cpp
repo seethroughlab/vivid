@@ -1,12 +1,12 @@
 #ifdef __APPLE__
-#include "platform/macos_frame_timer.h"
+#include "platform/frame_loop.h"
 #include <CoreFoundation/CoreFoundation.h>
 #include <cstdio>
 
 namespace vivid {
 
-void macos_run_frame_loop(std::function<bool()> poll_events,
-                          std::function<bool()> tick) {
+void run_platform_frame_loop(std::function<bool()> poll_events,
+                             std::function<bool()> tick) {
     struct Context {
         std::function<bool()> tick;
         CFRunLoopTimerRef timer = nullptr;
