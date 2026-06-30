@@ -37,6 +37,9 @@
 #include "gpu/visual_graph.h"
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
+#include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
+#include <mach-o/dyld.h>         // _NSGetExecutablePath (locate the bundle PlugIns/)
+#include <filesystem>
 #include <dirent.h>
 #include <vector>
 #include <string>
@@ -60,14 +63,27 @@ int main() {
     // operator-based visuals model; VisualGraph drives them from P1.3). A loud
     // startup check that the real ops are well-formed (named codes).
     vivid::register_builtin_ops(app.op_registry);
-    { int bad = 0;
+    // P2.1: also load operator dylibs dropped in the bundle PlugIns/ (or the dev
+    // override $VIVID_OPERATORS_DIR). Loaded ops register by descriptor name and
+    // flow through OpRegistry identically to built-ins (built-ins win on a clash).
+    { namespace fs = std::filesystem;
+      std::vector<std::string> dirs;
+      if (const char* env = std::getenv("VIVID_OPERATORS_DIR")) dirs.emplace_back(env);
+      char exe[4096]; uint32_t sz = sizeof(exe);
+      if (_NSGetExecutablePath(exe, &sz) == 0)
+          dirs.push_back((fs::path(exe).parent_path() / ".." / "PlugIns").lexically_normal().string());
+      int loaded = 0;
+      for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
+
+      // Validate every op (built-in + loaded) loudly at startup (named codes).
+      int bad = 0;
       for (const auto& nm : app.op_registry.type_names()) {
           std::vector<vivid::DescriptorValidationIssue> iss;
           app.op_registry.create(nm, iss);
           for (const auto& i : iss) { std::fprintf(stderr, "[vivid] op '%s' descriptor: %s — %s\n", nm.c_str(), i.code.c_str(), i.message.c_str()); ++bad; }
       }
-      std::fprintf(stderr, "[vivid] registered %zu visual ops%s\n",
-                   app.op_registry.type_names().size(), bad ? " (WITH ISSUES)" : " (all valid)");
+      std::fprintf(stderr, "[vivid] %zu visual ops (%d loaded from disk)%s\n",
+                   app.op_registry.type_names().size(), loaded, bad ? " (WITH ISSUES)" : " (all valid)");
     }
 
     // Retina/HiDPI: render at the framebuffer (physical) resolution; lay out the UI

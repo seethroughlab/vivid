@@ -134,6 +134,9 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
     src/gpu/builtin_ops.cpp
+    src/gpu/operator_loader.cpp
+    src/gpu/loaded_operator.cpp
+    src/gpu/operator_scan.cpp
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -160,3 +163,8 @@ endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.
 target_copy_webgpu_binaries(vivid_poc)
+
+# Loadable operator dylibs (P2). Declared after vivid_poc so the operator targets
+# can reference the bundle (for the PlugIns/ copy) + force them to build with the app.
+add_subdirectory(operators)
+add_dependencies(vivid_poc vivid_spike_solid)
