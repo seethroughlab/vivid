@@ -37,6 +37,8 @@
 #include "gpu/visual_graph.h"
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
+#include "operator_api/gpu_operator.h"   // P2.0 spike (TEMP): VividGpuContext + descriptor/ABI
+#include <dlfcn.h>                        // P2.0 spike (TEMP): dlopen
 #include <dirent.h>
 #include <vector>
 #include <string>
@@ -82,6 +84,56 @@ int main() {
         return 1;
     }
     app.gpu = &gpu;
+
+    // ===================== P2.0 SPIKE (TEMPORARY) =========================
+    // Prove the dlopen boundary: load a standalone operator .dylib, hand it the
+    // HOST's WGPUDevice via a VividGpuContext, and render it into an offscreen
+    // target. Success = loads + ABI matches + zero "[vivid] WebGPU error" lines.
+    // Superseded by the P2.1 loader+scan; remove this block then.
+    {
+        void* h = dlopen("@executable_path/../PlugIns/vivid_spike_solid.dylib", RTLD_NOW | RTLD_LOCAL);
+        if (!h) { std::fprintf(stderr, "[spike] dlopen FAILED: %s\n", dlerror()); }
+        else {
+            auto abi     = reinterpret_cast<uint32_t (*)()>(dlsym(h, "vivid_abi_version"));
+            auto desc_fn = reinterpret_cast<const VividOperatorDescriptor* (*)()>(dlsym(h, "vivid_descriptor"));
+            auto create  = reinterpret_cast<void* (*)()>(dlsym(h, "vivid_create"));
+            auto destroy = reinterpret_cast<void (*)(void*)>(dlsym(h, "vivid_destroy"));
+            auto proc    = reinterpret_cast<void (*)(void*, VividGpuContext*)>(dlsym(h, "vivid_process_gpu"));
+            std::fprintf(stderr, "[spike] dlopen ok: abi=%u (host=%u) name=%s create=%d proc=%d\n",
+                         abi ? abi() : 0u, VIVID_OPERATOR_ABI_VERSION,
+                         desc_fn ? desc_fn()->name : "?", create != nullptr, proc != nullptr);
+            if (abi && abi() == VIVID_OPERATOR_ABI_VERSION && create && proc && destroy) {
+                void* inst = create();
+                WGPUTextureDescriptor td{};
+                td.usage = WGPUTextureUsage_RenderAttachment;
+                td.dimension = WGPUTextureDimension_2D;
+                td.size = { 64, 64, 1 }; td.format = gpu.surface_format();
+                td.mipLevelCount = 1; td.sampleCount = 1;
+                WGPUTexture tex = wgpuDeviceCreateTexture(gpu.device(), &td);
+                WGPUTextureViewDescriptor vd{}; vd.format = gpu.surface_format();
+                vd.dimension = WGPUTextureViewDimension_2D; vd.mipLevelCount = 1;
+                vd.arrayLayerCount = 1; vd.aspect = WGPUTextureAspect_All;
+                WGPUTextureView view = wgpuTextureCreateView(tex, &vd);
+                WGPUCommandEncoderDescriptor ed{};
+                WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(gpu.device(), &ed);
+                float pv[1] = { 0.5f };
+                VividGpuContext ctx{};
+                ctx.device = gpu.device(); ctx.queue = gpu.queue(); ctx.command_encoder = enc;
+                ctx.output_texture = tex; ctx.output_texture_view = view;
+                ctx.output_width = 64; ctx.output_height = 64; ctx.output_format = gpu.surface_format();
+                ctx.param_values = pv; ctx.time = 0.0;
+                proc(inst, &ctx);   // dylib issues wgpu calls on the host device
+                WGPUCommandBufferDescriptor cd{};
+                WGPUCommandBuffer cb = wgpuCommandEncoderFinish(enc, &cd);
+                wgpuQueueSubmit(gpu.queue(), 1, &cb);
+                std::fprintf(stderr, "[spike] render submitted via host device — watch for WebGPU errors above/below\n");
+                wgpuCommandBufferRelease(cb); wgpuCommandEncoderRelease(enc);
+                wgpuTextureViewRelease(view); wgpuTextureRelease(tex);
+                destroy(inst);
+            }
+        }
+    }
+    // =================== end P2.0 SPIKE (TEMPORARY) =======================
 
     vivid::ui::Renderer2D ui;
     if (!ui.init(gpu.device(), gpu.surface_format(), VIVID_FONT_PATH, 15.0f, win.dpi))

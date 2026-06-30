@@ -160,3 +160,8 @@ endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.
 target_copy_webgpu_binaries(vivid_poc)
+
+# Loadable operator dylibs (P2). Declared after vivid_poc so the operator targets
+# can reference the bundle (for the PlugIns/ copy) + force them to build with the app.
+add_subdirectory(operators)
+add_dependencies(vivid_poc vivid_spike_solid)
