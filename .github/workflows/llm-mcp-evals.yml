@@ -1,0 +1,38 @@
+# LLM-over-MCP evals (P4.6). The `fake` provider path runs anywhere (no app, no key) and
+# verifies the harness; real-provider runs (UNVERIFIED here) need a live app + an API key,
+# so this is manual-dispatch only and informational (not a merge gate).
+name: llm-mcp-evals
+
+on:
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "fake | anthropic | openai"
+        default: "fake"
+      model:
+        description: "model id (real providers only)"
+        default: ""
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Harness smoke (fake provider, offline)
+        run: uv run mcp/evals/llm_mcp_eval.py --selftest
+      - name: Real eval (only when a provider + key are supplied)
+        if: ${{ github.event.inputs.provider != 'fake' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "Real-provider runs need a live Vivid app reachable at --base-url."
+          echo "Left as a manual step: start the app, then run llm_mcp_eval.py --provider ${{ github.event.inputs.provider }}."
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-mcp-evals
+          path: build/evals/
+          retention-days: 14
