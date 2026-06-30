@@ -1,0 +1,16 @@
+# Production-gate budgets (P4.2). Read by tools/production_gate_report.py; a breach
+# downgrades the gate status (error -> fail, warning -> degraded). Keep this small and
+# meaningful — every entry should be something we'd actually block or investigate on.
+
+[budgets]
+# Any failing test fails the gate.
+max_failures = 0
+
+# Guard against a silently-empty run (e.g. a label typo that matches nothing): the core
+# profile must execute at least this many headless tests. Bump as the suite grows.
+min_tests = 10
+
+# The headless core gate should stay fast. Exceeding this is a warning (degraded), not a
+# hard fail — it flags a slowdown to look at without blocking a green suite. Machine-
+# sensitive, so set generously.
+max_duration_seconds = 120.0

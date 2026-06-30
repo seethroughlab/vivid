@@ -45,6 +45,15 @@ FetchContent_MakeAvailable(nlohmann_json)
 if(VIVID_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    # Production gate (P4.2): `cmake --build … --target production_gate_core` runs the
+    # HEADLESS_SMOKE suite through the budget-checked report tool. Self-contained (just
+    # ctest + uv), so it works in the tests-only (VIVID_BUILD_APP=OFF) CI configure too.
+    add_custom_target(production_gate_core
+        COMMAND ${CMAKE_COMMAND} -E env VIVID_BUILD_DIR=${CMAKE_BINARY_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/run_production_gate.sh core
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+        USES_TERMINAL
+        COMMENT "Production gate (core profile)")
 endif()
 
 if(NOT VIVID_BUILD_APP)
