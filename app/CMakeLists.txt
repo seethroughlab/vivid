@@ -122,6 +122,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
     src/gpu/video_player.mm
+    src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
     src/gpu/effect_op.cpp
@@ -129,6 +130,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/audio_callback.cpp
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window.mm
+    src/audio/vst3_plugin_window_stub.cpp
     src/platform/platform.cpp
     src/platform/macos_frame_timer.cpp
     src/platform/macos_app_nap.mm
