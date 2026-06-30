@@ -15,6 +15,18 @@
 // this compiles + tests headless.
 namespace vivid {
 
+// Result of comparing a live operator's descriptor against a hot-reload candidate:
+//   Compatible        — identical layout; an in-place dylib swap is safe.
+//   RecompileRequired — layout identical but multiplicity/strategy changed (for the
+//                       PoC this is handled like Compatible — we recreate instances).
+//   Incompatible      — param/port/gpu layout changed; reject the swap (restart instead).
+enum class HotReloadCompat { Compatible, RecompileRequired, Incompatible };
+
+// Classify a candidate descriptor change. Null old/new → Compatible (first load).
+// Free function so it is unit-testable without a dylib.
+HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
+                                    const VividOperatorDescriptor* new_desc);
+
 class OperatorLoader {
 public:
     struct LastError {
@@ -48,6 +60,10 @@ public:
     bool is_loaded() const { return handle_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
 
+    // True if the most recent successful load() swapped in a descriptor whose
+    // multiplicity/strategy changed (HotReloadCompat::RecompileRequired).
+    bool reload_required_recompile() const { return reload_required_recompile_; }
+
 private:
     void set_last_error(std::string code, std::string message);
     void clear_last_error();
@@ -61,6 +77,7 @@ private:
     VividProcessAudioFn  process_audio_fn_  = nullptr;
     VividProcessGpuFn    process_gpu_fn_    = nullptr;
     std::string          registration_mode_ = "unknown";
+    bool                 reload_required_recompile_ = false;
     LastError            last_error_{};
 };
 

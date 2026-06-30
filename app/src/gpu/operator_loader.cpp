@@ -4,6 +4,7 @@
 #include <dlfcn.h>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <utility>
 
 namespace vivid {
@@ -17,7 +18,45 @@ uint32_t expected_abi() {
         return static_cast<uint32_t>(std::strtoul(env, nullptr, 10));
     return VIVID_OPERATOR_ABI_VERSION;
 }
+
+bool streq(const char* a, const char* b) {
+    return std::strcmp(a ? a : "", b ? b : "") == 0;
+}
+
+// Old params must be a prefix of new (params may be appended, not changed/removed),
+// with matching name + type — so a node's resolved-value indices stay valid.
+bool param_layout_compatible(const VividOperatorDescriptor* o, const VividOperatorDescriptor* n) {
+    if (o->param_count > n->param_count) return false;
+    for (uint32_t i = 0; i < o->param_count; ++i)
+        if (!streq(o->params[i].name, n->params[i].name) || o->params[i].type != n->params[i].type)
+            return false;
+    return true;
+}
+
+// Ports must match exactly (count, name, type, direction, value_type, multiplicity)
+// so existing wires remain valid.
+bool port_layout_compatible(const VividOperatorDescriptor* o, const VividOperatorDescriptor* n) {
+    if (o->port_count != n->port_count) return false;
+    for (uint32_t i = 0; i < o->port_count; ++i) {
+        const auto& a = o->ports[i]; const auto& b = n->ports[i];
+        if (!streq(a.name, b.name) || a.type != b.type || a.direction != b.direction ||
+            a.value_type != b.value_type || a.multiplicity != b.multiplicity)
+            return false;
+    }
+    return true;
+}
 }  // namespace
+
+HotReloadCompat classify_hot_reload(const VividOperatorDescriptor* old_desc,
+                                    const VividOperatorDescriptor* new_desc) {
+    if (!old_desc || !new_desc) return HotReloadCompat::Compatible;   // first load
+    if (old_desc->has_process_gpu != new_desc->has_process_gpu) return HotReloadCompat::Incompatible;
+    if (!param_layout_compatible(old_desc, new_desc)) return HotReloadCompat::Incompatible;
+    if (!port_layout_compatible(old_desc, new_desc))  return HotReloadCompat::Incompatible;
+    if (old_desc->multiplicity_behavior != new_desc->multiplicity_behavior)
+        return HotReloadCompat::RecompileRequired;
+    return HotReloadCompat::Compatible;
+}
 
 OperatorLoader::~OperatorLoader() { unload(); }
 
@@ -37,6 +76,7 @@ void OperatorLoader::move_from(OperatorLoader&& o) noexcept {
     process_audio_fn_  = o.process_audio_fn_;
     process_gpu_fn_    = o.process_gpu_fn_;
     registration_mode_ = std::move(o.registration_mode_);
+    reload_required_recompile_ = o.reload_required_recompile_;
     last_error_        = std::move(o.last_error_);
     o.handle_ = nullptr;
     o.desc_fn_ = nullptr; o.create_fn_ = nullptr; o.destroy_fn_ = nullptr;
@@ -122,6 +162,18 @@ bool OperatorLoader::load(const char* path) {
         dlclose(new_handle);
         return false;
     }
+
+    // Hot-reload classification against the currently-loaded descriptor: reject a swap
+    // whose param/port/gpu layout changed (it could drop wires / remap params).
+    const HotReloadCompat compat = classify_hot_reload(descriptor(), desc);
+    if (compat == HotReloadCompat::Incompatible) {
+        set_last_error("hot_reload_incompatible",
+                       "param/port/gpu layout changed; restart to load this change");
+        std::fprintf(stderr, "[vivid] hot-reload rejected for %s: incompatible layout change\n", path);
+        dlclose(new_handle);
+        return false;
+    }
+    reload_required_recompile_ = (compat == HotReloadCompat::RecompileRequired);
 
     // Commit: release any prior dylib, install the new state.
     unload();
