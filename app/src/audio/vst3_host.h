@@ -15,12 +15,26 @@ namespace vivid_poc {
 
 struct Session;  // opaque
 
+// Upper bound on live tracks. Bounds the audio-thread track-view reserve (so the
+// gen-counter try_lock swap never allocates) and the per-track UI arrays in window.h.
+constexpr int kMaxTracks = 32;
+
 Session* session_create(uint32_t sample_rate);
 void     session_destroy(Session*);
 
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
 const char* session_track_name(Session*, int track);
+
+// Dynamic tracks: create/delete at runtime (UI/main thread). The audio thread sees the
+// change at the next block via a generation-counter try_lock swap of its track view.
+// add_* return the new track index, or -1 (catalog/path didn't resolve, or kMaxTracks).
+int  session_add_instrument_track(Session*, const char* instrument);  // catalog label OR a .vst3 path
+int  session_add_audio_track(Session*);                               // a sampler track
+bool session_remove_track(Session*, int track);                       // retires the track (freed at shutdown)
+// Instrument catalog offered in the "+ Track" menu (resolved to a plugin on add).
+int         session_available_instrument_count();
+const char* session_available_instrument_name(int i);
 
 // Per-cell state (audio-thread truth).
 int  session_active_clip(Session*, int track);   // active scene index, -1 if stopped
