@@ -57,6 +57,13 @@ public:
     VOp  generator() const;
     OpRegistry* registry() const { return reg_; }   // the op catalog (for the Tab chooser)
 
+    // Hot-reload: destroy / recreate the OpInstance of every node whose op_type is
+    // `type`. release MUST run before the loader dlcloses the old dylib (so the old
+    // instances destruct against still-loaded code); rebuild runs after the swap,
+    // recreating from the new dylib. Node base/params live on the node → preserved.
+    int release_op_instances(const std::string& type);   // returns affected node count
+    int rebuild_op_instances(const std::string& type);
+
     void render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 float vx, float vy, float vw, float vh, float time,
                 WGPUTextureView video_tex);

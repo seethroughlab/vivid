@@ -1,6 +1,8 @@
 # Headless, portable test suite — no GUI/GPU/audio/VST deps, so it configures and
 # runs anywhere (Linux CI included) and stays fast. Each test is a standalone
 # executable that returns its failure count; ctest groups them by label tier.
+find_package(Threads REQUIRED)   # std::thread in test_hot_reload
+
 add_library(vivid_test_helpers INTERFACE)
 target_include_directories(vivid_test_helpers INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -101,3 +103,12 @@ target_compile_definitions(test_package_compile PRIVATE
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+
+# P2.4: hot-reload infrastructure — classify_hot_reload + FileWatcher + HotReloader.
+vivid_add_test(test_hot_reload)
+target_sources(test_hot_reload PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/file_watcher.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/hot_reload.cpp)
+target_link_libraries(test_hot_reload PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)

@@ -60,6 +60,18 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
     return false;
 }
 
+int VisualGraph::release_op_instances(const std::string& type) {
+    int n = 0;
+    for (auto& nd : nodes_) if (nd.op_type == type) { nd.inst = OpInstance{}; ++n; }
+    return n;
+}
+
+int VisualGraph::rebuild_op_instances(const std::string& type) {
+    int n = 0;
+    for (auto& nd : nodes_) if (nd.op_type == type) { make_instance(nd, type); ++n; }
+    return n;
+}
+
 bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt,
                        uint32_t rtW, uint32_t rtH, OpRegistry* registry) {
     dev_ = device; q_ = queue; fmt_ = fmt; rtW_ = rtW; rtH_ = rtH; reg_ = registry;

@@ -5,6 +5,7 @@
 
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
+#include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 
 namespace vivid {
 class GpuContext;
@@ -35,6 +36,7 @@ struct App {
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).
     std::vector<std::unique_ptr<OperatorLoader>> op_loaders;
+    HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
 
