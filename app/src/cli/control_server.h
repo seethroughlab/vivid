@@ -10,7 +10,7 @@
 #include <nlohmann/json.hpp>
 
 namespace vivid_poc { struct Session; }
-namespace vivid { namespace ui { class NodeGraph; } class VisualGraph; }
+namespace vivid { namespace ui { class NodeGraph; } class VisualGraph; struct App; }
 struct Transport;
 
 namespace vivid {
@@ -22,6 +22,7 @@ struct ControlCtx {
     vivid::ui::NodeGraph* graph     = nullptr;
     vivid::VisualGraph*   vgraph    = nullptr;
     Transport*            transport = nullptr;
+    vivid::App*           app       = nullptr;   // for op registry + loaders (package install)
     int*   win_w   = nullptr;
     int*   win_h   = nullptr;
     float* split_x = nullptr;

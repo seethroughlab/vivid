@@ -63,6 +63,16 @@ def list_operators() -> dict:
 
 
 @mcp.tool
+def install_operator_package(path: str) -> dict:
+    """Install an operator package from a directory (a vivid-package.json + operator .cpp
+    sources). Compiles each operator to a loadable .dylib on this machine and registers it
+    LIVE — the new operator is immediately spawnable via add_node, no app restart. Returns
+    per-operator {name, compiled, registered, op|error}. Call list_operators afterward to
+    see the new op's schema. Installed ops also persist + reload on the next launch."""
+    return _post("install_operator_package", {"path": path})
+
+
+@mcp.tool
 def get_graph() -> dict:
     """The visuals node-graph: op nodes [{id, op, input, params:[{name, base, value, wired}]}],
     data-source nodes, the active output id, and the generator op. Node ids are stable; build

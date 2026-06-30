@@ -64,7 +64,7 @@ void run_frame_loop(App& app, Window& win) {
     TextureSource& srcTex      = *app.srcTex;
     ControlServer& control     = *app.control;
 
-    ControlCtx cctx{ app.session, &graph, &vgraph, &transport,
+    ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app,
                      &win.win_w, &win.win_h, &win.split_x, &win.dock_h };
 
     // Event polling is split from rendering and driven by a CFRunLoopTimer (see
