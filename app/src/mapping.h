@@ -88,23 +88,21 @@ public:
     const std::vector<Mapping>& mappings() const { return maps_; }
     void clear_mappings() { maps_.clear(); }
 
-    // A track was deleted at `removed`: drop mappings sourced from it and renumber sources
-    // above it (indices shift down), so the bridge stays consistent. Returns # of mappings
-    // dropped or renumbered. (Dest IDs reference visual nodes, not tracks, so they're left.)
-    int remap_track_sources(int removed) {
-        int changed = 0;
+    // A track with stable id `id` was deleted: drop mappings sourced from it. No renumbering
+    // — sources encode the stable id, so survivors are untouched (a mapping always follows
+    // the same track). Dest IDs reference visual nodes, not tracks, so they're left. Returns
+    // # dropped.
+    int drop_track_sources(int id) {
+        int dropped = 0;
         std::vector<Mapping> kept;
         kept.reserve(maps_.size());
         for (auto& m : maps_) {
-            int idx; std::string rest;
-            if (parse_track_source(m.source, idx, rest)) {
-                if (idx == removed) { ++changed; continue; }                       // drop
-                if (idx > removed) { m.source = "track_" + std::to_string(idx - 1) + rest; ++changed; }
-            }
+            int n; std::string rest;
+            if (parse_track_source(m.source, n, rest) && n == id) { ++dropped; continue; }
             kept.push_back(m);
         }
         maps_.swap(kept);
-        return changed;
+        return dropped;
     }
 
 private:

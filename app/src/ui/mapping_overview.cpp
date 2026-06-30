@@ -26,6 +26,17 @@ std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
     return dest;
 }
 
+// A "track_<id>.<kind>" source encodes the STABLE id, which isn't the track's position —
+// resolve it to the track's current name ("Pigments.transient") so the row reads sensibly.
+std::string mapping_source_label(vivid_poc::Session* s, const std::string& src) {
+    int id; std::string rest;
+    if (s && vivid::parse_track_source(src, id, rest))
+        for (int t = 0; t < vivid_poc::session_track_count(s); ++t)
+            if (vivid_poc::session_track_id(s, t) == id)
+                return std::string(vivid_poc::session_track_name(s, t)) + rest;
+    return src;
+}
+
 void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid_poc::Session* s, int win_w, int win_h) {
     if (!g) return;
     const auto& maps = g->mappings();
@@ -67,7 +78,8 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid_poc::Session* s, 
         if (toVisual) { cr = 0.31f; cg = 0.80f; cb = 0.75f; }         // audio->visual
         else if (fromViz) { cr = 0.85f; cg = 0.7f; cb = 0.4f; }       // visual->audio
         const OvRow rc = ov_row(px, w, ry);
-        char src8[20]; std::snprintf(src8, sizeof src8, "%.18s", m.source.c_str());
+        const std::string slabel = mapping_source_label(s, m.source);
+        char src8[20]; std::snprintf(src8, sizeof src8, "%.18s", slabel.c_str());
         ui.draw_text(px + 16.f, ry + 4.f, src8, 0.85f, 0.88f, 0.92f, 1.0f, 0.82f);
         ui.draw_text(px + 150.f, ry + 3.f, "\xE2\x86\x92", cr, cg, cb, 1.0f, 0.92f);
         char dst22[26]; std::snprintf(dst22, sizeof dst22, "%.24s", mapping_dest_label(s, m.dest).c_str());

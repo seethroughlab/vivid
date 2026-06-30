@@ -170,10 +170,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         for (int j = 0; j < kNumChars; ++j) {
             const Rect r = { win->menu.x, win->menu.y + j * 26.f, 184.f, 26.f };
             if (hit(r, mx, my) && app->graph) {
-                const int src = win->menu.src;
+                const int src = win->menu.src;   // -1 master, else a track INDEX
                 const char* sname = src < 0 ? "Master" : vivid_poc::session_track_name(app->session, src);
+                // Encode by the track's STABLE id (master stays -1) so the wire follows the track.
+                const int sid = src < 0 ? -1 : vivid_poc::session_track_id(app->session, src);
                 std::string title = std::string(sname) + "  " + kChars[j].label;
-                app->graph->add_data_node(title, char_id_for(src, kChars[j].id));
+                app->graph->add_data_node(title, char_id_for(sid, kChars[j].id));
                 std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[j].label);
                 break;
             }
@@ -234,8 +236,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             // so the per-track window pool would otherwise misalign (they reopen on demand).
             for (int k = 0; k < vivid_poc::kMaxTracks; ++k)
                 if (win->track_win[k]) { vst3_plugin_window_close(win->track_win[k]); win->track_win[k] = nullptr; }
+            const int rid = vivid_poc::session_track_id(app->session, t);   // capture before removal
             if (vivid_poc::session_remove_track(app->session, t)) {
-                if (app->graph) app->graph->remap_track_sources(t);
+                if (app->graph) app->graph->drop_track_sources(rid);   // drop this track's mappings (id-based)
                 const int nt = vivid_poc::session_track_count(app->session);
                 if (win->sel_track >= nt) win->sel_track = std::max(0, nt - 1);
             }

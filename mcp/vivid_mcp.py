@@ -56,8 +56,11 @@ def get_session() -> dict:
 
 @mcp.tool
 def list_tracks() -> dict:
-    """Per-track summary: name, gain, is_audio, active/queued clip, live level/transient/3-band
-    energy, and the device chain (instrument + FX with their device indices)."""
+    """Per-track summary: index, stable id, name, gain, is_audio, active/queued clip, live
+    level/transient/3-band energy, and the device chain (instrument + FX with their device
+    indices). To map a track characteristic to a visual, use its **id** in the source string:
+    "track_<id>.<kind>" (kind = level|transient|low|mid|high) — the id survives reorders/deletes,
+    the index does not."""
     return _post("list_tracks")
 
 
@@ -246,8 +249,10 @@ def add_track(instrument: str = "", kind: str = "instrument") -> dict:
 
 @mcp.tool
 def remove_track(track: int) -> dict:
-    """Delete a track by index. Tracks above it shift down; audio->visual mappings sourced
-    from the deleted track are dropped and ones above it are renumbered (see mappings_remapped)."""
+    """Delete a track by index. Tracks below it shift down by one INDEX, but each track keeps
+    its stable `id` (see list_tracks): audio->visual mappings reference the id, so only the
+    deleted track's mappings are dropped (see mappings_dropped) — every other wire still
+    follows its own track."""
     return _post("remove_track", {"track": track})
 
 

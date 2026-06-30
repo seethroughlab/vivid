@@ -32,6 +32,7 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
         // v2: the track set is the document. `kind` + `instrument` let load recreate the
         // track (the track name is the plugin name, which doubles as the catalog/match spec).
         jt["kind"] = aud ? "audio" : "instrument";
+        jt["id"]   = vivid_poc::session_track_id(s, t);   // stable id (mapping sources reference it)
         if (!aud) jt["instrument"] = vivid_poc::session_track_name(s, t);
         if (aud) {
             json trims = json::array();
@@ -108,12 +109,19 @@ static void rebuild_tracks_from_doc(vivid_poc::Session* s, const json& T) {
         vivid_poc::session_remove_track(s, vivid_poc::session_track_count(s) - 1);
     for (const auto& jt : T) {
         const std::string kind = jt.value("kind", std::string("instrument"));
-        if (kind == "audio") { vivid_poc::session_add_audio_track(s); continue; }
-        const std::string inst = jt.value("instrument", jt.value("name", std::string()));
-        if (vivid_poc::session_add_instrument_track(s, inst.c_str()) < 0) {
-            std::fprintf(stderr, "[vivid] load: instrument '%s' unavailable — placeholder audio track\n", inst.c_str());
-            vivid_poc::session_add_audio_track(s);
+        int added;
+        if (kind == "audio") {
+            added = vivid_poc::session_add_audio_track(s);
+        } else {
+            const std::string inst = jt.value("instrument", jt.value("name", std::string()));
+            added = vivid_poc::session_add_instrument_track(s, inst.c_str());
+            if (added < 0) {
+                std::fprintf(stderr, "[vivid] load: instrument '%s' unavailable — placeholder audio track\n", inst.c_str());
+                added = vivid_poc::session_add_audio_track(s);
+            }
         }
+        // Restore the stable id so saved mappings ("track_<id>.…") reload onto the same track.
+        if (added >= 0 && jt.contains("id")) vivid_poc::session_set_track_id(s, added, jt.value("id", added));
     }
 }
 

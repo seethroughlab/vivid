@@ -252,6 +252,7 @@ void ControlServer::register_handlers() {
         for (int t = 0; t < P::session_track_count(s); ++t) {
             json jt;
             jt["index"] = t;
+            jt["id"] = P::session_track_id(s, t);   // stable id — use in mapping sources "track_<id>.<kind>"
             jt["name"] = P::session_track_name(s, t);
             jt["gain"] = P::session_track_gain(s, t);
             jt["is_audio"] = P::session_track_is_audio(s, t);
@@ -509,10 +510,11 @@ void ControlServer::register_handlers() {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", -1);
         json e; if (!need_track(c.session, track, e)) return e;
+        const int rid = P::session_track_id(c.session, track);   // capture the stable id before removal
         if (!P::session_remove_track(c.session, track)) return err(code::kInternal, "remove_track failed");
-        int remapped = 0;
-        if (c.graph) remapped = c.graph->remap_track_sources(track);
-        json r = ok(); r["removed"] = track; r["mappings_remapped"] = remapped; return r;
+        int dropped = 0;
+        if (c.graph) dropped = c.graph->drop_track_sources(rid);   // drop this track's mappings (id-based; survivors untouched)
+        json r = ok(); r["removed"] = track; r["mappings_dropped"] = dropped; return r;
     };
 
     // ---------------- session author / persist ----------------

@@ -120,11 +120,14 @@ void run_frame_loop(App& app, Window& win) {
             win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
             win.trkTrHold[t] *= 0.85f;
             win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid_poc::session_track_transient(app.session, t));
-            graph.set_value(char_id_for(t, 0), win.trkReact[t]);
-            graph.set_value(char_id_for(t, 1), std::min(1.0f, win.trkTrHold[t]));
-            graph.set_value(char_id_for(t, 2), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 0) * 5.0f));
-            graph.set_value(char_id_for(t, 3), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 1) * 8.0f));
-            graph.set_value(char_id_for(t, 4), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 2) * 12.0f));
+            // Publish keyed by the track's STABLE id, not its index, so a mapping follows the
+            // track across reorders/deletes. The smoothing arrays stay index-keyed (transient).
+            const int tid = vivid_poc::session_track_id(app.session, t);
+            graph.set_value(char_id_for(tid, 0), win.trkReact[t]);
+            graph.set_value(char_id_for(tid, 1), std::min(1.0f, win.trkTrHold[t]));
+            graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 0) * 5.0f));
+            graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 1) * 8.0f));
+            graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 2) * 12.0f));
         }
         // Resolve each visual node's params from the registry (writes into the
         // VisualGraph nodes) and publish the viz.* return-path sources.

@@ -25,6 +25,11 @@ void     session_destroy(Session*);
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
 const char* session_track_name(Session*, int track);
+// Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
+// keys mapping sources by this, not the positional index, so deleting a track never
+// re-points another track's mappings. -1 if the index is out of range.
+int  session_track_id(Session*, int track);
+void session_set_track_id(Session*, int track, int id);   // load-time restore of a saved id
 
 // Dynamic tracks: create/delete at runtime (UI/main thread). The audio thread sees the
 // change at the next block via a generation-counter try_lock swap of its track view.

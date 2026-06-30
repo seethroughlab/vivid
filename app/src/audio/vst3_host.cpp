@@ -29,6 +29,7 @@ namespace vivid_poc {
 struct Track {
     Vst3Handle*           handle = nullptr;
     std::string           name;
+    int                   id = -1;   // stable identity (monotonic; survives reorders/deletes)
     std::vector<MidiClip> clips;          // one per scene
     ClipScheduler         sched;
     std::atomic<int>      active{0};
@@ -80,6 +81,7 @@ struct Session {
     std::mutex            tracks_mtx;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
+    int       next_track_id = 0;   // monotonic source of stable per-track IDs
     int       scenes = 3;
     long long last_bar = -1;
     uint32_t  sample_rate = 0;
@@ -248,6 +250,7 @@ Session* session_create(uint32_t sample_rate) {
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
         s->tracks.emplace_back(make_track(h, name, role.kind));
+        s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
 
@@ -316,6 +319,7 @@ Session* session_create(uint32_t sample_rate) {
         }
         at->active.store(-1, std::memory_order_relaxed);  // start stopped
         s->tracks.emplace_back(std::move(at));
+        s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: Audio (sampler, %zu loops)\n",
                      s->tracks.size() - 1, s->tracks.back()->aud_clips.size());
     }
@@ -330,6 +334,14 @@ int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.siz
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 const char* session_track_name(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->name.c_str() : "";
+}
+int session_track_id(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->id : -1;
+}
+void session_set_track_id(Session* s, int t, int id) {   // load-time restore of a saved id
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
+    s->tracks[t]->id = id;
+    if (id >= s->next_track_id) s->next_track_id = id + 1;   // keep new ids from colliding
 }
 int  session_active_clip(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;
@@ -749,6 +761,7 @@ int session_add_instrument_track(Session* s, const char* instrument) {
     Vst3Handle* h = load_instrument_spec(s, instrument, name);
     if (!h) { std::fprintf(stderr, "[Session] add track: no instrument matched '%s'\n", instrument); return -1; }
     s->tracks.emplace_back(make_instrument_track(h, name, s->scenes));
+    s->tracks.back()->id = s->next_track_id++;
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + track %d: %s\n", idx, name.c_str());
@@ -767,6 +780,7 @@ int session_add_audio_track(Session* s) {
     at->aud_clips.push_back(gen_bell_loop(s->sample_rate, 124.0));
     at->active.store(-1, std::memory_order_relaxed);
     s->tracks.emplace_back(std::move(at));
+    s->tracks.back()->id = s->next_track_id++;
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);
