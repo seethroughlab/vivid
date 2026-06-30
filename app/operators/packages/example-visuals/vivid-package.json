@@ -1,0 +1,7 @@
+{
+  "name": "example-visuals",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "Gradient", "source": "gradient.cpp", "gpu": true }
+  ]
+}
