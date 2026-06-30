@@ -13,6 +13,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 
+#include <array>
 #include <string>
 
 namespace {
@@ -40,6 +41,9 @@ struct U { hue: f32, p0: f32, p1: f32, p2: f32 };
 // namespace so VIVID_REGISTER's extern "C" exports are unmangled.
 struct SpikeSolidOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SpikeSolid";
+    static constexpr const char* kDisplayName = "Spike Solid";
+    static constexpr const char* kSummary = "Example loadable .dylib operator: a solid hue-coloured fill.";
+    static constexpr std::array<const char*, 3> kKeywords = {"generator", "solid", "example"};
     vivid::Param<float> hue{"hue", 0.5f, 0.f, 1.f};
 
     bool tried_ = false;

@@ -53,6 +53,16 @@ def list_params(track: int, device: int = 0, filter: str = "", limit: int = 64) 
 
 
 @mcp.tool
+def list_operators() -> dict:
+    """The full catalog of visual operators that can be spawned — built-in AND loaded
+    .dylib packages, uniformly. Each entry has: name (pass to add_node), display_name,
+    summary, keywords (for search), gpu flag, params [{name, type, default, min, max,
+    description}] and ports [{name, dir}]. Call this to DISCOVER what operators exist and
+    how to wire/parameterize them before add_node / set_node_param / connect_nodes."""
+    return _post("list_operators")
+
+
+@mcp.tool
 def get_graph() -> dict:
     """The visuals node-graph: op nodes [{id, op, input, params:[{name, base, value, wired}]}],
     data-source nodes, the active output id, and the generator op. Node ids are stable; build

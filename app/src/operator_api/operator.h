@@ -802,6 +802,10 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         }                                                                     \
         tmp.collect_ports(s_ports);                                           \
         desc.name           = ClassName::kName;                               \
+        desc.display_name   = vivid::detail::get_display_name<ClassName>();    \
+        desc.keywords       = vivid::detail::get_keywords_data<ClassName>();   \
+        desc.keyword_count  = vivid::detail::get_keywords_count<ClassName>();  \
+        desc.summary        = vivid::detail::get_summary<ClassName>();         \
         desc.has_process_audio =                                              \
             std::is_base_of_v<vivid::AudioProcessable, ClassName> ? 1 : 0;    \
         desc.has_process_gpu =                                                \

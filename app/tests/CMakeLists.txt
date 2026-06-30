@@ -69,3 +69,16 @@ target_link_libraries(test_loaded_operator PRIVATE ${CMAKE_DL_LIBS})
 add_dependencies(test_loaded_operator test_fixture_op)
 target_compile_definitions(test_loaded_operator PRIVATE
     FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")
+
+# P2.2′: operator discovery metadata (display_name/keywords/summary) reaches the
+# descriptor for both a compiled-in op and a loaded dylib op.
+vivid_add_test(test_op_metadata)
+target_sources(test_op_metadata PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_op_metadata PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(test_op_metadata test_fixture_op)
+target_compile_definitions(test_op_metadata PRIVATE
+    FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")

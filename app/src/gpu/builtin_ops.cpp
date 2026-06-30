@@ -7,6 +7,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
 
+#include <array>
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,6 +90,9 @@ VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
 
 // --- Plasma: GLSL generator (4 params, 1 texture out) ---
 struct PlasmaOp : OperatorBase, GpuProcessable {
+    static constexpr const char* kDisplayName = "Plasma";
+    static constexpr const char* kSummary = "Animated plasma colour-field generator (GLSL). No input; drives a chain.";
+    static constexpr std::array<const char*, 3> kKeywords = {"generator", "plasma", "color"};
     Param<float> warp   {"warp",    0.5f, 0.f, 1.f};
     Param<float> hue    {"hue",     0.0f, 0.f, 1.f};
     Param<float> density{"density", 0.5f, 0.f, 1.f};
@@ -122,11 +126,24 @@ struct BlitOp : OperatorBase, GpuProcessable {
                    &in, 1, float(c->time), nullptr, 0);
     }
 };
-struct VideoOp  : BlitOp { };   // generator fed an external source texture (P1.3 wires srcTex)
-struct OutputOp : BlitOp { };   // sink / passthrough to the viewer
+// generator fed an external source texture (P1.3 wires srcTex)
+struct VideoOp  : BlitOp {
+    static constexpr const char* kDisplayName = "Video";
+    static constexpr const char* kSummary = "Plays the shared image/video source texture into the chain.";
+    static constexpr std::array<const char*, 3> kKeywords = {"generator", "video", "source"};
+};
+// sink / passthrough to the viewer
+struct OutputOp : BlitOp {
+    static constexpr const char* kDisplayName = "Output";
+    static constexpr const char* kSummary = "Chain sink: feeds the connected texture to the on-screen viewer.";
+    static constexpr std::array<const char*, 3> kKeywords = {"output", "viewer", "sink"};
+};
 
 // --- Blur: 1-input GLSL effect (1 param) ---
 struct BlurOp : OperatorBase, GpuProcessable {
+    static constexpr const char* kDisplayName = "Blur";
+    static constexpr const char* kSummary = "Box blur of the input texture; radius is wire-drivable.";
+    static constexpr std::array<const char*, 3> kKeywords = {"effect", "blur", "soften"};
     Param<float> radius{"radius", 0.3f, 0.f, 1.f};
     EffectOp fx_; bool tried_ = false;
     void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&radius); }
@@ -147,6 +164,9 @@ struct BlurOp : OperatorBase, GpuProcessable {
 
 // --- Feedback: 2-input GLSL effect (gen + own prev-frame history texture) ---
 struct FeedbackOp : OperatorBase, GpuProcessable {
+    static constexpr const char* kDisplayName = "Feedback";
+    static constexpr const char* kSummary = "Frame feedback / trails: blends the input with a decaying history texture.";
+    static constexpr std::array<const char*, 3> kKeywords = {"effect", "feedback", "trails"};
     Param<float> decay{"decay", 0.5f, 0.f, 1.f};
     EffectOp fx_; bool tried_ = false;
     WGPUTexture hist_ = nullptr; WGPUTextureView hist_view_ = nullptr;
@@ -206,6 +226,9 @@ struct U { res: vec2f, time: f32, hue: f32 };
 )";
 
 struct TintOp : OperatorBase, GpuProcessable {
+    static constexpr const char* kDisplayName = "Tint";
+    static constexpr const char* kSummary = "WGSL example generator: a hue-shifted gradient (shows the WGSL authoring path).";
+    static constexpr std::array<const char*, 3> kKeywords = {"generator", "tint", "wgsl"};
     Param<float> hue{"hue", 0.5f, 0.f, 1.f};
     bool tried_ = false;
     WGPUShaderModule    sh_   = nullptr;
@@ -255,12 +278,12 @@ struct TintOp : OperatorBase, GpuProcessable {
 }  // namespace
 
 void register_builtin_ops(OpRegistry& reg) {
-    reg.register_type("Plasma",   [] { return std::unique_ptr<OperatorBase>(new PlasmaOp); });
-    reg.register_type("Video",    [] { return std::unique_ptr<OperatorBase>(new VideoOp); });
-    reg.register_type("Feedback", [] { return std::unique_ptr<OperatorBase>(new FeedbackOp); });
-    reg.register_type("Blur",     [] { return std::unique_ptr<OperatorBase>(new BlurOp); });
-    reg.register_type("Output",   [] { return std::unique_ptr<OperatorBase>(new OutputOp); });
-    reg.register_type("Tint",     [] { return std::unique_ptr<OperatorBase>(new TintOp); });   // WGSL example
+    register_op<PlasmaOp>  (reg, "Plasma");
+    register_op<VideoOp>   (reg, "Video");
+    register_op<FeedbackOp>(reg, "Feedback");
+    register_op<BlurOp>    (reg, "Blur");
+    register_op<OutputOp>  (reg, "Output");
+    register_op<TintOp>    (reg, "Tint");   // WGSL example
 }
 
 }  // namespace vivid
