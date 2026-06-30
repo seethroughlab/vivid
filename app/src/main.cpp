@@ -76,8 +76,11 @@ int main() {
       std::vector<std::string> dirs;
       dirs.push_back(vivid::user_operators_dir());   // installed packages (or $VIVID_OPERATORS_DIR)
       const std::string exe = vivid::platform::executable_path();
-      if (!exe.empty())
-          dirs.push_back((fs::path(exe).parent_path() / ".." / "PlugIns").lexically_normal().string());
+      if (!exe.empty()) {
+          const fs::path exe_dir = fs::path(exe).parent_path();
+          dirs.push_back((exe_dir / ".." / "PlugIns").lexically_normal().string());  // macOS .app bundle
+          dirs.push_back((exe_dir / "PlugIns").lexically_normal().string());          // non-bundle (Linux/Windows)
+      }
       int loaded = 0;
       for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
 
