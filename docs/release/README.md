@@ -33,11 +33,35 @@ asserts the tag matches.
    pass** → `sign_and_notarize.sh` → `generate_appcast.py` → upload the DMG + appcast.
 3. Attach the DMG to the GitHub release; publish `appcast.xml` to the update feed.
 
-### Required secrets (release runner)
+### Signing + notarization credentials
 
-`APPLE_CODESIGN_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`
-(an app-specific password, not the account password). For Sparkle signature validation,
-also a `VIVID_SPARKLE_PUBLIC_KEY` / EdDSA signing key.
+Codesigning uses a **Developer ID Application** cert in the keychain — find its identity
+string with `security find-identity -v -p codesigning`, and pass it as
+`APPLE_CODESIGN_IDENTITY`.
+
+Notarization has two modes; the **keychain profile is preferred** because no password ever
+appears in env, a script, or CI logs. Create it once:
+
+```sh
+xcrun notarytool store-credentials vivid-notary \
+    --apple-id you@example.com --team-id 7JL9RZ9C8P --password <app-specific-password>
+```
+
+then run the pipeline with `NOTARY_PROFILE=vivid-notary`. The fallback is the explicit trio
+`APPLE_ID` / `APPLE_TEAM_ID` / `APPLE_APP_PASSWORD` (app-specific password, not the account
+password). `SKIP_NOTARIZE=1` signs + DMGs without notarizing, to exercise the signing path.
+
+On a CI runner, store the same as repo secrets (`APPLE_CODESIGN_IDENTITY`, plus either
+`NOTARY_PROFILE` on the runner or the explicit trio as secrets). For Sparkle signature
+validation, also an EdDSA signing key.
+
+### Running it locally
+
+```sh
+cmake -S app -B app/build-release -DCMAKE_BUILD_TYPE=Release && cmake --build app/build-release -j
+APPLE_CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" NOTARY_PROFILE=vivid-notary \
+    scripts/release/sign_and_notarize.sh app/build-release/vivid_poc.app build/dist
+```
 
 ## Wiring real auto-update
 

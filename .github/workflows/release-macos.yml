@@ -21,6 +21,9 @@ jobs:
     runs-on: [self-hosted, macOS]
     env:
       APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      # Notarization: either a notarytool keychain profile (NOTARY_PROFILE) on the runner,
+      # or the explicit-credential fallback below.
+      NOTARY_PROFILE: ${{ secrets.NOTARY_PROFILE }}
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
