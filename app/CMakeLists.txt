@@ -132,6 +132,8 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/platform/platform.cpp
     src/platform/macos_frame_timer.cpp
     src/platform/macos_app_nap.mm
+    src/platform/frame_loop_generic.cpp
+    src/platform/app_nap_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp

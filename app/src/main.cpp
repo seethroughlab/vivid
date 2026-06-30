@@ -31,7 +31,7 @@
 #include "persist.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
-#include "platform/macos_frame_timer.h"
+#include "platform/app_nap.h"
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
 #include "gpu/visual_graph.h"
@@ -63,7 +63,7 @@ int main() {
     // Keep the frame loop (and the control-server drain it runs each tick) pumping
     // even when the app is backgrounded, so an agent can drive it over MCP without
     // the window being frontmost.
-    vivid::macos_disable_app_nap("Vivid control server / agent-driven rendering");
+    vivid::disable_app_nap("Vivid control server / agent-driven rendering");
 
     // Register the built-in visual operators + validate their descriptors (the
     // operator-based visuals model; VisualGraph drives them from P1.3). A loud

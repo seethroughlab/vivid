@@ -1,7 +1,7 @@
 #ifdef __APPLE__
 #import <Foundation/Foundation.h>
 
-#include "platform/macos_frame_timer.h"
+#include "platform/app_nap.h"
 #include <cstdio>
 
 // Defeat App Nap. macOS throttles/suspends timers (and thus our CFRunLoopTimer-driven
@@ -13,7 +13,7 @@ namespace vivid {
 
 static id g_app_nap_activity = nil;  // retained for the process lifetime
 
-void macos_disable_app_nap(const char* reason) {
+void disable_app_nap(const char* reason) {
     if (g_app_nap_activity) return;  // idempotent
     @autoreleasepool {
         NSActivityOptions opts =
