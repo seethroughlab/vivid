@@ -3,6 +3,7 @@
 #include <webgpu/webgpu.h>
 #include <cstdint>
 #include <string>
+#include <atomic>
 #include "gpu/gpu_util.h"   // kMsaaSamples, to_sv
 
 struct GLFWwindow;
@@ -43,6 +44,7 @@ public:
     bool bc_texture_compression_enabled() const { return bc_texture_compression_enabled_; }
     bool device_lost() const { return device_lost_; }
     const std::string& last_error() const { return last_error_; }
+    uint32_t error_count() const { return error_count_.load(std::memory_order_relaxed); }
     uint32_t width() const { return width_; }
     uint32_t height() const { return height_; }
 
@@ -70,6 +72,7 @@ private:
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;
     WGPUErrorType last_error_type_ = WGPUErrorType_NoError;
+    std::atomic<uint32_t> error_count_{0};   // total uncaptured errors (health signal, P4.3)
 };
 
 // Finish, submit, and release a command encoder.  Returns false if the encoder

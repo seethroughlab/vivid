@@ -41,6 +41,23 @@ target_sources(test_op_registry PRIVATE
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
 
+# P4.1: session-version load guard (classify_session_version is a pure header fn).
+vivid_add_test(test_version_guard)
+target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)
+
+# P4.3: runtime-health rollup + serialization (severity()/to_json() are App-free).
+vivid_add_test(test_runtime_health)
+target_sources(test_runtime_health PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/runtime_health.cpp)
+target_link_libraries(test_runtime_health PRIVATE nlohmann_json::nlohmann_json)
+
+# P4.4: semantic-metadata contract — descriptors built via register_op (wgpu-free) are
+# checked against the vocabulary in operator_api/semantic_vocab.h.
+vivid_add_test(test_semantic_metadata)
+target_sources(test_semantic_metadata PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+
 # --- P2.1: dlopen operator loader + LoadedOperator adapter ---
 # GPU-free fixture operators built as loadable modules; the tests dlopen them by
 # explicit path (so they need no wgpu device and stay headless/portable).

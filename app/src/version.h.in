@@ -1,0 +1,12 @@
+#pragma once
+// GENERATED from version.h.in by CMake — do not edit. The single source of truth for
+// the application version is `project(vivid_poc VERSION …)` in app/CMakeLists.txt; this
+// header re-exposes it to C++ (the get_version control endpoint + the version-guard CI
+// check both read it). The operator ABI (VIVID_OPERATOR_ABI_VERSION, operator_api/types.h)
+// and the session schema (kSessionSchemaVersion, persist.h) keep their own authoritative
+// homes — get_version includes those headers rather than duplicating the numbers here.
+
+#define VIVID_VERSION       "@PROJECT_VERSION@"
+#define VIVID_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define VIVID_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define VIVID_VERSION_PATCH @PROJECT_VERSION_PATCH@

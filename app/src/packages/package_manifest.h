@@ -29,6 +29,8 @@ struct PackageManifest {
     std::string dir;         // absolute package root
     std::string name;
     std::string version;
+    int         abi = 0;     // declared target operator ABI (0 = unspecified). Informational —
+                             // the real compatibility check is the dlopen-time ABI guard.
     std::vector<PackageOperator> operators;
 };
 

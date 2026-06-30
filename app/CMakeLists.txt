@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid_poc LANGUAGES C CXX)
+project(vivid_poc VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
+
+# Single version source of truth (P4.1): project(VERSION) -> generated version.h.
+# The bundle version strings + the get_version endpoint + the version-guard CI check
+# all read from here, so there's exactly one number to bump.
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h @ONLY)
 if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "" FORCE)
 endif()
@@ -39,6 +45,15 @@ FetchContent_MakeAvailable(nlohmann_json)
 if(VIVID_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+    # Production gate (P4.2): `cmake --build … --target production_gate_core` runs the
+    # HEADLESS_SMOKE suite through the budget-checked report tool. Self-contained (just
+    # ctest + uv), so it works in the tests-only (VIVID_BUILD_APP=OFF) CI configure too.
+    add_custom_target(production_gate_core
+        COMMAND ${CMAKE_COMMAND} -E env VIVID_BUILD_DIR=${CMAKE_BINARY_DIR}
+                ${CMAKE_CURRENT_SOURCE_DIR}/../scripts/run_production_gate.sh core
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
+        USES_TERMINAL
+        COMMENT "Production gate (core profile)")
 endif()
 
 if(NOT VIVID_BUILD_APP)
@@ -119,6 +134,8 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/app/app.cpp
     src/app/input.cpp
     src/app/frame.cpp
+    src/app/runtime_health.cpp
+    src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
     src/gpu/video_player_stub.cpp
@@ -132,6 +149,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/platform/platform.cpp
     src/platform/frame_loop_generic.cpp
     src/platform/app_nap_stub.cpp
+    src/platform/sparkle_bridge_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -164,10 +182,11 @@ if(APPLE)
     set_target_properties(vivid_poc PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 endif()
-target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
+target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb
+    ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
 # the toolchain + the in-tree operator_api headers + the wgpu include/lib dirs.
 file(GLOB _wgpu_dist "${CMAKE_BINARY_DIR}/_deps/wgpu-*-src")
