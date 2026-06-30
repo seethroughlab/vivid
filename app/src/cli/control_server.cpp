@@ -16,6 +16,7 @@
 #include "midi/midi_clip.h"
 #include "version.h"                     // VIVID_VERSION (generated, P4.1)
 #include "operator_api/types.h"          // VIVID_OPERATOR_ABI_VERSION
+#include "app/runtime_health.h"          // collect_health (P4.3)
 
 #include <chrono>
 #include <cctype>
@@ -157,6 +158,15 @@ void ControlServer::register_handlers() {
 #else
         r["build_type"] = "debug";
 #endif
+        return r;
+    };
+    // Runtime health: a rolled-up snapshot (severity ok|warning|error) of the engine —
+    // gpu device/error state, operator/graph counts + any missing ops, loaded packages,
+    // control liveness. Cheap; meant for agents/monitors to poll.
+    handlers_["get_health"] = [](const ControlCtx& c, const json&) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        json r = ok();
+        r["health"] = to_json(collect_health(*c.app));
         return r;
     };
     // Full operator catalog for agent discovery: every registered op (built-in AND

@@ -139,6 +139,7 @@ bool GpuContext::init(GLFWwindow* window, uint32_t width, uint32_t height) {
             auto* self = static_cast<GpuContext*>(ud1);
             self->last_error_ = std::string(message.data ? message.data : "", message.length);
             self->last_error_type_ = type;
+            self->error_count_.fetch_add(1, std::memory_order_relaxed);  // health signal (P4.3)
             std::fprintf(stderr, "[vivid] WebGPU error (%d): %.*s\n",
                          static_cast<int>(type), static_cast<int>(message.length),
                          message.data ? message.data : "");

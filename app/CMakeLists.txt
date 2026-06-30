@@ -134,6 +134,8 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/app/app.cpp
     src/app/input.cpp
     src/app/frame.cpp
+    src/app/runtime_health.cpp
+    src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
     src/gpu/video_player_stub.cpp

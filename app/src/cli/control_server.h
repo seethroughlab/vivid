@@ -42,6 +42,7 @@ public:
     void stop();
     void process_pending(const ControlCtx& ctx);   // call once per frame (main thread)
     int  port() const { return port_; }
+    bool running() const { return running_.load(); }   // bound + listening (health signal)
 
 private:
     using Handler = std::function<nlohmann::json(const ControlCtx&, const nlohmann::json&)>;

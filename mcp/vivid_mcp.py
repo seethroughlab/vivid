@@ -39,6 +39,15 @@ def get_version() -> dict:
 
 
 @mcp.tool
+def get_health() -> dict:
+    """Rolled-up engine health snapshot: a top-level severity (ok|warning|error) plus
+    gpu (device ok + uncaptured error count + last_error), graph (op_nodes/op_types and
+    missing_ops — chain nodes whose operator vanished), packages.loaded, and control.running.
+    Poll this to check the running app is healthy before/after driving it."""
+    return _post("get_health")
+
+
+@mcp.tool
 def get_session() -> dict:
     """The full session as JSON (window, every track's gain/clips/FX/state, the visuals
     chain + node base params, all mappings, view). The authoritative snapshot to read state."""
