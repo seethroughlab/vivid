@@ -1,0 +1,52 @@
+# Production-gate PR check (P4.5) — UNVERIFIED here: needs a self-hosted macOS runner
+# (the headless gate could run on ubuntu, but this mirrors classic's macOS PR gate so the
+# gui/env tiers can light up on the same runner later). Builds the tests-only configure,
+# runs the core gate, and upserts a single status comment on the PR.
+name: production-gate-pr
+
+on:
+  pull_request:
+    branches: [master, poc-cpp-prototype]
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: gate-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: [self-hosted, macOS]   # requires a registered self-hosted runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Configure (tests only) + build
+        run: |
+          cmake -S app -B app/build -DVIVID_BUILD_APP=OFF -DVIVID_BUILD_TESTS=ON \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build app/build -j
+      - name: Run production gate (core)
+        id: gate
+        run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-gate
+          path: app/build/reports/
+          retention-days: 14
+      - name: Upsert PR comment
+        if: always() && github.event.pull_request.number
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          BODY="$(uv run tools/format_pr_comment.py app/build/reports/production-gate.json || echo 'gate report missing')"
+          # Find an existing marked comment and edit it, else create one.
+          ID="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
+                 --jq '[.[] | select(.body | startswith("<!-- production-gate -->"))][0].id')"
+          if [[ -n "$ID" && "$ID" != "null" ]]; then
+            gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${ID}" -f body="$BODY"
+          else
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$BODY"
+          fi

@@ -149,6 +149,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/platform/platform.cpp
     src/platform/frame_loop_generic.cpp
     src/platform/app_nap_stub.cpp
+    src/platform/sparkle_bridge_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp

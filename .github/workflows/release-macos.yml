@@ -1,0 +1,65 @@
+# macOS release (P4.5) — UNVERIFIED SCAFFOLD: needs a self-hosted macOS runner + Apple
+# Developer ID secrets. On a vX.Y.Z tag, builds the app, signs+notarizes+DMGs it, and
+# generates the Sparkle appcast. The credential-free steps (version-guard, the gate, the
+# appcast generator) are verified; the sign/notarize step is not (no cert here).
+name: release-macos
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ref to build (pre-release validation)"
+        required: false
+
+permissions:
+  contents: write   # create the GitHub release + upload the DMG
+
+jobs:
+  release:
+    runs-on: [self-hosted, macOS]
+    env:
+      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Version guard (tag must match CMake version)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run tools/check_version.py --expect "${GITHUB_REF_NAME}"
+
+      - name: Build (release)
+        run: |
+          cmake -S app -B app/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build app/build -j
+
+      - name: Production gate (core) must pass before shipping
+        run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
+
+      - name: Sign + notarize + DMG
+        run: scripts/release/sign_and_notarize.sh app/build/vivid_poc.app/Contents/MacOS/../.. build/dist
+
+      - name: Generate Sparkle appcast
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          DMG="build/dist/vivid_poc.dmg"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$(basename "$DMG")"
+          uv run scripts/release/generate_appcast.py \
+            --version "$VER" --url "$URL" --length "$(stat -f%z "$DMG")" \
+            --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S +0000')" \
+            --notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            --output build/dist/appcast.xml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vivid-macos-release
+          path: build/dist/
+          retention-days: 30
