@@ -31,6 +31,14 @@ def status() -> dict:
 
 
 @mcp.tool
+def get_version() -> dict:
+    """Version + compatibility surface: app_version, operator_abi (a loaded .dylib operator
+    must match), session_schema (a saved session is gated against this), and build_type.
+    Read this to check whether an operator package or saved session is compatible."""
+    return _post("get_version")
+
+
+@mcp.tool
 def get_session() -> dict:
     """The full session as JSON (window, every track's gain/clips/FX/state, the visuals
     chain + node base params, all mappings, view). The authoritative snapshot to read state."""

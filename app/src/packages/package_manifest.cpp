@@ -22,6 +22,7 @@ PackageManifest parse_package_manifest(const std::string& package_dir) {
 
     m.name    = j.value("name", std::string());
     m.version = j.value("version", std::string());
+    m.abi     = j.value("abi", 0);   // optional declared operator ABI (0 = unspecified)
     if (m.name.empty()) { m.error = "manifest missing \"name\""; return m; }
 
     if (!j.contains("operators") || !j["operators"].is_array()) {

@@ -16,7 +16,7 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
                      int win_w, int win_h, float split_x, float dock_h) {
     json j;
     if (!s) return j;
-    j["version"] = 1;
+    j["version"] = kSessionSchemaVersion;
     j["window"] = { {"w", win_w}, {"h", win_h}, {"split", split_x}, {"dock", dock_h} };
 
     const int nt = vivid_poc::session_track_count(s);
@@ -98,6 +98,15 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
 bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
+
+    // Version guard: refuse a session written by a NEWER Vivid rather than silently
+    // half-reading it (older/equal are read best-effort — fields are all optional).
+    int file_ver = 0;
+    if (classify_session_version(j, &file_ver) == SessionVersionStatus::TooNew) {
+        std::fprintf(stderr, "[vivid] session schema v%d is newer than supported v%d — refusing to load\n",
+                     file_ver, kSessionSchemaVersion);
+        return false;
+    }
 
     if (j.contains("window")) {
         win_w   = j["window"].value("w", win_w);

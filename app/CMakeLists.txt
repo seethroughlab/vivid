@@ -1,9 +1,15 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid_poc LANGUAGES C CXX)
+project(vivid_poc VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
+
+# Single version source of truth (P4.1): project(VERSION) -> generated version.h.
+# The bundle version strings + the get_version endpoint + the version-guard CI check
+# all read from here, so there's exactly one number to bump.
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in
+               ${CMAKE_CURRENT_BINARY_DIR}/generated/version.h @ONLY)
 if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "" FORCE)
 endif()
@@ -164,10 +170,11 @@ if(APPLE)
     set_target_properties(vivid_poc PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
-        MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 endif()
-target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
+target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb
+    ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
 # the toolchain + the in-tree operator_api headers + the wgpu include/lib dirs.
 file(GLOB _wgpu_dist "${CMAKE_BINARY_DIR}/_deps/wgpu-*-src")

@@ -14,6 +14,8 @@
 #include "transport.h"
 #include "persist.h"
 #include "midi/midi_clip.h"
+#include "version.h"                     // VIVID_VERSION (generated, P4.1)
+#include "operator_api/types.h"          // VIVID_OPERATOR_ABI_VERSION
 
 #include <chrono>
 #include <cctype>
@@ -140,6 +142,21 @@ void ControlServer::register_handlers() {
                            r["beats"] = c.transport->beats.load(std::memory_order_relaxed); }
         r["ops"] = c.graph ? c.graph->op_count() : 0;
         if (c.vgraph && c.vgraph->registry()) r["op_types"] = c.vgraph->registry()->type_names();  // spawnable ops
+        return r;
+    };
+    // Version surface for agents/clients + the version-guard check: the app version,
+    // the operator ABI a loaded dylib must match, and the session schema version a
+    // saved file is gated against. One place to read all three compatibility numbers.
+    handlers_["get_version"] = [](const ControlCtx&, const json&) {
+        json r = ok();
+        r["app_version"]    = VIVID_VERSION;
+        r["operator_abi"]   = static_cast<int>(VIVID_OPERATOR_ABI_VERSION);
+        r["session_schema"] = kSessionSchemaVersion;
+#ifdef NDEBUG
+        r["build_type"] = "release";
+#else
+        r["build_type"] = "debug";
+#endif
         return r;
     };
     // Full operator catalog for agent discovery: every registered op (built-in AND
