@@ -80,6 +80,7 @@ void run_frame_loop(App& app, Window& win) {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
+        app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
         // Resizable shell: reconfigure the surface (at framebuffer res) on resize.
         { int fbw = 0, fbh = 0; glfwGetFramebufferSize(window, &fbw, &fbh);

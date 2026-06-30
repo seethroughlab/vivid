@@ -143,6 +143,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/packages/package_manager.cpp
     src/packages/file_watcher.cpp
     src/packages/hot_reload.cpp
+    src/packages/hot_reload_manager.cpp
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp

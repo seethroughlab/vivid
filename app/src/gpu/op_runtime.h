@@ -69,6 +69,10 @@ public:
     // Cached descriptor for a type (built once, stable address). nullptr if unknown.
     const VividOperatorDescriptor* descriptor_for(const std::string& name) const;
 
+    // Drop the cached descriptor for `name` so it rebuilds on next descriptor_for —
+    // used after a hot-reload swaps the operator's dylib (its metadata may change).
+    void invalidate_descriptor(const std::string& name);
+
 private:
     struct Entry { std::string name; Factory factory; OpMeta meta; };
     std::vector<Entry> entries_;

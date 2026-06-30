@@ -107,6 +107,11 @@ const VividOperatorDescriptor* OpRegistry::descriptor_for(const std::string& nam
     return d ? &d->desc : nullptr;
 }
 
+void OpRegistry::invalidate_descriptor(const std::string& name) {
+    for (auto it = desc_cache_.begin(); it != desc_cache_.end(); ++it)
+        if ((*it)->name == name) { desc_cache_.erase(it); return; }
+}
+
 std::optional<OpInstance> OpRegistry::create(const std::string& name,
                                              std::vector<DescriptorValidationIssue>& issues) const {
     const Entry* e = find(name);
