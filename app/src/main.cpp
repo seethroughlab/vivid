@@ -39,7 +39,7 @@
 #include "gpu/video_player.h"
 #include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
 #include "packages/package_manager.h"  // P2.3: the managed installed-operators dir
-#include <mach-o/dyld.h>         // _NSGetExecutablePath (locate the bundle PlugIns/)
+#include "platform/platform.h"   // P3: executable_path (locate the bundle PlugIns/)
 #include <filesystem>
 #include <dirent.h>
 #include <vector>
@@ -75,8 +75,8 @@ int main() {
     { namespace fs = std::filesystem;
       std::vector<std::string> dirs;
       dirs.push_back(vivid::user_operators_dir());   // installed packages (or $VIVID_OPERATORS_DIR)
-      char exe[4096]; uint32_t sz = sizeof(exe);
-      if (_NSGetExecutablePath(exe, &sz) == 0)
+      const std::string exe = vivid::platform::executable_path();
+      if (!exe.empty())
           dirs.push_back((fs::path(exe).parent_path() / ".." / "PlugIns").lexically_normal().string());
       int loaded = 0;
       for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);

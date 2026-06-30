@@ -1,4 +1,5 @@
 #include "packages/package_manager.h"
+#include "platform/platform.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -8,9 +9,7 @@ namespace vivid {
 std::string user_operators_dir() {
     namespace fs = std::filesystem;
     if (const char* env = std::getenv("VIVID_OPERATORS_DIR")) return env;
-    const char* home = std::getenv("HOME");
-    fs::path dir = (home ? fs::path(home) : fs::path("."))
-        / "Library" / "Application Support" / "Vivid" / "operators";
+    fs::path dir = fs::path(platform::user_data_dir()) / "operators";
     std::error_code ec;
     fs::create_directories(dir, ec);
     return dir.string();

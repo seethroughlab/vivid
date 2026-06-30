@@ -96,6 +96,7 @@ target_sources(test_package_compile PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 target_link_libraries(test_package_compile PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
 target_compile_definitions(test_package_compile PRIVATE

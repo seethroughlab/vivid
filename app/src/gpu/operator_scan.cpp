@@ -4,6 +4,7 @@
 #include "gpu/loaded_operator.h"
 #include "gpu/op_runtime.h"
 #include "operator_api/types.h"
+#include "platform/platform.h"
 
 #include <filesystem>
 #include <cstdio>
@@ -57,7 +58,7 @@ int scan_operator_dir(const std::string& dir, OpRegistry& reg,
     int count = 0;
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
         if (ec) break;
-        if (!entry.is_regular_file() || entry.path().extension() != ".dylib") continue;
+        if (!entry.is_regular_file() || entry.path().extension() != platform::plugin_suffix()) continue;
         if (!load_and_register_operator(entry.path().string(), reg, loaders).empty()) ++count;
     }
     return count;
