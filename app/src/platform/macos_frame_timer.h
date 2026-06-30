@@ -16,6 +16,12 @@ namespace vivid {
 void macos_run_frame_loop(std::function<bool()> poll_events,
                           std::function<bool()> tick);
 
+/// Defeat macOS App Nap for this process, so the frame timer (and the control
+/// server it drains each tick) keeps pumping even when the app is backgrounded —
+/// required for agent-driven/MCP use where the app isn't the foreground app.
+/// Holds an NSProcessInfo activity for the process lifetime; idempotent.
+void macos_disable_app_nap(const char* reason);
+
 }  // namespace vivid
 
 #endif  // __APPLE__

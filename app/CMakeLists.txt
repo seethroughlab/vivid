@@ -130,6 +130,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp
+    src/platform/macos_app_nap.mm
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp

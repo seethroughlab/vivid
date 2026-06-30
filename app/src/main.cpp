@@ -60,6 +60,11 @@ int main() {
     win.app = &app;
     win.glfw = window;
 
+    // Keep the frame loop (and the control-server drain it runs each tick) pumping
+    // even when the app is backgrounded, so an agent can drive it over MCP without
+    // the window being frontmost.
+    vivid::macos_disable_app_nap("Vivid control server / agent-driven rendering");
+
     // Register the built-in visual operators + validate their descriptors (the
     // operator-based visuals model; VisualGraph drives them from P1.3). A loud
     // startup check that the real ops are well-formed (named codes).
