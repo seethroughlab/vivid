@@ -3,9 +3,25 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 namespace vivid {
+
+// Audio mapping sources encode the track INDEX ("track_3.transient"). Parse one into its
+// index + the remainder (".transient"); returns false for non-track sources ("master.*",
+// "viz.*"). Pure — shared by the delete-fix-up + its test.
+inline bool parse_track_source(const std::string& src, int& idx, std::string& rest) {
+    if (src.rfind("track_", 0) != 0) return false;
+    size_t i = 6;
+    if (i >= src.size() || !std::isdigit(static_cast<unsigned char>(src[i]))) return false;
+    size_t j = i;
+    while (j < src.size() && std::isdigit(static_cast<unsigned char>(src[j]))) ++j;
+    idx  = std::atoi(src.substr(i, j - i).c_str());
+    rest = src.substr(j);   // includes the leading '.'
+    return true;
+}
 
 // One wire in the unified mapping model: a named source drives a named
 // destination. The source value (clamped 0..1) is optionally inverted (polarity),
@@ -71,6 +87,23 @@ public:
 
     const std::vector<Mapping>& mappings() const { return maps_; }
     void clear_mappings() { maps_.clear(); }
+
+    // A track with stable id `id` was deleted: drop mappings sourced from it. No renumbering
+    // — sources encode the stable id, so survivors are untouched (a mapping always follows
+    // the same track). Dest IDs reference visual nodes, not tracks, so they're left. Returns
+    // # dropped.
+    int drop_track_sources(int id) {
+        int dropped = 0;
+        std::vector<Mapping> kept;
+        kept.reserve(maps_.size());
+        for (auto& m : maps_) {
+            int n; std::string rest;
+            if (parse_track_source(m.source, n, rest) && n == id) { ++dropped; continue; }
+            kept.push_back(m);
+        }
+        maps_.swap(kept);
+        return dropped;
+    }
 
 private:
     std::vector<Mapping> maps_;

@@ -10,8 +10,8 @@ using S = vivid::SessionVersionStatus;
 using json = nlohmann::json;
 
 int main() {
-    // The baseline this build understands.
-    CHECK(kSessionSchemaVersion == 1);
+    // The baseline this build understands (bumped to 2 for the dynamic-track set).
+    CHECK(kSessionSchemaVersion == 2);
 
     int fv = -1;
 
@@ -19,15 +19,16 @@ int main() {
     CHECK(classify_session_version(json{{"version", kSessionSchemaVersion}}, &fv) == S::Ok);
     CHECK(fv == kSessionSchemaVersion);
 
-    // Missing "version" -> treated as the v1 baseline (pre-versioned files), so Ok here.
+    // Missing "version" -> treated as the v1 baseline (pre-versioned files); older than the
+    // current schema, so Migrated (restored onto the pre-built role set).
     fv = -1;
-    CHECK(classify_session_version(json{{"window", json::object()}}, &fv) == S::Ok);
+    CHECK(classify_session_version(json{{"window", json::object()}}, &fv) == S::Migrated);
     CHECK(fv == 1);
 
-    // Older than current -> Migrated (best-effort read; fields are individually optional).
+    // An explicit older version -> Migrated (best-effort read; fields are individually optional).
     fv = -1;
-    CHECK(classify_session_version(json{{"version", 0}}, &fv) == S::Migrated);
-    CHECK(fv == 0);
+    CHECK(classify_session_version(json{{"version", 1}}, &fv) == S::Migrated);
+    CHECK(fv == 1);
 
     // Newer than current -> TooNew (REFUSE: closes the old silent-accept gap).
     fv = -1;
@@ -35,8 +36,8 @@ int main() {
     CHECK(fv == kSessionSchemaVersion + 1);
     CHECK(classify_session_version(json{{"version", 999}}) == S::TooNew);
 
-    // A non-object document defaults to the baseline rather than throwing.
-    CHECK(classify_session_version(json("not-an-object")) == S::Ok);
+    // A non-object document defaults to the v1 baseline rather than throwing.
+    CHECK(classify_session_version(json("not-an-object")) == S::Migrated);
 
     return vivid::test::summary("test_version_guard");
 }

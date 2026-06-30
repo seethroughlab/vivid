@@ -45,6 +45,9 @@ target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohma
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)
 
+# Dynamic tracks: stable-id drop-on-delete of mappings (mapping.h is header-only -> headless).
+vivid_add_test(test_track_drop_mappings)
+
 # P4.3: runtime-health rollup + serialization (severity()/to_json() are App-free).
 vivid_add_test(test_runtime_health)
 target_sources(test_runtime_health PRIVATE

@@ -29,6 +29,7 @@ namespace vivid_poc {
 struct Track {
     Vst3Handle*           handle = nullptr;
     std::string           name;
+    int                   id = -1;   // stable identity (monotonic; survives reorders/deletes)
     std::vector<MidiClip> clips;          // one per scene
     ClipScheduler         sched;
     std::atomic<int>      active{0};
@@ -66,11 +67,34 @@ struct Track {
 
 struct Session {
     Vst3HostApp host;
+    // `tracks` is the UI/main-thread-authoritative list + owner (every session_* accessor
+    // indexes it). The audio thread NEVER touches it; it iterates `tracks_view`, refreshed
+    // from `tracks_pub` via tracks_gen + try_lock — the same edit-mirror pattern as the
+    // per-track FX list, lifted to the track list. Removed tracks move to `tracks_retired`
+    // (kept alive so an in-flight audio block never sees a freed Track) and are freed at
+    // shutdown. All three Track* vectors are reserved to kMaxTracks so the swap + pushes
+    // never reallocate.
     std::vector<std::unique_ptr<Track>> tracks;
+    std::vector<std::unique_ptr<Track>> tracks_retired;
+    std::vector<Track*>   tracks_pub;     // UI-published snapshot (guarded by tracks_mtx)
+    std::vector<Track*>   tracks_view;    // audio working copy (audio thread only)
+    std::mutex            tracks_mtx;
+    std::atomic<uint64_t> tracks_gen{0};
+    uint64_t              tracks_gen_seen = 0;
+    int       next_track_id = 0;   // monotonic source of stable per-track IDs
     int       scenes = 3;
     long long last_bar = -1;
     uint32_t  sample_rate = 0;
 };
+
+// Republish the current track membership for the audio thread (UI/main thread only).
+// Call after any add/remove; the audio thread picks it up on its next block.
+static void rebuild_track_view(Session* s) {
+    std::lock_guard<std::mutex> lk(s->tracks_mtx);
+    s->tracks_pub.clear();
+    for (auto& tp : s->tracks) s->tracks_pub.push_back(tp.get());
+    s->tracks_gen.fetch_add(1, std::memory_order_release);
+}
 
 static Vst3Handle* load_effect(const std::string& path, uint32_t sr, Vst3HostApp* host) {
     Vst3Handle* h = vst3_load_plugin(path.c_str(), "", sr, std::string(), host, /*as_effect*/true);
@@ -166,6 +190,20 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     return t;
 }
 
+// A dynamically-added instrument track: empty clips (the user authors them) across all
+// scenes, so set_clip/launch work immediately.
+static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int scenes) {
+    auto* t = new Track();
+    t->handle = h;
+    t->name = name;
+    for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
+    t->sched.reset(&t->clips[0]);
+    t->nev.reserve(64);
+    t->edit_clips = t->clips;
+    t->effects.reserve(16); t->effects_edit.reserve(16);
+    return t;
+}
+
 // Load the first plugin matching a role's preference list (never "atoms" — no
 // license here), skipping anything that isn't an instrument with a MIDI input.
 static Vst3Handle* load_role(const std::vector<std::string>& bundles,
@@ -204,11 +242,15 @@ Session* session_create(uint32_t sample_rate) {
 
     auto* s = new Session();
     s->sample_rate = sample_rate;
+    s->tracks.reserve(kMaxTracks);
+    s->tracks_pub.reserve(kMaxTracks);
+    s->tracks_view.reserve(kMaxTracks);
     for (const auto& role : kRoles) {
         std::string name;
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
         s->tracks.emplace_back(make_track(h, name, role.kind));
+        s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
 
@@ -277,11 +319,13 @@ Session* session_create(uint32_t sample_rate) {
         }
         at->active.store(-1, std::memory_order_relaxed);  // start stopped
         s->tracks.emplace_back(std::move(at));
+        s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: Audio (sampler, %zu loops)\n",
                      s->tracks.size() - 1, s->tracks.back()->aud_clips.size());
     }
 
     if (s->tracks.empty()) { delete s; return nullptr; }
+    rebuild_track_view(s);   // publish the initial set to the audio thread
     std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
     return s;
 }
@@ -290,6 +334,14 @@ int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.siz
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
 const char* session_track_name(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->name.c_str() : "";
+}
+int session_track_id(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->id : -1;
+}
+void session_set_track_id(Session* s, int t, int id) {   // load-time restore of a saved id
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
+    s->tracks[t]->id = id;
+    if (id >= s->next_track_id) s->next_track_id = id + 1;   // keep new ids from colliding
 }
 int  session_active_clip(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;
@@ -440,8 +492,21 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) 
 
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar) {
-    if (!s || s->tracks.empty()) return false;
+    if (!s) return false;
     std::memset(out, 0, sizeof(float) * 2 * frames);
+
+    // Refresh the audio-thread track view if the UI added/removed a track (cheap gen-
+    // counter fast-path; the copy is into reserved capacity, so no allocation). On a
+    // contended block we keep the previous view and retry next block.
+    if (s->tracks_gen.load(std::memory_order_acquire) != s->tracks_gen_seen) {
+        if (s->tracks_mtx.try_lock()) {
+            s->tracks_view = s->tracks_pub;
+            s->tracks_gen_seen = s->tracks_gen.load(std::memory_order_acquire);
+            s->tracks_mtx.unlock();
+        }
+    }
+    if (s->tracks_view.empty()) return false;
+
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
     const long long bar = static_cast<long long>(std::floor(beats / bpb));
     const bool new_bar = bar != s->last_bar;
@@ -449,7 +514,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
 
     bool any = false;
-    for (auto& tp : s->tracks) {
+    for (Track* tp : s->tracks_view) {
         Track& t = *tp;
         if (!t.is_audio && (!t.handle || !t.handle->processing)) continue;
         any = true;
@@ -582,11 +647,13 @@ static void destroy_handle(Vst3Handle* h) {
 }
 void session_destroy(Session* s) {
     if (!s) return;
-    for (auto& tp : s->tracks) {
-        for (Vst3Handle* fx : tp->effects_edit) destroy_handle(fx);  // authoritative FX list
-        for (Vst3Handle* fx : tp->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
-        destroy_handle(tp->handle);
-    }
+    auto teardown = [](Track* t) {
+        for (Vst3Handle* fx : t->effects_edit) destroy_handle(fx);  // authoritative FX list
+        for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
+        destroy_handle(t->handle);
+    };
+    for (auto& tp : s->tracks)         teardown(tp.get());
+    for (auto& tp : s->tracks_retired) teardown(tp.get());   // tracks removed during the run
     delete s;
 }
 
@@ -645,6 +712,91 @@ bool session_add_effect_by_index(Session* s, int t, int i) {
     for (const auto& b : bundles)
         if (name_has(b, kEffectCatalog[i].match)) return session_add_effect(s, t, b.c_str());
     return false;
+}
+
+// --- Dynamic tracks (create/delete) ---
+
+// A small catalog of instruments offered in the "+ Track" menu.
+static const struct { const char* label; const char* match; } kInstrumentCatalog[] = {
+    { "Pigments", "pigments" }, { "Serum 2", "serum" }, { "Vital", "vital" },
+    { "EZdrummer 3", "ezdrummer" }, { "Battery", "battery" },
+};
+int session_available_instrument_count() {
+    return static_cast<int>(sizeof(kInstrumentCatalog) / sizeof(kInstrumentCatalog[0]));
+}
+const char* session_available_instrument_name(int i) {
+    return (i >= 0 && i < session_available_instrument_count()) ? kInstrumentCatalog[i].label : "";
+}
+
+// Resolve `spec` (a catalog label, a plugin-name substring, or a .vst3 path) to a loaded
+// instrument with a MIDI input. Returns nullptr if nothing matched/loaded.
+static Vst3Handle* load_instrument_spec(Session* s, const char* spec, std::string& out_name) {
+    const std::string sp = spec ? spec : "";
+    if (sp.size() > 5 && sp.compare(sp.size() - 5, 5, ".vst3") == 0 && std::filesystem::exists(sp)) {
+        Vst3Handle* h = vst3_load_plugin(sp.c_str(), "", s->sample_rate, std::string(), &s->host);
+        if (h && h->component && h->component->getBusCount(kEvent, kInput) > 0) {
+            if (h->processor->setProcessing(true) != kResultOk) {}
+            h->processing = true;
+            out_name = h->plugin_name.empty() ? sp : h->plugin_name;
+            return h;
+        }
+        if (h) { h->destroy(); delete h; }
+        return nullptr;
+    }
+    const char* match = spec;   // catalog label -> its match substring; else spec is the substring
+    for (int i = 0; i < session_available_instrument_count(); ++i)
+        if (sp == kInstrumentCatalog[i].label) { match = kInstrumentCatalog[i].match; break; }
+    std::vector<std::string> bundles;
+    list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
+    if (const char* home = std::getenv("HOME"))
+        list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
+    const char* prefer[2] = { match, nullptr };
+    return load_role(bundles, prefer, s->sample_rate, &s->host, out_name);
+}
+
+int session_add_instrument_track(Session* s, const char* instrument) {
+    if (!s || !instrument || !*instrument) return -1;
+    if (static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
+    std::string name;
+    Vst3Handle* h = load_instrument_spec(s, instrument, name);
+    if (!h) { std::fprintf(stderr, "[Session] add track: no instrument matched '%s'\n", instrument); return -1; }
+    s->tracks.emplace_back(make_instrument_track(h, name, s->scenes));
+    s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_view(s);
+    const int idx = static_cast<int>(s->tracks.size()) - 1;
+    std::fprintf(stderr, "[Session] + track %d: %s\n", idx, name.c_str());
+    return idx;
+}
+
+int session_add_audio_track(Session* s) {
+    if (!s || static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
+    auto at = std::make_unique<Track>();
+    at->is_audio = true;
+    at->name = "Audio";
+    at->gain.store(0.7f, std::memory_order_relaxed);
+    for (int i = 0; i < 8; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
+    at->aud_clips.push_back(gen_sub_pulse(s->sample_rate, 124.0));
+    at->aud_clips.push_back(gen_noise_sweep(s->sample_rate, 124.0));
+    at->aud_clips.push_back(gen_bell_loop(s->sample_rate, 124.0));
+    at->active.store(-1, std::memory_order_relaxed);
+    s->tracks.emplace_back(std::move(at));
+    s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_view(s);
+    const int idx = static_cast<int>(s->tracks.size()) - 1;
+    std::fprintf(stderr, "[Session] + audio track %d\n", idx);
+    return idx;
+}
+
+bool session_remove_track(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return false;
+    // Move (don't free) the track to the retired list: an in-flight audio block may still
+    // hold it in tracks_view until the next sync, so it must outlive this call. Freed at
+    // session_destroy (no plugin teardown on the audio thread).
+    s->tracks_retired.push_back(std::move(s->tracks[t]));
+    s->tracks.erase(s->tracks.begin() + t);
+    rebuild_track_view(s);
+    std::fprintf(stderr, "[Session] - track %d (retired)\n", t);
+    return true;
 }
 
 // --- Device parameters (P24). device: 0 = instrument, 1+ = effects. ---

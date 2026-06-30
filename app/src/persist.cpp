@@ -29,6 +29,11 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
         jt["active"] = vivid_poc::session_active_clip(s, t);
         const bool aud = vivid_poc::session_track_is_audio(s, t);
         jt["is_audio"] = aud;
+        // v2: the track set is the document. `kind` + `instrument` let load recreate the
+        // track (the track name is the plugin name, which doubles as the catalog/match spec).
+        jt["kind"] = aud ? "audio" : "instrument";
+        jt["id"]   = vivid_poc::session_track_id(s, t);   // stable id (mapping sources reference it)
+        if (!aud) jt["instrument"] = vivid_poc::session_track_name(s, t);
         if (aud) {
             json trims = json::array();
             for (int sc = 0; sc < ns; ++sc) {
@@ -95,6 +100,31 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
     return j;
 }
 
+// v2: the document owns the track SET. Replace the live tracks with the document's, so
+// the existing per-track restore loop (below) then fills state onto them by index. An
+// instrument that won't load on this machine falls back to an audio placeholder, keeping
+// indices aligned with the document.
+static void rebuild_tracks_from_doc(vivid_poc::Session* s, const json& T) {
+    while (vivid_poc::session_track_count(s) > 0)
+        vivid_poc::session_remove_track(s, vivid_poc::session_track_count(s) - 1);
+    for (const auto& jt : T) {
+        const std::string kind = jt.value("kind", std::string("instrument"));
+        int added;
+        if (kind == "audio") {
+            added = vivid_poc::session_add_audio_track(s);
+        } else {
+            const std::string inst = jt.value("instrument", jt.value("name", std::string()));
+            added = vivid_poc::session_add_instrument_track(s, inst.c_str());
+            if (added < 0) {
+                std::fprintf(stderr, "[vivid] load: instrument '%s' unavailable — placeholder audio track\n", inst.c_str());
+                added = vivid_poc::session_add_audio_track(s);
+            }
+        }
+        // Restore the stable id so saved mappings ("track_<id>.…") reload onto the same track.
+        if (added >= 0 && jt.contains("id")) vivid_poc::session_set_track_id(s, added, jt.value("id", added));
+    }
+}
+
 bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
@@ -107,6 +137,11 @@ bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGrap
                      file_ver, kSessionSchemaVersion);
         return false;
     }
+
+    // v2+: rebuild the track set from the document before restoring per-track state.
+    // (v1 files keep the pre-built role set and restore onto it by index — migration.)
+    if (file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
+        rebuild_tracks_from_doc(s, j["tracks"]);
 
     if (j.contains("window")) {
         win_w   = j["window"].value("w", win_w);

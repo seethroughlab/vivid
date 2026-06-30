@@ -100,7 +100,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.track_win[t] && !vst3_plugin_window_is_open(win.track_win[t])) {
                 vst3_plugin_window_close(win.track_win[t]); win.track_win[t] = nullptr;
             }
-        for (int k = 0; k < 8; ++k)
+        for (int k = 0; k < vivid_poc::kMaxTracks; ++k)
             if (win.fx_win[k] && !vst3_plugin_window_is_open(win.fx_win[k])) {
                 vst3_plugin_window_close(win.fx_win[k]); win.fx_win[k] = nullptr;
             }
@@ -115,16 +115,19 @@ void run_frame_loop(App& app, Window& win) {
         graph.set_value(2, std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
         graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
         graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
-        for (int t = 0; app.session && t < vivid_poc::session_track_count(app.session) && t < 8; ++t) {
+        for (int t = 0; app.session && t < vivid_poc::session_track_count(app.session) && t < vivid_poc::kMaxTracks; ++t) {
             const float lv = vivid_poc::session_track_level(app.session, t);
             win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
             win.trkTrHold[t] *= 0.85f;
             win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid_poc::session_track_transient(app.session, t));
-            graph.set_value(char_id_for(t, 0), win.trkReact[t]);
-            graph.set_value(char_id_for(t, 1), std::min(1.0f, win.trkTrHold[t]));
-            graph.set_value(char_id_for(t, 2), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 0) * 5.0f));
-            graph.set_value(char_id_for(t, 3), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 1) * 8.0f));
-            graph.set_value(char_id_for(t, 4), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 2) * 12.0f));
+            // Publish keyed by the track's STABLE id, not its index, so a mapping follows the
+            // track across reorders/deletes. The smoothing arrays stay index-keyed (transient).
+            const int tid = vivid_poc::session_track_id(app.session, t);
+            graph.set_value(char_id_for(tid, 0), win.trkReact[t]);
+            graph.set_value(char_id_for(tid, 1), std::min(1.0f, win.trkTrHold[t]));
+            graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 0) * 5.0f));
+            graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 1) * 8.0f));
+            graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 2) * 12.0f));
         }
         // Resolve each visual node's params from the registry (writes into the
         // VisualGraph nodes) and publish the viz.* return-path sources.
@@ -214,6 +217,7 @@ void run_frame_loop(App& app, Window& win) {
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid_poc::session_track_name(app.session, win.menu.src) : "track"));
             draw_fx_menu(ui, win.fx_menu);
+            draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);

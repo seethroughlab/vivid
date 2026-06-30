@@ -1,5 +1,6 @@
 #pragma once
-#include "ui/layout.h"   // vivid::ui::Rect / DockGeom + window-relative geometry
+#include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
+#include "audio/vst3_host.h"  // vivid_poc::kMaxTracks (per-track array sizing)
 
 struct GLFWwindow;
 struct Vst3PluginWindow;
@@ -32,7 +33,7 @@ struct Window {
 
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
-    CtxMenu menu, fx_menu, map_menu;
+    CtxMenu menu, fx_menu, map_menu, track_menu;   // track_menu = the "+ Track" instrument picker
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
     int     param_drag = -1; bool param_is_node = false;
@@ -41,13 +42,13 @@ struct Window {
     double  last_dev_t = -1; int last_dev_i = -1;
     int     gain_drag = -1;
     bool    split_drag = false; double split_last_t = -1.0;
-    Vst3PluginWindow* track_win[8] = {};      // open instrument editor windows, per track
-    Vst3PluginWindow* fx_win[8] = {};         // open effect editor windows (pool)
+    Vst3PluginWindow* track_win[vivid_poc::kMaxTracks] = {};  // open instrument editor windows, per track
+    Vst3PluginWindow* fx_win[vivid_poc::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
 
     // Frame-side display smoothing (per window).
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
-    float trkReact[8] = {0}, trkTrHold[8] = {0};
+    float trkReact[vivid_poc::kMaxTracks] = {0}, trkTrHold[vivid_poc::kMaxTracks] = {0};
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }
