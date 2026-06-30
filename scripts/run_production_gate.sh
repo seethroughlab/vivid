@@ -14,6 +14,9 @@ REPO_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
 BUILD_DIR="${VIVID_BUILD_DIR:-app/build}"
+# Absolutize: `ctest --output-junit` writes RELATIVE TO --test-dir, not CWD, so a relative
+# build dir would scatter the JUnit into a nested path. Resolve everything to absolute.
+case "$BUILD_DIR" in /*) ;; *) BUILD_DIR="$REPO_ROOT/$BUILD_DIR" ;; esac
 REPORTS_DIR="$BUILD_DIR/reports"
 mkdir -p "$REPORTS_DIR"
 
