@@ -39,26 +39,21 @@ void macos_run_frame_loop(std::function<bool()> poll_events,
         return;
     }
 
-    // Register timer for all modes we need it to fire in.
-    // kCFRunLoopCommonModes does NOT include tracking/modal on macOS (unlike iOS).
+    // The timer drives tick() ONLY inside nested tracking/modal run-loops — the ones
+    // a hosted plugin GUI enters on mouse-down, where the outer loop is blocked inside
+    // glfwPollEvents(). It is intentionally NOT registered in default mode: macOS does
+    // not fire run-loop timers for a *background* app, so relying on the timer made the
+    // frame loop (and the control-server drain it runs) stall whenever the app wasn't
+    // frontmost. Instead the outer loop ticks directly, so the loop keeps pumping
+    // regardless of foreground — required for agent-driven/MCP use.
     CFRunLoopRef rl = CFRunLoopGetMain();
-    CFRunLoopAddTimer(rl, ctx.timer, kCFRunLoopDefaultMode);
     CFRunLoopAddTimer(rl, ctx.timer, CFSTR("NSEventTrackingRunLoopMode"));
     CFRunLoopAddTimer(rl, ctx.timer, CFSTR("NSModalPanelRunLoopMode"));
 
-    // Outer loop: poll events (may block during tracking), then let the timer fire.
-    // During tracking, glfwPollEvents() blocks inside [NSApp sendEvent:], and
-    // AppKit runs CFRunLoopRunInMode(NSEventTrackingRunLoopMode, ...) internally.
-    // Our timer fires in that nested run loop, rendering frames continuously.
-    // When tracking ends, glfwPollEvents() returns, and we resume the outer loop.
     while (!ctx.should_stop) {
-        if (!poll_events()) {
-            ctx.should_stop = true;
-            break;
-        }
-        // Let the timer fire once in default mode, then loop back to poll.
-        // timeout=1.0s is a ceiling — the timer fires at 1/240s, waking the loop.
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0, true);
+        if (!poll_events()) { ctx.should_stop = true; break; }
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 1.0 / 120.0, true);
+        if (ctx.tick && !ctx.tick()) { ctx.should_stop = true; break; }
     }
 
     CFRunLoopTimerInvalidate(ctx.timer);

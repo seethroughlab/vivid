@@ -130,6 +130,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window.mm
     src/platform/macos_frame_timer.cpp
+    src/platform/macos_app_nap.mm
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -137,6 +138,9 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/gpu/operator_loader.cpp
     src/gpu/loaded_operator.cpp
     src/gpu/operator_scan.cpp
+    src/packages/package_manifest.cpp
+    src/packages/package_compiler.cpp
+    src/packages/package_manager.cpp
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -149,8 +153,20 @@ set_target_properties(vivid_poc PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION "0.1"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1")
 target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb)
+# Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
+# the toolchain + the in-tree operator_api headers + the wgpu include/lib dirs.
+file(GLOB _wgpu_dist "${CMAKE_BINARY_DIR}/_deps/wgpu-*-src")
+set(_wgpu_root "")
+if(_wgpu_dist)
+    list(GET _wgpu_dist 0 _wgpu_root)
+endif()
 target_compile_definitions(vivid_poc PRIVATE
-    VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf")
+    VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf"
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
+    VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
+    VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
 target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib "-framework Cocoa")
 
 if(APPLE)

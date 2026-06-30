@@ -26,6 +26,16 @@ struct OpInstance {
     int output_port_count = 0;
 };
 
+// Optional operator-level metadata for discovery/search (MCP, UI). Sourced from
+// the op's static members (kDisplayName/kKeywords/kSummary) for built-ins, or from
+// a loaded dylib's descriptor. Owned by the registry Entry (stable strings).
+struct OpMeta {
+    bool                     has = false;
+    std::string              display_name;
+    std::string              summary;
+    std::vector<std::string> keywords;
+};
+
 // Stable per-type descriptor storage (the VividOperatorDescriptor holds raw
 // pointers into these vectors; all pointer fields copied from ParamBase point at
 // static string literals owned by the operator class, so they outlive a temp).
@@ -33,6 +43,11 @@ struct OpDescriptor {
     std::string                        name;
     std::vector<VividParamDescriptor>  params;
     std::vector<VividPortDescriptor>   ports;
+    // Owned metadata strings the descriptor's const char* fields point into.
+    std::string                        m_display_name;
+    std::string                        m_summary;
+    std::vector<std::string>           m_keywords;
+    std::vector<const char*>           m_keyword_ptrs;
     VividOperatorDescriptor            desc{};
 };
 
@@ -41,6 +56,7 @@ public:
     using Factory = std::function<std::unique_ptr<OperatorBase>()>;
 
     void register_type(const std::string& name, Factory f);
+    void register_type(const std::string& name, Factory f, OpMeta meta);
     bool has(const std::string& name) const;
     std::vector<std::string> type_names() const;   // registration order
 
@@ -54,7 +70,7 @@ public:
     const VividOperatorDescriptor* descriptor_for(const std::string& name) const;
 
 private:
-    struct Entry { std::string name; Factory factory; };
+    struct Entry { std::string name; Factory factory; OpMeta meta; };
     std::vector<Entry> entries_;
     const Entry* find(const std::string& name) const;
     // lazily-built per-type descriptors (stable via unique_ptr).
@@ -71,5 +87,27 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
 // Write resolved values into the instance's params (collect_params order).
 // Copies min(count, param_ptrs.size()) values.
 void sync_params(OpInstance& inst, const float* values, int count);
+
+// Extract operator-level metadata (display_name/keywords/summary) from an op type's
+// optional static members (kDisplayName/kKeywords/kSummary). Empty when none exist.
+template <typename T>
+OpMeta extract_op_meta() {
+    OpMeta m;
+    if (const char* d = detail::get_display_name<T>()) m.display_name = d;
+    if (const char* s = detail::get_summary<T>())      m.summary = s;
+    const char* const* kw = detail::get_keywords_data<T>();
+    const uint32_t kn = detail::get_keywords_count<T>();
+    for (uint32_t i = 0; i < kn; ++i) if (kw && kw[i]) m.keywords.emplace_back(kw[i]);
+    m.has = !m.display_name.empty() || !m.summary.empty() || !m.keywords.empty();
+    return m;
+}
+
+// Register a compiled-in operator T by name, capturing its static metadata so the
+// descriptor (and the MCP discovery endpoint) carry display_name/keywords/summary.
+template <typename T>
+void register_op(OpRegistry& reg, const std::string& name) {
+    reg.register_type(name, [] { return std::unique_ptr<OperatorBase>(new T); },
+                      extract_op_meta<T>());
+}
 
 }  // namespace vivid

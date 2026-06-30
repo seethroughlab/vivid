@@ -50,7 +50,12 @@ void sync_params(OpInstance& inst, const float* values, int count) {
 
 void OpRegistry::register_type(const std::string& name, Factory f) {
     if (find(name)) return;  // first registration wins
-    entries_.push_back({ name, std::move(f) });
+    entries_.push_back({ name, std::move(f), {} });
+}
+
+void OpRegistry::register_type(const std::string& name, Factory f, OpMeta meta) {
+    if (find(name)) return;  // first registration wins
+    entries_.push_back({ name, std::move(f), std::move(meta) });
 }
 
 const OpRegistry::Entry* OpRegistry::find(const std::string& name) const {
@@ -79,6 +84,19 @@ OpDescriptor* OpRegistry::ensure_descriptor(const std::string& name) const {
     tmp->collect_ports(ports);
     auto cache = std::make_unique<OpDescriptor>();
     build_descriptor(*tmp, name, params, ports, *cache);
+    // Overlay operator-level metadata (display_name/keywords/summary) for discovery,
+    // with stable owned storage the descriptor's const char* fields point into.
+    if (e->meta.has) {
+        cache->m_display_name = e->meta.display_name;
+        cache->m_summary      = e->meta.summary;
+        cache->m_keywords     = e->meta.keywords;
+        cache->m_keyword_ptrs.clear();
+        for (const auto& k : cache->m_keywords) cache->m_keyword_ptrs.push_back(k.c_str());
+        cache->desc.display_name  = cache->m_display_name.empty() ? nullptr : cache->m_display_name.c_str();
+        cache->desc.summary       = cache->m_summary.empty()      ? nullptr : cache->m_summary.c_str();
+        cache->desc.keywords      = cache->m_keyword_ptrs.empty() ? nullptr : cache->m_keyword_ptrs.data();
+        cache->desc.keyword_count = static_cast<uint32_t>(cache->m_keyword_ptrs.size());
+    }
     OpDescriptor* raw = cache.get();
     desc_cache_.push_back(std::move(cache));
     return raw;

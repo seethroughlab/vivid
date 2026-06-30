@@ -38,6 +38,7 @@
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
 #include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
+#include "packages/package_manager.h"  // P2.3: the managed installed-operators dir
 #include <mach-o/dyld.h>         // _NSGetExecutablePath (locate the bundle PlugIns/)
 #include <filesystem>
 #include <dirent.h>
@@ -59,6 +60,11 @@ int main() {
     win.app = &app;
     win.glfw = window;
 
+    // Keep the frame loop (and the control-server drain it runs each tick) pumping
+    // even when the app is backgrounded, so an agent can drive it over MCP without
+    // the window being frontmost.
+    vivid::macos_disable_app_nap("Vivid control server / agent-driven rendering");
+
     // Register the built-in visual operators + validate their descriptors (the
     // operator-based visuals model; VisualGraph drives them from P1.3). A loud
     // startup check that the real ops are well-formed (named codes).
@@ -68,7 +74,7 @@ int main() {
     // flow through OpRegistry identically to built-ins (built-ins win on a clash).
     { namespace fs = std::filesystem;
       std::vector<std::string> dirs;
-      if (const char* env = std::getenv("VIVID_OPERATORS_DIR")) dirs.emplace_back(env);
+      dirs.push_back(vivid::user_operators_dir());   // installed packages (or $VIVID_OPERATORS_DIR)
       char exe[4096]; uint32_t sz = sizeof(exe);
       if (_NSGetExecutablePath(exe, &sz) == 0)
           dirs.push_back((fs::path(exe).parent_path() / ".." / "PlugIns").lexically_normal().string());

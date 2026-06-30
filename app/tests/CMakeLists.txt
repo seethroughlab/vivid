@@ -69,3 +69,35 @@ target_link_libraries(test_loaded_operator PRIVATE ${CMAKE_DL_LIBS})
 add_dependencies(test_loaded_operator test_fixture_op)
 target_compile_definitions(test_loaded_operator PRIVATE
     FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")
+
+# P2.2′: operator discovery metadata (display_name/keywords/summary) reaches the
+# descriptor for both a compiled-in op and a loaded dylib op.
+vivid_add_test(test_op_metadata)
+target_sources(test_op_metadata PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_op_metadata PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(test_op_metadata test_fixture_op)
+target_compile_definitions(test_op_metadata PRIVATE
+    FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")
+
+# P2.3: package pipeline — parse manifest, compile the operator via clang++, load it.
+# Compiles a GPU-free fixture op so it needs no wgpu at test time (portable/headless).
+vivid_add_test(test_package_compile)
+target_sources(test_package_compile PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_compiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_package_compile PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+target_compile_definitions(test_package_compile PRIVATE
+    PKG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg"
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")

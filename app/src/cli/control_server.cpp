@@ -7,6 +7,9 @@
 #include "audio/vst3_host.h"
 #include "ui/node_graph.h"
 #include "gpu/visual_graph.h"
+#include "gpu/operator_scan.h"          // load_and_register_operator (live install)
+#include "packages/package_manager.h"   // install_package
+#include "app/app.h"                     // App: op_registry + op_loaders
 #include "mapping.h"
 #include "transport.h"
 #include "persist.h"
@@ -137,6 +140,76 @@ void ControlServer::register_handlers() {
                            r["beats"] = c.transport->beats.load(std::memory_order_relaxed); }
         r["ops"] = c.graph ? c.graph->op_count() : 0;
         if (c.vgraph && c.vgraph->registry()) r["op_types"] = c.vgraph->registry()->type_names();  // spawnable ops
+        return r;
+    };
+    // Full operator catalog for agent discovery: every registered op (built-in AND
+    // loaded dylib) with its display_name/summary/keywords + param + port schema.
+    handlers_["list_operators"] = [](const ControlCtx& c, const json&) {
+        if (!c.vgraph || !c.vgraph->registry()) return err(code::kNoVgraph, "no visuals graph");
+        auto ptype = [](uint32_t t) -> const char* {
+            switch (t) { case VIVID_PARAM_INT: return "int"; case VIVID_PARAM_BOOL: return "bool";
+                         case VIVID_PARAM_FILE: return "file"; case VIVID_PARAM_TEXT: return "text";
+                         default: return "float"; }
+        };
+        auto* reg = c.vgraph->registry();
+        json arr = json::array();
+        for (const auto& name : reg->type_names()) {
+            const VividOperatorDescriptor* d = reg->descriptor_for(name);
+            if (!d) continue;
+            json jo;
+            jo["name"] = name;
+            if (d->display_name && *d->display_name) jo["display_name"] = d->display_name;
+            if (d->summary && *d->summary)           jo["summary"] = d->summary;
+            json kws = json::array();
+            for (uint32_t i = 0; i < d->keyword_count; ++i)
+                if (d->keywords && d->keywords[i]) kws.push_back(d->keywords[i]);
+            jo["keywords"] = kws;
+            jo["gpu"] = d->has_process_gpu != 0;
+            json params = json::array();
+            for (uint32_t i = 0; i < d->param_count; ++i) {
+                const VividParamDescriptor& p = d->params[i];
+                json jp = { {"name", p.name ? p.name : ""}, {"type", ptype(p.type)},
+                            {"default", p.default_value}, {"min", p.min_value}, {"max", p.max_value} };
+                if (p.description && *p.description) jp["description"] = p.description;
+                if (p.group && *p.group)             jp["group"] = p.group;
+                params.push_back(jp);
+            }
+            jo["params"] = params;
+            json ports = json::array();
+            for (uint32_t i = 0; i < d->port_count; ++i)
+                ports.push_back({ {"name", d->ports[i].name ? d->ports[i].name : ""},
+                                  {"dir", d->ports[i].direction == VIVID_PORT_OUTPUT ? "out" : "in"} });
+            jo["ports"] = ports;
+            arr.push_back(jo);
+        }
+        json r = ok(); r["operators"] = arr; return r;
+    };
+    // Install an operator package from a directory (its vivid-package.json + sources):
+    // compile each operator to a .dylib (managed dir) and register it LIVE — the new
+    // op is immediately spawnable, no restart. (Compile blocks the frame briefly; a
+    // background compile is P2.4.) New ops appear in list_operators afterwards.
+    handlers_["install_operator_package"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app || !c.vgraph || !c.vgraph->registry()) return err(code::kNoVgraph, "no visuals graph");
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "install requires \"path\" (a package directory)");
+        PackageInstallResult ir = install_package(path);
+        if (!ir.ok) return err(code::kBadArg, ir.error);
+        int registered = 0;
+        json ops = json::array();
+        for (const auto& ci : ir.compiles) {
+            json jo = { {"name", ci.op_name}, {"compiled", ci.success} };
+            if (!ci.success) {
+                jo["error"] = ci.error_output;
+            } else {
+                const std::string regname = load_and_register_operator(
+                    ci.dylib_path, c.app->op_registry, c.app->op_loaders);
+                jo["registered"] = !regname.empty();
+                if (!regname.empty()) { jo["op"] = regname; ++registered; }
+                else jo["note"] = "compiled but not registered (name already in use)";
+            }
+            ops.push_back(jo);
+        }
+        json r = ok(); r["package"] = ir.name; r["registered"] = registered; r["operators"] = ops;
         return r;
     };
     handlers_["get_session"] = [](const ControlCtx& c, const json&) {
