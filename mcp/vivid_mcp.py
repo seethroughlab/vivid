@@ -226,6 +226,31 @@ def remove_effect(track: int, effect: int) -> dict:
     return _post("remove_effect", {"track": track, "effect": effect})
 
 
+@mcp.tool
+def list_instruments() -> dict:
+    """The instrument catalog you can pass to add_track (a label like "Pigments"; a .vst3
+    path also works). Call before add_track to see what instruments are available."""
+    return _post("list_instruments")
+
+
+@mcp.tool
+def add_track(instrument: str = "", kind: str = "instrument") -> dict:
+    """Create a track. kind="instrument" (default) needs `instrument` (a list_instruments
+    label or a .vst3 path); kind="audio" makes a sampler track (no instrument). Returns the
+    new track index — write clips on it with set_clip(track=...)."""
+    payload: dict = {"kind": kind}
+    if instrument:
+        payload["instrument"] = instrument
+    return _post("add_track", payload)
+
+
+@mcp.tool
+def remove_track(track: int) -> dict:
+    """Delete a track by index. Tracks above it shift down; audio->visual mappings sourced
+    from the deleted track are dropped and ones above it are renumbered (see mappings_remapped)."""
+    return _post("remove_track", {"track": track})
+
+
 # ---------------- session author / persist ----------------
 @mcp.tool
 def save_session(path: str) -> dict:

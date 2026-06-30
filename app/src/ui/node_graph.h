@@ -43,6 +43,8 @@ public:
         reg_.connect(src, dst, amt);
         if (auto* m = reg_.find(dst)) { m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi; }
     }
+    // A track was deleted: fix up audio source IDs that encode the track index.
+    int remap_track_sources(int removed) { return reg_.remap_track_sources(removed); }
     // Mapping shaping edits (from the M overview).
     void set_mapping_amount(const std::string& dst, float a) { if (auto* m = reg_.find(dst)) m->amount = a; }
     void set_mapping_curve(const std::string& dst, float c)  { if (auto* m = reg_.find(dst)) m->curve = c; }

@@ -3,9 +3,25 @@
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdlib>
 
 namespace vivid {
+
+// Audio mapping sources encode the track INDEX ("track_3.transient"). Parse one into its
+// index + the remainder (".transient"); returns false for non-track sources ("master.*",
+// "viz.*"). Pure — shared by the delete-fix-up + its test.
+inline bool parse_track_source(const std::string& src, int& idx, std::string& rest) {
+    if (src.rfind("track_", 0) != 0) return false;
+    size_t i = 6;
+    if (i >= src.size() || !std::isdigit(static_cast<unsigned char>(src[i]))) return false;
+    size_t j = i;
+    while (j < src.size() && std::isdigit(static_cast<unsigned char>(src[j]))) ++j;
+    idx  = std::atoi(src.substr(i, j - i).c_str());
+    rest = src.substr(j);   // includes the leading '.'
+    return true;
+}
 
 // One wire in the unified mapping model: a named source drives a named
 // destination. The source value (clamped 0..1) is optionally inverted (polarity),
@@ -71,6 +87,25 @@ public:
 
     const std::vector<Mapping>& mappings() const { return maps_; }
     void clear_mappings() { maps_.clear(); }
+
+    // A track was deleted at `removed`: drop mappings sourced from it and renumber sources
+    // above it (indices shift down), so the bridge stays consistent. Returns # of mappings
+    // dropped or renumbered. (Dest IDs reference visual nodes, not tracks, so they're left.)
+    int remap_track_sources(int removed) {
+        int changed = 0;
+        std::vector<Mapping> kept;
+        kept.reserve(maps_.size());
+        for (auto& m : maps_) {
+            int idx; std::string rest;
+            if (parse_track_source(m.source, idx, rest)) {
+                if (idx == removed) { ++changed; continue; }                       // drop
+                if (idx > removed) { m.source = "track_" + std::to_string(idx - 1) + rest; ++changed; }
+            }
+            kept.push_back(m);
+        }
+        maps_.swap(kept);
+        return changed;
+    }
 
 private:
     std::vector<Mapping> maps_;

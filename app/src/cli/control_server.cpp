@@ -480,6 +480,41 @@ void ControlServer::register_handlers() {
         json r = ok(); r["effects"] = arr; return r;
     };
 
+    // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
+    handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
+        json arr = json::array();
+        for (int k = 0; k < P::session_available_instrument_count(); ++k) arr.push_back(P::session_available_instrument_name(k));
+        json r = ok(); r["instruments"] = arr; return r;
+    };
+    // Create a track. kind "instrument" (default) needs an "instrument" (catalog label or a
+    // .vst3 path); kind "audio" makes a sampler track. Returns the new track index.
+    handlers_["add_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const std::string kind = b.value("kind", std::string("instrument"));
+        int idx = -1;
+        if (kind == "audio") {
+            idx = P::session_add_audio_track(c.session);
+        } else {
+            const std::string inst = b.value("instrument", std::string());
+            if (inst.empty()) return err(code::kBadArg, "instrument track needs \"instrument\" (a catalog label or .vst3 path)");
+            idx = P::session_add_instrument_track(c.session, inst.c_str());
+            if (idx < 0) return err(code::kNotFound, "no instrument matched '" + inst + "' (or kMaxTracks reached)");
+        }
+        if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
+        json r = ok(); r["track"] = idx; return r;
+    };
+    // Delete a track. Also fixes up audio->visual mappings whose source encodes the track
+    // index (drop the removed track's, renumber those above it) so the bridge stays valid.
+    handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_remove_track(c.session, track)) return err(code::kInternal, "remove_track failed");
+        int remapped = 0;
+        if (c.graph) remapped = c.graph->remap_track_sources(track);
+        json r = ok(); r["removed"] = track; r["mappings_remapped"] = remapped; return r;
+    };
+
     // ---------------- session author / persist ----------------
     handlers_["save_session"] = [](const ControlCtx& c, const json& b) {
         if (!c.session || !c.graph) return err(code::kNoSession, "no session");

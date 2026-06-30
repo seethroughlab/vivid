@@ -14,7 +14,10 @@ namespace vivid {
 //             legacy_vop_name) — Migrated
 //   newer  -> REFUSE (a newer Vivid wrote it; reading it would silently drop structure
 //             we don't understand) — TooNew. This closes the old silent-accept gap.
-constexpr int kSessionSchemaVersion = 1;
+// v2 (dynamic tracks): the track SET became part of the document (each track carries its
+// kind + instrument), so load rebuilds the tracks; a v1 file restores onto the pre-built
+// role set by index (migration).
+constexpr int kSessionSchemaVersion = 2;
 
 enum class SessionVersionStatus { Ok, Migrated, TooNew };
 
