@@ -9,6 +9,14 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/poc-to-product.md).
 - **`visual_graph.{h,cpp}`** — the `VisualGraph`: the rewireable op chain
   (`VOp` Plasma/Video/Feedback/Blur/Output), per-node params (`base + modulation`),
   input edges, the active output, and live node thumbnails (`node_view`).
+- **`op_runtime.*`** — the in-process `OpRegistry` (name→factory) + `OpInstance` +
+  `build_descriptor`/`sync_params` (operator-based visuals; wgpu-free, headless).
+- **`builtin_ops.*`** — the built-in operators (Plasma/Video/Feedback/Blur/Output/Tint).
+- **`operator_loader.*` / `loaded_operator.*` / `operator_scan.*`** — P2 loadable ops:
+  `dlopen` + ABI/descriptor validation (`OperatorLoader`), the `LoadedOperator` adapter
+  that mirrors a dylib descriptor onto `OperatorBase`/`GpuProcessable`, and the
+  startup scan of the bundle `PlugIns/` (or `$VIVID_OPERATORS_DIR`). Loaded ops flow
+  through `OpRegistry` identically to built-ins; built-ins win a name clash.
 - **`shader_op.*` / `effect_op.*`** — generator + FBO-effect ops (feedback, blur).
 - **`render_target.*`** — FBO/ping-pong targets.  **`texture_source.*`** — the shared
   image/video source texture (+ `gen_test_pattern`).

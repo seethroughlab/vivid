@@ -38,3 +38,34 @@ target_sources(test_op_registry PRIVATE
 # Pre-P1 session migration (legacy VOp-int -> op-name). persist.h pulls nlohmann.
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
+
+# --- P2.1: dlopen operator loader + LoadedOperator adapter ---
+# GPU-free fixture operators built as loadable modules; the tests dlopen them by
+# explicit path (so they need no wgpu device and stay headless/portable).
+add_library(test_fixture_op MODULE fixtures/test_fixture_op.cpp)
+target_include_directories(test_fixture_op PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+add_library(test_fixture_bad MODULE fixtures/test_fixture_bad.cpp)
+target_include_directories(test_fixture_bad PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+
+# Loader: dlopen + ABI/symbol/descriptor validation (operator_loader is wgpu-free).
+vivid_add_test(test_operator_loader)
+target_sources(test_operator_loader PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_operator_loader PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(test_operator_loader test_fixture_op test_fixture_bad)
+target_compile_definitions(test_operator_loader PRIVATE
+    FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>"
+    FIXTURE_BAD_PATH="$<TARGET_FILE:test_fixture_bad>")
+
+# Adapter: LoadedOperator mirrors a dylib descriptor through OpRegistry losslessly.
+vivid_add_test(test_loaded_operator)
+target_sources(test_loaded_operator PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_loaded_operator PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(test_loaded_operator test_fixture_op)
+target_compile_definitions(test_loaded_operator PRIVATE
+    FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")

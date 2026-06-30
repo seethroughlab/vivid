@@ -134,6 +134,9 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
     src/gpu/builtin_ops.cpp
+    src/gpu/operator_loader.cpp
+    src/gpu/loaded_operator.cpp
+    src/gpu/operator_scan.cpp
     src/cli/control_server.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp

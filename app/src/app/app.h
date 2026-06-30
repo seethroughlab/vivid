@@ -1,8 +1,10 @@
 #pragma once
+#include <memory>
 #include <string>
 #include <vector>
 
-#include "gpu/op_runtime.h"   // OpRegistry (operator-based visuals)
+#include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
+#include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 
 namespace vivid {
 class GpuContext;
@@ -29,7 +31,10 @@ struct App {
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server
     TextureSource*      srcTex    = nullptr;   // shared visuals source texture
-    OpRegistry          op_registry;           // built-in + (future) loaded operators
+    OpRegistry          op_registry;           // built-in + loaded operators
+    // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
+    // registry factory that captures its raw pointer (App lives the whole run).
+    std::vector<std::unique_ptr<OperatorLoader>> op_loaders;
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
 
