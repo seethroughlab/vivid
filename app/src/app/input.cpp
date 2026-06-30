@@ -190,6 +190,20 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         win->fx_menu.open = false;
         return;
     }
+    // Track menu: pick an instrument (or "Audio track") -> create the track.
+    if (win->track_menu.open) {
+        const int n = vivid_poc::session_available_instrument_count();
+        for (int j = 0; j <= n; ++j) {
+            const Rect r = { win->track_menu.x, win->track_menu.y + j * 24.f, 150.f, 24.f };
+            if (hit(r, mx, my)) {
+                if (j == n) vivid_poc::session_add_audio_track(app->session);
+                else        vivid_poc::session_add_instrument_track(app->session, vivid_poc::session_available_instrument_name(j));
+                break;
+            }
+        }
+        win->track_menu.open = false;
+        return;
+    }
     // Map menu: pick a source to drive the selected param (the return path).
     if (win->map_menu.open) {
         const int seltr = std::min(std::max(win->sel_track, 0), tracks - 1);
@@ -213,9 +227,26 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         const int src = meter_hit(tracks, scenes, mx, my);
         if (src != -2) { win->menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return; }
     }
-    // Click a track header -> select it (its device chain shows in the DAW pane).
-    for (int t = 0; t < tracks; ++t)
+    // Track header: × removes the track; otherwise select it. "+ Track" opens the picker.
+    for (int t = 0; t < tracks; ++t) {
+        if (hit(track_header_x_rect(t), mx, my)) {
+            // Close all open instrument editor windows first: removal shifts track indices,
+            // so the per-track window pool would otherwise misalign (they reopen on demand).
+            for (int k = 0; k < vivid_poc::kMaxTracks; ++k)
+                if (win->track_win[k]) { vst3_plugin_window_close(win->track_win[k]); win->track_win[k] = nullptr; }
+            if (vivid_poc::session_remove_track(app->session, t)) {
+                if (app->graph) app->graph->remap_track_sources(t);
+                const int nt = vivid_poc::session_track_count(app->session);
+                if (win->sel_track >= nt) win->sel_track = std::max(0, nt - 1);
+            }
+            return;
+        }
         if (hit(track_header_rect(t), mx, my)) { win->sel_track = t; if (app->graph) app->graph->select_op(-1); return; }
+    }
+    if (tracks < vivid_poc::kMaxTracks && hit(track_add_rect(tracks), mx, my)) {
+        win->track_menu = { true, static_cast<float>(mx), static_cast<float>(my), -1 };
+        return;
+    }
 
     // Bottom dock interactions. If a visual node is selected, the dock is its
     // inspector: knobs edit the node's base param values (vertical drag).

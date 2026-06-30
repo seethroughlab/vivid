@@ -30,6 +30,26 @@ void draw_fx_menu(Renderer2D& ui, const CtxMenu& m) {
     }
 }
 
+// The "+ Track" picker: the instrument catalog, then an "Audio track" entry last.
+// Row j in [0,n) adds instrument j; row n adds an audio (sampler) track.
+void draw_track_menu(Renderer2D& ui, const CtxMenu& m) {
+    if (!m.open) return;
+    const Style& sty = style();
+    const float w = 150.f;
+    const int n = vivid_poc::session_available_instrument_count();
+    ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, "+ track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+    for (int j = 0; j <= n; ++j) {   // n instrument rows + one "Audio track" row
+        const float iy = m.y + j * 24.f;
+        const bool isAudio = (j == n);
+        ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        const float* acc = isAudio ? sty.audio : sty.fx;
+        ui.draw_rect(m.x, iy, 3.f, 24.f, acc[0], acc[1], acc[2], 1.0f);
+        ui.draw_text(m.x + 12.f, iy + 5.f, isAudio ? "Audio track" : vivid_poc::session_available_instrument_name(j),
+                     sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
+    }
+}
+
 // Mini clip preview inside a session cell: a piano-roll for MIDI clips, a
 // waveform for audio clips. Drawn faintly so the clip name reads on top.
 void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
@@ -166,15 +186,25 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
 
     ui.push_clip_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f);  // DAW pane (above the dock)
     ui.draw_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
-    // track headers
+    // track headers (each with a remove ×), then a "+ Track" cell after the last.
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
         float ar, ag, ab; track_accent(t, ar, ag, ab);
         const bool hov = hit(h, mx, my);  // hover: clickable -> editor
         draw_card(ui, h.x, h.y, h.w, h.h, sty.control, hov);
         ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);  // track accent overrides the card bar
-        char nm[40]; std::snprintf(nm, sizeof nm, "%.18s", vivid_poc::session_track_name(s, t));
+        char nm[40]; std::snprintf(nm, sizeof nm, "%.16s", vivid_poc::session_track_name(s, t));
         ui.draw_text(h.x + 8.f, h.y + 9.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.95f);
+        const Rect xb = track_header_x_rect(t);   // remove this track
+        const bool xh = hit(xb, mx, my);
+        ui.draw_rect(xb.x, xb.y, xb.w, xb.h, xh ? 0.5f : 0.32f, 0.16f, 0.16f, 1.0f);
+        ui.draw_text(xb.x + 2.5f, xb.y - 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.78f);
+    }
+    if (tracks < vivid_poc::kMaxTracks) {   // "+ Track" affordance
+        const Rect a = track_add_rect(tracks);
+        const bool ah = hit(a, mx, my);
+        draw_card(ui, a.x, a.y, a.w, a.h, sty.control, ah);
+        ui.draw_text(a.x + 10.f, a.y + 9.f, "+ Track", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f);
     }
     // scene rows + clip cells
     for (int sc = 0; sc < scenes; ++sc) {
