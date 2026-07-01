@@ -48,6 +48,7 @@ public:
     void load_node(VOp op, int id) { load_node(vop_name(op), id); }
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
+    void reset_to_default();                   // the out-of-box Plasma->Feedback->Blur->Output chain
     void set_input(int node, int input);       // wire input's output -> node's texture input
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
     void set_active_output(int idx);

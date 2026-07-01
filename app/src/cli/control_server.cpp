@@ -568,6 +568,23 @@ void ControlServer::register_handlers() {
     };
 
     // ---------------- project workflow (thin layer over session JSON) ----------------
+    // Fresh start: empty every clip, reset the visuals to the default chain, drop mappings +
+    // data nodes, and clear the current-project pointer. Keeps the loaded instruments + tracks.
+    handlers_["new_project"] = [](const ControlCtx& c, const json&) {
+        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
+        const int nt = P::session_track_count(c.session), ns = P::session_scene_count(c.session);
+        for (int t = 0; t < nt; ++t)
+            for (int sc = 0; sc < ns; ++sc)
+                P::session_set_clip(c.session, t, sc, nullptr, 0, 4.0);
+        c.graph->reset_nodes();                        // data nodes + mappings
+        if (c.vgraph) c.vgraph->reset_to_default();    // Plasma->Feedback->Blur->Output
+        if (c.app) {
+            c.app->project.current_project_path.clear();
+            c.app->project.media_root.clear();
+            c.app->project.missing_media.clear();
+        }
+        json r = ok(); r["tracks"] = nt; return r;
+    };
     handlers_["get_project_status"] = [](const ControlCtx& c, const json&) {
         if (!c.app) return err(code::kInternal, "no app context");
         json r = ok();

@@ -50,6 +50,31 @@ void draw_track_menu(Renderer2D& ui, const CtxMenu& m) {
     }
 }
 
+// The File dropdown: New / Open… / Save / Save As…, then recent projects.
+void draw_file_menu(Renderer2D& ui, const CtxMenu& m, const std::vector<std::string>& recent) {
+    if (!m.open) return;
+    const Style& sty = style();
+    const float w = 170.f;
+    static const char* kFixed[kFileMenuFixed] = { "New", "Open\xE2\x80\xA6", "Save", "Save As\xE2\x80\xA6" };
+    const int nrec = std::min(static_cast<int>(recent.size()), 8);
+    const int rows = kFileMenuFixed + nrec;
+    for (int j = 0; j < rows; ++j) {
+        const float iy = m.y + j * 24.f;
+        const bool isRec = j >= kFileMenuFixed;
+        ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
+        if (isRec) {
+            const std::string& p = recent[j - kFileMenuFixed];
+            const size_t slash = p.find_last_of('/');
+            const std::string name = slash == std::string::npos ? p : p.substr(slash + 1);
+            char lbl[40]; std::snprintf(lbl, sizeof lbl, "%.30s", name.c_str());
+            ui.draw_text(m.x + 12.f, iy + 5.f, lbl, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+        } else {
+            ui.draw_text(m.x + 12.f, iy + 5.f, kFixed[j], sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
+        }
+    }
+}
+
 // Mini clip preview inside a session cell: a piano-roll for MIDI clips, a
 // waveform for audio clips. Drawn faintly so the clip name reads on top.
 void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
@@ -192,6 +217,12 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             ui.draw_tri(p.x + 4.f, p.y + 2.f, p.x + 4.f, p.y + 16.f, p.x + 15.f, p.y + 9.f,
                         0.6f, 0.95f, 0.6f, 1.0f);
         }
+    }
+    // File menu button.
+    {
+        const Rect f = transport_file_rect();
+        draw_card(ui, f.x, f.y, f.w, f.h, sty.control, hit(f, mx, my));
+        ui.draw_text(f.x + 8.f, f.y + 4.f, "File", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.85f);
     }
     if (!w.app->session) return;
     auto* s = w.app->session;

@@ -21,8 +21,9 @@ constexpr float kGridTopY = 92.f;
 constexpr float kRowH = 56.f, kRowGap = 4.f;
 inline float track_x(int t) { return kTrackX0 + t * (kTrackW + kTrackGap); }
 inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGridTopY + scene * (kRowH + kRowGap), kTrackW, kRowH }; }
-// Top transport bar affordances (header y=0..40): a play/pause button after the beat dots.
+// Top transport bar affordances (header y=0..40): a play/pause button + a File menu button.
 inline Rect transport_play_rect() { return { 452.f, 11.f, 18.f, 18.f }; }
+inline Rect transport_file_rect() { return { 482.f, 10.f, 46.f, 20.f }; }
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×

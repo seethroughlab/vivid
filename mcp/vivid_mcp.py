@@ -540,6 +540,13 @@ def load_session(path: str = "", session: dict | None = None) -> dict:
 
 
 @mcp.tool
+def new_project() -> dict:
+    """Start a fresh project: empty every clip, reset the visuals to the default chain, drop
+    all mappings, and clear the current-project path. Keeps the loaded instruments/tracks."""
+    return _post("new_project")
+
+
+@mcp.tool
 def get_project_status() -> dict:
     """Current project workflow state: explicit project path, recent project paths,
     media_root, missing_media diagnostics, and discovered video count."""

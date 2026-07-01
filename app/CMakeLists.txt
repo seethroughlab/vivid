@@ -150,6 +150,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/platform/frame_loop_generic.cpp
     src/platform/app_nap_stub.cpp
     src/platform/sparkle_bridge_stub.cpp
+    src/platform/file_dialog_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -178,7 +179,8 @@ if(APPLE)
         src/gpu/video_player.mm
         src/audio/vst3_plugin_window.mm
         src/platform/macos_frame_timer.cpp
-        src/platform/macos_app_nap.mm)
+        src/platform/macos_app_nap.mm
+        src/platform/file_dialog.mm)
     set_target_properties(vivid_poc PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"

@@ -83,13 +83,16 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     // Present blit draws into the frame's 4x MSAA color target (op RTs stay 1x).
     if (!blit_.init(device, queue, fmt, kBlitGLSL, 1, kMsaaSamples)) return false;
     fallback_.init(device, rtW, rtH, fmt);
-    // Default chain: Plasma -> Feedback -> Blur -> Output (ids 0..3).
+    reset_to_default();   // Plasma -> Feedback -> Blur -> Output (ids 0..3)
+    return true;
+}
+
+void VisualGraph::reset_to_default() {
     nodes_.clear(); next_id_ = 0;
     add_node("Plasma"); add_node("Feedback"); add_node("Blur"); add_node("Output");
     nodes_[1].input = 0; nodes_[2].input = 1; nodes_[3].input = 2;
     active_output_id_ = nodes_[3].id;
     ensure_resources(nodes_.size());
-    return true;
 }
 
 void VisualGraph::ensure_resources(size_t n) {
