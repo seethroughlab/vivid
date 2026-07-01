@@ -38,3 +38,15 @@ curl -s -XPOST localhost:9876/connect_mapping -d '{"src":"master.transient","dst
 ```
 
 Then ask the agent to `get_authoring_guide()` and build a reactive scene.
+
+## Music-theory tools
+
+`theory.py` (zero-dependency, pure) powers chord/scale/rhythm/analysis tools —
+`set_progression`, `add_chord`, `set_drum_pattern`, `arpeggiate`, `quantize_to_scale`,
+`analyze_clip`, … — so the agent composes by musical intent, not raw MIDI. Full vocabulary
+(chord symbols, scale + drum names, step-strings, roman numerals) in
+[`docs/music-theory-tools.md`](../docs/music-theory-tools.md). Correctness suite:
+
+```sh
+uv run --directory mcp test_theory.py
+```

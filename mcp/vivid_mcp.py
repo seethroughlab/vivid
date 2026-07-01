@@ -549,7 +549,9 @@ def get_authoring_guide() -> dict:
         "recipe": [
             "1. READ: status, list_tracks, get_graph, get_mappings to see current state.",
             "2. TEMPO: set_bpm(bpm).",
-            "3. NOTES: set_clip(track, scene, notes=[{p,s,d,v}], length) on a MIDI track, then launch_clip.",
+            "3. NOTES: prefer the music-theory tools (see 'music_theory' below) — set_progression / "
+            "add_chord / set_drum_pattern / arpeggiate — over raw set_clip. `p` accepts names ('C4') "
+            "or MIDI ints. Then launch_clip.",
             "4. SOUND: list_params(track, 0, filter='cutoff') then set_param(track, 0, index, value).",
             "5. VISUALS: the default chain is Plasma->Feedback->Blur->Output. add_node / connect_nodes "
             "to extend it; set_node_param for base look; set_active_output to pick the viewer source.",
@@ -565,12 +567,31 @@ def get_authoring_guide() -> dict:
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
                   "timeout), not the human `error` text. An out-of-range track/scene/device index "
                   "now returns out_of_range instead of silently succeeding.",
+        "music_theory": {
+            "notes": "Anywhere a pitch is taken, `p` accepts a MIDI int OR a name: 'C4','F#3','Bb5' "
+                     "(C4 = middle C = 60). get_clip reads a clip back; add_notes appends; clear_clip empties.",
+            "harmony": "add_chord(t,s,'Cmaj7') / 'Am' / 'G7' / 'F#m7b5' / 'C/G' (slash bass), voicing="
+                       "close|open|drop2, inversion=0,1,2. set_progression(t,s,['Dm7','G7','Cmaj7']) — or "
+                       "ROMAN numerals when key is given: set_progression(t,s,['ii','V','I'], key='F').",
+            "scale_key": "set_key('C','minor') sets a context quantize_to_scale / harmonize / get_scale "
+                         "default to. quantize_to_scale(t,s) snaps off-key notes; get_scale('D','dorian').",
+            "transforms": "transpose(t,s,±semitones), arpeggiate(t,s,'Am7',pattern=up|down|updown), "
+                          "harmonize(t,s,degree=2) (a diatonic third), invert_clip, retrograde_clip.",
+            "rhythm": "set_drum_pattern(t,s,{'kick':'x..x..x.','snare':'....x...','hat':'xxxxxxxx'}) — "
+                      "names kick/snare/hat/openhat/clap/tom_lo/…, chars x=hit, 1-9=velocity, .=rest. "
+                      "euclidean_fill(t,s,'hat',3,8)=tresillo. humanize(t,s), quantize_rhythm(t,s,grid).",
+            "analysis": "analyze_clip(t,s) -> detected key + chord-per-bar + range (heuristic) — good for "
+                        "driving visuals from harmony.",
+        },
         "gotchas": {
             "params_are_huge": "Plugins expose thousands of params; always filter+limit list_params.",
             "param_index": "set_param takes the *index* from list_params (mapped to the VST id internally).",
             "mapping_dest": "visual = 'node:<id>.<param>'; audio = 'param:<track>:<device>:<index>'.",
             "modulation": "A wired visual param = clamp(base + modulation); set the base with set_node_param.",
-            "audio_track": "set_clip only applies to MIDI tracks (is_audio=false in list_tracks).",
+            "audio_track": "note tools apply to MIDI tracks only (is_audio=false in list_tracks).",
+            "full_replace": "set_clip / set_progression / arpeggiate / set_drum_pattern REPLACE the clip; "
+                            "add_notes / add_chord / euclidean_fill APPEND.",
+            "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
         },
     }
 
