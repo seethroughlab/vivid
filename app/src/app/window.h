@@ -64,6 +64,7 @@ struct Window {
     ui::Rect     splitter_rect()    const { return ui::splitter_rect(win_h, dock_h, split_x); }
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom()        const { return ui::dock_geom(win_w, win_h, dock_h); }
+    ui::DockGeom dock_geom_node()   const { return ui::dock_geom_node(win_w, win_h, dock_h); }
     ui::Rect     dock_chip(int i)   const { return ui::dock_chip(i, win_h, dock_h); }
     ui::Rect     dock_chip_x(int i) const { return ui::dock_chip_x(i, win_h, dock_h); }
 };

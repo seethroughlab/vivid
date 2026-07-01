@@ -332,7 +332,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     {
         const int selop = app->graph ? app->graph->selected_op() : -1;
         if (selop >= 0 && my >= win->dock_top()) {   // only consume clicks inside the dock
-            const DockGeom d = win->dock_geom();
+            const DockGeom d = win->dock_geom_node();
             const int pc = app->graph->op_param_count_at(selop);
             for (int i = 0; i < pc; ++i) {
                 float cx, cy; dock_knob(i, d, cx, cy);

@@ -147,9 +147,10 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
         ui.draw_text(120.f, y0 + 7.f, "drag knobs to set the base value \xC2\xB7 teal = wired (modulated) \xC2\xB7 click a track header for devices",
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.7f);
+        const DockGeom dn = w.dock_geom_node();
         const int pc = w.app->graph->op_param_count_at(selop);
         for (int i = 0; i < pc; ++i) {
-            float cx, cy; dock_knob(i, d, cx, cy);
+            float cx, cy; dock_knob(i, dn, cx, cy);
             const float base = w.app->graph->op_param_base_at(selop, i);
             const bool wired = w.app->graph->op_param_wired_at(selop, i);
             char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
@@ -164,6 +165,16 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const bool aud = vivid::session::session_track_is_audio(s, seltr);
     char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid::session::session_track_name(s, seltr));
     section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
+
+    // CHAIN rack — a bounded, recessed shelf that visually holds the device chips
+    // as their own section (distinct from the params grid below). Present only in
+    // track mode: inspecting a visual node hides it (handled by the early return above).
+    const Rect rack = dock_chain_rect(w.win_w, w.win_h, w.dock_h);
+    ui.draw_rounded_rect(rack.x, rack.y, rack.w, rack.h, sty.radius, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+    ui.draw_rect(rack.x, rack.y, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);                    // top hairline
+    ui.draw_rect(rack.x, rack.y + rack.h - 1.f, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);     // bottom hairline
+    ui.draw_rect(rack.x, rack.y, 3.f, rack.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);                        // domain accent tick
+    ui.draw_text(rack.x + rack.w - 46.f, rack.y + 3.f, "CHAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
 
     // device chips: instrument (0) + effects (1..nfx) + "+ FX"
     const int nfx = vivid::session::session_effect_count(s, seltr);
@@ -187,10 +198,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         }
     }
 
-    // divider between the device chain (chips) and the params grid
-    ui.draw_rect(12.f, y0 + 60.f, static_cast<float>(w.win_w) - 24.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
-
-    // knob grid for the selected device's params
+    // knob grid for the selected device's params (its own zone below the rack)
     const int seldev = std::max(0, w.sel_device);
     const int pc = vivid::session::session_param_count(s, seltr, seldev);
     const float* pacc = (seldev == 0) ? sty.audio : sty.fx;

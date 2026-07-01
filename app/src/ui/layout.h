@@ -123,17 +123,35 @@ inline Rect signal_panel(int win_w, int win_h, float split_x, float dock_h) {
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH + 4.f, 6.f, dock_top(win_h, dock_h) - kTopBarH - 4.f }; }
 inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f, dock_top(win_h, dock_h) - 3.f, static_cast<float>(win_w), 7.f }; }
 
-// Bottom device-view dock: device chips (instrument + FX + "+FX") + a knob grid
-// of the selected device's params. Geometry shared by draw + hit-test.
+// Bottom device-view dock: a title strip, a bounded CHAIN rack (the selected
+// track's instrument + FX chips) and a PARAMS knob grid below it. The rack is a
+// defined section that only appears in track mode (hidden when a visual node is
+// inspected). Geometry shared by draw + hit-test.
+constexpr float kDockHdH    = 20.f;   // title strip height
+constexpr float kDockChainY = 25.f;   // chain-rack top (below the title strip)
+constexpr float kDockChainH = 42.f;   // chain-rack height (a chip + inset padding)
+constexpr float kDockChipY  = 30.f;   // chips sit inside the rack (kDockChainY + pad)
+inline Rect dock_chain_rect(int win_w, int win_h, float dock_h) {
+    return { 8.f, dock_top(win_h, dock_h) + kDockChainY, static_cast<float>(win_w) - 16.f, kDockChainH };
+}
 struct DockGeom { float y0, gridY0, cellW, cellH, knobOff; int cols, maxRows; };
-inline DockGeom dock_geom(int win_w, int win_h, float dock_h) {
+inline DockGeom dock_geom_at(int win_w, int win_h, float dock_h, float grid_top) {
     DockGeom d; d.y0 = dock_top(win_h, dock_h);
-    d.gridY0 = d.y0 + 70.f; d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;   // 70: header + chain row + a divider gap
+    d.gridY0 = grid_top;
+    d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;
     d.cols = std::max(1, static_cast<int>((win_w - 24.f) / d.cellW));
     d.maxRows = std::max(1, static_cast<int>((d.y0 + dock_h - 6.f - d.gridY0) / d.cellH));
     return d;
 }
-inline Rect dock_chip(int i, int win_h, float dock_h)   { return { 12.f + i * 128.f, dock_top(win_h, dock_h) + 22.f, 120.f, 32.f }; }
+// Track mode: knobs sit below the CHAIN rack (+ a gap that clears the knob labels).
+inline DockGeom dock_geom(int win_w, int win_h, float dock_h) {
+    return dock_geom_at(win_w, win_h, dock_h, dock_top(win_h, dock_h) + kDockChainY + kDockChainH + 18.f);
+}
+// Node-inspector mode: no rack, so the knobs start just under the title strip.
+inline DockGeom dock_geom_node(int win_w, int win_h, float dock_h) {
+    return dock_geom_at(win_w, win_h, dock_h, dock_top(win_h, dock_h) + kDockHdH + 20.f);
+}
+inline Rect dock_chip(int i, int win_h, float dock_h)   { return { 16.f + i * 128.f, dock_top(win_h, dock_h) + kDockChipY, 118.f, 32.f }; }
 inline Rect dock_chip_x(int i, int win_h, float dock_h) { Rect b = dock_chip(i, win_h, dock_h); return { b.x + b.w - 16.f, b.y + 3.f, 13.f, 13.f }; }
 inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
     cx = 12.f + (i % d.cols) * d.cellW + d.cellW * 0.5f;
