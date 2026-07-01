@@ -1,0 +1,7 @@
+{
+  "name": "song-sketch-ops",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "AuroraField", "source": "aurora_field.cpp", "gpu": true }
+  ]
+}
