@@ -1,4 +1,5 @@
 #include "ui/node_graph.h"
+#include "ui/ui_style.h"   // design tokens (region colours, borders, type ramp)
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -307,17 +308,19 @@ int NodeGraph::palette_hit(double x, double y) const {
     return -1;
 }
 void NodeGraph::draw_op_palette(Renderer2D& r) {
-    r.draw_text(bx0_, by1_ - 38.f, "add op:", 0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
+    const Style& sty = style();
+    r.draw_text(bx0_, by1_ - 38.f, "ADD OP", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     for (int j = 0; j < 4; ++j) {
         const float rx = bx0_ + j * 84.f, ry = by1_ - 22.f;
-        r.draw_rect(rx, ry, 80.f, 18.f, 0.14f, 0.16f, 0.19f, 1.0f);
-        r.draw_rect(rx, ry, 3.f, 18.f, 0.35f, 0.55f, 0.95f, 1.0f);
+        r.draw_rounded_rect(rx, ry, 80.f, 18.f, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        r.draw_rect(rx, ry, 3.f, 18.f, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
         char b[20]; std::snprintf(b, sizeof b, "+ %s", op_name(kPalette[j]));
-        r.draw_text(rx + 8.f, ry + 3.f, b, 0.78f, 0.8f, 0.84f, 1.0f, 0.78f);
+        r.draw_text(rx + 9.f, ry + 3.f, b, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
     }
 }
 
 void NodeGraph::draw(Renderer2D& r) {
+    const Style& sty = style();
     sync_op_pos();
     r.push_clip_rect(bx0_ - 6.f, by0_ - 8.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 18.f);
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
@@ -372,13 +375,14 @@ void NodeGraph::draw(Renderer2D& r) {
         const bool active_out = out && i == active_out_idx;   // drives the viewer
         float ar, ag, ab; op_accent(op, ar, ag, ab);
         if (i == sel_op_)  // selection ring (inspector target) — bright outline
-            r.draw_rounded_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, 7.f, 0.95f, 0.82f, 0.38f, 1.0f);
+            r.draw_rounded_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, 7.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
         else if (active_out)  // highlight ring on the active output
             r.draw_rounded_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, 6.f, ar, ag, ab, 1.0f);
-        r.draw_rounded_rect(x, y, w, h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);          // body
-        r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, 0.17f, 0.18f, 0.21f, 1.0f);   // header strip
-        r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                               // accent bar
-        r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), 0.90f, 0.92f, 0.95f, 1.0f, 0.95f);
+        r.draw_rounded_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, sty.radius_lg, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // 1px border
+        r.draw_rounded_rect(x, y, w, h, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);            // body
+        r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
+        r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                                                         // accent bar
+        r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
@@ -420,10 +424,11 @@ void NodeGraph::draw(Renderer2D& r) {
     // data nodes (matching card style)
     for (auto& nd : data_) {
         if (nd.flash > 0) { r.draw_rounded_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        r.draw_rounded_rect(nd.x, nd.y, nd.w, nd.h, 5.f, 0.12f, 0.13f, 0.155f, 1.0f);
-        r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, 0.15f, 0.18f, 0.18f, 1.0f);  // header strip
-        r.draw_rect(nd.x, nd.y, nd.w, 3.f, 0.31f, 0.80f, 0.75f, 1.0f);                     // accent
-        r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), 0.90f, 0.92f, 0.95f, 1.0f, 0.92f);
+        r.draw_rounded_rect(nd.x - 1.f, nd.y - 1.f, nd.w + 2.f, nd.h + 2.f, sty.radius_lg, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // border
+        r.draw_rounded_rect(nd.x, nd.y, nd.w, nd.h, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
+        r.draw_rect(nd.x, nd.y, nd.w, 3.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);   // teal accent (data source)
+        r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         // live value history (rolling bar sparkline) in a recessed panel
         const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
         r.draw_rect(gx - 1.f, gy - 1.f, gw + 2.f, gh + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
