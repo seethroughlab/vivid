@@ -17,6 +17,7 @@ inline float dock_top(int win_h, float dock_h);   // fwd (defined in the window-
 // --- Pane region chrome: bounded panels on a margin/gutter grid. ---
 constexpr float kTopBarH    = 40.f;    // transport bar height
 constexpr float kPaneMargin = 12.f;    // gap from pane edge to a region panel
+constexpr float kSidebarW   = 244.f;   // left browser column width when open (0 = collapsed)
 constexpr float kPanelHdH   = 22.f;    // region header strip (matches Style.panel_hd_h)
 constexpr float kPanePad    = 8.f;     // inner padding inside a region (matches Style.s4)
 
@@ -34,7 +35,8 @@ constexpr float kGridTopY  = kHeaderY + kHeaderH + kHdrGap;       // first scene
 constexpr float kRowH      = 44.f, kRowGap = 6.f;                 // smaller clip cells
 inline float track_x(int t) { return kTrackX0 + t * (kTrackW + kTrackGap); }
 inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGridTopY + scene * (kRowH + kRowGap), kTrackW, kRowH }; }
-// Top transport bar affordances: a play/pause button. (File is a native menu.)
+// Top transport bar affordances: a browser toggle + a play/pause button. (File is a native menu.)
+inline Rect sidebar_toggle_rect() { return { 96.f, 11.f, 20.f, 18.f }; }
 inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
@@ -82,6 +84,28 @@ constexpr float kViewW = 720.f, kViewH = 300.f;
 
 // --- Window-relative geometry (explicit args; no globals). ---
 inline float dock_top(int win_h, float dock_h) { return win_h - dock_h; }   // y where the dock begins
+// Left browser sidebar: a bounded panel over [0..sidebar_w] between the transport and dock.
+inline Rect sidebar_panel(float sidebar_w, int win_h, float dock_h) {
+    const float top = kTopBarH + kPaneMargin;
+    return { kPaneMargin, top, sidebar_w - 2.f * kPaneMargin, dock_top(win_h, dock_h) - kPaneMargin - top };
+}
+// Clip-pool items — a vertical list inside the sidebar's CLIPS section.
+constexpr float kPoolItemH = 44.f, kPoolItemGap = 6.f;
+inline float sidebar_content_x()   { return kPaneMargin + kPanePad; }
+inline float sidebar_content_top() { return kTopBarH + kPaneMargin + kPanelHdH + kPanePad; }
+inline Rect pool_item_rect(int i, float sidebar_w) {
+    return { sidebar_content_x(), sidebar_content_top() + i * (kPoolItemH + kPoolItemGap),
+             sidebar_w - 2.f * (kPaneMargin + kPanePad), kPoolItemH };
+}
+inline Rect pool_item_x_rect(int i, float sidebar_w) { Rect r = pool_item_rect(i, sidebar_w); return { r.x + r.w - 15.f, r.y + 3.f, 13.f, 13.f }; }
+inline int pool_item_at(float sidebar_w, int count, double mx, double my) {
+    for (int i = 0; i < count; ++i) if (hit(pool_item_rect(i, sidebar_w), mx, my)) return i;
+    return -1;
+}
+// The pool drop-zone = the whole sidebar column (drop a grid clip anywhere in it to stash).
+inline bool in_sidebar(float sidebar_w, int win_h, float dock_h, double mx, double my) {
+    return sidebar_w > 0.f && mx >= 0 && mx < sidebar_w && my >= kTopBarH && my < dock_top(win_h, dock_h);
+}
 // Visuals pane: an Output region (the viewer) above a Signal region (the node graph).
 inline Rect output_panel(int win_w, float split_x) {
     return { split_x + kPaneMargin, kTopBarH + kPaneMargin,

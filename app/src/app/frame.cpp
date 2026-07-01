@@ -103,7 +103,7 @@ void apply_audio_param_mappings(App& app) {
 }
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
-    if (win.clip_drag_t >= 0 && !win.clip_dragging) {   // clip drag crosses the move threshold
+    if ((win.clip_drag_t >= 0 || win.clip_drag_from_pool >= 0) && !win.clip_dragging) {   // clip drag crosses the move threshold
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
         if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px
     }
@@ -128,7 +128,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     if (win.gain_drag >= 0 && app.session) {
         const Rect gr = track_gain_rect(win.gain_drag, vivid::session::session_scene_count(app.session));
         vivid::session::session_set_track_gain(app.session, win.gain_drag,
-                                          std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
+                                          std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
         const float v = std::clamp(win.param_drag_v0 +

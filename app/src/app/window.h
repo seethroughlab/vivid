@@ -42,13 +42,15 @@ struct Window {
     double  last_dev_t = -1; int last_dev_i = -1;
     int     gain_drag = -1;
     bool    split_drag = false; double split_last_t = -1.0;
+    float   sidebar_w = 0.f;   // left browser column width (0 = collapsed); shifts the DAW pane
     Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
     // Clip drag/drop in the session grid: source cell + press pos; drags past a
     // threshold, then a drop on another cell moves (or Option = copies) the clip.
     int     clip_drag_t = -1, clip_drag_sc = -1; bool clip_dragging = false;
-    double  clip_drag_x0 = 0.0, clip_drag_y0 = 0.0;
+    int     clip_drag_from_pool = -1;   // >=0 = the drag source is a clip-pool item (sidebar)
+    double  clip_drag_x0 = 0.0, clip_drag_y0 = 0.0;   // press pos (screen coords)
 
     // Frame-side display smoothing (per window).
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient

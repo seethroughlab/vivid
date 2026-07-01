@@ -107,12 +107,31 @@ void move_clip(vivid::App& app, int st, int ss, int tt, int ts, bool copy) {
     vivid::session::session_set_clip(s, tt, ts, buf, n, len);
     if (!copy) vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // clear the source
 }
+// Place a clip-pool item into a grid cell (instrument tracks only).
+void place_pool_clip(vivid::App& app, int pool_i, int tt, int ts) {
+    auto* s = app.session;
+    if (!s || vivid::session::session_track_is_audio(s, tt)) return;
+    vivid::session::ClipNote buf[512];
+    const int n = vivid::session::session_pool_get(s, pool_i, buf, 512);
+    vivid::session::session_set_clip(s, tt, ts, buf, n, vivid::session::session_pool_length(s, pool_i));
+}
+// Stash a grid clip into the pool (a copy; instrument tracks only).
+void stash_clip(vivid::App& app, int st, int ss) {
+    auto* s = app.session;
+    if (!s || vivid::session::session_track_is_audio(s, st)) return;
+    vivid::session::ClipNote buf[512];
+    const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
+    if (n <= 0) return;
+    char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
+    vivid::session::session_pool_add(s, buf, n, vivid::session::session_clip_length(s, st, ss), nm);
+}
 
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     vivid::App* app = win->app;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
+    const double dmx = mx - win->sidebar_w;   // DAW-pane coords (the grid is shifted right by the sidebar)
     const int tracks = app->session ? vivid::session::session_track_count(app->session) : 0;
     const int scenes = app->session ? vivid::session::session_scene_count(app->session) : 0;
 
@@ -120,6 +139,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->transport
         && hit(vivid::ui::transport_play_rect(), mx, my)) {
         app->transport->toggle_playing();
+        return;
+    }
+    // Browser sidebar toggle.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::sidebar_toggle_rect(), mx, my)) {
+        win->sidebar_w = (win->sidebar_w > 0.f) ? 0.f : vivid::ui::kSidebarW;
         return;
     }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
@@ -175,7 +199,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
-        const int src = app->session ? meter_hit(tracks, scenes, mx, my) : -2;
+        const int src = app->session ? meter_hit(tracks, scenes, mx - win->sidebar_w, my) : -2;
         if (src != -2) win->menu = { true, static_cast<float>(mx), static_cast<float>(my), src };
         else win->menu.open = false;
         return;
@@ -184,22 +208,38 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1;
-        if (win->clip_drag_t >= 0) {   // clip drop: a real drag moves/copies; a plain click launches
-            const int st = win->clip_drag_t, ss = win->clip_drag_sc;
+        if (win->clip_drag_t >= 0 || win->clip_drag_from_pool >= 0) {   // clip drop (grid or pool source)
             int tt = -1, ts = -1;
-            const bool onCell = clip_cell_at(tracks, scenes, mx, my, tt, ts);
-            if (win->clip_dragging) {   // a drag: move/copy onto a different cell (else cancel)
-                if (onCell && (tt != st || ts != ss))
-                    move_clip(*app, st, ss, tt, ts, (mods & GLFW_MOD_ALT) != 0);   // Option = copy
-            } else {
-                vivid::session::session_launch_clip(app->session, st, ss);        // plain click launches
+            const bool onCell = clip_cell_at(tracks, scenes, mx - win->sidebar_w, my, tt, ts);   // grid is shifted
+            const bool onBar  = vivid::ui::in_sidebar(win->sidebar_w, win->win_h, win->dock_h, mx, my);
+            if (win->clip_dragging) {
+                if (win->clip_drag_from_pool >= 0) {                     // pool -> grid cell
+                    if (onCell) place_pool_clip(*app, win->clip_drag_from_pool, tt, ts);
+                } else {                                                 // grid cell -> ...
+                    const int st = win->clip_drag_t, ss = win->clip_drag_sc;
+                    if (onCell && (tt != st || ts != ss)) move_clip(*app, st, ss, tt, ts, (mods & GLFW_MOD_ALT) != 0);
+                    else if (onBar) stash_clip(*app, st, ss);            // grid cell -> pool (stash a copy)
+                }
+            } else if (win->clip_drag_t >= 0) {
+                vivid::session::session_launch_clip(app->session, win->clip_drag_t, win->clip_drag_sc);  // plain click launches
             }
-            win->clip_drag_t = -1; win->clip_dragging = false;
+            win->clip_drag_t = -1; win->clip_drag_from_pool = -1; win->clip_dragging = false;
         }
         if (app->graph) app->graph->on_up(mx, my);
         return;
     }
     if (action != GLFW_PRESS) return;
+
+    // Browser sidebar (left column): remove / drag a pool clip; consume clicks so they don't
+    // fall through to the shifted DAW pane behind it.
+    if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+        const int nc = app->session ? vivid::session::session_pool_count(app->session) : 0;
+        for (int i = 0; i < nc; ++i)
+            if (hit(vivid::ui::pool_item_x_rect(i, win->sidebar_w), mx, my)) { vivid::session::session_pool_remove(app->session, i); return; }
+        const int pi = vivid::ui::pool_item_at(win->sidebar_w, nc, mx, my);
+        if (pi >= 0) { win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; }
+        return;
+    }
 
     // Menu has priority: pick a characteristic -> spawn a data node in the graph.
     if (win->menu.open) {
@@ -262,12 +302,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     // A meter (master or per-track) -> open its characteristic menu (left-click).
     {
-        const int src = meter_hit(tracks, scenes, mx, my);
+        const int src = meter_hit(tracks, scenes, dmx, my);
         if (src != -2) { win->menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return; }
     }
     // Track header: × removes the track; otherwise select it. "+ Track" opens the picker.
     for (int t = 0; t < tracks; ++t) {
-        if (hit(track_header_x_rect(t), mx, my)) {
+        if (hit(track_header_x_rect(t), dmx, my)) {
             // Close all open instrument editor windows first: removal shifts track indices,
             // so the per-track window pool would otherwise misalign (they reopen on demand).
             for (int k = 0; k < vivid::session::kMaxTracks; ++k)
@@ -280,9 +320,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             }
             return;
         }
-        if (hit(track_header_rect(t), mx, my)) { win->sel_track = t; if (app->graph) app->graph->select_op(-1); return; }
+        if (hit(track_header_rect(t), dmx, my)) { win->sel_track = t; if (app->graph) app->graph->select_op(-1); return; }
     }
-    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), mx, my)) {
+    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) {
         win->track_menu = { true, static_cast<float>(mx), static_cast<float>(my), -1 };
         return;
     }
@@ -365,9 +405,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // mixer gain sliders
     for (int t = 0; t < tracks; ++t) {
         const Rect gr = track_gain_rect(t, scenes);
-        if (hit(gr, mx, my)) {
+        if (hit(gr, dmx, my)) {
             win->gain_drag = t;
-            vivid::session::session_set_track_gain(app->session, t, std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
+            vivid::session::session_set_track_gain(app->session, t, std::min(1.0, std::max(0.0, (dmx - gr.x) / gr.w)));
             return;
         }
     }
@@ -375,7 +415,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // clip cells -> single click launches; double click opens the MIDI editor
     for (int t = 0; t < tracks; ++t)
         for (int sc = 0; sc < scenes; ++sc)
-            if (hit(clip_cell_rect(t, sc), mx, my)) {
+            if (hit(clip_cell_rect(t, sc), dmx, my)) {
                 const double now = glfwGetTime();
                 if (win->editor && win->last_clip_track == t && win->last_clip_scene == sc && now - win->last_clip_t < 0.35) {
                     char title[80];
@@ -403,7 +443,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             }
     // scene launch buttons -> launch the whole row
     for (int sc = 0; sc < scenes; ++sc)
-        if (hit(scene_launch_rect(sc), mx, my)) { vivid::session::session_launch_scene(app->session, sc); return; }
+        if (hit(scene_launch_rect(sc), dmx, my)) { vivid::session::session_launch_scene(app->session, sc); return; }
 }
 
 }  // namespace

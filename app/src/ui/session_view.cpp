@@ -14,6 +14,11 @@
 
 namespace vivid::ui {
 
+// forward decls (definitions live below)
+void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int n, double len,
+                       const Rect& b, float ar, float ag, float ab, float alpha);
+void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my);
+
 // The "+ FX" effect picker for the device chain.
 void draw_fx_menu(Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
@@ -69,18 +74,53 @@ void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc
     } else {
         vivid::session::ClipNote buf[256];
         const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
-        const double len = vivid::session::session_clip_length(s, t, sc);
-        if (n <= 0 || len <= 0.0) return;
-        int lo = 127, hi = 0;
-        for (int i = 0; i < n; ++i) { lo = std::min(lo, buf[i].pitch); hi = std::max(hi, buf[i].pitch); }
-        const int span = std::max(12, hi - lo + 1);            // at least an octave
-        const int base = lo - (span - (hi - lo + 1)) / 2;      // vertically centered
-        for (int i = 0; i < n; ++i) {
-            const float x0 = b.x + b.w * static_cast<float>(buf[i].start / len);
-            const float ww = b.w * static_cast<float>(buf[i].dur / len);
-            const float ny = b.y + b.h * (1.f - (static_cast<float>(buf[i].pitch - base) + 0.5f) / span);
-            ui.draw_rect(x0, ny - 1.f, std::max(1.5f, std::min(ww, b.x + b.w - x0)), 2.4f, ar, ag, ab, alpha);
-        }
+        draw_midi_preview(ui, buf, n, vivid::session::session_clip_length(s, t, sc), b, ar, ag, ab, alpha);
+    }
+}
+
+// A mini piano-roll of a note buffer inside `b` (reused by grid cells + the clip pool).
+void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int n, double len,
+                       const Rect& b, float ar, float ag, float ab, float alpha) {
+    if (n <= 0 || len <= 0.0) return;
+    int lo = 127, hi = 0;
+    for (int i = 0; i < n; ++i) { lo = std::min(lo, buf[i].pitch); hi = std::max(hi, buf[i].pitch); }
+    const int span = std::max(12, hi - lo + 1);            // at least an octave
+    const int base = lo - (span - (hi - lo + 1)) / 2;      // vertically centered
+    for (int i = 0; i < n; ++i) {
+        const float x0 = b.x + b.w * static_cast<float>(buf[i].start / len);
+        const float ww = b.w * static_cast<float>(buf[i].dur / len);
+        const float ny = b.y + b.h * (1.f - (static_cast<float>(buf[i].pitch - base) + 0.5f) / span);
+        ui.draw_rect(x0, ny - 1.f, std::max(1.5f, std::min(ww, b.x + b.w - x0)), 2.4f, ar, ag, ab, alpha);
+    }
+}
+
+// The browser sidebar: a bounded CLIPS panel listing the session clip pool.
+void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
+    const Style& sty = style();
+    auto* s = w.app->session;
+    panel(ui, sidebar_panel(w.sidebar_w, w.win_h, w.dock_h), "CLIPS", sty.audio);
+    const int nc = s ? vivid::session::session_pool_count(s) : 0;
+    if (nc == 0) {
+        ui.draw_text(sidebar_content_x(), sidebar_content_top() + 4.f, "drag a clip here to stash it",
+                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
+        return;
+    }
+    vivid::session::ClipNote buf[256];
+    for (int i = 0; i < nc; ++i) {
+        const Rect r = pool_item_rect(i, w.sidebar_w);
+        if (r.y + r.h > w.dock_top() - kPaneMargin) break;   // simple clip (no scroll yet)
+        const bool hov = hit(r, mx, my);
+        ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+        std::string nm = vivid::session::session_pool_name(s, i);
+        if (nm.empty()) nm = "clip " + std::to_string(i + 1);
+        ui.draw_text(r.x + 9.f, r.y + 4.f, fit_text(ui, nm, r.w - 28.f, sty.fs_value).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
+        const int n = vivid::session::session_pool_get(s, i, buf, 256);
+        const Rect pv = { r.x + 9.f, r.y + 18.f, r.w - 18.f, r.h - 22.f };
+        ui.draw_rect(pv.x, pv.y, pv.w, pv.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+        draw_midi_preview(ui, buf, n, vivid::session::session_pool_length(s, i), pv, sty.teal[0], sty.teal[1], sty.teal[2], 0.85f);
+        const Rect xb = pool_item_x_rect(i, w.sidebar_w);
+        ui.draw_text(xb.x + 1.f, xb.y - 2.f, "\xC3\x97", hit(xb, mx, my) ? 0.82f : 0.46f, 0.46f, 0.5f, 1.0f, sty.fs_body);
     }
 }
 
@@ -183,6 +223,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.draw_text(sty.s6, 11.f, "Vivid", sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_brand);
     const double bpm = w.app->transport ? w.app->transport->bpm.load(std::memory_order_relaxed) : 120.0;
     const bool playing = w.app->transport && w.app->transport->is_playing();
+    {   // browser sidebar toggle (three stacked lines when open)
+        const Rect b = sidebar_toggle_rect();
+        const bool open = w.sidebar_w > 0.f, hov = hit(b, mx, my);
+        ui.draw_rounded_rect(b.x - 2.f, b.y - 2.f, b.w + 4.f, b.h + 4.f, sty.radius,
+                             (open || hov) ? sty.card_hi[0] : sty.card[0], (open || hov) ? sty.card_hi[1] : sty.card[1], (open || hov) ? sty.card_hi[2] : sty.card[2], 1.0f);
+        const float* ic = open ? sty.audio : sty.dim;
+        for (int i = 0; i < 3; ++i) ui.draw_rect(b.x + 3.f, b.y + 3.f + i * 5.f, b.w - 6.f, 2.f, ic[0], ic[1], ic[2], 1.0f);
+    }
     {
         const Rect p = transport_play_rect();
         const bool hov = hit(p, mx, my);
@@ -209,11 +257,18 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     const int tracks = vivid::session::session_track_count(s);
     const int scenes = vivid::session::session_scene_count(s);
 
-    // ================= DAW pane =================
-    ui.push_clip_rect(0.f, kTopBarH, w.split_x, w.dock_top() - kTopBarH);
-    ui.draw_rect(0.f, kTopBarH, w.split_x, w.dock_top() - kTopBarH, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);
-    panel(ui, session_panel(w.split_x, w.win_h, w.dock_h), "SESSION", sty.audio);   // the bounded region
-    const float contentR = w.split_x - kPaneMargin - kPanePad;           // right edge of the panel content
+    // ================= browser sidebar (screen space, left of the DAW pane) =================
+    if (w.sidebar_w > 0.f)
+        draw_sidebar(ui, w, mx, my);
+
+    // ================= DAW pane (shifted right past the browser sidebar via a view transform) =================
+    const float SW = w.sidebar_w;
+    const float dawW = w.split_x - SW;
+    ui.push_clip_rect(SW, kTopBarH, dawW, w.dock_top() - kTopBarH);
+    ui.set_transform(SW, 0.f, 1.f);   // world x=0 is the DAW pane's left edge; content shifts past the sidebar
+    ui.draw_rect(0.f, kTopBarH, dawW, w.dock_top() - kTopBarH, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);
+    panel(ui, session_panel(dawW, w.win_h, w.dock_h), "SESSION", sty.audio);   // the bounded region
+    const float contentR = dawW - kPaneMargin - kPanePad;                // right edge of the panel content
 
     // track headers (accent left edge, ellipsised name, remove ×) + a "+ Track" cell
     for (int t = 0; t < tracks; ++t) {
@@ -293,33 +348,9 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.draw_text(kSceneColX, mm.y + 6.f, "MAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     viz_button(master_viz_rect(scenes));
 
-    // clip drag/drop feedback: outline the target cell + a ghost under the cursor
-    if (w.clip_drag_t >= 0 && w.clip_dragging) {
-        const bool audioSrc = vivid::session::session_track_is_audio(s, w.clip_drag_t);
-        int tt = -1, ts = -1;
-        for (int a = 0; a < tracks && tt < 0; ++a)
-            for (int b = 0; b < scenes; ++b)
-                if (hit(clip_cell_rect(a, b), mx, my)) { tt = a; ts = b; break; }
-        if (tt >= 0 && (tt != w.clip_drag_t || ts != w.clip_drag_sc)) {
-            const Rect r = clip_cell_rect(tt, ts);
-            const bool ok = !audioSrc && !vivid::session::session_track_is_audio(s, tt);
-            const float* hl = ok ? sty.gold : sty.control;   // gold = valid drop, gray = not
-            ui.draw_rect(r.x, r.y, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
-            ui.draw_rect(r.x, r.y + r.h - 2.f, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
-            ui.draw_rect(r.x, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
-            ui.draw_rect(r.x + r.w - 2.f, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
-        }
-        const Rect src = clip_cell_rect(w.clip_drag_t, w.clip_drag_sc);
-        const float gx = static_cast<float>(mx) - (static_cast<float>(w.clip_drag_x0) - src.x);
-        const float gy = static_cast<float>(my) - (static_cast<float>(w.clip_drag_y0) - src.y);
-        float ar, ag, ab; track_accent(w.clip_drag_t, ar, ag, ab);
-        ui.draw_rounded_rect(gx, gy, src.w, src.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
-        ui.draw_rect(gx + 1.f, gy + 1.f, src.w - 2.f, 14.f, ar * 0.6f, ag * 0.6f, ab * 0.6f, 0.95f);
-        char cn[16]; std::snprintf(cn, sizeof cn, "Clip %c", 'A' + w.clip_drag_sc);
-        ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
-    }
-
+    ui.set_transform(0.f, 0.f, 1.f);   // reset the DAW-pane shift
     ui.pop_clip_rect();  // end DAW pane
+    // (clip drag feedback is drawn later as a screen-space overlay — it can cross the sidebar↔grid boundary)
 
     // ================= visuals pane (Output + Signal regions; content drawn by the GPU / node graph) =================
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
@@ -332,6 +363,42 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     const Rect sp = w.splitter_rect();
     const bool sph = hit(sp, mx, my);
     ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? sty.border[0] : sty.border_soft[0], sph ? sty.border[1] : sty.border_soft[1], sph ? sty.border[2] : sty.border_soft[2], 1.0f);
+
+    // ---- clip drag feedback: a screen-space overlay (can cross the sidebar↔grid boundary) ----
+    if ((w.clip_drag_t >= 0 || w.clip_drag_from_pool >= 0) && w.clip_dragging) {
+        const bool fromPool = w.clip_drag_from_pool >= 0;
+        const bool audioSrc = !fromPool && vivid::session::session_track_is_audio(s, w.clip_drag_t);
+        int tt = -1, ts = -1;
+        for (int a = 0; a < tracks && tt < 0; ++a)
+            for (int b = 0; b < scenes; ++b)
+                if (hit(clip_cell_rect(a, b), mx - SW, my)) { tt = a; ts = b; break; }   // grid is shifted
+        if (tt >= 0) {   // highlight the target cell (screen rect = world + sidebar offset)
+            const Rect r = clip_cell_rect(tt, ts);
+            const bool ok = !audioSrc && !vivid::session::session_track_is_audio(s, tt);
+            const float* hl = ok ? sty.gold : sty.control;
+            const float rx = r.x + SW;
+            ui.draw_rect(rx, r.y, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(rx, r.y + r.h - 2.f, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(rx, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(rx + r.w - 2.f, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
+        } else if (!fromPool && !audioSrc && in_sidebar(SW, w.win_h, w.dock_h, mx, my)) {
+            const Rect sb = sidebar_panel(SW, w.win_h, w.dock_h);   // grid -> pool stash target
+            ui.draw_rect(sb.x, sb.y, sb.w, 2.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+            ui.draw_rect(sb.x, sb.y + sb.h - 2.f, sb.w, 2.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+        }
+        Rect src = fromPool ? pool_item_rect(w.clip_drag_from_pool, SW) : clip_cell_rect(w.clip_drag_t, w.clip_drag_sc);
+        if (!fromPool) src.x += SW;
+        const float gx = static_cast<float>(mx) - (static_cast<float>(w.clip_drag_x0) - src.x);
+        const float gy = static_cast<float>(my) - (static_cast<float>(w.clip_drag_y0) - src.y);
+        float ar = sty.teal[0], ag = sty.teal[1], ab = sty.teal[2];
+        if (!fromPool) track_accent(w.clip_drag_t, ar, ag, ab);
+        ui.draw_rounded_rect(gx, gy, src.w, src.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
+        ui.draw_rect(gx + 1.f, gy + 1.f, src.w - 2.f, 13.f, ar * 0.6f, ag * 0.6f, ab * 0.6f, 0.95f);
+        char cn[24];
+        if (fromPool) std::snprintf(cn, sizeof cn, "%.14s", vivid::session::session_pool_name(s, w.clip_drag_from_pool));
+        else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + w.clip_drag_sc);
+        ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
+    }
 }
 
 // The "map this param from a source" picker (the return path).

@@ -71,6 +71,19 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     }
     j["tracks"] = tracks;
 
+    // Clip pool — loose clips stashed outside the track grid (browser sidebar).
+    json pool = json::array();
+    for (int i = 0; i < vivid::session::session_pool_count(s); ++i) {
+        vivid::session::ClipNote buf[256];
+        const int n = vivid::session::session_pool_get(s, i, buf, 256);
+        json notes = json::array();
+        for (int k = 0; k < n; ++k)
+            notes.push_back({ {"p", buf[k].pitch}, {"s", buf[k].start}, {"d", buf[k].dur}, {"v", buf[k].vel} });
+        pool.push_back({ {"name", vivid::session::session_pool_name(s, i)},
+                         {"length", vivid::session::session_pool_length(s, i)}, {"notes", notes} });
+    }
+    j["pool"] = pool;
+
     json jg;
     float sx = 0.f, sy = 0.f; g.get_shader(sx, sy);
     jg["shader"] = { sx, sy };
@@ -201,6 +214,18 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             if (act >= 0) vivid::session::session_launch_clip(s, t, act);
         }
     }
+
+    // Clip pool — loose clips outside the grid (browser sidebar).
+    vivid::session::session_pool_clear(s);
+    if (j.contains("pool"))
+        for (const auto& jp : j["pool"]) {
+            std::vector<vivid::session::ClipNote> notes;
+            if (jp.contains("notes"))
+                for (const auto& jn : jp["notes"])
+                    notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
+            vivid::session::session_pool_add(s, notes.data(), static_cast<int>(notes.size()),
+                                             jp.value("length", 4.0), jp.value("name", std::string()).c_str());
+        }
 
     if (j.contains("graph")) {
         const json& jg = j["graph"];

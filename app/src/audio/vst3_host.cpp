@@ -65,8 +65,13 @@ struct Track {
     std::atomic<float>    aud_trim1[8];
 };
 
+// A loose clip in the session-level pool (lives outside the track grid). UI-thread-only
+// storage: the audio thread never reads `Session::pool`, so no edit-mirror is needed.
+struct PoolClip { MidiClip clip; std::string name; };
+
 struct Session {
     Vst3HostApp host;
+    std::vector<PoolClip> pool;   // clips stashed outside the grid (browser sidebar; UI-thread-only)
     // `tracks` is the UI/main-thread-authoritative list + owner (every session_* accessor
     // indexes it). The audio thread NEVER touches it; it iterates `tracks_view`, refreshed
     // from `tracks_pub` via tracks_gen + try_lock — the same edit-mirror pattern as the
@@ -456,6 +461,30 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
     }
     tr.edit_gen.fetch_add(1, std::memory_order_release);
 }
+
+// --- Clip pool (loose clips outside the grid) — UI/main thread only. ---
+static bool pool_valid(Session* s, int i) { return s && i >= 0 && i < static_cast<int>(s->pool.size()); }
+int session_pool_count(Session* s) { return s ? static_cast<int>(s->pool.size()) : 0; }
+double session_pool_length(Session* s, int i) { return pool_valid(s, i) ? s->pool[i].clip.length : 0.0; }
+const char* session_pool_name(Session* s, int i) { return pool_valid(s, i) ? s->pool[i].name.c_str() : ""; }
+int session_pool_get(Session* s, int i, ClipNote* out, int max) {
+    if (!pool_valid(s, i) || !out || max <= 0) return 0;
+    const auto& notes = s->pool[i].clip.notes;
+    const int n = std::min(static_cast<int>(notes.size()), max);
+    for (int k = 0; k < n; ++k) out[k] = notes[k];
+    return n;
+}
+int session_pool_add(Session* s, const ClipNote* notes, int n, double length, const char* name) {
+    if (!s) return -1;
+    PoolClip pc;
+    if (notes && n > 0) pc.clip.notes.assign(notes, notes + n);
+    pc.clip.length = length > 0 ? length : 4.0;
+    pc.name = name ? name : "";
+    s->pool.push_back(std::move(pc));
+    return static_cast<int>(s->pool.size()) - 1;
+}
+void session_pool_remove(Session* s, int i) { if (pool_valid(s, i)) s->pool.erase(s->pool.begin() + i); }
+void session_pool_clear(Session* s) { if (s) s->pool.clear(); }
 
 // Drain a device's pending UI parameter changes into its ParamChanges block.
 static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {

@@ -285,6 +285,34 @@ def clear_clip(track: int, scene: int) -> dict:
 
 
 @mcp.tool
+def list_pool() -> dict:
+    """List the clip pool — loose MIDI clips stashed outside the track×scene grid:
+    {pool:[{index, name, length}]}. Saved with the project. Drag/stash from the grid,
+    or place back into any instrument cell (see pool_stash / pool_place)."""
+    return _post("list_pool")
+
+
+@mcp.tool
+def pool_stash(track: int, scene: int, name: str = "") -> dict:
+    """Copy a grid clip into the clip pool (instrument tracks only). Returns {index}.
+    name defaults to "<track> <A/B/C>". The grid cell is left unchanged (stash is a copy)."""
+    return _post("pool_stash", {"track": track, "scene": scene, "name": name})
+
+
+@mcp.tool
+def pool_place(index: int, track: int, scene: int) -> dict:
+    """Place a pooled clip (by pool index) into a grid cell, overwriting it (instrument
+    tracks only). Returns {notes}. The pool item stays; use pool_remove to discard it."""
+    return _post("pool_place", {"index": index, "track": track, "scene": scene})
+
+
+@mcp.tool
+def pool_remove(index: int) -> dict:
+    """Remove a clip from the pool by index (later indices shift down by one)."""
+    return _post("pool_remove", {"index": index})
+
+
+@mcp.tool
 def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
               vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
     """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"

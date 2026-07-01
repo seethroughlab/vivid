@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -493,6 +494,49 @@ void ControlServer::register_handlers() {
         for (int i = 0; i < n; ++i)
             notes.push_back({ {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} });
         json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
+    };
+    // ---------------- clip pool (loose clips that live outside the grid) ----------------
+    // The pool is UI-thread-only storage; these handlers run on the UI thread (like all others).
+    handlers_["list_pool"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json arr = json::array();
+        for (int i = 0, n = P::session_pool_count(c.session); i < n; ++i)
+            arr.push_back({ {"index", i}, {"name", P::session_pool_name(c.session, i)},
+                            {"length", P::session_pool_length(c.session, i)} });
+        json r = ok(); r["pool"] = arr; return r;
+    };
+    // Copy a grid clip into the pool (instrument tracks only). Returns the new pool index.
+    handlers_["pool_stash"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (P::session_track_is_audio(c.session, track)) return err(code::kBadArg, "audio clips are not stashable");
+        P::ClipNote buf[1024];
+        const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
+        if (n <= 0) return err(code::kBadArg, "clip is empty");
+        std::string name = b.value("name", std::string());
+        if (name.empty()) { char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", P::session_track_name(c.session, track), 'A' + scene); name = nm; }
+        const int idx = P::session_pool_add(c.session, buf, n, P::session_clip_length(c.session, track, scene), name.c_str());
+        json r = ok(); r["index"] = idx; return r;
+    };
+    // Place a pool clip into a grid cell (instrument tracks only), overwriting whatever is there.
+    handlers_["pool_place"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int index = b.value("index", -1), track = b.value("track", 0), scene = b.value("scene", 0);
+        if (!in_range(index, P::session_pool_count(c.session))) return err(code::kOutOfRange, "pool index " + std::to_string(index) + " out of range");
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (P::session_track_is_audio(c.session, track)) return err(code::kBadArg, "cannot place a MIDI clip on an audio track");
+        P::ClipNote buf[1024];
+        const int n = P::session_pool_get(c.session, index, buf, 1024);
+        P::session_set_clip(c.session, track, scene, buf, n, P::session_pool_length(c.session, index));
+        json r = ok(); r["notes"] = n; return r;
+    };
+    handlers_["pool_remove"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int index = b.value("index", -1);
+        if (!in_range(index, P::session_pool_count(c.session))) return err(code::kOutOfRange, "pool index " + std::to_string(index) + " out of range");
+        P::session_pool_remove(c.session, index);
+        return ok();
     };
     handlers_["add_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

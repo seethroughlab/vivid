@@ -93,6 +93,16 @@ void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
 
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
+// Clip pool: loose clips stashed outside the track grid (browser sidebar). UI/main-thread
+// only — the audio thread never touches the pool. Fully portable MidiClips (notes + length).
+int         session_pool_count(Session*);
+int         session_pool_get(Session*, int index, ClipNote* out, int max);   // returns count
+double      session_pool_length(Session*, int index);
+const char* session_pool_name(Session*, int index);
+int         session_pool_add(Session*, const ClipNote* notes, int n, double length, const char* name);  // -> index
+void        session_pool_remove(Session*, int index);
+void        session_pool_clear(Session*);
+
 int    session_clip_note_count(Session*, int track, int scene);
 int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
 double session_clip_length(Session*, int track, int scene);
