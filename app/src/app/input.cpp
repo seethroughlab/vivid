@@ -13,6 +13,7 @@
 #include "ui/node_graph.h"
 #include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
+#include "transport.h"   // Transport play/stop (toggle_playing)
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
 #include "persist.h"
@@ -73,6 +74,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->editor && win->editor->is_open()) { win->editor->close(); return; }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
+    if (key == GLFW_KEY_SPACE && app->transport) { app->transport->toggle_playing(); return; }  // play/stop
     // Tab -> open the operator chooser at the cursor (visuals pane only).
     if (key == GLFW_KEY_TAB && app->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
@@ -120,6 +122,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     const int tracks = app->session ? vivid_poc::session_track_count(app->session) : 0;
     const int scenes = app->session ? vivid_poc::session_scene_count(app->session) : 0;
+
+    // Top transport bar: the play/pause button.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->transport
+        && hit(vivid::ui::transport_play_rect(), mx, my)) {
+        app->transport->toggle_playing();
+        return;
+    }
 
     // Mapping overview is modal while open: per-row steppers/toggle/clear; click-away closes.
     if (win->show_mappings && app->graph && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {

@@ -191,6 +191,31 @@ def set_bpm(bpm: float) -> dict:
 
 
 @mcp.tool
+def play() -> dict:
+    """Start the transport (playback runs; clips advance). status.playing reflects it."""
+    return _post("set_playing", {"playing": True})
+
+
+@mcp.tool
+def stop() -> dict:
+    """Pause the transport (the clock freezes; clips stop advancing). Pair with reset_transport
+    for a full stop back to the top."""
+    return _post("set_playing", {"playing": False})
+
+
+@mcp.tool
+def toggle_play() -> dict:
+    """Toggle play/stop; returns the new `playing` state."""
+    return _post("toggle_play")
+
+
+@mcp.tool
+def reset_transport() -> dict:
+    """Return the transport to the top (bar 1 / beat 0)."""
+    return _post("reset_transport")
+
+
+@mcp.tool
 def launch_clip(track: int, scene: int) -> dict:
     """Launch a track's clip (applied at the next bar)."""
     return _post("launch_clip", {"track": track, "scene": scene})

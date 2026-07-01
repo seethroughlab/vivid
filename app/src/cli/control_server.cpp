@@ -140,7 +140,8 @@ void ControlServer::register_handlers() {
         json r = ok();
         if (c.session) { r["tracks"] = P::session_track_count(c.session); r["scenes"] = P::session_scene_count(c.session); }
         if (c.transport) { r["bpm"] = c.transport->bpm.load(std::memory_order_relaxed);
-                           r["beats"] = c.transport->beats.load(std::memory_order_relaxed); }
+                           r["beats"] = c.transport->beats.load(std::memory_order_relaxed);
+                           r["playing"] = c.transport->is_playing(); }
         r["ops"] = c.graph ? c.graph->op_count() : 0;
         if (c.vgraph && c.vgraph->registry()) r["op_types"] = c.vgraph->registry()->type_names();  // spawnable ops
         return r;
@@ -410,6 +411,22 @@ void ControlServer::register_handlers() {
         if (!(bpm > 0.0) || bpm > 1000.0) return err(code::kBadArg, "bpm out of range (0, 1000]");
         c.transport->bpm.store(bpm, std::memory_order_relaxed);
         return ok();
+    };
+    // Transport play/stop. set_playing{playing} sets it; toggle_play flips; reset_transport
+    // returns to the top (bar 1). Pausing freezes the clock so clips stop advancing.
+    handlers_["set_playing"] = [](const ControlCtx& c, const json& b) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        c.transport->set_playing(b.value("playing", true));
+        json r = ok(); r["playing"] = c.transport->is_playing(); return r;
+    };
+    handlers_["toggle_play"] = [](const ControlCtx& c, const json&) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        json r = ok(); r["playing"] = c.transport->toggle_playing(); return r;
+    };
+    handlers_["reset_transport"] = [](const ControlCtx& c, const json&) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        c.transport->reset();
+        json r = ok(); r["beats"] = 0.0; return r;
     };
     handlers_["launch_clip"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

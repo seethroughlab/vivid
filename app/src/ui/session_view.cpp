@@ -173,11 +173,25 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     const double bpm = w.app->transport ? w.app->transport->bpm.load(std::memory_order_relaxed) : 120.0;
     char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
     ui.draw_text(190, 13, tb, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.95f);
+    const bool playing = w.app->transport && w.app->transport->is_playing();
     int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
     for (int i = 0; i < 4; ++i) {
-        const bool ob = (i == beat);
+        const bool ob = playing && (i == beat);   // dots freeze when stopped
         ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? sty.gold[0] : sty.card[0],
                      ob ? sty.gold[1] : sty.card[1], ob ? sty.gold[2] : sty.card[2], 1.0f);
+    }
+    // Play/pause button: ▶ when stopped, ⏸ (two bars) when playing.
+    {
+        const Rect p = transport_play_rect();
+        const bool hov = hit(p, mx, my);
+        draw_card(ui, p.x - 2.f, p.y - 2.f, p.w + 4.f, p.h + 4.f, sty.control, hov);
+        if (playing) {
+            ui.draw_rect(p.x + 3.f, p.y + 2.f, 4.f, 14.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+            ui.draw_rect(p.x + 11.f, p.y + 2.f, 4.f, 14.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+        } else {
+            ui.draw_tri(p.x + 4.f, p.y + 2.f, p.x + 4.f, p.y + 16.f, p.x + 15.f, p.y + 9.f,
+                        0.6f, 0.95f, 0.6f, 1.0f);
+        }
     }
     if (!w.app->session) return;
     auto* s = w.app->session;

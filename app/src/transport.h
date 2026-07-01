@@ -21,4 +21,12 @@ struct Transport {
         const double next = beats.load(std::memory_order_relaxed) + frames * bps / sample_rate;
         beats.store(next, std::memory_order_relaxed);
     }
+
+    // Transport control (UI/main thread). play(false) pauses the clock (clips stop advancing);
+    // reset returns to the top (bar 1) — pair reset()+play(false) for a full stop.
+    void set_playing(bool p) { playing.store(p, std::memory_order_relaxed); }
+    bool toggle_playing()    { const bool n = !playing.load(std::memory_order_relaxed);
+                               playing.store(n, std::memory_order_relaxed); return n; }
+    void reset()             { beats.store(0.0, std::memory_order_relaxed); }
+    bool is_playing() const  { return playing.load(std::memory_order_relaxed); }
 };
