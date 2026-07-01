@@ -287,6 +287,32 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.draw_text(kSceneColX, mm.y + 6.f, "MAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     viz_button(master_viz_rect(scenes));
 
+    // clip drag/drop feedback: outline the target cell + a ghost under the cursor
+    if (w.clip_drag_t >= 0 && w.clip_dragging) {
+        const bool audioSrc = vivid::session::session_track_is_audio(s, w.clip_drag_t);
+        int tt = -1, ts = -1;
+        for (int a = 0; a < tracks && tt < 0; ++a)
+            for (int b = 0; b < scenes; ++b)
+                if (hit(clip_cell_rect(a, b), mx, my)) { tt = a; ts = b; break; }
+        if (tt >= 0 && (tt != w.clip_drag_t || ts != w.clip_drag_sc)) {
+            const Rect r = clip_cell_rect(tt, ts);
+            const bool ok = !audioSrc && !vivid::session::session_track_is_audio(s, tt);
+            const float* hl = ok ? sty.gold : sty.control;   // gold = valid drop, gray = not
+            ui.draw_rect(r.x, r.y, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(r.x, r.y + r.h - 2.f, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(r.x, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
+            ui.draw_rect(r.x + r.w - 2.f, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
+        }
+        const Rect src = clip_cell_rect(w.clip_drag_t, w.clip_drag_sc);
+        const float gx = static_cast<float>(mx) - (static_cast<float>(w.clip_drag_x0) - src.x);
+        const float gy = static_cast<float>(my) - (static_cast<float>(w.clip_drag_y0) - src.y);
+        float ar, ag, ab; track_accent(w.clip_drag_t, ar, ag, ab);
+        ui.draw_rounded_rect(gx, gy, src.w, src.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
+        ui.draw_rect(gx + 1.f, gy + 1.f, src.w - 2.f, 14.f, ar * 0.6f, ag * 0.6f, ab * 0.6f, 0.95f);
+        char cn[16]; std::snprintf(cn, sizeof cn, "Clip %c", 'A' + w.clip_drag_sc);
+        ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
+    }
+
     ui.pop_clip_rect();  // end DAW pane
 
     // ================= visuals pane (Output + Signal regions; content drawn by the GPU / node graph) =================

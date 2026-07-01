@@ -88,7 +88,27 @@ void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
     if (win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
 }
 
-void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) {
+// The clip cell under (mx,my), or false. Fills t/sc on a hit.
+bool clip_cell_at(int tracks, int scenes, double mx, double my, int& t, int& sc) {
+    for (int a = 0; a < tracks; ++a)
+        for (int b = 0; b < scenes; ++b)
+            if (hit(clip_cell_rect(a, b), mx, my)) { t = a; sc = b; return true; }
+    return false;
+}
+// Move (or copy) a MIDI clip from (st,ss) to (tt,ts) via the thread-safe clip API.
+// Instrument tracks only (audio clips carry a sample and aren't relocatable here).
+void move_clip(vivid::App& app, int st, int ss, int tt, int ts, bool copy) {
+    auto* s = app.session;
+    if (!s || vivid::session::session_track_is_audio(s, st) || vivid::session::session_track_is_audio(s, tt)) return;
+    vivid::session::ClipNote buf[512];
+    const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
+    if (n <= 0) return;   // nothing to move
+    const double len = vivid::session::session_clip_length(s, st, ss);
+    vivid::session::session_set_clip(s, tt, ts, buf, n, len);
+    if (!copy) vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // clear the source
+}
+
+void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     vivid::App* app = win->app;
@@ -162,7 +182,23 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
-    if (action == GLFW_RELEASE) { win->gain_drag = -1; win->param_drag = -1; if (app->graph) app->graph->on_up(mx, my); return; }
+    if (action == GLFW_RELEASE) {
+        win->gain_drag = -1; win->param_drag = -1;
+        if (win->clip_drag_t >= 0) {   // clip drop: a real drag moves/copies; a plain click launches
+            const int st = win->clip_drag_t, ss = win->clip_drag_sc;
+            int tt = -1, ts = -1;
+            const bool onCell = clip_cell_at(tracks, scenes, mx, my, tt, ts);
+            if (win->clip_dragging) {   // a drag: move/copy onto a different cell (else cancel)
+                if (onCell && (tt != st || ts != ss))
+                    move_clip(*app, st, ss, tt, ts, (mods & GLFW_MOD_ALT) != 0);   // Option = copy
+            } else {
+                vivid::session::session_launch_clip(app->session, st, ss);        // plain click launches
+            }
+            win->clip_drag_t = -1; win->clip_dragging = false;
+        }
+        if (app->graph) app->graph->on_up(mx, my);
+        return;
+    }
     if (action != GLFW_PRESS) return;
 
     // Menu has priority: pick a characteristic -> spawn a data node in the graph.
@@ -356,11 +392,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
                         const double len = vivid::session::session_clip_length(app->session, t, sc);
                         win->editor->open(t, sc, title, buf, n, len);
                     }
-                    win->last_clip_t = -1;
+                    win->last_clip_t = -1; win->clip_drag_t = -1;
                     return;
                 }
                 win->last_clip_t = now; win->last_clip_track = t; win->last_clip_scene = sc;
-                vivid::session::session_launch_clip(app->session, t, sc);
+                // Arm a potential drag; a plain click launches on release, a drag moves the clip.
+                win->clip_drag_t = t; win->clip_drag_sc = sc; win->clip_dragging = false;
+                win->clip_drag_x0 = mx; win->clip_drag_y0 = my;
                 return;
             }
     // scene launch buttons -> launch the whole row

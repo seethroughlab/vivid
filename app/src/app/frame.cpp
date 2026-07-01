@@ -103,6 +103,10 @@ void apply_audio_param_mappings(App& app) {
 }
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
+    if (win.clip_drag_t >= 0 && !win.clip_dragging) {   // clip drag crosses the move threshold
+        const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
+        if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px
+    }
     if (win.split_drag)
         win.split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(win.win_w) - 40.f);
     if (win.dock_drag)

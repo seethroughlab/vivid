@@ -45,6 +45,10 @@ struct Window {
     Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
+    // Clip drag/drop in the session grid: source cell + press pos; drags past a
+    // threshold, then a drop on another cell moves (or Option = copies) the clip.
+    int     clip_drag_t = -1, clip_drag_sc = -1; bool clip_dragging = false;
+    double  clip_drag_x0 = 0.0, clip_drag_y0 = 0.0;
 
     // Frame-side display smoothing (per window).
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
