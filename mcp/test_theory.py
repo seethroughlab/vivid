@@ -110,7 +110,25 @@ def test_rhythm():
     assert T.quantize_rhythm([{"p": 60, "s": 0.13, "d": 0.1, "v": 0.8}], 0.25)[0]["s"] == 0.25
 
 
-TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms, test_rhythm]
+def test_analysis():
+    # detect_key: a C-major-triad-heavy clip -> C major
+    cmaj = [{"p": p, "s": i * 0.5, "d": 0.5, "v": 0.8} for i, p in enumerate([60, 64, 67, 60, 67, 72, 65, 67])]
+    k = T.detect_key(cmaj)
+    assert k["root"] == "C" and k["scale"] == "major", k
+    # an A-minor clip -> A minor
+    amin = [{"p": p, "s": i * 0.5, "d": 0.5, "v": 0.8} for i, p in enumerate([69, 72, 76, 69, 72, 67, 65, 69])]
+    ka = T.detect_key(amin)
+    assert ka["root"] == "A" and ka["scale"] == "minor", ka
+    # best_chord + chords_per_bar: bar0 = C major, bar1 = G major
+    assert T.best_chord([0, 4, 7]) == "C"
+    assert T.best_chord([9, 0, 4]) == "Am"
+    two = [{"p": 60, "s": 0, "d": 1, "v": 0.8}, {"p": 64, "s": 0, "d": 1, "v": 0.8}, {"p": 67, "s": 0, "d": 1, "v": 0.8},
+           {"p": 67, "s": 4, "d": 1, "v": 0.8}, {"p": 71, "s": 4, "d": 1, "v": 0.8}, {"p": 74, "s": 4, "d": 1, "v": 0.8}]
+    assert T.chords_per_bar(two, 8.0) == ["C", "G"]
+
+
+TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms,
+         test_rhythm, test_analysis]
 
 
 def main() -> int:

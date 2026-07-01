@@ -360,3 +360,69 @@ def quantize_rhythm(notes, grid: float = 0.25) -> list[dict]:
     """Snap note starts to a beat grid (0.25 = 16ths at 4/4)."""
     g = grid if grid > 0 else 0.25
     return [{**n, "s": round(round(float(n["s"]) / g) * g, 6)} for n in notes]
+
+
+# --- Analysis (heuristic) ---
+_KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88]
+_KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17]
+
+
+def _corr(a, b) -> float:
+    n = len(a)
+    ma, mb = sum(a) / n, sum(b) / n
+    num = sum((a[i] - ma) * (b[i] - mb) for i in range(n))
+    da = sum((x - ma) ** 2 for x in a) ** 0.5
+    db = sum((x - mb) ** 2 for x in b) ** 0.5
+    return num / (da * db) if da and db else 0.0
+
+
+def pc_histogram(notes) -> list[float]:
+    """12-bin pitch-class histogram weighted by note duration."""
+    h = [0.0] * 12
+    for n in notes:
+        h[parse_note(n["p"]) % 12] += float(n.get("d", 0.25))
+    return h
+
+
+def detect_key(notes) -> dict:
+    """Best-fit key by Krumhansl–Schmuckler profile correlation. Accepts clip notes or a
+    12-bin histogram. Heuristic — short/ambiguous clips are unreliable."""
+    h = notes if (len(notes) == 12 and all(isinstance(x, (int, float)) for x in notes)) \
+        else pc_histogram(notes)
+    best = None
+    for root in range(12):
+        rot = [h[(root + i) % 12] for i in range(12)]
+        for mode, prof in (("major", _KS_MAJOR), ("minor", _KS_MINOR)):
+            c = _corr(rot, prof)
+            if best is None or c > best[0]:
+                best = (c, root, mode)
+    return {"root": _NAMES_SHARP[best[1]], "scale": best[2], "confidence": round(best[0], 3)}
+
+
+_TRIADS = {"": [0, 4, 7], "m": [0, 3, 7], "dim": [0, 3, 6]}
+
+
+def best_chord(pcs) -> str | None:
+    """The triad (root+quality) that best covers a set of pitch classes."""
+    pset = set(pcs)
+    if not pset:
+        return None
+    best = None
+    for root in range(12):
+        for suf, iv in _TRIADS.items():
+            tones = {(root + i) % 12 for i in iv}
+            score = len(tones & pset) - 0.25 * len(pset - tones)   # coverage, mild penalty for extras
+            if best is None or score > best[0]:
+                best = (score, root, suf)
+    return _NAMES_SHARP[best[1]] + best[2]
+
+
+def chords_per_bar(notes, length: float, bar_beats: float = 4.0) -> list:
+    """A best-fit chord label per bar (heuristic)."""
+    nbars = max(1, int((float(length) + bar_beats - 1e-3) // bar_beats))
+    out = []
+    for b in range(nbars):
+        lo, hi = b * bar_beats, (b + 1) * bar_beats
+        pcs = [parse_note(n["p"]) % 12 for n in notes if lo <= float(n["s"]) < hi]
+        out.append(best_chord(pcs))
+    return out

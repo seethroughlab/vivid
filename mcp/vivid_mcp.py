@@ -437,6 +437,25 @@ def quantize_rhythm(track: int, scene: int, grid: float = 0.25) -> dict:
     return _rmw(track, scene, lambda notes, L: theory.quantize_rhythm(notes, grid))
 
 
+# ---------------- analysis ----------------
+@mcp.tool
+def analyze_clip(track: int, scene: int, bar_beats: float = 4.0) -> dict:
+    """Read a clip and infer its music theory (HEURISTIC): detected {key:{root,scale,confidence}}
+    (Krumhansl–Schmuckler), a best-fit chord per bar, pitch range, and note count. Short or
+    ambiguous clips are unreliable. Great for making visuals respond to harmony."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    notes, length = cur.get("notes", []), cur.get("length", 4.0)
+    if not notes:
+        return {"ok": True, "empty": True, "note_count": 0, "length": length}
+    ps = [n["p"] for n in notes]
+    return {"ok": True, "key": theory.detect_key(notes),
+            "chords": theory.chords_per_bar(notes, length, bar_beats),
+            "range": [theory.note_name(min(ps)), theory.note_name(max(ps))],
+            "note_count": len(notes), "length": length}
+
+
 @mcp.tool
 def add_effect(track: int, name: str) -> dict:
     """Append an FX plugin (by name from list_effects) to a track's chain."""
