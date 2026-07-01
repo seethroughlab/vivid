@@ -219,9 +219,8 @@ void run_frame_loop(App& app, Window& win) {
             vgraph.render(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi, vp.w * win.dpi, vp.h * win.dpi, tsec, srcTex.view);
 
             draw_ui(ui, win, beats, mx, my);
-            const Rect vrp = win.viewer_rect();
-            graph.set_bounds(win.split_x + 8.f, vrp.y + vrp.h + 16.f,
-                             static_cast<float>(win.win_w) - 8.f, win.dock_top() - 8.f);
+            const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
+            graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
             graph.draw(ui);   // includes live node thumbnails via draw_texture
             draw_device_dock(ui, win, mx, my);   // bottom device-view dock (full width)
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).

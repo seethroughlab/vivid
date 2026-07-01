@@ -319,11 +319,8 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
 
 void NodeGraph::draw(Renderer2D& r) {
     sync_op_pos();
-    r.push_clip_rect(bx0_ - 6.f, by0_ - 18.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 28.f);
-    // NETWORK header is chrome — drawn at identity, before the view transform.
-    r.draw_text(bx0_, by0_ - 16.f,
-                "NETWORK — wire op outputs (right) into inputs (left), ending in Output. Drag a data port onto an op param.",
-                0.45f, 0.48f, 0.53f, 1.0f, 0.86f);
+    r.push_clip_rect(bx0_ - 6.f, by0_ - 8.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 18.f);
+    // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
     r.set_transform(view_ox_, view_oy_, view_scale_);

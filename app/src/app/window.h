@@ -53,6 +53,8 @@ struct Window {
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }
     ui::Rect     viewer_rect()      const { return ui::viewer_rect(win_w, split_x); }
+    ui::Rect     output_panel()     const { return ui::output_panel(win_w, split_x); }
+    ui::Rect     signal_panel()     const { return ui::signal_panel(win_w, win_h, split_x, dock_h); }
     ui::Rect     splitter_rect()    const { return ui::splitter_rect(win_h, dock_h, split_x); }
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom()        const { return ui::dock_geom(win_w, win_h, dock_h); }

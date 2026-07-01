@@ -94,8 +94,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const float y0 = d.y0;
     ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), w.dock_h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     const bool rhov = hit(w.dock_resize_rect(), mx, my);
-    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(w.win_w), 2.f,
-                 rhov ? 0.40f : sty.sep[0], rhov ? 0.46f : sty.sep[1], rhov ? 0.52f : sty.sep[2], 1.0f);
+    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(w.win_w), 2.f,   // strong top border (drag to resize)
+                 rhov ? sty.control[0] : sty.border[0], rhov ? sty.control[1] : sty.border[1], rhov ? sty.control[2] : sty.border[2], 1.0f);
 
     // When a visual node is selected in the graph, the dock becomes its inspector.
     const int selop = w.app->graph ? w.app->graph->selected_op() : -1;
@@ -169,139 +169,137 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
     const Style& sty = style();
-    ui.draw_rect(0, 0, static_cast<float>(w.win_w), 40, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
-    ui.draw_rect(0, 39, static_cast<float>(w.win_w), 1, sty.sep[0], sty.sep[1], sty.sep[2], 1.0f);  // header rule
-    ui.draw_text(20, 12, "VIVID \xE2\x80\x94 Session", sty.text[0], sty.text[1], sty.text[2], 1.0f, 1.15f);
+    const float W = static_cast<float>(w.win_w);
+
+    // --- transport bar: wordmark · play/pause · beat · tempo ---
+    ui.draw_rect(0, 0, W, kTopBarH, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_rect(0, kTopBarH - 1.f, W, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);
+    ui.draw_text(sty.s6, 11.f, "Vivid", sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_brand);
     const double bpm = w.app->transport ? w.app->transport->bpm.load(std::memory_order_relaxed) : 120.0;
-    char tb[64]; std::snprintf(tb, sizeof tb, "%.0f BPM   4/4", bpm);
-    ui.draw_text(190, 13, tb, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.95f);
     const bool playing = w.app->transport && w.app->transport->is_playing();
-    int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
-    for (int i = 0; i < 4; ++i) {
-        const bool ob = playing && (i == beat);   // dots freeze when stopped
-        ui.draw_rect(360 + i * 22.f, 13, 14, 14, ob ? sty.gold[0] : sty.card[0],
-                     ob ? sty.gold[1] : sty.card[1], ob ? sty.gold[2] : sty.card[2], 1.0f);
-    }
-    // Play/pause button: ▶ when stopped, ⏸ (two bars) when playing.
     {
         const Rect p = transport_play_rect();
         const bool hov = hit(p, mx, my);
-        draw_card(ui, p.x - 2.f, p.y - 2.f, p.w + 4.f, p.h + 4.f, sty.control, hov);
+        ui.draw_rounded_rect(p.x - 3.f, p.y - 3.f, p.w + 6.f, p.h + 6.f, sty.radius,
+                             hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
         if (playing) {
-            ui.draw_rect(p.x + 3.f, p.y + 2.f, 4.f, 14.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
-            ui.draw_rect(p.x + 11.f, p.y + 2.f, 4.f, 14.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+            ui.draw_rect(p.x + 4.f, p.y + 3.f, 3.5f, 12.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+            ui.draw_rect(p.x + 10.5f, p.y + 3.f, 3.5f, 12.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
         } else {
-            ui.draw_tri(p.x + 4.f, p.y + 2.f, p.x + 4.f, p.y + 16.f, p.x + 15.f, p.y + 9.f,
-                        0.6f, 0.95f, 0.6f, 1.0f);
+            ui.draw_tri(p.x + 5.f, p.y + 3.f, p.x + 5.f, p.y + 15.f, p.x + 15.f, p.y + 9.f, sty.green[0], sty.green[1], sty.green[2], 1.0f);
         }
     }
-    // (File lives in the native menu bar now — no in-window button.)
+    int beat = static_cast<int>(std::floor(beats)) % 4; if (beat < 0) beat += 4;
+    for (int i = 0; i < 4; ++i) {
+        const bool ob = playing && (i == beat);   // dots freeze when stopped
+        ui.draw_rounded_rect(330.f + i * 13.f, 15.f, 8.f, 8.f, 2.f,
+                             ob ? sty.gold[0] : sty.card_hi[0], ob ? sty.gold[1] : sty.card_hi[1], ob ? sty.gold[2] : sty.card_hi[2], 1.0f);
+    }
+    char tb[48]; std::snprintf(tb, sizeof tb, "%.0f BPM     4 / 4", bpm);
+    ui.draw_text(398.f, 13.f, tb, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+
     if (!w.app->session) return;
     auto* s = w.app->session;
     const int tracks = vivid::session::session_track_count(s);
     const int scenes = vivid::session::session_scene_count(s);
 
-    ui.push_clip_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f);  // DAW pane (above the dock)
-    ui.draw_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
-    // track headers (each with a remove ×), then a "+ Track" cell after the last.
+    // ================= DAW pane =================
+    ui.push_clip_rect(0.f, kTopBarH, w.split_x, w.dock_top() - kTopBarH);
+    ui.draw_rect(0.f, kTopBarH, w.split_x, w.dock_top() - kTopBarH, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);
+    panel(ui, session_panel(w.split_x, w.win_h, w.dock_h), "SESSION", sty.audio);   // the bounded region
+    const float contentR = w.split_x - kPaneMargin - kPanePad;           // right edge of the panel content
+
+    // track headers (accent left edge, ellipsised name, remove ×) + a "+ Track" cell
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
         float ar, ag, ab; track_accent(t, ar, ag, ab);
-        const bool hov = hit(h, mx, my);  // hover: clickable -> editor
-        draw_card(ui, h.x, h.y, h.w, h.h, sty.control, hov);
-        ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);  // track accent overrides the card bar
-        char nm[40]; std::snprintf(nm, sizeof nm, "%.16s", vivid::session::session_track_name(s, t));
-        ui.draw_text(h.x + 8.f, h.y + 9.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.95f);
-        const Rect xb = track_header_x_rect(t);   // remove this track
+        const bool hov = hit(h, mx, my);
+        ui.draw_rounded_rect(h.x, h.y, h.w, h.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rect(h.x, h.y + 3.f, 3.f, h.h - 6.f, ar, ag, ab, 1.0f);   // accent edge
+        std::string nm = fit_text(ui, vivid::session::session_track_name(s, t), h.w - 28.f, sty.fs_label);
+        ui.draw_text(h.x + 10.f, h.y + 6.f, nm.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
+        const Rect xb = track_header_x_rect(t);
         const bool xh = hit(xb, mx, my);
-        ui.draw_rect(xb.x, xb.y, xb.w, xb.h, xh ? 0.5f : 0.32f, 0.16f, 0.16f, 1.0f);
-        ui.draw_text(xb.x + 2.5f, xb.y - 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.78f);
+        ui.draw_text(xb.x + 1.f, xb.y - 2.f, "\xC3\x97", xh ? 0.82f : 0.46f, xh ? 0.42f : 0.49f, xh ? 0.42f : 0.55f, 1.0f, sty.fs_body);
     }
-    if (tracks < vivid::session::kMaxTracks) {   // "+ Track" affordance
+    if (tracks < vivid::session::kMaxTracks) {
         const Rect a = track_add_rect(tracks);
         const bool ah = hit(a, mx, my);
-        draw_card(ui, a.x, a.y, a.w, a.h, sty.control, ah);
-        ui.draw_text(a.x + 10.f, a.y + 9.f, "+ Track", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f);
+        ui.draw_rounded_rect(a.x, a.y, a.w, a.h, sty.radius, ah ? sty.card[0] : sty.region[0], ah ? sty.card[1] : sty.region[1], ah ? sty.card[2] : sty.region[2], 1.0f);
+        ui.draw_text(a.x + 10.f, a.y + 6.f, "+ Track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     }
     // scene rows + clip cells
     for (int sc = 0; sc < scenes; ++sc) {
         const Rect sb = scene_launch_rect(sc);
         const bool sh = hit(sb, mx, my);
-        ui.draw_rect(sb.x, sb.y, sb.w, sb.h, sh ? sty.card_hi[0] : sty.card[0], sh ? sty.card_hi[1] : sty.card[1], sh ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rounded_rect(sb.x, sb.y, sb.w, sb.h, sty.radius, sh ? sty.card_hi[0] : sty.card[0], sh ? sty.card_hi[1] : sty.card[1], sh ? sty.card_hi[2] : sty.card[2], 1.0f);
         char sl[4]; std::snprintf(sl, sizeof sl, "%c", 'A' + sc);
-        ui.draw_text(sb.x + 10.f, sb.y + 8.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f);
-        ui.draw_tri(sb.x + 12.f, sb.y + 30.f, sb.x + 12.f, sb.y + 42.f, sb.x + 23.f, sb.y + 36.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
+        ui.draw_text(sb.x + (sb.w - ui.text_width(sl, sty.fs_body)) * 0.5f, sb.y + 5.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        ui.draw_tri(sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 15.f, sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 7.f, sb.x + sb.w * 0.5f + 4.f, sb.y + sb.h - 11.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
         for (int t = 0; t < tracks; ++t) {
             const Rect r = clip_cell_rect(t, sc);
             const bool on = vivid::session::session_active_clip(s, t) == sc;
             const bool q  = vivid::session::session_queued_clip(s, t) == sc;
             const bool hov = hit(r, mx, my);
             float ar, ag, ab; track_accent(t, ar, ag, ab);
-            const float tbh = 15.f;  // title-bar height
-            // cell body (the preview well sits below the title bar)
-            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, 4.f, on ? 0.12f : 0.085f, on ? 0.135f : 0.095f, on ? 0.16f : 0.11f, 1.0f);
-            // title bar: accent-tinted, brighter when active
-            ui.draw_rect(r.x + 1.f, r.y + 1.f, r.w - 2.f, tbh, ar * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f),
-                         ag * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f), ab * (on ? 0.55f : 0.28f) + (hov ? 0.05f : 0.f), 1.0f);
-            if (q) ui.draw_rect(r.x, r.y, r.w, 2.f, 0.95f, 0.75f, 0.20f, 1.0f);  // queued = gold top edge
-            // play glyph (active) then the clip name in the title bar
+            const float tbh = 14.f;  // title bar
+            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, on ? 0.115f : 0.07f, on ? 0.13f : 0.078f, on ? 0.155f : 0.095f, 1.0f);
+            const float k = (on ? 0.5f : 0.22f) + (hov ? 0.06f : 0.f);
+            ui.draw_rect(r.x + 1.f, r.y + 1.f, r.w - 2.f, tbh, ar * k, ag * k, ab * k, 1.0f);
+            if (q) ui.draw_rect(r.x, r.y, r.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
             float tx = r.x + 6.f;
-            if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 11.f, r.x + 11.f, r.y + 7.5f, 0.6f, 0.95f, 0.6f, 1.0f); tx = r.x + 15.f; }
+            if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
             char cn[16];
             const int abpm = vivid::session::session_track_is_audio(s, t) ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
             if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
-            ui.draw_text(tx, r.y + 3.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, 0.72f);
-            // preview fills the body beneath the title bar
-            const Rect pv = { r.x + 5.f, r.y + tbh + 4.f, r.w - 10.f, r.h - tbh - 8.f };
-            ui.draw_rect(pv.x, pv.y, pv.w, pv.h, 0.03f, 0.035f, 0.045f, 1.0f);
+            ui.draw_text(tx, r.y + 2.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, sty.fs_value);
+            const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
+            ui.draw_rect(pv.x, pv.y, pv.w, pv.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
             draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
         }
     }
-    // mixer
+    // --- mixer sub-region (inside the Session panel) ---
     const float my0 = mixer_y(scenes);
-    section_header(ui, kSceneColX, my0, "MIX", sty.audio);
-    // A teal "+ VIZ" button = send this source into the visuals graph as a node.
-    auto viz_button = [&](const Rect& b, bool small) {
+    ui.draw_rect(kSceneColX, mixer_divider_y(scenes), contentR - kSceneColX, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+    section_header(ui, kSceneColX, my0 + 3.f, "MIX", sty.audio);
+    auto viz_button = [&](const Rect& b) {
         const bool h = hit(b, mx, my);
-        draw_card(ui, b.x, b.y, b.w, b.h, sty.teal, h);
-        ui.draw_text(b.x + (small ? 8.f : 10.f), b.y + 5.f, small ? "+VIZ" : "+ VIZ",
-                     sty.teal[0], sty.teal[1], sty.teal[2], 1.0f, 0.82f);
+        ui.draw_rounded_rect(b.x, b.y, b.w, b.h, 3.f, h ? sty.card_hi[0] : sty.card[0], h ? sty.card_hi[1] : sty.card[1], h ? sty.card_hi[2] : sty.card[2], 1.0f);
+        const char* lbl = "VIZ";
+        ui.draw_text(b.x + (b.w - ui.text_width(lbl, sty.fs_kicker)) * 0.5f, b.y + 3.f, lbl, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f, sty.fs_kicker);
     };
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
         const float lvl = std::min(1.0f, vivid::session::session_track_level(s, t) * 4.0f);
         ui.draw_rect(mr.x, mr.y, mr.w, mr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
-        ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);  // green level
+        ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, sty.green[0], sty.green[1], sty.green[2], 1.0f);
         const float g = vivid::session::session_track_gain(s, t);
         ui.draw_rect(gr.x, gr.y, gr.w, gr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
-        ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.8f, sty.gpu[1] * 0.8f, sty.gpu[2] * 0.85f, 1.0f);
-        ui.draw_rect(gr.x + gr.w * g - 2.f, gr.y - 2.f, 4.f, gr.h + 4.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);
-        viz_button(track_viz_rect(t, scenes), false);
+        ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.7f, sty.gpu[1] * 0.7f, sty.gpu[2] * 0.75f, 1.0f);
+        ui.draw_rect(gr.x + gr.w * g - 1.5f, gr.y - 1.f, 3.f, gr.h + 2.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+        viz_button(track_viz_rect(t, scenes));
     }
-    // master meter + its viz button
     const Rect mm = master_meter_rect(scenes);
     const float ml = w.app->transport ? std::min(1.0f, w.app->transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
     ui.draw_rect(mm.x, mm.y, mm.w, mm.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
-    ui.draw_text(kSceneColX, mm.y + 8.f, "MASTER", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.78f);
-    viz_button(master_viz_rect(scenes), true);
-    ui.draw_text(kSceneColX, my0 + 78.f,
-                 "+VIZ \xE2\x86\x92 add a node to the visuals graph (then drag its port onto a shader input)",
-                 sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+    ui.draw_text(kSceneColX, mm.y + 6.f, "MAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
+    viz_button(master_viz_rect(scenes));
 
-    ui.pop_clip_rect();  // end DAW pane (device chain + params now live in the bottom dock)
-    // Visuals pane label (clipped to the right pane)
-    const Rect vp = w.viewer_rect();
-    ui.push_clip_rect(w.split_x, 40.f, static_cast<float>(w.win_w) - w.split_x, w.dock_top() - 40.f);
-    ui.draw_text(vp.x, 80.f, w.app->visual_source ? "VISUALS — video source  ·  V: plasma  ·  N: next clip"
-                                                  : "VISUALS — plasma shader  ·  V: video",
-                 0.55f, 0.78f, 0.85f, 1.0f, 0.95f);
+    ui.pop_clip_rect();  // end DAW pane
+
+    // ================= visuals pane (Output + Signal regions; content drawn by the GPU / node graph) =================
+    ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
+    char oh[48]; std::snprintf(oh, sizeof oh, "OUTPUT \xC2\xB7 %s", w.app->visual_source ? "VIDEO" : "SHADER");
+    panel_frame(ui, w.output_panel(), oh, sty.gpu);
+    panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
     ui.pop_clip_rect();
+
     // DAW | visuals splitter (on top, unclipped)
     const Rect sp = w.splitter_rect();
     const bool sph = hit(sp, mx, my);
-    ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? 0.30f : 0.16f, sph ? 0.34f : 0.17f, sph ? 0.40f : 0.20f, 1.0f);
+    ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? sty.border[0] : sty.border_soft[0], sph ? sty.border[1] : sty.border_soft[1], sph ? sty.border[2] : sty.border_soft[2], 1.0f);
 }
 
 // The "map this param from a source" picker (the return path).
