@@ -9,8 +9,12 @@ an instrument + FX chain) on the left, a rewireable visuals node-graph on the ri
 joined by a mapping bridge (audio characteristics -> visual params, and back).
 """
 import os
+import sys
 import httpx
 from fastmcp import FastMCP
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling theory.py
+import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
 mcp = FastMCP("vivid")
@@ -213,8 +217,243 @@ def set_param(track: int, device: int, param: int, value: float) -> dict:
 @mcp.tool
 def set_clip(track: int, scene: int, notes: list[dict], length: float = 4.0) -> dict:
     """Replace a MIDI clip's notes. notes = [{p:pitch, s:startBeat, d:durBeats, v:velocity0..1}, ...];
-    length = loop length in beats. (MIDI tracks only — not the audio/sampler track.)"""
+    `p` accepts a MIDI int OR a name ("C4", "F#3", "Bb5"). length = loop length in beats.
+    (MIDI tracks only — not the audio/sampler track.) Full-replace — use add_notes to append."""
+    return _post("set_clip", {"track": track, "scene": scene, "notes": theory.norm_notes(notes), "length": length})
+
+
+@mcp.tool
+def get_clip(track: int, scene: int) -> dict:
+    """Read a MIDI clip back: {notes:[{p,s,d,v}], length}. The read half that editing/transform
+    tools use (set_clip is full-replace, so they read-modify-write)."""
+    return _post("get_clip", {"track": track, "scene": scene})
+
+
+@mcp.tool
+def add_notes(track: int, scene: int, notes: list[dict]) -> dict:
+    """APPEND notes to a clip without clearing it (unlike set_clip). `p` accepts names or ints.
+    Reads the current clip, appends, writes it back."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + theory.norm_notes(notes)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged, "length": cur.get("length", 4.0)})
+
+
+@mcp.tool
+def clear_clip(track: int, scene: int) -> dict:
+    """Empty a clip (remove all its notes; keep its loop length)."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    length = cur.get("length", 4.0) if cur.get("ok") else 4.0
+    return _post("set_clip", {"track": track, "scene": scene, "notes": [], "length": length})
+
+
+@mcp.tool
+def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
+              vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
+    """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"
+    (slash bass). voicing = close|open|drop2; inversion = 0,1,2,…; octave sets the register.
+    Root supports #/b. Appends (read-modify-write), so build a clip chord-by-chord."""
+    try:
+        pitches = theory.chord(symbol, octave=octave, inversion=inversion, voicing=voicing)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    notes = [{"p": p, "s": beat, "d": dur, "v": vel} for p in pitches]
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + notes
+    length = max(cur.get("length", 4.0), beat + dur)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged, "length": length})
+
+
+@mcp.tool
+def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: float = 4.0,
+                    octave: int = 4, voicing: str = "close", vel: float = 0.8,
+                    key: str = "", scale: str = "major") -> dict:
+    """REPLACE a clip with a chord progression. If `key` is given, `chords` are ROMAN NUMERALS
+    diatonic to key/scale (["ii","V","I"] or ["i","iv","V","i"]); otherwise they're absolute
+    chord SYMBOLS (["Dm7","G7","Cmaj7"]). Each chord spans beats_per_chord; the loop length is
+    len(chords)*beats_per_chord."""
+    notes = []
+    try:
+        for i, sym in enumerate(chords):
+            start = i * beats_per_chord
+            pitches = (theory.roman(sym, key, scale, octave) if key
+                       else theory.chord(sym, octave=octave, voicing=voicing))
+            for p in pitches:
+                notes.append({"p": p, "s": start, "d": beats_per_chord, "v": vel})
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    length = max(1.0, len(chords) * beats_per_chord)
     return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
+
+
+# ---------------- key context + transforms ----------------
+_key_ctx = {"root": "C", "scale": "major"}
+
+
+def _rmw(track: int, scene: int, fn) -> dict:
+    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    length = cur.get("length", 4.0)
+    return _post("set_clip", {"track": track, "scene": scene,
+                              "notes": fn(cur.get("notes", []), length), "length": length})
+
+
+@mcp.tool
+def set_key(root: str, scale: str = "major") -> dict:
+    """Set the session key/scale context (root e.g. "C"/"F#", scale e.g. major|minor|dorian|
+    pentatonic_minor|blues|…). Tools with an optional key/scale (quantize_to_scale, harmonize,
+    get_scale) default to this. Bridge-side + EPHEMERAL in v1 (resets on bridge restart; not
+    saved with the session)."""
+    if scale.lower() not in theory.SCALES:
+        return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{scale}'"}
+    _key_ctx.update(root=root, scale=scale.lower())
+    return {"ok": True, **_key_ctx}
+
+
+@mcp.tool
+def get_key() -> dict:
+    """The current key/scale context + its scale note names."""
+    return {"ok": True, **_key_ctx,
+            "notes": [theory.note_name(m) for m in theory.scale_notes(_key_ctx["root"], _key_ctx["scale"])]}
+
+
+@mcp.tool
+def get_scale(root: str = "", scale: str = "") -> dict:
+    """The MIDI notes + names of a scale (defaults to the key context), e.g. get_scale("D","dorian")."""
+    r, sc = root or _key_ctx["root"], (scale or _key_ctx["scale"]).lower()
+    if sc not in theory.SCALES:
+        return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{sc}'"}
+    midi = theory.scale_notes(r, sc)
+    return {"ok": True, "root": r, "scale": sc, "midi": midi, "names": [theory.note_name(m) for m in midi]}
+
+
+@mcp.tool
+def transpose(track: int, scene: int, semitones: int) -> dict:
+    """Transpose every note in a clip by ±semitones."""
+    return _rmw(track, scene, lambda notes, L: theory.transpose(notes, semitones))
+
+
+@mcp.tool
+def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -> dict:
+    """Snap a clip's off-key notes into the scale (defaults to the key context)."""
+    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    return _rmw(track, scene, lambda notes, L: theory.quantize_to_scale(notes, r, sc))
+
+
+@mcp.tool
+def harmonize(track: int, scene: int, degree: int = 2, root: str = "", scale: str = "") -> dict:
+    """Add a diatonic harmony voice `degree` scale-steps from each note (2 = a third above,
+    4 = a fifth; negative = below). Defaults to the key context. Keeps the originals."""
+    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    return _rmw(track, scene, lambda notes, L: theory.harmonize(notes, degree, r, sc))
+
+
+@mcp.tool
+def invert_clip(track: int, scene: int, axis: int = -1) -> dict:
+    """Melodically invert a clip (mirror pitches). axis = the MIDI pitch to mirror around
+    (-1 = the clip's first note)."""
+    a = None if axis < 0 else axis
+    return _rmw(track, scene, lambda notes, L: theory.invert(notes, a))
+
+
+@mcp.tool
+def retrograde_clip(track: int, scene: int) -> dict:
+    """Reverse a clip in time (retrograde)."""
+    return _rmw(track, scene, lambda notes, L: theory.retrograde(notes, L))
+
+
+@mcp.tool
+def arpeggiate(track: int, scene: int, chord: str = "", pattern: str = "up", rate: float = 0.25,
+               octaves: int = 1, length: float = 4.0, vel: float = 0.8) -> dict:
+    """REPLACE a clip with an arpeggio. `chord` = a symbol (e.g. "Am7"); if empty, arpeggiates
+    the pitches already in the clip. pattern = up|down|updown|downup; rate = beats per step."""
+    if chord:
+        try:
+            pitches = theory.chord(chord)
+        except ValueError as e:
+            return {"ok": False, "code": "bad_arg", "error": str(e)}
+    else:
+        cur = _post("get_clip", {"track": track, "scene": scene})
+        pitches = [n["p"] for n in cur.get("notes", [])] if cur.get("ok") else []
+    notes = theory.arpeggiate(pitches, pattern, rate, octaves, length, vel)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
+
+
+# ---------------- rhythm ----------------
+@mcp.tool
+def set_drum_pattern(track: int, scene: int, patterns: dict, bar_beats: float = 4.0,
+                     bars: int = 1, vel: float = 0.8, dur: float = 0.1) -> dict:
+    """REPLACE a clip with a drum pattern. `patterns` maps a drum name -> a step-string, e.g.
+    {"kick":"x..x..x.", "snare":"....x...", "hat":"xxxxxxxx"}. Drum names: kick/snare/rim/clap/
+    hat/openhat/tom_lo/tom_mid/tom_hi/crash/ride (or a raw MIDI int). Step chars: x = hit,
+    digit 1-9 = velocity, '.'/'-'/' ' = rest. Each pattern spreads across bar_beats; `bars`
+    tiles it. (Use on a drum/MIDI track.)"""
+    notes = []
+    try:
+        for name, steps in patterns.items():
+            note = theory.drum_note(name)
+            for b in range(max(1, bars)):
+                notes += theory.drum_steps(steps, note, bar_beats, vel, dur, start=b * bar_beats)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    return _post("set_clip", {"track": track, "scene": scene, "notes": notes,
+                              "length": bar_beats * max(1, bars)})
+
+
+@mcp.tool
+def euclidean_fill(track: int, scene: int, drum: str, pulses: int, steps: int,
+                   bar_beats: float = 4.0, rotation: int = 0, vel: float = 0.7, dur: float = 0.1) -> dict:
+    """APPEND a Euclidean rhythm on one drum: `pulses` hits spread over `steps` across bar_beats.
+    E.g. euclidean_fill(t,s,"hat",3,8) = the tresillo x..x..x. on hi-hat. `drum` = a name or MIDI int."""
+    try:
+        note = theory.drum_note(drum)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    pat = theory.euclidean(pulses, steps, rotation)
+    step = bar_beats / steps if steps else bar_beats
+    add = [{"p": note, "s": round(i * step, 6), "d": dur, "v": vel} for i, on in enumerate(pat) if on]
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + add
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged,
+                              "length": max(cur.get("length", 4.0), bar_beats)})
+
+
+@mcp.tool
+def humanize(track: int, scene: int, timing: float = 0.02, velocity: float = 0.1, seed: int = 0) -> dict:
+    """Nudge a clip's note starts + velocities by small (seeded, reproducible) random amounts for feel."""
+    return _rmw(track, scene, lambda notes, L: theory.humanize(notes, timing, velocity, seed))
+
+
+@mcp.tool
+def quantize_rhythm(track: int, scene: int, grid: float = 0.25) -> dict:
+    """Snap a clip's note starts to a beat grid (0.25 = 16ths, 0.5 = 8ths, 1/3 = triplets)."""
+    return _rmw(track, scene, lambda notes, L: theory.quantize_rhythm(notes, grid))
+
+
+# ---------------- analysis ----------------
+@mcp.tool
+def analyze_clip(track: int, scene: int, bar_beats: float = 4.0) -> dict:
+    """Read a clip and infer its music theory (HEURISTIC): detected {key:{root,scale,confidence}}
+    (Krumhansl–Schmuckler), a best-fit chord per bar, pitch range, and note count. Short or
+    ambiguous clips are unreliable. Great for making visuals respond to harmony."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    notes, length = cur.get("notes", []), cur.get("length", 4.0)
+    if not notes:
+        return {"ok": True, "empty": True, "note_count": 0, "length": length}
+    ps = [n["p"] for n in notes]
+    return {"ok": True, "key": theory.detect_key(notes),
+            "chords": theory.chords_per_bar(notes, length, bar_beats),
+            "range": [theory.note_name(min(ps)), theory.note_name(max(ps))],
+            "note_count": len(notes), "length": length}
 
 
 @mcp.tool
@@ -276,6 +515,32 @@ def load_session(path: str = "", session: dict | None = None) -> dict:
 
 
 @mcp.tool
+def get_project_status() -> dict:
+    """Current project workflow state: explicit project path, recent project paths,
+    media_root, missing_media diagnostics, and discovered video count."""
+    return _post("get_project_status")
+
+
+@mcp.tool
+def save_project(path: str = "") -> dict:
+    """Save the project/session JSON. Pass path for Save As; omit it after a project path exists."""
+    payload = {"path": path} if path else {}
+    return _post("save_project", payload)
+
+
+@mcp.tool
+def load_project(path: str) -> dict:
+    """Load a project/session JSON from path and make it the current project."""
+    return _post("load_project", {"path": path})
+
+
+@mcp.tool
+def set_media_root(path: str) -> dict:
+    """Set the project media root used for video discovery. Missing roots are reported, not silent."""
+    return _post("set_media_root", {"path": path})
+
+
+@mcp.tool
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""
     return {
@@ -284,7 +549,9 @@ def get_authoring_guide() -> dict:
         "recipe": [
             "1. READ: status, list_tracks, get_graph, get_mappings to see current state.",
             "2. TEMPO: set_bpm(bpm).",
-            "3. NOTES: set_clip(track, scene, notes=[{p,s,d,v}], length) on a MIDI track, then launch_clip.",
+            "3. NOTES: prefer the music-theory tools (see 'music_theory' below) — set_progression / "
+            "add_chord / set_drum_pattern / arpeggiate — over raw set_clip. `p` accepts names ('C4') "
+            "or MIDI ints. Then launch_clip.",
             "4. SOUND: list_params(track, 0, filter='cutoff') then set_param(track, 0, index, value).",
             "5. VISUALS: the default chain is Plasma->Feedback->Blur->Output. add_node / connect_nodes "
             "to extend it; set_node_param for base look; set_active_output to pick the viewer source.",
@@ -292,19 +559,39 @@ def get_authoring_guide() -> dict:
             "Visual node ids + param names come from get_graph; dst for audio params is 'param:T:D:index'.",
             "7. RETURN PATH: src can be 'viz.<name>' to drive an audio param from a visual value.",
             "8. VERIFY: get_graph / get_mappings to confirm; read list_tracks for live level/bands.",
-            "9. PERSIST: save_session(path) / load_session(path or inline session).",
+            "9. PROJECT: get_project_status; use save_project(path) / load_project(path), "
+            "and set_media_root(path) for video assets.",
         ],
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "
                   "no_vgraph, no_transport, bad_arg, out_of_range, not_found, io_error, internal, "
                   "timeout), not the human `error` text. An out-of-range track/scene/device index "
                   "now returns out_of_range instead of silently succeeding.",
+        "music_theory": {
+            "notes": "Anywhere a pitch is taken, `p` accepts a MIDI int OR a name: 'C4','F#3','Bb5' "
+                     "(C4 = middle C = 60). get_clip reads a clip back; add_notes appends; clear_clip empties.",
+            "harmony": "add_chord(t,s,'Cmaj7') / 'Am' / 'G7' / 'F#m7b5' / 'C/G' (slash bass), voicing="
+                       "close|open|drop2, inversion=0,1,2. set_progression(t,s,['Dm7','G7','Cmaj7']) — or "
+                       "ROMAN numerals when key is given: set_progression(t,s,['ii','V','I'], key='F').",
+            "scale_key": "set_key('C','minor') sets a context quantize_to_scale / harmonize / get_scale "
+                         "default to. quantize_to_scale(t,s) snaps off-key notes; get_scale('D','dorian').",
+            "transforms": "transpose(t,s,±semitones), arpeggiate(t,s,'Am7',pattern=up|down|updown), "
+                          "harmonize(t,s,degree=2) (a diatonic third), invert_clip, retrograde_clip.",
+            "rhythm": "set_drum_pattern(t,s,{'kick':'x..x..x.','snare':'....x...','hat':'xxxxxxxx'}) — "
+                      "names kick/snare/hat/openhat/clap/tom_lo/…, chars x=hit, 1-9=velocity, .=rest. "
+                      "euclidean_fill(t,s,'hat',3,8)=tresillo. humanize(t,s), quantize_rhythm(t,s,grid).",
+            "analysis": "analyze_clip(t,s) -> detected key + chord-per-bar + range (heuristic) — good for "
+                        "driving visuals from harmony.",
+        },
         "gotchas": {
             "params_are_huge": "Plugins expose thousands of params; always filter+limit list_params.",
             "param_index": "set_param takes the *index* from list_params (mapped to the VST id internally).",
             "mapping_dest": "visual = 'node:<id>.<param>'; audio = 'param:<track>:<device>:<index>'.",
             "modulation": "A wired visual param = clamp(base + modulation); set the base with set_node_param.",
-            "audio_track": "set_clip only applies to MIDI tracks (is_audio=false in list_tracks).",
+            "audio_track": "note tools apply to MIDI tracks only (is_audio=false in list_tracks).",
+            "full_replace": "set_clip / set_progression / arpeggiate / set_drum_pattern REPLACE the clip; "
+                            "add_notes / add_chord / euclidean_fill APPEND.",
+            "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
         },
     }
 

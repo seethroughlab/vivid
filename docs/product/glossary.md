@@ -12,7 +12,8 @@ schemas, APIs, UI labels, MCP tools, or implementation assumptions.
 ### Agent
 
 The LLM collaborator that inspects, explains, edits, varies, and pressure-tests a Vivid project using
-high-level product concepts before dropping into implementation details.
+high-level product concepts before dropping into implementation details. In the current product
+architecture, the agent drives Vivid through MCP tools backed by the loopback control server.
 
 ### Agent Adapter
 
@@ -29,7 +30,14 @@ attached or none. See ADR-0008, Agent Adapter.
 ### Audio-Visual Binding
 
 A first-class relationship between a source signal and a destination behavior, such as
-`kick_onset -> particle_burst` or `bass_envelope -> particle_size`.
+`kick_onset -> particle_burst` or `bass_envelope -> particle_size`. In the current implementation,
+bindings are represented by the Mapping Bridge.
+
+### Bridge
+
+The first-class relationship layer between the DAW surface and the visuals graph. The bridge lets
+audio characteristics drive visual node parameters and lets visual state drive audio/plugin
+parameters.
 
 ### Clip
 
@@ -43,8 +51,9 @@ conditions, but they are not a linear arrangement timeline.
 
 ### Graph
 
-The deeper implementation view where low-level operators, signals, and runtime structure can be
-inspected or edited. The graph is not the primary Vivid 4 authoring surface.
+The primary visuals authoring surface. It contains visual operators, texture edges, data-source
+nodes, Output nodes, and live visual state. It is paired with Session View rather than hidden beneath
+it.
 
 ### Live Take
 
@@ -56,6 +65,12 @@ Take, Variation Well.
 
 The shared musical clock for a session: BPM, time signature, beat, bar, phrase, and launch
 quantization.
+
+### Mapping
+
+One bridge wire from a named source to a named destination, plus shaping values such as amount,
+curve, polarity, and output range. Examples: `track_12.transient -> node:7.warp` and
+`viz.warp -> param:1:0:42`.
 
 ### Project-Local Code
 
@@ -74,8 +89,9 @@ state, queued launches, and related agent-readable context.
 
 ### Session View
 
-The primary Vivid 4 authoring surface. It presents the session as tracks, clips, scenes, transport,
-bindings, selection, and agent actions.
+The primary DAW-style authoring surface. It presents tracks, clips, scenes, devices, transport,
+selection, and performance state. It is one of Vivid's two primary surfaces, paired with the visuals
+Graph.
 
 ### Take
 

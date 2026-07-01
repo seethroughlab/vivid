@@ -54,7 +54,9 @@ class SceneGrader:
         reasons: list[str] = []
         if transport is None:
             return Grade(False, ["SceneGrader needs a transport"])
-        chain = transport.post("get_session", {}).get("graph", {}).get("chain", [])
+        session = transport.post("get_session", {})
+        chain = session.get("session", {}).get("graph", {}).get("chain",
+                                                                session.get("graph", {}).get("chain", []))
         if len(chain) < self.min_nodes:
             reasons.append(f"too few nodes: {len(chain)} < {self.min_nodes}")
         ops = {n.get("op") for n in chain}

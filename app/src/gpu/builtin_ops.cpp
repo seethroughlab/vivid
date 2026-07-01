@@ -20,7 +20,7 @@
 namespace vivid {
 namespace {
 
-// --- shared GLSL (the ops' rightful home; VisualGraph's copies go away in P1.3) ---
+// --- shared GLSL owned by the built-in operator descriptors ---
 const char* kPlasmaGLSL = R"(#version 450
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 o_color;
@@ -126,7 +126,7 @@ struct BlitOp : OperatorBase, GpuProcessable {
                    &in, 1, float(c->time), nullptr, 0);
     }
 };
-// generator fed an external source texture (P1.3 wires srcTex)
+// generator fed by the app's external source texture
 struct VideoOp  : BlitOp {
     static constexpr const char* kDisplayName = "Video";
     static constexpr const char* kSummary = "Plays the shared image/video source texture into the chain.";

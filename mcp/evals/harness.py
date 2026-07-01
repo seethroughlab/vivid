@@ -59,11 +59,14 @@ class MockTransport:
             return {"ok": True, "health": {"severity": "ok"}}
         if method == "list_operators":
             return {"ok": True, "operators": [
-                {"name": "Plasma", "gpu": True}, {"name": "Tint", "gpu": True},
-                {"name": "Output", "gpu": True}]}
+                {"name": "Plasma", "gpu": True,
+                 "params": [{"name": "warp"}, {"name": "hue"}, {"name": "density"}, {"name": "glow"}]},
+                {"name": "Tint", "gpu": True,
+                 "params": [{"name": "amount"}, {"name": "hue"}]},
+                {"name": "Output", "gpu": True, "params": []}]}
         if method == "add_node":
             nid = self._next_id; self._next_id += 1
-            self.nodes.append({"id": nid, "op": b.get("op_type", "?"), "input": -1, "params": {}})
+            self.nodes.append({"id": nid, "op": b.get("op", "?"), "input": -1, "params": {}})
             return {"ok": True, "id": nid}
         if method == "connect_nodes":
             for n in self.nodes:
@@ -73,10 +76,16 @@ class MockTransport:
         if method == "set_node_param":
             for n in self.nodes:
                 if n["id"] == b.get("node_id"):
-                    n["params"][str(b.get("index", 0))] = b.get("value", 0.0)
+                    n["params"][str(b.get("name", ""))] = b.get("value", 0.0)
             return {"ok": True}
+        if method == "get_graph":
+            return {"ok": True, "nodes": [
+                {"id": n["id"], "op": n["op"], "input": n["input"],
+                 "params": [{"name": k, "base": v, "value": v, "wired": False}
+                            for k, v in n["params"].items()]}
+                for n in self.nodes], "data_nodes": [], "active_output": None}
         if method == "get_session":
-            return {"ok": True, "graph": {"chain": list(self.nodes)}}
+            return {"ok": True, "session": {"graph": {"chain": list(self.nodes)}}}
         return {"ok": True}
 
 

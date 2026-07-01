@@ -20,10 +20,10 @@ TOOLS: dict[str, str] = {
     "get_version": "App/operator-abi/session-schema versions.",
     "get_health": "Rolled-up engine health (severity ok|warning|error).",
     "list_operators": "Catalog of spawnable visual operators.",
-    "add_node": "Spawn an op node: {op_type}. Returns {id}.",
+    "add_node": "Spawn an op node: {op}. Returns {id}.",
     "connect_nodes": "Wire {input_id} -> {node_id}.",
-    "set_node_param": "Set a node base param: {node_id, index, value}.",
-    "get_session": "Full session snapshot (graph.chain = the op nodes).",
+    "set_node_param": "Set a node base param by name: {node_id, name, value}.",
+    "get_session": "Full session snapshot (session.graph.chain = the op nodes).",
 }
 
 SYSTEM_PROMPT = (

@@ -35,12 +35,12 @@ static const char* op_name(VOp op) {
     switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
         case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
 }
-// Per-node param identity, now operator-driven: param count + names come from the
+// Per-node param identity, operator-driven: param count + names come from the
 // node's hosted operator descriptor (inst.param_ptrs), so new ops' params appear
-// automatically. Storage (params[4]/base[4]) caps at 4 for now.
+// automatically.
 static int node_pcount(const vivid::VisualGraph* vg, int i) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
-    return std::min(4, int(vg->nodes()[i].inst.param_ptrs.size()));
+    return int(vg->nodes()[i].inst.param_ptrs.size());
 }
 static const char* node_plabel(const vivid::VisualGraph* vg, int i, int local) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return "";
@@ -191,7 +191,9 @@ void NodeGraph::apply_params() {
     if (!vg_) return;
     auto& nodes = vg_->nodes();
     for (auto& n : nodes) {
-        const int pc = std::min(4, int(n.inst.param_ptrs.size()));  // operator-declared params
+        const int pc = int(n.inst.param_ptrs.size());  // operator-declared params
+        n.params.resize(pc, 0.f);
+        n.base.resize(pc, 0.f);
         for (int l = 0; l < pc; ++l) {
             const float mod = reg_.dest_value(node_param_dest(n.id, n.inst.param_ptrs[l]->name));
             n.params[l] = std::clamp(n.base[l] + mod, 0.f, 1.f);  // manual base + live modulation
@@ -201,7 +203,8 @@ void NodeGraph::apply_params() {
     // first node of each op-type (keeps P27's static map-source catalog working).
     for (int u = 0; u < kNumShaderUniforms; ++u) {
         const int ni = first_node_of(uniform_owner(u));
-        const float v = (ni >= 0) ? nodes[ni].params[uniform_local(u)] : 0.f;
+        const int local = uniform_local(u);
+        const float v = (ni >= 0 && local < int(nodes[ni].params.size())) ? nodes[ni].params[local] : 0.f;
         reg_.set_source(std::string("viz.") + kShaderUniformNames[u], v);
     }
 }
@@ -229,7 +232,9 @@ std::string NodeGraph::op_type_at(int i) const {
     return (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op_type : std::string();
 }
 void NodeGraph::get_op_base(int i, float out[4]) const {
-    for (int l = 0; l < 4; ++l) out[l] = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].base[l] : 0.f;
+    for (int l = 0; l < 4; ++l)
+        out[l] = (vg_ && i >= 0 && i < int(vg_->nodes().size()) && l < int(vg_->nodes()[i].base.size()))
+            ? vg_->nodes()[i].base[l] : 0.f;
 }
 
 // ---- visual-node inspector accessors ----
@@ -241,13 +246,17 @@ const char* NodeGraph::op_kind_name(int i) const { return op_node_valid(vg_, i) 
 int NodeGraph::op_param_count_at(int i) const { return node_pcount(vg_, i); }
 const char* NodeGraph::op_param_label_at(int i, int local) const { return node_plabel(vg_, i, local); }
 float NodeGraph::op_param_base_at(int i, int local) const {
-    return (op_node_valid(vg_, i) && local >= 0 && local < 4) ? vg_->nodes()[i].base[local] : 0.f;
+    return (op_node_valid(vg_, i) && local >= 0 && local < int(vg_->nodes()[i].base.size())) ? vg_->nodes()[i].base[local] : 0.f;
 }
 void NodeGraph::set_op_param_base_at(int i, int local, float v) {
-    if (op_node_valid(vg_, i) && local >= 0 && local < 4) vg_->nodes()[i].base[local] = std::clamp(v, 0.f, 1.f);
+    if (op_node_valid(vg_, i) && local >= 0) {
+        auto& base = vg_->nodes()[i].base;
+        if (local >= int(base.size())) base.resize(local + 1, 0.f);
+        base[local] = std::clamp(v, 0.f, 1.f);
+    }
 }
 float NodeGraph::op_param_value_at(int i, int local) const {
-    return (op_node_valid(vg_, i) && local >= 0 && local < 4) ? vg_->nodes()[i].params[local] : 0.f;
+    return (op_node_valid(vg_, i) && local >= 0 && local < int(vg_->nodes()[i].params.size())) ? vg_->nodes()[i].params[local] : 0.f;
 }
 bool NodeGraph::op_param_wired_at(int i, int local) const {
     if (!op_node_valid(vg_, i)) return false;

@@ -9,8 +9,8 @@
 
 namespace vivid {
 
-// Audio mapping sources encode the track INDEX ("track_3.transient"). Parse one into its
-// index + the remainder (".transient"); returns false for non-track sources ("master.*",
+// Audio mapping sources encode the track's STABLE id ("track_3.transient"). Parse one into its
+// id + the remainder (".transient"); returns false for non-track sources ("master.*",
 // "viz.*"). Pure — shared by the delete-fix-up + its test.
 inline bool parse_track_source(const std::string& src, int& idx, std::string& rest) {
     if (src.rfind("track_", 0) != 0) return false;
