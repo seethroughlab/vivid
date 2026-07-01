@@ -505,7 +505,8 @@ void ControlServer::register_handlers() {
                             {"length", P::session_pool_length(c.session, i)} });
         json r = ok(); r["pool"] = arr; return r;
     };
-    // Copy a grid clip into the pool (instrument tracks only). Returns the new pool index.
+    // Move a grid clip into the pool (instrument tracks only): the source cell is
+    // cleared (the clip leaves the session). Returns the new pool index.
     handlers_["pool_stash"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
@@ -514,9 +515,11 @@ void ControlServer::register_handlers() {
         P::ClipNote buf[1024];
         const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
         if (n <= 0) return err(code::kBadArg, "clip is empty");
+        const double len = P::session_clip_length(c.session, track, scene);
         std::string name = b.value("name", std::string());
         if (name.empty()) { char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", P::session_track_name(c.session, track), 'A' + scene); name = nm; }
-        const int idx = P::session_pool_add(c.session, buf, n, P::session_clip_length(c.session, track, scene), name.c_str());
+        const int idx = P::session_pool_add(c.session, buf, n, len, name.c_str());
+        P::session_set_clip(c.session, track, scene, nullptr, 0, len);   // take it out of the grid
         json r = ok(); r["index"] = idx; return r;
     };
     // Place a pool clip into a grid cell (instrument tracks only), overwriting whatever is there.

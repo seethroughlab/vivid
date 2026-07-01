@@ -115,15 +115,18 @@ void place_pool_clip(vivid::App& app, int pool_i, int tt, int ts) {
     const int n = vivid::session::session_pool_get(s, pool_i, buf, 512);
     vivid::session::session_set_clip(s, tt, ts, buf, n, vivid::session::session_pool_length(s, pool_i));
 }
-// Stash a grid clip into the pool (a copy; instrument tracks only).
+// Stash a grid clip into the pool: MOVE it out of the session (the source cell is
+// cleared). Instrument tracks only.
 void stash_clip(vivid::App& app, int st, int ss) {
     auto* s = app.session;
     if (!s || vivid::session::session_track_is_audio(s, st)) return;
     vivid::session::ClipNote buf[512];
     const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
     if (n <= 0) return;
+    const double len = vivid::session::session_clip_length(s, st, ss);
     char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
-    vivid::session::session_pool_add(s, buf, n, vivid::session::session_clip_length(s, st, ss), nm);
+    vivid::session::session_pool_add(s, buf, n, len, nm);
+    vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // take it out of the grid
 }
 
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {

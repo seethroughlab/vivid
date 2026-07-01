@@ -294,8 +294,8 @@ def list_pool() -> dict:
 
 @mcp.tool
 def pool_stash(track: int, scene: int, name: str = "") -> dict:
-    """Copy a grid clip into the clip pool (instrument tracks only). Returns {index}.
-    name defaults to "<track> <A/B/C>". The grid cell is left unchanged (stash is a copy)."""
+    """Move a grid clip into the clip pool (instrument tracks only): the source cell is
+    cleared (the clip leaves the session). Returns {index}. name defaults to "<track> <A/B/C>"."""
     return _post("pool_stash", {"track": track, "scene": scene, "name": name})
 
 
