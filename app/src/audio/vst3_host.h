@@ -99,7 +99,11 @@ double session_clip_length(Session*, int track, int scene);
 void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, int n, double length);
 
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
+// `playing` false = paused: instruments emit no new notes and the sampler is silent
+// (release tails still ring). `release_all` (the play->stop edge) flushes every
+// instrument's held notes as note-offs so nothing hangs when you pause.
 bool session_process(Session*, float* out, uint32_t frames, uint32_t sample_rate,
-                     double bpm, double beats, uint32_t beats_per_bar);
+                     double bpm, double beats, uint32_t beats_per_bar,
+                     bool playing = true, bool release_all = false);
 
 }  // namespace vivid::session

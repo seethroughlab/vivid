@@ -491,7 +491,8 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) 
 }
 
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
-                     double bpm, double beats, uint32_t beats_per_bar) {
+                     double bpm, double beats, uint32_t beats_per_bar,
+                     bool playing, bool release_all) {
     if (!s) return false;
     std::memset(out, 0, sizeof(float) * 2 * frames);
 
@@ -560,7 +561,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
             const int sc = t.active.load(std::memory_order_relaxed);
-            if (sc >= 0 && sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
+            if (playing && sc >= 0 && sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
                 t.aud_clips[sc].render(beats, delta, frames, L, R,
                                        t.aud_trim0[sc].load(std::memory_order_relaxed),
                                        t.aud_trim1[sc].load(std::memory_order_relaxed));
@@ -575,7 +576,10 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 }
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            t.nev.clear(); t.sched.emit(beats, delta, frames, t.nev); emit_vst3(events, t.nev);
+            t.nev.clear();
+            if (release_all)    t.sched.flush(t.nev);                    // play->stop edge: release held notes
+            else if (playing)   t.sched.emit(beats, delta, frames, t.nev);  // paused: emit nothing (tails still ring)
+            emit_vst3(events, t.nev);
 
             float* ch[2] = { L, R };
             AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;

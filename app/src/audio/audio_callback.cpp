@@ -19,11 +19,15 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
 
     const double beats = a->transport ? a->transport->beats.load(std::memory_order_relaxed) : 0.0;
     const double bpm   = a->transport ? a->transport->bpm.load(std::memory_order_relaxed) : 120.0;
+    const bool playing = a->transport ? a->transport->is_playing() : true;
+    static bool was_playing = true;                    // audio thread only (single device)
+    const bool release_all = was_playing && !playing;  // play->stop edge: flush held notes
+    was_playing = playing;
 
     bool rendered = false;
     if (a->session)
         rendered = vivid::session::session_process(a->session, fout, frames,
-                                              static_cast<uint32_t>(sr), bpm, beats, 4);
+                                              static_cast<uint32_t>(sr), bpm, beats, 4, playing, release_all);
     if (!rendered) {
         const double inc = 2.0 * kPi * a->tone_hz / sr;
         for (ma_uint32 i = 0; i < frames; ++i) {
