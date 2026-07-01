@@ -65,7 +65,7 @@ void file_new(vivid::App& app) {
         for (int sc = 0; sc < ns; ++sc)
             vivid_poc::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
     app.graph->reset_nodes();
-    if (app.vgraph) app.vgraph->reset_to_default();
+    if (app.vgraph) { app.vgraph->reset_to_default(); app.vgraph->set_asset_dir(""); }
     app.project.current_project_path.clear();
     app.project.media_root.clear();
     app.project.missing_media.clear();

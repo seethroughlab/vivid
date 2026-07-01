@@ -354,6 +354,16 @@ void ControlServer::register_handlers() {
         c.vgraph->set_input(idx, in_idx);
         return ok();
     };
+    // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl
+    // resolved against the loaded project dir. Empty clears it. The op (re)loads on the
+    // next frame and degrades to a no-op if the file is missing or fails to compile.
+    handlers_["set_node_asset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
+        c.graph->set_op_asset_at(idx, b.value("asset", std::string()));
+        json r = ok(); r["id"] = b.value("id", -1); r["asset"] = c.graph->op_asset_at(idx); return r;
+    };
     handlers_["set_generator"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
         VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op");
@@ -578,7 +588,7 @@ void ControlServer::register_handlers() {
             for (int sc = 0; sc < ns; ++sc)
                 P::session_set_clip(c.session, t, sc, nullptr, 0, 4.0);
         c.graph->reset_nodes();                        // data nodes + mappings
-        if (c.vgraph) c.vgraph->reset_to_default();    // Plasma->Feedback->Blur->Output
+        if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // Plasma->Feedback->Blur->Output
         if (c.app) {
             c.app->project.current_project_path.clear();
             c.app->project.media_root.clear();

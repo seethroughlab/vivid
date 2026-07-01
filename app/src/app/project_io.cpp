@@ -4,6 +4,7 @@
 #include "persist.h"                     // save_session / load_session
 #include "packages/package_manager.h"    // install_package
 #include "gpu/operator_scan.h"           // load_and_register_operator
+#include "gpu/visual_graph.h"            // VisualGraph::set_asset_dir
 
 #include <filesystem>
 
@@ -59,6 +60,9 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
         r.error = "read failed";
         return r;
     }
+    // A node's relative `asset` (a CustomShader .glsl) resolves against the session
+    // file's directory (the project folder, or a .json's parent dir).
+    if (app.vgraph) app.vgraph->set_asset_dir(fs::path(jpath).parent_path().string());
     app.remember_project_path(path);
     r.ok = true;
     return r;

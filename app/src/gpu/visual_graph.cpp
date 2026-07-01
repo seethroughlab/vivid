@@ -1,9 +1,11 @@
 #include "gpu/visual_graph.h"
 
 #include "operator_api/gpu_operator.h"
+#include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
+#include <filesystem>
 
 namespace vivid {
 
@@ -196,6 +198,14 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
 
         sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
                     static_cast<int>(n.params.size()));
+        // Data-driven shader nodes: resolve the node's relative asset against the project
+        // dir and hand the absolute path to the operator (it (re)loads on change).
+        if (!n.asset.empty())
+            if (auto* as = dynamic_cast<AssetShader*>(n.inst.op.get())) {
+                std::filesystem::path ap(n.asset);
+                if (ap.is_relative() && !asset_dir_.empty()) ap = std::filesystem::path(asset_dir_) / ap;
+                as->set_asset_path(ap.string());
+            }
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
     }
     ++frame_;

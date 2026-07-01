@@ -270,6 +270,12 @@ void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, floa
     op_pos_.push_back({ x, y });
 }
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
+std::string NodeGraph::op_asset_at(int i) const {
+    return op_node_valid(vg_, i) ? vg_->nodes()[i].asset : std::string();
+}
+void NodeGraph::set_op_asset_at(int i, const std::string& asset) {
+    if (op_node_valid(vg_, i)) vg_->nodes()[i].asset = asset;
+}
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
 }

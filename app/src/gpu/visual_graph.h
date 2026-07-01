@@ -28,6 +28,7 @@ struct VisualNode {
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
+    std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
 };
 
 // The composable visuals graph: nodes connected by texture edges, terminating in
@@ -58,6 +59,11 @@ public:
     VOp  generator() const;
     OpRegistry* registry() const { return reg_; }   // the op catalog (for the Tab chooser)
 
+    // Base directory that a node's relative `asset` (e.g. a CustomShader .glsl) resolves
+    // against — the loaded project folder. Cleared for a fresh/default session.
+    void set_asset_dir(const std::string& dir) { asset_dir_ = dir; }
+    const std::string& asset_dir() const { return asset_dir_; }
+
     // Hot-reload: destroy / recreate the OpInstance of every node whose op_type is
     // `type`. release MUST run before the loader dlcloses the old dylib (so the old
     // instances destruct against still-loaded code); rebuild runs after the swap,
@@ -86,6 +92,7 @@ private:
     uint32_t          rtW_ = 0, rtH_ = 0;
     OpRegistry*       reg_ = nullptr;
     uint64_t          frame_ = 0;
+    std::string       asset_dir_;   // project dir for resolving node.asset (CustomShader .glsl)
 
     std::vector<VisualNode>   nodes_;
     int                       next_id_ = 0;

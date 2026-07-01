@@ -152,6 +152,17 @@ def set_active_output(id: int) -> dict:
 
 
 @mcp.tool
+def set_node_asset(id: int, asset: str) -> dict:
+    """Point a node at a data asset. For a CustomShader node, `asset` is a project-relative
+    .glsl filename (resolved against the loaded project folder); the node renders that shader.
+    Pass "" to clear. The shader must follow the GLSL contract (v_uv/o_color + the
+    u_res/u_time/u_warp/u_hue/u_density/u_glow uniform block — see the authoring guide). A
+    missing file or compile error degrades to a no-op node (never crashes). Save it with the
+    project (save_project) so a folder holds project.json + the .glsl together."""
+    return _post("set_node_asset", {"id": id, "asset": asset})
+
+
+@mcp.tool
 def set_node_param(node_id: int, name: str, value: float) -> dict:
     """Set a visual node's base param (0..1). Names: Plasma = warp/hue/density/glow;
     Feedback = decay; Blur = radius. Final value = clamp(base + any mapped modulation)."""
@@ -586,7 +597,9 @@ def get_authoring_guide() -> dict:
             "or MIDI ints. Then launch_clip.",
             "4. SOUND: list_params(track, 0, filter='cutoff') then set_param(track, 0, index, value).",
             "5. VISUALS: the default chain is Plasma->Feedback->Blur->Output. add_node / connect_nodes "
-            "to extend it; set_node_param for base look; set_active_output to pick the viewer source.",
+            "to extend it; set_node_param for base look; set_active_output to pick the viewer source. "
+            "Custom look? add_node('CustomShader') + set_node_asset(id,'<file>.glsl') renders a project "
+            "folder .glsl (contract in 'custom_assets' below); project-local C++ ops load on load_project.",
             "6. BRIDGE: connect_mapping(src, dst) — e.g. src='master.transient', dst='node:<id>.warp'. "
             "Visual node ids + param names come from get_graph; dst for audio params is 'param:T:D:index'.",
             "7. RETURN PATH: src can be 'viz.<name>' to drive an audio param from a visual value.",
@@ -614,6 +627,20 @@ def get_authoring_guide() -> dict:
                       "euclidean_fill(t,s,'hat',3,8)=tresillo. humanize(t,s), quantize_rhythm(t,s,grid).",
             "analysis": "analyze_clip(t,s) -> detected key + chord-per-bar + range (heuristic) — good for "
                         "driving visuals from harmony.",
+        },
+        "custom_assets": {
+            "project_folder": "save_project(dir) (a path with no .json extension) makes a FOLDER project: "
+                              "<dir>/project.json plus co-located assets. load_project(dir) restores it.",
+            "custom_shader": "add_node('CustomShader') + set_node_asset(id,'look.glsl') renders a .glsl in the "
+                             "project folder. The fragment must declare: `#version 450`, "
+                             "`layout(location=0) in vec2 v_uv; layout(location=0) out vec4 o_color;` and "
+                             "`layout(set=0,binding=0) uniform U { vec2 u_res; float u_time; float u_warp; "
+                             "float u_hue; float u_density; float u_glow; };`. The 4 node params map to "
+                             "u_warp/u_hue/u_density/u_glow (wire them from audio). Bad file/compile = a no-op "
+                             "node (never crashes). Write the .glsl into the folder, then save_project.",
+            "custom_operator": "Drop a vivid-package.json + a C++ operator source in the project folder; "
+                               "load_project compiles it into the folder and registers it by name BEFORE the "
+                               "graph loads, so a node of that type resolves. (See install_operator_package.)",
         },
         "gotchas": {
             "params_are_huge": "Plugins expose thousands of params; always filter+limit list_params.",
