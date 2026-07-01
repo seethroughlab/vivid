@@ -30,7 +30,43 @@ def test_norm_notes():
     assert ns[1] == {"p": 67, "s": 1.0, "d": 0.5, "v": 0.6}
 
 
-TESTS = [test_notes, test_norm_notes]
+def test_chords():
+    assert T.chord("C") == [60, 64, 67]
+    assert T.chord("Cm") == [60, 63, 67]
+    assert T.chord("C7") == [60, 64, 67, 70]
+    assert T.chord("Cmaj7") == [60, 64, 67, 71]
+    assert T.chord("CM7") == [60, 64, 67, 71]        # capital-M maj7 spelling
+    assert T.chord("Cm7") == [60, 63, 67, 70]
+    assert T.chord("Cdim") == [60, 63, 66]
+    assert T.chord("Csus4") == [60, 65, 67]
+    assert T.chord("Cadd9") == [60, 64, 67, 74]
+    assert T.chord("Am") == [69, 72, 76]             # A4 root
+    assert T.chord("G7") == [67, 71, 74, 77]
+    assert T.chord("F#m7b5") == [66, 69, 72, 76]
+    assert T.chord("C/G") == [55, 60, 64, 67]        # slash bass G3 below
+    assert T.chord("C", inversion=1) == [64, 67, 72] # first inversion
+    assert T.chord("Bb") == [70, 74, 77]             # flat root
+
+
+def test_scales():
+    assert T.scale_pcs("C", "major") == [0, 2, 4, 5, 7, 9, 11]
+    assert T.scale_pcs("A", "minor") == [9, 11, 0, 2, 4, 5, 7]
+    assert T.scale_pcs("C", "dorian") == [0, 2, 3, 5, 7, 9, 10]
+    assert T.scale_notes("C", "major", 4, 8) == [60, 62, 64, 65, 67, 69, 71, 72]
+    assert T.scale_notes("C", "pentatonic_minor", 4, 5) == [60, 63, 65, 67, 70]
+
+
+def test_roman():
+    assert T.roman("I", "C", "major") == [60, 64, 67]     # C
+    assert T.roman("ii", "C", "major") == [62, 65, 69]    # Dm
+    assert T.roman("V7", "C", "major") == [67, 71, 74, 77]  # G7
+    assert T.roman("vi", "C", "major") == [69, 72, 76]    # Am
+    assert T.roman("i", "A", "minor") == [69, 72, 76]     # Am in A-minor
+    assert T.roman("bVII", "C", "major") == [70, 74, 77]  # Bb major (borrowed)
+    assert T.roman("bIII", "C", "major") == [63, 67, 70]  # Eb major (borrowed)
+
+
+TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman]
 
 
 def main() -> int:

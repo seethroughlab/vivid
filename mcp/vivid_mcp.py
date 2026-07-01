@@ -249,6 +249,47 @@ def clear_clip(track: int, scene: int) -> dict:
 
 
 @mcp.tool
+def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
+              vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
+    """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"
+    (slash bass). voicing = close|open|drop2; inversion = 0,1,2,…; octave sets the register.
+    Root supports #/b. Appends (read-modify-write), so build a clip chord-by-chord."""
+    try:
+        pitches = theory.chord(symbol, octave=octave, inversion=inversion, voicing=voicing)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    notes = [{"p": p, "s": beat, "d": dur, "v": vel} for p in pitches]
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + notes
+    length = max(cur.get("length", 4.0), beat + dur)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged, "length": length})
+
+
+@mcp.tool
+def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: float = 4.0,
+                    octave: int = 4, voicing: str = "close", vel: float = 0.8,
+                    key: str = "", scale: str = "major") -> dict:
+    """REPLACE a clip with a chord progression. If `key` is given, `chords` are ROMAN NUMERALS
+    diatonic to key/scale (["ii","V","I"] or ["i","iv","V","i"]); otherwise they're absolute
+    chord SYMBOLS (["Dm7","G7","Cmaj7"]). Each chord spans beats_per_chord; the loop length is
+    len(chords)*beats_per_chord."""
+    notes = []
+    try:
+        for i, sym in enumerate(chords):
+            start = i * beats_per_chord
+            pitches = (theory.roman(sym, key, scale, octave) if key
+                       else theory.chord(sym, octave=octave, voicing=voicing))
+            for p in pitches:
+                notes.append({"p": p, "s": start, "d": beats_per_chord, "v": vel})
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    length = max(1.0, len(chords) * beats_per_chord)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
+
+
+@mcp.tool
 def add_effect(track: int, name: str) -> dict:
     """Append an FX plugin (by name from list_effects) to a track's chain."""
     return _post("add_effect", {"track": track, "name": name})
