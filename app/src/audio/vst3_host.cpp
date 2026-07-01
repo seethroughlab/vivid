@@ -24,7 +24,7 @@
 using namespace Steinberg;
 using namespace Steinberg::Vst;
 
-namespace vivid_poc {
+namespace vivid::session {
 
 struct Track {
     Vst3Handle*           handle = nullptr;
@@ -832,4 +832,4 @@ void session_set_param(Session* s, int t, int dev, uint32_t id, float value) {
     if (h->controller) h->controller->setParamNormalized(id, value);   // -> plugin GUI reflection
 }
 
-}  // namespace vivid_poc
+}  // namespace vivid::session

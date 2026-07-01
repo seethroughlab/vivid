@@ -18,7 +18,7 @@ namespace vivid {
 // Result of comparing a live operator's descriptor against a hot-reload candidate:
 //   Compatible        — identical layout; an in-place dylib swap is safe.
 //   RecompileRequired — layout identical but multiplicity/strategy changed (for the
-//                       PoC this is handled like Compatible — we recreate instances).
+//                       here this is handled like Compatible — we recreate instances).
 //   Incompatible      — param/port/gpu layout changed; reject the swap (restart instead).
 enum class HotReloadCompat { Compatible, RecompileRequired, Incompatible };
 

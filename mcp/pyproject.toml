@@ -1,7 +1,7 @@
 [project]
 name = "vivid-mcp"
 version = "0.1.0"
-description = "MCP bridge for the Vivid PoC (proxies tool calls to the app's loopback control server)"
+description = "MCP bridge for the Vivid (proxies tool calls to the app's loopback control server)"
 requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=2.0",

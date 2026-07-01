@@ -1,6 +1,6 @@
 #pragma once
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
-#include "audio/vst3_host.h"  // vivid_poc::kMaxTracks (per-track array sizing)
+#include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
 
 struct GLFWwindow;
 struct Vst3PluginWindow;
@@ -42,13 +42,13 @@ struct Window {
     double  last_dev_t = -1; int last_dev_i = -1;
     int     gain_drag = -1;
     bool    split_drag = false; double split_last_t = -1.0;
-    Vst3PluginWindow* track_win[vivid_poc::kMaxTracks] = {};  // open instrument editor windows, per track
-    Vst3PluginWindow* fx_win[vivid_poc::kMaxTracks] = {};     // open effect editor windows (pool)
+    Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
+    Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
 
     // Frame-side display smoothing (per window).
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
-    float trkReact[vivid_poc::kMaxTracks] = {0}, trkTrHold[vivid_poc::kMaxTracks] = {0};
+    float trkReact[vivid::session::kMaxTracks] = {0}, trkTrHold[vivid::session::kMaxTracks] = {0};
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }

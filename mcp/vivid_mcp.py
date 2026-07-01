@@ -1,10 +1,10 @@
-"""Vivid PoC — MCP bridge.
+"""Vivid — MCP bridge.
 
 A FastMCP (stdio) server that proxies each tool call to the running app's loopback
 control server (HTTP, default http://127.0.0.1:9876). Launch the app first, then
 this bridge (or let your MCP client launch it). Set VIVID_URL to override the host.
 
-The PoC is a two-surface AV instrument: a DAW (tracks x scenes of clips, each track
+Vivid is a two-surface AV instrument: a DAW (tracks x scenes of clips, each track
 an instrument + FX chain) on the left, a rewireable visuals node-graph on the right,
 joined by a mapping bridge (audio characteristics -> visual params, and back).
 """
@@ -587,7 +587,7 @@ def set_media_root(path: str) -> dict:
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""
     return {
-        "overview": "Vivid PoC = a DAW (tracks x scenes of clips; each track has an instrument + FX) "
+        "overview": "Vivid = a DAW (tracks x scenes of clips; each track has an instrument + FX) "
                     "wired to a rewireable visuals node-graph via a mapping bridge.",
         "recipe": [
             "1. READ: status, list_tracks, get_graph, get_mappings to see current state.",

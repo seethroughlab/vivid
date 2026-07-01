@@ -20,7 +20,7 @@
 // Each owns a GLSL ShaderOp/EffectOp (proven primitives) and renders it in
 // process_gpu from the VividGpuContext. Shaders authored in GLSL — wgpu-native's
 // naga translates them; WGSL operators (the other authoring path) coexist under
-// the same runtime. This file is GPU-linked (only compiled into vivid_poc).
+// the same runtime. This file is GPU-linked (only compiled into vivid::session).
 namespace vivid {
 namespace {
 

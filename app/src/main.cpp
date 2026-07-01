@@ -1,4 +1,4 @@
-// Vivid PoC — entry point. Constructs the shared engine (App) + a single view
+// Vivid — entry point. Constructs the shared engine (App) + a single view
 // (Window), opens the audio device + MCP control server, and runs the macOS frame
 // loop. The god-file UI/draw/input code now lives in cohesive modules under
 // ui/, app/, and audio/ (see app/ARCHITECTURE notes); main() is just wiring + the
@@ -52,7 +52,7 @@ namespace { using namespace vivid::ui; }  // kViewW/H + constants (ui/layout.h)
 int main() {
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // WebGPU owns the surface
-    GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid PoC — foundation", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
     if (!window) { std::fprintf(stderr, "glfwCreateWindow failed\n"); glfwTerminate(); return 1; }
 
     vivid::App app;        // shared engine/document (one per process)
@@ -176,10 +176,10 @@ int main() {
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
         // Now that we know the device sample rate, scan + load an instrument.
-        app.session = vivid_poc::session_create(device.sampleRate);
+        app.session = vivid::session::session_create(device.sampleRate);
         std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
-                     app.session ? vivid_poc::session_track_count(app.session) : 0,
-                     app.session ? vivid_poc::session_track_name(app.session, 0) : "none — test tone");
+                     app.session ? vivid::session::session_track_count(app.session) : 0,
+                     app.session ? vivid::session::session_track_name(app.session, 0) : "none — test tone");
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
     }
     glfwSetWindowUserPointer(window, &win);
@@ -199,7 +199,7 @@ int main() {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);
-    if (app.session) vivid_poc::session_destroy(app.session);
+    if (app.session) vivid::session::session_destroy(app.session);
     if (app.video) { video_close(app.video); app.video = nullptr; }
     vgraph.shutdown();
     srcTex.release();

@@ -34,7 +34,7 @@ bool ClipEditor::contains(double x, double y) const {
 static bool is_black(int p) { int c = ((p % 12) + 12) % 12; return c==1||c==3||c==6||c==8||c==10; }
 
 void ClipEditor::open(int track, int scene, const std::string& title,
-                      const vivid_poc::ClipNote* notes, int n, double length) {
+                      const vivid::session::ClipNote* notes, int n, double length) {
     track_ = track; scene_ = scene; title_ = title;
     length_ = length > 0 ? length : 4.0;
     notes_.assign(notes, notes + (n > 0 ? n : 0));

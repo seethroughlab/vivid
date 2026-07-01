@@ -1,12 +1,12 @@
 # Vivid — repo navigation
 
-Vivid is an agent-first audio-visual environment. This branch (`poc-cpp-prototype`) holds a real macOS
-C++ proof of concept under **`app/`**: two best-in-class surfaces — a DAW (tracks × scenes of clips,
-each track an instrument + FX chain) and a rewireable visuals node-graph — joined by a bidirectional
+Vivid is an agent-first audio-visual environment. The trunk (`vivid-4`) holds a real macOS C++
+application under **`app/`**: two best-in-class surfaces — a DAW (tracks × scenes of clips, each
+track an instrument + FX chain) and a rewireable visuals node-graph — joined by a bidirectional
 **mapping bridge** and driven MCP-natively.
 
 ## Where things are
-- **`app/`** — the C++ PoC (GLFW + wgpu-native + miniaudio + VST3). Entry: `app/src/main.cpp`.
+- **`app/`** — the C++ app (GLFW + wgpu-native + miniaudio + VST3). Entry: `app/src/main.cpp`.
   - `app/src/audio/` — VST3 host + multi-track session (`vst3_host.h` is the session C API).
   - `app/src/gpu/` — wgpu context, the visuals `VisualGraph`, shader/effect ops, video.
   - `app/src/ui/` — `Renderer2D`, the node-graph editor, clip editor, `ui_style.h` (the palette/widgets).
@@ -22,14 +22,16 @@ each track an instrument + FX chain) and a rewireable visuals node-graph — joi
 ## Build & run (macOS)
 ```sh
 cmake -S app -B app/build && cmake --build app/build -j
-app/build/vivid_poc.app/Contents/MacOS/vivid_poc        # logs: control server on 127.0.0.1:9876
+app/build/vivid.app/Contents/MacOS/vivid        # logs: control server on 127.0.0.1:9876
 uv run --directory mcp vivid_mcp.py                      # the MCP bridge (app must be running)
 ```
 
-## Status (2026-06-30)
-The PoC is the **product seed**. Target is an extensible, cross-platform-capable platform
-(≈ vivid-classic's architecture where it helps). Strategy (ADR-0011, **accepted**): **keep `app/` as
-the trunk and adopt classic's platform by selective lift**.
+## Status (2026-07-01)
+`app/` is the **product trunk** (the branch formerly `poc-cpp-prototype`, now folded into `vivid-4`;
+what began as a proof of concept, promoted per ADR-0010). Target is an extensible, cross-platform-capable
+platform (≈ vivid-classic's architecture where it helps). Strategy (ADR-0011, **accepted**): **keep `app/`
+as the trunk and adopt classic's platform by selective lift**. Build identity is now `vivid` / `com.vivid.app`
+/ "Vivid"; the audio-session C API lives in `namespace vivid::session`.
 
 Current trunk has P0-P4 style productization work in place: App/Window decomposition, headless tests,
 CI/gate scaffolding, named control-server errors, runtime health/version surfaces, operator ABI +

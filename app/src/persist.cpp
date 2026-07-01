@@ -12,57 +12,57 @@ using json = nlohmann::json;
 
 namespace vivid {
 
-json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                      int win_w, int win_h, float split_x, float dock_h) {
     json j;
     if (!s) return j;
     j["version"] = kSessionSchemaVersion;
     j["window"] = { {"w", win_w}, {"h", win_h}, {"split", split_x}, {"dock", dock_h} };
 
-    const int nt = vivid_poc::session_track_count(s);
-    const int ns = vivid_poc::session_scene_count(s);
+    const int nt = vivid::session::session_track_count(s);
+    const int ns = vivid::session::session_scene_count(s);
     json tracks = json::array();
     for (int t = 0; t < nt; ++t) {
         json jt;
-        jt["name"]   = vivid_poc::session_track_name(s, t);
-        jt["gain"]   = vivid_poc::session_track_gain(s, t);
-        jt["active"] = vivid_poc::session_active_clip(s, t);
-        const bool aud = vivid_poc::session_track_is_audio(s, t);
+        jt["name"]   = vivid::session::session_track_name(s, t);
+        jt["gain"]   = vivid::session::session_track_gain(s, t);
+        jt["active"] = vivid::session::session_active_clip(s, t);
+        const bool aud = vivid::session::session_track_is_audio(s, t);
         jt["is_audio"] = aud;
         // v2: the track set is the document. `kind` + `instrument` let load recreate the
         // track (the track name is the plugin name, which doubles as the catalog/match spec).
         jt["kind"] = aud ? "audio" : "instrument";
-        jt["id"]   = vivid_poc::session_track_id(s, t);   // stable id (mapping sources reference it)
-        if (!aud) jt["instrument"] = vivid_poc::session_track_name(s, t);
+        jt["id"]   = vivid::session::session_track_id(s, t);   // stable id (mapping sources reference it)
+        if (!aud) jt["instrument"] = vivid::session::session_track_name(s, t);
         if (aud) {
             json trims = json::array();
             for (int sc = 0; sc < ns; ++sc) {
-                float a = 0.f, b = 1.f; vivid_poc::session_get_audio_trim(s, t, sc, &a, &b);
+                float a = 0.f, b = 1.f; vivid::session::session_get_audio_trim(s, t, sc, &a, &b);
                 trims.push_back({ a, b });
             }
             jt["trims"] = trims;
         } else {
             json clips = json::array();
             for (int sc = 0; sc < ns; ++sc) {
-                vivid_poc::ClipNote buf[256];
-                const int n = vivid_poc::session_get_clip(s, t, sc, buf, 256);
+                vivid::session::ClipNote buf[256];
+                const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
                 json notes = json::array();
                 for (int i = 0; i < n; ++i)
                     notes.push_back({ {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} });
-                clips.push_back({ {"length", vivid_poc::session_clip_length(s, t, sc)}, {"notes", notes} });
+                clips.push_back({ {"length", vivid::session::session_clip_length(s, t, sc)}, {"notes", notes} });
             }
             jt["clips"] = clips;
-            const std::string state = vivid_poc::session_get_track_state(s, t);  // plugin preset
+            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset
             if (!state.empty()) jt["state"] = state;
         }
         json fx = json::array();   // per-track effect chain (name + exposed param values)
-        for (int e = 0; e < vivid_poc::session_effect_count(s, t); ++e) {
-            json je; je["name"] = vivid_poc::session_effect_name(s, t, e);
+        for (int e = 0; e < vivid::session::session_effect_count(s, t); ++e) {
+            json je; je["name"] = vivid::session::session_effect_name(s, t, e);
             json ps = json::array();
-            const int pc = vivid_poc::session_param_count(s, t, e + 1);  // device = effect+1
+            const int pc = vivid::session::session_param_count(s, t, e + 1);  // device = effect+1
             for (int p = 0; p < pc; ++p)
-                ps.push_back({ {"id", vivid_poc::session_param_id(s, t, e + 1, p)},
-                               {"v",  vivid_poc::session_param_value(s, t, e + 1, p)} });
+                ps.push_back({ {"id", vivid::session::session_param_id(s, t, e + 1, p)},
+                               {"v",  vivid::session::session_param_value(s, t, e + 1, p)} });
             if (!ps.empty()) je["params"] = ps;
             fx.push_back(je);
         }
@@ -110,28 +110,28 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
 // the existing per-track restore loop (below) then fills state onto them by index. An
 // instrument that won't load on this machine falls back to an audio placeholder, keeping
 // indices aligned with the document.
-static void rebuild_tracks_from_doc(vivid_poc::Session* s, const json& T) {
-    while (vivid_poc::session_track_count(s) > 0)
-        vivid_poc::session_remove_track(s, vivid_poc::session_track_count(s) - 1);
+static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
+    while (vivid::session::session_track_count(s) > 0)
+        vivid::session::session_remove_track(s, vivid::session::session_track_count(s) - 1);
     for (const auto& jt : T) {
         const std::string kind = jt.value("kind", std::string("instrument"));
         int added;
         if (kind == "audio") {
-            added = vivid_poc::session_add_audio_track(s);
+            added = vivid::session::session_add_audio_track(s);
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
-            added = vivid_poc::session_add_instrument_track(s, inst.c_str());
+            added = vivid::session::session_add_instrument_track(s, inst.c_str());
             if (added < 0) {
                 std::fprintf(stderr, "[vivid] load: instrument '%s' unavailable — placeholder audio track\n", inst.c_str());
-                added = vivid_poc::session_add_audio_track(s);
+                added = vivid::session::session_add_audio_track(s);
             }
         }
         // Restore the stable id so saved mappings ("track_<id>.…") reload onto the same track.
-        if (added >= 0 && jt.contains("id")) vivid_poc::session_set_track_id(s, added, jt.value("id", added));
+        if (added >= 0 && jt.contains("id")) vivid::session::session_set_track_id(s, added, jt.value("id", added));
     }
 }
 
-bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
 
@@ -157,48 +157,48 @@ bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGrap
     }
 
     if (j.contains("tracks")) {
-        const int nt = vivid_poc::session_track_count(s);
+        const int nt = vivid::session::session_track_count(s);
         const json& T = j["tracks"];
         for (int t = 0; t < nt && t < static_cast<int>(T.size()); ++t) {
             const json& jt = T[t];
-            vivid_poc::session_set_track_gain(s, t, jt.value("gain", 0.8f));
-            if (vivid_poc::session_track_is_audio(s, t) && jt.contains("trims")) {
+            vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
+            if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)
                     if (tr[sc].size() >= 2)
-                        vivid_poc::session_set_audio_trim(s, t, sc, tr[sc][0].get<float>(), tr[sc][1].get<float>());
+                        vivid::session::session_set_audio_trim(s, t, sc, tr[sc][0].get<float>(), tr[sc][1].get<float>());
             } else if (jt.contains("clips")) {
                 const json& cl = jt["clips"];
                 for (int sc = 0; sc < static_cast<int>(cl.size()); ++sc) {
                     const json& jc = cl[sc];
-                    std::vector<vivid_poc::ClipNote> notes;
+                    std::vector<vivid::session::ClipNote> notes;
                     if (jc.contains("notes"))
                         for (const auto& jn : jc["notes"])
                             notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
-                    vivid_poc::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
+                    vivid::session::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
                 }
             }
             if (jt.contains("state"))
-                vivid_poc::session_set_track_state(s, t, jt["state"].get<std::string>());
+                vivid::session::session_set_track_state(s, t, jt["state"].get<std::string>());
             if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
-                while (vivid_poc::session_effect_count(s, t) > 0)
-                    vivid_poc::session_remove_effect(s, t, vivid_poc::session_effect_count(s, t) - 1);
+                while (vivid::session::session_effect_count(s, t) > 0)
+                    vivid::session::session_remove_effect(s, t, vivid::session::session_effect_count(s, t) - 1);
                 int added = 0;   // positional device index of the next effect (device = added+1)
                 for (const auto& jn : jt["fx"]) {
                     const std::string name = jn.is_string() ? jn.get<std::string>() : jn.value("name", std::string());
                     bool ok = false;
-                    for (int k = 0; k < vivid_poc::session_available_effect_count(); ++k)
-                        if (name == vivid_poc::session_available_effect_name(k)) {
-                            ok = vivid_poc::session_add_effect_by_index(s, t, k); break;
+                    for (int k = 0; k < vivid::session::session_available_effect_count(); ++k)
+                        if (name == vivid::session::session_available_effect_name(k)) {
+                            ok = vivid::session::session_add_effect_by_index(s, t, k); break;
                         }
                     if (ok && jn.is_object() && jn.contains("params"))
                         for (const auto& jp : jn["params"])
-                            vivid_poc::session_set_param(s, t, added + 1, jp.value("id", 0u), jp.value("v", 0.f));
+                            vivid::session::session_set_param(s, t, added + 1, jp.value("id", 0u), jp.value("v", 0.f));
                     if (ok) ++added;
                 }
             }
             const int act = jt.value("active", -1);
-            if (act >= 0) vivid_poc::session_launch_clip(s, t, act);
+            if (act >= 0) vivid::session::session_launch_clip(s, t, act);
         }
     }
 
@@ -253,7 +253,7 @@ bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGrap
     return true;
 }
 
-bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int win_w, int win_h, float split_x, float dock_h) {
     if (!s) return false;
     const json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
@@ -263,7 +263,7 @@ bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::Nod
     return static_cast<bool>(f);
 }
 
-bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int& win_w, int& win_h, float& split_x, float& dock_h) {
     if (!s) return false;
     std::ifstream f(path);

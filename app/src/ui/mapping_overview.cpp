@@ -8,7 +8,7 @@
 
 namespace vivid::ui {
 
-std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
+std::string mapping_dest_label(vivid::session::Session* s, const std::string& dest) {
     if (dest.rfind("node:", 0) == 0) {  // "node:<id>.<name>" -> "node <id> · <name> (visual)"
         const size_t dot = dest.find('.', 5);
         if (dot != std::string::npos)
@@ -18,7 +18,7 @@ std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
     if (dest.rfind("param:", 0) == 0) {
         int T = -1, D = 0, I = 0;
         if (std::sscanf(dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && s) {
-            const char* pn = vivid_poc::session_param_name(s, T, D, I);
+            const char* pn = vivid::session::session_param_name(s, T, D, I);
             char buf[72]; std::snprintf(buf, sizeof buf, "T%d %s: %.20s", T, D == 0 ? "inst" : "fx", pn ? pn : "param");
             return buf;
         }
@@ -28,16 +28,16 @@ std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest) {
 
 // A "track_<id>.<kind>" source encodes the STABLE id, which isn't the track's position —
 // resolve it to the track's current name ("Pigments.transient") so the row reads sensibly.
-std::string mapping_source_label(vivid_poc::Session* s, const std::string& src) {
+std::string mapping_source_label(vivid::session::Session* s, const std::string& src) {
     int id; std::string rest;
     if (s && vivid::parse_track_source(src, id, rest))
-        for (int t = 0; t < vivid_poc::session_track_count(s); ++t)
-            if (vivid_poc::session_track_id(s, t) == id)
-                return std::string(vivid_poc::session_track_name(s, t)) + rest;
+        for (int t = 0; t < vivid::session::session_track_count(s); ++t)
+            if (vivid::session::session_track_id(s, t) == id)
+                return std::string(vivid::session::session_track_name(s, t)) + rest;
     return src;
 }
 
-void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid_poc::Session* s, int win_w, int win_h) {
+void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session* s, int win_w, int win_h) {
     if (!g) return;
     const auto& maps = g->mappings();
     const int n = static_cast<int>(maps.size());

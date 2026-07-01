@@ -1,4 +1,4 @@
-# Vivid PoC — Architecture
+# Vivid — Architecture
 
 This describes how `app/` is put together: the two-surface product model, the
 `App`/`Window` split, the module layering, the thread model, and the MCP control

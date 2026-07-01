@@ -9,7 +9,7 @@
 #include <unordered_map>
 #include <nlohmann/json.hpp>
 
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 namespace vivid { namespace ui { class NodeGraph; } class VisualGraph; struct App; }
 struct Transport;
 
@@ -18,7 +18,7 @@ namespace vivid {
 // Pointers to the live app state the handlers act on. Window/split/dock are
 // passed by pointer so get_session can read them and load_session can update them.
 struct ControlCtx {
-    vivid_poc::Session*   session   = nullptr;
+    vivid::session::Session*   session   = nullptr;
     vivid::ui::NodeGraph* graph     = nullptr;
     vivid::VisualGraph*   vgraph    = nullptr;
     Transport*            transport = nullptr;

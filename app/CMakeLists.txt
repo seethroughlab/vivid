@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid_poc VERSION 0.1.0 LANGUAGES C CXX)
+project(vivid VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -80,7 +80,7 @@ FetchContent_MakeAvailable(glfw)
 
 # --- glfw3webgpu (GLFW <-> WebGPU surface bridge) ---
 # Pinned to a specific commit (was tracking `main`) for reproducible builds. This
-# is the exact commit the PoC has been building against; the project's latest tag
+# is the exact commit the app has been building against; the project's latest tag
 # (v1.2.0) is newer and untested here, so bump deliberately, not implicitly.
 # GIT_SHALLOW is FALSE here: a shallow clone can't reliably fetch a commit that
 # isn't a branch/tag tip, and this is a mid-history SHA. The repo is tiny.
@@ -129,7 +129,7 @@ target_link_libraries(vst3_iids PUBLIC vst3_headers)
 # MACOSX_BUNDLE is required so hosted VST3 plugin GUI windows receive mouse
 # events: a non-bundled CLI process can't become a proper foreground app, so its
 # secondary NSWindows render but stay non-interactive.
-add_executable(vivid_poc MACOSX_BUNDLE
+add_executable(vivid MACOSX_BUNDLE
     src/main.cpp
     src/app/app.cpp
     src/app/input.cpp
@@ -176,19 +176,19 @@ add_executable(vivid_poc MACOSX_BUNDLE
 # app_nap_stub.cpp above) are compiled on every OS and select via #ifdef, so exactly
 # one backend of each is linked per platform.
 if(APPLE)
-    target_sources(vivid_poc PRIVATE
+    target_sources(vivid PRIVATE
         src/gpu/video_player.mm
         src/audio/vst3_plugin_window.mm
         src/platform/macos_frame_timer.cpp
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm)
-    set_target_properties(vivid_poc PROPERTIES
-        MACOSX_BUNDLE_BUNDLE_NAME "Vivid PoC"
-        MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.poc"
+    set_target_properties(vivid PROPERTIES
+        MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
 endif()
-target_include_directories(vivid_poc PRIVATE src src/gpu src/audio src/ui deps/stb
+target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
 # the toolchain + the in-tree operator_api headers + the wgpu include/lib dirs.
@@ -197,17 +197,17 @@ set(_wgpu_root "")
 if(_wgpu_dist)
     list(GET _wgpu_dist 0 _wgpu_root)
 endif()
-target_compile_definitions(vivid_poc PRIVATE
+target_compile_definitions(vivid PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf"
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src"
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-target_link_libraries(vivid_poc PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
 
 if(APPLE)
-    target_link_libraries(vivid_poc PRIVATE
+    target_link_libraries(vivid PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework QuartzCore"
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreFoundation"
@@ -215,9 +215,9 @@ if(APPLE)
 endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.
-target_copy_webgpu_binaries(vivid_poc)
+target_copy_webgpu_binaries(vivid)
 
-# Loadable operator dylibs (P2). Declared after vivid_poc so the operator targets
+# Loadable operator dylibs (P2). Declared after vivid so the operator targets
 # can reference the bundle (for the PlugIns/ copy) + force them to build with the app.
 add_subdirectory(operators)
-add_dependencies(vivid_poc vivid_spike_solid)
+add_dependencies(vivid vivid_spike_solid)

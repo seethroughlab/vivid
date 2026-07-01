@@ -1,4 +1,4 @@
-# Version guard (P4.5). Vivid has a single version source — project(vivid_poc VERSION …)
+# Version guard (P4.5). Vivid has a single version source — project(vivid VERSION …)
 # in app/CMakeLists.txt — so this just asserts it parses as semver (and, on a release tag,
 # that it matches the tag). Cheap, ubuntu, no signing. VERIFIABLE: tools/check_version.py
 # is unit-runnable locally.
@@ -6,7 +6,7 @@ name: version-guard
 
 on:
   push:
-    branches: [master, poc-cpp-prototype]
+    branches: [master, vivid-4]
     tags: ["v*.*.*"]
   pull_request:
     branches: [master]

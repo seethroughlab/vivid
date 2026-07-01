@@ -4,7 +4,7 @@
 #include <vector>
 
 namespace vivid { struct Window; struct CtxMenu; }
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
 class Renderer2D;
@@ -12,7 +12,7 @@ class Renderer2D;
 // The Session view (transport, tracks×scenes clip grid, mixer), the bottom
 // device dock, the clip-cell previews, and the small context menus. State comes
 // from the Window (its metrics + selection, and the shared App behind win.app).
-void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
+void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc,
                        const Rect& b, float ar, float ag, float ab, bool on);
 void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my);

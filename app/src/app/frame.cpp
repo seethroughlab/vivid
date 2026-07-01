@@ -52,11 +52,11 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
 }  // namespace
 
 void reap_plugin_windows(App& app, Window& win) {
-    for (int t = 0; app.session && t < vivid_poc::session_track_count(app.session); ++t)
+    for (int t = 0; app.session && t < vivid::session::session_track_count(app.session); ++t)
         if (win.track_win[t] && !vst3_plugin_window_is_open(win.track_win[t])) {
             vst3_plugin_window_close(win.track_win[t]); win.track_win[t] = nullptr;
         }
-    for (int k = 0; k < vivid_poc::kMaxTracks; ++k)
+    for (int k = 0; k < vivid::session::kMaxTracks; ++k)
         if (win.fx_win[k] && !vst3_plugin_window_is_open(win.fx_win[k])) {
             vst3_plugin_window_close(win.fx_win[k]); win.fx_win[k] = nullptr;
         }
@@ -75,17 +75,17 @@ void publish_bridge_sources(App& app, Window& win) {
     graph.set_value(2, std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
     graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
     graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
-    for (int t = 0; app.session && t < vivid_poc::session_track_count(app.session) && t < vivid_poc::kMaxTracks; ++t) {
-        const float lv = vivid_poc::session_track_level(app.session, t);
+    for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
+        const float lv = vivid::session::session_track_level(app.session, t);
         win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
         win.trkTrHold[t] *= 0.85f;
-        win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid_poc::session_track_transient(app.session, t));
-        const int tid = vivid_poc::session_track_id(app.session, t);
+        win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid::session::session_track_transient(app.session, t));
+        const int tid = vivid::session::session_track_id(app.session, t);
         graph.set_value(char_id_for(tid, 0), win.trkReact[t]);
         graph.set_value(char_id_for(tid, 1), std::min(1.0f, win.trkTrHold[t]));
-        graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 0) * 5.0f));
-        graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 1) * 8.0f));
-        graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid_poc::session_track_band(app.session, t, 2) * 12.0f));
+        graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f));
+        graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f));
+        graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f));
     }
     graph.apply_params();
 }
@@ -96,8 +96,8 @@ void apply_audio_param_mappings(App& app) {
         if (m.dest.rfind("param:", 0) != 0) continue;
         int T = -1, D = 0, I = 0;
         if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)
-            vivid_poc::session_set_param(app.session, T, D,
-                                         vivid_poc::session_param_id(app.session, T, D, I),
+            vivid::session::session_set_param(app.session, T, D,
+                                         vivid::session::session_param_id(app.session, T, D, I),
                                          app.graph->dest_value(m.dest));
     }
 }
@@ -113,17 +113,17 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         if (win.editor->take_dirty() && app.session) {
             if (win.editor->is_audio()) {
                 float a, b; win.editor->audio_trim(a, b);
-                vivid_poc::session_set_audio_trim(app.session, win.editor->track(), win.editor->scene(), a, b);
+                vivid::session::session_set_audio_trim(app.session, win.editor->track(), win.editor->scene(), a, b);
             } else {
                 const auto& nv = win.editor->notes();
-                vivid_poc::session_set_clip(app.session, win.editor->track(), win.editor->scene(),
+                vivid::session::session_set_clip(app.session, win.editor->track(), win.editor->scene(),
                                             nv.data(), static_cast<int>(nv.size()), win.editor->length());
             }
         }
     }
     if (win.gain_drag >= 0 && app.session) {
-        const Rect gr = track_gain_rect(win.gain_drag, vivid_poc::session_scene_count(app.session));
-        vivid_poc::session_set_track_gain(app.session, win.gain_drag,
+        const Rect gr = track_gain_rect(win.gain_drag, vivid::session::session_scene_count(app.session));
+        vivid::session::session_set_track_gain(app.session, win.gain_drag,
                                           std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
@@ -132,11 +132,11 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         if (win.param_is_node) {
             if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
         } else if (app.session) {
-            const int ntr = vivid_poc::session_track_count(app.session);
+            const int ntr = vivid::session::session_track_count(app.session);
             const int seltr = std::min(std::max(win.sel_track, 0), ntr - 1);
             const int seldev = std::max(0, win.sel_device);
-            vivid_poc::session_set_param(app.session, seltr, seldev,
-                                         vivid_poc::session_param_id(app.session, seltr, seldev, win.param_drag), v);
+            vivid::session::session_set_param(app.session, seltr, seldev,
+                                         vivid::session::session_param_id(app.session, seltr, seldev, win.param_drag), v);
         }
     }
 }
@@ -230,7 +230,7 @@ void run_frame_loop(App& app, Window& win) {
             graph.draw_overlays(ui);  // operator chooser
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
-                      : (app.session ? vivid_poc::session_track_name(app.session, win.menu.src) : "track"));
+                      : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
             draw_fx_menu(ui, win.fx_menu);
             draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);

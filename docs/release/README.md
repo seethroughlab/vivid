@@ -21,7 +21,7 @@ run them, and clearly marked as not-yet-exercised.
 
 ## Versioning
 
-One source of truth: `project(vivid_poc VERSION X.Y.Z)` in `app/CMakeLists.txt`, from which
+One source of truth: `project(vivid VERSION X.Y.Z)` in `app/CMakeLists.txt`, from which
 `version.h` is generated (and the macOS bundle version strings + the `get_version`
 endpoint read). To cut a release: bump that line, commit, tag `vX.Y.Z`. `version-guard.yml`
 asserts the tag matches.
@@ -60,7 +60,7 @@ validation, also an EdDSA signing key.
 ```sh
 cmake -S app -B app/build-release -DCMAKE_BUILD_TYPE=Release && cmake --build app/build-release -j
 APPLE_CODESIGN_IDENTITY="Developer ID Application: … (TEAMID)" NOTARY_PROFILE=vivid-notary \
-    scripts/release/sign_and_notarize.sh app/build-release/vivid_poc.app build/dist
+    scripts/release/sign_and_notarize.sh app/build-release/vivid.app build/dist
 ```
 
 ## Wiring real auto-update

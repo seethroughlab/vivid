@@ -4,7 +4,7 @@
 # ///
 """Version-guard check (P4.5).
 
-Vivid keeps a single version source — `project(vivid_poc VERSION X.Y.Z)` in
+Vivid keeps a single version source — `project(vivid VERSION X.Y.Z)` in
 app/CMakeLists.txt, from which version.h is generated — so there's no second surface to
 drift. This guard asserts that version parses as semver and, on a release, that it matches
 the pushed tag (`vX.Y.Z`). Run in CI by version-guard.yml.
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 CMAKE = Path("app/CMakeLists.txt")
-VERSION_RE = re.compile(r"project\s*\(\s*vivid_poc\s+VERSION\s+(\d+\.\d+\.\d+)", re.IGNORECASE)
+VERSION_RE = re.compile(r"project\s*\(\s*vivid\s+VERSION\s+(\d+\.\d+\.\d+)", re.IGNORECASE)
 
 
 def cmake_version(text: str) -> str | None:
@@ -40,7 +40,7 @@ def main() -> int:
 
     ver = cmake_version(args.cmake.read_text())
     if not ver:
-        print(f"error: no `project(vivid_poc VERSION X.Y.Z)` in {args.cmake}", file=sys.stderr)
+        print(f"error: no `project(vivid VERSION X.Y.Z)` in {args.cmake}", file=sys.stderr)
         return 1
     print(f"CMake project version: {ver}")
 

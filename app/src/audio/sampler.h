@@ -8,7 +8,7 @@
 // A minimal transport-locked sampler: holds stereo float PCM and reads it phase-
 // locked to the master beat (loop spans `loop_beats`). The audio-clip counterpart
 // to a MIDI clip — the audio thread calls render() each block.
-namespace vivid_poc {
+namespace vivid::session {
 
 struct Sampler {
     std::vector<float> L, R;       // PCM (R empty => mono)
@@ -54,4 +54,4 @@ Sampler gen_bell_loop(uint32_t sr, double bpm);
 // Decode a WAV (via miniaudio); warps the loop length to the nearest whole bar.
 bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sampler& out);
 
-}  // namespace vivid_poc
+}  // namespace vivid::session

@@ -7,7 +7,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-namespace vivid_poc {
+namespace vivid::session {
 
 static size_t bar_samples(uint32_t sr, double bpm) {
     return static_cast<size_t>(static_cast<double>(sr) * 4.0 * 60.0 / (bpm > 0 ? bpm : 120.0));
@@ -95,4 +95,4 @@ bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sam
     return true;
 }
 
-}  // namespace vivid_poc
+}  // namespace vivid::session

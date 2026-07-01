@@ -28,7 +28,7 @@ function(add_vivid_operator name)
         target_link_options(${name} PRIVATE
             -undefined dynamic_lookup
             "LINKER:-rpath,@loader_path/../MacOS")
-        set(_plugin_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid_poc>/PlugIns")
+        set(_plugin_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/PlugIns")
     else()
         # Non-Apple: the executable is not a bundle; plugins sit in a PlugIns/ dir next
         # to it and resolve libwgpu_native (copied beside the exe) via the loader's dir.
@@ -36,7 +36,7 @@ function(add_vivid_operator name)
             target_link_options(${name} PRIVATE
                 "LINKER:--allow-shlib-undefined" "LINKER:-rpath,$ORIGIN")
         endif()
-        set(_plugin_dest "$<TARGET_FILE_DIR:vivid_poc>/PlugIns")
+        set(_plugin_dest "$<TARGET_FILE_DIR:vivid>/PlugIns")
     endif()
     # Drop the plugin into the host's PlugIns/ so the startup scan finds it.
     add_custom_command(TARGET ${name} POST_BUILD

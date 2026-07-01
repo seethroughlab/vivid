@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <string>
 
-// Shared UI geometry + layout constants for the PoC shell: the session grid
+// Shared UI geometry + layout constants for the Vivid shell: the session grid
 // (tracks × scenes + mixer), the visuals viewer/splitter, and the bottom device
 // dock. Window-relative helpers take explicit size/split/dock args (no globals)
 // so they're reusable across the draw + input + frame modules. Pure + header-only.

@@ -8,7 +8,7 @@
 // proven approach from classic's midi_clip_core.h (loop playhead = fmod against
 // the master beat; note-on at a sample offset within the block; deferred
 // note-off tracked per active note) without the operator-framework baggage.
-namespace vivid_poc {
+namespace vivid::session {
 
 struct ClipNote { int pitch; double start; double dur; float vel; };  // start/dur in beats
 
@@ -78,4 +78,4 @@ struct ClipScheduler {
     }
 };
 
-}  // namespace vivid_poc
+}  // namespace vivid::session

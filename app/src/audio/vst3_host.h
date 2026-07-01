@@ -11,7 +11,7 @@
 // clip per scene. Clip launches are queued on the main thread and applied on the
 // audio thread at the next bar boundary (Ableton-style). The audio thread mixes
 // all tracks (per-track gain) into the master output.
-namespace vivid_poc {
+namespace vivid::session {
 
 struct Session;  // opaque
 
@@ -102,4 +102,4 @@ void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, i
 bool session_process(Session*, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar);
 
-}  // namespace vivid_poc
+}  // namespace vivid::session

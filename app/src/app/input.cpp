@@ -59,11 +59,11 @@ void handle_default_project_shortcut(GLFWwindow* w, vivid::Window& win, vivid::A
 // File-menu actions (arbitrary paths, unlike the fixed-path Cmd+S/O). new = fresh slate.
 void file_new(vivid::App& app) {
     if (!app.session || !app.graph) return;
-    const int nt = vivid_poc::session_track_count(app.session);
-    const int ns = vivid_poc::session_scene_count(app.session);
+    const int nt = vivid::session::session_track_count(app.session);
+    const int ns = vivid::session::session_scene_count(app.session);
     for (int t = 0; t < nt; ++t)
         for (int sc = 0; sc < ns; ++sc)
-            vivid_poc::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
+            vivid::session::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
     app.graph->reset_nodes();
     if (app.vgraph) { app.vgraph->reset_to_default(); app.vgraph->set_asset_dir(""); }
     app.project.current_project_path.clear();
@@ -126,8 +126,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (!app->session) return;
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {
         int idx = key - GLFW_KEY_1;
-        if (idx < vivid_poc::session_scene_count(app->session)) {
-            vivid_poc::session_launch_scene(app->session, idx);
+        if (idx < vivid::session::session_scene_count(app->session)) {
+            vivid::session::session_launch_scene(app->session, idx);
             std::fprintf(stderr, "[vivid] launch scene %c (queued for next bar)\n", 'A' + idx);
         }
     }
@@ -152,8 +152,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     if (!win) return;
     vivid::App* app = win->app;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
-    const int tracks = app->session ? vivid_poc::session_track_count(app->session) : 0;
-    const int scenes = app->session ? vivid_poc::session_scene_count(app->session) : 0;
+    const int tracks = app->session ? vivid::session::session_track_count(app->session) : 0;
+    const int scenes = app->session ? vivid::session::session_scene_count(app->session) : 0;
 
     // Top transport bar: the play/pause button.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->transport
@@ -255,9 +255,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             const Rect r = { win->menu.x, win->menu.y + j * 26.f, 184.f, 26.f };
             if (hit(r, mx, my) && app->graph) {
                 const int src = win->menu.src;   // -1 master, else a session track index
-                const char* sname = src < 0 ? "Master" : vivid_poc::session_track_name(app->session, src);
+                const char* sname = src < 0 ? "Master" : vivid::session::session_track_name(app->session, src);
                 // Encode by the track's STABLE id (master stays -1) so the wire follows the track.
-                const int sid = src < 0 ? -1 : vivid_poc::session_track_id(app->session, src);
+                const int sid = src < 0 ? -1 : vivid::session::session_track_id(app->session, src);
                 std::string title = std::string(sname) + "  " + kChars[j].label;
                 app->graph->add_data_node(title, char_id_for(sid, kChars[j].id));
                 std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[j].label);
@@ -269,21 +269,21 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     }
     // FX menu has priority: pick an effect -> add it to the menu's track.
     if (win->fx_menu.open) {
-        for (int j = 0; j < vivid_poc::session_available_effect_count(); ++j) {
+        for (int j = 0; j < vivid::session::session_available_effect_count(); ++j) {
             const Rect r = { win->fx_menu.x, win->fx_menu.y + j * 24.f, 150.f, 24.f };
-            if (hit(r, mx, my)) { vivid_poc::session_add_effect_by_index(app->session, win->fx_menu.src, j); break; }
+            if (hit(r, mx, my)) { vivid::session::session_add_effect_by_index(app->session, win->fx_menu.src, j); break; }
         }
         win->fx_menu.open = false;
         return;
     }
     // Track menu: pick an instrument (or "Audio track") -> create the track.
     if (win->track_menu.open) {
-        const int n = vivid_poc::session_available_instrument_count();
+        const int n = vivid::session::session_available_instrument_count();
         for (int j = 0; j <= n; ++j) {
             const Rect r = { win->track_menu.x, win->track_menu.y + j * 24.f, 150.f, 24.f };
             if (hit(r, mx, my)) {
-                if (j == n) vivid_poc::session_add_audio_track(app->session);
-                else        vivid_poc::session_add_instrument_track(app->session, vivid_poc::session_available_instrument_name(j));
+                if (j == n) vivid::session::session_add_audio_track(app->session);
+                else        vivid::session::session_add_instrument_track(app->session, vivid::session::session_available_instrument_name(j));
                 break;
             }
         }
@@ -318,19 +318,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         if (hit(track_header_x_rect(t), mx, my)) {
             // Close all open instrument editor windows first: removal shifts track indices,
             // so the per-track window pool would otherwise misalign (they reopen on demand).
-            for (int k = 0; k < vivid_poc::kMaxTracks; ++k)
+            for (int k = 0; k < vivid::session::kMaxTracks; ++k)
                 if (win->track_win[k]) { vst3_plugin_window_close(win->track_win[k]); win->track_win[k] = nullptr; }
-            const int rid = vivid_poc::session_track_id(app->session, t);   // capture before removal
-            if (vivid_poc::session_remove_track(app->session, t)) {
+            const int rid = vivid::session::session_track_id(app->session, t);   // capture before removal
+            if (vivid::session::session_remove_track(app->session, t)) {
                 if (app->graph) app->graph->drop_track_sources(rid);   // drop this track's mappings (id-based)
-                const int nt = vivid_poc::session_track_count(app->session);
+                const int nt = vivid::session::session_track_count(app->session);
                 if (win->sel_track >= nt) win->sel_track = std::max(0, nt - 1);
             }
             return;
         }
         if (hit(track_header_rect(t), mx, my)) { win->sel_track = t; if (app->graph) app->graph->select_op(-1); return; }
     }
-    if (tracks < vivid_poc::kMaxTracks && hit(track_add_rect(tracks), mx, my)) {
+    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), mx, my)) {
         win->track_menu = { true, static_cast<float>(mx), static_cast<float>(my), -1 };
         return;
     }
@@ -357,15 +357,15 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     // (shows params), double-click opens the plugin editor; x removes; + FX adds.
     {
         const int seltr = std::min(std::max(win->sel_track, 0), tracks - 1);
-        const int nfx = vivid_poc::session_effect_count(app->session, seltr);
+        const int nfx = vivid::session::session_effect_count(app->session, seltr);
         const double now = glfwGetTime();
         auto open_dev = [&](int dev) {
             auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                dev == 0 ? vivid_poc::session_track_controller(app->session, seltr)
-                         : vivid_poc::session_effect_controller(app->session, seltr, dev - 1));
+                dev == 0 ? vivid::session::session_track_controller(app->session, seltr)
+                         : vivid::session::session_effect_controller(app->session, seltr, dev - 1));
             if (!ctrl) return;
-            const char* nm = dev == 0 ? vivid_poc::session_track_name(app->session, seltr)
-                                      : vivid_poc::session_effect_name(app->session, seltr, dev - 1);
+            const char* nm = dev == 0 ? vivid::session::session_track_name(app->session, seltr)
+                                      : vivid::session::session_effect_name(app->session, seltr, dev - 1);
             if (dev == 0) {
                 if (win->track_win[seltr]) { vst3_plugin_window_close(win->track_win[seltr]); win->track_win[seltr] = nullptr; }
                 win->track_win[seltr] = vst3_plugin_window_open(ctrl, nm);
@@ -379,10 +379,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             else { win->sel_device = dev; win->last_dev_i = dev; win->last_dev_t = now; }
         };
         // device chips in the bottom dock
-        if (!vivid_poc::session_track_is_audio(app->session, seltr) && hit(win->dock_chip(0), mx, my)) { click_dev(0); return; }
+        if (!vivid::session::session_track_is_audio(app->session, seltr) && hit(win->dock_chip(0), mx, my)) { click_dev(0); return; }
         for (int e = 0; e < nfx; ++e) {
             if (hit(win->dock_chip_x(1 + e), mx, my)) {
-                vivid_poc::session_remove_effect(app->session, seltr, e);
+                vivid::session::session_remove_effect(app->session, seltr, e);
                 if (win->sel_device > nfx - 1) win->sel_device = 0;
                 return;
             }
@@ -395,7 +395,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         // param knobs of the selected device (vertical drag; small map affordance)
         const int seldev = std::max(0, win->sel_device);
         const DockGeom d = win->dock_geom();
-        const int npc = std::min(vivid_poc::session_param_count(app->session, seltr, seldev), d.cols * d.maxRows);
+        const int npc = std::min(vivid::session::session_param_count(app->session, seltr, seldev), d.cols * d.maxRows);
         for (int i = 0; i < npc; ++i) {
             if (hit(dock_knob_map(i, d), mx, my)) {
                 win->map_menu = { true, static_cast<float>(mx), static_cast<float>(my), 0 };
@@ -404,7 +404,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
             float cx, cy; dock_knob(i, d, cx, cy);
             if (std::hypot(mx - cx, my - cy) <= 16.0) {
                 win->param_drag = i; win->param_is_node = false;
-                win->param_drag_v0 = vivid_poc::session_param_value(app->session, seltr, seldev, i);
+                win->param_drag_v0 = vivid::session::session_param_value(app->session, seltr, seldev, i);
                 win->param_drag_y0 = my;
                 return;
             }
@@ -415,7 +415,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         const Rect gr = track_gain_rect(t, scenes);
         if (hit(gr, mx, my)) {
             win->gain_drag = t;
-            vivid_poc::session_set_track_gain(app->session, t, std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
+            vivid::session::session_set_track_gain(app->session, t, std::min(1.0, std::max(0.0, (mx - gr.x) / gr.w)));
             return;
         }
     }
@@ -428,28 +428,28 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
                 if (win->editor && win->last_clip_track == t && win->last_clip_scene == sc && now - win->last_clip_t < 0.35) {
                     char title[80];
                     std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c",
-                                  vivid_poc::session_track_name(app->session, t), 'A' + sc);
-                    if (vivid_poc::session_track_is_audio(app->session, t)) {  // waveform editor
+                                  vivid::session::session_track_name(app->session, t), 'A' + sc);
+                    if (vivid::session::session_track_is_audio(app->session, t)) {  // waveform editor
                         float bins[512]; float a = 0.f, b = 1.f;
-                        const int nb = vivid_poc::session_audio_waveform(app->session, t, sc, bins, 512);
-                        vivid_poc::session_get_audio_trim(app->session, t, sc, &a, &b);
+                        const int nb = vivid::session::session_audio_waveform(app->session, t, sc, bins, 512);
+                        vivid::session::session_get_audio_trim(app->session, t, sc, &a, &b);
                         win->editor->open_audio(t, sc, title, bins, nb, a, b);
                     } else {                                                  // piano-roll editor
-                        vivid_poc::ClipNote buf[256];
-                        const int n = vivid_poc::session_get_clip(app->session, t, sc, buf, 256);
-                        const double len = vivid_poc::session_clip_length(app->session, t, sc);
+                        vivid::session::ClipNote buf[256];
+                        const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);
+                        const double len = vivid::session::session_clip_length(app->session, t, sc);
                         win->editor->open(t, sc, title, buf, n, len);
                     }
                     win->last_clip_t = -1;
                     return;
                 }
                 win->last_clip_t = now; win->last_clip_track = t; win->last_clip_scene = sc;
-                vivid_poc::session_launch_clip(app->session, t, sc);
+                vivid::session::session_launch_clip(app->session, t, sc);
                 return;
             }
     // scene launch buttons -> launch the whole row
     for (int sc = 0; sc < scenes; ++sc)
-        if (hit(scene_launch_rect(sc), mx, my)) { vivid_poc::session_launch_scene(app->session, sc); return; }
+        if (hit(scene_launch_rect(sc), mx, my)) { vivid::session::session_launch_scene(app->session, sc); return; }
 }
 
 }  // namespace

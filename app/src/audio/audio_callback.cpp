@@ -22,7 +22,7 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
 
     bool rendered = false;
     if (a->session)
-        rendered = vivid_poc::session_process(a->session, fout, frames,
+        rendered = vivid::session::session_process(a->session, fout, frames,
                                               static_cast<uint32_t>(sr), bpm, beats, 4);
     if (!rendered) {
         const double inc = 2.0 * kPi * a->tone_hz / sr;

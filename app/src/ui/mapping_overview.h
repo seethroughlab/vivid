@@ -2,7 +2,7 @@
 #include <string>
 #include "ui/layout.h"   // Rect, std::max/min via <algorithm>
 
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
 class Renderer2D;
@@ -39,10 +39,10 @@ inline OvRow ov_row(float px, float w, float ry) {
 }
 
 // Human-readable label for a mapping destination id.
-std::string mapping_dest_label(vivid_poc::Session* s, const std::string& dest);
+std::string mapping_dest_label(vivid::session::Session* s, const std::string& dest);
 
 // P28: the mapping overview — every source->dest mapping in one panel, with per-row
 // amount/curve/range steppers + polarity toggle + clear. Direction-colored arrow.
-void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid_poc::Session* s, int win_w, int win_h);
+void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session* s, int win_w, int win_h);
 
 }  // namespace vivid::ui

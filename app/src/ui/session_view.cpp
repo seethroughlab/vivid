@@ -19,14 +19,14 @@ void draw_fx_menu(Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
     const Style& sty = style();
     const float w = 150.f;
-    const int n = vivid_poc::session_available_effect_count();
+    const int n = vivid::session::session_available_effect_count();
     ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
     for (int j = 0; j < n; ++j) {
         const float iy = m.y + j * 24.f;
         ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
         ui.draw_rect(m.x, iy, 3.f, 24.f, sty.fx[0], sty.fx[1], sty.fx[2], 1.0f);
-        ui.draw_text(m.x + 12.f, iy + 5.f, vivid_poc::session_available_effect_name(j), sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
+        ui.draw_text(m.x + 12.f, iy + 5.f, vivid::session::session_available_effect_name(j), sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
     }
 }
 
@@ -36,7 +36,7 @@ void draw_track_menu(Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
     const Style& sty = style();
     const float w = 150.f;
-    const int n = vivid_poc::session_available_instrument_count();
+    const int n = vivid::session::session_available_instrument_count();
     ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     ui.draw_text(m.x + 10.f, m.y - 18.f, "+ track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
     for (int j = 0; j <= n; ++j) {   // n instrument rows + one "Audio track" row
@@ -45,7 +45,7 @@ void draw_track_menu(Renderer2D& ui, const CtxMenu& m) {
         ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
         const float* acc = isAudio ? sty.audio : sty.fx;
         ui.draw_rect(m.x, iy, 3.f, 24.f, acc[0], acc[1], acc[2], 1.0f);
-        ui.draw_text(m.x + 12.f, iy + 5.f, isAudio ? "Audio track" : vivid_poc::session_available_instrument_name(j),
+        ui.draw_text(m.x + 12.f, iy + 5.f, isAudio ? "Audio track" : vivid::session::session_available_instrument_name(j),
                      sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
     }
 }
@@ -77,12 +77,12 @@ void draw_file_menu(Renderer2D& ui, const CtxMenu& m, const std::vector<std::str
 
 // Mini clip preview inside a session cell: a piano-roll for MIDI clips, a
 // waveform for audio clips. Drawn faintly so the clip name reads on top.
-void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
+void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc,
                        const Rect& b, float ar, float ag, float ab, bool on) {
     const float alpha = on ? 0.85f : 0.5f;
-    if (vivid_poc::session_track_is_audio(s, t)) {
+    if (vivid::session::session_track_is_audio(s, t)) {
         float bins[48];
-        const int n = vivid_poc::session_audio_waveform(s, t, sc, bins, 48);
+        const int n = vivid::session::session_audio_waveform(s, t, sc, bins, 48);
         if (n <= 0) return;
         const float midy = b.y + b.h * 0.5f, colw = b.w / n;
         for (int i = 0; i < n; ++i) {
@@ -90,9 +90,9 @@ void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
             ui.draw_rect(b.x + colw * i, midy - a, std::max(1.f, colw - 0.4f), a * 2.f + 1.f, ar, ag, ab, alpha);
         }
     } else {
-        vivid_poc::ClipNote buf[256];
-        const int n = vivid_poc::session_get_clip(s, t, sc, buf, 256);
-        const double len = vivid_poc::session_clip_length(s, t, sc);
+        vivid::session::ClipNote buf[256];
+        const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
+        const double len = vivid::session::session_clip_length(s, t, sc);
         if (n <= 0 || len <= 0.0) return;
         int lo = 127, hi = 0;
         for (int i = 0; i < n; ++i) { lo = std::min(lo, buf[i].pitch); hi = std::max(hi, buf[i].pitch); }
@@ -110,7 +110,7 @@ void draw_clip_preview(Renderer2D& ui, vivid_poc::Session* s, int t, int sc,
 // The bottom device-view dock: device chips for the selected track + a knob grid
 // of the selected device's params. Full window width; resizable via its top edge.
 void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
-    vivid_poc::Session* s = w.app->session;
+    vivid::session::Session* s = w.app->session;
     if (!s) return;
     const Style& sty = style();
     const DockGeom d = w.dock_geom();
@@ -139,14 +139,14 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         return;
     }
 
-    const int tracks = vivid_poc::session_track_count(s);
+    const int tracks = vivid::session::session_track_count(s);
     const int seltr = std::min(std::max(w.sel_track, 0), tracks - 1);
-    const bool aud = vivid_poc::session_track_is_audio(s, seltr);
-    char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid_poc::session_track_name(s, seltr));
+    const bool aud = vivid::session::session_track_is_audio(s, seltr);
+    char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid::session::session_track_name(s, seltr));
     section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
 
     // device chips: instrument (0) + effects (1..nfx) + "+ FX"
-    const int nfx = vivid_poc::session_effect_count(s, seltr);
+    const int nfx = vivid::session::session_effect_count(s, seltr);
     for (int i = 0; i <= nfx + 1; ++i) {
         const bool isInst = (i == 0), isAdd = (i == nfx + 1);
         if (isInst && aud) continue;  // sampler track has no instrument plugin
@@ -157,8 +157,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
         if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 11.f, "+ FX", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f); continue; }
         ui.draw_text(b.x + 8.f, b.y + 6.f, isInst ? "INST" : "FX", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
-        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", isInst ? vivid_poc::session_track_name(s, seltr)
-                                                                  : vivid_poc::session_effect_name(s, seltr, i - 1));
+        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", isInst ? vivid::session::session_track_name(s, seltr)
+                                                                  : vivid::session::session_effect_name(s, seltr, i - 1));
         ui.draw_text(b.x + 8.f, b.y + 17.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
         if (!isInst) {
             const Rect xb = w.dock_chip_x(i);
@@ -169,13 +169,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
 
     // knob grid for the selected device's params
     const int seldev = std::max(0, w.sel_device);
-    const int pc = vivid_poc::session_param_count(s, seltr, seldev);
+    const int pc = vivid::session::session_param_count(s, seltr, seldev);
     const float* pacc = (seldev == 0) ? sty.audio : sty.fx;
     const int shown = std::min(pc, d.cols * d.maxRows);
     for (int i = 0; i < shown; ++i) {
         float cx, cy; dock_knob(i, d, cx, cy);
-        const float v = vivid_poc::session_param_value(s, seltr, seldev, i);
-        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", vivid_poc::session_param_name(s, seltr, seldev, i));
+        const float v = vivid::session::session_param_value(s, seltr, seldev, i);
+        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", vivid::session::session_param_name(s, seltr, seldev, i));
         char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", v);
         const bool mapped = w.app->graph && w.app->graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
         knob(ui, cx, cy, 15.f, v, nm, vt, pacc, mapped);
@@ -226,8 +226,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     }
     if (!w.app->session) return;
     auto* s = w.app->session;
-    const int tracks = vivid_poc::session_track_count(s);
-    const int scenes = vivid_poc::session_scene_count(s);
+    const int tracks = vivid::session::session_track_count(s);
+    const int scenes = vivid::session::session_scene_count(s);
 
     ui.push_clip_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f);  // DAW pane (above the dock)
     ui.draw_rect(0.f, 40.f, w.split_x, w.dock_top() - 40.f, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);  // pane bg
@@ -238,14 +238,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const bool hov = hit(h, mx, my);  // hover: clickable -> editor
         draw_card(ui, h.x, h.y, h.w, h.h, sty.control, hov);
         ui.draw_rect(h.x, h.y, h.w, 3.f, ar, ag, ab, 1.0f);  // track accent overrides the card bar
-        char nm[40]; std::snprintf(nm, sizeof nm, "%.16s", vivid_poc::session_track_name(s, t));
+        char nm[40]; std::snprintf(nm, sizeof nm, "%.16s", vivid::session::session_track_name(s, t));
         ui.draw_text(h.x + 8.f, h.y + 9.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.95f);
         const Rect xb = track_header_x_rect(t);   // remove this track
         const bool xh = hit(xb, mx, my);
         ui.draw_rect(xb.x, xb.y, xb.w, xb.h, xh ? 0.5f : 0.32f, 0.16f, 0.16f, 1.0f);
         ui.draw_text(xb.x + 2.5f, xb.y - 1.f, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.78f);
     }
-    if (tracks < vivid_poc::kMaxTracks) {   // "+ Track" affordance
+    if (tracks < vivid::session::kMaxTracks) {   // "+ Track" affordance
         const Rect a = track_add_rect(tracks);
         const bool ah = hit(a, mx, my);
         draw_card(ui, a.x, a.y, a.w, a.h, sty.control, ah);
@@ -261,8 +261,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_tri(sb.x + 12.f, sb.y + 30.f, sb.x + 12.f, sb.y + 42.f, sb.x + 23.f, sb.y + 36.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
         for (int t = 0; t < tracks; ++t) {
             const Rect r = clip_cell_rect(t, sc);
-            const bool on = vivid_poc::session_active_clip(s, t) == sc;
-            const bool q  = vivid_poc::session_queued_clip(s, t) == sc;
+            const bool on = vivid::session::session_active_clip(s, t) == sc;
+            const bool q  = vivid::session::session_queued_clip(s, t) == sc;
             const bool hov = hit(r, mx, my);
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 15.f;  // title-bar height
@@ -276,7 +276,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 11.f, r.x + 11.f, r.y + 7.5f, 0.6f, 0.95f, 0.6f, 1.0f); tx = r.x + 15.f; }
             char cn[16];
-            const int abpm = vivid_poc::session_track_is_audio(s, t) ? vivid_poc::session_audio_clip_bpm(s, t, sc) : 0;
+            const int abpm = vivid::session::session_track_is_audio(s, t) ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
             if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(tx, r.y + 3.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, 0.72f);
@@ -298,10 +298,10 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     };
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
-        const float lvl = std::min(1.0f, vivid_poc::session_track_level(s, t) * 4.0f);
+        const float lvl = std::min(1.0f, vivid::session::session_track_level(s, t) * 4.0f);
         ui.draw_rect(mr.x, mr.y, mr.w, mr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
         ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, 0.30f, 0.80f, 0.50f, 1.0f);  // green level
-        const float g = vivid_poc::session_track_gain(s, t);
+        const float g = vivid::session::session_track_gain(s, t);
         ui.draw_rect(gr.x, gr.y, gr.w, gr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
         ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.8f, sty.gpu[1] * 0.8f, sty.gpu[2] * 0.85f, 1.0f);
         ui.draw_rect(gr.x + gr.w * g - 2.f, gr.y - 2.f, 4.f, gr.h + 4.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);

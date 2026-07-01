@@ -2,7 +2,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 namespace vivid::ui { class NodeGraph; }
 
 namespace vivid {
@@ -46,15 +46,15 @@ inline const char* legacy_vop_name(int op) {
 // — it's rebuilt deterministically at startup (role-based), so load restores
 // state onto the existing tracks by index. These power both file save/load and
 // the MCP get_session/load_session tools.
-nlohmann::json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+nlohmann::json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                                int win_w, int win_h, float split_x, float dock_h);
-bool session_from_json(const nlohmann::json& j, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool session_from_json(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h);
 
 // File wrappers over the above.
-bool save_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int win_w, int win_h, float split_x, float dock_h);
-bool load_session(const std::string& path, vivid_poc::Session* s, vivid::ui::NodeGraph& g,
+bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int& win_w, int& win_h, float& split_x, float& dock_h);
 
 }  // namespace vivid

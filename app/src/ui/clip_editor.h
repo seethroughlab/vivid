@@ -1,6 +1,6 @@
 #pragma once
 #include "ui/renderer_2d.h"
-#include "midi/midi_clip.h"   // vivid_poc::ClipNote
+#include "midi/midi_clip.h"   // vivid::session::ClipNote
 #include <vector>
 #include <string>
 
@@ -14,7 +14,7 @@ namespace vivid::ui {
 class ClipEditor {
 public:
     void open(int track, int scene, const std::string& title,
-              const vivid_poc::ClipNote* notes, int n, double length);
+              const vivid::session::ClipNote* notes, int n, double length);
     // Audio (waveform) mode: `bins` = peak amplitude per bin, trim = loop window.
     void open_audio(int track, int scene, const std::string& title,
                     const float* bins, int n, float t0, float t1);
@@ -24,7 +24,7 @@ public:
     int  track() const { return track_; }
     int  scene() const { return scene_; }
     double length() const { return length_; }
-    const std::vector<vivid_poc::ClipNote>& notes() const { return notes_; }
+    const std::vector<vivid::session::ClipNote>& notes() const { return notes_; }
     void audio_trim(float& t0, float& t1) const { t0 = t0_; t1 = t1_; }
     bool take_dirty() { bool d = dirty_; dirty_ = false; return d; }
 
@@ -40,7 +40,7 @@ private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
     int    track_ = 0, scene_ = 0;
     std::string title_;
-    std::vector<vivid_poc::ClipNote> notes_;
+    std::vector<vivid::session::ClipNote> notes_;
     std::vector<float> wave_;          // audio mode: peak bins
     float  t0_ = 0.f, t1_ = 1.f;       // audio mode: loop window
     double length_ = 4.0;

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <algorithm>
 
-// Shared visual design language for the PoC UI (borrowed from vivid-classic):
+// Shared visual design language for the Vivid UI (borrowed from vivid-classic):
 // a small palette/spacing struct + reusable widget helpers (knob, card, section
 // header) built on Renderer2D's existing primitives. Keeps colours/metrics out
 // of the draw code so the interface reads cohesively.

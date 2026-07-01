@@ -1,4 +1,4 @@
-# Vivid PoC — MCP bridge
+# Vivid — MCP bridge
 
 A [FastMCP](https://github.com/jlowin/fastmcp) stdio server that proxies tool calls to the running
 app's loopback control server (`control_server.cpp`, default `http://127.0.0.1:9876`).
@@ -9,7 +9,7 @@ Claude / Claude Code ──stdio MCP──▶ vivid_mcp.py ──HTTP POST /<met
 
 ## Run
 
-1. Launch the app (`app/build/vivid_poc.app/Contents/MacOS/vivid_poc`) — it logs
+1. Launch the app (`app/build/vivid.app/Contents/MacOS/vivid`) — it logs
    `control server listening on 127.0.0.1:9876`. Override the port with `VIVID_PORT`.
 2. Run the bridge (Python deps via [uv](https://docs.astral.sh/uv/)):
    ```sh

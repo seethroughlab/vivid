@@ -56,14 +56,14 @@ int op_index_by_id(VisualGraph* vg, int id) {
 // Index validation against the live session. On failure, fills `e` with a
 // stable out_of_range error and returns false (so handlers report the truth
 // instead of silently no-op'ing and falsely reporting success).
-bool need_track(vivid_poc::Session* s, int t, json& e) {
-    const int n = vivid_poc::session_track_count(s);
+bool need_track(vivid::session::Session* s, int t, json& e) {
+    const int n = vivid::session::session_track_count(s);
     if (in_range(t, n)) return true;
     e = err(code::kOutOfRange, "track " + std::to_string(t) + " out of range [0," + std::to_string(n) + ")");
     return false;
 }
-bool need_scene(vivid_poc::Session* s, int sc, json& e) {
-    const int n = vivid_poc::session_scene_count(s);
+bool need_scene(vivid::session::Session* s, int sc, json& e) {
+    const int n = vivid::session::session_scene_count(s);
     if (in_range(sc, n)) return true;
     e = err(code::kOutOfRange, "scene " + std::to_string(sc) + " out of range [0," + std::to_string(n) + ")");
     return false;
@@ -133,8 +133,8 @@ void ControlServer::process_pending(const ControlCtx& ctx) {
 }
 
 void ControlServer::register_handlers() {
-    using vivid_poc::Session;
-    namespace P = vivid_poc;
+    using vivid::session::Session;
+    namespace P = vivid::session;
 
     // ---------------- introspection ----------------
     handlers_["status"] = [](const ControlCtx& c, const json&) {

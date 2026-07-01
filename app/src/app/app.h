@@ -15,7 +15,7 @@ class ControlServer;
 class TextureSource;
 namespace ui { class NodeGraph; }
 }
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 struct Transport;
 struct VideoPlayer;
 
@@ -29,7 +29,7 @@ struct App {
     GpuContext*         gpu       = nullptr;   // owns the wgpu device/queue
     VisualGraph*        vgraph    = nullptr;   // the visuals pipeline (model)
     ui::NodeGraph*      graph     = nullptr;   // node editor + mapping registry (model)
-    vivid_poc::Session* session   = nullptr;   // audio session (or null -> test tone)
+    vivid::session::Session* session   = nullptr;   // audio session (or null -> test tone)
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server
     TextureSource*      srcTex    = nullptr;   // shared visuals source texture

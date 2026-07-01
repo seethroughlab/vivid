@@ -1,6 +1,6 @@
 # song-sketch — a folder project demo
 
-A complete Vivid PoC project authored MCP-natively, demonstrating the **project-as-folder**
+A complete Vivid project authored MCP-natively, demonstrating the **project-as-folder**
 model: everything the scene needs lives in this directory and reloads together.
 
 ```

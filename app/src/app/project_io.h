@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace vivid_poc { struct Session; }
+namespace vivid::session { struct Session; }
 namespace vivid::ui { class NodeGraph; }
 
 namespace vivid {

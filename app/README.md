@@ -1,4 +1,4 @@
-# Vivid PoC (`app/`)
+# Vivid (`app/`)
 
 A real macOS C++ proof-of-concept for Vivid: **two best-in-class surfaces** — a DAW
 (tracks × scenes of clips; each track an instrument + FX chain) and a rewireable
@@ -15,7 +15,7 @@ for where it's going (keep this trunk; adopt vivid-classic's platform by selecti
 
 ```sh
 cmake -S app -B app/build && cmake --build app/build -j
-app/build/vivid_poc.app/Contents/MacOS/vivid_poc        # control server logs on 127.0.0.1:9876
+app/build/vivid.app/Contents/MacOS/vivid        # control server logs on 127.0.0.1:9876
 ```
 
 The agent bridge (the app must be running):
