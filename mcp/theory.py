@@ -206,3 +206,79 @@ def roman(numeral: str, key, scale: str = "major", octave: int = 4) -> list[int]
         idxs = [deg, deg + 2, deg + 4] + ([deg + 6] if seventh else [])
         out = [key_root + off(d) for d in idxs]
     return [_clamp(p) for p in out]
+
+
+# --- Transforms (operate on clip-note lists; pure) ---
+def transpose(notes, semitones: int) -> list[dict]:
+    return [{**n, "p": _clamp(int(n["p"]) + int(semitones))} for n in notes]
+
+
+def quantize_pitch(p: int, root, scale: str) -> int:
+    """Snap a pitch to the nearest member of the scale (ties go up)."""
+    pcs = set(scale_pcs(root, scale))
+    if p % 12 in pcs:
+        return p
+    for d in (1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6):
+        if (p + d) % 12 in pcs:
+            return _clamp(p + d)
+    return p
+
+
+def quantize_to_scale(notes, root, scale: str = "major") -> list[dict]:
+    return [{**n, "p": quantize_pitch(int(n["p"]), root, scale)} for n in notes]
+
+
+def _scale_ladder(root, scale: str):
+    pcs = set(scale_pcs(root, scale))
+    ladder = [m for m in range(128) if m % 12 in pcs]
+    return ladder, {m: i for i, m in enumerate(ladder)}
+
+
+def harmonize(notes, degree: int = 2, root="C", scale: str = "major") -> list[dict]:
+    """Add a diatonic harmony voice `degree` SCALE steps from each note (2 = a third above,
+    4 = a fifth; negative = below). Off-scale notes fall back to a chromatic ~third. Returns
+    the originals + the harmony voice."""
+    ladder, pos = _scale_ladder(root, scale)
+    fallback = 4 if degree > 0 else -4
+
+    def harm(p):
+        if p in pos:
+            j = pos[p] + degree
+            return ladder[j] if 0 <= j < len(ladder) else _clamp(p + fallback)
+        return _clamp(p + fallback)
+
+    return notes + [{**n, "p": harm(int(n["p"]))} for n in notes]
+
+
+def invert(notes, axis=None) -> list[dict]:
+    """Mirror pitches around `axis` (default = the first note): new = 2*axis - p."""
+    ps = [int(n["p"]) for n in notes]
+    if not ps:
+        return notes
+    a = int(axis) if axis is not None else ps[0]
+    return [{**n, "p": _clamp(2 * a - int(n["p"]))} for n in notes]
+
+
+def retrograde(notes, length: float) -> list[dict]:
+    """Reverse in time within a clip of `length` beats (start -> length - start - dur)."""
+    out = [{**n, "s": round(float(length) - float(n["s"]) - float(n["d"]), 6)} for n in notes]
+    return sorted(out, key=lambda n: n["s"])
+
+
+def arpeggiate(pitches, pattern: str = "up", rate: float = 0.25, octaves: int = 1,
+               length: float = 4.0, vel: float = 0.8, start: float = 0.0) -> list[dict]:
+    """Turn chord pitches into an arpeggio filling `length` beats. pattern = up|down|updown|
+    downup; rate = beats per step; octaves stacks copies upward."""
+    base = sorted({int(p) for p in pitches})
+    if not base:
+        return []
+    seq = [p + 12 * o for o in range(max(1, octaves)) for p in base]
+    if pattern == "down":
+        seq = seq[::-1]
+    elif pattern == "updown":
+        seq = seq + seq[-2:0:-1]
+    elif pattern == "downup":
+        seq = seq[::-1] + seq[1:-1]
+    steps = int(round(length / rate)) if rate > 0 else 0
+    return [{"p": _clamp(seq[k % len(seq)]), "s": round(start + k * rate, 6), "d": rate, "v": vel}
+            for k in range(steps)]

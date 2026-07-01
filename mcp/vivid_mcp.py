@@ -289,6 +289,101 @@ def set_progression(track: int, scene: int, chords: list[str], beats_per_chord: 
     return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
 
 
+# ---------------- key context + transforms ----------------
+_key_ctx = {"root": "C", "scale": "major"}
+
+
+def _rmw(track: int, scene: int, fn) -> dict:
+    """Read a clip, transform its notes via fn(notes, length) -> notes, write it back."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    length = cur.get("length", 4.0)
+    return _post("set_clip", {"track": track, "scene": scene,
+                              "notes": fn(cur.get("notes", []), length), "length": length})
+
+
+@mcp.tool
+def set_key(root: str, scale: str = "major") -> dict:
+    """Set the session key/scale context (root e.g. "C"/"F#", scale e.g. major|minor|dorian|
+    pentatonic_minor|blues|…). Tools with an optional key/scale (quantize_to_scale, harmonize,
+    get_scale) default to this. Bridge-side + EPHEMERAL in v1 (resets on bridge restart; not
+    saved with the session)."""
+    if scale.lower() not in theory.SCALES:
+        return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{scale}'"}
+    _key_ctx.update(root=root, scale=scale.lower())
+    return {"ok": True, **_key_ctx}
+
+
+@mcp.tool
+def get_key() -> dict:
+    """The current key/scale context + its scale note names."""
+    return {"ok": True, **_key_ctx,
+            "notes": [theory.note_name(m) for m in theory.scale_notes(_key_ctx["root"], _key_ctx["scale"])]}
+
+
+@mcp.tool
+def get_scale(root: str = "", scale: str = "") -> dict:
+    """The MIDI notes + names of a scale (defaults to the key context), e.g. get_scale("D","dorian")."""
+    r, sc = root or _key_ctx["root"], (scale or _key_ctx["scale"]).lower()
+    if sc not in theory.SCALES:
+        return {"ok": False, "code": "bad_arg", "error": f"unknown scale '{sc}'"}
+    midi = theory.scale_notes(r, sc)
+    return {"ok": True, "root": r, "scale": sc, "midi": midi, "names": [theory.note_name(m) for m in midi]}
+
+
+@mcp.tool
+def transpose(track: int, scene: int, semitones: int) -> dict:
+    """Transpose every note in a clip by ±semitones."""
+    return _rmw(track, scene, lambda notes, L: theory.transpose(notes, semitones))
+
+
+@mcp.tool
+def quantize_to_scale(track: int, scene: int, root: str = "", scale: str = "") -> dict:
+    """Snap a clip's off-key notes into the scale (defaults to the key context)."""
+    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    return _rmw(track, scene, lambda notes, L: theory.quantize_to_scale(notes, r, sc))
+
+
+@mcp.tool
+def harmonize(track: int, scene: int, degree: int = 2, root: str = "", scale: str = "") -> dict:
+    """Add a diatonic harmony voice `degree` scale-steps from each note (2 = a third above,
+    4 = a fifth; negative = below). Defaults to the key context. Keeps the originals."""
+    r, sc = root or _key_ctx["root"], scale or _key_ctx["scale"]
+    return _rmw(track, scene, lambda notes, L: theory.harmonize(notes, degree, r, sc))
+
+
+@mcp.tool
+def invert_clip(track: int, scene: int, axis: int = -1) -> dict:
+    """Melodically invert a clip (mirror pitches). axis = the MIDI pitch to mirror around
+    (-1 = the clip's first note)."""
+    a = None if axis < 0 else axis
+    return _rmw(track, scene, lambda notes, L: theory.invert(notes, a))
+
+
+@mcp.tool
+def retrograde_clip(track: int, scene: int) -> dict:
+    """Reverse a clip in time (retrograde)."""
+    return _rmw(track, scene, lambda notes, L: theory.retrograde(notes, L))
+
+
+@mcp.tool
+def arpeggiate(track: int, scene: int, chord: str = "", pattern: str = "up", rate: float = 0.25,
+               octaves: int = 1, length: float = 4.0, vel: float = 0.8) -> dict:
+    """REPLACE a clip with an arpeggio. `chord` = a symbol (e.g. "Am7"); if empty, arpeggiates
+    the pitches already in the clip. pattern = up|down|updown|downup; rate = beats per step."""
+    if chord:
+        try:
+            pitches = theory.chord(chord)
+        except ValueError as e:
+            return {"ok": False, "code": "bad_arg", "error": str(e)}
+    else:
+        cur = _post("get_clip", {"track": track, "scene": scene})
+        pitches = [n["p"] for n in cur.get("notes", [])] if cur.get("ok") else []
+    notes = theory.arpeggiate(pitches, pattern, rate, octaves, length, vel)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
+
+
 @mcp.tool
 def add_effect(track: int, name: str) -> dict:
     """Append an FX plugin (by name from list_effects) to a track's chain."""

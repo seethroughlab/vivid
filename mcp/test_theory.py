@@ -66,7 +66,28 @@ def test_roman():
     assert T.roman("bIII", "C", "major") == [63, 67, 70]  # Eb major (borrowed)
 
 
-TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman]
+def test_transforms():
+    n = [{"p": 60, "s": 0.0, "d": 1.0, "v": 0.8}]
+    assert T.transpose(n, 12)[0]["p"] == 72
+    # quantize into C major
+    assert T.quantize_pitch(60, "C", "major") == 60      # in-scale, unchanged
+    assert T.quantize_pitch(61, "C", "major") == 62      # C# -> D
+    assert T.quantize_pitch(66, "C", "major") == 67      # F# -> G
+    # harmonize a diatonic third above C -> E
+    h = T.harmonize([{"p": 60, "s": 0, "d": 1, "v": 0.8}], degree=2, root="C", scale="major")
+    assert len(h) == 2 and h[1]["p"] == 64
+    # invert around the first note
+    inv = T.invert([{"p": 60, "s": 0, "d": 1, "v": 0.8}, {"p": 64, "s": 1, "d": 1, "v": 0.8}])
+    assert [x["p"] for x in inv] == [60, 56]
+    # retrograde within a 4-beat clip
+    r = T.retrograde([{"p": 60, "s": 0.0, "d": 1.0, "v": 0.8}, {"p": 64, "s": 2.0, "d": 1.0, "v": 0.8}], 4.0)
+    assert [(x["s"], x["p"]) for x in r] == [(1.0, 64), (3.0, 60)]
+    # arpeggiate a C triad, up, 4 steps over 2 beats
+    a = T.arpeggiate([60, 64, 67], "up", rate=0.5, octaves=1, length=2.0)
+    assert [(x["s"], x["p"]) for x in a] == [(0.0, 60), (0.5, 64), (1.0, 67), (1.5, 60)]
+
+
+TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms]
 
 
 def main() -> int:
