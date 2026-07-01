@@ -9,8 +9,12 @@ an instrument + FX chain) on the left, a rewireable visuals node-graph on the ri
 joined by a mapping bridge (audio characteristics -> visual params, and back).
 """
 import os
+import sys
 import httpx
 from fastmcp import FastMCP
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # import sibling theory.py
+import theory  # noqa: E402  — pure-Python music-theory helpers (chords/scales/rhythm)
 
 VIVID_URL = os.environ.get("VIVID_URL", "http://127.0.0.1:9876")
 mcp = FastMCP("vivid")
@@ -213,8 +217,35 @@ def set_param(track: int, device: int, param: int, value: float) -> dict:
 @mcp.tool
 def set_clip(track: int, scene: int, notes: list[dict], length: float = 4.0) -> dict:
     """Replace a MIDI clip's notes. notes = [{p:pitch, s:startBeat, d:durBeats, v:velocity0..1}, ...];
-    length = loop length in beats. (MIDI tracks only — not the audio/sampler track.)"""
-    return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
+    `p` accepts a MIDI int OR a name ("C4", "F#3", "Bb5"). length = loop length in beats.
+    (MIDI tracks only — not the audio/sampler track.) Full-replace — use add_notes to append."""
+    return _post("set_clip", {"track": track, "scene": scene, "notes": theory.norm_notes(notes), "length": length})
+
+
+@mcp.tool
+def get_clip(track: int, scene: int) -> dict:
+    """Read a MIDI clip back: {notes:[{p,s,d,v}], length}. The read half that editing/transform
+    tools use (set_clip is full-replace, so they read-modify-write)."""
+    return _post("get_clip", {"track": track, "scene": scene})
+
+
+@mcp.tool
+def add_notes(track: int, scene: int, notes: list[dict]) -> dict:
+    """APPEND notes to a clip without clearing it (unlike set_clip). `p` accepts names or ints.
+    Reads the current clip, appends, writes it back."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + theory.norm_notes(notes)
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged, "length": cur.get("length", 4.0)})
+
+
+@mcp.tool
+def clear_clip(track: int, scene: int) -> dict:
+    """Empty a clip (remove all its notes; keep its loop length)."""
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    length = cur.get("length", 4.0) if cur.get("ok") else 4.0
+    return _post("set_clip", {"track": track, "scene": scene, "notes": [], "length": length})
 
 
 @mcp.tool
@@ -276,6 +307,32 @@ def load_session(path: str = "", session: dict | None = None) -> dict:
 
 
 @mcp.tool
+def get_project_status() -> dict:
+    """Current project workflow state: explicit project path, recent project paths,
+    media_root, missing_media diagnostics, and discovered video count."""
+    return _post("get_project_status")
+
+
+@mcp.tool
+def save_project(path: str = "") -> dict:
+    """Save the project/session JSON. Pass path for Save As; omit it after a project path exists."""
+    payload = {"path": path} if path else {}
+    return _post("save_project", payload)
+
+
+@mcp.tool
+def load_project(path: str) -> dict:
+    """Load a project/session JSON from path and make it the current project."""
+    return _post("load_project", {"path": path})
+
+
+@mcp.tool
+def set_media_root(path: str) -> dict:
+    """Set the project media root used for video discovery. Missing roots are reported, not silent."""
+    return _post("set_media_root", {"path": path})
+
+
+@mcp.tool
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""
     return {
@@ -292,7 +349,8 @@ def get_authoring_guide() -> dict:
             "Visual node ids + param names come from get_graph; dst for audio params is 'param:T:D:index'.",
             "7. RETURN PATH: src can be 'viz.<name>' to drive an audio param from a visual value.",
             "8. VERIFY: get_graph / get_mappings to confirm; read list_tracks for live level/bands.",
-            "9. PERSIST: save_session(path) / load_session(path or inline session).",
+            "9. PROJECT: get_project_status; use save_project(path) / load_project(path), "
+            "and set_media_root(path) for video assets.",
         ],
         "errors": "Every reply has an 'ok' bool. Failures are {ok:false, code, error}: "
                   "branch on the stable `code` (bad_json, unknown_method, no_session, no_graph, "

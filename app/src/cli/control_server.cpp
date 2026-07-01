@@ -454,6 +454,18 @@ void ControlServer::register_handlers() {
                             notes.data(), static_cast<int>(notes.size()), b.value("length", 4.0));
         json r = ok(); r["notes"] = static_cast<int>(notes.size()); return r;
     };
+    // Read a MIDI clip back (the read half that read-modify-write authoring tools need).
+    handlers_["get_clip"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        P::ClipNote buf[1024];
+        const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
+        json notes = json::array();
+        for (int i = 0; i < n; ++i)
+            notes.push_back({ {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} });
+        json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
+    };
     handlers_["add_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
@@ -504,8 +516,8 @@ void ControlServer::register_handlers() {
         if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
         json r = ok(); r["track"] = idx; return r;
     };
-    // Delete a track. Also fixes up audio->visual mappings whose source encodes the track
-    // index (drop the removed track's, renumber those above it) so the bridge stays valid.
+    // Delete a track. Also drops audio->visual mappings whose source encodes the removed
+    // track's stable id; surviving mappings do not need index renumbering.
     handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", -1);
@@ -536,6 +548,43 @@ void ControlServer::register_handlers() {
         if (path.empty()) return err(code::kBadArg, "need path or session");
         return load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
                    ? ok() : err(code::kIoError, "read failed");
+    };
+
+    // ---------------- project workflow (thin layer over session JSON) ----------------
+    handlers_["get_project_status"] = [](const ControlCtx& c, const json&) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        json r = ok();
+        r["path"] = c.app->project.current_project_path;
+        r["media_root"] = c.app->project.media_root;
+        r["recent"] = c.app->project.recent_project_paths;
+        r["missing_media"] = c.app->project.missing_media;
+        r["videos"] = static_cast<int>(c.app->video_paths.size());
+        return r;
+    };
+    handlers_["save_project"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
+        const std::string path = b.value("path", c.app->project.current_project_path);
+        if (path.empty()) return err(code::kBadArg, "need path for first save");
+        if (!save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h))
+            return err(code::kIoError, "write failed");
+        c.app->remember_project_path(path);
+        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+    };
+    handlers_["load_project"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "need path");
+        int ww = *c.win_w, wh = *c.win_h;
+        if (!load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h))
+            return err(code::kIoError, "read failed");
+        c.app->remember_project_path(path);
+        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+    };
+    handlers_["set_media_root"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        c.app->set_media_root(b.value("path", std::string()));
+        json r = ok(); r["media_root"] = c.app->project.media_root; r["videos"] = static_cast<int>(c.app->video_paths.size());
+        r["missing_media"] = c.app->project.missing_media; return r;
     };
 }
 
