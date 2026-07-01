@@ -27,6 +27,32 @@ namespace {
 
 using namespace vivid::ui;  // Rect/hit, layout helpers + constants, meter_hit, ov_*
 
+std::string default_project_path() {
+    return (std::filesystem::path(vivid::platform::user_data_dir()) / "vivid_session.json").string();
+}
+
+void handle_default_project_shortcut(GLFWwindow* w, vivid::Window& win, vivid::App& app, bool save) {
+    if (!app.session || !app.graph) return;
+    const std::string path = default_project_path();
+    if (save) {
+        const bool ok = vivid::save_session(path, app.session, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h);
+        if (ok) app.remember_project_path(path);
+        std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
+        return;
+    }
+
+    int ww = win.win_w, wh = win.win_h;
+    float sxx = win.split_x, dh = win.dock_h;
+    const bool ok = vivid::load_session(path, app.session, *app.graph, ww, wh, sxx, dh);
+    if (ok) {
+        app.remember_project_path(path);
+        win.split_x = sxx;
+        win.dock_h = dh;
+        glfwSetWindowSize(w, ww, wh);
+    }
+    std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
+}
+
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
@@ -55,16 +81,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 
     // Cmd+S / Cmd+O -> save / load the session (in the per-user data dir).
     if ((mods & GLFW_MOD_SUPER) && app->session && app->graph && (key == GLFW_KEY_S || key == GLFW_KEY_O)) {
-        const std::string path = (std::filesystem::path(vivid::platform::user_data_dir()) / "vivid_session.json").string();
-        if (key == GLFW_KEY_S) {
-            const bool ok = vivid::save_session(path, app->session, *app->graph, win->win_w, win->win_h, win->split_x, win->dock_h);
-            std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
-        } else {
-            int ww = win->win_w, wh = win->win_h; float sxx = win->split_x, dh = win->dock_h;
-            const bool ok = vivid::load_session(path, app->session, *app->graph, ww, wh, sxx, dh);
-            if (ok) { win->split_x = sxx; win->dock_h = dh; glfwSetWindowSize(w, ww, wh); }
-            std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
-        }
+        handle_default_project_shortcut(w, *win, *app, key == GLFW_KEY_S);
         return;
     }
     if (key == GLFW_KEY_V && app->vgraph) {  // toggle the visuals generator (also via the generator node)
@@ -170,7 +187,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
         for (int j = 0; j < kNumChars; ++j) {
             const Rect r = { win->menu.x, win->menu.y + j * 26.f, 184.f, 26.f };
             if (hit(r, mx, my) && app->graph) {
-                const int src = win->menu.src;   // -1 master, else a track INDEX
+                const int src = win->menu.src;   // -1 master, else a session track index
                 const char* sname = src < 0 ? "Master" : vivid_poc::session_track_name(app->session, src);
                 // Encode by the track's STABLE id (master stays -1) so the wire follows the track.
                 const int sid = src < 0 ? -1 : vivid_poc::session_track_id(app->session, src);

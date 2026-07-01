@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "app/project_state.h"
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
@@ -39,6 +40,12 @@ struct App {
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
+
+    // Minimal project workflow (UI/main thread only). The session JSON remains the
+    // document format; these fields remember where it lives and where relative media starts.
+    ProjectState project;
+    void remember_project_path(const std::string& path);
+    void set_media_root(const std::string& root);
 
     // Video playback (UI/main thread only).
     VideoPlayer*             video = nullptr;
