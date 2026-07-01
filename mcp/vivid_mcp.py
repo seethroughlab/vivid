@@ -384,6 +384,59 @@ def arpeggiate(track: int, scene: int, chord: str = "", pattern: str = "up", rat
     return _post("set_clip", {"track": track, "scene": scene, "notes": notes, "length": length})
 
 
+# ---------------- rhythm ----------------
+@mcp.tool
+def set_drum_pattern(track: int, scene: int, patterns: dict, bar_beats: float = 4.0,
+                     bars: int = 1, vel: float = 0.8, dur: float = 0.1) -> dict:
+    """REPLACE a clip with a drum pattern. `patterns` maps a drum name -> a step-string, e.g.
+    {"kick":"x..x..x.", "snare":"....x...", "hat":"xxxxxxxx"}. Drum names: kick/snare/rim/clap/
+    hat/openhat/tom_lo/tom_mid/tom_hi/crash/ride (or a raw MIDI int). Step chars: x = hit,
+    digit 1-9 = velocity, '.'/'-'/' ' = rest. Each pattern spreads across bar_beats; `bars`
+    tiles it. (Use on a drum/MIDI track.)"""
+    notes = []
+    try:
+        for name, steps in patterns.items():
+            note = theory.drum_note(name)
+            for b in range(max(1, bars)):
+                notes += theory.drum_steps(steps, note, bar_beats, vel, dur, start=b * bar_beats)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    return _post("set_clip", {"track": track, "scene": scene, "notes": notes,
+                              "length": bar_beats * max(1, bars)})
+
+
+@mcp.tool
+def euclidean_fill(track: int, scene: int, drum: str, pulses: int, steps: int,
+                   bar_beats: float = 4.0, rotation: int = 0, vel: float = 0.7, dur: float = 0.1) -> dict:
+    """APPEND a Euclidean rhythm on one drum: `pulses` hits spread over `steps` across bar_beats.
+    E.g. euclidean_fill(t,s,"hat",3,8) = the tresillo x..x..x. on hi-hat. `drum` = a name or MIDI int."""
+    try:
+        note = theory.drum_note(drum)
+    except ValueError as e:
+        return {"ok": False, "code": "bad_arg", "error": str(e)}
+    pat = theory.euclidean(pulses, steps, rotation)
+    step = bar_beats / steps if steps else bar_beats
+    add = [{"p": note, "s": round(i * step, 6), "d": dur, "v": vel} for i, on in enumerate(pat) if on]
+    cur = _post("get_clip", {"track": track, "scene": scene})
+    if not cur.get("ok"):
+        return cur
+    merged = cur.get("notes", []) + add
+    return _post("set_clip", {"track": track, "scene": scene, "notes": merged,
+                              "length": max(cur.get("length", 4.0), bar_beats)})
+
+
+@mcp.tool
+def humanize(track: int, scene: int, timing: float = 0.02, velocity: float = 0.1, seed: int = 0) -> dict:
+    """Nudge a clip's note starts + velocities by small (seeded, reproducible) random amounts for feel."""
+    return _rmw(track, scene, lambda notes, L: theory.humanize(notes, timing, velocity, seed))
+
+
+@mcp.tool
+def quantize_rhythm(track: int, scene: int, grid: float = 0.25) -> dict:
+    """Snap a clip's note starts to a beat grid (0.25 = 16ths, 0.5 = 8ths, 1/3 = triplets)."""
+    return _rmw(track, scene, lambda notes, L: theory.quantize_rhythm(notes, grid))
+
+
 @mcp.tool
 def add_effect(track: int, name: str) -> dict:
     """Append an FX plugin (by name from list_effects) to a track's chain."""

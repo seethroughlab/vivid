@@ -10,6 +10,7 @@ in test_theory.py without the app.
 """
 from __future__ import annotations
 
+import random
 import re
 
 MIDDLE_C_OCTAVE = 4   # octave label for MIDI 60
@@ -282,3 +283,80 @@ def arpeggiate(pitches, pattern: str = "up", rate: float = 0.25, octaves: int = 
     steps = int(round(length / rate)) if rate > 0 else 0
     return [{"p": _clamp(seq[k % len(seq)]), "s": round(start + k * rate, 6), "d": rate, "v": vel}
             for k in range(steps)]
+
+
+# --- Rhythm ---
+def euclidean(pulses: int, steps: int, rotation: int = 0) -> list[bool]:
+    """A maximally-even (Euclidean) onset pattern: `pulses` hits spread over `steps`.
+    E(3,8) -> the tresillo x..x..x. . `rotation` rotates the pattern right."""
+    if steps <= 0:
+        return []
+    pulses = max(0, min(pulses, steps))
+    pat = [(i * pulses) % steps < pulses for i in range(steps)]
+    r = rotation % steps
+    return pat[-r:] + pat[:-r] if r else pat
+
+
+GM_DRUMS = {
+    "kick": 36, "bd": 36, "bassdrum": 36,
+    "snare": 38, "sd": 38,
+    "rim": 37, "rimshot": 37, "sidestick": 37,
+    "clap": 39,
+    "hat": 42, "closedhat": 42, "hihat": 42, "hh": 42, "ch": 42,
+    "openhat": 46, "oh": 46,
+    "tom_lo": 45, "lowtom": 45, "tom_mid": 47, "midtom": 47, "tom_hi": 50, "hitom": 50,
+    "crash": 49, "ride": 51, "cowbell": 56, "tambourine": 54,
+}
+
+
+def drum_note(name) -> int:
+    """A drum name (kick/snare/hat/openhat/…) or a raw MIDI int -> MIDI note."""
+    if isinstance(name, (int, float)) and not isinstance(name, bool):
+        return _clamp(int(name))
+    key = str(name).strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    # try the normalized key, then with underscores preserved for tom_lo etc.
+    if key in GM_DRUMS:
+        return GM_DRUMS[key]
+    k2 = str(name).strip().lower().replace(" ", "_").replace("-", "_")
+    if k2 in GM_DRUMS:
+        return GM_DRUMS[k2]
+    raise ValueError(f"unknown drum: {name!r}")
+
+
+def drum_steps(pattern: str, note: int, bar_beats: float = 4.0, vel: float = 0.8,
+               dur: float = 0.1, start: float = 0.0) -> list[dict]:
+    """A step-string ("x..x..x.", digit = velocity 1..9, '.'/'-'/' ' = rest) -> notes on `note`,
+    spread evenly across `bar_beats`."""
+    n = len(pattern)
+    if n == 0:
+        return []
+    step = bar_beats / n
+    out = []
+    for i, ch in enumerate(pattern):
+        if ch in ".-_ ":
+            continue
+        if ch.isdigit():
+            if int(ch) == 0:
+                continue
+            v = int(ch) / 9.0
+        else:
+            v = vel
+        out.append({"p": note, "s": round(start + i * step, 6), "d": dur, "v": round(v, 4)})
+    return out
+
+
+def humanize(notes, timing: float = 0.02, velocity: float = 0.1, seed: int = 0) -> list[dict]:
+    """Add small (seeded, reproducible) random offsets to start + velocity for feel."""
+    rng = random.Random(seed)
+    out = []
+    for n in notes:
+        s = max(0.0, float(n["s"]) + rng.uniform(-timing, timing))
+        v = min(1.0, max(0.0, float(n["v"]) + rng.uniform(-velocity, velocity)))
+        out.append({**n, "s": round(s, 6), "v": round(v, 4)})
+    return out
+
+
+def quantize_rhythm(notes, grid: float = 0.25) -> list[dict]:
+    """Snap note starts to a beat grid (0.25 = 16ths at 4/4)."""
+    g = grid if grid > 0 else 0.25
+    return [{**n, "s": round(round(float(n["s"]) / g) * g, 6)} for n in notes]

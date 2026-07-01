@@ -87,7 +87,30 @@ def test_transforms():
     assert [(x["s"], x["p"]) for x in a] == [(0.0, 60), (0.5, 64), (1.0, 67), (1.5, 60)]
 
 
-TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms]
+def test_rhythm():
+    # E(3,8) = the tresillo x..x..x. (hits at 0,3,6)
+    assert T.euclidean(3, 8) == [True, False, False, True, False, False, True, False]
+    assert T.euclidean(4, 8) == [True, False, True, False, True, False, True, False]
+    assert T.euclidean(5, 8) == [True, False, True, False, True, True, False, True]
+    assert T.euclidean(1, 4) == [True, False, False, False]
+    # drum names
+    assert T.drum_note("kick") == 36 and T.drum_note("hat") == 42
+    assert T.drum_note("openhat") == 46 and T.drum_note("tom_lo") == 45
+    assert T.drum_note(38) == 38
+    # step-string -> notes (8 steps over 4 beats = 0.5/step; hits at 0,3,6)
+    ds = T.drum_steps("x..x..x.", 42, 4.0)
+    assert [(n["s"], n["p"]) for n in ds] == [(0.0, 42), (1.5, 42), (3.0, 42)]
+    # velocity digit
+    assert T.drum_steps("9", 36, 4.0)[0]["v"] == round(9 / 9.0, 4)
+    # humanize keeps count + bounds
+    src = [{"p": 36, "s": 1.0, "d": 0.1, "v": 0.8}]
+    h = T.humanize(src, 0.05, 0.1, seed=1)
+    assert len(h) == 1 and 0.0 <= h[0]["v"] <= 1.0 and h[0]["s"] >= 0.0
+    # rhythm quantize
+    assert T.quantize_rhythm([{"p": 60, "s": 0.13, "d": 0.1, "v": 0.8}], 0.25)[0]["s"] == 0.25
+
+
+TESTS = [test_notes, test_norm_notes, test_chords, test_scales, test_roman, test_transforms, test_rhythm]
 
 
 def main() -> int:
