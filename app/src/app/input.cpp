@@ -12,6 +12,7 @@
 #include "ui/node_graph.h"
 #include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
+#include "audio/plugin_catalog.h"
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
@@ -84,6 +85,12 @@ void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
     if (!win) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     if (win->editor && win->editor->is_open() && win->editor->contains(mx, my)) { win->editor->scroll(yoff); return; }
+    // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
+    if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+        const float smax = vivid::ui::plugins_scroll_max(win->sidebar_w, win->win_h, win->dock_h, vivid::session::plugin_count());
+        win->plugin_scroll = std::min(smax, std::max(0.f, win->plugin_scroll - static_cast<float>(yoff) * 26.f));
+        return;
+    }
     // Scroll over the visuals pane zooms the node graph around the cursor.
     if (win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
 }
@@ -127,6 +134,22 @@ void stash_clip(vivid::App& app, int st, int ss) {
     char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
     vivid::session::session_pool_add(s, buf, n, len, nm);
     vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // take it out of the grid
+}
+
+// Add a browsed plugin (auto-routed): try it as an instrument (a MIDI-in bus makes a
+// new track); otherwise add it as an effect on the selected track. Loading happens here.
+void add_plugin(vivid::App& app, vivid::Window& win, int idx) {
+    auto* s = app.session;
+    if (!s) return;
+    const std::string path = vivid::session::plugin_at(idx).path;
+    if (path.empty()) return;
+    const int t = vivid::session::session_add_instrument_track(s, path.c_str());
+    if (t >= 0) { win.sel_track = t; win.sel_device = 0; if (app.graph) app.graph->select_op(-1); return; }
+    const int tracks = vivid::session::session_track_count(s);
+    if (tracks <= 0) return;
+    const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
+    vivid::session::session_add_effect(s, seltr, path.c_str());   // not an instrument -> effect on the selected track
+    if (app.graph) app.graph->select_op(-1);
 }
 
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
@@ -236,12 +259,23 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // Browser sidebar (left column): remove / drag a pool clip; consume clicks so they don't
     // fall through to the shifted DAW pane behind it.
     if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+        // CLIPS panel: remove (×) or arm a drag of a pool clip.
         const int nc = app->session ? vivid::session::session_pool_count(app->session) : 0;
         for (int i = 0; i < nc; ++i)
             if (hit(vivid::ui::pool_item_x_rect(i, win->sidebar_w), mx, my)) { vivid::session::session_pool_remove(app->session, i); return; }
         const int pi = vivid::ui::pool_item_at(win->sidebar_w, nc, mx, my);
-        if (pi >= 0) { win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; }
-        return;
+        if (pi >= 0 && vivid::ui::pool_item_visible(pi, win->sidebar_w, win->win_h, win->dock_h)) {
+            win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; return;
+        }
+        // PLUGINS panel: double-click a row to add the plugin.
+        const int np = vivid::session::plugin_count();
+        const int pr = vivid::ui::plugin_row_at(win->sidebar_w, win->win_h, win->dock_h, win->plugin_scroll, np, mx, my);
+        if (pr >= 0) {
+            const double now = glfwGetTime();
+            if (win->last_plugin_i == pr && now - win->last_plugin_t < 0.35) { add_plugin(*app, *win, pr); win->last_plugin_t = -1; }
+            else { win->last_plugin_i = pr; win->last_plugin_t = now; }
+        }
+        return;   // consume all clicks over the sidebar
     }
 
     // Menu has priority: pick a characteristic -> spawn a data node in the graph.

@@ -6,6 +6,7 @@
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
 #include "audio/vst3_host.h"
+#include "audio/plugin_catalog.h"
 #include "transport.h"
 
 #include <algorithm>
@@ -94,34 +95,53 @@ void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int 
     }
 }
 
-// The browser sidebar: a bounded CLIPS panel listing the session clip pool.
+// The browser sidebar: a CLIPS pool panel (top) over a PLUGINS browser panel (bottom).
 void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
     auto* s = w.app->session;
-    panel(ui, sidebar_panel(w.sidebar_w, w.win_h, w.dock_h), "CLIPS", sty.audio);
+
+    // --- CLIPS: the session clip pool ---
+    panel(ui, sidebar_clips_panel(w.sidebar_w, w.win_h, w.dock_h), "CLIPS", sty.audio);
     const int nc = s ? vivid::session::session_pool_count(s) : 0;
     if (nc == 0) {
         ui.draw_text(sidebar_content_x(), sidebar_content_top() + 4.f, "drag a clip here to stash it",
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
-        return;
+    } else {
+        vivid::session::ClipNote buf[256];
+        for (int i = 0; i < nc; ++i) {
+            if (!pool_item_visible(i, w.sidebar_w, w.win_h, w.dock_h)) break;   // clip to the panel (no scroll yet)
+            const Rect r = pool_item_rect(i, w.sidebar_w);
+            const bool hov = hit(r, mx, my);
+            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+            ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+            std::string nm = vivid::session::session_pool_name(s, i);
+            if (nm.empty()) nm = "clip " + std::to_string(i + 1);
+            ui.draw_text(r.x + 9.f, r.y + 4.f, fit_text(ui, nm, r.w - 28.f, sty.fs_value).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
+            const int n = vivid::session::session_pool_get(s, i, buf, 256);
+            const Rect pv = { r.x + 9.f, r.y + 18.f, r.w - 18.f, r.h - 22.f };
+            ui.draw_rect(pv.x, pv.y, pv.w, pv.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+            draw_midi_preview(ui, buf, n, vivid::session::session_pool_length(s, i), pv, sty.teal[0], sty.teal[1], sty.teal[2], 0.85f);
+            const Rect xb = pool_item_x_rect(i, w.sidebar_w);
+            ui.draw_text(xb.x + 1.f, xb.y - 2.f, "\xC3\x97", hit(xb, mx, my) ? 0.82f : 0.46f, 0.46f, 0.5f, 1.0f, sty.fs_body);
+        }
     }
-    vivid::session::ClipNote buf[256];
-    for (int i = 0; i < nc; ++i) {
-        const Rect r = pool_item_rect(i, w.sidebar_w);
-        if (r.y + r.h > w.dock_top() - kPaneMargin) break;   // simple clip (no scroll yet)
+
+    // --- PLUGINS: every installed VST3 (double-click a row to add it) ---
+    const Rect pp = sidebar_plugins_panel(w.sidebar_w, w.win_h, w.dock_h);
+    char phdr[24]; std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d", vivid::session::plugin_count());
+    panel(ui, pp, phdr, sty.fx);
+    ui.push_clip_rect(pp.x + 1.f, plugins_body_top(w.sidebar_w, w.win_h, w.dock_h),
+                      pp.w - 2.f, pp.y + pp.h - plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) - 1.f);
+    const int np = vivid::session::plugin_count();
+    for (int i = 0; i < np; ++i) {
+        const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
+        if (r.y + r.h < plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) || r.y > pp.y + pp.h) continue;  // offscreen
         const bool hov = hit(r, mx, my);
-        ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
-        ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
-        std::string nm = vivid::session::session_pool_name(s, i);
-        if (nm.empty()) nm = "clip " + std::to_string(i + 1);
-        ui.draw_text(r.x + 9.f, r.y + 4.f, fit_text(ui, nm, r.w - 28.f, sty.fs_value).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
-        const int n = vivid::session::session_pool_get(s, i, buf, 256);
-        const Rect pv = { r.x + 9.f, r.y + 18.f, r.w - 18.f, r.h - 22.f };
-        ui.draw_rect(pv.x, pv.y, pv.w, pv.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
-        draw_midi_preview(ui, buf, n, vivid::session::session_pool_length(s, i), pv, sty.teal[0], sty.teal[1], sty.teal[2], 0.85f);
-        const Rect xb = pool_item_x_rect(i, w.sidebar_w);
-        ui.draw_text(xb.x + 1.f, xb.y - 2.f, "\xC3\x97", hit(xb, mx, my) ? 0.82f : 0.46f, 0.46f, 0.5f, 1.0f, sty.fs_body);
+        if (hov) ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        ui.draw_text(r.x + 6.f, r.y + 3.f, fit_text(ui, vivid::session::plugin_at(i).name, r.w - 12.f, sty.fs_label).c_str(),
+                     hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1], hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
     }
+    ui.pop_clip_rect();
 }
 
 // The bottom device-view dock: device chips for the selected track + a knob grid

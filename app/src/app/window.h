@@ -43,6 +43,8 @@ struct Window {
     int     gain_drag = -1;
     bool    split_drag = false; double split_last_t = -1.0;
     float   sidebar_w = 0.f;   // left browser column width (0 = collapsed); shifts the DAW pane
+    float   plugin_scroll = 0.f;               // PLUGINS list scroll offset (px)
+    double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;

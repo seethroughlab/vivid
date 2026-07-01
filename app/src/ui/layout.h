@@ -89,13 +89,53 @@ inline Rect sidebar_panel(float sidebar_w, int win_h, float dock_h) {
     const float top = kTopBarH + kPaneMargin;
     return { kPaneMargin, top, sidebar_w - 2.f * kPaneMargin, dock_top(win_h, dock_h) - kPaneMargin - top };
 }
-// Clip-pool items — a vertical list inside the sidebar's CLIPS section.
+// The sidebar stacks a CLIPS pool panel (top) over a PLUGINS browser panel (bottom).
+constexpr float kSidebarClipsFrac = 0.42f;   // CLIPS gets the top ~42%, PLUGINS the rest
+inline Rect sidebar_clips_panel(float sidebar_w, int win_h, float dock_h) {
+    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
+    return { f.x, f.y, f.w, f.h * kSidebarClipsFrac };
+}
+inline Rect sidebar_plugins_panel(float sidebar_w, int win_h, float dock_h) {
+    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
+    const float ch = f.h * kSidebarClipsFrac;
+    return { f.x, f.y + ch + kPaneMargin, f.w, f.h - ch - kPaneMargin };
+}
+
+// Clip-pool items — a vertical list inside the sidebar's CLIPS panel.
 constexpr float kPoolItemH = 44.f, kPoolItemGap = 6.f;
 inline float sidebar_content_x()   { return kPaneMargin + kPanePad; }
 inline float sidebar_content_top() { return kTopBarH + kPaneMargin + kPanelHdH + kPanePad; }
 inline Rect pool_item_rect(int i, float sidebar_w) {
     return { sidebar_content_x(), sidebar_content_top() + i * (kPoolItemH + kPoolItemGap),
              sidebar_w - 2.f * (kPaneMargin + kPanePad), kPoolItemH };
+}
+// A pool item is only live while it fits within the CLIPS panel body (no scroll yet).
+inline bool pool_item_visible(int i, float sidebar_w, int win_h, float dock_h) {
+    Rect c = sidebar_clips_panel(sidebar_w, win_h, dock_h);
+    return pool_item_rect(i, sidebar_w).y + kPoolItemH <= c.y + c.h - kPanePad;
+}
+
+// Plugin rows — a scrollable list inside the sidebar's PLUGINS panel.
+constexpr float kPluginRowH = 22.f;
+inline float plugins_body_top(float sidebar_w, int win_h, float dock_h) {
+    return sidebar_plugins_panel(sidebar_w, win_h, dock_h).y + kPanelHdH;   // below the header strip
+}
+inline Rect plugin_row_rect(int i, float sidebar_w, int win_h, float dock_h, float scroll) {
+    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
+    return { p.x + kPanePad, plugins_body_top(sidebar_w, win_h, dock_h) + kPanePad + i * kPluginRowH - scroll,
+             p.w - 2.f * kPanePad, kPluginRowH - 2.f };
+}
+inline int plugin_row_at(float sidebar_w, int win_h, float dock_h, float scroll, int count, double mx, double my) {
+    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
+    if (my < plugins_body_top(sidebar_w, win_h, dock_h) || my >= p.y + p.h) return -1;   // clip to the body
+    for (int i = 0; i < count; ++i) if (hit(plugin_row_rect(i, sidebar_w, win_h, dock_h, scroll), mx, my)) return i;
+    return -1;
+}
+// Max scroll so the list can't over-scroll past the last row.
+inline float plugins_scroll_max(float sidebar_w, int win_h, float dock_h, int count) {
+    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
+    const float body_h = p.y + p.h - (plugins_body_top(sidebar_w, win_h, dock_h) + kPanePad);
+    return std::max(0.f, count * kPluginRowH - body_h);
 }
 inline Rect pool_item_x_rect(int i, float sidebar_w) { Rect r = pool_item_rect(i, sidebar_w); return { r.x + r.w - 15.f, r.y + 3.f, 13.f, 13.f }; }
 inline int pool_item_at(float sidebar_w, int count, double mx, double my) {
