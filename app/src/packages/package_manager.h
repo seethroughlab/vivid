@@ -23,10 +23,12 @@ struct PackageInstallResult {
     std::vector<PackageCompileResult> compiles;   // one per operator (check .success each)
 };
 
-// Parse <package_dir>/vivid-package.json and compile each operator into the managed
-// operators dir. Does NOT load them — the caller registers the produced dylibs (via
-// gpu/operator_scan load_and_register_operator) or relies on the next startup scan.
-PackageInstallResult install_package(const std::string& package_dir);
+// Parse <package_dir>/vivid-package.json and compile each operator into `out_dir`
+// (default: the managed operators dir). Does NOT load them — the caller registers the
+// produced dylibs (via gpu/operator_scan load_and_register_operator) or relies on the
+// next startup scan. Pass the project folder as out_dir for a project-local package.
+PackageInstallResult install_package(const std::string& package_dir,
+                                     const std::string& out_dir = std::string());
 
 // List the package manifests under a directory of package subdirectories.
 std::vector<PackageManifest> discover_packages(const std::string& scope_dir);

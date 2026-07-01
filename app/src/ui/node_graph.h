@@ -65,6 +65,8 @@ public:
     void chain_load_begin();
     void chain_load_add(const std::string& op_type, int id, float x, float y);
     void chain_load_set_input(int i, int input);
+    std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
+    void        set_op_asset_at(int i, const std::string& asset);
 
     // Visual-node selection + inspector: the bottom dock edits the selected node's
     // base param values (the resolved value = clamp(base + live modulation)).

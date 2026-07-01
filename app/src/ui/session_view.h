@@ -1,5 +1,7 @@
 #pragma once
 #include "ui/layout.h"   // Rect
+#include <string>
+#include <vector>
 
 namespace vivid { struct Window; struct CtxMenu; }
 namespace vivid_poc { struct Session; }
@@ -16,6 +18,9 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my);
 void draw_fx_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_track_menu(Renderer2D& ui, const CtxMenu& m);   // "+ Track" instrument picker (+ Audio track)
+// File dropdown: 4 fixed rows (New/Open/Save/Save As) then recent projects.
+constexpr int kFileMenuFixed = 4;
+void draw_file_menu(Renderer2D& ui, const CtxMenu& m, const std::vector<std::string>& recent);
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
 

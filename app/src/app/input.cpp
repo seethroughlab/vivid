@@ -1,11 +1,13 @@
 #include "app/input.h"
 #include "platform/platform.h"
+#include "platform/file_dialog.h"   // native Open/Save panels (File menu)
 #include <filesystem>
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/session_view.h"      // meter_hit
@@ -13,6 +15,7 @@
 #include "ui/node_graph.h"
 #include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
+#include "transport.h"   // Transport play/stop (toggle_playing)
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
 #include "persist.h"
@@ -53,6 +56,35 @@ void handle_default_project_shortcut(GLFWwindow* w, vivid::Window& win, vivid::A
     std::fprintf(stderr, "[vivid] load %s: %s\n", path.c_str(), ok ? "ok" : "FAILED");
 }
 
+// File-menu actions (arbitrary paths, unlike the fixed-path Cmd+S/O). new = fresh slate.
+void file_new(vivid::App& app) {
+    if (!app.session || !app.graph) return;
+    const int nt = vivid_poc::session_track_count(app.session);
+    const int ns = vivid_poc::session_scene_count(app.session);
+    for (int t = 0; t < nt; ++t)
+        for (int sc = 0; sc < ns; ++sc)
+            vivid_poc::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
+    app.graph->reset_nodes();
+    if (app.vgraph) { app.vgraph->reset_to_default(); app.vgraph->set_asset_dir(""); }
+    app.project.current_project_path.clear();
+    app.project.media_root.clear();
+    app.project.missing_media.clear();
+}
+void file_open(GLFWwindow* w, vivid::Window& win, vivid::App& app, const std::string& path) {
+    if (path.empty() || !app.session || !app.graph) return;
+    int ww = win.win_w, wh = win.win_h; float sxx = win.split_x, dh = win.dock_h;
+    auto lr = vivid::project_io::load(app, *app.graph, ww, wh, sxx, dh, path);  // folder-aware (+ project-local ops)
+    if (lr.ok) {
+        win.split_x = sxx; win.dock_h = dh; glfwSetWindowSize(w, ww, wh);
+    }
+    std::fprintf(stderr, "[vivid] open %s: %s\n", path.c_str(), lr.ok ? "ok" : lr.error.c_str());
+}
+void file_save(vivid::Window& win, vivid::App& app, const std::string& path) {
+    if (path.empty() || !app.session || !app.graph) return;
+    auto sr = vivid::project_io::save(app, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h, path);
+    std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), sr.ok ? "ok" : sr.error.c_str());
+}
+
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
@@ -73,6 +105,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->editor && win->editor->is_open()) { win->editor->close(); return; }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
+    if (key == GLFW_KEY_SPACE && app->transport) { app->transport->toggle_playing(); return; }  // play/stop
     // Tab -> open the operator chooser at the cursor (visuals pane only).
     if (key == GLFW_KEY_TAB && app->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
@@ -80,6 +113,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     }
 
     // Cmd+S / Cmd+O -> save / load the session (in the per-user data dir).
+    if ((mods & GLFW_MOD_SUPER) && key == GLFW_KEY_N && app->session && app->graph) { file_new(*app); return; }  // New
     if ((mods & GLFW_MOD_SUPER) && app->session && app->graph && (key == GLFW_KEY_S || key == GLFW_KEY_O)) {
         handle_default_project_shortcut(w, *win, *app, key == GLFW_KEY_S);
         return;
@@ -120,6 +154,39 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int /*mods*/) 
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     const int tracks = app->session ? vivid_poc::session_track_count(app->session) : 0;
     const int scenes = app->session ? vivid_poc::session_scene_count(app->session) : 0;
+
+    // Top transport bar: the play/pause button.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->transport
+        && hit(vivid::ui::transport_play_rect(), mx, my)) {
+        app->transport->toggle_playing();
+        return;
+    }
+    // File menu: dispatch an item (or click-away closes) when open.
+    if (win->file_menu.open) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+            const int nrec = std::min(static_cast<int>(app->project.recent_project_paths.size()), 8);
+            for (int j = 0; j < vivid::ui::kFileMenuFixed + nrec; ++j) {
+                const Rect r = { win->file_menu.x, win->file_menu.y + j * 24.f, 170.f, 24.f };
+                if (!hit(r, mx, my)) continue;
+                if (j == 0) file_new(*app);                                             // New
+                else if (j == 1) file_open(w, *win, *app, vivid::platform::open_project_dialog());  // Open…
+                else if (j == 2) file_save(*win, *app, app->project.current_project_path.empty()
+                                           ? vivid::platform::save_project_dialog("project.vivid.json")
+                                           : app->project.current_project_path);         // Save
+                else if (j == 3) file_save(*win, *app, vivid::platform::save_project_dialog("project.vivid.json"));  // Save As…
+                else file_open(w, *win, *app, app->project.recent_project_paths[j - vivid::ui::kFileMenuFixed]);     // Recent
+                break;
+            }
+            win->file_menu.open = false;
+            return;
+        }
+    }
+    // Open the File menu on the File button.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::transport_file_rect(), mx, my)) {
+        const Rect fr = vivid::ui::transport_file_rect();
+        win->file_menu = { true, fr.x, fr.y + fr.h + 2.f, -1 };
+        return;
+    }
 
     // Mapping overview is modal while open: per-row steppers/toggle/clear; click-away closes.
     if (win->show_mappings && app->graph && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {

@@ -15,13 +15,14 @@ std::string user_operators_dir() {
     return dir.string();
 }
 
-PackageInstallResult install_package(const std::string& package_dir) {
+PackageInstallResult install_package(const std::string& package_dir, const std::string& out_dir) {
     PackageInstallResult r;
     PackageManifest m = parse_package_manifest(package_dir);
     if (!m.ok) { r.error = m.error; return r; }
     r.name = m.name;
 
-    const std::string out = user_operators_dir();
+    const std::string out = out_dir.empty() ? user_operators_dir() : out_dir;
+    std::error_code ec; std::filesystem::create_directories(out, ec);
     PackageCompiler compiler;
     for (const auto& op : m.operators)
         r.compiles.push_back(compiler.compile_operator(package_dir, op, out));

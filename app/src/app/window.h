@@ -33,7 +33,7 @@ struct Window {
 
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
-    CtxMenu menu, fx_menu, map_menu, track_menu;   // track_menu = the "+ Track" instrument picker
+    CtxMenu menu, fx_menu, map_menu, track_menu, file_menu;   // track_menu = "+ Track"; file_menu = File dropdown
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
     int     param_drag = -1; bool param_is_node = false;

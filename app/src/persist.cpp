@@ -93,8 +93,11 @@ json session_to_json(vivid_poc::Session* s, vivid::ui::NodeGraph& g,
         json params = json::object();
         for (int p = 0; p < g.op_param_count_at(i); ++p)
             params[g.op_param_label_at(i, p)] = g.op_param_base_at(i, p);
-        chain.push_back({ {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
-                          {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} });
+        json jn = { {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
+                    {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
+        const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
+        if (!asset.empty()) jn["asset"] = asset;
+        chain.push_back(jn);
     }
     jg["chain"] = chain;
     float vox = 0.f, voy = 0.f, vscale = 1.f; g.get_view(vox, voy, vscale);
@@ -214,6 +217,8 @@ bool session_from_json(const json& j, vivid_poc::Session* s, vivid::ui::NodeGrap
             }
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 g.chain_load_set_input(i, ch[i].value("in", -1));
+                if (ch[i].contains("asset"))   // CustomShader .glsl reference (project-relative)
+                    g.set_op_asset_at(i, ch[i]["asset"].get<std::string>());
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);

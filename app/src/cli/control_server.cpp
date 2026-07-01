@@ -10,6 +10,7 @@
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                     // App: op_registry + op_loaders
+#include "app/project_io.h"              // folder-aware save/load + project-local operators
 #include "mapping.h"
 #include "transport.h"
 #include "persist.h"
@@ -140,7 +141,8 @@ void ControlServer::register_handlers() {
         json r = ok();
         if (c.session) { r["tracks"] = P::session_track_count(c.session); r["scenes"] = P::session_scene_count(c.session); }
         if (c.transport) { r["bpm"] = c.transport->bpm.load(std::memory_order_relaxed);
-                           r["beats"] = c.transport->beats.load(std::memory_order_relaxed); }
+                           r["beats"] = c.transport->beats.load(std::memory_order_relaxed);
+                           r["playing"] = c.transport->is_playing(); }
         r["ops"] = c.graph ? c.graph->op_count() : 0;
         if (c.vgraph && c.vgraph->registry()) r["op_types"] = c.vgraph->registry()->type_names();  // spawnable ops
         return r;
@@ -352,6 +354,16 @@ void ControlServer::register_handlers() {
         c.vgraph->set_input(idx, in_idx);
         return ok();
     };
+    // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl
+    // resolved against the loaded project dir. Empty clears it. The op (re)loads on the
+    // next frame and degrades to a no-op if the file is missing or fails to compile.
+    handlers_["set_node_asset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
+        c.graph->set_op_asset_at(idx, b.value("asset", std::string()));
+        json r = ok(); r["id"] = b.value("id", -1); r["asset"] = c.graph->op_asset_at(idx); return r;
+    };
     handlers_["set_generator"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
         VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op");
@@ -410,6 +422,22 @@ void ControlServer::register_handlers() {
         if (!(bpm > 0.0) || bpm > 1000.0) return err(code::kBadArg, "bpm out of range (0, 1000]");
         c.transport->bpm.store(bpm, std::memory_order_relaxed);
         return ok();
+    };
+    // Transport play/stop. set_playing{playing} sets it; toggle_play flips; reset_transport
+    // returns to the top (bar 1). Pausing freezes the clock so clips stop advancing.
+    handlers_["set_playing"] = [](const ControlCtx& c, const json& b) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        c.transport->set_playing(b.value("playing", true));
+        json r = ok(); r["playing"] = c.transport->is_playing(); return r;
+    };
+    handlers_["toggle_play"] = [](const ControlCtx& c, const json&) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        json r = ok(); r["playing"] = c.transport->toggle_playing(); return r;
+    };
+    handlers_["reset_transport"] = [](const ControlCtx& c, const json&) {
+        if (!c.transport) return err(code::kNoTransport, "no transport");
+        c.transport->reset();
+        json r = ok(); r["beats"] = 0.0; return r;
     };
     handlers_["launch_clip"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -551,6 +579,23 @@ void ControlServer::register_handlers() {
     };
 
     // ---------------- project workflow (thin layer over session JSON) ----------------
+    // Fresh start: empty every clip, reset the visuals to the default chain, drop mappings +
+    // data nodes, and clear the current-project pointer. Keeps the loaded instruments + tracks.
+    handlers_["new_project"] = [](const ControlCtx& c, const json&) {
+        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
+        const int nt = P::session_track_count(c.session), ns = P::session_scene_count(c.session);
+        for (int t = 0; t < nt; ++t)
+            for (int sc = 0; sc < ns; ++sc)
+                P::session_set_clip(c.session, t, sc, nullptr, 0, 4.0);
+        c.graph->reset_nodes();                        // data nodes + mappings
+        if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // Plasma->Feedback->Blur->Output
+        if (c.app) {
+            c.app->project.current_project_path.clear();
+            c.app->project.media_root.clear();
+            c.app->project.missing_media.clear();
+        }
+        json r = ok(); r["tracks"] = nt; return r;
+    };
     handlers_["get_project_status"] = [](const ControlCtx& c, const json&) {
         if (!c.app) return err(code::kInternal, "no app context");
         json r = ok();
@@ -565,20 +610,31 @@ void ControlServer::register_handlers() {
         if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", c.app->project.current_project_path);
         if (path.empty()) return err(code::kBadArg, "need path for first save");
-        if (!save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h))
-            return err(code::kIoError, "write failed");
-        c.app->remember_project_path(path);
-        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+        auto sr = project_io::save(*c.app, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h, path);
+        if (!sr.ok) return err(code::kIoError, sr.error);
+        json r = ok(); r["path"] = c.app->project.current_project_path; r["session_file"] = sr.session_file; return r;
     };
     handlers_["load_project"] = [](const ControlCtx& c, const json& b) {
         if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path");
         int ww = *c.win_w, wh = *c.win_h;
-        if (!load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h))
-            return err(code::kIoError, "read failed");
-        c.app->remember_project_path(path);
-        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+        auto lr = project_io::load(*c.app, *c.graph, ww, wh, *c.split_x, *c.dock_h, path);
+        if (!lr.ok) return err(code::kIoError, lr.error);
+        json r = ok(); r["path"] = c.app->project.current_project_path;
+        if (lr.had_package) {   // report project-local operator compile/register outcomes
+            json pkg = { {"name", lr.package_name}, {"registered", lr.registered} };
+            json ops = json::array();
+            for (const auto& o : lr.ops) {
+                json jo = { {"name", o.name}, {"compiled", o.compiled}, {"registered", o.registered} };
+                if (!o.note.empty())  jo["note"] = o.note;
+                if (!o.error.empty()) jo["error"] = o.error;
+                ops.push_back(jo);
+            }
+            pkg["operators"] = ops;
+            r["project_package"] = pkg;
+        }
+        return r;
     };
     handlers_["set_media_root"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kInternal, "no app context");

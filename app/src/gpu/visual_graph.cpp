@@ -1,9 +1,11 @@
 #include "gpu/visual_graph.h"
 
 #include "operator_api/gpu_operator.h"
+#include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
+#include <filesystem>
 
 namespace vivid {
 
@@ -83,13 +85,16 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     // Present blit draws into the frame's 4x MSAA color target (op RTs stay 1x).
     if (!blit_.init(device, queue, fmt, kBlitGLSL, 1, kMsaaSamples)) return false;
     fallback_.init(device, rtW, rtH, fmt);
-    // Default chain: Plasma -> Feedback -> Blur -> Output (ids 0..3).
+    reset_to_default();   // Plasma -> Feedback -> Blur -> Output (ids 0..3)
+    return true;
+}
+
+void VisualGraph::reset_to_default() {
     nodes_.clear(); next_id_ = 0;
     add_node("Plasma"); add_node("Feedback"); add_node("Blur"); add_node("Output");
     nodes_[1].input = 0; nodes_[2].input = 1; nodes_[3].input = 2;
     active_output_id_ = nodes_[3].id;
     ensure_resources(nodes_.size());
-    return true;
 }
 
 void VisualGraph::ensure_resources(size_t n) {
@@ -193,6 +198,14 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
 
         sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
                     static_cast<int>(n.params.size()));
+        // Data-driven shader nodes: resolve the node's relative asset against the project
+        // dir and hand the absolute path to the operator (it (re)loads on change).
+        if (!n.asset.empty())
+            if (auto* as = dynamic_cast<AssetShader*>(n.inst.op.get())) {
+                std::filesystem::path ap(n.asset);
+                if (ap.is_relative() && !asset_dir_.empty()) ap = std::filesystem::path(asset_dir_) / ap;
+                as->set_asset_path(ap.string());
+            }
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
     }
     ++frame_;
