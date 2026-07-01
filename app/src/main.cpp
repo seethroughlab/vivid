@@ -23,6 +23,8 @@
 #include "app/window.h"
 #include "app/input.h"
 #include "app/frame.h"
+#include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "platform/menu_bar.h"     // install_menu_bar
 #include "gpu/builtin_ops.h"
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
@@ -184,6 +186,19 @@ int main() {
     }
     glfwSetWindowUserPointer(window, &win);
     vivid::install_input_callbacks(window);  // key/char/scroll/mouse (app/input.cpp)
+
+    // Native macOS File menu (New/Open/Save/Save As + Open Recent). Actions run on the
+    // main thread, so they touch the session/graph directly (app/file_actions.cpp).
+    {
+        vivid::platform::MenuActions ma;
+        ma.new_project     = [&] { vivid::file_actions::new_project(app); };
+        ma.open_project    = [&] { vivid::file_actions::open(window, win, app); };
+        ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
+        ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
+        ma.open_recent     = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
+        vivid::platform::install_menu_bar(ma);
+        vivid::platform::set_recent_projects(app.project.recent_project_paths);
+    }
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
 

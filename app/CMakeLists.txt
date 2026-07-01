@@ -135,6 +135,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/input.cpp
     src/app/frame.cpp
     src/app/project_io.cpp
+    src/app/file_actions.cpp
     src/app/runtime_health.cpp
     src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c
@@ -152,6 +153,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/app_nap_stub.cpp
     src/platform/sparkle_bridge_stub.cpp
     src/platform/file_dialog_stub.cpp
+    src/platform/menu_bar_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -181,7 +183,8 @@ if(APPLE)
         src/audio/vst3_plugin_window.mm
         src/platform/macos_frame_timer.cpp
         src/platform/macos_app_nap.mm
-        src/platform/file_dialog.mm)
+        src/platform/file_dialog.mm
+        src/platform/menu_bar.mm)
     set_target_properties(vivid PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
