@@ -21,8 +21,8 @@ inline int kind_index(const std::string& k) {
     return -1;
 }
 
-// "master.<kind>" | "track_<n>.<kind>" -> char_id.
-//   master = kind index (0..4); track t = 100 + t*8 + kind. -1 if malformed.
+// "master.<kind>" | "track_<stable_id>.<kind>" -> char_id.
+//   master = kind index (0..4); track id t = 100 + t*8 + kind. -1 if malformed.
 inline int char_id_from_source(const std::string& src) {
     const auto dot = src.find('.');
     if (dot == std::string::npos) return -1;

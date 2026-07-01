@@ -9,6 +9,7 @@
 #include <webgpu/webgpu.h>
 #include <cstdio>
 #include <cmath>
+#include <cstdlib>
 
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
@@ -41,7 +42,6 @@
 #include "packages/package_manager.h"  // P2.3: the managed installed-operators dir
 #include "platform/platform.h"   // P3: executable_path (locate the bundle PlugIns/)
 #include <filesystem>
-#include <dirent.h>
 #include <vector>
 #include <string>
 #include <algorithm>
@@ -65,9 +65,8 @@ int main() {
     // the window being frontmost.
     vivid::disable_app_nap("Vivid control server / agent-driven rendering");
 
-    // Register the built-in visual operators + validate their descriptors (the
-    // operator-based visuals model; VisualGraph drives them from P1.3). A loud
-    // startup check that the real ops are well-formed (named codes).
+    // Register the built-in visual operators + validate their descriptors. A loud
+    // startup check keeps the operator-based visuals model honest (named codes).
     vivid::register_builtin_ops(app.op_registry);
     // P2.1: also load operator dylibs dropped in the bundle PlugIns/ (or the dev
     // override $VIVID_OPERATORS_DIR). Loaded ops register by descriptor name and
@@ -153,21 +152,9 @@ int main() {
     { auto pat = vivid::gen_test_pattern(512, 288); srcTex.upload(gpu.queue(), pat.data()); }
     app.srcTex = &srcTex;
 
-    // Scan the video folder and open the first clip (N cycles, V shows it).
-    {
-        const char* dir = "/Users/jeff/Movies/Gero Individual Reel Files";
-        if (DIR* d = opendir(dir)) {
-            while (dirent* e = readdir(d)) {
-                std::string n = e->d_name;
-                if (n.size() > 4 && n.compare(n.size() - 4, 4, ".mp4") == 0)
-                    app.video_paths.push_back(std::string(dir) + "/" + n);
-            }
-            closedir(d);
-            std::sort(app.video_paths.begin(), app.video_paths.end());
-        }
-        if (!app.video_paths.empty()) app.load_video_at(0);
-        std::fprintf(stderr, "[vivid] %zu video clips found\n", app.video_paths.size());
-    }
+    // Optional project media root (N cycles, V shows video). No hardcoded local paths:
+    // projects/MCP can set this explicitly, and missing roots are reported in health/status.
+    if (const char* root = std::getenv("VIVID_MEDIA_ROOT")) app.set_media_root(root);
 
     vivid::ui::NodeGraph graph;
     graph.set_visual_graph(&vgraph);   // show the op-chain; generator node toggles Plasma/Video

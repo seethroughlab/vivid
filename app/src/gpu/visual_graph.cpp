@@ -56,7 +56,12 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
     n.op = vop_from_name(type);
     if (!reg_) return false;
     std::vector<DescriptorValidationIssue> issues;
-    if (auto inst = reg_->create(type, issues)) { n.inst = std::move(*inst); return true; }
+    if (auto inst = reg_->create(type, issues)) {
+        n.inst = std::move(*inst);
+        n.params.resize(n.inst.param_ptrs.size(), 0.f);
+        n.base.resize(n.inst.param_ptrs.size(), 0.f);
+        return true;
+    }
     return false;
 }
 
@@ -178,7 +183,7 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
-        ctx.param_values = n.params;
+        ctx.param_values = n.params.empty() ? nullptr : n.params.data();
         ctx.device = dev_; ctx.queue = q_; ctx.command_encoder = enc;
         ctx.output_texture = rts_[idx].tex;
         ctx.output_texture_view = rts_[idx].view;
@@ -186,7 +191,8 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         ctx.input_texture_views = (n.inst.input_port_count > 0) ? inputs : nullptr;
         ctx.input_texture_count = (n.inst.input_port_count > 0) ? 1u : 0u;
 
-        sync_params(n.inst, n.params, 4);
+        sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
+                    static_cast<int>(n.params.size()));
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
     }
     ++frame_;
