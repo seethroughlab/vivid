@@ -6,13 +6,18 @@ job well.
 
 ## Start Here
 
-- `product/PRD.md` - product vision, scope, principles, and first proof target
+- `../CLAUDE.md` - repo navigation for agents
+- `../app/ARCHITECTURE.md` - current native architecture and thread model
+- `decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md` - pivot to two primary surfaces plus bridge
+- `decisions/ADR-0010-poc-proven-production-seed.md` - C++ PoC promoted to product seed
+- `decisions/ADR-0011-poc-to-product-architecture.md` - current trunk and selective-lift decision
+- `roadmap/poc-to-product.md` - current productization roadmap
+- `product/PRD.md` - product vision, scope, and current principles
 - `product/glossary.md` - canonical vocabulary for Vivid 4 concepts
-- `roadmap/phased-development-plan.md` - high-level phase ledger and progress tracking
 - `research/vivid-classic-lessons.md` - lessons from Vivid Classic and its commit history
-- `experiments/session-view-pressure-test.md` - first Session View pressure test
-- `experiments/session-view-pressure-test.html` - disposable clickable mock
-- `experiments/session-view-interface-reset.md` - guidance for keeping Phase 1 focused
+
+Earlier Session View HTML prototypes in `experiments/` are historical pressure-test evidence. They
+are not the current product direction unless a newer ADR or roadmap explicitly promotes them.
 
 ## Document Types
 

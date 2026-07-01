@@ -13,13 +13,15 @@ project code are the creative material.
 
 Vivid 4 starts from the hard-learned lessons of Vivid Classic:
 
-- Session View should be the primary authoring surface.
+- Vivid has two primary authoring surfaces: a DAW-style Session View and a rewireable
+  visuals node graph.
 - Audio authoring should be plugin-first, not an attempt to rival mature synths and effects.
 - Visuals should remain first-class in power, but often second-order in reactivity: music and
   session structure provide time, while visuals bind to musical/control signals.
-- The graph is a deep implementation view, not the first surface a user or agent must manipulate.
-- The agent should work in session concepts first: tracks, clips, scenes, bindings, variations,
-  explanations, and task proofs.
+- The mapping bridge is the parity layer: audio characteristics can drive visual parameters, and
+  visual state can return to audio/plugin parameters.
+- The agent should work in product concepts first: tracks, clips, scenes, operators, mappings,
+  variations, explanations, and task proofs.
 
 ## Scope
 
@@ -37,13 +39,14 @@ general desktop app framework, or a replacement for mature synths and effects.
 
 ## Core Principles
 
-### 1. Session First
+### 1. Two Surfaces, One Transport
 
-The default question is not "what nodes are connected?" It is "what should this performance section
-do?"
+The default workspace is not one blended surface. Audio and visuals each get the interface model their
+domain deserves.
 
-Session View organizes the piece as tracks, clips, scenes, and cue paths. The graph remains available
-for inspection and low-level authoring, but the primary workflow should not require graph vocabulary.
+Session View organizes music as tracks, clips, scenes, devices, and performance state. The visuals
+node graph organizes generators, effects, outputs, and visual logic. Both share the same musical
+transport and meet through first-class mappings.
 
 ### 2. Master Musical Transport
 
@@ -60,8 +63,8 @@ Audio and visuals should be equal in expressive power and inspectability, but th
 same interface model.
 
 Audio owns musical time: tempo, meter, clips, phrase length, rhythm, harmony, and plugin sound.
-Visuals own spatial behavior: layers, looks, motion, density, color, camera, and output. Bindings own
-the relationship between them.
+Visuals own spatial behavior: layers, looks, motion, density, color, camera, and output. The mapping
+bridge owns the relationship between them.
 
 ### 4. Plugin-First Music Authoring
 
@@ -103,10 +106,10 @@ truth exists.
 
 The user and agent should be able to inspect what is happening at each meaningful layer: active
 scene, queued launches, clip content, generated variations, plugin roles, control signals, visual
-bindings, and the lower-level graph or code that implements them.
+nodes, mappings, and the project-local code that implements them.
 
 Vivid should favor explainable state over hidden magic. When the Drop looks more intense, the system
-should be able to answer in scene, clip, and binding language before requiring graph topology.
+should be able to answer in scene, clip, graph-node, and mapping language.
 
 ### 9. Hot Reload Project Code
 
@@ -167,20 +170,21 @@ Keep:
 Revise:
 
 - audio-visual parity means equal power and inspectability, not symmetric interfaces
-- the node graph becomes the deep implementation view, not the default workspace
+- the node graph becomes a primary visuals authoring surface, not a clone of the DAW surface
 - the built-in operator set becomes minimal seed infrastructure, not an ever-growing catalog
-- the agent works in session concepts first and authors code only when the environment needs it
+- the agent works in product concepts first and authors code only when the environment needs it
 
 Reject:
 
 - no-master-clock temporal plurality for music authoring
 - rebuilding mature synths and effects inside Vivid
-- requiring graph vocabulary for the primary one-song loop workflow
+- forcing audio and visual authoring into a single symmetric interface
 - promoting project-specific code into core before repeated use proves the abstraction
 
-## Primary Surface: Vivid Session View
+## Primary Surfaces: Session View, Visual Graph, Mapping Bridge
 
-Vivid Session View adapts Ableton's clip-launching idea to audiovisual behavior.
+Vivid adapts Ableton's clip-launching idea for audio performance and TouchDesigner-style node
+authoring for visuals. The bridge between them is first-class and bidirectional.
 
 ### Tracks
 
@@ -216,8 +220,24 @@ Visual bindings are first-class session objects:
 - chord brightness -> palette
 - scene energy -> camera shake
 
-Bindings must be visible, explainable, and editable at the session level before they become graph
-implementation details.
+Mappings must be visible, explainable, and editable as product objects. Their implementation may
+touch the graph, the DAW surface, or both.
+
+### Visual Graph
+
+The visual graph is the primary authoring surface for visual behavior. It contains operators,
+texture edges, data-source nodes, Output nodes, and live visual state. It is not a hidden
+implementation detail; it is where visualists author structure.
+
+### Mapping Bridge
+
+The mapping bridge connects sources and destinations across cadences and domains:
+
+- `master.transient -> node:7.warp`
+- `track_12.low -> node:9.density`
+- `viz.warp -> param:1:0:42`
+
+Mappings carry shaping data such as amount, curve, polarity, and output range.
 
 ## First Proof Target
 
@@ -229,7 +249,8 @@ The first Vivid 4 proof is a one-song loop:
 - clips spanning MIDI/theory, plugin state, visual state, and binding behavior
 - agent actions for bass variations, kick-to-particle binding, and Drop explanation
 
-The pressure-test plan and disposable HTML mock are the current source of truth for this proof:
+The pressure-test plan and disposable HTML mock are historical evidence for the early Session View
+direction. The accepted product direction is now recorded in ADR-0009, ADR-0010, and ADR-0011.
 
 - [`docs/experiments/session-view-pressure-test.md`](../experiments/session-view-pressure-test.md)
 - [`docs/experiments/session-view-pressure-test.html`](../experiments/session-view-pressure-test.html)

@@ -26,15 +26,15 @@ app/build/vivid_poc.app/Contents/MacOS/vivid_poc        # logs: control server o
 uv run --directory mcp vivid_mcp.py                      # the MCP bridge (app must be running)
 ```
 
-## Status (2026-06-29)
-The PoC is **proven, not yet a product base**. Target is an extensible, cross-platform platform
-(≈ vivid-classic's architecture). Strategy (ADR-0011, **accepted**): **keep `app/` as the trunk and adopt
-classic's platform by *selective lift*** — an entanglement audit found `operator_api`, the operator
-loader/hot-reload, and the package-system core all LIFT-CLEAN, while the renderer/UI stay ours and the
-7-pass graph compiler is built fresh (right-sized).
+## Status (2026-06-30)
+The PoC is the **product seed**. Target is an extensible, cross-platform-capable platform
+(≈ vivid-classic's architecture where it helps). Strategy (ADR-0011, **accepted**): **keep `app/` as
+the trunk and adopt classic's platform by selective lift**.
 
-**P0 hygiene COMPLETE** (all on the trunk): `main.cpp` decomposed 1214→157 LOC into App/Window + modules
-(App = shared engine, Window = per-view — the multi-window seam); headless test lib + ctest + GitHub Actions
-CI + ASan/UBSan/TSan options; control-server named error codes + index validation; `glfw3webgpu` pinned;
-`app/` docs (README, ARCHITECTURE, thread-safety guide, per-dir CLAUDE.md). Next is P1 (lift `operator_api`
-+ build the right-sized graph model, with the ABI↔graph seam spike) — see [roadmap](docs/roadmap/poc-to-product.md).
+Current trunk has P0-P4 style productization work in place: App/Window decomposition, headless tests,
+CI/gate scaffolding, named control-server errors, runtime health/version surfaces, operator ABI +
+loader/package/hot-reload pieces, semantic metadata, MCP eval harness, and release scaffolding.
+Before choosing next work, read [ADR-0009](docs/decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md),
+[ADR-0010](docs/decisions/ADR-0010-poc-proven-production-seed.md),
+[ADR-0011](docs/decisions/ADR-0011-poc-to-product-architecture.md), and
+[the roadmap](docs/roadmap/poc-to-product.md).
