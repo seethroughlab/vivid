@@ -134,6 +134,7 @@ add_executable(vivid_poc MACOSX_BUNDLE
     src/app/app.cpp
     src/app/input.cpp
     src/app/frame.cpp
+    src/app/project_io.cpp
     src/app/runtime_health.cpp
     src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c

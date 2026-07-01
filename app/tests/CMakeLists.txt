@@ -22,6 +22,7 @@ endfunction()
 
 vivid_add_test(test_mapping)
 vivid_add_test(test_control_parse)
+vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)
 

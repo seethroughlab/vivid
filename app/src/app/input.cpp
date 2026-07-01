@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/session_view.h"      // meter_hit
@@ -72,15 +73,16 @@ void file_new(vivid::App& app) {
 void file_open(GLFWwindow* w, vivid::Window& win, vivid::App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
     int ww = win.win_w, wh = win.win_h; float sxx = win.split_x, dh = win.dock_h;
-    if (vivid::load_session(path, app.session, *app.graph, ww, wh, sxx, dh)) {
-        app.remember_project_path(path);
+    auto lr = vivid::project_io::load(app, *app.graph, ww, wh, sxx, dh, path);  // folder-aware (+ project-local ops)
+    if (lr.ok) {
         win.split_x = sxx; win.dock_h = dh; glfwSetWindowSize(w, ww, wh);
     }
+    std::fprintf(stderr, "[vivid] open %s: %s\n", path.c_str(), lr.ok ? "ok" : lr.error.c_str());
 }
 void file_save(vivid::Window& win, vivid::App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
-    if (vivid::save_session(path, app.session, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h))
-        app.remember_project_path(path);
+    auto sr = vivid::project_io::save(app, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h, path);
+    std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), sr.ok ? "ok" : sr.error.c_str());
 }
 
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).

@@ -10,6 +10,7 @@
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                     // App: op_registry + op_loaders
+#include "app/project_io.h"              // folder-aware save/load + project-local operators
 #include "mapping.h"
 #include "transport.h"
 #include "persist.h"
@@ -599,20 +600,31 @@ void ControlServer::register_handlers() {
         if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", c.app->project.current_project_path);
         if (path.empty()) return err(code::kBadArg, "need path for first save");
-        if (!save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h))
-            return err(code::kIoError, "write failed");
-        c.app->remember_project_path(path);
-        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+        auto sr = project_io::save(*c.app, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h, path);
+        if (!sr.ok) return err(code::kIoError, sr.error);
+        json r = ok(); r["path"] = c.app->project.current_project_path; r["session_file"] = sr.session_file; return r;
     };
     handlers_["load_project"] = [](const ControlCtx& c, const json& b) {
         if (!c.app || !c.session || !c.graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path");
         int ww = *c.win_w, wh = *c.win_h;
-        if (!load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h))
-            return err(code::kIoError, "read failed");
-        c.app->remember_project_path(path);
-        json r = ok(); r["path"] = c.app->project.current_project_path; return r;
+        auto lr = project_io::load(*c.app, *c.graph, ww, wh, *c.split_x, *c.dock_h, path);
+        if (!lr.ok) return err(code::kIoError, lr.error);
+        json r = ok(); r["path"] = c.app->project.current_project_path;
+        if (lr.had_package) {   // report project-local operator compile/register outcomes
+            json pkg = { {"name", lr.package_name}, {"registered", lr.registered} };
+            json ops = json::array();
+            for (const auto& o : lr.ops) {
+                json jo = { {"name", o.name}, {"compiled", o.compiled}, {"registered", o.registered} };
+                if (!o.note.empty())  jo["note"] = o.note;
+                if (!o.error.empty()) jo["error"] = o.error;
+                ops.push_back(jo);
+            }
+            pkg["operators"] = ops;
+            r["project_package"] = pkg;
+        }
+        return r;
     };
     handlers_["set_media_root"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kInternal, "no app context");
