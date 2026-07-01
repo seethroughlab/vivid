@@ -104,7 +104,7 @@ inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f,
 struct DockGeom { float y0, gridY0, cellW, cellH, knobOff; int cols, maxRows; };
 inline DockGeom dock_geom(int win_w, int win_h, float dock_h) {
     DockGeom d; d.y0 = dock_top(win_h, dock_h);
-    d.gridY0 = d.y0 + 62.f; d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;
+    d.gridY0 = d.y0 + 70.f; d.cellW = 64.f; d.cellH = 58.f; d.knobOff = 20.f;   // 70: header + chain row + a divider gap
     d.cols = std::max(1, static_cast<int>((win_w - 24.f) / d.cellW));
     d.maxRows = std::max(1, static_cast<int>((d.y0 + dock_h - 6.f - d.gridY0) / d.cellH));
     return d;

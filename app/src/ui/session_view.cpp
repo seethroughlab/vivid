@@ -96,6 +96,9 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const bool rhov = hit(w.dock_resize_rect(), mx, my);
     ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(w.win_w), 2.f,   // strong top border (drag to resize)
                  rhov ? sty.control[0] : sty.border[0], rhov ? sty.control[1] : sty.border[1], rhov ? sty.control[2] : sty.border[2], 1.0f);
+    // header strip (title) — a defined band above the device chain / params
+    ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), 20.f, sty.region_hd[0], sty.region_hd[1], sty.region_hd[2], 1.0f);
+    ui.draw_rect(0.f, y0 + 20.f, static_cast<float>(w.win_w), 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
 
     // When a visual node is selected in the graph, the dock becomes its inspector.
     const int selop = w.app->graph ? w.app->graph->selected_op() : -1;
@@ -143,6 +146,9 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
             ui.draw_text(xb.x + 3.f, xb.y, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f);
         }
     }
+
+    // divider between the device chain (chips) and the params grid
+    ui.draw_rect(12.f, y0 + 60.f, static_cast<float>(w.win_w) - 24.f, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
 
     // knob grid for the selected device's params
     const int seldev = std::max(0, w.sel_device);
