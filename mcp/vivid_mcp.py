@@ -112,8 +112,18 @@ def get_mappings() -> dict:
 
 @mcp.tool
 def list_effects() -> dict:
-    """Names of FX plugins that can be added to a track (for add_effect)."""
+    """Names of the curated FX plugins offered in the UI (for add_effect). For the FULL
+    set of installed plugins use list_plugins."""
     return _post("list_effects")
+
+
+@mcp.tool
+def list_plugins() -> dict:
+    """Every plugin installed on this machine (VST3 today): [{name, path, format}].
+    Use a plugin's `path` as add_track(instrument=path) for an instrument, or
+    add_effect(track, name=path) for an effect — the loader validates the type on add.
+    (list_instruments / list_effects are the smaller curated menus shown in the UI.)"""
+    return _post("list_plugins")
 
 
 # ---------------- visuals construction ----------------

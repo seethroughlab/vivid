@@ -5,6 +5,7 @@
 #include <httplib.h>
 
 #include "audio/vst3_host.h"
+#include "audio/plugin_catalog.h"
 #include "ui/node_graph.h"
 #include "gpu/visual_graph.h"
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
@@ -546,12 +547,27 @@ void ControlServer::register_handlers() {
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
         const std::string name = b.value("name", std::string());
+        // A ".vst3" path (from list_plugins) loads that bundle directly as an effect.
+        if (name.size() > 5 && name.compare(name.size() - 5, 5, ".vst3") == 0) {
+            const bool okk = P::session_add_effect(c.session, track, name.c_str());
+            return okk ? ok() : err(code::kInternal, "add failed (not an effect, or load error)");
+        }
         for (int k = 0; k < P::session_available_effect_count(); ++k)
             if (name == P::session_available_effect_name(k)) {
                 const bool okk = P::session_add_effect_by_index(c.session, track, k);
                 return okk ? ok() : err(code::kInternal, "add failed");
             }
         return err(code::kNotFound, "unknown effect '" + name + "'");
+    };
+    // Every installed plugin (VST3 today), for the browser. A path from here works as
+    // an "instrument" for add_track or a "name" for add_effect. CLAP/AU hosts TBD.
+    handlers_["list_plugins"] = [](const ControlCtx&, const json&) {
+        json arr = json::array();
+        for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+            const auto& p = P::plugin_at(i);
+            arr.push_back({ {"name", p.name}, {"path", p.path}, {"format", "vst3"} });
+        }
+        json r = ok(); r["plugins"] = arr; return r;
     };
     handlers_["remove_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

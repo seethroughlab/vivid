@@ -145,6 +145,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/shader_op.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
+    src/audio/plugin_catalog.cpp
     src/audio/audio_callback.cpp
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window_stub.cpp
