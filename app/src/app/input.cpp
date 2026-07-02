@@ -418,15 +418,32 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     {
         const int selop = app->graph ? app->graph->selected_op() : -1;
         if (selop >= 0 && my >= win->dock_top()) {   // only consume clicks inside the dock
-            const DockGeom d = win->dock_geom_node();
-            const int pc = app->graph->op_param_count_at(selop);
+            auto* g = app->graph;
+            const int pc = g->op_param_count_at(selop);
             for (int i = 0; i < pc; ++i) {
-                float cx, cy; dock_knob(i, d, cx, cy);
-                if (std::hypot(mx - cx, my - cy) <= 16.0) {
-                    win->param_drag = i; win->param_is_node = true;
-                    win->param_drag_v0 = app->graph->op_param_base_at(selop, i);
-                    win->param_drag_y0 = my; return;
+                const int hint = g->op_param_hint_at(selop, i);
+                if (hint == VIVID_DISPLAY_HIDDEN || hint == VIVID_DISPLAY_EDITOR || hint == VIVID_DISPLAY_TRANSIENT) continue;
+                const Rect wr = node_param_widget_rect(i, win->win_w, win->win_h, win->dock_h);
+                if (!hit(wr, mx, my)) continue;
+                const float base = g->op_param_base_at(selop, i);
+                switch (node_widget_kind(g->op_param_type_at(selop, i), hint, g->op_param_choice_count_at(selop, i))) {
+                    case NodeWidget::Toggle:
+                        g->set_op_param_base_at(selop, i, base >= 0.5f ? 0.f : 1.f);
+                        break;
+                    case NodeWidget::Enum: {
+                        const int cc = g->op_param_choice_count_at(selop, i);
+                        if (cc > 1) { int idx = (int(std::lround(base * (cc - 1))) + 1) % cc; g->set_op_param_base_at(selop, i, float(idx) / (cc - 1)); }
+                        break;
+                    }
+                    case NodeWidget::Slider:
+                        g->set_op_param_base_at(selop, i, std::clamp((mx - wr.x) / wr.w, 0.0, 1.0));   // jump to click
+                        win->param_drag = i; win->param_is_node = true; win->param_drag_horiz = true;
+                        win->param_drag_v0 = 0.f; win->param_drag_y0 = my; break;
+                    default:  // Knob: vertical drag
+                        win->param_drag = i; win->param_is_node = true; win->param_drag_horiz = false;
+                        win->param_drag_v0 = base; win->param_drag_y0 = my; break;
                 }
+                return;
             }
             return;  // node inspector showing — consume dock clicks
         }

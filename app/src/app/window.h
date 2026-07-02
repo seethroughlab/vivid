@@ -37,6 +37,7 @@ struct Window {
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
     int     param_drag = -1; bool param_is_node = false;
+    bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
     float   param_drag_v0 = 0.f; double param_drag_y0 = 0.0;
     bool    dock_drag = false;
     double  last_dev_t = -1; int last_dev_i = -1;

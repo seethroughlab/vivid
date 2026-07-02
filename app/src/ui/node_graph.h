@@ -3,6 +3,7 @@
 #include "gpu/shader_uniforms.h"
 #include "gpu/visual_graph.h"
 #include "mapping.h"
+#include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include <vector>
 #include <string>
 #include <utility>

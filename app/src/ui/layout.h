@@ -199,4 +199,28 @@ inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
 }
 inline Rect dock_knob_map(int i, const DockGeom& d) { float cx, cy; dock_knob(i, d, cx, cy); return { cx + 13.f, cy - 24.f, 9.f, 9.f }; }
 
+// Node-inspector param rows: one row per param (label column + a widget), laid out in
+// columns that wrap when the dock is short. Shared by draw + hit-test.
+constexpr float kNodeRowH = 26.f, kNodeRowGap = 4.f, kNodeColW = 300.f, kNodeLabelW = 88.f;
+inline int node_rows_per_col(int win_h, float dock_h) {
+    const float avail = dock_h - kDockHdH - 16.f;
+    return std::max(1, static_cast<int>(avail / (kNodeRowH + kNodeRowGap)));
+}
+inline Rect node_param_row(int i, int win_w, int win_h, float dock_h) {
+    const int rpc = node_rows_per_col(win_h, dock_h);
+    const int col = i / rpc, row = i % rpc;
+    const float top = dock_top(win_h, dock_h) + kDockHdH + 8.f;
+    const float w = std::min(kNodeColW, static_cast<float>(win_w) - 24.f);
+    return { 12.f + col * (kNodeColW + 12.f), top + row * (kNodeRowH + kNodeRowGap), w, kNodeRowH };
+}
+// The interactive widget sub-rect (right of the label column) for param i.
+inline Rect node_param_widget_rect(int i, int win_w, int win_h, float dock_h) {
+    Rect r = node_param_row(i, win_w, win_h, dock_h);
+    return { r.x + kNodeLabelW, r.y + 2.f, r.w - kNodeLabelW, r.h - 4.f };
+}
+inline Rect node_param_map_rect(int i, int win_w, int win_h, float dock_h) {  // small wire affordance
+    Rect r = node_param_row(i, win_w, win_h, dock_h);
+    return { r.x + kNodeLabelW - 14.f, r.y + (kNodeRowH - 9.f) * 0.5f, 9.f, 9.f };
+}
+
 }  // namespace vivid::ui

@@ -21,6 +21,7 @@ function(vivid_add_test name)
 endfunction()
 
 vivid_add_test(test_mapping)
+vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enum -> widget)
 vivid_add_test(test_control_parse)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)

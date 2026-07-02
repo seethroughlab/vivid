@@ -181,16 +181,46 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     if (selop >= 0) {
         char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", w.app->graph->op_kind_name(selop));
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
-        ui.draw_text(120.f, y0 + 7.f, "drag knobs to set the base value \xC2\xB7 teal = wired (modulated) \xC2\xB7 click a track header for devices",
+        ui.draw_text(120.f, y0 + 7.f, "teal = wired (modulated) \xC2\xB7 click a track header for devices",
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.7f);
-        const DockGeom dn = w.dock_geom_node();
-        const int pc = w.app->graph->op_param_count_at(selop);
+        auto* g = w.app->graph;
+        const int pc = g->op_param_count_at(selop);
         for (int i = 0; i < pc; ++i) {
-            float cx, cy; dock_knob(i, dn, cx, cy);
-            const float base = w.app->graph->op_param_base_at(selop, i);
-            const bool wired = w.app->graph->op_param_wired_at(selop, i);
-            char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
-            knob(ui, cx, cy, 15.f, base, w.app->graph->op_param_label_at(selop, i), vt, sty.gpu, wired);
+            const int hint = g->op_param_hint_at(selop, i);
+            if (hint == VIVID_DISPLAY_HIDDEN || hint == VIVID_DISPLAY_EDITOR || hint == VIVID_DISPLAY_TRANSIENT) continue;
+            const Rect row = node_param_row(i, w.win_w, w.win_h, w.dock_h);
+            const Rect wr  = node_param_widget_rect(i, w.win_w, w.win_h, w.dock_h);
+            const float base = g->op_param_base_at(selop, i);
+            const bool wired = g->op_param_wired_at(selop, i);
+            const char* label = g->op_param_label_at(selop, i);
+            const NodeWidget kind = node_widget_kind(g->op_param_type_at(selop, i), hint, g->op_param_choice_count_at(selop, i));
+            // label + small wire affordance
+            ui.draw_text(row.x, row.y + 6.f, fit_text(ui, label, kNodeLabelW - 16.f, sty.fs_label).c_str(), sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+            const Rect mb = node_param_map_rect(i, w.win_w, w.win_h, w.dock_h);
+            ui.draw_rect(mb.x, mb.y, mb.w, mb.h, wired ? sty.teal[0] : 0.55f, wired ? sty.teal[1] : 0.45f, wired ? sty.teal[2] : 0.22f, wired ? 1.0f : 0.7f);
+            switch (kind) {
+                case NodeWidget::Toggle:
+                    toggle(ui, wr.x, wr.y + 3.f, 34.f, wr.h - 6.f, base >= 0.5f, sty.gpu);
+                    ui.draw_text(wr.x + 42.f, wr.y + 4.f, base >= 0.5f ? "on" : "off", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
+                    break;
+                case NodeWidget::Enum: {
+                    const int cc = g->op_param_choice_count_at(selop, i);
+                    const int idx = cc > 1 ? std::clamp(int(std::lround(base * (cc - 1))), 0, cc - 1) : 0;
+                    dropdown_field(ui, wr.x, wr.y + 1.f, wr.w, wr.h - 2.f, g->op_param_choice_label_at(selop, i, idx), sty.gpu, hit(wr, mx, my));
+                    break;
+                }
+                case NodeWidget::Knob: {
+                    char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
+                    knob(ui, wr.x + 14.f, wr.y + wr.h * 0.5f, 11.f, base, nullptr, vt, sty.gpu, wired);
+                    break;
+                }
+                default: {  // Slider
+                    const float mn = g->op_param_min_at(selop, i), mx2 = g->op_param_max_at(selop, i);
+                    char vt[12]; std::snprintf(vt, sizeof vt, "%.2f", mn + base * (mx2 - mn));
+                    slider(ui, wr.x, wr.y, wr.w, wr.h, base, nullptr, vt, sty.gpu, wired);
+                    break;
+                }
+            }
         }
         if (pc == 0) ui.draw_text(12.f, y0 + 40.f, "this node has no parameters", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
         return;

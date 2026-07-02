@@ -135,6 +135,12 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
+        if (win.param_is_node && win.param_drag_horiz) {   // node slider: horizontal position = value
+            const vivid::ui::Rect wr = vivid::ui::node_param_widget_rect(win.param_drag, win.win_w, win.win_h, win.dock_h);
+            if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag,
+                                                           std::clamp((static_cast<float>(mx) - wr.x) / wr.w, 0.f, 1.f));
+            return;
+        }
         const float v = std::clamp(win.param_drag_v0 +
                                    static_cast<float>(win.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
         if (win.param_is_node) {
