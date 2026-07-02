@@ -92,6 +92,66 @@ void NodeGraph::sync_op_pos() {
     // No per-node clamp: nodes live in a pannable canvas and the pane clip-rect
     // keeps drawing contained. Panning would otherwise be undone every frame.
 }
+
+// Auto-arrange the op nodes into a tidy layered left->right layout: each node is
+// ranked by the longest path along its input edge (a generator = rank 0, the Output
+// sink = the deepest), columns are spaced horizontally, and within a column nodes are
+// ordered + stacked by their input's vertical position (a light barycenter pass). Data
+// (audio-source) nodes are parked in a left gutter. Mirrors vivid-classic's Sugiyama
+// layout, simplified for this single-input-per-node graph.
+void NodeGraph::layout_nodes() {
+    if (!vg_) return;
+    sync_op_pos();
+    const int n = int(vg_->nodes().size());
+    if (n == 0) return;
+
+    // 1. Longest-path rank via bounded relaxation (cycle-safe: at most n passes).
+    std::vector<int> rank(n, 0);
+    for (int pass = 0; pass < n; ++pass) {
+        bool changed = false;
+        for (int i = 0; i < n; ++i) {
+            const int in = vg_->nodes()[i].input;
+            if (in >= 0 && in < n && in != i && rank[in] + 1 > rank[i]) { rank[i] = rank[in] + 1; changed = true; }
+        }
+        if (!changed) break;
+    }
+    int maxRank = 0;
+    for (int i = 0; i < n; ++i) maxRank = std::max(maxRank, rank[i]);
+
+    // 2. Group nodes into columns by rank.
+    std::vector<std::vector<int>> cols(maxRank + 1);
+    for (int i = 0; i < n; ++i) cols[rank[i]].push_back(i);
+
+    const float left = bx0_ + 200.f, colSp = 200.f, gap = 16.f;   // room for data nodes on the left
+    const float mid  = (by0_ + by1_) * 0.5f;
+    std::vector<float> cy(n, mid);   // each node's assigned CENTER y (for the next column's barycenter)
+
+    // 3. Column by column (left->right): order by input barycenter, then stack centered.
+    for (int c = 0; c <= maxRank; ++c) {
+        auto& col = cols[c];
+        std::stable_sort(col.begin(), col.end(), [&](int a, int b) {
+            const int ia = vg_->nodes()[a].input, ib = vg_->nodes()[b].input;
+            const float pa = (ia >= 0 && ia < n) ? cy[ia] : mid;
+            const float pb = (ib >= 0 && ib < n) ? cy[ib] : mid;
+            return pa < pb;
+        });
+        std::vector<float> hs(col.size());
+        float total = 0.f;
+        for (size_t k = 0; k < col.size(); ++k) { float x, y, w, h; op_node_rect(col[k], x, y, w, h); hs[k] = h; total += h; }
+        if (col.size() > 1) total += gap * (col.size() - 1);
+        const float x = left + c * colSp;
+        float top = mid - total * 0.5f;
+        for (size_t k = 0; k < col.size(); ++k) {
+            op_pos_[col[k]] = { x, top };
+            cy[col[k]] = top + hs[k] * 0.5f;
+            top += hs[k] + gap;
+        }
+    }
+
+    // 4. Park data (audio-source) nodes in a left gutter column.
+    float dy = by0_ + 30.f;
+    for (auto& d : data_) { d.x = bx0_ + 8.f; d.y = dy; dy += d.h + 12.f; }
+}
 // Total left-edge input rows: the texture input (if any) + one per param.
 static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
@@ -348,7 +408,13 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
         char b[20]; std::snprintf(b, sizeof b, "+ %s", op_name(kPalette[j]));
         r.draw_text(rx + 9.f, ry + 3.f, b, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
     }
+    // Re-layout (auto-arrange) — right-aligned in the palette row.
+    const float rlx = bx1_ - 96.f, rly = by1_ - 22.f;
+    r.draw_rounded_rect(rlx, rly, 88.f, 18.f, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+    r.draw_rect(rlx, rly, 3.f, 18.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+    r.draw_text(rlx + 9.f, rly + 3.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
 }
+bool NodeGraph::relayout_hit(double x, double y) const { return in_rect(bx1_ - 96.f, by1_ - 22.f, 88.f, 18.f, x, y); }
 
 void NodeGraph::draw(Renderer2D& r) {
     const Style& sty = style();
@@ -540,6 +606,8 @@ bool NodeGraph::on_down(double x, double y) {
     // palette -> add an op (chrome: screen coords)
     int pj = palette_hit(x, y);
     if (pj >= 0 && vg_) { vg_->add_node(kPalette[pj]); sync_op_pos(); return true; }
+    // Re-layout button (chrome: screen coords)
+    if (relayout_hit(x, y)) { layout_nodes(); return true; }
 
     // data-node body drag
     for (int i = 0; i < int(data_.size()); ++i)

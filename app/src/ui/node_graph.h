@@ -89,6 +89,7 @@ public:
     int   op_param_choice_count_at(int i, int local) const; // >0 for enums
     const char* op_param_choice_label_at(int i, int local, int choice) const;
 
+    void layout_nodes();                 // auto-arrange op nodes into a layered left->right layout
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
     bool on_down(double x, double y);
@@ -162,6 +163,7 @@ private:
     int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
     void draw_op_palette(Renderer2D& r);
     int  palette_hit(double x, double y) const;           // VOp to add, or -1
+    bool relayout_hit(double x, double y) const;          // the "Re-layout" button
 };
 
 }  // namespace vivid::ui

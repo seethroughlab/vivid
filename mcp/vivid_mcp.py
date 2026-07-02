@@ -98,10 +98,17 @@ def install_operator_package(path: str) -> dict:
 
 @mcp.tool
 def get_graph() -> dict:
-    """The visuals node-graph: op nodes [{id, op, input, params:[{name, base, value, wired}]}],
+    """The visuals node-graph: op nodes [{id, op, input, x, y, params:[{name, base, value, wired}]}],
     data-source nodes, the active output id, and the generator op. Node ids are stable; build
     mapping dests as "node:<id>.<param_name>"."""
     return _post("get_graph")
+
+
+@mcp.tool
+def layout_graph() -> dict:
+    """Auto-arrange the op nodes into a tidy layered left->right layout (rank by depth along
+    the input chain; the 'Re-layout' button). Returns {nodes}. Positions show up in get_graph."""
+    return _post("layout_graph")
 
 
 @mcp.tool

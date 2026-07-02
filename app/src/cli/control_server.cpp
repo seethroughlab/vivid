@@ -305,7 +305,8 @@ void ControlServer::register_handlers() {
             for (int l = 0; l < g.op_param_count_at(i); ++l)
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
                                    {"value", g.op_param_value_at(i, l)}, {"wired", g.op_param_wired_at(i, l)} });
-            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"input", in}, {"params", params} });
+            nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"input", in},
+                              {"x", x}, {"y", y}, {"params", params} });
         }
         json dnodes = json::array();
         for (int i = 0; i < g.node_count(); ++i) {
@@ -317,6 +318,12 @@ void ControlServer::register_handlers() {
         r["data_nodes"] = dnodes;
         if (c.vgraph) { r["active_output"] = c.vgraph->active_output_id(); r["generator"] = vop_name(c.vgraph->generator()); }
         return r;
+    };
+    // Auto-arrange the op nodes into a tidy layered layout (the "Re-layout" button).
+    handlers_["layout_graph"] = [](const ControlCtx& c, const json&) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        c.graph->layout_nodes();
+        json r = ok(); r["nodes"] = c.graph->op_count(); return r;
     };
     handlers_["get_mappings"] = [](const ControlCtx& c, const json&) {
         if (!c.graph) return err(code::kNoGraph, "no graph");
