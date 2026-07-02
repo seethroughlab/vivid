@@ -267,6 +267,16 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         return;
     }
 
+    // Right-click a visuals op node -> its context menu (open source / clone).
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && app->graph && mx >= win->split_x) {
+        const int on = app->graph->op_at(mx, my);
+        if (on >= 0) {
+            win->node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
+                               !app->graph->op_source_path(on).empty() };
+            win->menu.open = false;
+            return;
+        }
+    }
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         const int src = app->session ? meter_hit(tracks, scenes, mx - win->sidebar_w, my) : -2;
@@ -350,6 +360,16 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             }
         }
         win->menu.open = false;
+        return;
+    }
+    // Node context menu: "Open source in editor" (custom-source nodes). Click-away closes.
+    if (win->node_menu.open) {
+        if (win->node_menu.has_source && app->graph
+            && hit(Rect{ win->node_menu.x, win->node_menu.y, 172.f, 22.f }, mx, my)) {
+            const std::string src = app->graph->op_source_path(win->node_menu.node);
+            if (!src.empty()) vivid::platform::open_in_editor(src);
+        }
+        win->node_menu.open = false;
         return;
     }
     // FX menu has priority: pick an effect -> add it to the menu's track.

@@ -13,6 +13,8 @@ namespace vivid {
 
 // A right-click context menu of a track's audio characteristics (the bridge).
 struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
+// A right-click context menu on a visuals op node (open its source / clone it).
+struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; };
 
 // Per-window view + interaction state. Many Windows can point at one App, each
 // with its own surface, layout, selection, and drag state. The GLFW user pointer
@@ -34,6 +36,7 @@ struct Window {
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
     CtxMenu menu, fx_menu, map_menu, track_menu;   // track_menu = "+ Track" (File is a native OS menu)
+    NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
     int     param_drag = -1; bool param_is_node = false;

@@ -18,4 +18,9 @@ std::string executable_path();
 // Support; Linux: $XDG_DATA_HOME or ~/.local/share; Windows: %APPDATA%. Empty on failure.
 std::string user_data_dir();
 
+// Open a file in the user's text editor (detached). macOS: `open [-a $VIVID_EDITOR] <path>`
+// (default app if VIVID_EDITOR is unset); Linux: xdg-open; Windows: ShellExecute. Returns
+// false only if the launch could not be started.
+bool open_in_editor(const std::string& path);
+
 }  // namespace vivid::platform

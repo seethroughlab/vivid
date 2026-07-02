@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cctype>
+#include <filesystem>
 
 namespace vivid::ui {
 
@@ -367,6 +368,26 @@ std::string NodeGraph::op_asset_at(int i) const {
 }
 void NodeGraph::set_op_asset_at(int i, const std::string& asset) {
     if (op_node_valid(vg_, i)) vg_->nodes()[i].asset = asset;
+}
+int NodeGraph::op_at(double sx, double sy) const {
+    if (!vg_) return -1;
+    double wx, wy; to_world(sx, sy, wx, wy);
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+        float x, y, w, h; op_node_rect(i, x, y, w, h);
+        if (in_rect(x, y, w, h, wx, wy)) return i;
+    }
+    return -1;
+}
+std::string NodeGraph::op_source_path(int i) const {
+    const std::string asset = op_asset_at(i);   // only CustomShader-style nodes carry an editable asset today
+    if (asset.empty()) return {};
+    std::filesystem::path ap(asset);
+    if (ap.is_relative()) {
+        const std::string dir = vg_ ? vg_->asset_dir() : std::string();
+        if (dir.empty()) return {};              // project-relative but no project dir -> unresolvable
+        ap = std::filesystem::path(dir) / ap;
+    }
+    return ap.string();
 }
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });

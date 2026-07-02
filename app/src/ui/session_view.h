@@ -20,6 +20,7 @@ void draw_fx_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_track_menu(Renderer2D& ui, const CtxMenu& m);   // "+ Track" instrument picker (+ Audio track)
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
+void draw_node_menu(Renderer2D& ui, const Window& w);   // right-click op-node menu (open source / clone)
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
 int meter_hit(int tracks, int scenes, double mx, double my);

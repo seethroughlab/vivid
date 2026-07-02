@@ -552,6 +552,24 @@ void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track) {
     }
 }
 
+// Right-click op-node menu: open its editable source (custom nodes) — a built-in
+// shows a disabled hint (Clone & Edit lands in P2b).
+void draw_node_menu(Renderer2D& ui, const Window& w) {
+    const NodeMenu& m = w.node_menu;
+    if (!m.open) return;
+    const Style& sty = style();
+    const float ww = 172.f;
+    const char* nm = (w.app && w.app->graph) ? w.app->graph->op_kind_name(m.node) : "node";
+    ui.draw_rect(m.x, m.y - 22.f, ww, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+    ui.draw_text(m.x + 10.f, m.y - 18.f, fit_text(ui, nm, ww - 16.f, 0.82f).c_str(), sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+    ui.draw_rect(m.x, m.y, ww, 22.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+    ui.draw_rect(m.x, m.y, 3.f, 22.f, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+    if (m.has_source)
+        ui.draw_text(m.x + 12.f, m.y + 5.f, "Open source in editor", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
+    else
+        ui.draw_text(m.x + 12.f, m.y + 5.f, "built-in \xC2\xB7 no editable source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+}
+
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
 // The +VIZ button (or its meter) is the click target.
 int meter_hit(int tracks, int scenes, double mx, double my) {

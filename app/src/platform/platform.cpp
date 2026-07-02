@@ -3,9 +3,14 @@
 #include <filesystem>
 #include <cstdlib>
 #include <cstdint>
+#include <string>
+#include <vector>
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#include <spawn.h>
+#include <sys/wait.h>
+extern char** environ;
 #elif defined(_WIN32)
 #include <windows.h>
 #else
@@ -69,6 +74,29 @@ std::string user_data_dir() {
     std::error_code ec;
     fs::create_directories(dir, ec);
     return dir.string();
+}
+
+bool open_in_editor(const std::string& path) {
+    if (path.empty()) return false;
+#if defined(__APPLE__)
+    const char* ed = std::getenv("VIVID_EDITOR");   // an app name/bundle id, or unset for the default app
+    std::string a = "-a", edstr = ed ? ed : "", open = "/usr/bin/open", p = path;
+    std::vector<char*> argv;
+    argv.push_back(open.data());
+    if (!edstr.empty()) { argv.push_back(a.data()); argv.push_back(edstr.data()); }
+    argv.push_back(p.data());
+    argv.push_back(nullptr);
+    pid_t pid = 0;
+    if (posix_spawn(&pid, "/usr/bin/open", nullptr, nullptr, argv.data(), environ) != 0) return false;
+    int status = 0; waitpid(pid, &status, 0);   // `open` returns immediately after launching
+    return true;
+#elif defined(_WIN32)
+    std::string cmd = "start \"\" \"" + path + "\"";
+    return std::system(cmd.c_str()) == 0;
+#else
+    std::string cmd = "xdg-open \"" + path + "\" >/dev/null 2>&1 &";
+    return std::system(cmd.c_str()) == 0;
+#endif
 }
 
 }  // namespace vivid::platform
