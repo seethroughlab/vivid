@@ -311,8 +311,12 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.push_clip_rect(SW, kTopBarH, dawW, w.dock_top() - kTopBarH);
     ui.set_transform(SW, 0.f, 1.f);   // world x=0 is the DAW pane's left edge; content shifts past the sidebar
     ui.draw_rect(0.f, kTopBarH, dawW, w.dock_top() - kTopBarH, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);
-    panel(ui, session_panel(dawW, w.win_h, w.dock_h), "SESSION", sty.audio);   // the bounded region
+    const Rect spanel = session_panel(dawW, w.win_h, w.dock_h);
+    panel(ui, spanel, "SESSION", sty.audio);   // the bounded region (draw the container first)
     const float contentR = dawW - kPaneMargin - kPanePad;                // right edge of the panel content
+    // Clip the grid to the panel's interior so extra track columns are cut cleanly at the
+    // panel border instead of bleeding into the gutter / the visuals pane. (screen coords)
+    ui.push_clip_rect(SW + spanel.x + 1.f, spanel.y + 1.f, spanel.w - 2.f, spanel.h - 2.f);
 
     // track headers (accent left edge, ellipsised name, remove ×) + a "+ Track" cell
     for (int t = 0; t < tracks; ++t) {
@@ -392,6 +396,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.draw_text(kSceneColX, mm.y + 6.f, "MAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     viz_button(master_viz_rect(scenes));
 
+    ui.pop_clip_rect();  // end the panel-interior grid clip
     ui.set_transform(0.f, 0.f, 1.f);   // reset the DAW-pane shift
     ui.pop_clip_rect();  // end DAW pane
     // (clip drag feedback is drawn later as a screen-space overlay — it can cross the sidebar↔grid boundary)
