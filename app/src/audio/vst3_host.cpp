@@ -58,16 +58,21 @@ struct Track {
     std::vector<MidiClip> edit_clips;
     std::atomic<uint64_t> edit_gen{0};
     uint64_t              edit_gen_seen = 0;
-    // Audio track: no plugin; per-scene samples played transport-locked.
+    // Audio track: no plugin; per-scene samples played transport-locked. `aud_clips` is
+    // sized to `scenes` (an empty Sampler = empty cell). Content edits (stash/place a
+    // clip) happen on the UI thread under aud_mtx; the audio thread try_locks it around
+    // render (skips a block on contention) — the UI critical section is an O(1) move.
     bool                  is_audio = false;
     std::vector<Sampler>  aud_clips;
+    std::mutex            aud_mtx;
     std::atomic<float>    aud_trim0[8];   // per-scene loop window (fractions)
     std::atomic<float>    aud_trim1[8];
 };
 
-// A loose clip in the session-level pool (lives outside the track grid). UI-thread-only
-// storage: the audio thread never reads `Session::pool`, so no edit-mirror is needed.
-struct PoolClip { MidiClip clip; std::string name; };
+// A loose clip in the session-level pool (lives outside the track grid). Holds either a
+// MIDI clip or an audio clip (Sampler). UI-thread-only storage: the audio thread never
+// reads `Session::pool`, so no edit-mirror is needed.
+struct PoolClip { bool is_audio = false; MidiClip clip; Sampler audio; std::string name; };
 
 struct Session {
     Vst3HostApp host;
@@ -130,6 +135,13 @@ static bool name_has(const std::string& path, const char* lower_needle) {
     std::string p = path;
     for (auto& c : p) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     return p.find(lower_needle) != std::string::npos;
+}
+
+// An audio track keeps exactly `scenes` clip slots (an empty Sampler = empty cell), so
+// stash/place/launch address any scene by a stable index.
+static void pad_aud_clips(Track* t, int scenes) {
+    if (static_cast<int>(t->aud_clips.size()) > scenes) t->aud_clips.resize(scenes);
+    while (static_cast<int>(t->aud_clips.size()) < scenes) t->aud_clips.emplace_back();
 }
 
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
@@ -322,6 +334,7 @@ Session* session_create(uint32_t sample_rate) {
             at->aud_clips.push_back(gen_noise_sweep(sample_rate, 124.0));
             at->aud_clips.push_back(gen_bell_loop(sample_rate, 124.0));
         }
+        pad_aud_clips(at.get(), s->scenes);
         at->active.store(-1, std::memory_order_relaxed);  // start stopped
         s->tracks.emplace_back(std::move(at));
         s->tracks.back()->id = s->next_track_id++;
@@ -465,7 +478,10 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
 // --- Clip pool (loose clips outside the grid) — UI/main thread only. ---
 static bool pool_valid(Session* s, int i) { return s && i >= 0 && i < static_cast<int>(s->pool.size()); }
 int session_pool_count(Session* s) { return s ? static_cast<int>(s->pool.size()) : 0; }
-double session_pool_length(Session* s, int i) { return pool_valid(s, i) ? s->pool[i].clip.length : 0.0; }
+double session_pool_length(Session* s, int i) {
+    if (!pool_valid(s, i)) return 0.0;
+    return s->pool[i].is_audio ? s->pool[i].audio.loop_beats : s->pool[i].clip.length;
+}
 const char* session_pool_name(Session* s, int i) { return pool_valid(s, i) ? s->pool[i].name.c_str() : ""; }
 int session_pool_get(Session* s, int i, ClipNote* out, int max) {
     if (!pool_valid(s, i) || !out || max <= 0) return 0;
@@ -485,6 +501,55 @@ int session_pool_add(Session* s, const ClipNote* notes, int n, double length, co
 }
 void session_pool_remove(Session* s, int i) { if (pool_valid(s, i)) s->pool.erase(s->pool.begin() + i); }
 void session_pool_clear(Session* s) { if (s) s->pool.clear(); }
+
+// --- Audio clips in the pool (Samplers). Mirrors the MIDI pool; stash = MOVE. ---
+static int sampler_waveform(const Sampler& smp, float* out, int n) {
+    if (!smp.ok() || !out || n <= 0) return 0;
+    const size_t N = smp.L.size();
+    for (int i = 0; i < n; ++i) {
+        const size_t a = N * static_cast<size_t>(i) / n, b = N * static_cast<size_t>(i + 1) / n;
+        float peak = 0.f;
+        for (size_t j = a; j < b && j < N; ++j) peak = std::max(peak, std::fabs(smp.L[j]));
+        out[i] = peak;
+    }
+    return n;
+}
+bool session_pool_is_audio(Session* s, int i) { return pool_valid(s, i) && s->pool[i].is_audio; }
+int  session_pool_audio_bpm(Session* s, int i) {
+    return (pool_valid(s, i) && s->pool[i].is_audio) ? static_cast<int>(std::lround(s->pool[i].audio.src_bpm)) : 0;
+}
+int  session_pool_audio_waveform(Session* s, int i, float* out, int n) {
+    return (pool_valid(s, i) && s->pool[i].is_audio) ? sampler_waveform(s->pool[i].audio, out, n) : 0;
+}
+// MOVE an audio grid clip into the pool: the source cell is cleared (under aud_mtx so the
+// audio thread never sees a torn Sampler). Returns the new pool index, or -1.
+int session_pool_stash_audio(Session* s, int t, int sc, const char* name) {
+    if (!aud_valid(s, t, sc)) return -1;
+    Track& tr = *s->tracks[t];
+    if (!tr.aud_clips[sc].ok()) return -1;   // empty cell — nothing to stash
+    PoolClip pc; pc.is_audio = true;
+    {
+        std::lock_guard<std::mutex> lk(tr.aud_mtx);
+        pc.audio = std::move(tr.aud_clips[sc]);   // O(1) move out
+        tr.aud_clips[sc] = Sampler{};             // leave an empty cell
+    }
+    pc.name = name ? name : "";
+    s->pool.push_back(std::move(pc));
+    return static_cast<int>(s->pool.size()) - 1;
+}
+// Copy a pooled audio clip into an audio grid cell (under aud_mtx). The pool keeps its copy.
+bool session_pool_place_audio(Session* s, int i, int t, int sc) {
+    if (!pool_valid(s, i) || !s->pool[i].is_audio || !aud_valid(s, t, sc)) return false;
+    Track& tr = *s->tracks[t];
+    Sampler copy = s->pool[i].audio;   // copy the PCM on the UI thread before locking
+    {
+        std::lock_guard<std::mutex> lk(tr.aud_mtx);
+        tr.aud_clips[sc] = std::move(copy);
+    }
+    tr.aud_trim0[sc].store(0.f, std::memory_order_relaxed);
+    tr.aud_trim1[sc].store(1.f, std::memory_order_relaxed);
+    return true;
+}
 
 // Drain a device's pending UI parameter changes into its ParamChanges block.
 static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
@@ -590,10 +655,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
             const int sc = t.active.load(std::memory_order_relaxed);
-            if (playing && sc >= 0 && sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
-                t.aud_clips[sc].render(beats, delta, frames, L, R,
-                                       t.aud_trim0[sc].load(std::memory_order_relaxed),
-                                       t.aud_trim1[sc].load(std::memory_order_relaxed));
+            // try_lock guards against a concurrent UI stash/place swapping this slot; on
+            // contention we simply skip this block (the UI's move is O(1), so it's rare).
+            if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
+                if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
+                    t.aud_clips[sc].render(beats, delta, frames, L, R,
+                                           t.aud_trim0[sc].load(std::memory_order_relaxed),
+                                           t.aud_trim1[sc].load(std::memory_order_relaxed));
+                t.aud_mtx.unlock();
+            }
         } else {
             Vst3EventList events;
             if (new_bar) {
@@ -811,6 +881,7 @@ int session_add_audio_track(Session* s) {
     at->aud_clips.push_back(gen_sub_pulse(s->sample_rate, 124.0));
     at->aud_clips.push_back(gen_noise_sweep(s->sample_rate, 124.0));
     at->aud_clips.push_back(gen_bell_loop(s->sample_rate, 124.0));
+    pad_aud_clips(at.get(), s->scenes);
     at->active.store(-1, std::memory_order_relaxed);
     s->tracks.emplace_back(std::move(at));
     s->tracks.back()->id = s->next_track_id++;

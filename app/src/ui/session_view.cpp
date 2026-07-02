@@ -18,6 +18,8 @@ namespace vivid::ui {
 // forward decls (definitions live below)
 void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int n, double len,
                        const Rect& b, float ar, float ag, float ab, float alpha);
+void draw_wave_preview(Renderer2D& ui, const float* bins, int n,
+                       const Rect& b, float ar, float ag, float ab, float alpha);
 void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my);
 
 // The "+ FX" effect picker for the device chain.
@@ -66,12 +68,7 @@ void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc
     if (vivid::session::session_track_is_audio(s, t)) {
         float bins[48];
         const int n = vivid::session::session_audio_waveform(s, t, sc, bins, 48);
-        if (n <= 0) return;
-        const float midy = b.y + b.h * 0.5f, colw = b.w / n;
-        for (int i = 0; i < n; ++i) {
-            const float a = std::min(1.f, std::max(0.f, bins[i])) * (b.h * 0.5f - 1.f);
-            ui.draw_rect(b.x + colw * i, midy - a, std::max(1.f, colw - 0.4f), a * 2.f + 1.f, ar, ag, ab, alpha);
-        }
+        draw_wave_preview(ui, bins, n, b, ar, ag, ab, alpha);
     } else {
         vivid::session::ClipNote buf[256];
         const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
@@ -95,6 +92,17 @@ void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int 
     }
 }
 
+// A mini waveform (peak-per-bin) inside `b` (reused by grid cells + the clip pool).
+void draw_wave_preview(Renderer2D& ui, const float* bins, int n,
+                       const Rect& b, float ar, float ag, float ab, float alpha) {
+    if (n <= 0) return;
+    const float midy = b.y + b.h * 0.5f, colw = b.w / n;
+    for (int i = 0; i < n; ++i) {
+        const float a = std::min(1.f, std::max(0.f, bins[i])) * (b.h * 0.5f - 1.f);
+        ui.draw_rect(b.x + colw * i, midy - a, std::max(1.f, colw - 0.4f), a * 2.f + 1.f, ar, ag, ab, alpha);
+    }
+}
+
 // The browser sidebar: a CLIPS pool panel (top) over a PLUGINS browser panel (bottom).
 void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
@@ -108,19 +116,27 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     } else {
         vivid::session::ClipNote buf[256];
+        float wbins[128];
         for (int i = 0; i < nc; ++i) {
             if (!pool_item_visible(i, w.sidebar_w, w.win_h, w.dock_h)) break;   // clip to the panel (no scroll yet)
             const Rect r = pool_item_rect(i, w.sidebar_w);
             const bool hov = hit(r, mx, my);
+            const bool aud = vivid::session::session_pool_is_audio(s, i);
+            const float* acc = aud ? sty.fx : sty.teal;   // audio = violet, MIDI = teal
             ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
-            ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
+            ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, acc[0], acc[1], acc[2], 1.0f);
             std::string nm = vivid::session::session_pool_name(s, i);
             if (nm.empty()) nm = "clip " + std::to_string(i + 1);
             ui.draw_text(r.x + 9.f, r.y + 4.f, fit_text(ui, nm, r.w - 28.f, sty.fs_value).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
-            const int n = vivid::session::session_pool_get(s, i, buf, 256);
             const Rect pv = { r.x + 9.f, r.y + 18.f, r.w - 18.f, r.h - 22.f };
             ui.draw_rect(pv.x, pv.y, pv.w, pv.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
-            draw_midi_preview(ui, buf, n, vivid::session::session_pool_length(s, i), pv, sty.teal[0], sty.teal[1], sty.teal[2], 0.85f);
+            if (aud) {
+                const int nb = vivid::session::session_pool_audio_waveform(s, i, wbins, 128);
+                draw_wave_preview(ui, wbins, nb, pv, acc[0], acc[1], acc[2], 0.85f);
+            } else {
+                const int n = vivid::session::session_pool_get(s, i, buf, 256);
+                draw_midi_preview(ui, buf, n, vivid::session::session_pool_length(s, i), pv, acc[0], acc[1], acc[2], 0.85f);
+            }
             const Rect xb = pool_item_x_rect(i, w.sidebar_w);
             ui.draw_text(xb.x + 1.f, xb.y - 2.f, "\xC3\x97", hit(xb, mx, my) ? 0.82f : 0.46f, 0.46f, 0.5f, 1.0f, sty.fs_body);
         }
@@ -402,14 +418,17 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
                 if (hit(clip_cell_rect(a, b), mx - SW, my)) { tt = a; ts = b; break; }   // grid is shifted
         if (tt >= 0) {   // highlight the target cell (screen rect = world + sidebar offset)
             const Rect r = clip_cell_rect(tt, ts);
-            const bool ok = !audioSrc && !vivid::session::session_track_is_audio(s, tt);
+            const bool dstAudio = vivid::session::session_track_is_audio(s, tt);
+            // ok to drop here: pool clip type must match the track; a grid move needs both MIDI.
+            const bool ok = fromPool ? (vivid::session::session_pool_is_audio(s, w.clip_drag_from_pool) == dstAudio)
+                                     : (!audioSrc && !dstAudio);
             const float* hl = ok ? sty.gold : sty.control;
             const float rx = r.x + SW;
             ui.draw_rect(rx, r.y, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
             ui.draw_rect(rx, r.y + r.h - 2.f, r.w, 2.f, hl[0], hl[1], hl[2], 1.0f);
             ui.draw_rect(rx, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
             ui.draw_rect(rx + r.w - 2.f, r.y, 2.f, r.h, hl[0], hl[1], hl[2], 1.0f);
-        } else if (!fromPool && !audioSrc && in_sidebar(SW, w.win_h, w.dock_h, mx, my)) {
+        } else if (!fromPool && in_sidebar(SW, w.win_h, w.dock_h, mx, my)) {   // grid clip -> pool (MIDI or audio)
             const Rect sb = sidebar_panel(SW, w.win_h, w.dock_h);   // grid -> pool stash target
             ui.draw_rect(sb.x, sb.y, sb.w, 2.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
             ui.draw_rect(sb.x, sb.y + sb.h - 2.f, sb.w, 2.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);

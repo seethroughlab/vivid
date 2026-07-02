@@ -296,23 +296,26 @@ def clear_clip(track: int, scene: int) -> dict:
 
 @mcp.tool
 def list_pool() -> dict:
-    """List the clip pool — loose MIDI clips stashed outside the track×scene grid:
-    {pool:[{index, name, length}]}. Saved with the project. Drag/stash from the grid,
-    or place back into any instrument cell (see pool_stash / pool_place)."""
+    """List the clip pool — loose clips stashed outside the track×scene grid:
+    {pool:[{index, name, length, kind}]} where kind is "midi" or "audio". Stash from the
+    grid or place back (see pool_stash / pool_place). MIDI pool clips are saved with the
+    project; audio pool clips are runtime-only."""
     return _post("list_pool")
 
 
 @mcp.tool
 def pool_stash(track: int, scene: int, name: str = "") -> dict:
-    """Move a grid clip into the clip pool (instrument tracks only): the source cell is
-    cleared (the clip leaves the session). Returns {index}. name defaults to "<track> <A/B/C>"."""
+    """Move a grid clip into the clip pool: the source cell is cleared (the clip leaves the
+    session). Works for MIDI (instrument) and audio (sampler) tracks. Returns {index, kind}.
+    name defaults to "<track> <A/B/C>"."""
     return _post("pool_stash", {"track": track, "scene": scene, "name": name})
 
 
 @mcp.tool
 def pool_place(index: int, track: int, scene: int) -> dict:
-    """Place a pooled clip (by pool index) into a grid cell, overwriting it (instrument
-    tracks only). Returns {notes}. The pool item stays; use pool_remove to discard it."""
+    """Place a pooled clip (by pool index) into a grid cell, overwriting it. Types must
+    match: an audio clip onto an audio track, a MIDI clip onto an instrument track. The
+    pool item stays; use pool_remove to discard it."""
     return _post("pool_place", {"index": index, "track": track, "scene": scene})
 
 

@@ -72,8 +72,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     j["tracks"] = tracks;
 
     // Clip pool — loose clips stashed outside the track grid (browser sidebar).
+    // Audio pool clips are runtime-only (like grid audio content, their PCM isn't persisted).
     json pool = json::array();
     for (int i = 0; i < vivid::session::session_pool_count(s); ++i) {
+        if (vivid::session::session_pool_is_audio(s, i)) continue;
         vivid::session::ClipNote buf[256];
         const int n = vivid::session::session_pool_get(s, i, buf, 256);
         json notes = json::array();

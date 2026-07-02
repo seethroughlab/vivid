@@ -114,24 +114,31 @@ void move_clip(vivid::App& app, int st, int ss, int tt, int ts, bool copy) {
     vivid::session::session_set_clip(s, tt, ts, buf, n, len);
     if (!copy) vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // clear the source
 }
-// Place a clip-pool item into a grid cell (instrument tracks only).
+// Whether a pooled clip can be placed on a track (audio clip <-> audio track only).
+bool pool_clip_fits(vivid::App& app, int pool_i, int tt) {
+    auto* s = app.session;
+    return s && vivid::session::session_pool_is_audio(s, pool_i) == vivid::session::session_track_is_audio(s, tt);
+}
+// Place a clip-pool item into a grid cell (type must match: audio->audio, MIDI->instrument).
 void place_pool_clip(vivid::App& app, int pool_i, int tt, int ts) {
     auto* s = app.session;
-    if (!s || vivid::session::session_track_is_audio(s, tt)) return;
+    if (!s || !pool_clip_fits(app, pool_i, tt)) return;
+    if (vivid::session::session_pool_is_audio(s, pool_i)) { vivid::session::session_pool_place_audio(s, pool_i, tt, ts); return; }
     vivid::session::ClipNote buf[512];
     const int n = vivid::session::session_pool_get(s, pool_i, buf, 512);
     vivid::session::session_set_clip(s, tt, ts, buf, n, vivid::session::session_pool_length(s, pool_i));
 }
-// Stash a grid clip into the pool: MOVE it out of the session (the source cell is
-// cleared). Instrument tracks only.
+// Stash a grid clip into the pool: MOVE it out of the session (the source cell is cleared).
+// Handles both MIDI (instrument) and audio (sampler) tracks.
 void stash_clip(vivid::App& app, int st, int ss) {
     auto* s = app.session;
-    if (!s || vivid::session::session_track_is_audio(s, st)) return;
+    if (!s) return;
+    char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
+    if (vivid::session::session_track_is_audio(s, st)) { vivid::session::session_pool_stash_audio(s, st, ss, nm); return; }
     vivid::session::ClipNote buf[512];
     const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
     if (n <= 0) return;
     const double len = vivid::session::session_clip_length(s, st, ss);
-    char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
     vivid::session::session_pool_add(s, buf, n, len, nm);
     vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // take it out of the grid
 }

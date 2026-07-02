@@ -102,6 +102,12 @@ const char* session_pool_name(Session*, int index);
 int         session_pool_add(Session*, const ClipNote* notes, int n, double length, const char* name);  // -> index
 void        session_pool_remove(Session*, int index);
 void        session_pool_clear(Session*);
+// Audio clips in the pool (Samplers). A pool entry is either MIDI or audio (is_audio).
+bool        session_pool_is_audio(Session*, int index);
+int         session_pool_audio_bpm(Session*, int index);
+int         session_pool_audio_waveform(Session*, int index, float* out_bins, int n_bins);
+int         session_pool_stash_audio(Session*, int track, int scene, const char* name);  // MOVE grid->pool, -> index
+bool        session_pool_place_audio(Session*, int index, int track, int scene);         // copy pool->grid
 
 int    session_clip_note_count(Session*, int track, int scene);
 int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
