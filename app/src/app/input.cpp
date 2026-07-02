@@ -152,6 +152,36 @@ void add_plugin(vivid::App& app, vivid::Window& win, int idx) {
     if (app.graph) app.graph->select_op(-1);
 }
 
+// The plugin-drop target under (mx,my): a track index for an effect, -2 for the
+// "+Track" slot (new instrument), or -1 for nothing. dmx is DAW-pane x (mx - sidebar).
+int plugin_drop_target(const vivid::Window& win, int tracks, double dmx, double my) {
+    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) return -2;   // +Track slot
+    for (int t = 0; t < tracks; ++t)                     // a track header or its clip column
+        if (hit(track_header_rect(t), dmx, my) ||
+            (dmx >= track_x(t) && dmx < track_x(t) + kTrackW && my >= kHeaderY && my < win.dock_top()))
+            return t;
+    if (my >= win.dock_top()) return std::min(std::max(win.sel_track, 0), tracks - 1);   // the dock = selected track
+    return -1;
+}
+// Drop a browsed plugin onto a track (effect) or the +Track slot (new instrument).
+void drop_plugin(vivid::App& app, vivid::Window& win, int idx, double mx, double my) {
+    auto* s = app.session;
+    if (!s) return;
+    const std::string path = vivid::session::plugin_at(idx).path;
+    if (path.empty()) return;
+    const int tracks = vivid::session::session_track_count(s);
+    const int tgt = plugin_drop_target(win, tracks, mx - win.sidebar_w, my);
+    if (tgt == -1) return;
+    if (tgt == -2) {   // new instrument track
+        const int t = vivid::session::session_add_instrument_track(s, path.c_str());
+        if (t >= 0) { win.sel_track = t; win.sel_device = 0; }
+    } else {           // effect on the dropped-on track
+        vivid::session::session_add_effect(s, tgt, path.c_str());
+        win.sel_track = tgt;
+    }
+    if (app.graph) app.graph->select_op(-1);
+}
+
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
@@ -234,6 +264,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1;
+        if (win->plugin_drag_i >= 0) {   // plugin drop (from the browser onto a track / +Track)
+            if (win->plugin_dragging) drop_plugin(*app, *win, win->plugin_drag_i, mx, my);
+            win->plugin_drag_i = -1; win->plugin_dragging = false;
+            if (app->graph) app->graph->on_up(mx, my);
+            return;
+        }
         if (win->clip_drag_t >= 0 || win->clip_drag_from_pool >= 0) {   // clip drop (grid or pool source)
             int tt = -1, ts = -1;
             const bool onCell = clip_cell_at(tracks, scenes, mx - win->sidebar_w, my, tt, ts);   // grid is shifted
@@ -267,13 +303,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         if (pi >= 0 && vivid::ui::pool_item_visible(pi, win->sidebar_w, win->win_h, win->dock_h)) {
             win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; return;
         }
-        // PLUGINS panel: double-click a row to add the plugin.
+        // PLUGINS panel: double-click a row to add (auto-route); or drag a row onto a
+        // track (effect) / the +Track slot (instrument).
         const int np = vivid::session::plugin_count();
         const int pr = vivid::ui::plugin_row_at(win->sidebar_w, win->win_h, win->dock_h, win->plugin_scroll, np, mx, my);
         if (pr >= 0) {
             const double now = glfwGetTime();
-            if (win->last_plugin_i == pr && now - win->last_plugin_t < 0.35) { add_plugin(*app, *win, pr); win->last_plugin_t = -1; }
-            else { win->last_plugin_i = pr; win->last_plugin_t = now; }
+            if (win->last_plugin_i == pr && now - win->last_plugin_t < 0.35) {
+                add_plugin(*app, *win, pr); win->last_plugin_t = -1; win->plugin_drag_i = -1;   // consumed by the double-click
+            } else {
+                win->last_plugin_i = pr; win->last_plugin_t = now;
+                win->plugin_drag_i = pr; win->plugin_dragging = false;   // arm a potential drag-to-track
+                win->plugin_drag_x0 = mx; win->plugin_drag_y0 = my;
+            }
         }
         return;   // consume all clicks over the sidebar
     }

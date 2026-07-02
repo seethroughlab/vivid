@@ -107,6 +107,10 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
         if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px
     }
+    if (win.plugin_drag_i >= 0 && !win.plugin_dragging) {   // plugin drag crosses the move threshold
+        const double dx = mx - win.plugin_drag_x0, dy = my - win.plugin_drag_y0;
+        if (dx * dx + dy * dy > 25.0) win.plugin_dragging = true;
+    }
     if (win.split_drag)
         win.split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(win.win_w) - 40.f);
     if (win.dock_drag)

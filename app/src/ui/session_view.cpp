@@ -427,6 +427,37 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + w.clip_drag_sc);
         ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
     }
+
+    // ---- plugin drag feedback: highlight the drop target (a track = effect, +Track = instrument) ----
+    if (w.plugin_drag_i >= 0 && w.plugin_dragging) {
+        const float dmx = static_cast<float>(mx) - SW;   // DAW-pane x (grid shifted by the sidebar)
+        int tgt = -1;   // -2 = +Track slot (new instrument); >=0 = track (effect)
+        if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) tgt = -2;
+        else {
+            for (int t = 0; t < tracks && tgt < 0; ++t)
+                if (hit(track_header_rect(t), dmx, my) ||
+                    (dmx >= track_x(t) && dmx < track_x(t) + kTrackW && my >= kHeaderY && my < w.dock_top())) tgt = t;
+            if (tgt < 0 && my >= w.dock_top()) tgt = std::min(std::max(w.sel_track, 0), tracks - 1);
+        }
+        auto outline = [&](Rect r, const float* c) {
+            const float rx = r.x + SW;
+            ui.draw_rect(rx, r.y, r.w, 2.f, c[0], c[1], c[2], 1.0f);
+            ui.draw_rect(rx, r.y + r.h - 2.f, r.w, 2.f, c[0], c[1], c[2], 1.0f);
+            ui.draw_rect(rx, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
+            ui.draw_rect(rx + r.w - 2.f, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
+        };
+        if (tgt == -2) outline(track_add_rect(tracks), sty.audio);                                   // new instrument
+        else if (tgt >= 0) outline({ track_x(tgt), kHeaderY, kTrackW, w.dock_top() - kPaneMargin - kHeaderY }, sty.fx);  // effect on this track
+
+        const std::string& pn = vivid::session::plugin_at(w.plugin_drag_i).name;
+        const bool inst = (tgt == -2);
+        const float gw = 156.f, gh = 20.f, gx = static_cast<float>(mx) + 10.f, gy = static_cast<float>(my) + 6.f;
+        ui.draw_rounded_rect(gx, gy, gw, gh, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.95f);
+        const float* bar = inst ? sty.audio : sty.fx;
+        ui.draw_rect(gx, gy, 3.f, gh, bar[0], bar[1], bar[2], 1.0f);
+        char pt[40]; std::snprintf(pt, sizeof pt, "%s %.24s", inst ? "\xE2\x86\x92 track:" : "\xE2\x86\x92 fx:", pn.c_str());
+        ui.draw_text(gx + 8.f, gy + 3.f, fit_text(ui, pt, gw - 14.f, sty.fs_label).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
+    }
 }
 
 // The "map this param from a source" picker (the return path).

@@ -45,6 +45,9 @@ struct Window {
     float   sidebar_w = 0.f;   // left browser column width (0 = collapsed); shifts the DAW pane
     float   plugin_scroll = 0.f;               // PLUGINS list scroll offset (px)
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
+    // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).
+    int     plugin_drag_i = -1; bool plugin_dragging = false;
+    double  plugin_drag_x0 = 0.0, plugin_drag_y0 = 0.0;
     Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
