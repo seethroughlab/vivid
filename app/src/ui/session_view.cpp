@@ -435,6 +435,13 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
     char oh[48]; std::snprintf(oh, sizeof oh, "OUTPUT \xC2\xB7 %s", w.app->visual_source ? "VIDEO" : "SHADER");
     panel_frame(ui, w.output_panel(), oh, sty.gpu);
+    // Pop-out toggle in the OUTPUT header (second window / performance screen).
+    { const Rect pb = popout_button_rect(w.win_w, w.split_x);
+      const bool pbh = hit(pb, mx, my);
+      ui.draw_rounded_rect(pb.x, pb.y, pb.w, pb.h, sty.radius, pbh ? sty.card_hi[0] : sty.card[0], pbh ? sty.card_hi[1] : sty.card[1], pbh ? sty.card_hi[2] : sty.card[2], 1.0f);
+      ui.draw_rect(pb.x, pb.y, sty.accent_bar, pb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+      ui.draw_text(pb.x + 8.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 Pop in" : "\xE2\x87\xB1 Pop out",
+                   sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
     ui.pop_clip_rect();
 

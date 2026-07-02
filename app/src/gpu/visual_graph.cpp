@@ -216,6 +216,17 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
     }
 }
 
+void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
+                             float vx, float vy, float vw, float vh, float time) {
+    const int outIdx = output_index();
+    if (outIdx < 0) return;
+    const int feed = nodes_[outIdx].input;
+    if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
+        WGPUTextureView f[1] = { rts_[feed].view };
+        blit_.render(enc, view, vx, vy, vw, vh, /*clear*/true, f, 1, time, nullptr, 0);
+    }
+}
+
 void VisualGraph::shutdown() {
     blit_.shutdown();
     for (auto& r : rts_) r.release();

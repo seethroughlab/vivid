@@ -246,6 +246,109 @@ void GpuContext::resize(uint32_t width, uint32_t height) {
     ensure_msaa(width, height);   // resize the MSAA target to match the surface
 }
 
+// ---- Secondary (pop-out) surface: shares device_/queue_/surface_format_ ----
+void GpuContext::ensure_msaa2(uint32_t width, uint32_t height) {
+    if (!device_ || width == 0 || height == 0) return;
+    if (msaa2_view_ && width == msaa2_w_ && height == msaa2_h_) return;
+    if (msaa2_view_) { wgpuTextureViewRelease(msaa2_view_); msaa2_view_ = nullptr; }
+    if (msaa2_tex_)  { wgpuTextureRelease(msaa2_tex_);       msaa2_tex_  = nullptr; }
+    WGPUTextureDescriptor td{};
+    td.label = to_sv("Popout MSAA Color");
+    td.usage = WGPUTextureUsage_RenderAttachment;
+    td.dimension = WGPUTextureDimension_2D;
+    td.size = WGPUExtent3D{ width, height, 1 };
+    td.format = surface_format_;
+    td.mipLevelCount = 1;
+    td.sampleCount = kMsaaSamples;
+    msaa2_tex_ = wgpuDeviceCreateTexture(device_, &td);
+    if (!msaa2_tex_) return;
+    WGPUTextureViewDescriptor vd{};
+    vd.label = to_sv("Popout MSAA View");
+    vd.format = surface_format_;
+    vd.dimension = WGPUTextureViewDimension_2D;
+    vd.baseMipLevel = 0; vd.mipLevelCount = 1; vd.baseArrayLayer = 0; vd.arrayLayerCount = 1; vd.aspect = WGPUTextureAspect_All;
+    msaa2_view_ = wgpuTextureCreateView(msaa2_tex_, &vd);
+    msaa2_w_ = width; msaa2_h_ = height;
+}
+
+bool GpuContext::open_secondary(GLFWwindow* window, uint32_t width, uint32_t height) {
+    if (!device_) return false;
+    if (surface2_) return true;   // already open
+    surface2_ = glfwCreateWindowWGPUSurface(instance_, window);
+    if (!surface2_) { std::fprintf(stderr, "[vivid] popout: surface create failed\n"); return false; }
+    WGPUSurfaceConfiguration config{};
+    config.device = device_; config.format = surface_format_;
+    config.usage = WGPUTextureUsage_RenderAttachment; config.alphaMode = WGPUCompositeAlphaMode_Auto;
+    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;
+    wgpuSurfaceConfigure(surface2_, &config);
+    w2_ = width; h2_ = height;
+    ensure_msaa2(width, height);
+    std::fprintf(stderr, "[vivid] popout surface open (%ux%u)\n", width, height);
+    return true;
+}
+
+void GpuContext::resize_secondary(uint32_t width, uint32_t height) {
+    if (!surface2_ || width == 0 || height == 0 || (width == w2_ && height == h2_)) return;
+    wgpuSurfaceUnconfigure(surface2_);
+    WGPUSurfaceConfiguration config{};
+    config.device = device_; config.format = surface_format_;
+    config.usage = WGPUTextureUsage_RenderAttachment; config.alphaMode = WGPUCompositeAlphaMode_Auto;
+    config.width = width; config.height = height; config.presentMode = WGPUPresentMode_Fifo;
+    wgpuSurfaceConfigure(surface2_, &config);
+    w2_ = width; h2_ = height;
+    ensure_msaa2(width, height);
+}
+
+void GpuContext::close_secondary() {
+    if (msaa2_view_) { wgpuTextureViewRelease(msaa2_view_); msaa2_view_ = nullptr; }
+    if (msaa2_tex_)  { wgpuTextureRelease(msaa2_tex_);       msaa2_tex_  = nullptr; }
+    if (surface2_)   { wgpuSurfaceUnconfigure(surface2_); wgpuSurfaceRelease(surface2_); surface2_ = nullptr; }
+    w2_ = h2_ = msaa2_w_ = msaa2_h_ = 0;
+}
+
+bool GpuContext::begin_secondary(FrameState& frame) {
+    if (device_lost_ || !surface2_) return false;
+    WGPUSurfaceTexture st{};
+    wgpuSurfaceGetCurrentTexture(surface2_, &st);
+    if (st.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
+        if (st.texture) wgpuTextureRelease(st.texture);
+        return false;
+    }
+    WGPUTextureViewDescriptor vd{};
+    vd.label = to_sv("Popout Surface View"); vd.format = surface_format_;
+    vd.dimension = WGPUTextureViewDimension_2D; vd.mipLevelCount = 1; vd.arrayLayerCount = 1; vd.aspect = WGPUTextureAspect_All;
+    frame.texture = st.texture;
+    WGPUTextureView sv = wgpuTextureCreateView(st.texture, &vd);
+    if (!sv || !msaa2_view_) { if (sv) wgpuTextureViewRelease(sv); wgpuTextureRelease(frame.texture); frame.texture = nullptr; return false; }
+    WGPUCommandEncoderDescriptor ed{}; ed.label = to_sv("Popout Encoder");
+    frame.encoder = wgpuDeviceCreateCommandEncoder(device_, &ed);
+    if (!frame.encoder) { wgpuTextureViewRelease(sv); wgpuTextureRelease(frame.texture); frame.texture = nullptr; return false; }
+    frame.resolve_view = sv;
+    frame.view = msaa2_view_;
+    return true;
+}
+
+bool GpuContext::end_secondary(const FrameState& frame) {
+    if (device_lost_) { discard_frame(frame); return false; }
+    {
+        WGPURenderPassColorAttachment att{};
+        att.view = frame.view; att.resolveTarget = frame.resolve_view;
+        att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED; att.loadOp = WGPULoadOp_Load; att.storeOp = WGPUStoreOp_Store;
+        WGPURenderPassDescriptor rp{}; rp.colorAttachmentCount = 1; rp.colorAttachments = &att;
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(frame.encoder, &rp);
+        wgpuRenderPassEncoderEnd(pass); wgpuRenderPassEncoderRelease(pass);
+    }
+    if (!gpu_submit(device_, queue_, frame.encoder, "Popout Commands")) {
+        if (frame.resolve_view) wgpuTextureViewRelease(frame.resolve_view);
+        wgpuTextureRelease(frame.texture);
+        return false;
+    }
+    wgpuSurfacePresent(surface2_);
+    if (frame.resolve_view) wgpuTextureViewRelease(frame.resolve_view);
+    wgpuTextureRelease(frame.texture);
+    return true;
+}
+
 bool GpuContext::begin_frame(FrameState& frame) {
     if (device_lost_) return false;
 
@@ -369,6 +472,7 @@ void GpuContext::discard_frame(const FrameState& frame) {
 }
 
 void GpuContext::shutdown() {
+    close_secondary();
     if (msaa_view_) { wgpuTextureViewRelease(msaa_view_); msaa_view_ = nullptr; }
     if (msaa_tex_)  { wgpuTextureRelease(msaa_tex_);      msaa_tex_  = nullptr; }
     if (surface_) {

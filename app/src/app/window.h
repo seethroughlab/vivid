@@ -44,6 +44,8 @@ struct Window {
     int     gain_drag = -1;
     bool    split_drag = false; double split_last_t = -1.0;
     float   sidebar_w = 0.f;   // left browser column width (0 = collapsed); shifts the DAW pane
+    GLFWwindow* popout = nullptr;   // pop-out visuals window (fullscreen/large view); nullptr = closed
+    int     popout_fb_w = 0, popout_fb_h = 0;   // its framebuffer size (drives the 2nd surface)
     float   plugin_scroll = 0.f;               // PLUGINS list scroll offset (px)
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).

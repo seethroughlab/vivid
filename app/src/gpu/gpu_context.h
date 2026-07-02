@@ -33,6 +33,16 @@ public:
     void discard_frame(const FrameState& frame);
     void shutdown();
 
+    // Secondary output surface — the pop-out visuals window. Shares this device/queue;
+    // the visuals FBO is blitted into it (see VisualGraph::present_to). begin/end_secondary
+    // mirror begin/end_frame for surface2. Absent (has_secondary()==false) when closed.
+    bool open_secondary(GLFWwindow* window, uint32_t width, uint32_t height);
+    void close_secondary();
+    void resize_secondary(uint32_t width, uint32_t height);
+    bool has_secondary() const { return surface2_ != nullptr; }
+    bool begin_secondary(FrameState& frame);
+    bool end_secondary(const FrameState& frame);
+
     uint32_t sample_count() const { return kMsaaSamples; }
 
     WGPUInstance instance() const { return instance_; }
@@ -68,6 +78,13 @@ private:
     uint32_t msaa_w_ = 0;
     uint32_t msaa_h_ = 0;
     void ensure_msaa(uint32_t width, uint32_t height);
+
+    // Secondary (pop-out) surface + its own MSAA target. Shares device_/queue_/format.
+    WGPUSurface     surface2_   = nullptr;
+    WGPUTexture     msaa2_tex_  = nullptr;
+    WGPUTextureView msaa2_view_ = nullptr;
+    uint32_t w2_ = 0, h2_ = 0, msaa2_w_ = 0, msaa2_h_ = 0;
+    void ensure_msaa2(uint32_t width, uint32_t height);
 
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;

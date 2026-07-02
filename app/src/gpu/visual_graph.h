@@ -74,6 +74,10 @@ public:
     void render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 float vx, float vy, float vw, float vh, float time,
                 WGPUTextureView video_tex);
+    // Blit the already-rendered output FBO (from the last render()) into another view —
+    // e.g. a pop-out window's surface, fullscreen. Does NOT re-run the graph.
+    void present_to(WGPUCommandEncoder enc, WGPUTextureView view,
+                    float vx, float vy, float vw, float vh, float time);
 
     WGPUTextureView node_view(int idx) const {
         if (idx < 0 || idx >= static_cast<int>(rts_.size())) return nullptr;

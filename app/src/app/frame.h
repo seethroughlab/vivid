@@ -13,5 +13,6 @@ void publish_bridge_sources(App& app, Window& win);
 void apply_audio_param_mappings(App& app);
 void update_drag_continuations(App& app, Window& win, double mx, double my);
 void update_visual_source_frame(App& app);
+void toggle_popout(App& app, Window& win);   // open/close the pop-out visuals window
 
 }  // namespace vivid

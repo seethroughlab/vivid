@@ -28,6 +28,36 @@
 #include <cstdio>
 
 namespace vivid {
+
+// Esc closes the pop-out visuals window (the tick reaps it on shouldClose).
+static void popout_key_callback(GLFWwindow* w, int key, int, int action, int) {
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
+}
+
+// Open/close the pop-out visuals window: fullscreen on a second monitor if one is
+// present, else a large windowed view. Shares the wgpu device via a secondary surface.
+void toggle_popout(App& app, Window& win) {
+    if (!app.gpu) return;
+    if (win.popout) {   // close
+        app.gpu->close_secondary();
+        glfwDestroyWindow(win.popout);
+        win.popout = nullptr; win.popout_fb_w = win.popout_fb_h = 0;
+        return;
+    }
+    int mcount = 0; GLFWmonitor** mons = glfwGetMonitors(&mcount);
+    GLFWmonitor* mon = (mcount > 1) ? mons[1] : nullptr;   // performance screen = the 2nd monitor
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    GLFWwindow* w = mon ? [&]{ const GLFWvidmode* vm = glfwGetVideoMode(mon);
+                               return glfwCreateWindow(vm->width, vm->height, "Vivid \xE2\x80\x94 Visuals", mon, nullptr); }()
+                        : glfwCreateWindow(1280, 720, "Vivid \xE2\x80\x94 Visuals", nullptr, nullptr);
+    if (!w) return;
+    int fbw = 0, fbh = 0; glfwGetFramebufferSize(w, &fbw, &fbh);
+    if (fbw <= 0 || fbh <= 0 || !app.gpu->open_secondary(w, static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh))) {
+        glfwDestroyWindow(w); return;
+    }
+    glfwSetKeyCallback(w, popout_key_callback);
+    win.popout = w; win.popout_fb_w = fbw; win.popout_fb_h = fbh;
+}
 namespace {
 
 using namespace vivid::ui;  // Rect/hit, geometry, constants (ui/layout.h)
@@ -223,9 +253,9 @@ void run_frame_loop(App& app, Window& win) {
         double mx, my; glfwGetCursorPos(window, &mx, &my);
         update_drag_continuations(app, win, mx, my);
 
+        const float tsec = static_cast<float>(glfwGetTime());
         FrameState frame;
         if (gpu.begin_frame(frame)) {
-            const float tsec = static_cast<float>(glfwGetTime());
             update_visual_source_frame(app);
             // composable visuals chain -> viewer (per-node params, set by apply_params)
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
@@ -251,6 +281,26 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
+        }
+
+        // Pop-out visuals window: mirror the current output onto its surface, fullscreen.
+        // (The graph rendered once above; this only re-blits the output FBO.)
+        if (win.popout) {
+            if (glfwWindowShouldClose(win.popout)) { toggle_popout(app, win); }
+            else if (gpu.has_secondary()) {
+                int fbw = 0, fbh = 0; glfwGetFramebufferSize(win.popout, &fbw, &fbh);
+                if (fbw > 0 && fbh > 0) {
+                    if (fbw != win.popout_fb_w || fbh != win.popout_fb_h) {
+                        gpu.resize_secondary(static_cast<uint32_t>(fbw), static_cast<uint32_t>(fbh));
+                        win.popout_fb_w = fbw; win.popout_fb_h = fbh;
+                    }
+                    FrameState f2;
+                    if (gpu.begin_secondary(f2)) {
+                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f, static_cast<float>(fbw), static_cast<float>(fbh), tsec);
+                        gpu.end_secondary(f2);
+                    }
+                }
+            }
         }
         return true;
     };

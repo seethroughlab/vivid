@@ -13,6 +13,7 @@
 #include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
+#include "app/frame.h"   // toggle_popout
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
@@ -207,6 +208,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // Browser sidebar toggle.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::sidebar_toggle_rect(), mx, my)) {
         win->sidebar_w = (win->sidebar_w > 0.f) ? 0.f : vivid::ui::kSidebarW;
+        return;
+    }
+    // Pop-out visuals window toggle (OUTPUT header).
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+        && hit(vivid::ui::popout_button_rect(win->win_w, win->split_x), mx, my)) {
+        vivid::toggle_popout(*app, *win);
         return;
     }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
