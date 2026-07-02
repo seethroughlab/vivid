@@ -14,6 +14,7 @@
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
 #include "app/frame.h"   // toggle_popout
+#include "app/operator_clone.h"   // clone_operator / operator_has_clone_template
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
@@ -272,7 +273,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         const int on = app->graph->op_at(mx, my);
         if (on >= 0) {
             win->node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
-                               !app->graph->op_source_path(on).empty() };
+                               !app->graph->op_source_path(on).empty(),
+                               vivid::operator_has_clone_template(app->graph->op_kind_name(on)) };
             win->menu.open = false;
             return;
         }
@@ -362,12 +364,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->menu.open = false;
         return;
     }
-    // Node context menu: "Open source in editor" (custom-source nodes). Click-away closes.
+    // Node context menu: "Open source" (custom nodes) or "Clone & Edit" (built-ins).
     if (win->node_menu.open) {
-        if (win->node_menu.has_source && app->graph
-            && hit(Rect{ win->node_menu.x, win->node_menu.y, 172.f, 22.f }, mx, my)) {
-            const std::string src = app->graph->op_source_path(win->node_menu.node);
-            if (!src.empty()) vivid::platform::open_in_editor(src);
+        const int nn = win->node_menu.node;
+        if (app->graph && hit(Rect{ win->node_menu.x, win->node_menu.y, 172.f, 22.f }, mx, my)) {
+            if (win->node_menu.has_source) {
+                const std::string src = app->graph->op_source_path(nn);
+                if (!src.empty()) vivid::platform::open_in_editor(src);
+            } else if (win->node_menu.cloneable) {
+                vivid::CloneResult cr = vivid::clone_operator(app->op_registry, app->op_loaders,
+                                                              app->graph->op_kind_name(nn));
+                if (cr.ok) { app->graph->swap_op_type(nn, cr.name); vivid::platform::open_in_editor(cr.source_path); }
+                else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
+            }
         }
         win->node_menu.open = false;
         return;

@@ -70,6 +70,7 @@ public:
     void        set_op_asset_at(int i, const std::string& asset);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none
     std::string op_source_path(int i) const;                    // absolute editable source (CustomShader .glsl), "" if none
+    bool        swap_op_type(int i, const std::string& type);   // re-instantiate node i as `type` (id/input/pos kept)
 
     // Visual-node selection + inspector: the bottom dock edits the selected node's
     // base param values (the resolved value = clamp(base + live modulation)).

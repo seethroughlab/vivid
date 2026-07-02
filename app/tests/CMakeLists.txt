@@ -137,6 +137,34 @@ target_compile_definitions(test_package_compile PRIVATE
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
 
+# P2b: "Clone & Edit a built-in" — compile the real WGSL Plasma-clone template via the
+# package compiler and register it (a GPU op, so it needs the webgpu include/lib dirs).
+vivid_add_test(test_operator_clone)
+target_sources(test_operator_clone PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/operator_clone.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_compiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_operator_clone PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+# The wgpu dist is globbed after tests/ is added in the parent scope, so recompute it here.
+file(GLOB _clone_wgpu_dist "${CMAKE_BINARY_DIR}/_deps/wgpu-*-src")
+set(_clone_wgpu_root "")
+if(_clone_wgpu_dist)
+    list(GET _clone_wgpu_dist 0 _clone_wgpu_root)
+endif()
+target_compile_definitions(test_operator_clone PRIVATE
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    VIVID_PKG_WEBGPU_INCLUDE_DIR="${_clone_wgpu_root}/include"
+    VIVID_PKG_WEBGPU_LIB_DIR="${_clone_wgpu_root}/lib"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+
 # P2.4: hot-reload infrastructure — classify_hot_reload + FileWatcher + HotReloader.
 vivid_add_test(test_hot_reload)
 target_sources(test_hot_reload PRIVATE

@@ -566,6 +566,8 @@ void draw_node_menu(Renderer2D& ui, const Window& w) {
     ui.draw_rect(m.x, m.y, 3.f, 22.f, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
     if (m.has_source)
         ui.draw_text(m.x + 12.f, m.y + 5.f, "Open source in editor", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
+    else if (m.cloneable)
+        ui.draw_text(m.x + 12.f, m.y + 5.f, "Clone & Edit", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
     else
         ui.draw_text(m.x + 12.f, m.y + 5.f, "built-in \xC2\xB7 no editable source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
 }

@@ -14,7 +14,7 @@ namespace vivid {
 // A right-click context menu of a track's audio characteristics (the bridge).
 struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
 // A right-click context menu on a visuals op node (open its source / clone it).
-struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; };
+struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
 // Per-window view + interaction state. Many Windows can point at one App, each
 // with its own surface, layout, selection, and drag state. The GLFW user pointer

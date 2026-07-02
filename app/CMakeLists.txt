@@ -137,6 +137,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/project_io.cpp
     src/app/file_actions.cpp
     src/app/window_prefs.cpp
+    src/app/operator_clone.cpp
     src/app/runtime_health.cpp
     src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c

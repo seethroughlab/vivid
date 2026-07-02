@@ -70,6 +70,10 @@ public:
     // recreating from the new dylib. Node base/params live on the node → preserved.
     int release_op_instances(const std::string& type);   // returns affected node count
     int rebuild_op_instances(const std::string& type);
+    // Re-instantiate node i as a different registered operator type (id/input/pos kept).
+    bool set_node_op_type(int i, const std::string& type) {
+        return (i >= 0 && i < static_cast<int>(nodes_.size())) ? make_instance(nodes_[i], type) : false;
+    }
 
     void render(WGPUCommandEncoder enc, WGPUTextureView screen,
                 float vx, float vy, float vw, float vh, float time,

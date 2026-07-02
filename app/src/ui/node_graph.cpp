@@ -389,6 +389,12 @@ std::string NodeGraph::op_source_path(int i) const {
     }
     return ap.string();
 }
+bool NodeGraph::swap_op_type(int i, const std::string& type) {
+    if (!vg_) return false;
+    const bool ok = vg_->set_node_op_type(i, type);   // keeps id + input edge + position
+    if (ok) sel_op_ = i;
+    return ok;
+}
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
 }
