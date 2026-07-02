@@ -80,6 +80,13 @@ public:
     void  set_op_param_base_at(int i, int local, float v);
     float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
     bool  op_param_wired_at(int i, int local) const;     // a data source drives it
+    // Param metadata (from the operator descriptor) so the dock can pick a widget.
+    int   op_param_type_at(int i, int local) const;         // VividParamType (FLOAT/INT/BOOL/...)
+    int   op_param_hint_at(int i, int local) const;         // VividDisplayHint (DEFAULT/KNOB/COLOR/XY/...)
+    float op_param_min_at(int i, int local) const;
+    float op_param_max_at(int i, int local) const;
+    int   op_param_choice_count_at(int i, int local) const; // >0 for enums
+    const char* op_param_choice_label_at(int i, int local, int choice) const;
 
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph

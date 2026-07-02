@@ -51,6 +51,12 @@ static const char* node_plabel(const vivid::VisualGraph* vg, int i, int local) {
 static std::string node_param_dest(int id, const char* name) {
     return "node:" + std::to_string(id) + "." + name;
 }
+// The operator ParamBase behind a node param (its type/range/choices/display hint).
+static const vivid::ParamBase* node_pb(const vivid::VisualGraph* vg, int i, int local) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return nullptr;
+    const auto& pp = vg->nodes()[i].inst.param_ptrs;
+    return (local >= 0 && local < int(pp.size())) ? pp[local] : nullptr;
+}
 
 NodeGraph::NodeGraph() {
     data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
@@ -255,6 +261,31 @@ void NodeGraph::set_op_param_base_at(int i, int local, float v) {
         if (local >= int(base.size())) base.resize(local + 1, 0.f);
         base[local] = std::clamp(v, 0.f, 1.f);
     }
+}
+int NodeGraph::op_param_type_at(int i, int local) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    return pb ? static_cast<int>(pb->type) : VIVID_PARAM_FLOAT;
+}
+int NodeGraph::op_param_hint_at(int i, int local) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    return pb ? static_cast<int>(pb->display_hint) : VIVID_DISPLAY_DEFAULT;
+}
+float NodeGraph::op_param_min_at(int i, int local) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    return pb ? pb->min_value : 0.f;
+}
+float NodeGraph::op_param_max_at(int i, int local) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    return pb ? pb->max_value : 1.f;
+}
+int NodeGraph::op_param_choice_count_at(int i, int local) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    return pb ? static_cast<int>(pb->choice_count) : 0;
+}
+const char* NodeGraph::op_param_choice_label_at(int i, int local, int choice) const {
+    const vivid::ParamBase* pb = node_pb(vg_, i, local);
+    if (!pb || !pb->choice_labels || choice < 0 || choice >= int(pb->choice_count)) return "";
+    return pb->choice_labels[choice] ? pb->choice_labels[choice] : "";
 }
 float NodeGraph::op_param_value_at(int i, int local) const {
     return (op_node_valid(vg_, i) && local >= 0 && local < int(vg_->nodes()[i].params.size())) ? vg_->nodes()[i].params[local] : 0.f;

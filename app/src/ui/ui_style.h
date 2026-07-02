@@ -145,4 +145,47 @@ inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,
     }
 }
 
+// A horizontal slider: recessed track + accent fill + a handle; name at the left,
+// value at the right. v01 is the normalized 0..1 position. `mapped` tints toward teal.
+inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
+                   const char* label, const char* valtext, const float* accent, bool mapped = false) {
+    v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
+    const Style& s = style();
+    const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
+    r.draw_rounded_rect(x, ty, w, th, th * 0.5f, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
+    if (v01 > 0.001f) r.draw_rounded_rect(x, ty, w * v01, th, th * 0.5f, fr, fg, fb, 1.0f);
+    const float hx = x + w * v01;
+    r.draw_rounded_rect(hx - 3.f, ty - 3.f, 6.f, th + 6.f, 2.f, s.text[0], s.text[1], s.text[2], 1.0f);  // handle
+    if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
+    if (valtext) {
+        const float tw = r.text_width(valtext, s.fs_label);
+        r.draw_text(x + w - tw, y, valtext, s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
+    }
+}
+
+// A toggle switch: rounded pill track + a sliding knob; on = accent, off = recess.
+inline void toggle(Renderer2D& r, float x, float y, float w, float h, bool on, const float* accent) {
+    const Style& s = style();
+    const float* bg = on ? accent : s.recess;
+    r.draw_rounded_rect(x, y, w, h, h * 0.5f, bg[0], bg[1], bg[2], 1.0f);
+    const float kr = h - 4.f, kx = on ? (x + w - kr - 2.f) : (x + 2.f);
+    r.draw_rounded_rect(kx, y + 2.f, kr, kr, kr * 0.5f, s.text[0], s.text[1], s.text[2], 1.0f);
+}
+
+// A dropdown field: a bordered box showing the current choice + a chevron. The popup
+// list itself is drawn separately by the caller (menu state lives with the view).
+inline void dropdown_field(Renderer2D& r, float x, float y, float w, float h,
+                           const char* current, const float* accent, bool hot) {
+    const Style& s = style();
+    const float* bg = hot ? s.card_hi : s.card;
+    r.draw_rounded_rect(x, y, w, h, s.radius, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);
+    if (current) r.draw_text(x + s.s3 + 2.f, y + (h - 10.f) * 0.5f, fit_text(r, current, w - 22.f, s.fs_label).c_str(),
+                             s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
+    // chevron
+    const float cx = x + w - 10.f, cy = y + h * 0.5f;
+    r.draw_tri(cx - 3.f, cy - 2.f, cx + 3.f, cy - 2.f, cx, cy + 2.f, s.dim[0], s.dim[1], s.dim[2], 1.0f);
+}
+
 }  // namespace vivid::ui
