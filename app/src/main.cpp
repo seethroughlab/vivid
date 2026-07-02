@@ -24,6 +24,7 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "gpu/builtin_ops.h"
 #include "audio/audio_callback.h"
@@ -56,6 +57,20 @@ int main() {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // WebGPU owns the surface
     GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
     if (!window) { std::fprintf(stderr, "glfwCreateWindow failed\n"); glfwTerminate(); return 1; }
+
+    // Size the window to a fraction of the current monitor (capped, centered) on first
+    // launch; restore the remembered size/position after that (see app/window_prefs.h).
+    {
+        int waX = 0, waY = 0, waW = 0, waH = 0;
+        if (GLFWmonitor* mon = glfwGetPrimaryMonitor()) glfwGetMonitorWorkarea(mon, &waX, &waY, &waW, &waH);
+        const vivid::WindowPrefs wp = vivid::load_window_prefs(vivid::window_prefs_path());
+        const vivid::LaunchRect lr = vivid::compute_launch_rect(
+            waX, waY, waW, waH, wp, vivid::kLaunchMaxW, vivid::kLaunchMaxH, vivid::kLaunchFraction);
+        glfwSetWindowSize(window, lr.w, lr.h);
+        glfwSetWindowPos(window, lr.x, lr.y);
+        std::fprintf(stderr, "[vivid] window: %dx%d at (%d,%d) [workarea %dx%d]%s\n",
+                     lr.w, lr.h, lr.x, lr.y, waW, waH, wp.has_size ? " (restored)" : " (default %)");
+    }
 
     vivid::App app;        // shared engine/document (one per process)
     vivid::Window win;     // this window's view + interaction state
@@ -209,6 +224,11 @@ int main() {
     { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
 
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
+
+    // Remember this window's size + position for next launch (app-level, not per-project).
+    { int w = 0, h = 0, x = 0, y = 0;
+      glfwGetWindowSize(window, &w, &h); glfwGetWindowPos(window, &x, &y);
+      if (w > 0 && h > 0) vivid::save_window_prefs({ w, h, x, y, true, true }, vivid::window_prefs_path()); }
 
     control.stop();   // stop the MCP control server thread before tearing down state
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first

@@ -42,6 +42,13 @@ target_sources(test_op_registry PRIVATE
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
 
+# Launch window sizing policy: compute_launch_rect (pure) + a prefs save/load round-trip.
+vivid_add_test(test_window_prefs)
+target_sources(test_window_prefs PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/window_prefs.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+target_link_libraries(test_window_prefs PRIVATE nlohmann_json::nlohmann_json)
+
 # P4.1: session-version load guard (classify_session_version is a pure header fn).
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)

@@ -23,7 +23,10 @@ void load_path(GLFWwindow* w, Window& win, App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
     int ww = win.win_w, wh = win.win_h; float sxx = win.split_x, dh = win.dock_h;
     auto lr = project_io::load(app, *app.graph, ww, wh, sxx, dh, path);
-    if (lr.ok) { win.split_x = sxx; win.dock_h = dh; glfwSetWindowSize(w, ww, wh); refresh_recents(app); }
+    // Restore the per-project internal layout (splitter/dock) but NOT the window size —
+    // window size is app-level (see app/window_prefs.h), so opening a project won't resize.
+    (void)w; (void)ww; (void)wh;
+    if (lr.ok) { win.split_x = sxx; win.dock_h = dh; refresh_recents(app); }
     std::fprintf(stderr, "[vivid] open %s: %s\n", path.c_str(), lr.ok ? "ok" : lr.error.c_str());
 }
 
