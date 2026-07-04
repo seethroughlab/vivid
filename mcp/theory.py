@@ -62,12 +62,18 @@ def norm_notes(notes) -> list[dict]:
     beat/velocity fields, and fill defaults. Returns fresh dicts ready for set_clip."""
     out = []
     for n in notes:
-        out.append({
+        d = {
             "p": parse_note(n["p"]),
             "s": float(n.get("s", 0.0)),
             "d": float(n.get("d", 0.25)),
             "v": float(n.get("v", 0.8)),
-        })
+        }
+        # Pass through optional painted per-note expression curves (M3): each axis is a
+        # list of [t, v] pairs (t=0..1 within the note; bend v=semitones, others 0..1).
+        for axis in ("bend", "pressure", "timbre"):
+            if axis in n and n[axis]:
+                d[axis] = [[float(t), float(v)] for t, v in n[axis]]
+        out.append(d)
     return out
 
 

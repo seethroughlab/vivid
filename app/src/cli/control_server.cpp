@@ -16,6 +16,7 @@
 #include "transport.h"
 #include "persist.h"
 #include "midi/midi_clip.h"
+#include "midi/note_json.h"
 #include "version.h"                     // VIVID_VERSION (generated, P4.1)
 #include "operator_api/types.h"          // VIVID_OPERATOR_ABI_VERSION
 #include "app/runtime_health.h"          // collect_health (P4.3)
@@ -485,8 +486,11 @@ void ControlServer::register_handlers() {
         json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
         std::vector<P::ClipNote> notes;
         if (b.contains("notes"))
-            for (const auto& jn : b["notes"])
-                notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
+            for (const auto& jn : b["notes"]) {
+                P::ClipNote cn{ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f), {} };
+                P::expr_from_json(jn, cn);   // optional per-note bend/pressure/timbre curves
+                notes.push_back(std::move(cn));
+            }
         P::session_set_clip(c.session, track, scene,
                             notes.data(), static_cast<int>(notes.size()), b.value("length", 4.0));
         json r = ok(); r["notes"] = static_cast<int>(notes.size()); return r;
@@ -499,8 +503,11 @@ void ControlServer::register_handlers() {
         P::ClipNote buf[1024];
         const int n = P::session_get_clip(c.session, track, scene, buf, 1024);
         json notes = json::array();
-        for (int i = 0; i < n; ++i)
-            notes.push_back({ {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} });
+        for (int i = 0; i < n; ++i) {
+            json jn = { {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} };
+            P::expr_to_json(buf[i], jn);
+            notes.push_back(jn);
+        }
         json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
     };
     // ---------------- clip pool (loose clips that live outside the grid) ----------------

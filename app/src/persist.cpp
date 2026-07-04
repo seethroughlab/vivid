@@ -1,5 +1,6 @@
 #include "persist.h"
 #include "audio/vst3_host.h"
+#include "midi/note_json.h"
 #include "ui/node_graph.h"
 #include "gpu/shader_uniforms.h"
 
@@ -47,8 +48,11 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 vivid::session::ClipNote buf[256];
                 const int n = vivid::session::session_get_clip(s, t, sc, buf, 256);
                 json notes = json::array();
-                for (int i = 0; i < n; ++i)
-                    notes.push_back({ {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} });
+                for (int i = 0; i < n; ++i) {
+                    json jn = { {"p", buf[i].pitch}, {"s", buf[i].start}, {"d", buf[i].dur}, {"v", buf[i].vel} };
+                    vivid::session::expr_to_json(buf[i], jn);
+                    notes.push_back(jn);
+                }
                 clips.push_back({ {"length", vivid::session::session_clip_length(s, t, sc)}, {"notes", notes} });
             }
             jt["clips"] = clips;
@@ -79,8 +83,11 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         vivid::session::ClipNote buf[256];
         const int n = vivid::session::session_pool_get(s, i, buf, 256);
         json notes = json::array();
-        for (int k = 0; k < n; ++k)
-            notes.push_back({ {"p", buf[k].pitch}, {"s", buf[k].start}, {"d", buf[k].dur}, {"v", buf[k].vel} });
+        for (int k = 0; k < n; ++k) {
+            json jn = { {"p", buf[k].pitch}, {"s", buf[k].start}, {"d", buf[k].dur}, {"v", buf[k].vel} };
+            vivid::session::expr_to_json(buf[k], jn);
+            notes.push_back(jn);
+        }
         pool.push_back({ {"name", vivid::session::session_pool_name(s, i)},
                          {"length", vivid::session::session_pool_length(s, i)}, {"notes", notes} });
     }
@@ -188,8 +195,11 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                     const json& jc = cl[sc];
                     std::vector<vivid::session::ClipNote> notes;
                     if (jc.contains("notes"))
-                        for (const auto& jn : jc["notes"])
-                            notes.push_back({ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f) });
+                        for (const auto& jn : jc["notes"]) {
+                            vivid::session::ClipNote cn{ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f), {} };
+                            vivid::session::expr_from_json(jn, cn);
+                            notes.push_back(std::move(cn));
+                        }
                     vivid::session::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
                 }
             }
