@@ -5,6 +5,7 @@
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
 #include "audio/sampler.h"
+#include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
 #include <memory>
@@ -42,6 +43,7 @@ struct Track {
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
+    std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
     uint64_t              steady = 0;
     std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
     std::vector<float>    fxl, fxr;         // effect I/O scratch
@@ -202,6 +204,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     }
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
+t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
     return t;
@@ -216,6 +219,7 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
     for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
+t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->effects.reserve(16); t->effects_edit.reserve(16);
     return t;
@@ -561,7 +565,13 @@ static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
     }
 }
 
-static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) {
+// Note on/off + per-note expression. Note events are added first so a same-offset
+// expression for a just-started note never precedes its note-on (VST3 wants the list
+// sorted; continuing-note expression is at offset 0 with its note-on in a prior block).
+// Axis mapping: bend -> kTuningTypeID (±120 semis, norm = semis/240 + 0.5), timbre ->
+// kBrightnessTypeID (0..1), pressure -> per-note PolyPressureEvent (0..1).
+static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev,
+                      const std::vector<ExprEvent>& eev) {
     for (const NoteEvent& ne : nev) {
         Event e{};
         e.sampleOffset = static_cast<int32>(ne.sample_offset);
@@ -572,13 +582,36 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev) 
             e.noteOn.velocity = ne.vel;
             e.noteOn.noteId = ne.note_id;
             e.noteOn.channel = 0;
-            e.noteOn.tuning = 0.f;
+            e.noteOn.tuning = ne.tuning;   // semitone offset for a click-free bent start
         } else {
             e.type = Event::kNoteOffEvent;
             e.noteOff.pitch = static_cast<int16>(ne.pitch);
             e.noteOff.velocity = 0.f;
             e.noteOff.noteId = ne.note_id;
             e.noteOff.channel = 0;
+        }
+        events.addEvent(e);
+    }
+    for (const ExprEvent& xe : eev) {
+        Event e{};
+        e.sampleOffset = static_cast<int32>(xe.sample_offset);
+        e.busIndex = 0;
+        if (xe.axis == vivid::session::AXIS_PRESSURE) {
+            e.type = Event::kPolyPressureEvent;
+            e.polyPressure.channel = 0;
+            e.polyPressure.pitch = static_cast<int16>(xe.pitch);
+            e.polyPressure.pressure = std::clamp(xe.value, 0.f, 1.f);
+            e.polyPressure.noteId = xe.note_id;
+        } else {
+            e.type = Event::kNoteExpressionValueEvent;
+            e.noteExpressionValue.noteId = xe.note_id;
+            if (xe.axis == vivid::session::AXIS_BEND) {
+                e.noteExpressionValue.typeId = kTuningTypeID;
+                e.noteExpressionValue.value = std::clamp(xe.value / 240.0 + 0.5, 0.0, 1.0);
+            } else {  // AXIS_TIMBRE
+                e.noteExpressionValue.typeId = kBrightnessTypeID;
+                e.noteExpressionValue.value = std::clamp(static_cast<double>(xe.value), 0.0, 1.0);
+            }
         }
         events.addEvent(e);
     }
@@ -623,6 +656,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                     t.clips[sc].notes  = t.edit_clips[sc].notes;
                     t.clips[sc].length = t.edit_clips[sc].length;
                 }
+                // notes[] was re-assigned (may have reallocated) — the scheduler's
+                // active[].src pointers now dangle. Null them (note-offs still fire).
+                t.sched.invalidate_active_src();
                 t.edit_gen_seen = t.edit_gen.load(std::memory_order_acquire);
                 t.edit_mtx.unlock();
             }
@@ -669,16 +705,16 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
-                    t.nev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev);
+                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev, t.eev);
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
                 }
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            t.nev.clear();
-            if (release_all)    t.sched.flush(t.nev);                    // play->stop edge: release held notes
-            else if (playing)   t.sched.emit(beats, delta, frames, t.nev);  // paused: emit nothing (tails still ring)
-            emit_vst3(events, t.nev);
+            t.nev.clear(); t.eev.clear();
+            if (release_all)    t.sched.flush(t.nev);                            // play->stop edge: release held notes
+            else if (playing)   t.sched.emit(beats, delta, frames, t.nev, t.eev);  // paused: emit nothing (tails still ring)
+            emit_vst3(events, t.nev, t.eev);
 
             float* ch[2] = { L, R };
             AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
