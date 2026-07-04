@@ -36,8 +36,9 @@ public:
     void audio_trim(float& t0, float& t1) const { t0 = t0_; t1 = t1_; }
     bool take_dirty() { bool d = dirty_; dirty_ = false; return d; }
 
-    // Transport playhead (absolute beats); the editor draws it at fmod(beats,length).
-    void set_playhead(double abs_beats) { playhead_ = abs_beats; }
+    // Transport playhead (absolute beats); the editor draws it at fmod(beats,length)
+    // and, when follow is on, scrolls to keep it in view.
+    void set_playhead(double abs_beats);
 
     void draw(Renderer2D& r);
     bool on_down(double x, double y, double now, int mods);  // true if consumed (mods = GLFW_MOD_*)
@@ -63,6 +64,9 @@ private:
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)
     int    grid_idx_ = 3;              // index into the grid preset table (default 1/16)
+    int    scale_root_ = -1;          // -1 = highlight off; else 0..11 (C..B)
+    int    scale_type_ = 0;           // index into the scale table
+    bool   follow_ = true;            // auto-scroll to keep the playhead in view
     std::vector<vivid::session::ClipNote> clip_;   // internal copy/paste clipboard (based at beat 0)
 
     // View transform (piano-roll). x = gx + (beat - view_beat0_)*beat_px_;

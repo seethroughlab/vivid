@@ -21,6 +21,36 @@ static const GridPreset kGrids[] = {
 };
 static constexpr int kNumGrids = static_cast<int>(sizeof(kGrids) / sizeof(kGrids[0]));
 
+// Scale highlighting: pitch-class membership sets (mirrors mcp/theory.py's scales).
+struct ScaleDef { const char* label; uint16_t mask; };   // bit c set = pitch-class c in scale
+static constexpr uint16_t SM(int a,int b,int c,int d,int e,int f,int g) {
+    return uint16_t((1<<a)|(1<<b)|(1<<c)|(1<<d)|(1<<e)|(1<<f)|(1<<g));
+}
+static const ScaleDef kScales[] = {
+    {"maj",  SM(0,2,4,5,7,9,11)},
+    {"min",  SM(0,2,3,5,7,8,10)},
+    {"harm", SM(0,2,3,5,7,8,11)},
+    {"dor",  SM(0,2,3,5,7,9,10)},
+    {"mix",  SM(0,2,4,5,7,9,10)},
+    {"phr",  SM(0,1,3,5,7,8,10)},
+    {"lyd",  SM(0,2,4,6,7,9,11)},
+    {"penM", uint16_t((1<<0)|(1<<2)|(1<<4)|(1<<7)|(1<<9))},
+    {"penm", uint16_t((1<<0)|(1<<3)|(1<<5)|(1<<7)|(1<<10))},
+};
+static constexpr int kNumScales = static_cast<int>(sizeof(kScales) / sizeof(kScales[0]));
+static const char* kPitchNames[12] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+
+void ClipEditor::set_playhead(double abs_beats) {
+    playhead_ = abs_beats;
+    if (!follow_ || audio_ || length_ <= 0.0 || beat_px_ <= 0.f) return;
+    double p = std::fmod(abs_beats, length_); if (p < 0) p += length_;
+    const double visB = gw() / beat_px_;
+    if (p < view_beat0_ || p > view_beat0_ + visB * 0.92) {
+        view_beat0_ = p - visB * 0.1;
+        clamp_view();
+    }
+}
+
 void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
     if (docked_) { x = 8.f; y = win_h_ - kDockH - 8.f; w = win_w_ - 16.f; h = kDockH; }
     else         { x = px_; y = py_;                   w = kFloatW;       h = kFloatH; }
@@ -141,6 +171,11 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (x >= px + pw - 28.f)      { close(); return true; }                         // [X]
         if (x >= px + pw - 64.f)      { docked_ = !docked_; drag_ = 0; return true; }    // dock
         if (x >= px + pw - 124.f)     { tool_ = tool_ == Tool::Select ? Tool::Draw : Tool::Select; return true; }  // tool
+        if (!audio_ && x >= px + pw - 214.f) {                                           // scale (shift = scale type)
+            if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
+            else       scale_root_ = (scale_root_ + 2) % 13 - 1;   // off,-1 -> 0..11 -> off
+            return true;
+        }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
     }
@@ -360,6 +395,13 @@ bool ClipEditor::on_key(int key, int mods) {
         return true;
     }
     if (key == GLFW_KEY_G) { grid_idx_ = (grid_idx_ + 1) % kNumGrids; cell_ = kGrids[grid_idx_].v; return true; }
+    if (key == GLFW_KEY_F) { fit_view(); return true; }
+    if (key == GLFW_KEY_L) { follow_ = !follow_; return true; }
+    if (key == GLFW_KEY_K) {                                 // K cycles scale root, Shift+K the type
+        if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
+        else       scale_root_ = (scale_root_ + 2) % 13 - 1;
+        return true;
+    }
     if (key == GLFW_KEY_B) { tool_ = Tool::Draw;   return true; }
     if (key == GLFW_KEY_S) { tool_ = Tool::Select; return true; }
     return false;
@@ -374,6 +416,10 @@ void ClipEditor::draw(Renderer2D& r) {
     r.draw_text(px + 12.f, py + 9.f, title_.c_str(), 0.88f, 0.91f, 0.95f, 1.0f, 0.95f);
     if (!audio_) {
         const bool draw = tool_ == Tool::Draw;
+        char sc[16];
+        if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "scale off");
+        else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
+        r.draw_text(px + pw - 210.f, py + 8.f, sc, 0.55f, 0.78f, 0.6f, 1.0f, 0.8f);   // scale (click cycles)
         r.draw_text(px + pw - 120.f, py + 8.f, draw ? "Draw" : "Select",
                     draw ? 0.55f : 0.6f, draw ? 0.82f : 0.72f, draw ? 0.55f : 0.85f, 1.0f, 0.82f);
     }
@@ -415,6 +461,11 @@ void ClipEditor::draw(Renderer2D& r) {
         const float y = yp(p);
         if (y > GY + ROLL) continue;
         if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
+        if (scale_root_ >= 0) {
+            const int pc = (((p - scale_root_) % 12) + 12) % 12;
+            if (pc == 0)                              r.draw_rect(GX, y, GW, RH, 0.35f, 0.85f, 0.45f, 0.17f);
+            else if (kScales[scale_type_].mask & (1u << pc)) r.draw_rect(GX, y, GW, RH, 0.35f, 0.85f, 0.45f, 0.07f);
+        }
         if (p % 12 == 0) {
             r.draw_rect(GX, y, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
             char lbl[8]; std::snprintf(lbl, sizeof lbl, "C%d", p / 12 - 1);
@@ -479,7 +530,7 @@ void ClipEditor::draw(Renderer2D& r) {
 
     char foot[200];
     std::snprintf(foot, sizeof foot,
-                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 B/S tool \xC2\xB7 G cycles grid \xC2\xB7 Cmd C/V/X/D \xC2\xB7 Cmd U quantize \xC2\xB7 arrows move/transpose",
+                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 B/S tool \xC2\xB7 G grid \xC2\xB7 F fit \xC2\xB7 K scale \xC2\xB7 L follow \xC2\xB7 Cmd C/V/X/D \xC2\xB7 Cmd U quantize \xC2\xB7 arrows",
                   tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count());
     r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.76f);
 }
