@@ -74,5 +74,29 @@ int main() {
         CHECK_NEAR(d2[0].start, 7.5, 1e-9);       // dur 0.5 -> max start 7.5
     }
 
+    // decimate_curve (RDP): a dense straight ramp collapses to its 2 endpoints;
+    // a triangle keeps its apex; points are returned t-sorted.
+    {
+        std::vector<CurveBp> ramp;
+        for (int i = 0; i <= 20; ++i) ramp.push_back({ i / 20.f, i / 20.f });   // linear 0..1
+        auto d = decimate_curve(ramp, 0.05f);
+        CHECK(d.size() == 2);                       // collinear -> just endpoints
+        CHECK_NEAR(d.front().t, 0.0, 1e-6);
+        CHECK_NEAR(d.back().t, 1.0, 1e-6);
+
+        std::vector<CurveBp> tri;
+        for (int i = 0; i <= 20; ++i) { float t = i / 20.f; tri.push_back({ t, t < 0.5f ? t * 2.f : (1.f - t) * 2.f }); }
+        auto dt = decimate_curve(tri, 0.05f);
+        CHECK(dt.size() == 3);                      // start, apex, end
+        CHECK_NEAR(dt[1].t, 0.5, 1e-6);
+        CHECK_NEAR(dt[1].v, 1.0, 1e-6);
+
+        // unsorted input is sorted before simplifying
+        std::vector<CurveBp> rev = { {1.f,0.f}, {0.5f,1.f}, {0.f,0.f} };
+        auto dr = decimate_curve(rev, 0.05f);
+        CHECK(dr.size() == 3);
+        CHECK(dr[0].t <= dr[1].t && dr[1].t <= dr[2].t);
+    }
+
     return vivid::test::summary("test_note_ops");
 }

@@ -8,6 +8,7 @@
 namespace vivid::ui {
 
 using vivid::session::ClipNote;
+using vivid::session::ExprCurve;
 
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
@@ -20,6 +21,9 @@ static const GridPreset kGrids[] = {
     {0.25*2.0/3.0, "1/16T"}, {0.125, "1/32"}, {0.0625, "1/64"},
 };
 static constexpr int kNumGrids = static_cast<int>(sizeof(kGrids) / sizeof(kGrids[0]));
+
+static constexpr float kBendRange = 12.f;   // painted bend lane spans ±12 semitones
+static const char* kAxisNames[3] = { "bend", "pressure", "timbre" };
 
 // Scale highlighting: pitch-class membership sets (mirrors mcp/theory.py's scales).
 struct ScaleDef { const char* label; uint16_t mask; };   // bit c set = pitch-class c in scale
@@ -186,17 +190,32 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             drag_ = (std::fabs(x - hx0) <= std::fabs(x - hx1)) ? 10 : 11;
             return true;
         }
-        // Velocity lane (bottom strip): drag the nearest note's velocity.
+        // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
         if (y >= gy() + roll_h()) {
-            int best = -1; double bestd = 1e18;
-            for (size_t i = 0; i < notes_.size(); ++i) {
-                double d = std::fabs(x - xb(notes_[i].start));
-                if (d < bestd) { bestd = d; best = static_cast<int>(i); }
-            }
-            if (best >= 0 && bestd < 40.0) {
-                push_undo();
-                if (!sel_[best]) { clear_sel(); sel_[best] = 1; }
-                drag_ = 5; lane_idx_ = best;
+            if (lane_axis_ < 0) {                             // velocity: drag the nearest note's bar
+                int best = -1; double bestd = 1e18;
+                for (size_t i = 0; i < notes_.size(); ++i) {
+                    double d = std::fabs(x - xb(notes_[i].start));
+                    if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+                }
+                if (best >= 0 && bestd < 40.0) {
+                    push_undo();
+                    if (!sel_[best]) { clear_sel(); sel_[best] = 1; }
+                    drag_ = 5; lane_idx_ = best;
+                }
+            } else {                                          // expression: paint into the note under x
+                paint_note_ = -1;
+                for (size_t i = 0; i < notes_.size(); ++i) {
+                    const float nx0 = xb(notes_[i].start), nx1 = xb(notes_[i].start + notes_[i].dur);
+                    if (x >= nx0 - 2.f && x <= nx1 + 2.f) { paint_note_ = static_cast<int>(i); break; }
+                }
+                if (paint_note_ >= 0) {
+                    push_undo();
+                    if (!sel_[paint_note_]) { clear_sel(); sel_[paint_note_] = 1; }
+                    paint_.clear();
+                    paint_.push_back({ lane_t_at(x), lane_value_at(y) });
+                    drag_ = 6;
+                }
             }
             return true;
         }
@@ -256,6 +275,10 @@ void ClipEditor::on_move(double x, double y) {
         return;
     }
     if (drag_ == 4) { marq_x_ = x; marq_y_ = y; return; }   // marquee: finalized on mouse-up
+    if (drag_ == 6) {                                        // expression paint stroke
+        paint_.push_back({ lane_t_at(x), lane_value_at(y) });
+        return;
+    }
     if (drag_ == 5) {                                        // velocity lane drag
         if (lane_idx_ >= 0 && lane_idx_ < static_cast<int>(notes_.size())) {
             const float top = gy() + roll_h() + 4.f, bot = gy() + gh() - 4.f;
@@ -285,6 +308,7 @@ void ClipEditor::on_move(double x, double y) {
 
 void ClipEditor::on_up(double x, double y) {
     if (drag_ == 4) finish_marquee(x, y);
+    if (drag_ == 6) finish_paint();
     drag_ = 0; lane_idx_ = -1;
 }
 
@@ -298,6 +322,43 @@ void ClipEditor::finish_marquee(double x, double y) {
         const bool yoverlap = n.pitch >= p0 && n.pitch <= p1;
         if (xoverlap && yoverlap) sel_[i] = 1;
     }
+}
+
+// The expression lane occupies [gy()+roll_h() , gy()+gh()]; a small inset keeps the
+// curve off the edges. Bend maps ±kBendRange to the full height (center = 0); pressure
+// and timbre map 0..1 bottom-to-top.
+float ClipEditor::lane_value_at(double y) const {
+    const float top = gy() + roll_h() + 6.f, bot = gy() + gh() - 4.f;
+    float f = (bot - static_cast<float>(y)) / std::max(1.f, bot - top);   // 0 bottom .. 1 top
+    f = std::clamp(f, 0.f, 1.f);
+    if (lane_axis_ == 0) { float v = (f * 2.f - 1.f) * kBendRange; return bend_snap_ ? std::round(v) : v; }
+    return f;
+}
+float ClipEditor::lane_y_for(float v) const {
+    const float top = gy() + roll_h() + 6.f, bot = gy() + gh() - 4.f;
+    float f = (lane_axis_ == 0) ? (v / kBendRange + 1.f) * 0.5f : v;
+    f = std::clamp(f, 0.f, 1.f);
+    return bot - f * (bot - top);
+}
+float ClipEditor::lane_t_at(double x) const {
+    if (paint_note_ < 0 || paint_note_ >= static_cast<int>(notes_.size())) return 0.f;
+    const auto& n = notes_[paint_note_];
+    return std::clamp(static_cast<float>((beat_at(x) - n.start) / std::max(1e-6, n.dur)), 0.f, 1.f);
+}
+// Commit the freehand stroke into the painted note's axis curve: a tiny tap clears it
+// (erase), otherwise the raw points are decimated (RDP) into breakpoints.
+void ClipEditor::finish_paint() {
+    if (paint_note_ < 0 || paint_note_ >= static_cast<int>(notes_.size()) || lane_axis_ < 0) return;
+    auto& curve = notes_[paint_note_].expr[lane_axis_];
+    float tmin = 1e9f, tmax = -1e9f;
+    for (const auto& p : paint_) { tmin = std::min(tmin, p.t); tmax = std::max(tmax, p.t); }
+    if (paint_.empty() || (tmax - tmin) < 0.03f) {
+        curve.bp.clear();                                     // tap (near-zero time span) = erase
+    } else {
+        const float eps = (lane_axis_ == 0) ? 0.3f : 0.03f;   // semitone vs 0..1 tolerance
+        curve.bp = vivid::session::decimate_curve(paint_, eps);
+    }
+    paint_.clear(); paint_note_ = -1; dirty_ = true;
 }
 
 void ClipEditor::copy_sel() {
@@ -395,6 +456,8 @@ bool ClipEditor::on_key(int key, int mods) {
         return true;
     }
     if (key == GLFW_KEY_G) { grid_idx_ = (grid_idx_ + 1) % kNumGrids; cell_ = kGrids[grid_idx_].v; return true; }
+    if (key == GLFW_KEY_E) { lane_axis_ = lane_axis_ >= 2 ? -1 : lane_axis_ + 1; return true; }  // lane: vel/bend/pres/timbre
+    if (key == GLFW_KEY_J) { bend_snap_ = !bend_snap_; return true; }                            // semitone-snap painted bend
     if (key == GLFW_KEY_F) { fit_view(); return true; }
     if (key == GLFW_KEY_L) { follow_ = !follow_; return true; }
     if (key == GLFW_KEY_K) {                                 // K cycles scale root, Shift+K the type
@@ -496,19 +559,56 @@ void ClipEditor::draw(Renderer2D& r) {
         }
         r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
     }
-    // Velocity lane (bottom strip): a bar per note, height = velocity.
+    // Bottom lane: velocity bars, or a painted per-note expression curve for one MPE axis.
     const float laneTop = GY + ROLL, laneBot = GY + GH, laneH = laneBot - laneTop - 6.f;
     r.draw_rect(GX, laneTop, GW, 1.f, 0.20f, 0.22f, 0.26f, 1.0f);
     r.draw_rect(GX, laneTop + 1.f, GW, laneBot - laneTop - 1.f, 0.05f, 0.055f, 0.07f, 1.0f);
-    r.draw_text(GX + 2.f, laneTop + 3.f, "vel", 0.4f, 0.43f, 0.48f, 1.0f, 0.66f);
-    for (size_t i = 0; i < notes_.size(); ++i) {
-        const auto& n = notes_[i];
-        const float bx = xb(n.start);
-        if (bx < GX - 2.f || bx > GX + GW) continue;
-        const float h = std::clamp(n.vel, 0.f, 1.f) * laneH;
-        const bool s = sel_[i] != 0;
-        r.draw_rect(bx, laneBot - 3.f - h, 2.5f, h,
-                    s ? 0.98f : 0.35f, s ? 0.72f : 0.66f, s ? 0.30f : 0.72f, 1.0f);
+    if (lane_axis_ < 0) {
+        r.draw_text(GX + 2.f, laneTop + 3.f, "vel", 0.4f, 0.43f, 0.48f, 1.0f, 0.66f);
+        for (size_t i = 0; i < notes_.size(); ++i) {
+            const auto& n = notes_[i];
+            const float bx = xb(n.start);
+            if (bx < GX - 2.f || bx > GX + GW) continue;
+            const float h = std::clamp(n.vel, 0.f, 1.f) * laneH;
+            const bool s = sel_[i] != 0;
+            r.draw_rect(bx, laneBot - 3.f - h, 2.5f, h,
+                        s ? 0.98f : 0.35f, s ? 0.72f : 0.66f, s ? 0.30f : 0.72f, 1.0f);
+        }
+    } else {
+        char lbl[24]; std::snprintf(lbl, sizeof lbl, "%s%s", kAxisNames[lane_axis_], bend_snap_ && lane_axis_ == 0 ? " (snap)" : "");
+        r.draw_text(GX + 2.f, laneTop + 3.f, lbl, 0.6f, 0.78f, 0.55f, 1.0f, 0.66f);
+        if (lane_axis_ == 0) {  // bend: zero line
+            const float yc = lane_y_for(0.f);
+            r.draw_rect(GX, yc, GW, 1.f, 0.24f, 0.26f, 0.30f, 1.0f);
+        }
+        // Each note's curve, sampled across its span.
+        for (size_t i = 0; i < notes_.size(); ++i) {
+            const auto& n = notes_[i];
+            const ExprCurve& c = n.expr[lane_axis_];
+            if (c.empty()) continue;
+            const float nx0 = xb(n.start), nx1 = xb(n.start + n.dur);
+            if (nx1 < GX || nx0 > GX + GW) continue;
+            const bool s = sel_[i] != 0;
+            const int K = 28;
+            float px = nx0, py = lane_y_for(c.sample(0.f));
+            for (int k = 1; k <= K; ++k) {
+                const float t = static_cast<float>(k) / K;
+                const float cx = nx0 + t * (nx1 - nx0), cy = lane_y_for(c.sample(t));
+                r.draw_line(px, py, cx, cy, s ? 2.0f : 1.4f,
+                            s ? 0.98f : 0.45f, s ? 0.80f : 0.70f, s ? 0.35f : 0.55f, 1.0f);
+                px = cx; py = cy;
+            }
+        }
+        // Live stroke being painted.
+        if (drag_ == 6 && paint_.size() > 1 && paint_note_ >= 0 && paint_note_ < static_cast<int>(notes_.size())) {
+            const auto& n = notes_[paint_note_];
+            float px = xb(n.start + paint_[0].t * n.dur), py = lane_y_for(paint_[0].v);
+            for (size_t k = 1; k < paint_.size(); ++k) {
+                const float cx = xb(n.start + paint_[k].t * n.dur), cy = lane_y_for(paint_[k].v);
+                r.draw_line(px, py, cx, cy, 1.6f, 1.0f, 0.9f, 0.4f, 0.9f);
+                px = cx; py = cy;
+            }
+        }
     }
     // Playhead (spans roll + lane).
     if (playhead_ >= 0.0 && length_ > 0.0) {
@@ -530,8 +630,9 @@ void ClipEditor::draw(Renderer2D& r) {
 
     char foot[200];
     std::snprintf(foot, sizeof foot,
-                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 B/S tool \xC2\xB7 G grid \xC2\xB7 F fit \xC2\xB7 K scale \xC2\xB7 L follow \xC2\xB7 Cmd C/V/X/D \xC2\xB7 Cmd U quantize \xC2\xB7 arrows",
-                  tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count());
+                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 lane %s \xC2\xB7 E lane \xC2\xB7 J snap \xC2\xB7 B/S tool \xC2\xB7 G grid \xC2\xB7 F fit \xC2\xB7 K scale \xC2\xB7 paint in the lane; tap=erase",
+                  tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count(),
+                  lane_axis_ < 0 ? "vel" : kAxisNames[lane_axis_]);
     r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.76f);
 }
 

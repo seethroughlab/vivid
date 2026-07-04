@@ -77,4 +77,32 @@ inline void paste_at(std::vector<ClipNote>& notes, std::vector<uint8_t>& sel,
     last = notes.size();
 }
 
+// --- Expression-curve decimation (M4 painting) ---
+// Ramer–Douglas–Peucker over a t-sorted breakpoint list, in value space. Keeps the
+// endpoints and any point whose value deviates more than `eps` from the straight line
+// between its kept neighbors — turning a dense freehand stroke into a few breakpoints.
+inline void rdp_keep(const std::vector<CurveBp>& in, size_t i0, size_t i1, float eps,
+                     std::vector<char>& keep) {
+    if (i1 <= i0 + 1) return;
+    const CurveBp a = in[i0], b = in[i1];
+    const float span = b.t - a.t;
+    float maxd = 0.f; size_t idx = i0;
+    for (size_t i = i0 + 1; i < i1; ++i) {
+        const float vt = span > 1e-9f ? a.v + (b.v - a.v) * ((in[i].t - a.t) / span) : a.v;
+        const float d = std::fabs(in[i].v - vt);
+        if (d > maxd) { maxd = d; idx = i; }
+    }
+    if (maxd > eps) { keep[idx] = 1; rdp_keep(in, i0, idx, eps, keep); rdp_keep(in, idx, i1, eps, keep); }
+}
+
+inline std::vector<CurveBp> decimate_curve(std::vector<CurveBp> in, float eps) {
+    std::sort(in.begin(), in.end(), [](const CurveBp& a, const CurveBp& b) { return a.t < b.t; });
+    if (in.size() <= 2) return in;
+    std::vector<char> keep(in.size(), 0); keep.front() = 1; keep.back() = 1;
+    rdp_keep(in, 0, in.size() - 1, eps, keep);
+    std::vector<CurveBp> out;
+    for (size_t i = 0; i < in.size(); ++i) if (keep[i]) out.push_back(in[i]);
+    return out;
+}
+
 }  // namespace vivid::session

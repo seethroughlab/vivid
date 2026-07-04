@@ -90,6 +90,10 @@ private:
     double last_down_ = -1; int last_idx_ = -1;   // double-click tracking
     double marq_x_ = 0, marq_y_ = 0; bool marq_add_ = false;   // marquee current corner + additive
     int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
+    int    lane_axis_ = -1;       // bottom lane: -1 velocity, 0 bend, 1 pressure, 2 timbre
+    bool   bend_snap_ = false;    // quantize painted bend to whole semitones
+    std::vector<vivid::session::CurveBp> paint_;   // raw freehand stroke (note-normalized t,value)
+    int    paint_note_ = -1;      // note the current stroke paints into
 
     // Panel geometry (floating uses px_/py_; docked = bottom strip).
     void  panel(float& x, float& y, float& w, float& h) const;
@@ -117,6 +121,12 @@ private:
     void  paste(double at_beat);      // clip_ -> notes, selects pasted
     void  duplicate_sel();            // copy + paste one span later
     void  finish_marquee(double x, double y);
+    // Expression lane (M4) value<->pixel mapping. lane_value_at maps a lane y to the
+    // current axis's units (bend = semitones, pressure/timbre 0..1); lane_y_for inverts.
+    float lane_value_at(double y) const;
+    float lane_t_at(double x) const;         // x -> normalized t within paint_note_
+    float lane_y_for(float v) const;
+    void  finish_paint();
 };
 
 }  // namespace vivid::ui
