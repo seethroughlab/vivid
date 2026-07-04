@@ -1,4 +1,5 @@
 #include "ui/clip_editor.h"
+#include "midi/note_ops.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
@@ -6,9 +7,19 @@
 
 namespace vivid::ui {
 
+using vivid::session::ClipNote;
+
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
 static constexpr float kHeaderH = 30.f;
+
+// Grid/snap presets (beats). Straight + triplet subdivisions.
+struct GridPreset { double v; const char* label; };
+static const GridPreset kGrids[] = {
+    {1.0, "1/4"}, {0.5, "1/8"}, {1.0/3.0, "1/8T"}, {0.25, "1/16"},
+    {0.25*2.0/3.0, "1/16T"}, {0.125, "1/32"}, {0.0625, "1/64"},
+};
+static constexpr int kNumGrids = static_cast<int>(sizeof(kGrids) / sizeof(kGrids[0]));
 
 void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
     if (docked_) { x = 8.f; y = win_h_ - kDockH - 8.f; w = win_w_ - 16.f; h = kDockH; }
@@ -65,7 +76,7 @@ void ClipEditor::clamp_view() {
     row_h_   = std::clamp(row_h_, 5.f, 44.f);
     const double visB = gw() / beat_px_;
     view_beat0_ = std::clamp(view_beat0_, 0.0, std::max(0.0, length_ - visB * 0.15));
-    const int rows = std::max(1, static_cast<int>(gh() / row_h_));
+    const int rows = std::max(1, static_cast<int>(roll_h() / row_h_));
     view_pitch_top_ = std::clamp(view_pitch_top_, std::min(127, rows - 1), 127);
 }
 
@@ -75,7 +86,7 @@ void ClipEditor::fit_view() {
     if (lo > hi) { lo = 54; hi = 78; }                 // empty clip: center on the middle
     lo = std::max(0, lo - 2); hi = std::min(127, hi + 2);
     const int rows = std::max(1, hi - lo + 1);
-    row_h_ = std::clamp(gh() / static_cast<float>(rows), 5.f, 44.f);
+    row_h_ = std::clamp(roll_h() / static_cast<float>(rows), 5.f, 44.f);
     beat_px_ = std::clamp(gw() / static_cast<float>(length_ > 0 ? length_ : 4.0), 8.f, 600.f);
     view_beat0_ = 0.0;
     view_pitch_top_ = hi;
@@ -91,6 +102,8 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     undo_.clear(); redo_.clear();
     drag_ = 0; last_idx_ = -1; dirty_ = false; audio_ = false;
     tool_ = Tool::Draw;
+    grid_idx_ = std::clamp(grid_idx_, 0, kNumGrids - 1);
+    cell_ = kGrids[grid_idx_].v;
     open_ = true;
     fit_view();
 }
@@ -138,6 +151,20 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             drag_ = (std::fabs(x - hx0) <= std::fabs(x - hx1)) ? 10 : 11;
             return true;
         }
+        // Velocity lane (bottom strip): drag the nearest note's velocity.
+        if (y >= gy() + roll_h()) {
+            int best = -1; double bestd = 1e18;
+            for (size_t i = 0; i < notes_.size(); ++i) {
+                double d = std::fabs(x - xb(notes_[i].start));
+                if (d < bestd) { bestd = d; best = static_cast<int>(i); }
+            }
+            if (best >= 0 && bestd < 40.0) {
+                push_undo();
+                if (!sel_[best]) { clear_sel(); sel_[best] = 1; }
+                drag_ = 5; lane_idx_ = best;
+            }
+            return true;
+        }
         bool re; int idx = hit_note(x, y, re);
         if (idx >= 0) {
             if (shift) {                                           // shift-click toggles selection
@@ -157,7 +184,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             down_beat_ = beat_at(x); down_pitch_ = pitch_at(y);
             return true;
         }
-        // Empty: Draw tool adds a note; Select tool clears the selection.
+        // Empty: Draw tool adds a note; Select tool starts a marquee (shift = additive).
         if (tool_ == Tool::Draw) {
             double b = std::clamp(snap(beat_at(x)), 0.0, std::max(0.0, length_ - cell_));
             int p = std::clamp(pitch_at(y), 0, 127);
@@ -168,7 +195,10 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             down_beat_ = beat_at(x); down_pitch_ = p;
             last_down_ = now; last_idx_ = static_cast<int>(notes_.size()) - 1;
         } else {
-            clear_sel();
+            if (!shift) clear_sel();
+            drag_ = 4; marq_add_ = shift;
+            down_beat_ = beat_at(x); down_pitch_ = pitch_at(y);
+            marq_x_ = x; marq_y_ = y;
         }
         return true;
     }
@@ -190,6 +220,16 @@ void ClipEditor::on_move(double x, double y) {
         dirty_ = true;
         return;
     }
+    if (drag_ == 4) { marq_x_ = x; marq_y_ = y; return; }   // marquee: finalized on mouse-up
+    if (drag_ == 5) {                                        // velocity lane drag
+        if (lane_idx_ >= 0 && lane_idx_ < static_cast<int>(notes_.size())) {
+            const float top = gy() + roll_h() + 4.f, bot = gy() + gh() - 4.f;
+            float v = (bot - static_cast<float>(y)) / std::max(1.f, bot - top);
+            vivid::session::set_velocity_selected(notes_, sel_, std::clamp(v, 0.f, 1.f));
+            dirty_ = true;
+        }
+        return;
+    }
     if (drag_ != 1 && drag_ != 2) return;
     const double dbeat = beat_at(x) - down_beat_;
     const int    dpitch = pitch_at(y) - down_pitch_;
@@ -208,7 +248,52 @@ void ClipEditor::on_move(double x, double y) {
     dirty_ = true;
 }
 
-void ClipEditor::on_up(double, double) { drag_ = 0; }
+void ClipEditor::on_up(double x, double y) {
+    if (drag_ == 4) finish_marquee(x, y);
+    drag_ = 0; lane_idx_ = -1;
+}
+
+void ClipEditor::finish_marquee(double x, double y) {
+    const double b0 = std::min(down_beat_, beat_at(x)), b1 = std::max(down_beat_, beat_at(x));
+    const int    p0 = std::min(down_pitch_, pitch_at(y)), p1 = std::max(down_pitch_, pitch_at(y));
+    if (!marq_add_) clear_sel();
+    for (size_t i = 0; i < notes_.size(); ++i) {
+        const auto& n = notes_[i];
+        const bool xoverlap = n.start + n.dur >= b0 && n.start <= b1;   // note time-span intersects
+        const bool yoverlap = n.pitch >= p0 && n.pitch <= p1;
+        if (xoverlap && yoverlap) sel_[i] = 1;
+    }
+}
+
+void ClipEditor::copy_sel() {
+    auto c = vivid::session::copy_selected(notes_, sel_);
+    if (!c.empty()) clip_ = std::move(c);
+}
+
+void ClipEditor::paste(double at_beat) {
+    if (clip_.empty()) return;
+    push_undo();
+    clear_sel();
+    size_t first, last;
+    vivid::session::paste_at(notes_, sel_, clip_, at_beat, length_, first, last);
+    (void)first; (void)last;
+    dirty_ = true;
+}
+
+void ClipEditor::duplicate_sel() {
+    auto c = vivid::session::copy_selected(notes_, sel_);
+    if (c.empty()) return;
+    const double span = std::max(vivid::session::notes_span(c), cell_);
+    // Anchor at the earliest selected note's absolute start + one span.
+    double lo = 1e18;
+    for (size_t i = 0; i < notes_.size(); ++i) if (sel_[i]) lo = std::min(lo, notes_[i].start);
+    push_undo();
+    clear_sel();
+    size_t first, last;
+    vivid::session::paste_at(notes_, sel_, c, lo + span, length_, first, last);
+    (void)first; (void)last;
+    dirty_ = true;
+}
 
 void ClipEditor::on_scroll(double xoff, double yoff, int mods, double mx, double my) {
     if (!open_ || audio_) { if (open_ && audio_) {} return; }
@@ -250,6 +335,31 @@ bool ClipEditor::on_key(int key, int mods) {
         }
         return true;
     }
+    if (cmd && key == GLFW_KEY_C) { copy_sel(); return true; }
+    if (cmd && key == GLFW_KEY_X) { copy_sel(); delete_selected(); return true; }
+    if (cmd && key == GLFW_KEY_V) {
+        double at = (playhead_ >= 0.0 && length_ > 0.0) ? std::fmod(playhead_, length_) : 0.0;
+        paste(std::max(0.0, at)); return true;
+    }
+    if (cmd && key == GLFW_KEY_D) { duplicate_sel(); return true; }
+    if (cmd && key == GLFW_KEY_U) {                          // quantize starts to grid
+        if (vivid::session::sel_count(sel_)) { push_undo();
+            vivid::session::quantize_selected(notes_, sel_, cell_); dirty_ = true; }
+        return true;
+    }
+    if (key == GLFW_KEY_LEFT || key == GLFW_KEY_RIGHT) {
+        if (vivid::session::sel_count(sel_)) { push_undo();
+            vivid::session::nudge_selected(notes_, sel_, key == GLFW_KEY_RIGHT ? cell_ : -cell_, length_);
+            dirty_ = true; }
+        return true;
+    }
+    if (key == GLFW_KEY_UP || key == GLFW_KEY_DOWN) {
+        if (vivid::session::sel_count(sel_)) { push_undo();
+            int step = (key == GLFW_KEY_UP ? 1 : -1) * (shift ? 12 : 1);
+            vivid::session::transpose_selected(notes_, sel_, step); dirty_ = true; }
+        return true;
+    }
+    if (key == GLFW_KEY_G) { grid_idx_ = (grid_idx_ + 1) % kNumGrids; cell_ = kGrids[grid_idx_].v; return true; }
     if (key == GLFW_KEY_B) { tool_ = Tool::Draw;   return true; }
     if (key == GLFW_KEY_S) { tool_ = Tool::Select; return true; }
     return false;
@@ -297,11 +407,13 @@ void ClipEditor::draw(Renderer2D& r) {
     }
 
     const float RH = row_h_;
-    const int rows = std::max(1, static_cast<int>(GH / RH) + 2);
+    const float ROLL = roll_h();
+    const int rows = std::max(1, static_cast<int>(ROLL / RH) + 2);
     const int pTop = view_pitch_top_, pBot = view_pitch_top_ - rows;
     for (int p = pBot; p <= pTop; ++p) {
         if (p < 0 || p > 127) continue;
         const float y = yp(p);
+        if (y > GY + ROLL) continue;
         if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
         if (p % 12 == 0) {
             r.draw_rect(GX, y, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
@@ -316,13 +428,14 @@ void ClipEditor::draw(Renderer2D& r) {
         if (b < 0) continue;
         const float x = xb(b);
         const bool whole = std::fabs(b - std::round(b)) < 1e-6;
-        r.draw_rect(x, GY, 1.f, GH, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
+        r.draw_rect(x, GY, 1.f, ROLL, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
     }
     // Notes.
     for (size_t i = 0; i < notes_.size(); ++i) {
         const auto& n = notes_[i];
         if (n.pitch < pBot - 1 || n.pitch > pTop + 1) continue;
         const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
+        if (ny > GY + ROLL) continue;
         const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);
         if (sel_[i]) {
             r.draw_rect(nx - 1.f, ny, nw + 2.f, RH, 0.98f, 0.86f, 0.42f, 1.0f);   // selection halo
@@ -332,19 +445,43 @@ void ClipEditor::draw(Renderer2D& r) {
         }
         r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
     }
-    // Playhead.
+    // Velocity lane (bottom strip): a bar per note, height = velocity.
+    const float laneTop = GY + ROLL, laneBot = GY + GH, laneH = laneBot - laneTop - 6.f;
+    r.draw_rect(GX, laneTop, GW, 1.f, 0.20f, 0.22f, 0.26f, 1.0f);
+    r.draw_rect(GX, laneTop + 1.f, GW, laneBot - laneTop - 1.f, 0.05f, 0.055f, 0.07f, 1.0f);
+    r.draw_text(GX + 2.f, laneTop + 3.f, "vel", 0.4f, 0.43f, 0.48f, 1.0f, 0.66f);
+    for (size_t i = 0; i < notes_.size(); ++i) {
+        const auto& n = notes_[i];
+        const float bx = xb(n.start);
+        if (bx < GX - 2.f || bx > GX + GW) continue;
+        const float h = std::clamp(n.vel, 0.f, 1.f) * laneH;
+        const bool s = sel_[i] != 0;
+        r.draw_rect(bx, laneBot - 3.f - h, 2.5f, h,
+                    s ? 0.98f : 0.35f, s ? 0.72f : 0.66f, s ? 0.30f : 0.72f, 1.0f);
+    }
+    // Playhead (spans roll + lane).
     if (playhead_ >= 0.0 && length_ > 0.0) {
         double p = std::fmod(playhead_, length_); if (p < 0) p += length_;
         const float x = xb(p);
         if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
     }
+    // Marquee rectangle.
+    if (drag_ == 4) {
+        const float mx0 = std::min(static_cast<float>(marq_x_), xb(down_beat_));
+        const float mx1 = std::max(static_cast<float>(marq_x_), xb(down_beat_));
+        const float my0 = std::min(static_cast<float>(marq_y_), yp(down_pitch_));
+        const float my1 = std::max(static_cast<float>(marq_y_), yp(down_pitch_));
+        r.draw_rect(mx0, my0, mx1 - mx0, my1 - my0, 0.5f, 0.7f, 1.0f, 0.16f);
+        r.draw_rect(mx0, my0, mx1 - mx0, 1.f, 0.6f, 0.78f, 1.0f, 0.7f);
+        r.draw_rect(mx0, my1, mx1 - mx0, 1.f, 0.6f, 0.78f, 1.0f, 0.7f);
+    }
     r.pop_clip_rect();
 
-    char foot[160];
+    char foot[200];
     std::snprintf(foot, sizeof foot,
-                  "%s tool  \xC2\xB7  %d sel  \xC2\xB7  B/S tool  \xC2\xB7  \xE2\x8C\x98-scroll zoom  \xC2\xB7  \xE2\x8C\xA5-scroll v-zoom  \xC2\xB7  \xE2\x8C\x98Z undo  \xC2\xB7  Del",
-                  tool_ == Tool::Draw ? "Draw" : "Select", selected_count());
-    r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
+                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 B/S tool \xC2\xB7 G cycles grid \xC2\xB7 Cmd C/V/X/D \xC2\xB7 Cmd U quantize \xC2\xB7 arrows move/transpose",
+                  tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count());
+    r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.76f);
 }
 
 }  // namespace vivid::ui

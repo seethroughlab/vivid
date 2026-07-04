@@ -62,6 +62,8 @@ private:
     double length_ = 4.0;
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)
+    int    grid_idx_ = 3;              // index into the grid preset table (default 1/16)
+    std::vector<vivid::session::ClipNote> clip_;   // internal copy/paste clipboard (based at beat 0)
 
     // View transform (piano-roll). x = gx + (beat - view_beat0_)*beat_px_;
     // y = gy + (view_pitch_top_ - pitch)*row_h_.
@@ -77,15 +79,19 @@ private:
     // Undo/redo of the note buffer (selection is not snapshotted; it's cleared on undo).
     std::vector<std::vector<vivid::session::ClipNote>> undo_, redo_;
 
-    int    drag_ = 0;             // 0 none,1 move,2 resize,3 pan-panel,4 marquee,10/11 audio trim
+    int    drag_ = 0;             // 0 none,1 move,2 resize,3 pan-panel,4 marquee,5 velocity,10/11 audio trim
     double down_beat_ = 0; int down_pitch_ = 0;
     std::vector<vivid::session::ClipNote> drag_orig_;   // selection snapshot at drag start
     double down_off_x_ = 0, down_off_y_ = 0;       // panel-drag grab offset
     double last_down_ = -1; int last_idx_ = -1;   // double-click tracking
+    double marq_x_ = 0, marq_y_ = 0; bool marq_add_ = false;   // marquee current corner + additive
+    int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
 
     // Panel geometry (floating uses px_/py_; docked = bottom strip).
     void  panel(float& x, float& y, float& w, float& h) const;
     float gx() const, gy() const, gw() const, gh() const;
+    float lane_h() const { return audio_ ? 0.f : 54.f; }   // velocity lane height
+    float roll_h() const { return gh() - lane_h(); }       // piano-roll height (above lane)
     float bw() const { return beat_px_; }
     float rh() const { return row_h_; }
     float xb(double b) const { return gx() + float(b - view_beat0_) * beat_px_; }
@@ -103,6 +109,10 @@ private:
     void  add_note(const vivid::session::ClipNote& n, bool select);
     void  delete_selected();
     void  clamp_view();
+    void  copy_sel();                 // -> clip_
+    void  paste(double at_beat);      // clip_ -> notes, selects pasted
+    void  duplicate_sel();            // copy + paste one span later
+    void  finish_marquee(double x, double y);
 };
 
 }  // namespace vivid::ui
