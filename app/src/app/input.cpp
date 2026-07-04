@@ -49,8 +49,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the chooser is up
     }
-    if (action != GLFW_PRESS) return;
+    if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     if (key == GLFW_KEY_ESCAPE && win->editor && win->editor->is_open()) { win->editor->close(); return; }
+    // The clip editor, when open, gets first crack at keys (Delete/undo/select-all/tool).
+    // Unhandled keys fall through to the global shortcuts below.
+    if (win->editor && win->editor->is_open() && win->editor->on_key(key, mods)) return;
+    if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (key == GLFW_KEY_SPACE && app->transport) { app->transport->toggle_playing(); return; }  // play/stop
@@ -82,11 +86,22 @@ void char_callback(GLFWwindow* w, unsigned int cp) {
     if (win && win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
 }
 
-void scroll_callback(GLFWwindow* w, double /*xoff*/, double yoff) {
+// GLFW gives no modifier state to scroll callbacks; poll the keys we care about.
+static int scroll_mods(GLFWwindow* w) {
+    int m = 0;
+    if (glfwGetKey(w, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS || glfwGetKey(w, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS) m |= GLFW_MOD_SUPER;
+    if (glfwGetKey(w, GLFW_KEY_LEFT_ALT) == GLFW_PRESS   || glfwGetKey(w, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS)   m |= GLFW_MOD_ALT;
+    if (glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || glfwGetKey(w, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) m |= GLFW_MOD_SHIFT;
+    return m;
+}
+
+void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
-    if (win->editor && win->editor->is_open() && win->editor->contains(mx, my)) { win->editor->scroll(yoff); return; }
+    if (win->editor && win->editor->is_open() && win->editor->contains(mx, my)) {
+        win->editor->on_scroll(xoff, yoff, scroll_mods(w), mx, my); return;
+    }
     // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
     if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
         const float smax = vivid::ui::plugins_scroll_max(win->sidebar_w, win->win_h, win->dock_h, vivid::session::plugin_count());
@@ -251,7 +266,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (win->editor && win->editor->is_open()) {
         if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) win->editor->on_up(mx, my);
         if (action == GLFW_PRESS && win->editor->contains(mx, my)) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT) win->editor->on_down(mx, my, glfwGetTime());
+            if (button == GLFW_MOUSE_BUTTON_LEFT) win->editor->on_down(mx, my, glfwGetTime(), mods);
             return;
         }
     }

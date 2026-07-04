@@ -278,6 +278,7 @@ void run_frame_loop(App& app, Window& win) {
             draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
+            clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
