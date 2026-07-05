@@ -80,13 +80,16 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (win->typing && app->session) {
         const int slot = mt_slot(key);
         if (slot >= 0) {
+            const bool step = win->editor && win->editor->is_open() && win->editor->step_mode();
             if (action == GLFW_PRESS && !win->typing_held[slot]) {
                 const int pitch = std::clamp(60 + 12 * win->typing_oct + slot, 0, 127);
                 vivid::session::session_note_on(app->session, pitch, win->typing_vel);
                 win->typing_held[slot] = pitch + 1;
+                if (step) win->editor->step_note_on(pitch, win->typing_vel);
             } else if (action == GLFW_RELEASE && win->typing_held[slot]) {
                 vivid::session::session_note_off(app->session, win->typing_held[slot] - 1);
                 win->typing_held[slot] = 0;
+                if (step) win->editor->step_note_off();
             }
             return;  // swallow
         }

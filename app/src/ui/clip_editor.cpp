@@ -97,6 +97,22 @@ void ClipEditor::add_note(const vivid::session::ClipNote& n, bool select) {
     dirty_ = true;
 }
 
+void ClipEditor::step_note_on(int pitch, float vel) {
+    if (!open_ || audio_) return;
+    const double step = cell_ > 0 ? cell_ : 0.25;
+    if (step_held_ == 0) push_undo();                     // one undo entry per chord/step
+    const double at = std::fmod(step_cursor_, std::max(step, length_));   // wrap within the clip
+    add_note({ pitch, at, step, std::clamp(vel, 0.05f, 1.0f) }, /*select*/false);
+    ++step_held_;
+}
+void ClipEditor::step_note_off() {
+    if (!open_ || audio_) return;
+    if (step_held_ > 0 && --step_held_ == 0) {            // chord released -> advance one cell
+        const double step = cell_ > 0 ? cell_ : 0.25;
+        step_cursor_ += step;
+    }
+}
+
 void ClipEditor::delete_selected() {
     if (selected_count() == 0) return;
     push_undo();
@@ -138,6 +154,7 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     sel_.assign(notes_.size(), 0);
     undo_.clear(); redo_.clear();
     drag_ = 0; last_idx_ = -1; dirty_ = false; audio_ = false;
+    step_cursor_ = 0.0; step_held_ = 0;   // reset step input for the new clip
     tool_ = Tool::Draw;
     grid_idx_ = std::clamp(grid_idx_, 0, kNumGrids - 1);
     cell_ = kGrids[grid_idx_].v;
@@ -211,6 +228,9 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
                 if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
                 else       scale_root_ = (scale_root_ + 2) % 13 - 1;
                 return true;
+            }
+            if (x >= px + pw - 296.f) {   // step-input toggle (resets the cursor to the top)
+                step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true;
             }
         }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
@@ -587,6 +607,8 @@ void ClipEditor::draw(Renderer2D& r) {
         char sc[16];
         if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "scale off");
         else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
+        r.draw_text(px + pw - 290.f, py + 8.f, "step",
+                    step_mode_ ? 0.95f : 0.5f, step_mode_ ? 0.6f : 0.55f, step_mode_ ? 0.28f : 0.6f, 1.0f, 0.82f);
         r.draw_text(px + pw - 210.f, py + 8.f, sc, 0.55f, 0.78f, 0.6f, 1.0f, 0.8f);   // scale (click cycles)
         r.draw_text(px + pw - 120.f, py + 8.f, draw ? "Draw" : "Select",
                     draw ? 0.55f : 0.6f, draw ? 0.82f : 0.72f, draw ? 0.55f : 0.85f, 1.0f, 0.82f);
@@ -768,6 +790,11 @@ void ClipEditor::draw(Renderer2D& r) {
         double p = std::fmod(playhead_, length_); if (p < 0) p += length_;
         const float x = xb(p);
         if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
+    }
+    // Step-input cursor: a gold vertical marking where the next note lands.
+    if (step_mode_ && length_ > 0.0) {
+        const float x = xb(std::fmod(step_cursor_, length_));
+        if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.78f, 0.30f, 0.9f);
     }
     // Marquee rectangle.
     if (drag_ == 4) {

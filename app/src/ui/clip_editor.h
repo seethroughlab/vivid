@@ -53,6 +53,13 @@ public:
     void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
     void set_dock_h(float h) { dock_h_ = h; }       // shared bottom-dock height (docked mode)
     bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
+    // Step input (M6.5): when on, live note-ons (typing / hardware MIDI, routed by the
+    // input layer) write a note at the step cursor and advance it by one grid cell. A
+    // chord (notes held together) lands on the same step; the cursor advances when all
+    // are released.
+    bool step_mode() const { return step_mode_; }
+    void step_note_on(int pitch, float vel);
+    void step_note_off();
     // Audio warp/shaping (A5): frame.cpp loads the clip's state + markers, and drains pending edits.
     void set_audio_shape(int warp_mode, float pitch) { aud_warp_mode_ = warp_mode; aud_pitch_ = pitch; }
     void set_audio_markers(const float* warp_s, const double* warp_b, int nw, const float* trans, int nt) {
@@ -96,6 +103,9 @@ private:
     int    scale_root_ = -1;          // -1 = highlight off; else 0..11 (C..B)
     int    scale_type_ = 0;           // index into the scale table
     bool   follow_ = true;            // auto-scroll to keep the playhead in view
+    bool   step_mode_ = false;        // step input (M6.5)
+    double step_cursor_ = 0.0;        // step-input write position (beats)
+    int    step_held_ = 0;            // notes currently held in the step chord
     std::vector<vivid::session::ClipNote> clip_;   // internal copy/paste clipboard (based at beat 0)
 
     // View transform (piano-roll). x = gx + (beat - view_beat0_)*beat_px_;

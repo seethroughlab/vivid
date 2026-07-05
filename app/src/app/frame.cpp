@@ -263,9 +263,15 @@ void run_frame_loop(App& app, Window& win) {
         if (app.session) {
             vivid::platform::MidiEvent mev[64];
             const int nm = app.midi_in.poll(mev, 64);
+            const bool step = win.editor && win.editor->is_open() && win.editor->step_mode();
             for (int i = 0; i < nm; ++i) {
-                if (mev[i].on) vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
-                else           vivid::session::session_note_off(app.session, mev[i].pitch);
+                if (mev[i].on) {
+                    vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
+                    if (step) win.editor->step_note_on(mev[i].pitch, mev[i].vel);
+                } else {
+                    vivid::session::session_note_off(app.session, mev[i].pitch);
+                    if (step) win.editor->step_note_off();
+                }
             }
         }
 
