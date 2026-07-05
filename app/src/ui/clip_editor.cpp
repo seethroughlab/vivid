@@ -67,8 +67,32 @@ float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kHeader
 float ClipEditor::gw() const { float x,y,w,h; panel(x,y,w,h); return w - 20.f; }
 float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kHeaderH - 20.f; }
 
+int ClipEditor::pitch_of_row(int r) const {
+    if (fold_) {
+        if (fold_rows_.empty()) return 60;
+        return fold_rows_[std::clamp(r, 0, static_cast<int>(fold_rows_.size()) - 1)];
+    }
+    return std::clamp(127 - r, 0, 127);
+}
+int ClipEditor::row_of_pitch(int p) const {
+    if (fold_) {
+        for (size_t i = 0; i < fold_rows_.size(); ++i) if (fold_rows_[i] == p) return static_cast<int>(i);
+        // pitch not occupied: nearest row (fold_rows_ is descending)
+        for (size_t i = 0; i < fold_rows_.size(); ++i) if (fold_rows_[i] < p) return static_cast<int>(i);
+        return static_cast<int>(fold_rows_.size());
+    }
+    return 127 - p;
+}
+void ClipEditor::rebuild_fold() {
+    fold_rows_.clear();
+    if (!fold_) return;
+    std::vector<uint8_t> seen(128, 0);
+    for (const auto& n : notes_) if (n.pitch >= 0 && n.pitch < 128) seen[n.pitch] = 1;
+    for (int p = 127; p >= 0; --p) if (seen[p]) fold_rows_.push_back(p);   // descending = top-down
+    if (fold_rows_.empty()) fold_rows_.push_back(60);   // empty clip: show at least one row
+}
 int ClipEditor::pitch_at(double y) const {
-    return view_pitch_top_ - static_cast<int>(std::floor((y - roll_top()) / row_h_));
+    return pitch_of_row(view_row_top_ + static_cast<int>(std::floor((y - roll_top()) / row_h_)));
 }
 double ClipEditor::snap(double b) const { return std::round(b / cell_) * cell_; }
 
@@ -129,20 +153,26 @@ void ClipEditor::clamp_view() {
     row_h_   = std::clamp(row_h_, 5.f, 44.f);
     const double visB = gw() / beat_px_;
     view_beat0_ = std::clamp(view_beat0_, 0.0, std::max(0.0, length_ - visB * 0.15));
-    const int rows = std::max(1, static_cast<int>(roll_h() / row_h_));
-    view_pitch_top_ = std::clamp(view_pitch_top_, std::min(127, rows - 1), 127);
+    const int vis = std::max(1, static_cast<int>(roll_h() / row_h_));
+    view_row_top_ = std::clamp(view_row_top_, 0, std::max(0, nrows() - vis));
 }
 
 void ClipEditor::fit_view() {
-    int lo = 127, hi = 0;
-    for (const auto& nn : notes_) { lo = std::min(lo, nn.pitch); hi = std::max(hi, nn.pitch); }
-    if (lo > hi) { lo = 54; hi = 78; }                 // empty clip: center on the middle
-    lo = std::max(0, lo - 2); hi = std::min(127, hi + 2);
-    const int rows = std::max(1, hi - lo + 1);
-    row_h_ = std::clamp(roll_h() / static_cast<float>(rows), 5.f, 44.f);
+    if (fold_) {                                       // folded: frame all occupied rows
+        rebuild_fold();
+        row_h_ = std::clamp(roll_h() / static_cast<float>(nrows()), 5.f, 44.f);
+        view_row_top_ = 0;
+    } else {
+        int lo = 127, hi = 0;
+        for (const auto& nn : notes_) { lo = std::min(lo, nn.pitch); hi = std::max(hi, nn.pitch); }
+        if (lo > hi) { lo = 54; hi = 78; }             // empty clip: center on the middle
+        lo = std::max(0, lo - 2); hi = std::min(127, hi + 2);
+        const int rows = std::max(1, hi - lo + 1);
+        row_h_ = std::clamp(roll_h() / static_cast<float>(rows), 5.f, 44.f);
+        view_row_top_ = row_of_pitch(hi);              // top row = highest note
+    }
     beat_px_ = std::clamp(gw() / static_cast<float>(length_ > 0 ? length_ : 4.0), 8.f, 600.f);
     view_beat0_ = 0.0;
-    view_pitch_top_ = hi;
     clamp_view();
 }
 
@@ -231,6 +261,9 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             }
             if (x >= px + pw - 296.f) {   // step-input toggle (resets the cursor to the top)
                 step_mode_ = !step_mode_; step_cursor_ = 0.0; step_held_ = 0; return true;
+            }
+            if (x >= px + pw - 366.f) {   // fold: show only occupied pitch rows
+                fold_ = !fold_; rebuild_fold(); fit_view(); return true;
             }
         }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
@@ -509,15 +542,15 @@ void ClipEditor::on_scroll(double xoff, double yoff, int mods, double mx, double
         clamp_view();
         view_beat0_ = anchor - (mx - gx()) / beat_px_;
     } else if (alt) {                                       // vertical zoom around cursor
-        const double anchor = view_pitch_top_ - (my - gy()) / row_h_;
+        const double anchor = view_row_top_ + (my - roll_top()) / row_h_;   // row under the cursor
         row_h_ *= std::pow(1.15f, static_cast<float>(yoff));
         clamp_view();
-        view_pitch_top_ = static_cast<int>(std::lround(anchor + (my - gy()) / row_h_));
+        view_row_top_ = static_cast<int>(std::lround(anchor - (my - roll_top()) / row_h_));
     } else if (shift || std::fabs(xoff) > 1e-3) {          // horizontal pan
         const double amt = std::fabs(xoff) > 1e-3 ? xoff : -yoff;
         view_beat0_ += amt * 0.5;
-    } else {                                                // vertical pan (pitch)
-        view_pitch_top_ += (yoff > 0 ? 2 : -2);
+    } else {                                                // vertical pan (rows)
+        view_row_top_ += (yoff > 0 ? -2 : 2);              // scroll up = earlier rows (higher pitch)
     }
     clamp_view();
 }
@@ -607,6 +640,8 @@ void ClipEditor::draw(Renderer2D& r) {
         char sc[16];
         if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "scale off");
         else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
+        r.draw_text(px + pw - 360.f, py + 8.f, "fold",
+                    fold_ ? 0.55f : 0.5f, fold_ ? 0.82f : 0.55f, fold_ ? 0.85f : 0.6f, 1.0f, 0.82f);
         r.draw_text(px + pw - 290.f, py + 8.f, "step",
                     step_mode_ ? 0.95f : 0.5f, step_mode_ ? 0.6f : 0.55f, step_mode_ ? 0.28f : 0.6f, 1.0f, 0.82f);
         r.draw_text(px + pw - 210.f, py + 8.f, sc, 0.55f, 0.78f, 0.6f, 1.0f, 0.8f);   // scale (click cycles)
@@ -678,13 +713,15 @@ void ClipEditor::draw(Renderer2D& r) {
 
     const float RH = row_h_;
     const float ROLL = roll_h();
-    const int rows = std::max(1, static_cast<int>(ROLL / RH) + 2);
-    const int pTop = view_pitch_top_, pBot = view_pitch_top_ - rows;
+    const int visRows = std::max(1, static_cast<int>(ROLL / RH) + 2);
+    const int rTop = view_row_top_, rBot = std::min(nrows(), view_row_top_ + visRows);
     const float RTOP = roll_top(), RBOT = lane_top();   // piano-roll band (below ruler, above lane)
-    for (int p = pBot; p <= pTop; ++p) {
+    for (int rr = rTop; rr < rBot; ++rr) {
+        const int p = pitch_of_row(rr);
         if (p < 0 || p > 127) continue;
-        const float y = yp(p);
+        const float y = roll_top() + (rr - view_row_top_) * RH;
         if (y >= RBOT || y + RH <= RTOP) continue;
+        if (fold_) r.draw_rect(GX, y + RH - 1.f, GW, 1.f, 0.16f, 0.17f, 0.20f, 1.0f);   // row separators when folded
         if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
         if (scale_root_ >= 0) {
             const int pc = (((p - scale_root_) % 12) + 12) % 12;
@@ -722,7 +759,6 @@ void ClipEditor::draw(Renderer2D& r) {
     // Notes.
     for (size_t i = 0; i < notes_.size(); ++i) {
         const auto& n = notes_[i];
-        if (n.pitch < pBot - 1 || n.pitch > pTop + 1) continue;
         const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
         if (ny >= RBOT || ny + RH <= RTOP) continue;
         const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);

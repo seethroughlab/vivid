@@ -109,11 +109,14 @@ private:
     std::vector<vivid::session::ClipNote> clip_;   // internal copy/paste clipboard (based at beat 0)
 
     // View transform (piano-roll). x = gx + (beat - view_beat0_)*beat_px_;
-    // y = gy + (view_pitch_top_ - pitch)*row_h_.
+    // y = roll_top + (row_of_pitch(pitch) - view_row_top_)*row_h_. Rows go top-down:
+    // unfolded row r = pitch 127-r; folded, rows are the occupied pitches (descending).
     double view_beat0_ = 0.0;          // leftmost visible beat
     float  beat_px_ = 120.f;           // horizontal zoom (px per beat)
-    int    view_pitch_top_ = 84;       // pitch drawn at the top row
-    float  row_h_ = 12.f;              // vertical zoom (px per semitone)
+    int    view_row_top_ = 43;         // row index at the top (43 = pitch 84, the old default)
+    float  row_h_ = 12.f;              // vertical zoom (px per row)
+    bool   fold_ = false;              // fold: show only occupied pitch rows
+    std::vector<int> fold_rows_;       // occupied pitches, descending (row order) when folded
     double cell_ = 0.25;               // grid = 1/16 note
 
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
@@ -147,8 +150,13 @@ private:
     float bw() const { return beat_px_; }
     float rh() const { return row_h_; }
     float xb(double b) const { return gx() + float(b - view_beat0_) * beat_px_; }
-    float yp(int p) const { return roll_top() + float(view_pitch_top_ - p) * row_h_; }
+    float yp(int p) const { return roll_top() + float(row_of_pitch(p) - view_row_top_) * row_h_; }
     double beat_at(double x) const { return view_beat0_ + (x - gx()) / beat_px_; }
+    // Pitch<->row mapping (fold-aware). Row 0 is the top; unfolded rows are pitch 127-r.
+    int    nrows() const { return fold_ ? std::max(1, static_cast<int>(fold_rows_.size())) : 128; }
+    int    pitch_of_row(int r) const;
+    int    row_of_pitch(int p) const;
+    void   rebuild_fold();             // recompute fold_rows_ from notes_ (occupied pitches)
     // Audio mode: normalized buffer position (0..1) <-> screen x, with zoom/scroll.
     float  wxn(double n) const { return gx() + float(n - wav_x0_) * wav_px_; }
     double wnorm_at(double x) const { return wav_x0_ + (x - gx()) / wav_px_; }
