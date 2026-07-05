@@ -83,6 +83,26 @@ int ClipEditor::row_of_pitch(int p) const {
     }
     return 127 - p;
 }
+bool ClipEditor::vscroll_geom(float& tx, float& ty, float& tw, float& th, float& thumb0, float& thumbLen) const {
+    const float top = roll_top(), bot = lane_top();
+    const float trackH = bot - top;
+    const float visRows = trackH / row_h_;
+    const int   nr = nrows();
+    if (visRows >= nr) return false;                 // everything fits
+    tx = gx() + gw() - 7.f; ty = top; tw = 6.f; th = trackH;
+    thumbLen = std::max(14.f, trackH * visRows / nr);
+    thumb0   = ty + (trackH - thumbLen) * std::clamp(view_row_top_ / static_cast<float>(std::max(1, nr - static_cast<int>(visRows))), 0.f, 1.f);
+    return true;
+}
+bool ClipEditor::hscroll_geom(float& tx, float& ty, float& tw, float& th, float& thumb0, float& thumbLen) const {
+    const double visBeats = gw() / beat_px_;
+    if (visBeats >= length_ || length_ <= 0) return false;
+    tx = gx(); ty = lane_top() - 7.f; tw = gw() - 8.f; th = 6.f;
+    thumbLen = std::max(20.f, static_cast<float>(tw * visBeats / length_));
+    const double maxScroll = std::max(1e-6, length_ - visBeats);
+    thumb0   = tx + (tw - thumbLen) * static_cast<float>(std::clamp(view_beat0_ / maxScroll, 0.0, 1.0));
+    return true;
+}
 void ClipEditor::rebuild_fold() {
     fold_rows_.clear();
     if (!fold_) return;
@@ -271,6 +291,15 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     }
     // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
+        if (!audio_) {   // scrollbars take priority over roll interaction
+            float tx, ty, tw, th, t0, tl;
+            if (vscroll_geom(tx, ty, tw, th, t0, tl) && x >= tx - 2.f && y >= ty && y < ty + th) {
+                drag_ = 20; on_move(x, y); return true;
+            }
+            if (hscroll_geom(tx, ty, tw, th, t0, tl) && y >= ty - 2.f && y < ty + th + 2.f && x >= tx && x < tx + tw) {
+                drag_ = 21; on_move(x, y); return true;
+            }
+        }
         if (audio_) {
             // Warp markers: shift-click a marker deletes it; plain click drags it; shift-click
             // empty adds a marker (beat interpolated so it lands on the existing warp line).
@@ -374,6 +403,22 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
 
 void ClipEditor::on_move(double x, double y) {
     if (!open_ || drag_ == 0) return;
+    if (drag_ == 20) {  // vertical scrollbar: map the cursor to a top row
+        const float top = roll_top(), trackH = lane_top() - top;
+        const float visRows = trackH / row_h_;
+        const int   scrollRows = std::max(1, nrows() - static_cast<int>(visRows));
+        const float f = std::clamp((static_cast<float>(y) - top) / std::max(1.f, trackH), 0.f, 1.f);
+        view_row_top_ = static_cast<int>(std::lround(f * scrollRows));
+        clamp_view();
+        return;
+    }
+    if (drag_ == 21) {  // horizontal scrollbar
+        const double visBeats = gw() / beat_px_;
+        const float f = std::clamp((static_cast<float>(x) - gx()) / std::max(1.f, gw()), 0.f, 1.f);
+        view_beat0_ = f * std::max(0.0, length_ - visBeats);
+        clamp_view();
+        return;
+    }
     if (drag_ == 3) {  // move floating panel
         px_ = std::clamp(static_cast<float>(x - down_off_x_), -kFloatW + 80.f, win_w_ - 80.f);
         py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, win_h_ - kHeaderH - 4.f);
@@ -827,6 +872,16 @@ void ClipEditor::draw(Renderer2D& r) {
         const float x = xb(p);
         if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
     }
+    // Scrollbars (drawn over the roll; hidden when the content fits).
+    { float tx, ty, tw, th, t0, tl;
+      if (vscroll_geom(tx, ty, tw, th, t0, tl)) {
+          r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
+          r.draw_rounded_rect(tx + 1.f, t0, tw - 2.f, tl, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+      }
+      if (hscroll_geom(tx, ty, tw, th, t0, tl)) {
+          r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
+          r.draw_rounded_rect(t0, ty + 1.f, tl, th - 2.f, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+      } }
     // Step-input cursor: a gold vertical marking where the next note lands.
     if (step_mode_ && length_ > 0.0) {
         const float x = xb(std::fmod(step_cursor_, length_));

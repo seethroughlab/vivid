@@ -157,6 +157,10 @@ private:
     int    pitch_of_row(int r) const;
     int    row_of_pitch(int p) const;
     void   rebuild_fold();             // recompute fold_rows_ from notes_ (occupied pitches)
+    // Scrollbar geometry (piano-roll). Returns false when the content fits (bar hidden).
+    // Fills the track rect + the thumb offset/extent along the bar's long axis.
+    bool   vscroll_geom(float& tx, float& ty, float& tw, float& th, float& thumb0, float& thumbLen) const;
+    bool   hscroll_geom(float& tx, float& ty, float& tw, float& th, float& thumb0, float& thumbLen) const;
     // Audio mode: normalized buffer position (0..1) <-> screen x, with zoom/scroll.
     float  wxn(double n) const { return gx() + float(n - wav_x0_) * wav_px_; }
     double wnorm_at(double x) const { return wav_x0_ + (x - gx()) / wav_px_; }
