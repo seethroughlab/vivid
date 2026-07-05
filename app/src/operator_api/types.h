@@ -10,7 +10,7 @@ extern "C" {
 
 /* Bump when operator-facing C ABI changes in incompatible ways.
    Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 10u  /* v10: lane-value Phase 7e.6a — removed VividOperatorDescriptor.lane_behavior + the VividLaneBehavior enum/VIVID_LANE_* constants; operators declare multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaults to Map); v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/ *_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+#define VIVID_OPERATOR_ABI_VERSION 11u  /* v11: audio operator API — VividAudioContext gains note_events/note_event_count (VividNoteEvent) so instrument operators are MIDI-driven (effect: audio-in->out; generator: params/transport->out; instrument: note_events->out); additive; v10: lane-value Phase 7e.6a — removed VividOperatorDescriptor.lane_behavior + the VividLaneBehavior enum/VIVID_LANE_* constants; operators declare multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaults to Map); v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/ *_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -310,6 +310,19 @@ typedef struct VividSharedHandleService {
 // Audio process context — passed to audio operators on the audio thread
 // ---------------------------------------------------------------------------
 
+/* A note on/off delivered to an instrument operator for this block (v11). Mirrors
+   the engine's midi/midi_clip.h NoteEvent. `sample_offset` is the sample within the
+   block; note-on/off for the same voice share `note_id`. `tuning` is a semitone offset
+   applied at note-on (for a click-free bent start). */
+typedef struct VividNoteEvent {
+    uint32_t sample_offset;
+    uint8_t  on;            /* 1 = note-on, 0 = note-off */
+    int16_t  pitch;         /* MIDI pitch 0..127 */
+    float    velocity;      /* 0..1 */
+    int32_t  note_id;       /* stable per-voice id (offs match ons) */
+    float    tuning;        /* semitone offset at note-on */
+} VividNoteEvent;
+
 typedef struct VividAudioContext {
     double    time;
     double    delta_time;
@@ -367,6 +380,12 @@ typedef struct VividAudioContext {
     float     metronome_beat_phase;
     float     metronome_bar_phase;
     float     metronome_beat_ms;
+
+    // ---- Note input for instrument operators (v11) ----
+    // The block's note on/off events (sorted by sample_offset); NULL/0 for effects and
+    // generators. An instrument operator reads these and renders audio to output_buffers.
+    const VividNoteEvent* note_events;
+    uint32_t              note_event_count;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------
