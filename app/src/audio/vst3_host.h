@@ -98,7 +98,11 @@ int   session_get_audio_warp   (Session*, int track, int scene);   // -1 off, el
 void  session_set_audio_pitch  (Session*, int track, int scene, float semitones);
 float session_get_audio_pitch  (Session*, int track, int scene);
 void  session_set_audio_gain   (Session*, int track, int scene, float gain);
+float session_get_audio_gain   (Session*, int track, int scene);
 void  session_set_audio_reverse(Session*, int track, int scene, int on);
+int   session_get_audio_reverse(Session*, int track, int scene);
+void  session_set_audio_fades  (Session*, int track, int scene, float in_ms, float out_ms, float xfade_ms);
+void  session_get_audio_fades  (Session*, int track, int scene, float* in_ms, float* out_ms, float* xfade_ms);
 
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.

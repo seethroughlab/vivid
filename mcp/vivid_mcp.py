@@ -262,6 +262,31 @@ def set_track_gain(track: int, gain: float) -> dict:
 
 
 @mcp.tool
+def audio_set_warp(track: int, scene: int, enabled: bool = True, mode: str = "complex") -> dict:
+    """Enable/disable warping on an audio clip. mode: 'complex' (pitch-preserving), 'beats'
+    (transient-aware, tight for drums), or 'repitch' (tape-style, pitch follows tempo)."""
+    return _post("audio_set_warp", {"track": track, "scene": scene, "enabled": enabled, "mode": mode})
+
+
+@mcp.tool
+def audio_set_pitch(track: int, scene: int, semitones: float) -> dict:
+    """Transpose an audio clip by `semitones` (pitch-preserved; applies in complex/beats warp)."""
+    return _post("audio_set_pitch", {"track": track, "scene": scene, "semitones": semitones})
+
+
+@mcp.tool
+def audio_set_gain(track: int, scene: int, gain: float) -> dict:
+    """Set an audio clip's gain (0..4)."""
+    return _post("audio_set_gain", {"track": track, "scene": scene, "gain": gain})
+
+
+@mcp.tool
+def audio_set_reverse(track: int, scene: int, on: bool = True) -> dict:
+    """Play an audio clip backwards."""
+    return _post("audio_set_reverse", {"track": track, "scene": scene, "on": on})
+
+
+@mcp.tool
 def set_param(track: int, device: int, param: int, value: float) -> dict:
     """Set a device param by its index (from list_params). device 0 = instrument, 1+ = FX. value 0..1."""
     return _post("set_param", {"track": track, "device": device, "param": param, "value": value})

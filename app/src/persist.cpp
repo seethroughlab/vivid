@@ -36,12 +36,23 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         jt["id"]   = vivid::session::session_track_id(s, t);   // stable id (mapping sources reference it)
         if (!aud) jt["instrument"] = vivid::session::session_track_name(s, t);
         if (aud) {
-            json trims = json::array();
+            json trims = json::array(), aclips = json::array();
             for (int sc = 0; sc < ns; ++sc) {
                 float a = 0.f, b = 1.f; vivid::session::session_get_audio_trim(s, t, sc, &a, &b);
                 trims.push_back({ a, b });
+                // Per-scene clip shaping (A3). `warp` = -1 off, else the mode 0..2.
+                float fin = 0.f, fout = 0.f, fx = 0.f;
+                vivid::session::session_get_audio_fades(s, t, sc, &fin, &fout, &fx);
+                aclips.push_back({
+                    { "gain",    vivid::session::session_get_audio_gain(s, t, sc) },
+                    { "pitch",   vivid::session::session_get_audio_pitch(s, t, sc) },
+                    { "reverse", vivid::session::session_get_audio_reverse(s, t, sc) != 0 },
+                    { "warp",    vivid::session::session_get_audio_warp(s, t, sc) },
+                    { "fade_in_ms", fin }, { "fade_out_ms", fout }, { "loop_xfade_ms", fx },
+                });
             }
             jt["trims"] = trims;
+            jt["audio_clips"] = aclips;
         } else {
             json clips = json::array();
             for (int sc = 0; sc < ns; ++sc) {
@@ -189,6 +200,18 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)
                     if (tr[sc].size() >= 2)
                         vivid::session::session_set_audio_trim(s, t, sc, tr[sc][0].get<float>(), tr[sc][1].get<float>());
+                // Per-scene clip shaping (A3); absent in older sessions -> defaults.
+                if (jt.contains("audio_clips"))
+                    for (int sc = 0; sc < static_cast<int>(jt["audio_clips"].size()); ++sc) {
+                        const json& ac = jt["audio_clips"][sc];
+                        vivid::session::session_set_audio_gain(s, t, sc, ac.value("gain", 1.0f));
+                        vivid::session::session_set_audio_pitch(s, t, sc, ac.value("pitch", 0.0f));
+                        vivid::session::session_set_audio_reverse(s, t, sc, ac.value("reverse", false) ? 1 : 0);
+                        vivid::session::session_set_audio_fades(s, t, sc, ac.value("fade_in_ms", 0.0f),
+                                                                ac.value("fade_out_ms", 0.0f), ac.value("loop_xfade_ms", 0.0f));
+                        const int warp = ac.value("warp", -1);   // -1 off, else mode 0..2
+                        if (warp >= 0) vivid::session::session_set_audio_warp(s, t, sc, 1, warp);
+                    }
             } else if (jt.contains("clips")) {
                 const json& cl = jt["clips"];
                 for (int sc = 0; sc < static_cast<int>(cl.size()); ++sc) {

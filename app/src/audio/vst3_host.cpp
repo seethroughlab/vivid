@@ -483,10 +483,32 @@ void session_set_audio_gain(Session* s, int t, int sc, float gain) {
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
     s->tracks[t]->aud_clips[sc].gain = std::clamp(gain, 0.f, 4.f);
 }
+float session_get_audio_gain(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return 1.f;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    return s->tracks[t]->aud_clips[sc].gain;
+}
 void session_set_audio_reverse(Session* s, int t, int sc, int on) {
     if (!aud_valid(s, t, sc)) return;
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
     s->tracks[t]->aud_clips[sc].reverse = on != 0;
+}
+int session_get_audio_reverse(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    return s->tracks[t]->aud_clips[sc].reverse ? 1 : 0;
+}
+void session_set_audio_fades(Session* s, int t, int sc, float in_ms, float out_ms, float xfade_ms) {
+    if (!aud_valid(s, t, sc)) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    auto& c = s->tracks[t]->aud_clips[sc];
+    c.fade_in_ms = std::max(0.f, in_ms); c.fade_out_ms = std::max(0.f, out_ms); c.loop_crossfade_ms = std::max(0.f, xfade_ms);
+}
+void session_get_audio_fades(Session* s, int t, int sc, float* in_ms, float* out_ms, float* xfade_ms) {
+    if (!aud_valid(s, t, sc)) { if (in_ms) *in_ms = 0; if (out_ms) *out_ms = 0; if (xfade_ms) *xfade_ms = 0; return; }
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    if (in_ms) *in_ms = c.fade_in_ms; if (out_ms) *out_ms = c.fade_out_ms; if (xfade_ms) *xfade_ms = c.loop_crossfade_ms;
 }
 
 static bool clip_valid(Session* s, int t, int sc) {
