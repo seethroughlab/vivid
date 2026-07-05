@@ -3,6 +3,8 @@
 #include <string>
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
+namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops, AO-1)
+
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
 // an anonymous-namespace header, so the work lives in vst3_host.cpp and main only
 // talks to these C-style entry points).
@@ -160,6 +162,20 @@ void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, i
 // In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
 void   session_get_clip_loop(Session*, int track, int scene, double* loop_start, double* loop_end);
+
+// Native audio operators (AO-1). The shared registry is set once at init; a track can have
+// a native instrument (source op) + a chain of native audio effects, alongside VST3.
+// index -1 addresses the instrument slot; index >= 0 an effect in the chain.
+void        session_set_op_registry(Session*, vivid::OpRegistry* reg);
+int         session_add_audio_effect(Session*, int track, const char* op_type);   // -> effect index, -1 on failure
+void        session_remove_audio_effect(Session*, int track, int index);
+int         session_audio_effect_count(Session*, int track);
+const char* session_audio_op_type(Session*, int track, int index);
+int         session_set_track_audio_instrument(Session*, int track, const char* op_type);  // "" clears; 1 on success
+int         session_audio_op_param_count(Session*, int track, int index);
+const char* session_audio_op_param_name(Session*, int track, int index, int param);
+float       session_audio_op_param_get(Session*, int track, int index, int param);
+void        session_audio_op_param_set(Session*, int track, int index, int param, float value);
 
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 // `playing` false = paused: instruments emit no new notes and the sampler is silent

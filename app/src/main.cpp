@@ -27,6 +27,7 @@
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "gpu/builtin_ops.h"
+#include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
 #include "ui/session_view.h"
@@ -85,6 +86,7 @@ int main() {
     // Register the built-in visual operators + validate their descriptors. A loud
     // startup check keeps the operator-based visuals model honest (named codes).
     vivid::register_builtin_ops(app.op_registry);
+    vivid::register_builtin_audio_ops(app.op_registry);   // AO-1: native audio operators
     // P2.1: also load operator dylibs dropped in the bundle PlugIns/ (or the dev
     // override $VIVID_OPERATORS_DIR). Loaded ops register by descriptor name and
     // flow through OpRegistry identically to built-ins (built-ins win on a clash).
@@ -199,6 +201,7 @@ int main() {
     if (audio_ok) {
         // Now that we know the device sample rate, scan + load an instrument.
         app.session = vivid::session::session_create(device.sampleRate);
+        vivid::session::session_set_op_registry(app.session, &app.op_registry);   // AO-1: native audio ops
         std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
                      app.session ? vivid::session::session_track_count(app.session) : 0,
                      app.session ? vivid::session::session_track_name(app.session, 0) : "none — test tone");

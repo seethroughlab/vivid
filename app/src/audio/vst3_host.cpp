@@ -6,6 +6,7 @@
 #include "midi/midi_clip.h"
 #include "audio/sampler.h"
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
+#include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
@@ -88,6 +89,18 @@ struct Track {
     std::atomic<uint64_t>    fx_gen{0};
     uint64_t                 fx_gen_seen = 0;
     std::vector<Vst3Handle*> fx_retired;   // removed handles, freed at shutdown (no audio free)
+    // Native audio operators (AO-1): a source (instrument/generator) slot + an effect
+    // chain, parallel to the VST3 instrument/effects. Same edit-mirror as the FX chain:
+    // the UI mutates the *_edit copies under op_fx_mtx + bumps op_fx_gen; the audio thread
+    // try_lock-copies into the working ones. Removed ops go to op_retired (freed at shutdown).
+    vivid::AudioOp*              op_instrument = nullptr;   // audio working copy
+    std::vector<vivid::AudioOp*> op_effects;                // audio working copy
+    std::mutex                   op_fx_mtx;
+    vivid::AudioOp*              op_instrument_edit = nullptr;
+    std::vector<vivid::AudioOp*> op_effects_edit;
+    std::atomic<uint64_t>        op_fx_gen{0};
+    uint64_t                     op_fx_gen_seen = 0;
+    std::vector<vivid::AudioOp*> op_retired;
     // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
     // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
     std::mutex            edit_mtx;
@@ -122,6 +135,7 @@ struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool ope
 
 struct Session {
     Vst3HostApp host;
+    vivid::OpRegistry* op_reg = nullptr;   // shared operator registry (for native audio ops); set at init
     std::vector<PoolClip> pool;   // clips stashed outside the grid (browser sidebar; UI-thread-only)
     // `tracks` is the UI/main-thread-authoritative list + owner (every session_* accessor
     // indexes it). The audio thread NEVER touches it; it iterates `tracks_view`, refreshed
@@ -265,6 +279,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
 t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
+    t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     return t;
 }
 
@@ -280,6 +295,7 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
 t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->effects.reserve(16); t->effects_edit.reserve(16);
+    t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     return t;
 }
 
@@ -1002,6 +1018,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.fx_mtx.unlock();
             }
         }
+        // Apply pending native audio-operator edits (instrument slot + effect chain).
+        if (t.op_fx_gen.load(std::memory_order_acquire) != t.op_fx_gen_seen) {
+            if (t.op_fx_mtx.try_lock()) {
+                t.op_effects = t.op_effects_edit;
+                t.op_instrument = t.op_instrument_edit;
+                t.op_fx_gen_seen = t.op_fx_gen.load(std::memory_order_acquire);
+                t.op_fx_mtx.unlock();
+            }
+        }
         if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
         float* L = t.bl.data(); float* R = t.br.data();
         std::memset(L, 0, frames * sizeof(float));
@@ -1065,19 +1090,25 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
               while (t.preview_in.pop(pe))
                   t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
                                             kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
-            emit_vst3(events, t.nev, t.eev);
-
-            float* ch[2] = { L, R };
-            AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
-            Vst3ParamChanges pc; pc.clear();
-            drain_params(t.handle, pc);
-            ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
-            ProcessData data{};
-            data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
-            data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
-            data.inputs = nullptr; data.outputs = &ob;
-            data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
-            t.handle->processor->process(data);
+            // Source: a native instrument operator takes precedence over the VST3 instrument.
+            if (t.op_instrument) {
+                vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
+                                        static_cast<float>(bpm), bpb, beats,
+                                        t.nev.data(), static_cast<uint32_t>(t.nev.size()));
+            } else if (t.handle) {
+                emit_vst3(events, t.nev, t.eev);
+                float* ch[2] = { L, R };
+                AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
+                Vst3ParamChanges pc; pc.clear();
+                drain_params(t.handle, pc);
+                ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
+                ProcessData data{};
+                data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
+                data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
+                data.inputs = nullptr; data.outputs = &ob;
+                data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+                t.handle->processor->process(data);
+            }
         }
 
         // FX chain: process L/R through each effect in series (audio in -> out).
@@ -1100,6 +1131,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             fx->processor->process(fd);
             std::memcpy(L, oL, frames * sizeof(float));
             std::memcpy(R, oR, frames * sizeof(float));
+        }
+        // Native audio-operator effect chain (AO-1): each op transforms L/R in place.
+        for (vivid::AudioOp* op : t.op_effects) {
+            if (!op) continue;
+            vivid::audio_op_process(op, L, R, frames, sample_rate, static_cast<float>(bpm), bpb, beats, nullptr, 0);
         }
         t.steady += frames;
 
@@ -1141,6 +1177,9 @@ void session_destroy(Session* s) {
         for (Vst3Handle* fx : t->effects_edit) destroy_handle(fx);  // authoritative FX list
         for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
         destroy_handle(t->handle);
+        for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
+        for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
+        vivid::audio_op_destroy(t->op_instrument_edit);
     };
     for (auto& tp : s->tracks)         teardown(tp.get());
     for (auto& tp : s->tracks_retired) teardown(tp.get());   // tracks removed during the run
@@ -1183,6 +1222,62 @@ void session_remove_effect(Session* s, int t, int e) {
     }
     tr.fx_gen.fetch_add(1, std::memory_order_release);
 }
+
+// --- Native audio operators (AO-1). index -1 = the instrument slot; >=0 = an effect. ---
+void session_set_op_registry(Session* s, vivid::OpRegistry* reg) { if (s) s->op_reg = reg; }
+
+static vivid::AudioOp* audio_op_at(Session* s, int t, int index) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
+    Track& tr = *s->tracks[t];
+    if (index < 0) return tr.op_instrument_edit;
+    return (index < static_cast<int>(tr.op_effects_edit.size())) ? tr.op_effects_edit[index] : nullptr;
+}
+
+int session_add_audio_effect(Session* s, int t, const char* op_type) {
+    if (!s || !s->op_reg || t < 0 || t >= static_cast<int>(s->tracks.size())) return -1;
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
+    if (!op || vivid::audio_op_is_source(op)) { if (op) vivid::audio_op_destroy(op); return -1; }  // effects only
+    Track& tr = *s->tracks[t];
+    int idx;
+    { std::lock_guard<std::mutex> lk(tr.op_fx_mtx); idx = static_cast<int>(tr.op_effects_edit.size()); tr.op_effects_edit.push_back(op); }
+    tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    return idx;
+}
+void session_remove_audio_effect(Session* s, int t, int index) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
+    Track& tr = *s->tracks[t];
+    { std::lock_guard<std::mutex> lk(tr.op_fx_mtx);
+      if (index >= 0 && index < static_cast<int>(tr.op_effects_edit.size())) {
+          tr.op_retired.push_back(tr.op_effects_edit[index]);   // freed at shutdown, not on the audio thread
+          tr.op_effects_edit.erase(tr.op_effects_edit.begin() + index);
+      } }
+    tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+}
+int session_audio_effect_count(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? static_cast<int>(s->tracks[t]->op_effects_edit.size()) : 0;
+}
+const char* session_audio_op_type(Session* s, int t, int index) {
+    vivid::AudioOp* op = audio_op_at(s, t, index);
+    return op ? vivid::audio_op_type(op) : "";
+}
+int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
+    if (!s || !s->op_reg || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    vivid::AudioOp* op = nullptr;
+    if (op_type && *op_type) {
+        op = vivid::audio_op_create(*s->op_reg, op_type);
+        if (!op || !vivid::audio_op_is_source(op)) { if (op) vivid::audio_op_destroy(op); return 0; }  // sources only
+    }
+    Track& tr = *s->tracks[t];
+    { std::lock_guard<std::mutex> lk(tr.op_fx_mtx);
+      if (tr.op_instrument_edit) tr.op_retired.push_back(tr.op_instrument_edit);
+      tr.op_instrument_edit = op; }
+    tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    return 1;
+}
+int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
+const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }
+float       session_audio_op_param_get(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_get(op, p) : 0.f; }
+void        session_audio_op_param_set(Session* s, int t, int index, int p, float v) { vivid::AudioOp* op = audio_op_at(s, t, index); if (op) vivid::audio_op_param_set(op, p, v); }
 
 // A small catalog of effects offered in the device-chain "+ FX" menu.
 static const struct { const char* label; const char* match; } kEffectCatalog[] = {

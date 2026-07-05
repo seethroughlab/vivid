@@ -689,6 +689,57 @@ void ControlServer::register_handlers() {
         for (int k = 0; k < P::session_available_effect_count(); ++k) arr.push_back(P::session_available_effect_name(k));
         json r = ok(); r["effects"] = arr; return r;
     };
+    // --- Native audio operators (AO-1). index -1 = instrument slot, >=0 = effect. ---
+    handlers_["add_audio_effect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int idx = P::session_add_audio_effect(c.session, track, op.c_str());
+        if (idx < 0) return err(code::kBadArg, "not a valid audio effect operator: '" + op + "'");
+        json r = ok(); r["index"] = idx; return r;
+    };
+    handlers_["remove_audio_effect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), index = b.value("index", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_remove_audio_effect(c.session, track, index);
+        return ok();
+    };
+    handlers_["set_track_audio_instrument"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        if (!P::session_set_track_audio_instrument(c.session, track, op.c_str()))
+            return err(code::kBadArg, "not a valid audio instrument operator: '" + op + "'");
+        return ok();
+    };
+    handlers_["set_audio_op_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), index = b.value("index", -1), param = b.value("param", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_audio_op_param_set(c.session, track, index, param, b.value("value", 0.f));
+        return ok();
+    };
+    handlers_["list_audio_ops"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        auto op_json = [&](int index) {
+            json jo; jo["type"] = P::session_audio_op_type(c.session, track, index);
+            json ps = json::array();
+            for (int p = 0; p < P::session_audio_op_param_count(c.session, track, index); ++p)
+                ps.push_back({ {"name", P::session_audio_op_param_name(c.session, track, index, p)},
+                               {"value", P::session_audio_op_param_get(c.session, track, index, p)} });
+            jo["params"] = ps; return jo;
+        };
+        json r = ok();
+        if (*P::session_audio_op_type(c.session, track, -1)) r["instrument"] = op_json(-1);
+        json fx = json::array();
+        for (int i = 0; i < P::session_audio_effect_count(c.session, track); ++i) fx.push_back(op_json(i));
+        r["effects"] = fx; return r;
+    };
 
     // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
     handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
