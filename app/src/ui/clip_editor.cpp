@@ -196,8 +196,14 @@ void ClipEditor::fit_view() {
     clamp_view();
 }
 
+void ClipEditor::save_view() {
+    if (!open_ || audio_) return;
+    view_mem_[{track_, scene_}] = ViewState{ view_beat0_, beat_px_, row_h_, view_row_top_ };
+}
+
 void ClipEditor::open(int track, int scene, const std::string& title,
                       const vivid::session::ClipNote* notes, int n, double length) {
+    save_view();                          // remember the previously-open clip's view
     track_ = track; scene_ = scene; title_ = title;
     length_ = length > 0 ? length : 4.0;
     notes_.assign(notes, notes + (n > 0 ? n : 0));
@@ -211,7 +217,15 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     cell_ = kGrids[grid_idx_].v;
     docked_ = true;             // open in the shared bottom inspector dock (float via header toggle)
     open_ = true;
-    fit_view();
+    if (fold_) rebuild_fold();            // fold is a global mode; refresh its rows for this clip
+    auto it = view_mem_.find({track, scene});
+    if (it != view_mem_.end()) {          // restore this clip's remembered zoom + scroll
+        const ViewState& v = it->second;
+        view_beat0_ = v.beat0; beat_px_ = v.beat_px; row_h_ = v.row_h; view_row_top_ = v.row_top;
+        clamp_view();
+    } else {
+        fit_view();
+    }
 }
 
 void ClipEditor::open_audio(int track, int scene, const std::string& title,

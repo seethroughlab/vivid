@@ -5,6 +5,8 @@
 #include <string>
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <utility>
 
 namespace vivid::ui {
 
@@ -27,7 +29,7 @@ public:
     // Audio (waveform) mode: `bins` = peak amplitude per bin, trim = loop window.
     void open_audio(int track, int scene, const std::string& title,
                     const float* bins, int n, float t0, float t1, double loop_beats = 4.0);
-    void close() { open_ = false; drag_ = 0; }
+    void close() { save_view(); open_ = false; drag_ = 0; }
     bool is_open() const { return open_; }
     bool is_audio() const { return audio_; }
     int  track() const { return track_; }
@@ -128,6 +130,13 @@ private:
     std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
     std::function<void(int, int, float, bool)> audition_cb_;   // keyboard-audition sink
     int    audition_pitch_ = -1;       // pitch currently sounding from a keyboard-key press
+    // Per-clip view memory (M2-followup): each clip remembers its zoom + scroll so
+    // reopening it restores the view instead of re-fitting. (fold/scale/ghost are global
+    // modes, so they intentionally stay put.) Session-scoped UI state (not in the document
+    // JSON), keyed by (track, scene).
+    struct ViewState { double beat0; float beat_px, row_h; int row_top; };
+    std::map<std::pair<int, int>, ViewState> view_mem_;
+    void save_view();                  // stash the current MIDI view for (track_, scene_)
     double cell_ = 0.25;               // grid = 1/16 note
 
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
