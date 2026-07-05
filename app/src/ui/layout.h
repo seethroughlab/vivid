@@ -38,6 +38,8 @@ inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGri
 // Top transport bar affordances: a browser toggle + a play/pause button. (File is a native menu.)
 inline Rect sidebar_toggle_rect() { return { 96.f, 11.f, 20.f, 18.f }; }
 inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
+inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle (M6)
+inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle (M6)
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×
@@ -47,7 +49,9 @@ inline Rect track_meter_rect(int t, int scenes) { return { track_x(t) + 2.f, mix
 inline Rect track_gain_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 32.f, kTrackW - 4.f, 10.f }; }
 inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 20.f, kSceneColW, 22.f }; }
 // Explicit "send this source to the visuals graph" buttons (the bridge entry point).
-inline Rect track_viz_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 48.f, kTrackW - 4.f, 16.f }; }
+// The mixer's bottom button row is split: ARM (left half) | VIZ (right half). (M6)
+inline Rect track_arm_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 48.f, (kTrackW - 6.f) * 0.5f, 16.f }; }
+inline Rect track_viz_rect(int t, int scenes)  { const float hw = (kTrackW - 6.f) * 0.5f; return { track_x(t) + 4.f + hw, mixer_y(scenes) + 48.f, hw, 16.f }; }
 inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 16.f }; }
 // The Session region panel: the full left column (track grid + mixer + room below).
 inline Rect session_panel(float split_x, int win_h, float dock_h) {

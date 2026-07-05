@@ -325,6 +325,32 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     }
     char tb[48]; std::snprintf(tb, sizeof tb, "%.0f BPM     4 / 4", bpm);
     ui.draw_text(398.f, 13.f, tb, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+    // Record + metronome toggles (M6). Record glows red while armed-and-rolling; the
+    // metronome pip glows gold when on. A "TYPE" pill lights when musical typing is active.
+    const bool recording = w.app->session && vivid::session::session_is_recording(w.app->session);
+    const bool metro_on  = w.app->session && vivid::session::session_get_metronome(w.app->session);
+    {
+        const Rect r = transport_record_rect();
+        const bool hov = hit(r, mx, my);
+        ui.draw_rounded_rect(r.x - 3.f, r.y - 3.f, r.w + 6.f, r.h + 6.f, sty.radius,
+                             hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+        const float rc[3] = { 0.90f, 0.24f, 0.28f };
+        const float* c = recording ? rc : sty.dim;
+        ui.draw_rounded_rect(r.x + r.w * 0.5f - 6.f, r.y + r.h * 0.5f - 6.f, 12.f, 12.f, 6.f, c[0], c[1], c[2], 1.0f);   // filled disc
+    }
+    {
+        const Rect r = transport_metro_rect();
+        const bool hov = hit(r, mx, my);
+        ui.draw_rounded_rect(r.x - 3.f, r.y - 3.f, r.w + 6.f, r.h + 6.f, sty.radius,
+                             hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+        const float* c = metro_on ? sty.gold : sty.dim;
+        // a tiny triangular "metronome" glyph
+        ui.draw_tri(r.x + r.w * 0.5f, r.y + 3.f, r.x + 3.f, r.y + r.h - 3.f, r.x + r.w - 3.f, r.y + r.h - 3.f, c[0], c[1], c[2], 1.0f);
+    }
+    if (w.typing) {
+        ui.draw_rounded_rect(550.f, 12.f, 40.f, 16.f, sty.radius, sty.audio[0] * 0.35f, sty.audio[1] * 0.35f, sty.audio[2] * 0.35f, 1.0f);
+        ui.draw_text(556.f, 14.f, "TYPE", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_kicker);
+    }
 
     if (!w.app->session) return;
     auto* s = w.app->session;
@@ -417,6 +443,20 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_rect(gr.x, gr.y, gr.w, gr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
         ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.7f, sty.gpu[1] * 0.7f, sty.gpu[2] * 0.75f, 1.0f);
         ui.draw_rect(gr.x + gr.w * g - 1.5f, gr.y - 1.f, 3.f, gr.h + 2.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+        // ARM: red when this track is record-armed. Audio tracks can't be armed (no instrument).
+        {
+            const Rect ar = track_arm_rect(t, scenes);
+            const bool armed = vivid::session::session_armed_track(s) == t;
+            const bool ah = hit(ar, mx, my);
+            const float rc[3] = { 0.90f, 0.24f, 0.28f };
+            ui.draw_rounded_rect(ar.x, ar.y, ar.w, ar.h, 3.f,
+                                 armed ? rc[0] * 0.5f : (ah ? sty.card_hi[0] : sty.card[0]),
+                                 armed ? rc[1] * 0.5f : (ah ? sty.card_hi[1] : sty.card[1]),
+                                 armed ? rc[2] * 0.5f : (ah ? sty.card_hi[2] : sty.card[2]), 1.0f);
+            const char* al = "ARM";
+            const float* ac = armed ? rc : sty.dim;
+            ui.draw_text(ar.x + (ar.w - ui.text_width(al, sty.fs_kicker)) * 0.5f, ar.y + 3.f, al, ac[0], ac[1], ac[2], 1.0f, sty.fs_kicker);
+        }
         viz_button(track_viz_rect(t, scenes));
     }
     const Rect mm = master_meter_rect(scenes);

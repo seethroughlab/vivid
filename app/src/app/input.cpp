@@ -106,6 +106,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (key == GLFW_KEY_SPACE && app->transport) { app->transport->toggle_playing(); return; }  // play/stop
+    if (key == GLFW_KEY_R && app->session) {   // record toggle (needs an armed track to start)
+        const bool rec = vivid::session::session_is_recording(app->session);
+        if (rec || vivid::session::session_armed_track(app->session) >= 0)
+            vivid::session::session_set_recording(app->session, !rec, 0.0);
+        return;
+    }
     // Tab -> open the operator chooser at the cursor (visuals pane only).
     if (key == GLFW_KEY_TAB && app->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
@@ -267,6 +273,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->transport
         && hit(vivid::ui::transport_play_rect(), mx, my)) {
         app->transport->toggle_playing();
+        return;
+    }
+    // Record + metronome toggles (M6).
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->session
+        && hit(vivid::ui::transport_record_rect(), mx, my)) {
+        const bool rec = vivid::session::session_is_recording(app->session);
+        if (!rec && vivid::session::session_armed_track(app->session) < 0) return;   // nothing armed
+        vivid::session::session_set_recording(app->session, !rec, 0.0);
+        return;
+    }
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->session
+        && hit(vivid::ui::transport_metro_rect(), mx, my)) {
+        vivid::session::session_set_metronome(app->session, vivid::session::session_get_metronome(app->session) ? 0 : 1);
         return;
     }
     // Browser sidebar toggle.
@@ -602,6 +621,15 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                 win->param_drag_y0 = my;
                 return;
             }
+        }
+    }
+    // mixer: ARM buttons (record-arm; toggling re-arms/disarms). Audio tracks are ignored
+    // by the engine (no instrument), so arming one is a harmless no-op.
+    for (int t = 0; t < tracks; ++t) {
+        if (hit(track_arm_rect(t, scenes), dmx, my)) {
+            const bool armed = vivid::session::session_armed_track(app->session) == t;
+            vivid::session::session_set_armed_track(app->session, armed ? -1 : t);
+            return;
         }
     }
     // mixer gain sliders
