@@ -1,27 +1,52 @@
 #pragma once
+#include "audio/audio_clip_shared.h"   // audio_clip_ed::WarpPoint / TransientPoint / math
 #include <vector>
 #include <string>
 #include <cstdint>
 #include <cmath>
 #include <algorithm>
 
-// A minimal transport-locked sampler: holds stereo float PCM and reads it phase-
-// locked to the master beat (loop spans `loop_beats`). The audio-clip counterpart
-// to a MIDI clip — the audio thread calls render() each block.
+// Transport-locked audio clip. Holds stereo float PCM (resampled to the device rate at
+// load) read phase-locked to the master beat. The audio thread calls render() each block.
+//
+// A1 of the Ableton-style audio clip editor extends the old bare looper with clip shaping:
+// gain, reverse, fades, loop crossfade, a clip/loop region, pitch (semitones/cents), and
+// the warp model (mode + markers + transients). The **non-warp / Repitch** playback path
+// lives here (varispeed, allocation-free); the pitch-preserving Complex/Beats stretch
+// (signalsmith, via a per-clip ClipDsp) is wired in A2. With all fields at their defaults
+// render() is bit-identical to the original looper.
 namespace vivid::session {
+
+enum class WarpMode { Complex = 0, Beats = 1, Repitch = 2 };
 
 struct Sampler {
     std::vector<float> L, R;       // PCM (R empty => mono)
     double             loop_beats = 4.0;
     double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
+    uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
     std::string        name;
+
+    // --- clip shaping (A1) ---
+    float  gain            = 1.0f;
+    float  pitch_semitones = 0.0f;      // applied by the stretcher (A2); stored here now
+    float  detune_cents    = 0.0f;
+    bool   reverse         = false;
+    float  fade_in_ms      = 0.f;
+    float  fade_out_ms     = 0.f;
+    float  loop_crossfade_ms = 0.f;
+
+    // --- warp (markers + transients drive A2/A5; stored + persisted now) ---
+    bool                                       warp_enabled = false;
+    WarpMode                                   warp_mode    = WarpMode::Complex;
+    std::vector<audio_clip_ed::WarpPoint>      warp_points;
+    std::vector<audio_clip_ed::TransientPoint> transients;
 
     bool ok() const { return !L.empty(); }
 
     // Write `frames` of audio into outL/outR for a block that starts at
-    // `block_start_beats` and advances `delta` beats (phase-locked loop). The
-    // played window is the fraction [trim0, trim1] of the buffer, stretched to
-    // loop_beats (so trimming = choosing the looped region).
+    // `block_start_beats` and advances `delta` beats (phase-locked loop). The played
+    // window is the fraction [trim0, trim1] of the buffer, stretched to loop_beats.
+    // Applies reverse, per-loop equal-power fade in/out, and gain.
     void render(double block_start_beats, double delta, uint32_t frames,
                 float* outL, float* outR, float trim0 = 0.f, float trim1 = 1.f) const {
         if (L.empty() || loop_beats <= 0.0) return;
@@ -32,19 +57,36 @@ struct Sampler {
         const double span = b - a;
         const size_t wrap = static_cast<size_t>(a);
         const bool stereo = !R.empty();
+
+        // Fade lengths in window-samples (0 = no fade). Guarded against overlap.
+        const double half = span * 0.5;
+        const double fin  = std::min(half, fade_in_ms  > 0.f && sr ? fade_in_ms  * 1e-3 * sr : 0.0);
+        const double fout = std::min(half, fade_out_ms > 0.f && sr ? fade_out_ms * 1e-3 * sr : 0.0);
+
         for (uint32_t i = 0; i < frames; ++i) {
             double beat = block_start_beats + delta * static_cast<double>(i) / static_cast<double>(frames);
             double ph = std::fmod(beat, loop_beats);
             if (ph < 0) ph += loop_beats;
-            const double pos = a + ph / loop_beats * span;
-            const size_t i0 = static_cast<size_t>(pos);
-            const double fr = pos - static_cast<double>(i0);
+            const double posf = ph / loop_beats * span;     // 0..span into the window (playback time)
+            const double pos  = reverse ? (span - posf) : posf;   // read position (mirrored if reverse)
+            const double rp   = a + pos;
+            const size_t i0 = static_cast<size_t>(rp);
+            const double fr = rp - static_cast<double>(i0);
             const size_t i1 = (i0 + 1 < L.size()) ? i0 + 1 : wrap;
-            outL[i] = static_cast<float>(L[i0] * (1.0 - fr) + L[i1] * fr);
-            outR[i] = stereo ? static_cast<float>(R[i0] * (1.0 - fr) + R[i1] * fr) : outL[i];
+
+            float amp = gain;                                 // fades apply to playback time (posf)
+            if (fin  > 0.0 && posf < fin)         amp *= audio_clip_ed::equal_power_fade_in(static_cast<float>(posf / fin));
+            if (fout > 0.0 && span - posf < fout) amp *= audio_clip_ed::equal_power_fade_in(static_cast<float>((span - posf) / fout));
+
+            const float sl = static_cast<float>(L[i0] * (1.0 - fr) + L[i1] * fr) * amp;
+            outL[i] = sl;
+            outR[i] = stereo ? static_cast<float>(R[i0] * (1.0 - fr) + R[i1] * fr) * amp : sl;
         }
     }
 };
+
+// Intent-revealing alias for the audio-clip value type (the warp engine's "AudioClip").
+using AudioClip = Sampler;
 
 // Procedural demo loops, one bar (4 beats) at the given sample rate / tempo.
 Sampler gen_sub_pulse(uint32_t sr, double bpm);

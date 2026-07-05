@@ -14,7 +14,7 @@ static size_t bar_samples(uint32_t sr, double bpm) {
 }
 
 Sampler gen_sub_pulse(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Sub Pulse"; s.loop_beats = 4.0;
+    Sampler s; s.name = "Sub Pulse"; s.loop_beats = 4.0; s.sr = sr;
     const double spb = 60.0 / bpm;
     const size_t total = bar_samples(sr, bpm);
     s.L.resize(total);
@@ -28,7 +28,7 @@ Sampler gen_sub_pulse(uint32_t sr, double bpm) {
 }
 
 Sampler gen_noise_sweep(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Noise Sweep"; s.loop_beats = 4.0;
+    Sampler s; s.name = "Noise Sweep"; s.loop_beats = 4.0; s.sr = sr;
     const size_t total = bar_samples(sr, bpm);
     s.L.resize(total);
     uint32_t rng = 2246822519u; float lp = 0.f;
@@ -44,7 +44,7 @@ Sampler gen_noise_sweep(uint32_t sr, double bpm) {
 }
 
 Sampler gen_bell_loop(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Bell Loop"; s.loop_beats = 4.0;
+    Sampler s; s.name = "Bell Loop"; s.loop_beats = 4.0; s.sr = sr;
     const double spb = 60.0 / bpm;
     const size_t total = bar_samples(sr, bpm);
     s.L.assign(total, 0.f);
@@ -84,6 +84,7 @@ bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sam
     out.L.resize(static_cast<size_t>(read));
     out.R.resize(static_cast<size_t>(read));
     for (size_t i = 0; i < read; ++i) { out.L[i] = inter[2 * i]; out.R[i] = inter[2 * i + 1]; }
+    out.sr = sr;   // PCM sample rate (device rate) — used by fades / warp math
 
     const double secs = static_cast<double>(read) / (sr > 0 ? sr : 44100);
     const double natural_beats = secs * bpm / 60.0;

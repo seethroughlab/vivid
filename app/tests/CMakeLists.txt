@@ -27,6 +27,8 @@ vivid_add_test(test_expr_curve)     # M3 per-note expression curve + scheduler e
 vivid_add_test(test_note_tools)     # M5 musical transforms (midi/note_tools.h)
 vivid_add_test(test_audio_warp)     # A0 pure audio-warp math (audio/audio_clip_shared.h)
 target_link_libraries(test_audio_warp PRIVATE nlohmann_json::nlohmann_json)
+vivid_add_test(test_audio_clip)     # A1 clip playback shaping (gain/reverse/fades)
+target_link_libraries(test_audio_clip PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_control_parse)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
