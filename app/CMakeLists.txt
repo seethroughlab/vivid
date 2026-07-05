@@ -94,6 +94,11 @@ FetchContent_MakeAvailable(glfw3webgpu)
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE deps/miniaudio)
 
+# --- signalsmith-stretch (vendored, header-only, MIT) — pitch-preserving time-stretch
+# for the audio-clip warp engine (A2). Bundles its signalsmith-linear dependency. ---
+add_library(signalsmith_stretch INTERFACE)
+target_include_directories(signalsmith_stretch INTERFACE deps/signalsmith-stretch)
+
 # --- nlohmann/json: fetched above the app guard (shared with headless tests) ---
 
 # --- cpp-httplib (header-only; loopback control server for MCP) ---
@@ -210,7 +215,7 @@ target_compile_definitions(vivid PRIVATE
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio signalsmith_stretch vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
 
 if(APPLE)
     target_link_libraries(vivid PRIVATE
