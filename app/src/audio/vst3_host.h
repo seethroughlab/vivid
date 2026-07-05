@@ -88,6 +88,7 @@ void        session_set_track_state(Session*, int track, const std::string& stat
 
 // Audio waveform editing (P15). Waveform = peak amplitude per bin (read-only).
 int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int n_bins);
+double session_audio_loop_beats(Session*, int track, int scene);   // clip's loop length (beats)
 void session_get_audio_trim(Session*, int track, int scene, float* t0, float* t1);   // loop window [0,1]
 void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
 

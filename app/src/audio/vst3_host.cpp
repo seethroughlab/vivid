@@ -437,6 +437,11 @@ int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
     }
     return n;
 }
+double session_audio_loop_beats(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return 4.0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    return s->tracks[t]->aud_clips[sc].loop_beats;
+}
 void session_get_audio_trim(Session* s, int t, int sc, float* t0, float* t1) {
     if (!aud_valid(s, t, sc)) { if (t0) *t0 = 0.f; if (t1) *t1 = 1.f; return; }
     if (t0) *t0 = s->tracks[t]->aud_trim0[sc].load(std::memory_order_relaxed);

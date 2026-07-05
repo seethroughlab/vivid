@@ -584,7 +584,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                         float bins[512]; float a = 0.f, b = 1.f;
                         const int nb = vivid::session::session_audio_waveform(app->session, t, sc, bins, 512);
                         vivid::session::session_get_audio_trim(app->session, t, sc, &a, &b);
-                        win->editor->open_audio(t, sc, title, bins, nb, a, b);
+                        const double lb = vivid::session::session_audio_loop_beats(app->session, t, sc);
+                        win->editor->open_audio(t, sc, title, bins, nb, a, b, lb);
                     } else {                                                  // piano-roll editor
                         vivid::session::ClipNote buf[256];
                         const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);

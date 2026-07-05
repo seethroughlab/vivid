@@ -25,7 +25,7 @@ public:
               const vivid::session::ClipNote* notes, int n, double length);
     // Audio (waveform) mode: `bins` = peak amplitude per bin, trim = loop window.
     void open_audio(int track, int scene, const std::string& title,
-                    const float* bins, int n, float t0, float t1);
+                    const float* bins, int n, float t0, float t1, double loop_beats = 4.0);
     void close() { open_ = false; drag_ = 0; }
     bool is_open() const { return open_; }
     bool is_audio() const { return audio_; }
@@ -61,7 +61,11 @@ private:
     std::vector<vivid::session::ClipNote> notes_;
     std::vector<uint8_t> sel_;         // selection mask, parallel to notes_
     std::vector<float> wave_;          // audio mode: peak bins
-    float  t0_ = 0.f, t1_ = 1.f;       // audio mode: loop window
+    float  t0_ = 0.f, t1_ = 1.f;       // audio mode: loop window (normalized 0..1)
+    double wav_x0_ = 0.0;              // audio: leftmost visible normalized position
+    float  wav_px_ = 600.f;            // audio: pixels per normalized unit (horizontal zoom)
+    float  wav_amp_ = 1.f;             // audio: vertical amplitude zoom
+    double aud_loop_ = 4.0;            // audio: clip loop length in beats (for the playhead)
     double length_ = 4.0;
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)
@@ -112,6 +116,10 @@ private:
     float xb(double b) const { return gx() + float(b - view_beat0_) * beat_px_; }
     float yp(int p) const { return roll_top() + float(view_pitch_top_ - p) * row_h_; }
     double beat_at(double x) const { return view_beat0_ + (x - gx()) / beat_px_; }
+    // Audio mode: normalized buffer position (0..1) <-> screen x, with zoom/scroll.
+    float  wxn(double n) const { return gx() + float(n - wav_x0_) * wav_px_; }
+    double wnorm_at(double x) const { return wav_x0_ + (x - gx()) / wav_px_; }
+    void   clamp_wav_view();
     int    pitch_at(double y) const;
     int    hit_note(double x, double y, bool& right_edge) const;
     double snap(double b) const;

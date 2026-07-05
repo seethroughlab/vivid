@@ -147,14 +147,25 @@ void ClipEditor::open(int track, int scene, const std::string& title,
 }
 
 void ClipEditor::open_audio(int track, int scene, const std::string& title,
-                            const float* bins, int n, float t0, float t1) {
+                            const float* bins, int n, float t0, float t1, double loop_beats) {
     track_ = track; scene_ = scene; title_ = title;
     wave_.assign(bins, bins + (n > 0 ? n : 0));
     t0_ = t0; t1_ = t1;
+    aud_loop_ = loop_beats > 0 ? loop_beats : 4.0;
+    wav_x0_ = 0.0; wav_px_ = gw() > 0 ? gw() : 600.f; wav_amp_ = 1.f;   // fit the whole clip
     drag_ = 0; dirty_ = false;
     audio_ = true;
     docked_ = true;
     open_ = true;
+}
+
+// Keep the audio waveform view in range: zoom bounded, and the visible window inside [0,1].
+void ClipEditor::clamp_wav_view() {
+    const float fit = gw() > 0 ? gw() : 600.f;
+    wav_px_ = std::clamp(wav_px_, fit, fit * 400.f);   // never zoom out past the whole clip
+    wav_amp_ = std::clamp(wav_amp_, 0.25f, 16.f);
+    const double vis = gw() / wav_px_;                 // visible fraction of the clip
+    wav_x0_ = std::clamp(wav_x0_, 0.0, std::max(0.0, 1.0 - vis));
 }
 
 int ClipEditor::hit_note(double x, double y, bool& right_edge) const {
@@ -190,9 +201,11 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     }
     // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
-        if (audio_) {  // drag the nearer trim handle
-            const float hx0 = gx() + t0_ * gw(), hx1 = gx() + t1_ * gw();
-            drag_ = (std::fabs(x - hx0) <= std::fabs(x - hx1)) ? 10 : 11;
+        if (audio_) {  // near a trim handle -> drag it; else pan the waveform view
+            const float hx0 = wxn(t0_), hx1 = wxn(t1_);
+            if (std::fabs(x - hx0) <= 8.0) drag_ = 10;
+            else if (std::fabs(x - hx1) <= 8.0) drag_ = 11;
+            else { drag_ = 12; down_beat_ = wnorm_at(x); }   // pan: anchor the grabbed position
             return true;
         }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
@@ -271,12 +284,17 @@ void ClipEditor::on_move(double x, double y) {
         py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, win_h_ - kHeaderH - 4.f);
         return;
     }
-    if (drag_ == 10 || drag_ == 11) {  // audio trim handles
-        const float f = std::clamp(static_cast<float>((x - gx()) / gw()), 0.f, 1.f);
+    if (drag_ == 10 || drag_ == 11) {  // audio trim handles (in the zoomed view)
+        const float f = std::clamp(static_cast<float>(wnorm_at(x)), 0.f, 1.f);
         if (drag_ == 10) t0_ = std::min(f, t1_ - 0.02f);
         else             t1_ = std::max(f, t0_ + 0.02f);
         t0_ = std::clamp(t0_, 0.f, 1.f); t1_ = std::clamp(t1_, 0.f, 1.f);
         dirty_ = true;
+        return;
+    }
+    if (drag_ == 12) {  // pan the waveform view so the grabbed position stays under the cursor
+        wav_x0_ = down_beat_ - (x - gx()) / wav_px_;
+        clamp_wav_view();
         return;
     }
     if (drag_ == 4) { marq_x_ = x; marq_y_ = y; return; }   // marquee: finalized on mouse-up
@@ -397,7 +415,23 @@ void ClipEditor::duplicate_sel() {
 }
 
 void ClipEditor::on_scroll(double xoff, double yoff, int mods, double mx, double my) {
-    if (!open_ || audio_) { if (open_ && audio_) {} return; }
+    if (!open_) return;
+    if (audio_) {   // waveform: Cmd = h-zoom (cursor-anchored), Alt = amplitude, else pan
+        const bool cmd = (mods & GLFW_MOD_SUPER) != 0, alt = (mods & GLFW_MOD_ALT) != 0;
+        if (cmd) {
+            const double anchor = wnorm_at(mx);
+            wav_px_ *= std::pow(1.15f, static_cast<float>(yoff));
+            clamp_wav_view();
+            wav_x0_ = anchor - (mx - gx()) / wav_px_;
+        } else if (alt) {
+            wav_amp_ *= std::pow(1.15f, static_cast<float>(yoff));
+        } else {
+            const double amt = std::fabs(xoff) > 1e-3 ? xoff : -yoff;
+            wav_x0_ += amt * 0.03 * (gw() / wav_px_);   // pan by a fraction of the visible span
+        }
+        clamp_wav_view();
+        return;
+    }
     const bool cmd = (mods & GLFW_MOD_SUPER) != 0;
     const bool alt = (mods & GLFW_MOD_ALT) != 0;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
@@ -421,7 +455,11 @@ void ClipEditor::on_scroll(double xoff, double yoff, int mods, double mx, double
 }
 
 bool ClipEditor::on_key(int key, int mods) {
-    if (!open_ || audio_) return false;
+    if (!open_) return false;
+    if (audio_) {   // waveform: F fits the whole clip
+        if (key == GLFW_KEY_F) { wav_x0_ = 0.0; wav_px_ = gw() > 0 ? gw() : 600.f; wav_amp_ = 1.f; return true; }
+        return false;
+    }
     const bool cmd = (mods & GLFW_MOD_SUPER) != 0;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     if (key == GLFW_KEY_DELETE || key == GLFW_KEY_BACKSPACE) { delete_selected(); return true; }
@@ -513,23 +551,36 @@ void ClipEditor::draw(Renderer2D& r) {
     r.push_clip_rect(GX, GY, GW, GH);
 
     if (audio_) {
-        const float x0 = GX + t0_ * GW, x1 = GX + t1_ * GW;
         const int n = static_cast<int>(wave_.size());
-        const float midY = GY + GH * 0.5f, bw_ = (n > 0) ? std::max(1.f, GW / n) : 1.f;
+        const float midY = GY + GH * 0.5f;
+        const float x0 = wxn(t0_), x1 = wxn(t1_);   // trim-handle screen x (in the zoomed view)
+        // Only draw bins whose normalized position is in the visible window.
+        const double vLo = wnorm_at(GX), vHi = wnorm_at(GX + GW);
+        const float binw = std::max(1.f, wav_px_ / std::max(1, n));
         for (int i = 0; i < n; ++i) {
-            const float wx = GX + static_cast<float>(i) / n * GW;
-            const float h = std::min(wave_[i] * GH * 0.46f, GH * 0.49f);
-            const bool in = (static_cast<float>(i) / n >= t0_ && static_cast<float>(i) / n < t1_);
-            r.draw_rect(wx, midY - h, bw_, h * 2.f,
+            const double np = static_cast<double>(i) / n;
+            if (np < vLo - 0.01 || np > vHi + 0.01) continue;
+            const float wx = wxn(np);
+            const float h = std::min(wave_[i] * GH * 0.46f * wav_amp_, GH * 0.49f);
+            const bool in = (np >= t0_ && np < t1_);
+            r.draw_rect(wx, midY - h, binw, h * 2.f,
                         in ? 0.32f : 0.16f, in ? 0.72f : 0.26f, in ? 0.78f : 0.30f, 1.0f);
         }
-        r.draw_rect(GX, GY, x0 - GX, GH, 0.0f, 0.0f, 0.0f, 0.45f);          // dim outside the loop
-        r.draw_rect(x1, GY, GX + GW - x1, GH, 0.0f, 0.0f, 0.0f, 0.45f);
-        r.draw_rect(x0 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);      // trim handles
-        r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
+        r.draw_rect(GX, midY, GW, 1.f, 0.18f, 0.20f, 0.24f, 1.0f);          // center line
+        if (x0 > GX) r.draw_rect(GX, GY, std::min(x0, GX + GW) - GX, GH, 0.f, 0.f, 0.f, 0.45f);  // dim outside loop
+        if (x1 < GX + GW) r.draw_rect(std::max(x1, GX), GY, GX + GW - std::max(x1, GX), GH, 0.f, 0.f, 0.f, 0.45f);
+        if (x0 >= GX && x0 <= GX + GW) r.draw_rect(x0 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);  // trim handles
+        if (x1 >= GX && x1 <= GX + GW) r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
+        // Playhead: the read position within the loop window, mapped back to the buffer.
+        if (playhead_ >= 0.0 && aud_loop_ > 0.0) {
+            double ph = std::fmod(playhead_, aud_loop_); if (ph < 0) ph += aud_loop_;
+            const double rn = t0_ + (ph / aud_loop_) * (t1_ - t0_);
+            const float x = wxn(rn);
+            if (x >= GX && x < GX + GW) r.draw_rect(x, GY, 1.5f, GH, 0.95f, 0.35f, 0.35f, 1.0f);
+        }
         r.pop_clip_rect();
         r.draw_text(px + 12.f, py + ph - 18.f,
-                    "drag the yellow handles to set the loop region  \xC2\xB7  drag header to move  \xC2\xB7  dock / X",
+                    "drag the yellow handles = loop  \xC2\xB7  Cmd-scroll zoom  \xC2\xB7  \xE2\x8C\xA5-scroll amp  \xC2\xB7  scroll pan  \xC2\xB7  F fit  \xC2\xB7  dock / X",
                     0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
         return;
     }
