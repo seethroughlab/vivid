@@ -91,6 +91,15 @@ int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int
 void session_get_audio_trim(Session*, int track, int scene, float* t0, float* t1);   // loop window [0,1]
 void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
 
+// Audio-clip warp/shaping (A2). set_warp inits the per-slot pitch-preserving stretcher on
+// the calling (UI/main) thread; mode: 0=Complex, 1=Beats, 2=Repitch. Pitch in semitones.
+void  session_set_audio_warp   (Session*, int track, int scene, int enabled, int mode);
+int   session_get_audio_warp   (Session*, int track, int scene);   // -1 off, else the mode 0..2
+void  session_set_audio_pitch  (Session*, int track, int scene, float semitones);
+float session_get_audio_pitch  (Session*, int track, int scene);
+void  session_set_audio_gain   (Session*, int track, int scene, float gain);
+void  session_set_audio_reverse(Session*, int track, int scene, int on);
+
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
 // Clip pool: loose clips stashed outside the track grid (browser sidebar). UI/main-thread

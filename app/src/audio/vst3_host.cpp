@@ -5,6 +5,7 @@
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
 #include "audio/sampler.h"
+#include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
@@ -66,6 +67,7 @@ struct Track {
     // render (skips a block on contention) — the UI critical section is an O(1) move.
     bool                  is_audio = false;
     std::vector<Sampler>  aud_clips;
+    std::vector<std::unique_ptr<ClipDsp>> aud_dsp;   // A2: per-slot warp stretcher (null until warp on)
     std::mutex            aud_mtx;
     std::atomic<float>    aud_trim0[8];   // per-scene loop window (fractions)
     std::atomic<float>    aud_trim1[8];
@@ -446,6 +448,47 @@ void session_set_audio_trim(Session* s, int t, int sc, float t0, float t1) {
     s->tracks[t]->aud_trim1[sc].store(std::min(std::max(t1, 0.f), 1.f), std::memory_order_relaxed);
 }
 
+// --- audio-clip warp/shaping (A2) — UI/main thread; writes are guarded by aud_mtx so the
+// audio thread reads a consistent clip. Enabling warp builds+inits the stretcher OFF the
+// lock (heavy) and swaps it in under the lock (short critical section). ---
+void session_set_audio_warp(Session* s, int t, int sc, int enabled, int mode) {
+    if (!aud_valid(s, t, sc)) return;
+    Track& tr = *s->tracks[t];
+    std::unique_ptr<ClipDsp> fresh;
+    if (enabled) { fresh = std::make_unique<ClipDsp>(); fresh->init(s->sample_rate > 0 ? s->sample_rate : 48000); }
+    std::lock_guard<std::mutex> lk(tr.aud_mtx);
+    if (tr.aud_dsp.size() < tr.aud_clips.size()) tr.aud_dsp.resize(tr.aud_clips.size());
+    tr.aud_clips[sc].warp_enabled = enabled != 0;
+    tr.aud_clips[sc].warp_mode = static_cast<WarpMode>(std::clamp(mode, 0, 2));
+    if (enabled) tr.aud_dsp[sc] = std::move(fresh);
+}
+int session_get_audio_warp(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return -1;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    return c.warp_enabled ? static_cast<int>(c.warp_mode) : -1;
+}
+void session_set_audio_pitch(Session* s, int t, int sc, float semitones) {
+    if (!aud_valid(s, t, sc)) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    s->tracks[t]->aud_clips[sc].pitch_semitones = std::clamp(semitones, -48.f, 48.f);
+}
+float session_get_audio_pitch(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return 0.f;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    return s->tracks[t]->aud_clips[sc].pitch_semitones;
+}
+void session_set_audio_gain(Session* s, int t, int sc, float gain) {
+    if (!aud_valid(s, t, sc)) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    s->tracks[t]->aud_clips[sc].gain = std::clamp(gain, 0.f, 4.f);
+}
+void session_set_audio_reverse(Session* s, int t, int sc, int on) {
+    if (!aud_valid(s, t, sc)) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    s->tracks[t]->aud_clips[sc].reverse = on != 0;
+}
+
 static bool clip_valid(Session* s, int t, int sc) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size())
            && sc >= 0 && sc < static_cast<int>(s->tracks[t]->edit_clips.size());
@@ -694,10 +737,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // try_lock guards against a concurrent UI stash/place swapping this slot; on
             // contention we simply skip this block (the UI's move is O(1), so it's rare).
             if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
-                if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok())
-                    t.aud_clips[sc].render(beats, delta, frames, L, R,
-                                           t.aud_trim0[sc].load(std::memory_order_relaxed),
-                                           t.aud_trim1[sc].load(std::memory_order_relaxed));
+                if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok()) {
+                    const float tr0 = t.aud_trim0[sc].load(std::memory_order_relaxed);
+                    const float tr1 = t.aud_trim1[sc].load(std::memory_order_relaxed);
+                    ClipDsp* d = (sc < static_cast<int>(t.aud_dsp.size())) ? t.aud_dsp[sc].get() : nullptr;
+                    if (d && d->ready)  // warp enabled + stretcher ready -> pitch-preserving path
+                        process_clip(t.aud_clips[sc], *d, beats, delta, frames, sample_rate, L, R, tr0, tr1);
+                    else
+                        t.aud_clips[sc].render(beats, delta, frames, L, R, tr0, tr1);
+                }
                 t.aud_mtx.unlock();
             }
         } else {

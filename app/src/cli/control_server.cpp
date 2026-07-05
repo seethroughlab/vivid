@@ -510,6 +510,37 @@ void ControlServer::register_handlers() {
         }
         json r = ok(); r["notes"] = notes; r["length"] = P::session_clip_length(c.session, track, scene); return r;
     };
+    // ---------------- audio-clip warp / shaping (A2) ----------------
+    handlers_["audio_set_warp"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        const std::string m = b.value("mode", std::string("complex"));
+        const int mode = (m == "beats") ? 1 : (m == "repitch") ? 2 : 0;
+        P::session_set_audio_warp(c.session, track, scene, b.value("enabled", true) ? 1 : 0, mode);
+        json r = ok(); r["warp"] = P::session_get_audio_warp(c.session, track, scene); return r;
+    };
+    handlers_["audio_set_pitch"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        P::session_set_audio_pitch(c.session, track, scene, b.value("semitones", 0.0f));
+        json r = ok(); r["semitones"] = P::session_get_audio_pitch(c.session, track, scene); return r;
+    };
+    handlers_["audio_set_gain"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        P::session_set_audio_gain(c.session, track, scene, b.value("gain", 1.0f));
+        return ok();
+    };
+    handlers_["audio_set_reverse"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        P::session_set_audio_reverse(c.session, track, scene, b.value("on", true) ? 1 : 0);
+        return ok();
+    };
     // ---------------- clip pool (loose clips that live outside the grid) ----------------
     // The pool is UI-thread-only storage; these handlers run on the UI thread (like all others).
     handlers_["list_pool"] = [](const ControlCtx& c, const json&) {

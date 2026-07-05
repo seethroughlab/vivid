@@ -29,6 +29,8 @@ vivid_add_test(test_audio_warp)     # A0 pure audio-warp math (audio/audio_clip_
 target_link_libraries(test_audio_warp PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_audio_clip)     # A1 clip playback shaping (gain/reverse/fades)
 target_link_libraries(test_audio_clip PRIVATE nlohmann_json::nlohmann_json)
+vivid_add_test(test_clip_dsp)       # A2 warp engine smoke (signalsmith stretch path)
+target_link_libraries(test_clip_dsp PRIVATE signalsmith_stretch nlohmann_json::nlohmann_json)
 vivid_add_test(test_control_parse)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
