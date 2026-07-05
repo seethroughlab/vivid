@@ -589,10 +589,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                         // Load the clip's warp/pitch state + marker overlay (A5).
                         win->editor->set_audio_shape(vivid::session::session_get_audio_warp(app->session, t, sc),
                                                      vivid::session::session_get_audio_pitch(app->session, t, sc));
-                        float wp[256], tr[512];
+                        float wp[256], tr[512]; double wb[256];
                         const int nw = vivid::session::session_audio_get_warp_pts(app->session, t, sc, wp, 256);
+                        vivid::session::session_audio_get_warp_beats(app->session, t, sc, wb, 256);
                         const int ntr = vivid::session::session_audio_get_transients(app->session, t, sc, tr, 512);
-                        win->editor->set_audio_markers(wp, nw, tr, ntr);
+                        win->editor->set_audio_markers(wp, wb, nw, tr, ntr);
                     } else {                                                  // piano-roll editor
                         vivid::session::ClipNote buf[256];
                         const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);

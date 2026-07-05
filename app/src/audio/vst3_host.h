@@ -110,8 +110,13 @@ void  session_get_audio_fades  (Session*, int track, int scene, float* in_ms, fl
 int   session_audio_auto_warp    (Session*, int track, int scene, float sensitivity);
 // Marker / transient positions as normalized buffer fractions [0,1] (for the editor overlay).
 int   session_audio_get_warp_pts (Session*, int track, int scene, float* out_norm, int cap);
+int   session_audio_get_warp_beats(Session*, int track, int scene, double* out_beats, int cap);
 int   session_audio_get_transients(Session*, int track, int scene, float* out_norm, int cap);
 void  session_audio_clear_warp   (Session*, int track, int scene);   // drop markers, warp off
+// Replace the warp markers from parallel (normalized-sample, beat) arrays (editor drag/add/delete).
+void  session_audio_set_warp_pts (Session*, int track, int scene, const float* norm, const double* beats, int n);
+// Slice boundaries (normalized 0..1) for slice mode: 1=transients, 2=manual, 3=16-grid.
+int   session_audio_slices       (Session*, int track, int scene, int mode, float* out_norm, int cap);
 
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.

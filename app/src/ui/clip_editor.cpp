@@ -153,7 +153,8 @@ void ClipEditor::open_audio(int track, int scene, const std::string& title,
     t0_ = t0; t1_ = t1;
     aud_loop_ = loop_beats > 0 ? loop_beats : 4.0;
     wav_x0_ = 0.0; wav_px_ = gw() > 0 ? gw() : 600.f; wav_amp_ = 1.f;   // fit the whole clip
-    warp_norm_.clear(); trans_norm_.clear(); aud_req_ = 0;   // markers + shape loaded via setters
+    warp_norm_.clear(); warp_b_.clear(); trans_norm_.clear(); slice_norm_.clear();   // loaded via setters
+    slice_mode_ = 0; marker_drag_ = -1; aud_req_ = 0;
     drag_ = 0; dirty_ = false;
     audio_ = true;
     docked_ = true;
@@ -192,6 +193,9 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (x >= px + pw - 28.f) { close(); return true; }                              // [X]
         if (x >= px + pw - 64.f) { docked_ = !docked_; drag_ = 0; return true; }         // dock
         if (audio_) {
+            if (x >= px + pw - 358.f && x < px + pw - 274.f) {   // slice: cycle off->tran->grid
+                slice_mode_ = slice_mode_ == 0 ? 1 : slice_mode_ == 1 ? 3 : 0; aud_req_ |= 8; return true;
+            }
             if (x >= px + pw - 268.f && x < px + pw - 186.f) {   // warp: cycle off->cplx->beat->rept
                 aud_warp_mode_ = aud_warp_mode_ >= 2 ? -1 : aud_warp_mode_ + 1; aud_req_ |= 1; return true;
             }
@@ -214,11 +218,36 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     }
     // Content area.
     if (x >= gx() && x < gx() + gw() && y >= gy() && y < gy() + gh()) {
-        if (audio_) {  // near a trim handle -> drag it; else pan the waveform view
+        if (audio_) {
+            // Warp markers: shift-click a marker deletes it; plain click drags it; shift-click
+            // empty adds a marker (beat interpolated so it lands on the existing warp line).
+            int hit = -1; float bestd = 7.f;
+            for (size_t i = 0; i < warp_norm_.size(); ++i) {
+                const float d = std::fabs(x - wxn(warp_norm_[i]));
+                if (d < bestd) { bestd = d; hit = static_cast<int>(i); }
+            }
+            if (hit >= 0) {
+                if (shift) { warp_norm_.erase(warp_norm_.begin() + hit); warp_b_.erase(warp_b_.begin() + hit); aud_req_ |= 4; }
+                else { marker_drag_ = hit; drag_ = 13; }
+                return true;
+            }
             const float hx0 = wxn(t0_), hx1 = wxn(t1_);
-            if (std::fabs(x - hx0) <= 8.0) drag_ = 10;
-            else if (std::fabs(x - hx1) <= 8.0) drag_ = 11;
-            else { drag_ = 12; down_beat_ = wnorm_at(x); }   // pan: anchor the grabbed position
+            if (std::fabs(x - hx0) <= 8.0) { drag_ = 10; return true; }
+            if (std::fabs(x - hx1) <= 8.0) { drag_ = 11; return true; }
+            if (shift) {   // add a marker at the click, beat interpolated between neighbors
+                const double pn = std::clamp(wnorm_at(x), 0.0, 1.0);
+                double beat = 0.0;
+                if (warp_norm_.size() >= 2) {
+                    size_t j = 0; while (j < warp_norm_.size() && warp_norm_[j] < pn) ++j;
+                    if (j == 0) beat = warp_b_.front();
+                    else if (j >= warp_norm_.size()) beat = warp_b_.back();
+                    else { const double f = (pn - warp_norm_[j-1]) / std::max(1e-6, static_cast<double>(warp_norm_[j] - warp_norm_[j-1]));
+                           beat = warp_b_[j-1] + f * (warp_b_[j] - warp_b_[j-1]); }
+                }
+                warp_norm_.push_back(static_cast<float>(pn)); warp_b_.push_back(beat); aud_req_ |= 4;
+                return true;
+            }
+            drag_ = 12; down_beat_ = wnorm_at(x);   // pan the view
             return true;
         }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
@@ -310,6 +339,11 @@ void ClipEditor::on_move(double x, double y) {
         clamp_wav_view();
         return;
     }
+    if (drag_ == 13) {  // drag a warp marker to a new source position (its beat stays fixed)
+        if (marker_drag_ >= 0 && marker_drag_ < static_cast<int>(warp_norm_.size()))
+            warp_norm_[marker_drag_] = std::clamp(static_cast<float>(wnorm_at(x)), 0.f, 1.f);
+        return;
+    }
     if (drag_ == 4) { marq_x_ = x; marq_y_ = y; return; }   // marquee: finalized on mouse-up
     if (drag_ == 6) {                                        // expression paint stroke
         paint_.push_back({ lane_t_at(x), lane_value_at(y) });
@@ -345,6 +379,7 @@ void ClipEditor::on_move(double x, double y) {
 void ClipEditor::on_up(double x, double y) {
     if (drag_ == 4) finish_marquee(x, y);
     if (drag_ == 6) finish_paint();
+    if (drag_ == 13) { aud_req_ |= 4; marker_drag_ = -1; }   // commit the dragged warp marker
     drag_ = 0; lane_idx_ = -1;
 }
 
@@ -556,10 +591,12 @@ void ClipEditor::draw(Renderer2D& r) {
         r.draw_text(px + pw - 120.f, py + 8.f, draw ? "Draw" : "Select",
                     draw ? 0.55f : 0.6f, draw ? 0.82f : 0.72f, draw ? 0.55f : 0.85f, 1.0f, 0.82f);
     } else {
+        static const char* sm[] = { "slice off", "slice tran", "", "slice grid" };
+        r.draw_text(px + pw - 358.f, py + 8.f, sm[slice_mode_], 0.5f, 0.6f, 0.9f, 1.0f, 0.8f);
         static const char* wm[] = { "off", "cplx", "beat", "rept" };
         char wl[20]; std::snprintf(wl, sizeof wl, "warp %s", wm[aud_warp_mode_ + 1]);
         const bool on = aud_warp_mode_ >= 0;
-        r.draw_text(px + pw - 268.f, py + 8.f, wl, on ? 0.55f : 0.55f, on ? 0.82f : 0.6f, on ? 0.55f : 0.62f, 1.0f, 0.82f);
+        r.draw_text(px + pw - 268.f, py + 8.f, wl, 0.55f, on ? 0.82f : 0.6f, on ? 0.55f : 0.62f, 1.0f, 0.82f);
         r.draw_text(px + pw - 182.f, py + 8.f, "auto", 0.62f, 0.72f, 0.9f, 1.0f, 0.82f);
         char pl[16]; std::snprintf(pl, sizeof pl, "pit %+d", static_cast<int>(std::lround(aud_pitch_)));
         r.draw_text(px + pw - 132.f, py + 8.f, pl, 0.6f, 0.72f, 0.78f, 1.0f, 0.82f);
@@ -594,7 +631,9 @@ void ClipEditor::draw(Renderer2D& r) {
         if (x1 >= GX && x1 <= GX + GW) r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
         // Detected transients (faint ticks along the bottom).
         for (float tn : trans_norm_) { const float tx = wxn(tn); if (tx >= GX && tx < GX + GW) r.draw_rect(tx, GY + GH - 9.f, 1.f, 8.f, 0.5f, 0.5f, 0.36f, 0.7f); }
-        // Warp markers (orange lines with a grab tab up top; drag-to-warp in A5b).
+        // Slice boundaries (A6): blue dividers (drawn under the warp markers).
+        for (float sn : slice_norm_) { const float sx = wxn(sn); if (sx >= GX && sx < GX + GW) r.draw_rect(sx, GY, 1.f, GH, 0.4f, 0.6f, 0.95f, 0.5f); }
+        // Warp markers: orange lines with a grab tab (click to drag, shift-click to delete).
         for (float wn : warp_norm_) {
             const float wx = wxn(wn);
             if (wx < GX || wx > GX + GW) continue;

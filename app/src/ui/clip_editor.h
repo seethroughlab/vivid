@@ -55,14 +55,18 @@ public:
     bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
     // Audio warp/shaping (A5): frame.cpp loads the clip's state + markers, and drains pending edits.
     void set_audio_shape(int warp_mode, float pitch) { aud_warp_mode_ = warp_mode; aud_pitch_ = pitch; }
-    void set_audio_markers(const float* warp, int nw, const float* trans, int nt) {
-        warp_norm_.assign(warp, warp + (nw > 0 ? nw : 0));
+    void set_audio_markers(const float* warp_s, const double* warp_b, int nw, const float* trans, int nt) {
+        warp_norm_.assign(warp_s, warp_s + (nw > 0 ? nw : 0));
+        warp_b_.assign(warp_b, warp_b + (nw > 0 ? nw : 0));
         trans_norm_.assign(trans, trans + (nt > 0 ? nt : 0));
     }
-    bool take_audio_req(int& mode, float& pitch, bool& do_auto) {   // true if there's a pending change
-        if (aud_req_ == 0) return false;
-        mode = aud_warp_mode_; pitch = aud_pitch_; do_auto = (aud_req_ & 2) != 0; aud_req_ = 0; return true;
-    }
+    void set_slices(const float* s, int n) { slice_norm_.assign(s, s + (n > 0 ? n : 0)); }
+    int  take_audio_req() { int r = aud_req_; aud_req_ = 0; return r; }   // pending-commit bitmask (1/2/4/8)
+    int  audio_warp_mode() const { return aud_warp_mode_; }
+    float audio_pitch() const { return aud_pitch_; }
+    int  audio_slice_mode() const { return slice_mode_; }
+    const std::vector<float>&  warp_samples() const { return warp_norm_; }
+    const std::vector<double>& warp_beats()   const { return warp_b_; }
 
 private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
@@ -79,8 +83,12 @@ private:
     // Audio warp/shaping (A5): mirrored for the header UI + overlay; committed via frame.cpp.
     int    aud_warp_mode_ = -1;        // -1 off, 0 Complex, 1 Beats, 2 Repitch
     float  aud_pitch_ = 0.f;           // clip transpose in semitones
-    std::vector<float> warp_norm_, trans_norm_;   // marker / transient positions (normalized 0..1)
-    int    aud_req_ = 0;               // pending commit: bit0 = shaping changed, bit1 = auto-warp
+    std::vector<float> warp_norm_, trans_norm_;   // marker (norm sample) / transient positions 0..1
+    std::vector<double> warp_b_;       // marker beats (parallel to warp_norm_)
+    std::vector<float> slice_norm_;    // A6: slice boundary positions (normalized)
+    int    slice_mode_ = 0;            // A6: 0 off, 1 transients, 3 grid
+    int    marker_drag_ = -1;          // warp marker being dragged
+    int    aud_req_ = 0;               // pending commit bits: 1 shaping, 2 auto, 4 warp-pts, 8 slice
     double length_ = 4.0;
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)

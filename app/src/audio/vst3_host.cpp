@@ -550,11 +550,42 @@ int session_audio_get_transients(Session* s, int t, int sc, float* out, int cap)
     for (int i = 0; i < n; ++i) out[i] = static_cast<float>(c.transients[i].source_sample / N);
     return n;
 }
+int session_audio_get_warp_beats(Session* s, int t, int sc, double* out, int cap) {
+    if (!aud_valid(s, t, sc) || !out || cap <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    const int n = std::min(cap, static_cast<int>(c.warp_points.size()));
+    for (int i = 0; i < n; ++i) out[i] = c.warp_points[i].beat;
+    return n;
+}
 void session_audio_clear_warp(Session* s, int t, int sc) {
     if (!aud_valid(s, t, sc)) return;
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
     auto& c = s->tracks[t]->aud_clips[sc];
     c.warp_points.clear(); c.warp_enabled = false;
+}
+void session_audio_set_warp_pts(Session* s, int t, int sc, const float* norm, const double* beats, int n) {
+    if (!aud_valid(s, t, sc) || n < 0) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    auto& c = s->tracks[t]->aud_clips[sc];
+    if (c.L.empty()) return;
+    const double N = static_cast<double>(c.L.size());
+    std::vector<audio_clip_ed::WarpPoint> pts;
+    for (int i = 0; i < n; ++i)
+        pts.push_back({ static_cast<uint32_t>(std::clamp(norm[i] * N, 0.0, N - 1.0)), beats[i] });
+    c.warp_points = audio_clip_ed::sanitize_warp_points(std::move(pts));   // sorts by sample, monotone beats
+    c.warp_enabled = c.warp_enabled || !c.warp_points.empty();
+}
+int session_audio_slices(Session* s, int t, int sc, int mode, float* out, int cap) {
+    if (!aud_valid(s, t, sc) || !out || cap <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    if (c.L.empty()) return 0;
+    const uint32_t N = static_cast<uint32_t>(c.L.size());
+    const auto slices = audio_clip_ed::compile_slices(mode, c.transients, {}, 0, N);
+    const int n = std::min(cap, static_cast<int>(slices.size()));
+    for (int i = 0; i < n; ++i) out[i] = static_cast<float>(slices[i].start) / N;   // slice start positions
+    return n;
 }
 
 static bool clip_valid(Session* s, int t, int sc) {

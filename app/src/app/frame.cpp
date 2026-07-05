@@ -161,19 +161,27 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         // A5: apply audio warp/pitch/auto-warp requests from the editor header, then refresh
         // the editor's marker + shape display from the engine.
         if (win.editor->is_audio() && app.session) {
-            int mode = -1; float pitch = 0.f; bool do_auto = false;
-            if (win.editor->take_audio_req(mode, pitch, do_auto)) {
+            const int req = win.editor->take_audio_req();   // 1 shaping, 2 auto, 4 warp-pts, 8 slice
+            if (req) {
                 namespace S = vivid::session;
                 const int tk = win.editor->track(), scn = win.editor->scene();
-                if (do_auto) S::session_audio_auto_warp(app.session, tk, scn, 0.5f);
-                else { S::session_set_audio_warp(app.session, tk, scn, mode >= 0 ? 1 : 0, mode < 0 ? 0 : mode);
-                       S::session_set_audio_pitch(app.session, tk, scn, pitch); }
-                float wp[256], tr[512];
-                const int nw = S::session_audio_get_warp_pts(app.session, tk, scn, wp, 256);
-                const int ntr = S::session_audio_get_transients(app.session, tk, scn, tr, 512);
-                win.editor->set_audio_markers(wp, nw, tr, ntr);
-                win.editor->set_audio_shape(S::session_get_audio_warp(app.session, tk, scn),
-                                            S::session_get_audio_pitch(app.session, tk, scn));
+                if (req & 2) S::session_audio_auto_warp(app.session, tk, scn, 0.5f);
+                if (req & 1) { const int m = win.editor->audio_warp_mode();
+                               S::session_set_audio_warp(app.session, tk, scn, m >= 0 ? 1 : 0, m < 0 ? 0 : m);
+                               S::session_set_audio_pitch(app.session, tk, scn, win.editor->audio_pitch()); }
+                if (req & 4) S::session_audio_set_warp_pts(app.session, tk, scn, win.editor->warp_samples().data(),
+                                                           win.editor->warp_beats().data(), static_cast<int>(win.editor->warp_samples().size()));
+                if (req & 8) { float sl[64]; const int ns = S::session_audio_slices(app.session, tk, scn, win.editor->audio_slice_mode(), sl, 64);
+                               win.editor->set_slices(sl, ns); }
+                if (req & (1 | 2 | 4)) {   // reload the marker + shape display from the engine
+                    float wp[256], tr[512]; double wb[256];
+                    const int nw = S::session_audio_get_warp_pts(app.session, tk, scn, wp, 256);
+                    S::session_audio_get_warp_beats(app.session, tk, scn, wb, 256);
+                    const int ntr = S::session_audio_get_transients(app.session, tk, scn, tr, 512);
+                    win.editor->set_audio_markers(wp, wb, nw, tr, ntr);
+                    win.editor->set_audio_shape(S::session_get_audio_warp(app.session, tk, scn),
+                                                S::session_get_audio_pitch(app.session, tk, scn));
+                }
             }
         }
     }
