@@ -158,6 +158,10 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                             nv.data(), static_cast<int>(nv.size()), win.editor->length());
             }
         }
+        if (!win.editor->is_audio() && app.session && win.editor->take_loop_dirty()) {   // in-clip loop edit
+            double ls, le; win.editor->loop_range(ls, le);
+            vivid::session::session_set_clip_loop(app.session, win.editor->track(), win.editor->scene(), ls, le);
+        }
         // A5: apply audio warp/pitch/auto-warp requests from the editor header, then refresh
         // the editor's marker + shape display from the engine.
         if (win.editor->is_audio() && app.session) {

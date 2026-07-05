@@ -64,7 +64,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     vivid::session::expr_to_json(buf[i], jn);
                     notes.push_back(jn);
                 }
-                clips.push_back({ {"length", vivid::session::session_clip_length(s, t, sc)}, {"notes", notes} });
+                json jc = { {"length", vivid::session::session_clip_length(s, t, sc)}, {"notes", notes} };
+                double ls = 0, le = 0; vivid::session::session_get_clip_loop(s, t, sc, &ls, &le);
+                if (le > ls) { jc["loop_start"] = ls; jc["loop_end"] = le; }   // in-clip loop region
+                clips.push_back(jc);
             }
             jt["clips"] = clips;
             const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset
@@ -224,6 +227,8 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                             notes.push_back(std::move(cn));
                         }
                     vivid::session::session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
+                    if (jc.contains("loop_end"))
+                        vivid::session::session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
                 }
             }
             if (jt.contains("state"))

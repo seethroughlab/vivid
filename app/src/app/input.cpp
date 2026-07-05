@@ -678,6 +678,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                         const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);
                         const double len = vivid::session::session_clip_length(app->session, t, sc);
                         win->editor->open(t, sc, title, buf, n, len);
+                        double ls = 0, le = 0;
+                        vivid::session::session_get_clip_loop(app->session, t, sc, &ls, &le);
+                        win->editor->set_loop(ls, le);
                         // Ghost reference: gather the same-scene notes of the other MIDI tracks.
                         std::vector<vivid::session::ClipNote> ghosts;
                         for (int gt = 0; gt < tracks; ++gt) {

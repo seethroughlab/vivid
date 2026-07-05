@@ -211,6 +211,7 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     undo_.clear(); redo_.clear();
     drag_ = 0; last_idx_ = -1; dirty_ = false; audio_ = false;
     step_cursor_ = 0.0; step_held_ = 0;   // reset step input for the new clip
+    loop_start_ = loop_end_ = 0.0; loop_dirty_ = false;   // caller reloads via set_loop
     ghost_notes_.clear();                 // caller repopulates via set_ghost_notes
     tool_ = Tool::Draw;
     grid_idx_ = std::clamp(grid_idx_, 0, kNumGrids - 1);
@@ -348,6 +349,12 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             drag_ = 12; down_beat_ = wnorm_at(x);   // pan the view
             return true;
         }
+        // Ruler: drag out an in-clip loop region (release without dragging clears it).
+        if (y < roll_top() && x >= roll_x0()) {
+            down_beat_ = std::clamp(snap(beat_at(x)), 0.0, length_);
+            loop_start_ = loop_end_ = down_beat_; drag_ = 23;
+            return true;
+        }
         // Piano-keyboard sidebar: press a key to audition the edited track's instrument.
         if (x < roll_x0() && y >= roll_top() && y < lane_top()) {
             const int p = pitch_at(y);
@@ -434,6 +441,12 @@ void ClipEditor::on_move(double x, double y) {
         clamp_view();
         return;
     }
+    if (drag_ == 23) {  // dragging out the in-clip loop region
+        const double b = std::clamp(snap(beat_at(x)), 0.0, length_);
+        loop_start_ = std::min(down_beat_, b);
+        loop_end_   = std::max(down_beat_, b);
+        return;
+    }
     if (drag_ == 21) {  // horizontal scrollbar
         const double visBeats = roll_w() / beat_px_;
         const float f = std::clamp((static_cast<float>(x) - roll_x0()) / std::max(1.f, roll_w()), 0.f, 1.f);
@@ -500,6 +513,10 @@ void ClipEditor::on_up(double x, double y) {
     if (drag_ == 4) finish_marquee(x, y);
     if (drag_ == 6) finish_paint();
     if (drag_ == 13) { aud_req_ |= 4; marker_drag_ = -1; }   // commit the dragged warp marker
+    if (drag_ == 23) {                                        // finish the loop-region drag
+        if (loop_end_ - loop_start_ < 1e-6) { loop_start_ = loop_end_ = 0.0; }   // no drag -> clear
+        loop_dirty_ = true;
+    }
     if (drag_ == 22 && audition_pitch_ >= 0) {               // release the auditioned key
         if (audition_cb_) audition_cb_(track_, audition_pitch_, 0.f, false);
         audition_pitch_ = -1;
@@ -901,6 +918,17 @@ void ClipEditor::draw(Renderer2D& r) {
                 px = cx; py = cy;
             }
         }
+    }
+    // In-clip loop region: a gold brace in the ruler, faint tint over the roll, end bars.
+    if (loop_end_ > loop_start_ + 1e-6) {
+        const float lx0 = std::max(xb(loop_start_), GX), lx1 = std::min(xb(loop_end_), GX + GW);
+        if (lx1 > lx0) {
+            r.draw_rect(lx0, GY, lx1 - lx0, ruler_h(), 0.95f, 0.78f, 0.32f, 0.35f);        // ruler brace
+            r.draw_rect(lx0, roll_top(), lx1 - lx0, lane_top() - roll_top(), 0.95f, 0.78f, 0.32f, 0.05f);  // region tint
+        }
+        const float e0 = xb(loop_start_), e1 = xb(loop_end_);
+        if (e0 >= GX && e0 < GX + GW) r.draw_rect(e0, GY, 1.5f, GH, 0.95f, 0.78f, 0.32f, 0.85f);
+        if (e1 >= GX && e1 < GX + GW) r.draw_rect(e1 - 1.5f, GY, 1.5f, GH, 0.95f, 0.78f, 0.32f, 0.85f);
     }
     // Playhead (spans roll + lane).
     if (playhead_ >= 0.0 && length_ > 0.0) {

@@ -77,6 +77,10 @@ public:
     // Keyboard audition (M2-followup): the caller wires this to play/stop a note on the
     // edited track's instrument. Args: (track, pitch, vel, on).
     void set_audition_cb(std::function<void(int, int, float, bool)> cb) { audition_cb_ = std::move(cb); }
+    // In-clip loop (M2-followup): the caller loads the region on open and commits edits.
+    void set_loop(double ls, double le) { loop_start_ = ls; loop_end_ = le; }
+    void loop_range(double& ls, double& le) const { ls = loop_start_; le = loop_end_; }
+    bool take_loop_dirty() { bool d = loop_dirty_; loop_dirty_ = false; return d; }
     int  take_audio_req() { int r = aud_req_; aud_req_ = 0; return r; }   // pending-commit bitmask (1/2/4/8)
     int  audio_warp_mode() const { return aud_warp_mode_; }
     float audio_pitch() const { return aud_pitch_; }
@@ -126,6 +130,8 @@ private:
     float  row_h_ = 12.f;              // vertical zoom (px per row)
     bool   fold_ = false;              // fold: show only occupied pitch rows
     std::vector<int> fold_rows_;       // occupied pitches, descending (row order) when folded
+    double loop_start_ = 0.0, loop_end_ = 0.0;   // in-clip loop region (loop_end<=start = off)
+    bool   loop_dirty_ = false;        // a loop edit needs committing to the engine
     bool   ghost_ = false;             // show reference notes from other tracks
     std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
     std::function<void(int, int, float, bool)> audition_cb_;   // keyboard-audition sink

@@ -157,6 +157,9 @@ int    session_clip_note_count(Session*, int track, int scene);
 int    session_get_clip(Session*, int track, int scene, ClipNote* out, int max);  // returns count
 double session_clip_length(Session*, int track, int scene);
 void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, int n, double length);
+// In-clip loop region (beats). loop_end <= loop_start disables it (loop the whole clip).
+void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
+void   session_get_clip_loop(Session*, int track, int scene, double* loop_start, double* loop_end);
 
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 // `playing` false = paused: instruments emit no new notes and the sampler is silent

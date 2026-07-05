@@ -791,6 +791,21 @@ void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, d
     tr.edit_gen.fetch_add(1, std::memory_order_release);
 }
 
+// In-clip loop region (M2-followup). loop_end <= loop_start disables it (whole-clip loop).
+void session_set_clip_loop(Session* s, int t, int sc, double loop_start, double loop_end) {
+    if (!clip_valid(s, t, sc)) return;
+    Track& tr = *s->tracks[t];
+    { std::lock_guard<std::mutex> lk(tr.edit_mtx);
+      tr.edit_clips[sc].loop_start = loop_start; tr.edit_clips[sc].loop_end = loop_end; }
+    tr.edit_gen.fetch_add(1, std::memory_order_release);
+}
+void session_get_clip_loop(Session* s, int t, int sc, double* loop_start, double* loop_end) {
+    if (!clip_valid(s, t, sc)) { if (loop_start) *loop_start = 0; if (loop_end) *loop_end = 0; return; }
+    const MidiClip& c = s->tracks[t]->edit_clips[sc];
+    if (loop_start) *loop_start = c.loop_start;
+    if (loop_end)   *loop_end   = c.loop_end;
+}
+
 // --- Clip pool (loose clips outside the grid) — UI/main thread only. ---
 static bool pool_valid(Session* s, int i) { return s && i >= 0 && i < static_cast<int>(s->pool.size()); }
 int session_pool_count(Session* s) { return s ? static_cast<int>(s->pool.size()) : 0; }
@@ -966,8 +981,10 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             if (t.edit_mtx.try_lock()) {
                 const size_t ns = std::min(t.clips.size(), t.edit_clips.size());
                 for (size_t sc = 0; sc < ns; ++sc) {
-                    t.clips[sc].notes  = t.edit_clips[sc].notes;
-                    t.clips[sc].length = t.edit_clips[sc].length;
+                    t.clips[sc].notes      = t.edit_clips[sc].notes;
+                    t.clips[sc].length     = t.edit_clips[sc].length;
+                    t.clips[sc].loop_start = t.edit_clips[sc].loop_start;   // in-clip loop region
+                    t.clips[sc].loop_end   = t.edit_clips[sc].loop_end;
                 }
                 // notes[] was re-assigned (may have reallocated) — the scheduler's
                 // active[].src pointers now dangle. Null them (note-offs still fire).

@@ -499,6 +499,13 @@ void ControlServer::register_handlers() {
         P::session_set_recording(c.session, on, b.value("count_in", 0.0));
         json r = ok(); r["recording"] = P::session_is_recording(c.session); return r;
     };
+    handlers_["set_clip_loop"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_set_clip_loop(c.session, track, scene, b.value("loop_start", 0.0), b.value("loop_end", 0.0));
+        return ok();
+    };
     handlers_["metronome"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         P::session_set_metronome(c.session, b.value("on", true) ? 1 : 0);

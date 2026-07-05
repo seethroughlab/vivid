@@ -60,7 +60,15 @@ struct ExprEvent { uint32_t sample_offset; int32_t note_id; int pitch; uint8_t a
 
 struct MidiClip {
     std::vector<ClipNote> notes;
-    double length = 4.0;  // loop length in beats
+    double length = 4.0;      // clip length in beats
+    // Optional in-clip loop region [loop_start, loop_end) in beats. When loop_end >
+    // loop_start (a valid sub-range), playback loops within it instead of over [0,length);
+    // notes outside the region are silent and a note crossing loop_end is cut. Default
+    // (0/0) = loop the whole clip.
+    double loop_start = 0.0, loop_end = 0.0;
+    // Effective loop region, clamped to the clip. Falls back to the whole clip.
+    double loop_lo() const { return (loop_end > loop_start + 1e-9) ? std::max(0.0, loop_start) : 0.0; }
+    double loop_hi() const { return (loop_end > loop_start + 1e-9) ? std::min(length, loop_end) : length; }
 };
 
 // Stateless w.r.t. the playhead (it reads absolute transport beats each block);
@@ -94,10 +102,12 @@ struct ClipScheduler {
     void emit(double block_start_beats, double delta, uint32_t frames,
               std::vector<NoteEvent>& out, std::vector<ExprEvent>& eout) {
         if (!clip || clip->length <= 0.0 || delta <= 0.0) return;
-        const double L = clip->length;
-        double p0 = std::fmod(block_start_beats, L);
-        if (p0 < 0) p0 += L;
-        const double p1 = p0 + delta;  // may exceed L (block wraps the loop)
+        const double lo = clip->loop_lo(), hi = clip->loop_hi();   // in-clip loop region
+        const double L = hi - lo;                                  // loop period
+        if (L <= 0.0) return;
+        double p0 = lo + std::fmod(block_start_beats, L);          // clip-local playhead within [lo, hi)
+        if (p0 < lo) p0 += L;
+        const double p1 = p0 + delta;  // may exceed hi (block wraps the loop)
 
         auto off = [&](double t) -> uint32_t {
             double f = (t - p0) / delta * frames;
@@ -119,16 +129,18 @@ struct ClipScheduler {
                 ++i;
             }
         }
-        // Note-ons.
+        // Note-ons (only notes whose start lies inside the loop region).
         for (const auto& n : clip->notes) {
+            if (n.start < lo - 1e-9 || n.start >= hi - 1e-9) continue;
             double m;
             if (in_block(n.start, m)) {
                 int32_t id = ++note_id_seq;
                 const float tuning = n.expr[AXIS_BEND].empty() ? 0.f : n.expr[AXIS_BEND].sample(0.f);
                 const uint32_t so = off(m);
                 out.push_back({ so, true, n.pitch, n.vel, id, tuning });
-                Active a{}; a.pitch = n.pitch; a.id = id; a.end = std::fmod(n.start + n.dur, L);
-                a.start_local = std::fmod(n.start, L); a.dur = n.dur; a.src = &n;
+                Active a{}; a.pitch = n.pitch; a.id = id;
+                a.end = lo + std::fmod((n.start + n.dur) - lo, L);   // wrap/cut at the loop end
+                a.start_local = n.start; a.dur = n.dur; a.src = &n;
                 for (int ax = 0; ax < AXIS_COUNT; ++ax) a.last[ax] = 999.f;
                 a.started = true; a.on_off = so;
                 active.push_back(a);
