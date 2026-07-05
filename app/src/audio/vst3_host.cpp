@@ -78,6 +78,42 @@ struct Track {
 // reads `Session::pool`, so no edit-mirror is needed.
 struct PoolClip { bool is_audio = false; MidiClip clip; Sampler audio; std::string name; };
 
+// Live MIDI input (M6): a lock-free ring of note on/off transitions from the UI/hardware
+// producers (musical typing on the main thread, CoreMIDI on its own thread) to the audio
+// thread, which drains it into the *armed* track's instrument each block for monitoring.
+// Producers are serialized by `push_mtx` (only ever contended typing-vs-hardware, rare);
+// the audio consumer (`drain`) never locks. `t_beats` stamps the transport position at
+// push time so the recorder (M6.3) can place captured notes; monitoring ignores it.
+struct LiveMidi {
+    struct Ev { uint8_t on; uint8_t pitch; float vel; double t_beats; };
+    static constexpr int kCap = 512;
+    Ev                    ring[kCap];
+    std::atomic<uint32_t> head{0};   // producer index
+    std::atomic<uint32_t> tail{0};   // consumer index
+    std::mutex            push_mtx;  // serializes producers; the audio consumer is lock-free
+
+    void push(uint8_t on, uint8_t pitch, float vel, double t_beats) {
+        std::lock_guard<std::mutex> lk(push_mtx);
+        const uint32_t h = head.load(std::memory_order_relaxed);
+        const uint32_t n = (h + 1) % kCap;
+        if (n == tail.load(std::memory_order_acquire)) return;  // full — drop (never blocks audio)
+        ring[h] = { on, pitch, vel, t_beats };
+        head.store(n, std::memory_order_release);
+    }
+    // Audio thread: pop one event; returns false when drained. Never locks.
+    bool pop(Ev& out) {
+        const uint32_t t = tail.load(std::memory_order_relaxed);
+        if (t == head.load(std::memory_order_acquire)) return false;
+        out = ring[t];
+        tail.store((t + 1) % kCap, std::memory_order_release);
+        return true;
+    }
+};
+
+// Live monitored/recorded notes carry a note_id in a reserved range so their offs match
+// their ons and never collide with clip-scheduled note_ids (which start at 0).
+static constexpr int32_t kLiveNoteIdBase = 0x40000000;
+
 struct Session {
     Vst3HostApp host;
     std::vector<PoolClip> pool;   // clips stashed outside the grid (browser sidebar; UI-thread-only)
@@ -99,6 +135,12 @@ struct Session {
     int       scenes = 3;
     long long last_bar = -1;
     uint32_t  sample_rate = 0;
+    // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
+    // track's instrument. `armed_track` is a stable track id (-1 = none). Both are read on
+    // the audio thread; the id is a plain atomic, resolved to a Track* each block.
+    LiveMidi              live_in;
+    std::atomic<int>      armed_track{-1};
+    std::atomic<double>   play_beats{0.0};   // last transport beat the audio thread saw (stamps live input)
 };
 
 // Republish the current track membership for the audio thread (UI/main thread only).
@@ -366,6 +408,42 @@ void session_set_track_id(Session* s, int t, int id) {   // load-time restore of
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
     s->tracks[t]->id = id;
     if (id >= s->next_track_id) s->next_track_id = id + 1;   // keep new ids from colliding
+}
+
+// --- Live MIDI input / record-arm (M6) -------------------------------------------------
+// The armed track is stored as a stable id so it survives track reorders (like mappings).
+// The UI passes track *indices*; we convert at the boundary.
+static Track* armed_track_ptr(Session* s) {
+    if (!s) return nullptr;
+    const int id = s->armed_track.load(std::memory_order_relaxed);
+    if (id < 0) return nullptr;
+    for (auto& tp : s->tracks) if (tp->id == id) return tp.get();
+    return nullptr;
+}
+void session_set_armed_track(Session* s, int track_index) {
+    if (!s) return;
+    if (track_index < 0 || track_index >= static_cast<int>(s->tracks.size())) {
+        s->armed_track.store(-1, std::memory_order_relaxed); return;
+    }
+    s->armed_track.store(s->tracks[track_index]->id, std::memory_order_relaxed);
+}
+int session_armed_track(Session* s) {   // returns the armed track *index*, or -1
+    if (!s) return -1;
+    const int id = s->armed_track.load(std::memory_order_relaxed);
+    if (id < 0) return -1;
+    for (int i = 0; i < static_cast<int>(s->tracks.size()); ++i)
+        if (s->tracks[i]->id == id) return i;
+    return -1;   // armed track was deleted
+}
+void session_note_on(Session* s, int pitch, float vel) {
+    Track* t = armed_track_ptr(s);
+    if (!t || t->is_audio || pitch < 0 || pitch > 127) return;   // only monitor through an instrument track
+    s->live_in.push(1, static_cast<uint8_t>(pitch), vel, s->play_beats.load(std::memory_order_relaxed));
+}
+void session_note_off(Session* s, int pitch) {
+    Track* t = armed_track_ptr(s);
+    if (!t || t->is_audio || pitch < 0 || pitch > 127) return;
+    s->live_in.push(0, static_cast<uint8_t>(pitch), 0.f, s->play_beats.load(std::memory_order_relaxed));
 }
 int  session_active_clip(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;
@@ -764,6 +842,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                      bool playing, bool release_all) {
     if (!s) return false;
     std::memset(out, 0, sizeof(float) * 2 * frames);
+    s->play_beats.store(beats, std::memory_order_relaxed);   // publish the clock for live-input stamping (M6)
 
     // Refresh the audio-thread track view if the UI added/removed a track (cheap gen-
     // counter fast-path; the copy is into reserved capacity, so no allocation). On a
@@ -861,6 +940,16 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.nev.clear(); t.eev.clear();
             if (release_all)    t.sched.flush(t.nev);                            // play->stop edge: release held notes
             else if (playing)   t.sched.emit(beats, delta, frames, t.nev, t.eev);  // paused: emit nothing (tails still ring)
+            // Live MIDI monitoring (M6): the armed track drains the session live-input
+            // queue into its own event stream so played/typed notes sound through its
+            // instrument, whether or not the transport is running. note_id lives in the
+            // reserved live range so offs match ons and never collide with clip notes.
+            if (t.id == s->armed_track.load(std::memory_order_relaxed)) {
+                LiveMidi::Ev le;
+                while (s->live_in.pop(le))
+                    t.nev.push_back(NoteEvent{ 0u, le.on != 0, le.pitch, le.vel,
+                                              kLiveNoteIdBase + le.pitch, 0.f });
+            }
             emit_vst3(events, t.nev, t.eev);
 
             float* ch[2] = { L, R };

@@ -470,6 +470,28 @@ void ControlServer::register_handlers() {
         P::session_set_track_gain(c.session, track, b.value("gain", 0.8f));
         return ok();
     };
+    handlers_["arm_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", -1);   // -1 disarms
+        if (track >= 0) { json e; if (!need_track(c.session, track, e)) return e; }
+        P::session_set_armed_track(c.session, track);
+        json r = ok(); r["armed"] = P::session_armed_track(c.session); return r;
+    };
+    handlers_["note_on"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        if (P::session_armed_track(c.session) < 0) return err(code::kBadArg, "no armed track");
+        const int pitch = b.value("pitch", -1);
+        if (pitch < 0 || pitch > 127) return err(code::kBadArg, "pitch out of range [0,127]");
+        P::session_note_on(c.session, pitch, b.value("vel", 0.8f));
+        return ok();
+    };
+    handlers_["note_off"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int pitch = b.value("pitch", -1);
+        if (pitch < 0 || pitch > 127) return err(code::kBadArg, "pitch out of range [0,127]");
+        P::session_note_off(c.session, pitch);
+        return ok();
+    };
     handlers_["set_param"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), device = b.value("device", 0), index = b.value("param", 0);

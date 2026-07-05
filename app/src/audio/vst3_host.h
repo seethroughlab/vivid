@@ -31,6 +31,14 @@ const char* session_track_name(Session*, int track);
 int  session_track_id(Session*, int track);
 void session_set_track_id(Session*, int track, int id);   // load-time restore of a saved id
 
+// Live MIDI input / record-arm (M6). Arm a track (by index; stored as a stable id) to
+// monitor live notes through its instrument. note_on/off feed the session live-input
+// queue from any producer thread (musical typing, CoreMIDI) — lock-free on the audio side.
+void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-range) clears
+int  session_armed_track(Session*);                        // armed track index, -1 if none
+void session_note_on(Session*, int pitch, float vel);      // routed to the armed instrument track
+void session_note_off(Session*, int pitch);
+
 // Dynamic tracks: create/delete at runtime (UI/main thread). The audio thread sees the
 // change at the next block via a generation-counter try_lock swap of its track view.
 // add_* return the new track index, or -1 (catalog/path didn't resolve, or kMaxTracks).
