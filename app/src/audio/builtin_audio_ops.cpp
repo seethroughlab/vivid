@@ -101,9 +101,12 @@ struct TestToneOp : OperatorBase, AudioProcessable {
     }
 };
 
+void register_glitch_ops(OpRegistry& reg);   // audio/glitch/glitch_ops.cpp
+
 void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<BitcrushOp>(reg, "Bitcrush");
     register_op<TestToneOp>(reg, "TestTone");
+    register_glitch_ops(reg);
 }
 
 }  // namespace vivid

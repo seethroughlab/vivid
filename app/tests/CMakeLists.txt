@@ -29,6 +29,7 @@ vivid_add_test(test_audio_op_rt)    # AO-1 native audio-operator runtime: zero-a
 target_sources(test_audio_op_rt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 vivid_add_test(test_note_tools)     # M5 musical transforms (midi/note_tools.h)

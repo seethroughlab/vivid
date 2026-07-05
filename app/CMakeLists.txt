@@ -156,6 +156,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/audio_callback.cpp
     src/audio/audio_op_runtime.cpp
     src/audio/builtin_audio_ops.cpp
+    src/audio/glitch/glitch_ops.cpp
     src/audio/sampler.cpp
     src/audio/vst3_plugin_window_stub.cpp
     src/platform/platform.cpp
