@@ -38,6 +38,9 @@ void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-rang
 int  session_armed_track(Session*);                        // armed track index, -1 if none
 void session_note_on(Session*, int pitch, float vel);      // routed to the armed instrument track
 void session_note_off(Session*, int pitch);
+// Editor keyboard audition: play/stop a note on a specific track, independent of the arm.
+void session_preview_note(Session*, int track, int pitch, float vel);
+void session_preview_off(Session*, int track, int pitch);
 // Recording: start (on=true) snaps the capture origin after an optional count-in; stop
 // (on=false) overdubs the captured notes into the armed track's active clip.
 void session_set_recording(Session*, bool on, double count_in_beats);

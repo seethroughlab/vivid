@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <functional>
 
 namespace vivid::ui {
 
@@ -71,6 +72,9 @@ public:
         trans_norm_.assign(trans, trans + (nt > 0 ? nt : 0));
     }
     void set_slices(const float* s, int n) { slice_norm_.assign(s, s + (n > 0 ? n : 0)); }
+    // Keyboard audition (M2-followup): the caller wires this to play/stop a note on the
+    // edited track's instrument. Args: (track, pitch, vel, on).
+    void set_audition_cb(std::function<void(int, int, float, bool)> cb) { audition_cb_ = std::move(cb); }
     int  take_audio_req() { int r = aud_req_; aud_req_ = 0; return r; }   // pending-commit bitmask (1/2/4/8)
     int  audio_warp_mode() const { return aud_warp_mode_; }
     float audio_pitch() const { return aud_pitch_; }
@@ -122,6 +126,8 @@ private:
     std::vector<int> fold_rows_;       // occupied pitches, descending (row order) when folded
     bool   ghost_ = false;             // show reference notes from other tracks
     std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
+    std::function<void(int, int, float, bool)> audition_cb_;   // keyboard-audition sink
+    int    audition_pitch_ = -1;       // pitch currently sounding from a keyboard-key press
     double cell_ = 0.25;               // grid = 1/16 note
 
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
@@ -154,9 +160,12 @@ private:
     float lane_top() const { return gy() + gh() - lane_h(); }   // bottom lane top
     float bw() const { return beat_px_; }
     float rh() const { return row_h_; }
-    float xb(double b) const { return gx() + float(b - view_beat0_) * beat_px_; }
+    float key_w() const { return audio_ ? 0.f : 24.f; }        // piano-keyboard sidebar width (MIDI)
+    float roll_x0() const { return gx() + key_w(); }            // roll content left edge (after the keys)
+    float roll_w() const { return gw() - key_w(); }
+    float xb(double b) const { return roll_x0() + float(b - view_beat0_) * beat_px_; }
     float yp(int p) const { return roll_top() + float(row_of_pitch(p) - view_row_top_) * row_h_; }
-    double beat_at(double x) const { return view_beat0_ + (x - gx()) / beat_px_; }
+    double beat_at(double x) const { return view_beat0_ + (x - roll_x0()) / beat_px_; }
     // Pitch<->row mapping (fold-aware). Row 0 is the top; unfolded rows are pitch 127-r.
     int    nrows() const { return fold_ ? std::max(1, static_cast<int>(fold_rows_.size())) : 128; }
     int    pitch_of_row(int r) const;

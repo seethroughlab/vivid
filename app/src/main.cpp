@@ -178,6 +178,11 @@ int main() {
     app.graph = &graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;
+    clip_editor.set_audition_cb([&app](int track, int pitch, float vel, bool on) {   // keyboard audition
+        if (!app.session) return;
+        if (on) vivid::session::session_preview_note(app.session, track, pitch, vel);
+        else    vivid::session::session_preview_off(app.session, track, pitch);
+    });
 
     Transport transport;
     app.transport = &transport;

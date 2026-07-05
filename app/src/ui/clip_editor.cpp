@@ -97,7 +97,7 @@ bool ClipEditor::vscroll_geom(float& tx, float& ty, float& tw, float& th, float&
 bool ClipEditor::hscroll_geom(float& tx, float& ty, float& tw, float& th, float& thumb0, float& thumbLen) const {
     const double visBeats = gw() / beat_px_;
     if (visBeats >= length_ || length_ <= 0) return false;
-    tx = gx(); ty = lane_top() - 7.f; tw = gw() - 8.f; th = 6.f;
+    tx = roll_x0(); ty = lane_top() - 7.f; tw = roll_w() - 8.f; th = 6.f;
     thumbLen = std::max(20.f, static_cast<float>(tw * visBeats / length_));
     const double maxScroll = std::max(1e-6, length_ - visBeats);
     thumb0   = tx + (tw - thumbLen) * static_cast<float>(std::clamp(view_beat0_ / maxScroll, 0.0, 1.0));
@@ -171,7 +171,7 @@ void ClipEditor::delete_selected() {
 void ClipEditor::clamp_view() {
     beat_px_ = std::clamp(beat_px_, 8.f, 600.f);
     row_h_   = std::clamp(row_h_, 5.f, 44.f);
-    const double visB = gw() / beat_px_;
+    const double visB = roll_w() / beat_px_;
     view_beat0_ = std::clamp(view_beat0_, 0.0, std::max(0.0, length_ - visB * 0.15));
     const int vis = std::max(1, static_cast<int>(roll_h() / row_h_));
     view_row_top_ = std::clamp(view_row_top_, 0, std::max(0, nrows() - vis));
@@ -191,7 +191,7 @@ void ClipEditor::fit_view() {
         row_h_ = std::clamp(roll_h() / static_cast<float>(rows), 5.f, 44.f);
         view_row_top_ = row_of_pitch(hi);              // top row = highest note
     }
-    beat_px_ = std::clamp(gw() / static_cast<float>(length_ > 0 ? length_ : 4.0), 8.f, 600.f);
+    beat_px_ = std::clamp(roll_w() / static_cast<float>(length_ > 0 ? length_ : 4.0), 8.f, 600.f);
     view_beat0_ = 0.0;
     clamp_view();
 }
@@ -334,6 +334,12 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             drag_ = 12; down_beat_ = wnorm_at(x);   // pan the view
             return true;
         }
+        // Piano-keyboard sidebar: press a key to audition the edited track's instrument.
+        if (x < roll_x0() && y >= roll_top() && y < lane_top()) {
+            const int p = pitch_at(y);
+            if (p >= 0 && p <= 127 && audition_cb_) { audition_pitch_ = p; drag_ = 22; audition_cb_(track_, p, 0.85f, true); }
+            return true;
+        }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
         if (y >= lane_top()) {
             if (lane_axis_ < 0) {                             // velocity: drag the nearest note's bar
@@ -415,8 +421,8 @@ void ClipEditor::on_move(double x, double y) {
         return;
     }
     if (drag_ == 21) {  // horizontal scrollbar
-        const double visBeats = gw() / beat_px_;
-        const float f = std::clamp((static_cast<float>(x) - gx()) / std::max(1.f, gw()), 0.f, 1.f);
+        const double visBeats = roll_w() / beat_px_;
+        const float f = std::clamp((static_cast<float>(x) - roll_x0()) / std::max(1.f, roll_w()), 0.f, 1.f);
         view_beat0_ = f * std::max(0.0, length_ - visBeats);
         clamp_view();
         return;
@@ -480,6 +486,10 @@ void ClipEditor::on_up(double x, double y) {
     if (drag_ == 4) finish_marquee(x, y);
     if (drag_ == 6) finish_paint();
     if (drag_ == 13) { aud_req_ |= 4; marker_drag_ = -1; }   // commit the dragged warp marker
+    if (drag_ == 22 && audition_pitch_ >= 0) {               // release the auditioned key
+        if (audition_cb_) audition_cb_(track_, audition_pitch_, 0.f, false);
+        audition_pitch_ = -1;
+    }
     drag_ = 0; lane_idx_ = -1;
 }
 
@@ -710,8 +720,8 @@ void ClipEditor::draw(Renderer2D& r) {
     r.draw_text(px + pw - 60.f, py + 8.f, docked_ ? "float" : "dock", 0.6f, 0.72f, 0.78f, 1.0f, 0.8f);
     r.draw_text(px + pw - 22.f, py + 8.f, "X", 0.8f, 0.55f, 0.55f, 1.0f, 1.0f);
 
-    const float GX = gx(), GY = gy(), GW = gw(), GH = gh();
-    r.draw_rect(GX, GY, GW, GH, 0.07f, 0.08f, 0.10f, 1.0f);
+    const float GX = roll_x0(), GY = gy(), GW = roll_w(), GH = gh();   // roll content (inset past the keys, MIDI)
+    r.draw_rect(gx(), GY, gw(), GH, 0.07f, 0.08f, 0.10f, 1.0f);
     r.push_clip_rect(GX, GY, GW, GH);
 
     if (audio_) {
@@ -910,6 +920,30 @@ void ClipEditor::draw(Renderer2D& r) {
         r.draw_rect(mx0, my1, mx1 - mx0, 1.f, 0.6f, 0.78f, 1.0f, 0.7f);
     }
     r.pop_clip_rect();
+
+    // Piano-keyboard sidebar (left of the roll). Click a key to audition the edited track.
+    {
+        const float kx = gx(), kw = key_w(), ktop = roll_top(), kbot = lane_top();
+        r.push_clip_rect(kx, ktop, kw, kbot - ktop);
+        r.draw_rect(kx, ktop, kw, kbot - ktop, 0.12f, 0.13f, 0.15f, 1.0f);
+        const int krows = std::max(1, static_cast<int>((kbot - ktop) / row_h_) + 2);
+        for (int rr = view_row_top_; rr < std::min(nrows(), view_row_top_ + krows); ++rr) {
+            const int p = pitch_of_row(rr);
+            if (p < 0 || p > 127) continue;
+            const float y = roll_top() + (rr - view_row_top_) * row_h_;
+            const bool blk = is_black(p), lit = (p == audition_pitch_);
+            const float cr = lit ? 0.55f : (blk ? 0.16f : 0.82f);
+            const float cg = lit ? 0.78f : (blk ? 0.17f : 0.84f);
+            const float cb = lit ? 0.95f : (blk ? 0.20f : 0.88f);
+            r.draw_rect(kx + 1.f, y + 0.5f, kw - 2.f, std::max(1.f, row_h_ - 1.f), cr, cg, cb, 1.0f);
+            if (p % 12 == 0) {
+                char lbl[8]; std::snprintf(lbl, sizeof lbl, "C%d", p / 12 - 1);
+                r.draw_text(kx + 3.f, y + row_h_ * 0.5f - 5.f, lbl, 0.25f, 0.27f, 0.30f, 1.0f, 0.66f);
+            }
+        }
+        r.draw_rect(kx + kw - 1.f, ktop, 1.f, kbot - ktop, 0.22f, 0.24f, 0.28f, 1.0f);
+        r.pop_clip_rect();
+    }
 
     char foot[200];
     std::snprintf(foot, sizeof foot,

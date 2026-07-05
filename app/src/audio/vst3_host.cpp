@@ -28,6 +28,38 @@ using namespace Steinberg::Vst;
 
 namespace vivid::session {
 
+// Live MIDI input (M6): a lock-free ring of note on/off transitions from the UI/hardware
+// producers (musical typing on the main thread, CoreMIDI on its own thread) to the audio
+// thread, which drains it into a track's instrument each block (armed monitoring via the
+// session queue, or editor keyboard-audition via a per-track queue). Producers serialize
+// on `push_mtx` (rarely contended); the audio consumer (`pop`) never locks. `t_beats`
+// stamps the transport position so the recorder (M6.3) can place captured notes.
+struct LiveMidi {
+    struct Ev { uint8_t on; uint8_t pitch; float vel; double t_beats; };
+    static constexpr int kCap = 512;
+    Ev                    ring[kCap];
+    std::atomic<uint32_t> head{0};   // producer index
+    std::atomic<uint32_t> tail{0};   // consumer index
+    std::mutex            push_mtx;  // serializes producers; the audio consumer is lock-free
+
+    void push(uint8_t on, uint8_t pitch, float vel, double t_beats) {
+        std::lock_guard<std::mutex> lk(push_mtx);
+        const uint32_t h = head.load(std::memory_order_relaxed);
+        const uint32_t n = (h + 1) % kCap;
+        if (n == tail.load(std::memory_order_acquire)) return;  // full — drop (never blocks audio)
+        ring[h] = { on, pitch, vel, t_beats };
+        head.store(n, std::memory_order_release);
+    }
+    // Audio thread: pop one event; returns false when drained. Never locks.
+    bool pop(Ev& out) {
+        const uint32_t t = tail.load(std::memory_order_relaxed);
+        if (t == head.load(std::memory_order_acquire)) return false;
+        out = ring[t];
+        tail.store((t + 1) % kCap, std::memory_order_release);
+        return true;
+    }
+};
+
 struct Track {
     Vst3Handle*           handle = nullptr;
     std::string           name;
@@ -45,6 +77,7 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
+    LiveMidi              preview_in;       // editor keyboard-audition notes (drained every block, any arm state)
     uint64_t              steady = 0;
     std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
     std::vector<float>    fxl, fxr;         // effect I/O scratch
@@ -77,38 +110,6 @@ struct Track {
 // MIDI clip or an audio clip (Sampler). UI-thread-only storage: the audio thread never
 // reads `Session::pool`, so no edit-mirror is needed.
 struct PoolClip { bool is_audio = false; MidiClip clip; Sampler audio; std::string name; };
-
-// Live MIDI input (M6): a lock-free ring of note on/off transitions from the UI/hardware
-// producers (musical typing on the main thread, CoreMIDI on its own thread) to the audio
-// thread, which drains it into the *armed* track's instrument each block for monitoring.
-// Producers are serialized by `push_mtx` (only ever contended typing-vs-hardware, rare);
-// the audio consumer (`drain`) never locks. `t_beats` stamps the transport position at
-// push time so the recorder (M6.3) can place captured notes; monitoring ignores it.
-struct LiveMidi {
-    struct Ev { uint8_t on; uint8_t pitch; float vel; double t_beats; };
-    static constexpr int kCap = 512;
-    Ev                    ring[kCap];
-    std::atomic<uint32_t> head{0};   // producer index
-    std::atomic<uint32_t> tail{0};   // consumer index
-    std::mutex            push_mtx;  // serializes producers; the audio consumer is lock-free
-
-    void push(uint8_t on, uint8_t pitch, float vel, double t_beats) {
-        std::lock_guard<std::mutex> lk(push_mtx);
-        const uint32_t h = head.load(std::memory_order_relaxed);
-        const uint32_t n = (h + 1) % kCap;
-        if (n == tail.load(std::memory_order_acquire)) return;  // full — drop (never blocks audio)
-        ring[h] = { on, pitch, vel, t_beats };
-        head.store(n, std::memory_order_release);
-    }
-    // Audio thread: pop one event; returns false when drained. Never locks.
-    bool pop(Ev& out) {
-        const uint32_t t = tail.load(std::memory_order_relaxed);
-        if (t == head.load(std::memory_order_acquire)) return false;
-        out = ring[t];
-        tail.store((t + 1) % kCap, std::memory_order_release);
-        return true;
-    }
-};
 
 // Live monitored/recorded notes carry a note_id in a reserved range so their offs match
 // their ons and never collide with clip-scheduled note_ids (which start at 0).
@@ -469,6 +470,19 @@ void session_note_off(Session* s, int pitch) {
         for (auto it = s->rec_notes.rbegin(); it != s->rec_notes.rend(); ++it)
             if (it->open && it->pitch == pitch) { it->beat_off = beat; it->open = false; break; }
     }
+}
+
+// Editor keyboard audition (M2-followup): play a note on a specific track's instrument,
+// independent of the armed track. On/off are paired by pitch inside the track's queue.
+void session_preview_note(Session* s, int track, int pitch, float vel) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
+    if (s->tracks[track]->is_audio || pitch < 0 || pitch > 127) return;
+    s->tracks[track]->preview_in.push(1, static_cast<uint8_t>(pitch), vel, 0.0);
+}
+void session_preview_off(Session* s, int track, int pitch) {
+    if (!s || track < 0 || track >= static_cast<int>(s->tracks.size())) return;
+    if (s->tracks[track]->is_audio || pitch < 0 || pitch > 127) return;
+    s->tracks[track]->preview_in.push(0, static_cast<uint8_t>(pitch), 0.f, 0.0);
 }
 
 // Recording (M6.3). Start snaps the capture origin (optionally after a count-in of
@@ -1028,6 +1042,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                     t.nev.push_back(NoteEvent{ 0u, le.on != 0, le.pitch, le.vel,
                                               kLiveNoteIdBase + le.pitch, 0.f });
             }
+            // Editor keyboard-audition: this track's own preview queue, sounded whatever
+            // the arm state (a distinct note_id range so its offs never hit clip notes).
+            { LiveMidi::Ev pe;
+              while (t.preview_in.pop(pe))
+                  t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
+                                            kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
             emit_vst3(events, t.nev, t.eev);
 
             float* ch[2] = { L, R };
