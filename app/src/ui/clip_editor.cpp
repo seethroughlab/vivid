@@ -153,6 +153,7 @@ void ClipEditor::open_audio(int track, int scene, const std::string& title,
     t0_ = t0; t1_ = t1;
     aud_loop_ = loop_beats > 0 ? loop_beats : 4.0;
     wav_x0_ = 0.0; wav_px_ = gw() > 0 ? gw() : 600.f; wav_amp_ = 1.f;   // fit the whole clip
+    warp_norm_.clear(); trans_norm_.clear(); aud_req_ = 0;   // markers + shape loaded via setters
     drag_ = 0; dirty_ = false;
     audio_ = true;
     docked_ = true;
@@ -186,15 +187,27 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     if (!open_) return false;
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     float px, py, pw, ph; panel(px, py, pw, ph);
-    // Header: close [X], dock toggle, tool toggle, or drag-to-move.
+    // Header: close [X], dock toggle, per-mode controls, or drag-to-move.
     if (y < py + kHeaderH) {
-        if (x >= px + pw - 28.f)      { close(); return true; }                         // [X]
-        if (x >= px + pw - 64.f)      { docked_ = !docked_; drag_ = 0; return true; }    // dock
-        if (x >= px + pw - 124.f)     { tool_ = tool_ == Tool::Select ? Tool::Draw : Tool::Select; return true; }  // tool
-        if (!audio_ && x >= px + pw - 214.f) {                                           // scale (shift = scale type)
-            if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
-            else       scale_root_ = (scale_root_ + 2) % 13 - 1;   // off,-1 -> 0..11 -> off
-            return true;
+        if (x >= px + pw - 28.f) { close(); return true; }                              // [X]
+        if (x >= px + pw - 64.f) { docked_ = !docked_; drag_ = 0; return true; }         // dock
+        if (audio_) {
+            if (x >= px + pw - 268.f && x < px + pw - 186.f) {   // warp: cycle off->cplx->beat->rept
+                aud_warp_mode_ = aud_warp_mode_ >= 2 ? -1 : aud_warp_mode_ + 1; aud_req_ |= 1; return true;
+            }
+            if (x >= px + pw - 186.f && x < px + pw - 140.f) { aud_req_ |= 2; return true; }   // auto-warp
+            if (x >= px + pw - 140.f && x < px + pw - 70.f) {    // pitch -/+ (left half / right half)
+                aud_pitch_ = std::clamp(aud_pitch_ + (x < px + pw - 105.f ? -1.f : 1.f), -24.f, 24.f);
+                if (aud_warp_mode_ < 0) aud_warp_mode_ = 0;      // pitch implies warp on (Complex)
+                aud_req_ |= 1; return true;
+            }
+        } else {
+            if (x >= px + pw - 124.f) { tool_ = tool_ == Tool::Select ? Tool::Draw : Tool::Select; return true; }
+            if (x >= px + pw - 214.f) {   // scale (shift = scale type)
+                if (shift) scale_type_ = (scale_type_ + 1) % kNumScales;
+                else       scale_root_ = (scale_root_ + 2) % 13 - 1;
+                return true;
+            }
         }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
@@ -542,6 +555,14 @@ void ClipEditor::draw(Renderer2D& r) {
         r.draw_text(px + pw - 210.f, py + 8.f, sc, 0.55f, 0.78f, 0.6f, 1.0f, 0.8f);   // scale (click cycles)
         r.draw_text(px + pw - 120.f, py + 8.f, draw ? "Draw" : "Select",
                     draw ? 0.55f : 0.6f, draw ? 0.82f : 0.72f, draw ? 0.55f : 0.85f, 1.0f, 0.82f);
+    } else {
+        static const char* wm[] = { "off", "cplx", "beat", "rept" };
+        char wl[20]; std::snprintf(wl, sizeof wl, "warp %s", wm[aud_warp_mode_ + 1]);
+        const bool on = aud_warp_mode_ >= 0;
+        r.draw_text(px + pw - 268.f, py + 8.f, wl, on ? 0.55f : 0.55f, on ? 0.82f : 0.6f, on ? 0.55f : 0.62f, 1.0f, 0.82f);
+        r.draw_text(px + pw - 182.f, py + 8.f, "auto", 0.62f, 0.72f, 0.9f, 1.0f, 0.82f);
+        char pl[16]; std::snprintf(pl, sizeof pl, "pit %+d", static_cast<int>(std::lround(aud_pitch_)));
+        r.draw_text(px + pw - 132.f, py + 8.f, pl, 0.6f, 0.72f, 0.78f, 1.0f, 0.82f);
     }
     r.draw_text(px + pw - 60.f, py + 8.f, docked_ ? "float" : "dock", 0.6f, 0.72f, 0.78f, 1.0f, 0.8f);
     r.draw_text(px + pw - 22.f, py + 8.f, "X", 0.8f, 0.55f, 0.55f, 1.0f, 1.0f);
@@ -571,6 +592,15 @@ void ClipEditor::draw(Renderer2D& r) {
         if (x1 < GX + GW) r.draw_rect(std::max(x1, GX), GY, GX + GW - std::max(x1, GX), GH, 0.f, 0.f, 0.f, 0.45f);
         if (x0 >= GX && x0 <= GX + GW) r.draw_rect(x0 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);  // trim handles
         if (x1 >= GX && x1 <= GX + GW) r.draw_rect(x1 - 1.f, GY, 2.f, GH, 0.92f, 0.84f, 0.34f, 1.0f);
+        // Detected transients (faint ticks along the bottom).
+        for (float tn : trans_norm_) { const float tx = wxn(tn); if (tx >= GX && tx < GX + GW) r.draw_rect(tx, GY + GH - 9.f, 1.f, 8.f, 0.5f, 0.5f, 0.36f, 0.7f); }
+        // Warp markers (orange lines with a grab tab up top; drag-to-warp in A5b).
+        for (float wn : warp_norm_) {
+            const float wx = wxn(wn);
+            if (wx < GX || wx > GX + GW) continue;
+            r.draw_rect(wx, GY, 1.f, GH, 0.96f, 0.62f, 0.24f, 0.85f);
+            r.draw_rect(wx - 3.f, GY, 7.f, 6.f, 0.98f, 0.72f, 0.3f, 1.0f);
+        }
         // Playhead: the read position within the loop window, mapped back to the buffer.
         if (playhead_ >= 0.0 && aud_loop_ > 0.0) {
             double ph = std::fmod(playhead_, aud_loop_); if (ph < 0) ph += aud_loop_;
@@ -580,7 +610,7 @@ void ClipEditor::draw(Renderer2D& r) {
         }
         r.pop_clip_rect();
         r.draw_text(px + 12.f, py + ph - 18.f,
-                    "drag the yellow handles = loop  \xC2\xB7  Cmd-scroll zoom  \xC2\xB7  \xE2\x8C\xA5-scroll amp  \xC2\xB7  scroll pan  \xC2\xB7  F fit  \xC2\xB7  dock / X",
+                    "yellow handles = loop  \xC2\xB7  header: warp / auto / pit  \xC2\xB7  Cmd-scroll zoom  \xC2\xB7  \xE2\x8C\xA5 amp  \xC2\xB7  scroll pan  \xC2\xB7  F fit",
                     0.45f, 0.48f, 0.53f, 1.0f, 0.78f);
         return;
     }

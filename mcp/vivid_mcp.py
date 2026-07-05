@@ -287,6 +287,13 @@ def audio_set_reverse(track: int, scene: int, on: bool = True) -> dict:
 
 
 @mcp.tool
+def audio_auto_warp(track: int, scene: int, sensitivity: float = 0.5) -> dict:
+    """Auto-warp an audio clip: detect its transients, place warp markers at the beats, and
+    enable Complex warp so it locks to the project tempo. Returns the marker count."""
+    return _post("audio_auto_warp", {"track": track, "scene": scene, "sensitivity": sensitivity})
+
+
+@mcp.tool
 def set_param(track: int, device: int, param: int, value: float) -> dict:
     """Set a device param by its index (from list_params). device 0 = instrument, 1+ = FX. value 0..1."""
     return _post("set_param", {"track": track, "device": device, "param": param, "value": value})

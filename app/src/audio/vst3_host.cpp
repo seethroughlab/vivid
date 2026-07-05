@@ -515,6 +515,47 @@ void session_get_audio_fades(Session* s, int t, int sc, float* in_ms, float* out
     const auto& c = s->tracks[t]->aud_clips[sc];
     if (in_ms) *in_ms = c.fade_in_ms; if (out_ms) *out_ms = c.fade_out_ms; if (xfade_ms) *xfade_ms = c.loop_crossfade_ms;
 }
+int session_audio_auto_warp(Session* s, int t, int sc, float sensitivity) {
+    if (!aud_valid(s, t, sc)) return 0;
+    Track& tr = *s->tracks[t];
+    auto fresh = std::make_unique<ClipDsp>();          // build the stretcher off the lock
+    fresh->init(s->sample_rate > 0 ? s->sample_rate : 48000);
+    std::lock_guard<std::mutex> lk(tr.aud_mtx);
+    auto& c = tr.aud_clips[sc];
+    if (c.L.empty()) return 0;
+    const uint32_t sr = c.sr ? c.sr : 48000;
+    c.transients  = audio_clip_ed::detect_transients(c.L, c.R.empty() ? c.L : c.R, sr, sensitivity);
+    const double bpm = c.src_bpm > 0 ? c.src_bpm : audio_clip_ed::estimate_bpm(c.transients, sr);
+    c.warp_points = audio_clip_ed::auto_warp(c.transients, static_cast<uint32_t>(c.L.size()), sr, bpm);
+    c.warp_enabled = true; c.warp_mode = WarpMode::Complex;
+    if (tr.aud_dsp.size() < tr.aud_clips.size()) tr.aud_dsp.resize(tr.aud_clips.size());
+    tr.aud_dsp[sc] = std::move(fresh);
+    return static_cast<int>(c.warp_points.size());
+}
+int session_audio_get_warp_pts(Session* s, int t, int sc, float* out, int cap) {
+    if (!aud_valid(s, t, sc) || !out || cap <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    const double N = c.L.empty() ? 1.0 : static_cast<double>(c.L.size());
+    const int n = std::min(cap, static_cast<int>(c.warp_points.size()));
+    for (int i = 0; i < n; ++i) out[i] = static_cast<float>(c.warp_points[i].source_sample / N);
+    return n;
+}
+int session_audio_get_transients(Session* s, int t, int sc, float* out, int cap) {
+    if (!aud_valid(s, t, sc) || !out || cap <= 0) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const auto& c = s->tracks[t]->aud_clips[sc];
+    const double N = c.L.empty() ? 1.0 : static_cast<double>(c.L.size());
+    const int n = std::min(cap, static_cast<int>(c.transients.size()));
+    for (int i = 0; i < n; ++i) out[i] = static_cast<float>(c.transients[i].source_sample / N);
+    return n;
+}
+void session_audio_clear_warp(Session* s, int t, int sc) {
+    if (!aud_valid(s, t, sc)) return;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    auto& c = s->tracks[t]->aud_clips[sc];
+    c.warp_points.clear(); c.warp_enabled = false;
+}
 
 static bool clip_valid(Session* s, int t, int sc) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size())

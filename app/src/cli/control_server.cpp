@@ -541,6 +541,13 @@ void ControlServer::register_handlers() {
         P::session_set_audio_reverse(c.session, track, scene, b.value("on", true) ? 1 : 0);
         return ok();
     };
+    handlers_["audio_auto_warp"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        const int npts = P::session_audio_auto_warp(c.session, track, scene, b.value("sensitivity", 0.5f));
+        json r = ok(); r["markers"] = npts; return r;
+    };
     // ---------------- clip pool (loose clips that live outside the grid) ----------------
     // The pool is UI-thread-only storage; these handlers run on the UI thread (like all others).
     handlers_["list_pool"] = [](const ControlCtx& c, const json&) {

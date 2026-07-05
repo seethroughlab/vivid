@@ -158,6 +158,24 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                             nv.data(), static_cast<int>(nv.size()), win.editor->length());
             }
         }
+        // A5: apply audio warp/pitch/auto-warp requests from the editor header, then refresh
+        // the editor's marker + shape display from the engine.
+        if (win.editor->is_audio() && app.session) {
+            int mode = -1; float pitch = 0.f; bool do_auto = false;
+            if (win.editor->take_audio_req(mode, pitch, do_auto)) {
+                namespace S = vivid::session;
+                const int tk = win.editor->track(), scn = win.editor->scene();
+                if (do_auto) S::session_audio_auto_warp(app.session, tk, scn, 0.5f);
+                else { S::session_set_audio_warp(app.session, tk, scn, mode >= 0 ? 1 : 0, mode < 0 ? 0 : mode);
+                       S::session_set_audio_pitch(app.session, tk, scn, pitch); }
+                float wp[256], tr[512];
+                const int nw = S::session_audio_get_warp_pts(app.session, tk, scn, wp, 256);
+                const int ntr = S::session_audio_get_transients(app.session, tk, scn, tr, 512);
+                win.editor->set_audio_markers(wp, nw, tr, ntr);
+                win.editor->set_audio_shape(S::session_get_audio_warp(app.session, tk, scn),
+                                            S::session_get_audio_pitch(app.session, tk, scn));
+            }
+        }
     }
     if (win.gain_drag >= 0 && app.session) {
         const Rect gr = track_gain_rect(win.gain_drag, vivid::session::session_scene_count(app.session));

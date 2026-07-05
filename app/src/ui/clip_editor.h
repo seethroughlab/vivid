@@ -53,6 +53,16 @@ public:
     void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
     void set_dock_h(float h) { dock_h_ = h; }       // shared bottom-dock height (docked mode)
     bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
+    // Audio warp/shaping (A5): frame.cpp loads the clip's state + markers, and drains pending edits.
+    void set_audio_shape(int warp_mode, float pitch) { aud_warp_mode_ = warp_mode; aud_pitch_ = pitch; }
+    void set_audio_markers(const float* warp, int nw, const float* trans, int nt) {
+        warp_norm_.assign(warp, warp + (nw > 0 ? nw : 0));
+        trans_norm_.assign(trans, trans + (nt > 0 ? nt : 0));
+    }
+    bool take_audio_req(int& mode, float& pitch, bool& do_auto) {   // true if there's a pending change
+        if (aud_req_ == 0) return false;
+        mode = aud_warp_mode_; pitch = aud_pitch_; do_auto = (aud_req_ & 2) != 0; aud_req_ = 0; return true;
+    }
 
 private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
@@ -66,6 +76,11 @@ private:
     float  wav_px_ = 600.f;            // audio: pixels per normalized unit (horizontal zoom)
     float  wav_amp_ = 1.f;             // audio: vertical amplitude zoom
     double aud_loop_ = 4.0;            // audio: clip loop length in beats (for the playhead)
+    // Audio warp/shaping (A5): mirrored for the header UI + overlay; committed via frame.cpp.
+    int    aud_warp_mode_ = -1;        // -1 off, 0 Complex, 1 Beats, 2 Repitch
+    float  aud_pitch_ = 0.f;           // clip transpose in semitones
+    std::vector<float> warp_norm_, trans_norm_;   // marker / transient positions (normalized 0..1)
+    int    aud_req_ = 0;               // pending commit: bit0 = shaping changed, bit1 = auto-warp
     double length_ = 4.0;
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)

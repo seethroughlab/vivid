@@ -105,6 +105,14 @@ int   session_get_audio_reverse(Session*, int track, int scene);
 void  session_set_audio_fades  (Session*, int track, int scene, float in_ms, float out_ms, float xfade_ms);
 void  session_get_audio_fades  (Session*, int track, int scene, float* in_ms, float* out_ms, float* xfade_ms);
 
+// Auto-warp: detect transients on the clip's PCM, place a warp marker per hit at the nearest
+// beat (tempo from src_bpm or estimated), and enable Complex warp. Returns the marker count.
+int   session_audio_auto_warp    (Session*, int track, int scene, float sensitivity);
+// Marker / transient positions as normalized buffer fractions [0,1] (for the editor overlay).
+int   session_audio_get_warp_pts (Session*, int track, int scene, float* out_norm, int cap);
+int   session_audio_get_transients(Session*, int track, int scene, float* out_norm, int cap);
+void  session_audio_clear_warp   (Session*, int track, int scene);   // drop markers, warp off
+
 // MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
 // Clip pool: loose clips stashed outside the track grid (browser sidebar). UI/main-thread
