@@ -92,6 +92,7 @@ private:
     int    lane_idx_ = -1;        // note whose velocity a lane-drag targets
     int    lane_axis_ = -1;       // bottom lane: -1 velocity, 0 bend, 1 pressure, 2 timbre
     bool   bend_snap_ = false;    // quantize painted bend to whole semitones
+    uint32_t tool_seed_ = 1;      // varies humanize between repeated presses
     std::vector<vivid::session::CurveBp> paint_;   // raw freehand stroke (note-normalized t,value)
     int    paint_note_ = -1;      // note the current stroke paints into
 

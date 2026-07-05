@@ -1,5 +1,6 @@
 #include "ui/clip_editor.h"
 #include "midi/note_ops.h"
+#include "midi/note_tools.h"
 #include <GLFW/glfw3.h>
 #include <algorithm>
 #include <cmath>
@@ -465,6 +466,20 @@ bool ClipEditor::on_key(int key, int mods) {
         else       scale_root_ = (scale_root_ + 2) % 13 - 1;
         return true;
     }
+    // --- M5 musical tools (operate on the selection, or the whole clip if none) ---
+    namespace nt = vivid::session;
+    if (key == GLFW_KEY_I) { push_undo(); nt::invert_pitches(notes_, sel_); dirty_ = true; return true; }
+    if (key == GLFW_KEY_R) { push_undo(); nt::retrograde(notes_, sel_); dirty_ = true; return true; }
+    if (key == GLFW_KEY_H) { push_undo(); nt::humanize(notes_, sel_, cell_ * 0.15, 0.12f, ++tool_seed_); dirty_ = true; return true; }
+    if (key == GLFW_KEY_T) { push_undo(); nt::strum(notes_, sel_, cell_ * 0.5); dirty_ = true; return true; }
+    if (key == GLFW_KEY_Y) {   // quantize pitches to the editor's scale (C major if scale is off)
+        const int root = scale_root_ >= 0 ? scale_root_ : 0;
+        const uint16_t mask = scale_root_ >= 0 ? kScales[scale_type_].mask : kScales[0].mask;
+        push_undo(); nt::quantize_to_scale(notes_, sel_, root, mask); dirty_ = true; return true;
+    }
+    if (key == GLFW_KEY_APOSTROPHE) {   // glide: bend each note in from the previous pitch
+        push_undo(); nt::apply_glide(notes_, sel_, 0.35f, kBendRange); dirty_ = true; return true;
+    }
     if (key == GLFW_KEY_B) { tool_ = Tool::Draw;   return true; }
     if (key == GLFW_KEY_S) { tool_ = Tool::Select; return true; }
     return false;
@@ -630,7 +645,7 @@ void ClipEditor::draw(Renderer2D& r) {
 
     char foot[200];
     std::snprintf(foot, sizeof foot,
-                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 lane %s \xC2\xB7 E lane \xC2\xB7 J snap \xC2\xB7 B/S tool \xC2\xB7 G grid \xC2\xB7 F fit \xC2\xB7 K scale \xC2\xB7 paint in the lane; tap=erase",
+                  "%s \xC2\xB7 grid %s \xC2\xB7 %d sel \xC2\xB7 lane %s \xC2\xB7 E lane/J snap \xC2\xB7 tools: I invert R retro H human T strum Y scale ' glide \xC2\xB7 paint in lane; tap=erase",
                   tool_ == Tool::Draw ? "Draw" : "Select", kGrids[grid_idx_].label, selected_count(),
                   lane_axis_ < 0 ? "vel" : kAxisNames[lane_axis_]);
     r.draw_text(px + 12.f, py + ph - 18.f, foot, 0.45f, 0.48f, 0.53f, 1.0f, 0.76f);
