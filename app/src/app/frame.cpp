@@ -258,6 +258,17 @@ void run_frame_loop(App& app, Window& win) {
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
+        // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
+        // armed track's instrument (so all Session access stays on the UI thread).
+        if (app.session) {
+            vivid::platform::MidiEvent mev[64];
+            const int nm = app.midi_in.poll(mev, 64);
+            for (int i = 0; i < nm; ++i) {
+                if (mev[i].on) vivid::session::session_note_on(app.session, mev[i].pitch, mev[i].vel);
+                else           vivid::session::session_note_off(app.session, mev[i].pitch);
+            }
+        }
+
         // Resizable shell: reconfigure the surface (at framebuffer res) on resize.
         { int fbw = 0, fbh = 0; glfwGetFramebufferSize(window, &fbw, &fbh);
           if (fbw > 0 && fbh > 0 && (static_cast<uint32_t>(fbw) != gpu.width() || static_cast<uint32_t>(fbh) != gpu.height())) {

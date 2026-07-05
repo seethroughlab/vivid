@@ -162,6 +162,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/sparkle_bridge_stub.cpp
     src/platform/file_dialog_stub.cpp
     src/platform/menu_bar_stub.cpp
+    src/platform/midi_input_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
@@ -192,7 +193,8 @@ if(APPLE)
         src/platform/macos_frame_timer.cpp
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm
-        src/platform/menu_bar.mm)
+        src/platform/menu_bar.mm
+        src/platform/midi_input.mm)
     set_target_properties(vivid PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
@@ -221,7 +223,7 @@ if(APPLE)
     target_link_libraries(vivid PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework QuartzCore"
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
-        "-framework CoreFoundation"
+        "-framework CoreMIDI" "-framework CoreFoundation"
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 endif()
 

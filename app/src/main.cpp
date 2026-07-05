@@ -223,6 +223,9 @@ int main() {
     app.control = &control;
     { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
 
+    if (app.midi_in.start())   // hardware MIDI input -> armed track (M6.4)
+        std::fprintf(stderr, "[vivid] MIDI input: %d source(s) connected\n", app.midi_in.source_count());
+
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
 
     // Remember this window's size + position for next launch (app-level, not per-project).
@@ -230,6 +233,7 @@ int main() {
       glfwGetWindowSize(window, &w, &h); glfwGetWindowPos(window, &x, &y);
       if (w > 0 && h > 0) vivid::save_window_prefs({ w, h, x, y, true, true }, vivid::window_prefs_path()); }
 
+    app.midi_in.stop();   // stop hardware MIDI before tearing down state
     control.stop();   // stop the MCP control server thread before tearing down state
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);

@@ -7,6 +7,7 @@
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
+#include "platform/midi_input.h"           // hardware MIDI input (M6.4)
 
 namespace vivid {
 class GpuContext;
@@ -38,6 +39,7 @@ struct App {
     // registry factory that captures its raw pointer (App lives the whole run).
     std::vector<std::unique_ptr<OperatorLoader>> op_loaders;
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
+    platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
 
