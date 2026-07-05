@@ -57,8 +57,10 @@ void ClipEditor::set_playhead(double abs_beats) {
 }
 
 void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
-    if (docked_) { x = 8.f; y = win_h_ - kDockH - 8.f; w = win_w_ - 16.f; h = kDockH; }
-    else         { x = px_; y = py_;                   w = kFloatW;       h = kFloatH; }
+    // Docked = the shared bottom inspector/editor dock (matches Window::dock_h). Starts just
+    // below the dock resize strip (dock_top-3..+4) so that handle stays draggable.
+    if (docked_) { x = 8.f; y = win_h_ - dock_h_ + 5.f; w = win_w_ - 16.f; h = dock_h_ - 9.f; }
+    else         { x = px_; y = py_;                    w = kFloatW;       h = kFloatH; }
 }
 float ClipEditor::gx() const { float x,y,w,h; panel(x,y,w,h); return x + 10.f; }
 float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kHeaderH + 10.f; }
@@ -139,6 +141,7 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     tool_ = Tool::Draw;
     grid_idx_ = std::clamp(grid_idx_, 0, kNumGrids - 1);
     cell_ = kGrids[grid_idx_].v;
+    docked_ = true;             // open in the shared bottom inspector dock (float via header toggle)
     open_ = true;
     fit_view();
 }
@@ -150,6 +153,7 @@ void ClipEditor::open_audio(int track, int scene, const std::string& title,
     t0_ = t0; t1_ = t1;
     drag_ = 0; dirty_ = false;
     audio_ = true;
+    docked_ = true;
     open_ = true;
 }
 

@@ -243,6 +243,7 @@ void run_frame_loop(App& app, Window& win) {
           }
           win.split_x = std::clamp(win.split_x, 40.f, static_cast<float>(win.win_w) - 40.f);
           clip_editor.set_window(static_cast<float>(win.win_w), static_cast<float>(win.win_h));
+          clip_editor.set_dock_h(win.dock_h);   // docked editor shares the bottom-dock height
         }
 
         reap_plugin_windows(app, win);
@@ -266,7 +267,10 @@ void run_frame_loop(App& app, Window& win) {
             const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
             graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
             graph.draw(ui);   // includes live node thumbnails via draw_texture
-            draw_device_dock(ui, win, mx, my);   // bottom device-view dock (full width)
+            // The bottom dock is a shared inspector/editor space: the clip editor takes it
+            // over while docked; otherwise the device/node inspector shows there.
+            const bool editor_owns_dock = clip_editor.is_open() && clip_editor.is_docked();
+            if (!editor_owns_dock) draw_device_dock(ui, win, mx, my);   // bottom device-view dock (full width)
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.

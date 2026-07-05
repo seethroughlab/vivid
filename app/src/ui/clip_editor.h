@@ -51,6 +51,8 @@ public:
     bool on_key(int key, int mods);
     bool contains(double x, double y) const;       // is (x,y) inside the panel?
     void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
+    void set_dock_h(float h) { dock_h_ = h; }       // shared bottom-dock height (docked mode)
+    bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
 
 private:
     bool   open_ = false, dirty_ = false, docked_ = false, audio_ = false;
@@ -79,6 +81,7 @@ private:
 
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)
     float  win_w_ = 1280.f, win_h_ = 800.f;   // current window size (for dock/clamp)
+    float  dock_h_ = 210.f;            // shared bottom-dock height (matches Window::dock_h)
 
     // Undo/redo of the note buffer (selection is not snapshotted; it's cleared on undo).
     std::vector<std::vector<vivid::session::ClipNote>> undo_, redo_;

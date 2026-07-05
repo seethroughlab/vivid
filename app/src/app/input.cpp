@@ -575,6 +575,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                     char title[80];
                     std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c",
                                   vivid::session::session_track_name(app->session, t), 'A' + sc);
+                    // Grow the shared dock to a comfortable editing height (the piano roll
+                    // needs room); the user can still resize it. Capped to 60% of the window.
+                    win->dock_h = std::min(std::max(win->dock_h, 320.f), win->win_h * 0.6f);
+                    win->editor->set_window(static_cast<float>(win->win_w), static_cast<float>(win->win_h));
+                    win->editor->set_dock_h(win->dock_h);   // fit the docked view to the current dock height
                     if (vivid::session::session_track_is_audio(app->session, t)) {  // waveform editor
                         float bins[512]; float a = 0.f, b = 1.f;
                         const int nb = vivid::session::session_audio_waveform(app->session, t, sc, bins, 512);
