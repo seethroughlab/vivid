@@ -114,6 +114,11 @@ struct LiveMidi {
 // their ons and never collide with clip-scheduled note_ids (which start at 0).
 static constexpr int32_t kLiveNoteIdBase = 0x40000000;
 
+// A note captured while recording (M6.3). Beats are absolute transport beats; on commit
+// they map to clip-local positions (fmod by the clip length). `open` = note-on seen,
+// awaiting its note-off.
+struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool open; };
+
 struct Session {
     Vst3HostApp host;
     std::vector<PoolClip> pool;   // clips stashed outside the grid (browser sidebar; UI-thread-only)
@@ -141,6 +146,14 @@ struct Session {
     LiveMidi              live_in;
     std::atomic<int>      armed_track{-1};
     std::atomic<double>   play_beats{0.0};   // last transport beat the audio thread saw (stamps live input)
+    // Recording (M6.3): while `recording`, live note on/off are captured (with their
+    // absolute transport beat) into rec_notes on the producer thread; on stop they are
+    // mapped to clip-local positions and overdubbed into the armed track's active clip.
+    std::atomic<bool>     recording{false};
+    double                rec_capture_from = 0.0;   // don't capture notes before this beat (count-in)
+    std::mutex            rec_mtx;
+    std::vector<RecNote>  rec_notes;
+    std::atomic<bool>     metronome{false};   // audible click on each beat while enabled
 };
 
 // Republish the current track membership for the audio thread (UI/main thread only).
@@ -438,12 +451,77 @@ int session_armed_track(Session* s) {   // returns the armed track *index*, or -
 void session_note_on(Session* s, int pitch, float vel) {
     Track* t = armed_track_ptr(s);
     if (!t || t->is_audio || pitch < 0 || pitch > 127) return;   // only monitor through an instrument track
-    s->live_in.push(1, static_cast<uint8_t>(pitch), vel, s->play_beats.load(std::memory_order_relaxed));
+    const double beat = s->play_beats.load(std::memory_order_relaxed);
+    s->live_in.push(1, static_cast<uint8_t>(pitch), vel, beat);
+    if (s->recording.load(std::memory_order_relaxed) && beat >= s->rec_capture_from) {
+        std::lock_guard<std::mutex> lk(s->rec_mtx);
+        s->rec_notes.push_back(RecNote{ pitch, beat, beat, vel, true });
+    }
 }
 void session_note_off(Session* s, int pitch) {
     Track* t = armed_track_ptr(s);
     if (!t || t->is_audio || pitch < 0 || pitch > 127) return;
-    s->live_in.push(0, static_cast<uint8_t>(pitch), 0.f, s->play_beats.load(std::memory_order_relaxed));
+    const double beat = s->play_beats.load(std::memory_order_relaxed);
+    s->live_in.push(0, static_cast<uint8_t>(pitch), 0.f, beat);
+    if (s->recording.load(std::memory_order_relaxed)) {
+        std::lock_guard<std::mutex> lk(s->rec_mtx);
+        // Close the most recent still-open note of this pitch.
+        for (auto it = s->rec_notes.rbegin(); it != s->rec_notes.rend(); ++it)
+            if (it->open && it->pitch == pitch) { it->beat_off = beat; it->open = false; break; }
+    }
+}
+
+// Recording (M6.3). Start snaps the capture origin (optionally after a count-in of
+// `count_in_beats`); stop closes any held notes, maps captures to clip-local beats
+// (fmod by the clip length), and overdubs them into the armed track's active clip.
+static void commit_recording(Session* s);
+void session_set_recording(Session* s, bool on, double count_in_beats) {
+    if (!s) return;
+    if (on) {
+        std::lock_guard<std::mutex> lk(s->rec_mtx);
+        s->rec_notes.clear();
+        const double now = s->play_beats.load(std::memory_order_relaxed);
+        s->rec_capture_from = now + (count_in_beats > 0 ? count_in_beats : 0.0);
+        s->recording.store(true, std::memory_order_relaxed);
+    } else {
+        if (!s->recording.exchange(false, std::memory_order_relaxed)) return;
+        commit_recording(s);
+    }
+}
+int  session_is_recording(Session* s) { return (s && s->recording.load(std::memory_order_relaxed)) ? 1 : 0; }
+void session_set_metronome(Session* s, int on) { if (s) s->metronome.store(on != 0, std::memory_order_relaxed); }
+int  session_get_metronome(Session* s) { return (s && s->metronome.load(std::memory_order_relaxed)) ? 1 : 0; }
+
+static void commit_recording(Session* s) {
+    std::vector<RecNote> rec;
+    { std::lock_guard<std::mutex> lk(s->rec_mtx);
+      const double now = s->play_beats.load(std::memory_order_relaxed);
+      for (auto& r : s->rec_notes) if (r.open) { r.beat_off = now; r.open = false; }  // close held notes
+      rec.swap(s->rec_notes); }
+    if (rec.empty()) return;
+    Track* t = armed_track_ptr(s);
+    if (!t || t->is_audio) return;
+    const int ti = session_armed_track(s);          // armed track *index* for session_set_clip
+    if (ti < 0) return;
+    const int sc = t->active.load(std::memory_order_relaxed);
+    if (sc < 0 || sc >= static_cast<int>(t->clips.size())) return;
+    // Start from the clip's current notes (overdub) and append the captures, mapped to
+    // clip-local beats. A zero/short clip defaults to a 4-beat loop.
+    const MidiClip& clip = t->clips[sc];
+    const double len = clip.length > 0.0 ? clip.length : 4.0;
+    std::vector<ClipNote> notes = clip.notes;
+    for (const RecNote& r : rec) {
+        double dur = r.beat_off - r.beat_on;
+        if (dur < 1.0 / 32.0) dur = 1.0 / 32.0;   // floor very short taps to a ~1/128 note
+        ClipNote n{};
+        n.pitch = r.pitch;
+        n.start = std::fmod(r.beat_on - s->rec_capture_from, len);
+        if (n.start < 0) n.start += len;
+        n.dur = std::min(dur, len);   // keep a recorded note within one loop
+        n.vel = r.vel;
+        notes.push_back(n);
+    }
+    session_set_clip(s, ti, sc, notes.data(), static_cast<int>(notes.size()), len);
 }
 int  session_active_clip(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->active.load(std::memory_order_relaxed) : -1;

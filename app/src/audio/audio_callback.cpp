@@ -39,6 +39,33 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
         }
     }
 
+    // Metronome click (M6.3): a short decaying sine on each beat while enabled. Mixed into
+    // the master before metering. The downbeat (every 4th beat) is accented higher.
+    if (a->session && playing && bpm > 0.0 && vivid::session::session_get_metronome(a->session)) {
+        const double bps = bpm / 60.0;
+        const double end = beats + frames * bps / sr;
+        const long long nb = static_cast<long long>(std::floor(beats)) + 1;   // next integer beat
+        int trigger_off = -1;
+        if (static_cast<double>(nb) <= end && nb != a->click_last_beat) {
+            trigger_off = static_cast<int>((static_cast<double>(nb) - beats) / bps * sr);
+            trigger_off = std::clamp(trigger_off, 0, static_cast<int>(frames) - 1);
+            a->click_last_beat = nb;
+            a->click_freq = (nb % 4 == 0) ? 1600.f : 1000.f;   // accent the downbeat
+        }
+        const float decay = std::exp(-1.f / (0.03f * static_cast<float>(sr)));   // ~30 ms tail
+        double inc = 2.0 * kPi * a->click_freq / sr;
+        for (ma_uint32 i = 0; i < frames; ++i) {
+            if (static_cast<int>(i) == trigger_off) { a->click_amp = 0.5f; a->click_phase = 0.0; inc = 2.0 * kPi * a->click_freq / sr; }
+            if (a->click_amp > 1e-4f) {
+                const float s = a->click_amp * static_cast<float>(std::sin(a->click_phase));
+                fout[i * 2 + 0] += s; fout[i * 2 + 1] += s;
+                a->click_phase += inc;
+                if (a->click_phase > 2.0 * kPi) a->click_phase -= 2.0 * kPi;
+                a->click_amp *= decay;
+            }
+        }
+    }
+
     if (a->transport) {
         a->transport->advance(frames, sr);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / static_cast<float>(sr));

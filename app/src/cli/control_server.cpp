@@ -492,6 +492,18 @@ void ControlServer::register_handlers() {
         P::session_note_off(c.session, pitch);
         return ok();
     };
+    handlers_["record"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const bool on = b.value("on", true);
+        if (on && P::session_armed_track(c.session) < 0) return err(code::kBadArg, "no armed track");
+        P::session_set_recording(c.session, on, b.value("count_in", 0.0));
+        json r = ok(); r["recording"] = P::session_is_recording(c.session); return r;
+    };
+    handlers_["metronome"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_set_metronome(c.session, b.value("on", true) ? 1 : 0);
+        json r = ok(); r["metronome"] = P::session_get_metronome(c.session); return r;
+    };
     handlers_["set_param"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), device = b.value("device", 0), index = b.value("param", 0);

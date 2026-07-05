@@ -38,6 +38,12 @@ void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-rang
 int  session_armed_track(Session*);                        // armed track index, -1 if none
 void session_note_on(Session*, int pitch, float vel);      // routed to the armed instrument track
 void session_note_off(Session*, int pitch);
+// Recording: start (on=true) snaps the capture origin after an optional count-in; stop
+// (on=false) overdubs the captured notes into the armed track's active clip.
+void session_set_recording(Session*, bool on, double count_in_beats);
+int  session_is_recording(Session*);
+void session_set_metronome(Session*, int on);
+int  session_get_metronome(Session*);
 
 // Dynamic tracks: create/delete at runtime (UI/main thread). The audio thread sees the
 // change at the next block via a generation-counter try_lock swap of its track view.

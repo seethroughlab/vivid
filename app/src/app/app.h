@@ -58,6 +58,10 @@ struct App {
     float  tr_baseline = 0.f;                // onset detector baseline
     double phase = 0.0;                      // test-tone oscillator phase
     double tone_hz = 110.0;
+    double click_phase = 0.0;                // metronome click oscillator (M6.3)
+    float  click_amp = 0.f;                  // click envelope (decays each sample)
+    float  click_freq = 1000.f;              // downbeat vs. beat pitch
+    long long click_last_beat = -1;          // last integer beat that fired a click
 };
 
 }  // namespace vivid
