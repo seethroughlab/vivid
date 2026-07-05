@@ -205,6 +205,7 @@ void ClipEditor::open(int track, int scene, const std::string& title,
     undo_.clear(); redo_.clear();
     drag_ = 0; last_idx_ = -1; dirty_ = false; audio_ = false;
     step_cursor_ = 0.0; step_held_ = 0;   // reset step input for the new clip
+    ghost_notes_.clear();                 // caller repopulates via set_ghost_notes
     tool_ = Tool::Draw;
     grid_idx_ = std::clamp(grid_idx_, 0, kNumGrids - 1);
     cell_ = kGrids[grid_idx_].v;
@@ -285,6 +286,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             if (x >= px + pw - 366.f) {   // fold: show only occupied pitch rows
                 fold_ = !fold_; rebuild_fold(); fit_view(); return true;
             }
+            if (x >= px + pw - 436.f) { ghost_ = !ghost_; return true; }   // ghost reference notes
         }
         if (!docked_) { drag_ = 3; down_off_x_ = x - px_; down_off_y_ = y - py_; }       // start move
         return true;
@@ -685,6 +687,8 @@ void ClipEditor::draw(Renderer2D& r) {
         char sc[16];
         if (scale_root_ < 0) std::snprintf(sc, sizeof sc, "scale off");
         else std::snprintf(sc, sizeof sc, "%s %s", kPitchNames[scale_root_], kScales[scale_type_].label);
+        r.draw_text(px + pw - 430.f, py + 8.f, "ghost",
+                    ghost_ ? 0.72f : 0.5f, ghost_ ? 0.74f : 0.55f, ghost_ ? 0.82f : 0.6f, 1.0f, 0.82f);
         r.draw_text(px + pw - 360.f, py + 8.f, "fold",
                     fold_ ? 0.55f : 0.5f, fold_ ? 0.82f : 0.55f, fold_ ? 0.85f : 0.6f, 1.0f, 0.82f);
         r.draw_text(px + pw - 290.f, py + 8.f, "step",
@@ -799,6 +803,14 @@ void ClipEditor::draw(Renderer2D& r) {
         if (bar) {
             char lbl[8]; std::snprintf(lbl, sizeof lbl, "%d", static_cast<int>(b / 4.0) + 1);
             r.draw_text(x + 3.f, GY + 3.f, lbl, 0.6f, 0.63f, 0.68f, 1.0f, 0.72f);
+        }
+    }
+    // Ghost notes (other tracks' same-scene notes), drawn faintly behind the editable ones.
+    if (ghost_ && !fold_) {
+        for (const auto& n : ghost_notes_) {
+            const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
+            if (ny >= RBOT || ny + RH <= RTOP || nx > GX + GW || nx + nw < GX) continue;
+            r.draw_rect(nx, ny + 1.f, nw, RH - 2.f, 0.30f, 0.34f, 0.42f, 0.5f);
         }
     }
     // Notes.

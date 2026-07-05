@@ -53,6 +53,9 @@ public:
     void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
     void set_dock_h(float h) { dock_h_ = h; }       // shared bottom-dock height (docked mode)
     bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
+    // Ghost notes (M2-followup): reference notes from the same-scene clips of other tracks,
+    // drawn faintly behind the editable notes. The caller gathers them at open time.
+    void set_ghost_notes(const vivid::session::ClipNote* n, int count) { ghost_notes_.assign(n, n + (count > 0 ? count : 0)); }
     // Step input (M6.5): when on, live note-ons (typing / hardware MIDI, routed by the
     // input layer) write a note at the step cursor and advance it by one grid cell. A
     // chord (notes held together) lands on the same step; the cursor advances when all
@@ -117,6 +120,8 @@ private:
     float  row_h_ = 12.f;              // vertical zoom (px per row)
     bool   fold_ = false;              // fold: show only occupied pitch rows
     std::vector<int> fold_rows_;       // occupied pitches, descending (row order) when folded
+    bool   ghost_ = false;             // show reference notes from other tracks
+    std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
     double cell_ = 0.25;               // grid = 1/16 note
 
     float  px_ = 300.f, py_ = 110.f;   // floating panel top-left (draggable)

@@ -678,6 +678,15 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                         const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);
                         const double len = vivid::session::session_clip_length(app->session, t, sc);
                         win->editor->open(t, sc, title, buf, n, len);
+                        // Ghost reference: gather the same-scene notes of the other MIDI tracks.
+                        std::vector<vivid::session::ClipNote> ghosts;
+                        for (int gt = 0; gt < tracks; ++gt) {
+                            if (gt == t || vivid::session::session_track_is_audio(app->session, gt)) continue;
+                            vivid::session::ClipNote gb[256];
+                            const int gn = vivid::session::session_get_clip(app->session, gt, sc, gb, 256);
+                            ghosts.insert(ghosts.end(), gb, gb + gn);
+                        }
+                        win->editor->set_ghost_notes(ghosts.data(), static_cast<int>(ghosts.size()));
                     }
                     win->last_clip_t = -1; win->clip_drag_t = -1;
                     return;
