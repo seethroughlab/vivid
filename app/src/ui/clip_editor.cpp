@@ -66,7 +66,7 @@ float ClipEditor::gw() const { float x,y,w,h; panel(x,y,w,h); return w - 20.f; }
 float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kHeaderH - 20.f; }
 
 int ClipEditor::pitch_at(double y) const {
-    return view_pitch_top_ - static_cast<int>(std::floor((y - gy()) / row_h_));
+    return view_pitch_top_ - static_cast<int>(std::floor((y - roll_top()) / row_h_));
 }
 double ClipEditor::snap(double b) const { return std::round(b / cell_) * cell_; }
 
@@ -192,7 +192,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
             return true;
         }
         // Bottom lane: velocity bars (lane_axis_ < 0) or a painted expression curve.
-        if (y >= gy() + roll_h()) {
+        if (y >= lane_top()) {
             if (lane_axis_ < 0) {                             // velocity: drag the nearest note's bar
                 int best = -1; double bestd = 1e18;
                 for (size_t i = 0; i < notes_.size(); ++i) {
@@ -329,14 +329,14 @@ void ClipEditor::finish_marquee(double x, double y) {
 // curve off the edges. Bend maps ±kBendRange to the full height (center = 0); pressure
 // and timbre map 0..1 bottom-to-top.
 float ClipEditor::lane_value_at(double y) const {
-    const float top = gy() + roll_h() + 6.f, bot = gy() + gh() - 4.f;
+    const float top = lane_top() + 6.f, bot = gy() + gh() - 4.f;
     float f = (bot - static_cast<float>(y)) / std::max(1.f, bot - top);   // 0 bottom .. 1 top
     f = std::clamp(f, 0.f, 1.f);
     if (lane_axis_ == 0) { float v = (f * 2.f - 1.f) * kBendRange; return bend_snap_ ? std::round(v) : v; }
     return f;
 }
 float ClipEditor::lane_y_for(float v) const {
-    const float top = gy() + roll_h() + 6.f, bot = gy() + gh() - 4.f;
+    const float top = lane_top() + 6.f, bot = gy() + gh() - 4.f;
     float f = (lane_axis_ == 0) ? (v / kBendRange + 1.f) * 0.5f : v;
     f = std::clamp(f, 0.f, 1.f);
     return bot - f * (bot - top);
@@ -534,10 +534,11 @@ void ClipEditor::draw(Renderer2D& r) {
     const float ROLL = roll_h();
     const int rows = std::max(1, static_cast<int>(ROLL / RH) + 2);
     const int pTop = view_pitch_top_, pBot = view_pitch_top_ - rows;
+    const float RTOP = roll_top(), RBOT = lane_top();   // piano-roll band (below ruler, above lane)
     for (int p = pBot; p <= pTop; ++p) {
         if (p < 0 || p > 127) continue;
         const float y = yp(p);
-        if (y > GY + ROLL) continue;
+        if (y >= RBOT || y + RH <= RTOP) continue;
         if (is_black(p)) r.draw_rect(GX, y, GW, RH, 0.09f, 0.10f, 0.12f, 1.0f);
         if (scale_root_ >= 0) {
             const int pc = (((p - scale_root_) % 12) + 12) % 12;
@@ -557,14 +558,27 @@ void ClipEditor::draw(Renderer2D& r) {
         if (b < 0) continue;
         const float x = xb(b);
         const bool whole = std::fabs(b - std::round(b)) < 1e-6;
-        r.draw_rect(x, GY, 1.f, ROLL, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
+        r.draw_rect(x, RTOP, 1.f, RBOT - RTOP, whole ? 0.24f : 0.14f, whole ? 0.26f : 0.15f, whole ? 0.30f : 0.17f, 1.0f);
+    }
+    // Bars/beats ruler strip along the top.
+    r.draw_rect(GX, GY, GW, ruler_h(), 0.13f, 0.14f, 0.17f, 1.0f);
+    r.draw_rect(GX, GY + ruler_h() - 1.f, GW, 1.f, 0.22f, 0.24f, 0.28f, 1.0f);
+    for (double b = std::ceil(bLeft); b <= bRight + 1e-6; b += 1.0) {
+        if (b < 0) continue;
+        const float x = xb(b);
+        const bool bar = std::fmod(b, 4.0) < 1e-6;   // 4 beats/bar
+        r.draw_rect(x, GY + (bar ? 3.f : 7.f), 1.f, ruler_h() - (bar ? 3.f : 7.f), 0.4f, 0.43f, 0.48f, 1.0f);
+        if (bar) {
+            char lbl[8]; std::snprintf(lbl, sizeof lbl, "%d", static_cast<int>(b / 4.0) + 1);
+            r.draw_text(x + 3.f, GY + 3.f, lbl, 0.6f, 0.63f, 0.68f, 1.0f, 0.72f);
+        }
     }
     // Notes.
     for (size_t i = 0; i < notes_.size(); ++i) {
         const auto& n = notes_[i];
         if (n.pitch < pBot - 1 || n.pitch > pTop + 1) continue;
         const float nx = xb(n.start), ny = yp(n.pitch), nw = std::max(2.f, float(n.dur) * bw());
-        if (ny > GY + ROLL) continue;
+        if (ny >= RBOT || ny + RH <= RTOP) continue;
         const float v = 0.4f + 0.5f * std::clamp(n.vel, 0.f, 1.f);
         if (sel_[i]) {
             r.draw_rect(nx - 1.f, ny, nw + 2.f, RH, 0.98f, 0.86f, 0.42f, 1.0f);   // selection halo
@@ -575,7 +589,7 @@ void ClipEditor::draw(Renderer2D& r) {
         r.draw_rect(nx, ny + 1.f, 2.f, RH - 2.f, 0.6f, 0.92f, 0.9f, 1.0f);
     }
     // Bottom lane: velocity bars, or a painted per-note expression curve for one MPE axis.
-    const float laneTop = GY + ROLL, laneBot = GY + GH, laneH = laneBot - laneTop - 6.f;
+    const float laneTop = lane_top(), laneBot = GY + GH, laneH = laneBot - laneTop - 6.f;
     r.draw_rect(GX, laneTop, GW, 1.f, 0.20f, 0.22f, 0.26f, 1.0f);
     r.draw_rect(GX, laneTop + 1.f, GW, laneBot - laneTop - 1.f, 0.05f, 0.055f, 0.07f, 1.0f);
     if (lane_axis_ < 0) {

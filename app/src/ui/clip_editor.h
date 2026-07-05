@@ -99,12 +99,15 @@ private:
     // Panel geometry (floating uses px_/py_; docked = bottom strip).
     void  panel(float& x, float& y, float& w, float& h) const;
     float gx() const, gy() const, gw() const, gh() const;
-    float lane_h() const { return audio_ ? 0.f : 54.f; }   // velocity lane height
-    float roll_h() const { return gh() - lane_h(); }       // piano-roll height (above lane)
+    float lane_h() const { return audio_ ? 0.f : 54.f; }        // velocity/expression lane height
+    float ruler_h() const { return audio_ ? 0.f : 15.f; }       // bars/beats ruler strip
+    float roll_top() const { return gy() + ruler_h(); }         // piano-roll top (below ruler)
+    float roll_h() const { return gh() - lane_h() - ruler_h(); }// piano-roll height (ruler..lane)
+    float lane_top() const { return gy() + gh() - lane_h(); }   // bottom lane top
     float bw() const { return beat_px_; }
     float rh() const { return row_h_; }
     float xb(double b) const { return gx() + float(b - view_beat0_) * beat_px_; }
-    float yp(int p) const { return gy() + float(view_pitch_top_ - p) * row_h_; }
+    float yp(int p) const { return roll_top() + float(view_pitch_top_ - p) * row_h_; }
     double beat_at(double x) const { return view_beat0_ + (x - gx()) / beat_px_; }
     int    pitch_at(double y) const;
     int    hit_note(double x, double y, bool& right_edge) const;
