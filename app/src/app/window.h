@@ -33,6 +33,14 @@ struct Window {
     float split_x = 512.f;   // DAW|visuals splitter x
     float dock_h  = 210.f;   // bottom device-view dock height
 
+    // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
+    // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a
+    // key's note-off matches its note-on even if the octave changed mid-hold.
+    bool    typing = false;
+    int     typing_oct = 0;                   // octave shift; base C = 60 + 12*oct
+    float   typing_vel = 0.8f;                // note-on velocity (c/v adjust)
+    int     typing_held[16] = {};             // per-semitone-slot sounding pitch+1
+
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
     CtxMenu menu, fx_menu, map_menu, track_menu;   // track_menu = "+ Track" (File is a native OS menu)
