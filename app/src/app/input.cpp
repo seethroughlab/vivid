@@ -543,11 +543,18 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     }
 
     // Bottom dock interactions. If a visual node is selected, the dock is its
-    // inspector: knobs edit the node's base param values (vertical drag).
+    // inspector: knobs edit the node's base param values (vertical drag). Routed through the
+    // explicit focus (UI-1) — the single source of truth shared with the draw path — not a
+    // re-derived selected_op. A close (x) in the header exits the focus back to the device view.
+    if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {
+        if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            app->graph->select_op(-1); return;   // close the visual-node inspector -> device view
+        }
+    }
     {
-        const int selop = app->graph ? app->graph->selected_op() : -1;
-        if (selop >= 0 && my >= win->dock_top()) {   // only consume clicks inside the dock
+        if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {   // consume clicks inside the dock
             auto* g = app->graph;
+            const int selop = win->focus.node;
             const int pc = g->op_param_count_at(selop);
             for (int i = 0; i < pc; ++i) {
                 const int hint = g->op_param_hint_at(selop, i);

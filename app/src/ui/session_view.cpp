@@ -253,6 +253,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const float* dc = vis ? sty.gpu : sty.audio;
         ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
         draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
+        // Close (x): exits a drilled-in focus back to the device view (progressive disclosure).
+        // Only shown when there's a focus to exit — the visual-node inspector.
+        if (w.focus.kind == FocusContext::Kind::VisualNode) {
+            const Rect cb = dock_close_rect(w.win_w, w.win_h, w.dock_h);
+            const bool ch = hit(cb, mx, my);
+            ui.draw_text(cb.x, cb.y - 2.f, "\xC3\x97", ch ? 0.9f : 0.55f, ch ? 0.6f : 0.5f, ch ? 0.6f : 0.55f, 1.0f, sty.fs_body);
+        }
     }
 
     // The detail region's explicit focus (UI-1) decides device (audio) vs visual-node (visual).

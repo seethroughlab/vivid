@@ -171,6 +171,9 @@ inline Rect signal_panel(int win_w, int win_h, float split_x, float dock_h) {
 }
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH + 4.f, 6.f, dock_top(win_h, dock_h) - kTopBarH - 4.f }; }
 inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f, dock_top(win_h, dock_h) - 3.f, static_cast<float>(win_w), 7.f }; }
+// UI-1: a close (x) in the detail-region header strip — exits the current focus back to the
+// session default (the device view). Sits just left of the domain badge on the right edge.
+inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w - 78.f, dock_top(win_h, dock_h) + 4.f, 13.f, 13.f }; }
 
 // Bottom device-view dock: a title strip, a bounded CHAIN rack (the selected
 // track's instrument + FX chips) and a PARAMS knob grid below it. The rack is a
