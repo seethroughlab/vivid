@@ -6,10 +6,10 @@ name: version-guard
 
 on:
   push:
-    branches: [master, vivid-4]
+    branches: [main]
     tags: ["v*.*.*"]
   pull_request:
-    branches: [master]
+    branches: [main]
 
 jobs:
   check:

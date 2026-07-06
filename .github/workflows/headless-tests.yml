@@ -5,7 +5,7 @@ name: headless-tests
 # proves the tested code is platform-agnostic (a cross-platform goal of ADR-0011).
 on:
   push:
-    branches: [vivid-4, master]
+    branches: [main]
   pull_request:
 
 jobs:
