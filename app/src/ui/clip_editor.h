@@ -81,7 +81,7 @@ public:
     void set_loop(double ls, double le) { loop_start_ = ls; loop_end_ = le; }
     void loop_range(double& ls, double& le) const { ls = loop_start_; le = loop_end_; }
     bool take_loop_dirty() { bool d = loop_dirty_; loop_dirty_ = false; return d; }
-    int  take_audio_req() { int r = aud_req_; aud_req_ = 0; return r; }   // pending-commit bitmask (1/2/4/8)
+    int  take_audio_req() { int r = aud_req_; aud_req_ = 0; return r; }   // pending-commit bitmask (1/2/4/8/16)
     int  audio_warp_mode() const { return aud_warp_mode_; }
     float audio_pitch() const { return aud_pitch_; }
     int  audio_slice_mode() const { return slice_mode_; }
@@ -108,7 +108,7 @@ private:
     std::vector<float> slice_norm_;    // A6: slice boundary positions (normalized)
     int    slice_mode_ = 0;            // A6: 0 off, 1 transients, 3 grid
     int    marker_drag_ = -1;          // warp marker being dragged
-    int    aud_req_ = 0;               // pending commit bits: 1 shaping, 2 auto, 4 warp-pts, 8 slice
+    int    aud_req_ = 0;               // pending commit bits: 1 shaping, 2 auto, 4 warp-pts, 8 slice, 16 slice->MIDI
     double length_ = 4.0;
     Tool   tool_ = Tool::Select;
     double playhead_ = -1.0;           // absolute transport beats (< 0 = none)

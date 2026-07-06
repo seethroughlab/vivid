@@ -1,5 +1,6 @@
 #include "audio/audio_op_runtime.h"
 
+#include "audio/sampler_op.h"        // SamplerLoadable (RTTI cross-cast target)
 #include "gpu/op_runtime.h"          // OpRegistry / OpInstance / sync (includes operator_api)
 #include "midi/midi_clip.h"          // vivid::session::NoteEvent
 #include "operator_api/metronome_sync.h"
@@ -62,6 +63,15 @@ AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
 }
 
 void audio_op_destroy(AudioOp* a) { delete a; }
+
+bool audio_op_load_sampler(AudioOp* a, const float* L, const float* R, size_t n, uint32_t sr,
+                           const uint32_t* starts, const uint32_t* ends, int nslices, int base_note) {
+    if (!a || !L || n == 0) return false;
+    auto* sl = dynamic_cast<SamplerLoadable*>(a->inst.op.get());   // cross-cast to the escape hatch
+    if (!sl) return false;
+    sl->load_pcm(L, R, n, sr, starts, ends, nslices, base_note);
+    return true;
+}
 
 // Registry inspection (UI thread) — enumerate audio operators for the device pickers.
 // want_source: true = instruments/generators (no audio input), false = effects.

@@ -276,6 +276,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
         if (x >= px + pw - 28.f) { close(); return true; }                              // [X]
         if (x >= px + pw - 64.f) { docked_ = !docked_; drag_ = 0; return true; }         // dock
         if (audio_) {
+            if (x >= px + pw - 432.f && x < px + pw - 372.f) { aud_req_ |= 16; return true; }   // slice -> MIDI track
             if (x >= px + pw - 358.f && x < px + pw - 274.f) {   // slice: cycle off->tran->grid
                 slice_mode_ = slice_mode_ == 0 ? 1 : slice_mode_ == 1 ? 3 : 0; aud_req_ |= 8; return true;
             }
@@ -740,6 +741,9 @@ void ClipEditor::draw(Renderer2D& r) {
     } else {
         static const char* sm[] = { "slice off", "slice tran", "", "slice grid" };
         r.draw_text(px + pw - 358.f, py + 8.f, sm[slice_mode_], 0.5f, 0.6f, 0.9f, 1.0f, 0.8f);
+        // A6: slice -> a Sampler-driven MIDI track (lit when a slice mode is active).
+        const bool sliceOn = slice_mode_ > 0;
+        r.draw_text(px + pw - 432.f, py + 8.f, "to MIDI", sliceOn ? 0.62f : 0.42f, sliceOn ? 0.8f : 0.46f, sliceOn ? 0.7f : 0.52f, 1.0f, 0.8f);
         static const char* wm[] = { "off", "cplx", "beat", "rept" };
         char wl[20]; std::snprintf(wl, sizeof wl, "warp %s", wm[aud_warp_mode_ + 1]);
         const bool on = aud_warp_mode_ >= 0;

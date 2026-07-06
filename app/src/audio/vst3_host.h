@@ -185,6 +185,11 @@ void        session_audio_op_param_set(Session*, int track, int index, int param
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
 
+// A6: slice the source audio clip into a new MIDI track driven by a native Sampler loaded
+// with the clip's PCM + slices (slice_mode: 1=transients, 3=16-grid). Ascending pitches from
+// C1 map to slices. Returns the new track index, or -1 on failure. UI thread only.
+int         session_slice_to_midi(Session*, int src_track, int src_scene, int slice_mode);
+
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 // `playing` false = paused: instruments emit no new notes and the sampler is silent
 // (release tails still ring). `release_all` (the play->stop edge) flushes every

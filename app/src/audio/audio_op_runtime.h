@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 
 // Native audio-operator runtime (AO-1). Instantiates OperatorBase+AudioProcessable
@@ -20,6 +21,11 @@ struct AudioOp;   // opaque native audio-operator instance
 
 // --- UI/main thread ---
 AudioOp*    audio_op_create(OpRegistry& reg, const char* type_name);  // null if not a valid audio op
+// Inject PCM + slice regions into a Sampler-style op (RTTI cross-cast to SamplerLoadable).
+// Call before the op is published to the audio thread. Returns false if not a sampler.
+bool        audio_op_load_sampler(AudioOp*, const float* L, const float* R, size_t n, uint32_t sr,
+                                  const uint32_t* slice_starts, const uint32_t* slice_ends,
+                                  int nslices, int base_note);
 // Enumerate registered audio operators for the device pickers. want_source: true =
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);

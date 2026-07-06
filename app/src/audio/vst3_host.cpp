@@ -988,7 +988,10 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     bool any = false;
     for (Track* tp : s->tracks_view) {
         Track& t = *tp;
-        if (!t.is_audio && (!t.handle || !t.handle->processing)) continue;
+        // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
+        // AND no native instrument operator (live or pending). A native-instrument-only track
+        // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
+        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit) continue;
         any = true;
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
@@ -1289,6 +1292,77 @@ int session_available_audio_op_count(Session* s, int want_source) {
 }
 const char* session_available_audio_op_name(Session* s, int want_source, int idx) {
     return (s && s->op_reg) ? vivid::audio_op_registry_name(*s->op_reg, want_source != 0, idx) : "";
+}
+
+// A6: slice an audio clip into a new MIDI track driven by a native Sampler. Computes the
+// clip's slices (`slice_mode`: 1=transients, 3=16-grid), creates a paired instrument track
+// whose native instrument is a Sampler loaded with the clip's PCM + those slices, and writes
+// a MIDI clip mapping ascending pitches (base C1=36) → slices at their beat positions. The
+// Sampler is loaded BEFORE it is published to the audio thread (no RT race). Returns the new
+// track index, or -1. Runs on the UI thread (control-server drain / editor req).
+int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mode) {
+    if (!aud_valid(s, src_track, src_scene) || !s->op_reg) return -1;
+    if (static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
+
+    // 1. Snapshot the source clip's PCM + slice regions (UI-thread copy under aud_mtx).
+    std::vector<float> L, R;
+    std::vector<uint32_t> ss, se;
+    double loop_beats = 4.0; uint32_t sr = 0, N = 0;
+    {
+        std::lock_guard<std::mutex> lk(s->tracks[src_track]->aud_mtx);
+        const Sampler& c = s->tracks[src_track]->aud_clips[src_scene];
+        if (c.L.empty()) return -1;
+        L = c.L; R = c.R; N = static_cast<uint32_t>(c.L.size()); sr = c.sr;
+        loop_beats = c.loop_beats > 0 ? c.loop_beats : 4.0;
+        const int m = (slice_mode == 3) ? 3 : 1;   // transients unless 16-grid asked
+        for (const auto& rg : audio_clip_ed::compile_slices(m, c.transients, {}, 0, N)) {
+            ss.push_back(rg.start); se.push_back(rg.end);
+        }
+    }
+    if (ss.empty()) return -1;
+    const int base_note = 36;   // C1 → slice 0
+
+    // 2. Create the paired instrument (MIDI) track — no VST3, empty clips.
+    Track* nt = make_instrument_track(nullptr, s->tracks[src_track]->name + " Slices", s->scenes);
+    s->tracks.emplace_back(nt);
+    s->tracks.back()->id = s->next_track_id++;
+    const int new_track = static_cast<int>(s->tracks.size()) - 1;
+    Track& tr = *s->tracks[new_track];
+
+    // 3. Set its native instrument to a Sampler + inject PCM/slices, then publish it.
+    if (vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, "Sampler")) {
+        if (vivid::audio_op_is_source(op) &&
+            vivid::audio_op_load_sampler(op, L.data(), R.empty() ? nullptr : R.data(), N, sr,
+                                         ss.data(), se.data(), static_cast<int>(ss.size()), base_note)) {
+            std::lock_guard<std::mutex> lk(tr.op_fx_mtx);
+            tr.op_instrument_edit = op;
+        } else {
+            vivid::audio_op_destroy(op);
+        }
+    }
+    tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+
+    // 4. Write the MIDI clip: one ascending-pitch note per slice at its beat position.
+    {
+        std::lock_guard<std::mutex> lk(tr.edit_mtx);
+        MidiClip& clip = tr.edit_clips[src_scene];
+        clip.notes.clear();
+        for (size_t i = 0; i < ss.size(); ++i) {
+            const double start = static_cast<double>(ss[i]) / N * loop_beats;
+            const double end   = static_cast<double>(se[i]) / N * loop_beats;
+            ClipNote nn{};
+            nn.pitch = base_note + static_cast<int>(i);
+            nn.start = start;
+            nn.dur   = std::max(0.05, end - start);
+            nn.vel   = 0.9f;
+            clip.notes.push_back(nn);
+        }
+        clip.length = loop_beats;
+    }
+    tr.edit_gen.fetch_add(1, std::memory_order_release);
+
+    rebuild_track_view(s);   // publish the fully-formed track to the audio thread
+    return new_track;
 }
 
 // A small catalog of effects offered in the device-chain "+ FX" menu.

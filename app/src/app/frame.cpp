@@ -185,6 +185,10 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                                            win.editor->warp_beats().data(), static_cast<int>(win.editor->warp_samples().size()));
                 if (req & 8) { float sl[64]; const int ns = S::session_audio_slices(app.session, tk, scn, win.editor->audio_slice_mode(), sl, 64);
                                win.editor->set_slices(sl, ns); }
+                if (req & 16) {   // A6: slice this clip into a new Sampler-driven MIDI track
+                    const int m = win.editor->audio_slice_mode();
+                    S::session_slice_to_midi(app.session, tk, scn, m > 0 ? m : 1);
+                }
                 if (req & (1 | 2 | 4)) {   // reload the marker + shape display from the engine
                     float wp[256], tr[512]; double wb[256];
                     const int nw = S::session_audio_get_warp_pts(app.session, tk, scn, wp, 256);
