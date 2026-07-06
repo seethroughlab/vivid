@@ -134,6 +134,12 @@ struct Track {
     std::atomic<uint64_t>            ggen{0};
     uint64_t                         ggen_seen = 0;
     GraphBlockCtx                    blk;
+    // AG-1: the persistent, authoritative topology model (UI thread; guarded by gmtx alongside
+    // the edit plan). rebuild_track_graph populates it and compiles it into gcg_edit — the
+    // audio thread never touches it, only the compiled plan. `agnodes` mirrors it 1:1 (parallel
+    // to nodes(), same index) so introspection can report each node's kind + bound op.
+    vivid::audio::AudioGraph         agraph;
+    std::vector<GNodeBind>           agnodes;
     // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
     // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
     std::mutex            edit_mtx;
@@ -263,29 +269,36 @@ static void reserve_track_graph(Track* t) {
 // currently runs only pure-native tracks — a native instrument + native FX, no VST3 handle
 // and no VST3 effects; anything else falls back to the inline path (gok=false). Builds a
 // linear graph inst -> fx0 -> ... -> Output, publishes it via the ggen/gmtx edit-mirror.
+// AG-1: (re)build a track's authoritative audio graph from its native device chain and compile
+// it into the edit plan. The graph is the persistent source of truth for topology (`t->agraph`);
+// `t->agnodes` mirrors nodes() 1:1 (same index) carrying each node's kind + bound op, and IS the
+// edit-side binding array the audio thread copies. Currently the chain is laid out linearly
+// (inst → fx… → out); edge surgery for arbitrary topology builds on this same persistent model.
 static void rebuild_track_graph(Track* t) {
     std::lock_guard<std::mutex> lk(t->gmtx);
-    t->gbinds_edit.clear();
+    t->agraph.clear();
+    t->agnodes.clear();
     const bool native_only = !t->is_audio && t->op_instrument_edit && !t->handle && t->effects_edit.empty();
     if (!native_only || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
+        t->gbinds_edit.clear();
         t->gok_edit = false;
         t->ggen.fetch_add(1, std::memory_order_release);
         return;
     }
-    vivid::audio::AudioGraph g;
-    t->gbinds_edit.push_back({ GNKind::NativeInst, t->op_instrument_edit });
-    int prev = g.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
+    t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit });
+    int prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
     for (vivid::AudioOp* op : t->op_effects_edit) {
-        t->gbinds_edit.push_back({ GNKind::NativeFx, op });
-        const int fx = g.add_node(false, false, nullptr, nullptr, "fx");
-        g.connect(prev, fx);
+        t->agnodes.push_back({ GNKind::NativeFx, op });
+        const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "fx");
+        t->agraph.connect(prev, fx);
         prev = fx;
     }
-    t->gbinds_edit.push_back({ GNKind::Output, nullptr });
-    const int out = g.add_node(false, true, nullptr, nullptr, "out");
-    g.connect(prev, out);
-    g.set_output_id(out);
-    t->gok_edit = g.compile(t->gcg_edit);
+    t->agnodes.push_back({ GNKind::Output, nullptr });
+    const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
+    t->agraph.connect(prev, out);
+    t->agraph.set_output_id(out);
+    t->gbinds_edit = t->agnodes;                 // parallel to nodes(): index == out_buf
+    t->gok_edit = t->agraph.compile(t->gcg_edit);
     t->ggen.fetch_add(1, std::memory_order_release);
 }
 
@@ -1439,6 +1452,79 @@ int session_available_audio_op_count(Session* s, int want_source) {
 }
 const char* session_available_audio_op_name(Session* s, int want_source, int idx) {
     return (s && s->op_reg) ? vivid::audio_op_registry_name(*s->op_reg, want_source != 0, idx) : "";
+}
+
+// AG-1 graph introspection. All read `t->agraph`/`t->agnodes` under the track's graph lock and
+// bounds-check every index (safe defaults on miss). `agnodes` is parallel to `agraph.nodes()`
+// (same index), so a node index maps to both its topology entry and its binding.
+static Track* graph_track(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
+    return s->tracks[t].get();
+}
+int session_track_audio_graph_ok(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->gok_edit ? 1 : 0;
+}
+int session_track_audio_graph_node_count(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return static_cast<int>(tr->agraph.nodes().size());
+}
+int session_track_audio_graph_node_id(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& n = tr->agraph.nodes();
+    return (i >= 0 && i < static_cast<int>(n.size())) ? n[i].id : -1;
+}
+int session_track_audio_graph_node_kind(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return -1;
+    switch (tr->agnodes[i].kind) {
+        case GNKind::NativeInst: return 0;
+        case GNKind::NativeFx:   return 1;
+        case GNKind::Output:     return 2;
+    }
+    return -1;
+}
+const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return "";
+    vivid::AudioOp* op = tr->agnodes[i].op;
+    return op ? vivid::audio_op_type(op) : "";
+}
+int session_track_audio_graph_output_id(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.output_id();
+}
+int session_track_audio_graph_edge_count(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return static_cast<int>(tr->agraph.edges().size());
+}
+int session_track_audio_graph_edge_from(Session* s, int t, int e) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& es = tr->agraph.edges();
+    return (e >= 0 && e < static_cast<int>(es.size())) ? es[e].from_id : -1;
+}
+int session_track_audio_graph_edge_to(Session* s, int t, int e) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& es = tr->agraph.edges();
+    return (e >= 0 && e < static_cast<int>(es.size())) ? es[e].to_id : -1;
 }
 
 // A6: slice an audio clip into a new MIDI track driven by a native Sampler. Computes the

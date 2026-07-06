@@ -294,6 +294,16 @@ def audio_auto_warp(track: int, scene: int, sensitivity: float = 0.5) -> dict:
 
 
 @mcp.tool
+def get_audio_graph(track: int) -> dict:
+    """Read a track's audio signal graph — the authoritative topology the RT engine runs
+    (nodes + edges), distinct from the linear device list (list_audio_ops). Returns
+    {graph_ok, nodes:[{id, kind, type}], edges:[{from, to}], output_id}. kind is
+    'instrument' | 'effect' | 'output'; ids are stable across rebuilds; edges are node-id
+    pairs. graph_ok is false for VST3 / inline tracks (empty graph)."""
+    return _post("get_audio_graph", {"track": track})
+
+
+@mcp.tool
 def set_param(track: int, device: int, param: int, value: float) -> dict:
     """Set a device param by its index (from list_params). device 0 = instrument, 1+ = FX. value 0..1."""
     return _post("set_param", {"track": track, "device": device, "param": param, "value": value})
