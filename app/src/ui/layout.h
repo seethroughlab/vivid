@@ -38,8 +38,8 @@ inline Rect clip_cell_rect(int track, int scene) { return { track_x(track), kGri
 // Top transport bar affordances: a browser toggle + a play/pause button. (File is a native menu.)
 inline Rect sidebar_toggle_rect() { return { 96.f, 11.f, 20.f, 18.f }; }
 inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
-inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle (M6)
-inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle (M6)
+inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle
+inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×
@@ -49,7 +49,7 @@ inline Rect track_meter_rect(int t, int scenes) { return { track_x(t) + 2.f, mix
 inline Rect track_gain_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 32.f, kTrackW - 4.f, 10.f }; }
 inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 20.f, kSceneColW, 22.f }; }
 // Explicit "send this source to the visuals graph" buttons (the bridge entry point).
-// The mixer's bottom button row is split: ARM (left half) | VIZ (right half). (M6)
+// The mixer's bottom button row is split: ARM (left half) | VIZ (right half).
 inline Rect track_arm_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 48.f, (kTrackW - 6.f) * 0.5f, 16.f }; }
 inline Rect track_viz_rect(int t, int scenes)  { const float hw = (kTrackW - 6.f) * 0.5f; return { track_x(t) + 4.f + hw, mixer_y(scenes) + 48.f, hw, 16.f }; }
 inline Rect master_viz_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 48.f, kSceneColW, 16.f }; }
@@ -160,7 +160,7 @@ inline Rect popout_button_rect(int win_w, float split_x) {
     Rect p = output_panel(win_w, split_x);
     return { p.x + p.w - 82.f, p.y + 4.f, 78.f, kPanelHdH - 7.f };
 }
-// UI-2: OUTPUT-header toggle to reveal/hide the visuals node graph (a deep view under the
+// OUTPUT-header toggle to reveal/hide the visuals node graph (a deep view under the
 // output). Sits just left of the pop-out button.
 inline Rect graph_button_rect(int win_w, float split_x) {
     Rect p = output_panel(win_w, split_x);
@@ -177,7 +177,7 @@ inline Rect signal_panel(int win_w, int win_h, float split_x, float dock_h) {
 }
 inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH + 4.f, 6.f, dock_top(win_h, dock_h) - kTopBarH - 4.f }; }
 inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f, dock_top(win_h, dock_h) - 3.f, static_cast<float>(win_w), 7.f }; }
-// UI-1: a close (x) in the detail-region header strip — exits the current focus back to the
+// A close (x) in the detail-region header strip — exits the current focus back to the
 // session default (the device view). Sits just left of the domain badge on the right edge.
 inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w - 78.f, dock_top(win_h, dock_h) + 4.f, 13.f, 13.f }; }
 

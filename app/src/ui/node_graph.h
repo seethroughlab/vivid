@@ -52,7 +52,7 @@ public:
     void toggle_mapping_invert(const std::string& dst)       { if (auto* m = reg_.find(dst)) m->invert = !m->invert; }
     void set_mapping_lo(const std::string& dst, float v)     { if (auto* m = reg_.find(dst)) m->out_lo = v; }
     void set_mapping_hi(const std::string& dst, float v)     { if (auto* m = reg_.find(dst)) m->out_hi = v; }
-    // Return path (P27): registry can drive any dest; main feeds extra sources
+    // Return path: registry can drive any dest; main feeds extra sources
     // (the visuals' uniform values) and applies audio-param dests each frame.
     float dest_value(const std::string& dest) const { return reg_.dest_value(dest); }
     const std::string* source_of(const std::string& dest) const { return reg_.source_of(dest); }

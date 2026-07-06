@@ -1,12 +1,12 @@
 #pragma once
 #include "audio/sampler.h"              // AudioClip + WarpMode
 #include "audio/audio_clip_shared.h"    // source_for_warp_beat
-#include "signalsmith-stretch.h"        // pitch-preserving time-stretch (A2)
+#include "signalsmith-stretch.h"        // pitch-preserving time-stretch
 #include <cstring>
 #include <cmath>
 #include <algorithm>
 
-// A2: per-clip DSP state for the pitch-preserving warp modes (Complex/Beats). Non-copyable
+// Per-clip DSP state for the pitch-preserving warp modes (Complex/Beats). Non-copyable
 // (owns a streaming stretcher); one is kept per live audio-clip slot (Track::aud_dsp) as a
 // unique_ptr so its large scratch arrays have a stable address. init() runs on the UI/main
 // thread — presetCheaper + a warm-up process() force all internal allocations there, so the
@@ -41,13 +41,13 @@ struct ClipDsp {
 
 // Render one block of `frames`. Complex/Beats warp modes go through the stretcher (pitch
 // preserved, tempo follows the transport); everything else (non-warp, Repitch) uses the
-// A1 varispeed render(). Allocation-free on the audio thread.
+// Varispeed render(). Allocation-free on the audio thread.
 inline void process_clip(const AudioClip& c, ClipDsp& dsp,
                          double block_start_beats, double delta, uint32_t frames, uint32_t /*sr*/,
                          float* outL, float* outR, float trim0, float trim1) {
     const bool stretch = c.warp_enabled && (c.warp_mode == WarpMode::Complex || c.warp_mode == WarpMode::Beats);
     if (!stretch || !dsp.ready || frames > ClipDsp::kMaxBlock || c.L.empty() || c.loop_beats <= 0.0) {
-        c.render(block_start_beats, delta, frames, outL, outR, trim0, trim1);   // A1 path
+        c.render(block_start_beats, delta, frames, outL, outR, trim0, trim1);   // varispeed path
         return;
     }
     const double N = static_cast<double>(c.L.size());

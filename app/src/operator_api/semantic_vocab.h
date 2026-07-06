@@ -1,5 +1,5 @@
 #pragma once
-// Semantic-metadata contract (P4.4). Operator params/ports may carry semantic_* hints
+// Semantic-metadata contract. Operator params/ports may carry semantic_* hints
 // (tag/shape/unit) so agents + tooling can reason about them. Any field may be left
 // unset, but if set it must come from a known vocabulary (or the "x_" custom-extension
 // namespace). This header IS the contract — keep it in sync with

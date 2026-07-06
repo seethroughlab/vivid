@@ -9,11 +9,11 @@
 // Transport-locked audio clip. Holds stereo float PCM (resampled to the device rate at
 // load) read phase-locked to the master beat. The audio thread calls render() each block.
 //
-// A1 of the Ableton-style audio clip editor extends the old bare looper with clip shaping:
+// The Ableton-style audio clip editor extends the old bare looper with clip shaping:
 // gain, reverse, fades, loop crossfade, a clip/loop region, pitch (semitones/cents), and
 // the warp model (mode + markers + transients). The **non-warp / Repitch** playback path
 // lives here (varispeed, allocation-free); the pitch-preserving Complex/Beats stretch
-// (signalsmith, via a per-clip ClipDsp) is wired in A2. With all fields at their defaults
+// (signalsmith, via a per-clip ClipDsp) applies the warp. With all fields at their defaults
 // render() is bit-identical to the original looper.
 namespace vivid::session {
 
@@ -26,16 +26,16 @@ struct Sampler {
     uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
     std::string        name;
 
-    // --- clip shaping (A1) ---
+    // --- clip shaping ---
     float  gain            = 1.0f;
-    float  pitch_semitones = 0.0f;      // applied by the stretcher (A2); stored here now
+    float  pitch_semitones = 0.0f;      // applied by the stretcher; stored here
     float  detune_cents    = 0.0f;
     bool   reverse         = false;
     float  fade_in_ms      = 0.f;
     float  fade_out_ms     = 0.f;
     float  loop_crossfade_ms = 0.f;
 
-    // --- warp (markers + transients drive A2/A5; stored + persisted now) ---
+    // --- warp (markers + transients drive the stretcher; stored + persisted) ---
     bool                                       warp_enabled = false;
     WarpMode                                   warp_mode    = WarpMode::Complex;
     std::vector<audio_clip_ed::WarpPoint>      warp_points;
