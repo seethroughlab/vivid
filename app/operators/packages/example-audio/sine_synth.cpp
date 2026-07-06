@@ -31,7 +31,12 @@ struct SineSynthOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr int kV = 16;
     Voice v_[kV];
 
-    void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&gain); }
+    void collect_params(std::vector<vivid::ParamBase*>& o) override {
+        vivid::semantic_tag(gain, "amplitude_linear");   // vocabulary-validated at load
+        vivid::semantic_intent(gain, "output level");
+        gain.display_hint = VIVID_DISPLAY_KNOB;
+        o.push_back(&gain);
+    }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_out()); }  // source: output only
 
     void note_on(int pitch, float vel, int32_t id) {

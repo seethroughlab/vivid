@@ -27,6 +27,20 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
         pd.description     = pb->description;
         out.params.push_back(pd);
     }
+    // Own the enum choice-label strings. pb->choice_labels aliases the (still-alive) op's member
+    // vector, which is destroyed when the temporary op that built this descriptor is — so copy the
+    // strings into cache-owned storage now and repoint choice_labels at them (mirrors the owned
+    // display_name/keywords). Without this, reading choices after the build crashes (dangling).
+    out.m_choice_storage.assign(out.params.size(), {});
+    out.m_choice_ptrs.assign(out.params.size(), {});
+    for (size_t i = 0; i < out.params.size(); ++i) {
+        VividParamDescriptor& pd = out.params[i];
+        if (pd.choice_count == 0 || !pd.choice_labels) { pd.choice_labels = nullptr; continue; }
+        for (uint32_t k = 0; k < pd.choice_count; ++k)
+            out.m_choice_storage[i].push_back(pd.choice_labels[k] ? pd.choice_labels[k] : "");
+        for (const auto& s : out.m_choice_storage[i]) out.m_choice_ptrs[i].push_back(s.c_str());
+        pd.choice_labels = out.m_choice_ptrs[i].data();
+    }
     out.ports = ports;
 
     VividOperatorDescriptor& d = out.desc;

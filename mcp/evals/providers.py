@@ -19,11 +19,20 @@ TOOLS: dict[str, str] = {
     "status": "Liveness + counts.",
     "get_version": "App/operator-abi/session-schema versions.",
     "get_health": "Rolled-up engine health (severity ok|warning|error).",
-    "list_operators": "Catalog of spawnable visual operators.",
+    "list_operators": "Catalog of spawnable visual operators (params carry semantic hints).",
     "add_node": "Spawn an op node: {op}. Returns {id}.",
     "connect_nodes": "Wire {input_id} -> {node_id}.",
     "set_node_param": "Set a node base param by name: {node_id, name, value}.",
     "get_session": "Full session snapshot (session.graph.chain = the op nodes).",
+    # Native audio operators (the audio peer of list_operators).
+    "list_audio_operators": "Catalog of native audio operators {instruments, effects} with param schema.",
+    "set_track_audio_instrument": "Set a track's native instrument: {track, op}.",
+    "add_audio_effect": "Append a native audio effect to a track: {track, op}. Returns {index}.",
+    "set_audio_op_param": "Set a native audio op param by index: {track, index, param, value}.",
+    "list_audio_ops": "The native instrument + effect chain on a track, with params.",
+    "install_operator_package": "Compile + register an operator package from a dir: {path}.",
+    "list_mapping_sources": "Valid bridge sources (master/track audio characteristics) to wire.",
+    "connect_mapping": "Wire a source to a dest: {src, dst, amount}.",
 }
 
 SYSTEM_PROMPT = (

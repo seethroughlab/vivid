@@ -28,7 +28,15 @@ struct DriveOp : vivid::OperatorBase, vivid::AudioProcessable {
     vivid::Param<float> drive{ "drive", 2.0f, 1.0f, 20.0f };   // pre-gain into the saturator
     vivid::Param<float> mix{ "mix", 1.0f, 0.0f, 1.0f };        // dry/wet
 
-    void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&drive); o.push_back(&mix); }
+    void collect_params(std::vector<vivid::ParamBase*>& o) override {
+        // Semantic metadata makes the op self-describing to agents + inspectors (see discovery).
+        vivid::semantic_intent(drive, "overdrive amount");
+        vivid::description(drive, "pre-gain driven into the saturator");
+        drive.display_hint = VIVID_DISPLAY_KNOB;
+        vivid::semantic_shape(mix, "scalar");
+        vivid::semantic_intent(mix, "dry/wet mix");
+        o.push_back(&drive); o.push_back(&mix);
+    }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         o.push_back(aud_port("input", VIVID_PORT_INPUT));
         o.push_back(aud_port("output", VIVID_PORT_OUTPUT));

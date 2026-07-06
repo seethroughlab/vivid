@@ -48,6 +48,10 @@ struct OpDescriptor {
     std::string                        m_summary;
     std::vector<std::string>           m_keywords;
     std::vector<const char*>           m_keyword_ptrs;
+    // Owned per-param enum choice labels. The source (a Param's member vector) dies with the
+    // temporary op build_descriptor ran on, so the cache owns copies + repoints choice_labels.
+    std::vector<std::vector<std::string>> m_choice_storage;   // [param_index][choice]
+    std::vector<std::vector<const char*>> m_choice_ptrs;      // [param_index] -> choice_labels
     VividOperatorDescriptor            desc{};
 };
 

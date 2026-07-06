@@ -80,9 +80,12 @@ def list_params(track: int, device: int = 0, filter: str = "", limit: int = 64) 
 def list_operators() -> dict:
     """The full catalog of visual operators that can be spawned — built-in AND loaded
     .dylib packages, uniformly. Each entry has: name (pass to add_node), display_name,
-    summary, keywords (for search), gpu flag, params [{name, type, default, min, max,
-    description}] and ports [{name, dir}]. Call this to DISCOVER what operators exist and
-    how to wire/parameterize them before add_node / set_node_param / connect_nodes."""
+    summary, keywords (for search), gpu flag, params and ports. A param carries {name,
+    type, default, min, max} plus, when the operator declares them, semantic hints —
+    semantic_tag (e.g. 'frequency_hz'), semantic_unit ('Hz'), semantic_intent (e.g.
+    'brightness'), display_hint, description — so you can choose params by INTENT, not by
+    guessing names. Call this to DISCOVER operators before add_node / set_node_param /
+    connect_nodes."""
     return _post("list_operators")
 
 
@@ -115,6 +118,16 @@ def layout_graph() -> dict:
 def get_mappings() -> dict:
     """All bridge mappings: [{src, dst, amount, curve, invert, lo, hi}]."""
     return _post("get_mappings")
+
+
+@mcp.tool
+def list_mapping_sources() -> dict:
+    """The valid bridge SOURCES you can wire with connect_mapping — every audio characteristic
+    for master + each live track (by stable id), as ready-to-use source strings. Returns
+    {sources:[{source, kind, label, range, description}]} (e.g. 'master.transient',
+    'track_2.low'; all 0..1). Destinations are params from list_operators / list_audio_ops:
+    build 'node:<id>.<param>' (visual) or 'param:<track>:<device>:<index>' (audio)."""
+    return _post("list_mapping_sources")
 
 
 @mcp.tool
@@ -310,8 +323,10 @@ def get_audio_graph(track: int) -> dict:
 def list_audio_operators() -> dict:
     """The catalog of native audio operators available to build a track's audio chain, split
     into {instruments:[...], effects:[...]} — the audio peer of list_operators (which is
-    visual). Instruments are sources (no audio input); effects process audio in->out. Pass a
-    name to set_track_audio_instrument (instruments) or add_audio_effect (effects)."""
+    visual). Each entry carries the full schema (name, display_name, summary, kind, and
+    params with semantic hints — semantic_tag/unit/intent/display_hint — so you can pick
+    params by intent). Instruments are sources (no audio input); effects process audio
+    in->out. Pass a name to set_track_audio_instrument (instruments) or add_audio_effect."""
     return _post("list_audio_operators")
 
 

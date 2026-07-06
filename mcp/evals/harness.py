@@ -48,9 +48,46 @@ class MockTransport:
     def __init__(self):
         self._next_id = 1
         self.nodes: list[dict] = []   # {id, op, input, params}
+        self.audio: dict[int, dict] = {}   # track -> {instrument, effects:[op...]}
 
     def post(self, method: str, payload: dict | None = None) -> dict:
         b = payload or {}
+        # ---- native audio operators (the audio peer of the visual op surface) ----
+        if method == "list_audio_operators":
+            return {"ok": True,
+                    "instruments": [
+                        {"name": "SineSynth", "kind": "instrument",
+                         "params": [{"name": "gain", "semantic_tag": "amplitude_linear",
+                                     "semantic_intent": "output level"}]},
+                        {"name": "Sampler", "kind": "instrument", "params": []}],
+                    "effects": [
+                        {"name": "Drive", "kind": "audio_effect",
+                         "params": [{"name": "drive", "semantic_intent": "overdrive amount"},
+                                    {"name": "mix", "semantic_intent": "dry/wet mix"}]},
+                        {"name": "Bitcrush", "kind": "audio_effect",
+                         "params": [{"name": "bits", "semantic_intent": "bit depth"}]}]}
+        if method == "set_track_audio_instrument":
+            self.audio.setdefault(b.get("track", 0), {}).update(instrument=b.get("op"))
+            return {"ok": True}
+        if method == "add_audio_effect":
+            ch = self.audio.setdefault(b.get("track", 0), {})
+            ch.setdefault("effects", []).append(b.get("op"))
+            return {"ok": True, "index": len(ch["effects"]) - 1}
+        if method == "set_audio_op_param":
+            return {"ok": True}
+        if method == "list_audio_ops":
+            ch = self.audio.get(b.get("track", 0), {})
+            return {"ok": True, "instrument": {"type": ch.get("instrument")},
+                    "effects": [{"type": e} for e in ch.get("effects", [])]}
+        if method == "install_operator_package":
+            return {"ok": True, "operators": [{"name": "MyOp", "compiled": True, "registered": True}]}
+        if method == "list_mapping_sources":
+            return {"ok": True, "sources": [
+                {"source": "master.level", "kind": "level", "range": [0.0, 1.0]},
+                {"source": "master.transient", "kind": "transient", "range": [0.0, 1.0]},
+                {"source": "track_1.low", "kind": "low", "range": [0.0, 1.0]}]}
+        if method == "connect_mapping":
+            return {"ok": True}
         if method == "status":
             return {"ok": True, "ops": len(self.nodes), "op_types": ["Plasma", "Tint", "Output"]}
         if method == "get_version":
