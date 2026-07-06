@@ -9,20 +9,16 @@ extern "C" {
 
 /* =============================================================================
  * Vivid Value Views & Outputs — operator-facing value transport
- * (Lane-Value Clean-Break, Phase 1)
  * =============================================================================
  *
- * Successors to the lane views/outputs (VividLaneView / VividLaneOutput /
- * VividStringLaneView / VividStringLaneOutput in types.h). A VividValueView is
- * one immutable input value that may be Scalar or Many of any payload type; a
- * VividValueOutput is the runtime-owned builder an operator writes its output
- * into. The value envelope (type/multiplicity/identity/storage) travels with the
- * data instead of being implied by a special port type.
+ * A VividValueView is one immutable input value that may be Scalar or Many of any
+ * payload type; a VividValueOutput is the runtime-owned builder an operator writes
+ * its output into. The value envelope (type/multiplicity/identity/storage) travels
+ * with the data instead of being implied by a special port type.
  *
- * Phase 1 is ADDITIVE: these are defined and compile, but the process contexts
- * (VividFrameContext / VividAudioContext / VividGpuContext) do not expose a
- * `values[]` array yet — that wiring is Phase 4. Only the Phase-1 example
- * operators include this header so far. The lane API remains the live path.
+ * The process contexts (VividFrameContext / VividAudioContext) expose these as
+ * `values[]` (one per input port) and `value_outputs[]` (one per output port); an
+ * operator reads its inputs and writes its outputs through them.
  * ===========================================================================*/
 
 /* One immutable input value. `data` points at the payload, interpreted by

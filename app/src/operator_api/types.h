@@ -1,16 +1,18 @@
 #pragma once
 
 #include <stdint.h>
-#include "value_model.h"  /* VividValueType / VividMultiplicity / VividMultiplicityBehavior (lane-value clean-break) */
-#include "value_view.h"   /* VividValueView / VividValueOutput (lane-value clean-break, Phase 4) */
+#include "value_model.h"  /* the value vocabulary: VividValueType / VividMultiplicity / VividMultiplicityBehavior */
+#include "value_view.h"   /* operator-facing value transport: VividValueView / VividValueOutput */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* Bump when operator-facing C ABI changes in incompatible ways.
-   Catches stale dylibs during hot-reload — not a cross-version compatibility promise. */
-#define VIVID_OPERATOR_ABI_VERSION 11u  /* v11: audio operator API — VividAudioContext gains note_events/note_event_count (VividNoteEvent) so instrument operators are MIDI-driven (effect: audio-in->out; generator: params/transport->out; instrument: note_events->out); additive; v10: lane-value Phase 7e.6a — removed VividOperatorDescriptor.lane_behavior + the VividLaneBehavior enum/VIVID_LANE_* constants; operators declare multiplicity via `static constexpr VividMultiplicityBehavior kMultiplicityBehavior` (defaults to Map); v9: lane-value Phase 7e.5b — removed ctx.lane_set_id from VividFrameContext/VividAudioContext (lane-set provenance retired; per-element identity still via ctx.lane_id + vivid_lane_state); v8: lane-value Phase 7e.2 — removed the operator-facing lane C-API (VividLaneView/VividLaneOutput/VividStringLaneView/VividStringLaneOutput + ctx input_lanes/output_lanes/ *_string_lanes); operators use the value API (ctx->values/value_outputs); v7: lane-value Phase 7d.5e — retired the VIVID_PORT_LANE_ARRAY/STRING_LANES port types (+ transport variants); port arity is declared via VividPortDescriptor.multiplicity; v6: lane-value Phase 1 — VividOperatorDescriptor.multiplicity_behavior + VividPortDescriptor.{value_type,multiplicity}; v5: VividPortDescriptor.gpu_texture_format; v4: VividInspectorCommandAPI.{begin_undo_group,end_undo_group} */
+/* Operator-facing C ABI version. Bump on any incompatible change; the host refuses to load a
+   package whose declared `abi` mismatches (this catches stale dylibs during hot-reload — it is
+   NOT a cross-version compatibility promise). The per-version history lives in
+   docs/operator-api/abi-changelog.md. */
+#define VIVID_OPERATOR_ABI_VERSION 11u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -165,10 +167,9 @@ typedef struct VividPortDescriptor {
     // .direction=VIVID_PORT_OUTPUT, .gpu_texture_format=VIVID_TEXFMT_RG16F}.
     VividTextureFormat gpu_texture_format = 0;
 
-    // Value model (lane-value clean-break, v6). Additive alongside `type`/`transport`,
-    // which remain the live path until Phase 7. Codegen derives these from the port
-    // `type` (LANE_ARRAY/STRING_LANES => Many; else Scalar; payload from the type), so
-    // existing operators get correct values with no source change.
+    // The port's value envelope: what payload it carries and whether it is one value or many.
+    // This is the live arity declaration (there is no "lane array" port type). Codegen derives
+    // both from the port declaration, so hand-written descriptors rarely set them explicitly.
     VividValueType    value_type   = 0;  // VIVID_VALUE_FLOAT
     VividMultiplicity multiplicity = 0;  // VIVID_MULTIPLICITY_SCALAR
 } VividPortDescriptor;
@@ -344,11 +345,11 @@ typedef struct VividAudioContext {
     uint32_t          custom_output_count;  // number of custom-transport output ports
     const char**      file_param_values;
     uint32_t          file_param_count;
-    // ---- Value-model I/O (lane-value clean-break, Phase 5a; additive) ----
+    // ---- Value-model I/O ----
     // One VividValueView per input port (AUDIO block, or float control) + one
     // VividValueOutput per output port (the audio output's resize() returns the
-    // runtime-provided block). Backed by the existing audio-buffer transport;
-    // populated for the Scalar (non-lifted) path. NULL if unpopulated.
+    // runtime-provided block). Backed by the audio-buffer transport; populated for
+    // the Scalar (non-lifted) path. NULL if the runtime did not populate them.
     const VividValueView* values;         // [input port_ordinal]
     VividValueOutput*     value_outputs;  // [output port_ordinal]
     const VividSharedHandleService* shared_handles;
@@ -407,11 +408,10 @@ typedef struct VividFrameContext {
     uint32_t   custom_output_count;    // number of custom-transport output ports
     const char** input_string_values;   // [string_port_ordinal]
     const char** output_string_values;  // [string_port_ordinal]
-    // ---- Value-model I/O (lane-value clean-break, Phase 4; additive) ----
-    // The successor to the lane/string-lane views above: one VividValueView per
-    // input port (scalar or many, any payload) + one VividValueOutput per output
-    // port. Backed by the same transport as the lane views in Phase 4a; operators
-    // may use either API. NULL if the runtime did not populate them.
+    // ---- Value-model I/O ----
+    // One VividValueView per input port (scalar or many, any payload) + one
+    // VividValueOutput per output port. This is the operator-facing value transport
+    // (see value_view.h). NULL if the runtime did not populate them.
     const VividValueView* values;         // [input port_ordinal]
     VividValueOutput*     value_outputs;  // [output port_ordinal]
     const char** file_param_values;   // indexed by file param order, NULL if none
