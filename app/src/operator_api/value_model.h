@@ -7,14 +7,12 @@ extern "C" {
 #endif
 
 /* =============================================================================
- * Vivid Value Model — canonical vocabulary (Lane-Value Clean-Break, Phase 0)
+ * Vivid Value Model — the canonical value vocabulary
  * =============================================================================
  *
- * This header LOCKS the vocabulary for the clean-break that replaces the lane
- * system with a first-class value model. It is currently INERT: nothing
- * #includes it yet, it does not change the ABI, and the runtime still uses the
- * lane API. Phase 1 wires these into the descriptor/context/codegen and bumps
- * VIVID_OPERATOR_ABI_VERSION; later phases delete the lane surfaces.
+ * This header defines the vocabulary every runtime value speaks. It is part of the
+ * ABI (included by types.h and value_view.h) and is the multiplicity authority: a
+ * value's arity and identity live here, not in payload-specific port types.
  *
  * The model: every runtime value carries four orthogonal properties —
  *   1. payload type   (VividValueType)            — what the value IS
@@ -38,8 +36,7 @@ extern "C" {
  * docs/runtime/value-model.md.
  * ===========================================================================*/
 
-/* The format of `VIVID_OPERATOR_ABI_VERSION` is owned by types.h; Phase 1 bumps
- * it (from 5) when these descriptors/contexts become part of the ABI. */
+/* `VIVID_OPERATOR_ABI_VERSION` is owned by types.h (see docs/operator-api/abi-changelog.md). */
 
 /* -----------------------------------------------------------------------------
  * 1. Payload type — what a value is. (Replaces the payload half of the old

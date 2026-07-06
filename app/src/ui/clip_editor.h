@@ -15,7 +15,7 @@ namespace vivid::ui {
 // open. Edits a local note buffer; main commits it via session_set_clip when
 // take_dirty() reports a change.
 //
-// M0 substrate: a view transform (beat/pitch zoom + scroll), a selection set, a
+// The editor substrate: a view transform (beat/pitch zoom + scroll), a selection set, a
 // Select/Draw tool mode, a per-editor undo stack, a keyboard + modifier-aware scroll
 // router, and a transport playhead. Interactions: Select tool — click a note to
 // select (shift-click toggles), drag the body to move the selection, drag the right
@@ -56,17 +56,17 @@ public:
     void set_window(float w, float h) { win_w_ = w; win_h_ = h; }   // for docking/clamps
     void set_dock_h(float h) { dock_h_ = h; }       // shared bottom-dock height (docked mode)
     bool is_docked() const { return docked_; }      // true = fills the bottom inspector dock
-    // Ghost notes (M2-followup): reference notes from the same-scene clips of other tracks,
+    // Ghost notes: reference notes from the same-scene clips of other tracks,
     // drawn faintly behind the editable notes. The caller gathers them at open time.
     void set_ghost_notes(const vivid::session::ClipNote* n, int count) { ghost_notes_.assign(n, n + (count > 0 ? count : 0)); }
-    // Step input (M6.5): when on, live note-ons (typing / hardware MIDI, routed by the
+    // Step input: when on, live note-ons (typing / hardware MIDI, routed by the
     // input layer) write a note at the step cursor and advance it by one grid cell. A
     // chord (notes held together) lands on the same step; the cursor advances when all
     // are released.
     bool step_mode() const { return step_mode_; }
     void step_note_on(int pitch, float vel);
     void step_note_off();
-    // Audio warp/shaping (A5): frame.cpp loads the clip's state + markers, and drains pending edits.
+    // Audio warp/shaping: frame.cpp loads the clip's state + markers, and drains pending edits.
     void set_audio_shape(int warp_mode, float pitch) { aud_warp_mode_ = warp_mode; aud_pitch_ = pitch; }
     void set_audio_markers(const float* warp_s, const double* warp_b, int nw, const float* trans, int nt) {
         warp_norm_.assign(warp_s, warp_s + (nw > 0 ? nw : 0));
@@ -74,10 +74,10 @@ public:
         trans_norm_.assign(trans, trans + (nt > 0 ? nt : 0));
     }
     void set_slices(const float* s, int n) { slice_norm_.assign(s, s + (n > 0 ? n : 0)); }
-    // Keyboard audition (M2-followup): the caller wires this to play/stop a note on the
+    // Keyboard audition: the caller wires this to play/stop a note on the
     // edited track's instrument. Args: (track, pitch, vel, on).
     void set_audition_cb(std::function<void(int, int, float, bool)> cb) { audition_cb_ = std::move(cb); }
-    // In-clip loop (M2-followup): the caller loads the region on open and commits edits.
+    // In-clip loop: the caller loads the region on open and commits edits.
     void set_loop(double ls, double le) { loop_start_ = ls; loop_end_ = le; }
     void loop_range(double& ls, double& le) const { ls = loop_start_; le = loop_end_; }
     bool take_loop_dirty() { bool d = loop_dirty_; loop_dirty_ = false; return d; }
@@ -100,13 +100,13 @@ private:
     float  wav_px_ = 600.f;            // audio: pixels per normalized unit (horizontal zoom)
     float  wav_amp_ = 1.f;             // audio: vertical amplitude zoom
     double aud_loop_ = 4.0;            // audio: clip loop length in beats (for the playhead)
-    // Audio warp/shaping (A5): mirrored for the header UI + overlay; committed via frame.cpp.
+    // Audio warp/shaping: mirrored for the header UI + overlay; committed via frame.cpp.
     int    aud_warp_mode_ = -1;        // -1 off, 0 Complex, 1 Beats, 2 Repitch
     float  aud_pitch_ = 0.f;           // clip transpose in semitones
     std::vector<float> warp_norm_, trans_norm_;   // marker (norm sample) / transient positions 0..1
     std::vector<double> warp_b_;       // marker beats (parallel to warp_norm_)
-    std::vector<float> slice_norm_;    // A6: slice boundary positions (normalized)
-    int    slice_mode_ = 0;            // A6: 0 off, 1 transients, 3 grid
+    std::vector<float> slice_norm_;    // slice boundary positions (normalized)
+    int    slice_mode_ = 0;            // 0 off, 1 transients, 3 grid
     int    marker_drag_ = -1;          // warp marker being dragged
     int    aud_req_ = 0;               // pending commit bits: 1 shaping, 2 auto, 4 warp-pts, 8 slice, 16 slice->MIDI
     double length_ = 4.0;
@@ -116,7 +116,7 @@ private:
     int    scale_root_ = -1;          // -1 = highlight off; else 0..11 (C..B)
     int    scale_type_ = 0;           // index into the scale table
     bool   follow_ = true;            // auto-scroll to keep the playhead in view
-    bool   step_mode_ = false;        // step input (M6.5)
+    bool   step_mode_ = false;        // step input
     double step_cursor_ = 0.0;        // step-input write position (beats)
     int    step_held_ = 0;            // notes currently held in the step chord
     std::vector<vivid::session::ClipNote> clip_;   // internal copy/paste clipboard (based at beat 0)
@@ -136,7 +136,7 @@ private:
     std::vector<vivid::session::ClipNote> ghost_notes_;   // same-scene notes of other tracks
     std::function<void(int, int, float, bool)> audition_cb_;   // keyboard-audition sink
     int    audition_pitch_ = -1;       // pitch currently sounding from a keyboard-key press
-    // Per-clip view memory (M2-followup): each clip remembers its zoom + scroll so
+    // Per-clip view memory: each clip remembers its zoom + scroll so
     // reopening it restores the view instead of re-fitting. (fold/scale/ghost are global
     // modes, so they intentionally stay put.) Session-scoped UI state (not in the document
     // JSON), keyed by (track, scene).
@@ -210,7 +210,7 @@ private:
     void  paste(double at_beat);      // clip_ -> notes, selects pasted
     void  duplicate_sel();            // copy + paste one span later
     void  finish_marquee(double x, double y);
-    // Expression lane (M4) value<->pixel mapping. lane_value_at maps a lane y to the
+    // Expression lane value<->pixel mapping. lane_value_at maps a lane y to the
     // current axis's units (bend = semitones, pressure/timbre 0..1); lane_y_for inverts.
     float lane_value_at(double y) const;
     float lane_t_at(double x) const;         // x -> normalized t within paint_note_

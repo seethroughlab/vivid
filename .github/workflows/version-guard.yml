@@ -24,3 +24,5 @@ jobs:
           else
             uv run tools/check_version.py
           fi
+      - name: MCP <-> control-server parity (static)
+        run: uv run mcp/tests/test_mcp_parity.py

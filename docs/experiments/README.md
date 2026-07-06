@@ -1,6 +1,12 @@
 # Vivid 4 — Session View experiments
 
-Status: active. Convergence recorded 2026-06-21.
+> **Historical.** These are the pre-runtime prototypes that proved the Session View interaction
+> model *before* any native work. That model is now **shipped** as the DAW surface in
+> [`app/`](../../app/). These files are kept as evidence of how the product was reasoned into
+> being — they are **not** the current spec. For current truth, read [`../../CLAUDE.md`](../../CLAUDE.md),
+> [`../../app/ARCHITECTURE.md`](../../app/ARCHITECTURE.md), and the [ADRs](../decisions/).
+
+Original status (2026-06-21): active. Convergence recorded 2026-06-21.
 
 These are disposable HTML prototypes for the Phase 1 proof (see
 [`../roadmap/phased-development-plan.md`](../roadmap/phased-development-plan.md) and

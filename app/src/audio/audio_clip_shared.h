@@ -2,7 +2,7 @@
 // Pure math for the audio clip editor: warp-marker mapping, transient detection,
 // slicing, fades, loop/region hit-testing + drag. No GLFW/WGPU/runtime headers — fully
 // unit-testable. Ported from vivid-classic operators/audio/audio_clip/audio_clip_editor_shared.h
-// (A0 of the Ableton-style audio clip editor); estimate_bpm/auto_warp added for Vivid.
+// (the shared core of the Ableton-style audio clip editor); estimate_bpm/auto_warp added for Vivid.
 
 #include <algorithm>
 #include <cmath>

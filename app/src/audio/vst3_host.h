@@ -3,7 +3,7 @@
 #include <string>
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
-namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops, AO-1)
+namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops)
 
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
 // an anonymous-namespace header, so the work lives in vst3_host.cpp and main only
@@ -33,7 +33,7 @@ const char* session_track_name(Session*, int track);
 int  session_track_id(Session*, int track);
 void session_set_track_id(Session*, int track, int id);   // load-time restore of a saved id
 
-// Live MIDI input / record-arm (M6). Arm a track (by index; stored as a stable id) to
+// Live MIDI input / record-arm. Arm a track (by index; stored as a stable id) to
 // monitor live notes through its instrument. note_on/off feed the session live-input
 // queue from any producer thread (musical typing, CoreMIDI) — lock-free on the audio side.
 void session_set_armed_track(Session*, int track_index);   // -1 (or out-of-range) clears
@@ -75,14 +75,14 @@ float session_track_level(Session*, int track);      // per-track output RMS (me
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
 
-// Plugin editor (P10): the track's IEditController, as void* (cast in main).
+// Plugin editor: the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);
 
-// Per-track effect chain (P22): instrument + N effects processed in series.
+// Per-track effect chain: instrument + N effects processed in series.
 int         session_effect_count(Session*, int track);
 const char* session_effect_name(Session*, int track, int effect);
 void*       session_effect_controller(Session*, int track, int effect);  // IEditController*
-// Thread-safe runtime add/remove (P23). bundle = a .vst3 path.
+// Thread-safe runtime add/remove. bundle = a .vst3 path.
 bool        session_add_effect(Session*, int track, const char* bundle);
 void        session_remove_effect(Session*, int track, int effect);
 // Catalog offered in the device-chain "+ FX" menu (resolved to a bundle on add).
@@ -90,7 +90,7 @@ int         session_available_effect_count();
 const char* session_available_effect_name(int i);
 bool        session_add_effect_by_index(Session*, int track, int i);
 
-// Device parameters (P24). device: 0 = instrument, 1+ = effect index+1.
+// Device parameters. device: 0 = instrument, 1+ = effect index+1.
 int         session_param_count(Session*, int track, int device);
 const char* session_param_name(Session*, int track, int device, int i);
 uint32_t    session_param_id(Session*, int track, int device, int i);
@@ -100,18 +100,18 @@ void        session_set_param(Session*, int track, int device, uint32_t param_id
 bool session_track_is_audio(Session*, int track);  // sampler track (no plugin / MIDI)
 int  session_audio_clip_bpm(Session*, int track, int scene);  // source tempo, 0 if generated
 
-// Plugin preset state (P18): "z:<base64>" of the plugin's getState(); empty for
+// Plugin preset state: "z:<base64>" of the plugin's getState(); empty for
 // audio/handle-less tracks. set applies via setState. Call on the UI thread only.
 std::string session_get_track_state(Session*, int track);
 void        session_set_track_state(Session*, int track, const std::string& state);
 
-// Audio waveform editing (P15). Waveform = peak amplitude per bin (read-only).
+// Audio waveform editing. Waveform = peak amplitude per bin (read-only).
 int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int n_bins);
 double session_audio_loop_beats(Session*, int track, int scene);   // clip's loop length (beats)
 void session_get_audio_trim(Session*, int track, int scene, float* t0, float* t1);   // loop window [0,1]
 void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
 
-// Audio-clip warp/shaping (A2). set_warp inits the per-slot pitch-preserving stretcher on
+// Audio-clip warp/shaping. set_warp inits the per-slot pitch-preserving stretcher on
 // the calling (UI/main) thread; mode: 0=Complex, 1=Beats, 2=Repitch. Pitch in semitones.
 void  session_set_audio_warp   (Session*, int track, int scene, int enabled, int mode);
 int   session_get_audio_warp   (Session*, int track, int scene);   // -1 off, else the mode 0..2
@@ -137,7 +137,7 @@ void  session_audio_set_warp_pts (Session*, int track, int scene, const float* n
 // Slice boundaries (normalized 0..1) for slice mode: 1=transients, 2=manual, 3=16-grid.
 int   session_audio_slices       (Session*, int track, int scene, int mode, float* out_norm, int cap);
 
-// MIDI clip editing (P14). The editor reads a snapshot, edits, and writes back;
+// MIDI clip editing. The editor reads a snapshot, edits, and writes back;
 // the audio thread applies the change at the top of the next process block.
 // Clip pool: loose clips stashed outside the track grid (browser sidebar). UI/main-thread
 // only — the audio thread never touches the pool. Fully portable MidiClips (notes + length).
@@ -163,7 +163,7 @@ void   session_set_clip(Session*, int track, int scene, const ClipNote* notes, i
 void   session_set_clip_loop(Session*, int track, int scene, double loop_start, double loop_end);
 void   session_get_clip_loop(Session*, int track, int scene, double* loop_start, double* loop_end);
 
-// Native audio operators (AO-1). The shared registry is set once at init; a track can have
+// Native audio operators. The shared registry is set once at init; a track can have
 // a native instrument (source op) + a chain of native audio effects, alongside VST3.
 // index -1 addresses the instrument slot; index >= 0 an effect in the chain.
 void        session_set_op_registry(Session*, vivid::OpRegistry* reg);
@@ -185,7 +185,7 @@ void        session_audio_op_param_set(Session*, int track, int index, int param
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
 
-// AG-1: read-only introspection of a track's authoritative audio graph (the persistent
+// Read-only introspection of a track's authoritative audio graph (the persistent
 // per-track topology model behind the compiled RT plan). Reports what the executor actually
 // runs. `graph_ok` is 1 only when the track is on the native audio-graph path (a native
 // instrument + native FX, no VST3); 0 => the track runs the inline/VST3 chain and the graph
@@ -202,7 +202,7 @@ int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
 
-// A6: slice the source audio clip into a new MIDI track driven by a native Sampler loaded
+// Slice the source audio clip into a new MIDI track driven by a native Sampler loaded
 // with the clip's PCM + slices (slice_mode: 1=transients, 3=16-grid). Ascending pitches from
 // C1 map to slices. Returns the new track index, or -1 on failure. UI thread only.
 int         session_slice_to_midi(Session*, int src_track, int src_scene, int slice_mode);

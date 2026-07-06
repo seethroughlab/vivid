@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// The native Sampler instrument operator (AO-4) plays a slice of in-memory PCM per note
+// The native Sampler instrument operator plays a slice of in-memory PCM per note
 // (drum-rack / slicer semantics). Unlike a normal operator its state is a large decoded
 // asset — PCM + slice boundaries — that doesn't fit the float/FILE param channel, so the
 // host hands it over through this typed escape hatch instead. `SamplerLoadable` is a small

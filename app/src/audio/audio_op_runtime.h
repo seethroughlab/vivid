@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 
-// Native audio-operator runtime (AO-1). Instantiates OperatorBase+AudioProcessable
+// Native audio-operator runtime. Instantiates OperatorBase+AudioProcessable
 // operators from the shared OpRegistry and runs them on the audio thread. Kept in its
 // own translation unit so it can include the full operator_api VividAudioContext without
 // colliding with the minimal VST3 tempo stub (audio/vivid_audio_context.h) that

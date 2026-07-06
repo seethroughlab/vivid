@@ -303,6 +303,100 @@ def get_audio_graph(track: int) -> dict:
     return _post("get_audio_graph", {"track": track})
 
 
+# ---------------- native audio operators ----------------
+# The audio peer of the visual operator surface: native instruments + effects on a track,
+# discovered via list_audio_operators, built with these tools. Distinct from VST3 devices.
+@mcp.tool
+def list_audio_operators() -> dict:
+    """The catalog of native audio operators available to build a track's audio chain, split
+    into {instruments:[...], effects:[...]} — the audio peer of list_operators (which is
+    visual). Instruments are sources (no audio input); effects process audio in->out. Pass a
+    name to set_track_audio_instrument (instruments) or add_audio_effect (effects)."""
+    return _post("list_audio_operators")
+
+
+@mcp.tool
+def list_audio_ops(track: int) -> dict:
+    """List the native audio operators currently ON a track: its instrument (if any) + the
+    ordered effect chain, each with its params. This is the built chain; use
+    list_audio_operators for the catalog of what can be added."""
+    return _post("list_audio_ops", {"track": track})
+
+
+@mcp.tool
+def set_track_audio_instrument(track: int, op: str) -> dict:
+    """Set a track's native instrument (a source operator name from list_audio_operators).
+    Pass "" to clear it."""
+    return _post("set_track_audio_instrument", {"track": track, "op": op})
+
+
+@mcp.tool
+def add_audio_effect(track: int, op: str) -> dict:
+    """Append a native audio effect (an effect operator name from list_audio_operators) to a
+    track's chain. Returns its effect index."""
+    return _post("add_audio_effect", {"track": track, "op": op})
+
+
+@mcp.tool
+def remove_audio_effect(track: int, index: int) -> dict:
+    """Remove the native audio effect at `index` from a track's chain."""
+    return _post("remove_audio_effect", {"track": track, "index": index})
+
+
+@mcp.tool
+def set_audio_op_param(track: int, index: int, param: int, value: float) -> dict:
+    """Set a native audio operator's param by index (from list_audio_ops). index -1 = the
+    track's instrument; 0+ = the effect at that chain position."""
+    return _post("set_audio_op_param", {"track": track, "index": index, "param": param, "value": value})
+
+
+@mcp.tool
+def slice_to_midi(track: int, scene: int, slice_mode: int = 3) -> dict:
+    """Slice an audio clip into a new MIDI track driven by a native Sampler loaded with the
+    clip's slices (ascending pitches from C1 trigger successive slices). slice_mode: 1 =
+    transients, 3 = 16-step grid. Returns the new track index."""
+    return _post("slice_to_midi", {"track": track, "scene": scene, "slice_mode": slice_mode})
+
+
+# ---------------- live input / recording ----------------
+@mcp.tool
+def arm_track(track: int) -> dict:
+    """Arm a track for live MIDI input + recording (monitors notes through its instrument).
+    Pass -1 to disarm. Returns the armed track index."""
+    return _post("arm_track", {"track": track})
+
+
+@mcp.tool
+def note_on(pitch: int, vel: float = 0.8) -> dict:
+    """Send a live note-on (pitch 0..127) to the currently armed track's instrument."""
+    return _post("note_on", {"pitch": pitch, "vel": vel})
+
+
+@mcp.tool
+def note_off(pitch: int) -> dict:
+    """Send a live note-off (pitch 0..127) to the armed track's instrument."""
+    return _post("note_off", {"pitch": pitch})
+
+
+@mcp.tool
+def record(on: bool = True, count_in: float = 0.0) -> dict:
+    """Start/stop recording live input into the armed track's playing clip. count_in = bars of
+    metronome count-in before capture. Returns the recording state."""
+    return _post("record", {"on": on, "count_in": count_in})
+
+
+@mcp.tool
+def metronome(on: bool = True) -> dict:
+    """Enable/disable the metronome click. Returns its state."""
+    return _post("metronome", {"on": on})
+
+
+@mcp.tool
+def set_clip_loop(track: int, scene: int, loop_start: float = 0.0, loop_end: float = 0.0) -> dict:
+    """Set a clip's loop region in beats (loop_start..loop_end). 0/0 clears the loop."""
+    return _post("set_clip_loop", {"track": track, "scene": scene, "loop_start": loop_start, "loop_end": loop_end})
+
+
 @mcp.tool
 def set_param(track: int, device: int, param: int, value: float) -> dict:
     """Set a device param by its index (from list_params). device 0 = instrument, 1+ = FX. value 0..1."""

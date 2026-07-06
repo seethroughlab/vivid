@@ -24,9 +24,12 @@ The agent bridge (the app must be running):
 uv run --directory mcp vivid_mcp.py
 ```
 
-> The app must be **foreground/visible** for the macOS `CFRunLoopTimer` frame loop to
-> pump frames; backgrounded, it logs `surface texture unavailable` and the control
-> server stops draining (expected, not a bug).
+> The frame loop (and the control-server drain it runs each tick) **keeps pumping while the
+> app is backgrounded**, so an agent can drive it over MCP without the window frontmost — the
+> outer loop ticks directly rather than relying on a run-loop timer (macOS does not fire
+> timers for a background app), and App Nap is disabled at startup. When fully occluded the
+> renderer may briefly log `surface texture unavailable` and skip drawing a frame; that is
+> benign and does not stop the control server.
 
 ## Tests, sanitizers, CI
 

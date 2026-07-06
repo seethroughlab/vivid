@@ -1,5 +1,5 @@
 #pragma once
-// AG-0: the per-track audio signal graph (ADR-0012). A track's audio devices form a
+// The per-track audio signal graph (ADR-0012). A track's audio devices form a
 // directed acyclic graph — sources (instruments) and effects wired by edges, terminating
 // in one Output node — rather than a fixed linear chain. Multiple edges into a node imply
 // a stereo SUM of its inputs (the single primitive from which parallel chains, racks, and
