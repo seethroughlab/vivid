@@ -52,6 +52,8 @@ vivid_add_test(test_control_parse)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)
+vivid_add_test(test_control_json)    # discovery serializer: descriptor -> rich JSON (semantic metadata)
+target_link_libraries(test_control_json PRIVATE nlohmann_json::nlohmann_json)
 
 # Operator descriptor validation (lifted operator_api) — compiles the validator
 # .cpp into the test (header + stdlib only, so still headless/portable).

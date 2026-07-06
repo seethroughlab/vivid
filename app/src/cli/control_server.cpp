@@ -1,6 +1,7 @@
 #include "cli/control_server.h"
 #include "cli/control_errors.h"
 #include "cli/control_parse.h"
+#include "cli/control_json.h"
 
 #include <httplib.h>
 
@@ -178,40 +179,14 @@ void ControlServer::register_handlers() {
     // loaded dylib) with its display_name/summary/keywords + param + port schema.
     handlers_["list_operators"] = [](const ControlCtx& c, const json&) {
         if (!c.vgraph || !c.vgraph->registry()) return err(code::kNoVgraph, "no visuals graph");
-        auto ptype = [](uint32_t t) -> const char* {
-            switch (t) { case VIVID_PARAM_INT: return "int"; case VIVID_PARAM_BOOL: return "bool";
-                         case VIVID_PARAM_FILE: return "file"; case VIVID_PARAM_TEXT: return "text";
-                         default: return "float"; }
-        };
         auto* reg = c.vgraph->registry();
         json arr = json::array();
         for (const auto& name : reg->type_names()) {
             const VividOperatorDescriptor* d = reg->descriptor_for(name);
             if (!d) continue;
-            json jo;
-            jo["name"] = name;
-            if (d->display_name && *d->display_name) jo["display_name"] = d->display_name;
-            if (d->summary && *d->summary)           jo["summary"] = d->summary;
-            json kws = json::array();
-            for (uint32_t i = 0; i < d->keyword_count; ++i)
-                if (d->keywords && d->keywords[i]) kws.push_back(d->keywords[i]);
-            jo["keywords"] = kws;
-            jo["gpu"] = d->has_process_gpu != 0;
-            json params = json::array();
-            for (uint32_t i = 0; i < d->param_count; ++i) {
-                const VividParamDescriptor& p = d->params[i];
-                json jp = { {"name", p.name ? p.name : ""}, {"type", ptype(p.type)},
-                            {"default", p.default_value}, {"min", p.min_value}, {"max", p.max_value} };
-                if (p.description && *p.description) jp["description"] = p.description;
-                if (p.group && *p.group)             jp["group"] = p.group;
-                params.push_back(jp);
-            }
-            jo["params"] = params;
-            json ports = json::array();
-            for (uint32_t i = 0; i < d->port_count; ++i)
-                ports.push_back({ {"name", d->ports[i].name ? d->ports[i].name : ""},
-                                  {"dir", d->ports[i].direction == VIVID_PORT_OUTPUT ? "out" : "in"} });
-            jo["ports"] = ports;
+            // Rich shared schema (params + ports + semantic metadata) so agents pick/wire by intent.
+            json jo = control_json::operator_to_json(*d);
+            jo["gpu"] = d->has_process_gpu != 0;   // back-compat flag
             arr.push_back(jo);
         }
         json r = ok(); r["operators"] = arr; return r;
@@ -783,12 +758,23 @@ void ControlServer::register_handlers() {
     // stable registry keys for set_track_audio_instrument / add_audio_effect.
     handlers_["list_audio_operators"] = [](const ControlCtx& c, const json&) {
         if (!c.session) return err(code::kNoSession, "no session");
-        json inst = json::array(), fx = json::array();
-        for (int i = 0; i < P::session_available_audio_op_count(c.session, 1); ++i)
-            inst.push_back(P::session_available_audio_op_name(c.session, 1, i));
-        for (int i = 0; i < P::session_available_audio_op_count(c.session, 0); ++i)
-            fx.push_back(P::session_available_audio_op_name(c.session, 0, i));
-        json r = ok(); r["instruments"] = inst; r["effects"] = fx; return r;
+        auto* reg = (c.vgraph && c.vgraph->registry()) ? c.vgraph->registry() : nullptr;
+        // Each entry carries the full schema (params + semantic metadata), like list_operators —
+        // so an agent can pick an op AND know its params without a second call.
+        auto emit = [&](int want_source, const char* kind) {
+            json arr = json::array();
+            for (int i = 0; i < P::session_available_audio_op_count(c.session, want_source); ++i) {
+                const char* nm = P::session_available_audio_op_name(c.session, want_source, i);
+                const VividOperatorDescriptor* d = reg ? reg->descriptor_for(nm ? nm : "") : nullptr;
+                if (d) arr.push_back(control_json::operator_to_json(*d, kind));
+                else   arr.push_back({ {"name", nm ? nm : ""}, {"kind", kind} });
+            }
+            return arr;
+        };
+        json r = ok();
+        r["instruments"] = emit(1, "instrument");
+        r["effects"]     = emit(0, "audio_effect");
+        return r;
     };
 
     // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
