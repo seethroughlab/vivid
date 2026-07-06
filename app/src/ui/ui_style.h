@@ -54,6 +54,29 @@ struct Style {
 };
 inline const Style& style() { static const Style s; return s; }
 
+// The domain identity of a region (ADR-0013, UI-0). Every panel/zone carries a domain so
+// the user always knows which world they're in — audio (amber), visual (cyan), the bridge
+// (teal), or shared transport/chrome (gray). `domain_color` returns the accent to tint a
+// region header / accent bar with; audio and visual never share a rectangle (strict zones).
+enum class Domain { Audio, Visual, Bridge, Shared };
+inline const float* domain_color(Domain d) {
+    const Style& s = style();
+    switch (d) {
+        case Domain::Audio:  return s.audio;    // amber
+        case Domain::Visual: return s.gpu;      // cyan
+        case Domain::Bridge: return s.teal;     // teal
+        case Domain::Shared: default: return s.control;  // gray
+    }
+}
+inline const char* domain_label(Domain d) {
+    switch (d) {
+        case Domain::Audio:  return "AUDIO";
+        case Domain::Visual: return "VISUAL";
+        case Domain::Bridge: return "BRIDGE";
+        case Domain::Shared: default: return "";
+    }
+}
+
 // Truncate `str` with a trailing ellipsis so it fits within `max_w` at `scale`.
 inline std::string fit_text(Renderer2D& r, const std::string& str, float max_w, float scale) {
     if (str.empty() || r.text_width(str.c_str(), scale) <= max_w) return str;
