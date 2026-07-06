@@ -121,6 +121,16 @@ def get_mappings() -> dict:
 
 
 @mcp.tool
+def list_mapping_sources() -> dict:
+    """The valid bridge SOURCES you can wire with connect_mapping — every audio characteristic
+    for master + each live track (by stable id), as ready-to-use source strings. Returns
+    {sources:[{source, kind, label, range, description}]} (e.g. 'master.transient',
+    'track_2.low'; all 0..1). Destinations are params from list_operators / list_audio_ops:
+    build 'node:<id>.<param>' (visual) or 'param:<track>:<device>:<index>' (audio)."""
+    return _post("list_mapping_sources")
+
+
+@mcp.tool
 def list_effects() -> dict:
     """Names of the curated FX plugins offered in the UI (for add_effect). For the FULL
     set of installed plugins use list_plugins."""

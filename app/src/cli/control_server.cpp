@@ -310,6 +310,29 @@ void ControlServer::register_handlers() {
         json r = ok(); r["mappings"] = arr; return r;
     };
 
+    // Mapping affordances: the valid bridge SOURCES an agent can wire to a dest (previously only
+    // documented in a docstring). Every audio characteristic — master + per live track (by stable
+    // id) — as a ready-to-use source string, its 0..1 range, and a description. Dests are the
+    // params from list_operators / list_audio_ops (build "node:<id>.<param>" or "param:t:d:i").
+    handlers_["list_mapping_sources"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        static const char* kKinds[] = { "level", "transient", "low", "mid", "high" };
+        static const char* kDescs[] = { "overall loudness", "attack/onset energy",
+                                        "low-band energy", "mid-band energy", "high-band energy" };
+        json sources = json::array();
+        auto emit = [&](const std::string& prefix, const std::string& label) {
+            for (int k = 0; k < 5; ++k)
+                sources.push_back({ {"source", prefix + "." + kKinds[k]}, {"kind", kKinds[k]},
+                                    {"label", label + " " + kKinds[k]}, {"range", {0.0, 1.0}},
+                                    {"description", kDescs[k]} });
+        };
+        emit("master", "master");
+        for (int t = 0; t < P::session_track_count(c.session); ++t)
+            emit("track_" + std::to_string(P::session_track_id(c.session, t)),
+                 P::session_track_name(c.session, t));
+        json r = ok(); r["sources"] = sources; return r;
+    };
+
     // ---------------- visuals construction ----------------
     handlers_["add_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
