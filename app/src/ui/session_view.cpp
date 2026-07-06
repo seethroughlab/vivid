@@ -5,6 +5,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
 #include "transport.h"
@@ -254,8 +255,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
         draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
         // Close (x): exits a drilled-in focus back to the device view (progressive disclosure).
-        // Only shown when there's a focus to exit — the visual-node inspector.
-        if (w.focus.kind == FocusContext::Kind::VisualNode) {
+        // Shown for the drilled-in deep views (visual-node inspector, audio graph).
+        if (w.focus.kind == FocusContext::Kind::VisualNode || w.focus.kind == FocusContext::Kind::AudioGraph) {
             const Rect cb = dock_close_rect(w.win_w, w.win_h, w.dock_h);
             const bool ch = hit(cb, mx, my);
             ui.draw_text(cb.x, cb.y - 2.f, "\xC3\x97", ch ? 0.9f : 0.55f, ch ? 0.6f : 0.5f, ch ? 0.6f : 0.55f, 1.0f, sty.fs_body);
@@ -312,11 +313,30 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         return;
     }
 
+    // UI-3: the audio node graph deep view — the authoritative per-track audio topology the RT
+    // engine runs (instrument -> FX -> output), drawn as a node graph. Drilled in from the dock
+    // "Graph" button; the close x (above) returns to the device chain.
+    if (w.focus.kind == FocusContext::Kind::AudioGraph) {
+        const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
+        char ah[80]; std::snprintf(ah, sizeof ah, "AUDIO GRAPH \xC2\xB7 %.40s", vivid::session::session_track_name(s, tr));
+        section_header(ui, 12.f, y0 + 7.f, ah, sty.audio);
+        AudioNodeGraph ag;
+        ag.set_source(s, tr);
+        const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        ag.draw(ui);
+        return;
+    }
+
     const int tracks = vivid::session::session_track_count(s);
     const int seltr = std::min(std::max(w.sel_track, 0), tracks - 1);
     const bool aud = vivid::session::session_track_is_audio(s, seltr);
     char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid::session::session_track_name(s, seltr));
     section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
+    // UI-3: a "Graph" toggle to drill into this track's audio node graph (a deep view).
+    { const Rect gb = audio_graph_button_rect(w.win_w, w.win_h, w.dock_h);
+      draw_card(ui, gb.x, gb.y, gb.w, gb.h, sty.audio, hit(gb, mx, my));
+      ui.draw_text(gb.x + 9.f, gb.y + 2.f, "Graph", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
 
     // CHAIN rack — a bounded, recessed shelf that visually holds the device chips
     // as their own section (distinct from the params grid below). Present only in

@@ -558,6 +558,21 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             app->graph->select_op(-1); return;   // close the visual-node inspector -> device view
         }
     }
+    // UI-3: audio node graph deep view — drill in from the Device header "Graph" button; the
+    // close x returns to the device chain. While drilled in, the graph is read-only, so consume
+    // all dock clicks (they must not fall through to the device-chip handlers below).
+    if (my >= win->dock_top() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (win->focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+            if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) win->show_audio_graph = false;
+            return;
+        }
+        if (win->focus.kind == vivid::FocusContext::Kind::Device
+            && hit(vivid::ui::audio_graph_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            win->show_audio_graph = true;
+            if (app->graph) app->graph->select_op(-1);   // clear any stale visual-node selection
+            return;
+        }
+    }
     {
         if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {   // consume clicks inside the dock
             auto* g = app->graph;

@@ -341,6 +341,8 @@ void run_frame_loop(App& app, Window& win) {
                 if (clip_editor.is_open() && clip_editor.is_docked()) {
                     f.kind = FocusContext::Kind::ClipEditor; f.dom = FocusContext::Dom::Audio;
                     f.track = clip_editor.track(); f.scene = clip_editor.scene();
+                } else if (win.show_audio_graph) {   // UI-3: audio graph deep view (drilled in from a track)
+                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 } else if (selop >= 0) {
                     f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
                 } else {

@@ -21,11 +21,13 @@ struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has
 // implicit race where the draw path and the input path each independently re-derived the mode
 // from the current selection. `domain` drives the region's header tint (strict-zones principle).
 struct FocusContext {
-    enum class Kind { Device, VisualNode, ClipEditor };   // AudioGraph joins at UI-3
+    // AudioGraph (UI-3): the drilled-in per-track audio node graph deep view (audio peer of
+    // VisualNode). Set by the dock "Graph" toggle; `track` is the track being viewed.
+    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph };
     enum class Dom  { Audio, Visual };
     Kind kind  = Kind::Device;
     Dom  dom   = Dom::Audio;
-    int  track = 0;     // Device / ClipEditor
+    int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
     int  node  = -1;    // VisualNode (op index)
 };
@@ -50,6 +52,10 @@ struct Window {
     // right column is the always-on OUTPUT canvas (filling the column); toggling this reveals
     // the node graph below the output (the drill-in "edit its graph" view).
     bool  show_graph = false;
+    // UI-3: drilled into the selected track's audio node graph (the detail region shows the
+    // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
+    // button; persists across frames (the focus recompute reads it).
+    bool  show_audio_graph = false;
 
     // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
     // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a

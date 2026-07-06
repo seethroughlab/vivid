@@ -187,6 +187,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/ui/mapping_overview.cpp
     src/ui/session_view.cpp
     src/ui/node_graph.cpp
+    src/ui/audio_node_graph.cpp
     src/ui/clip_editor.cpp)
 # macOS-only backends: AVFoundation video, Cocoa VST3-GUI, the CFRunLoop frame loop,
 # and App-Nap. Their portable counterparts (the *_stub.cpp / frame_loop_generic.cpp /
