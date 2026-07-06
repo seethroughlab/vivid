@@ -49,8 +49,9 @@ int main() {
     const uint32_t ends[3]   = { SLICE, 2 * SLICE, 3 * SLICE };
     const int base = 36;
     CHECK(audio_op_load_sampler(smp, L.data(), R.data(), L.size(), sr, starts, ends, 3, base));
-    CHECK(!audio_op_load_sampler(audio_op_create(reg, "TestTone"), L.data(), R.data(), L.size(), sr,
-                                 starts, ends, 3, base));   // TestTone is not a sampler
+    AudioOp* tone = audio_op_create(reg, "TestTone");
+    CHECK(!audio_op_load_sampler(tone, L.data(), R.data(), L.size(), sr, starts, ends, 3, base));  // not a sampler
+    audio_op_destroy(tone);
 
     const uint32_t frames = 64;
     std::vector<float> outL(frames), outR(frames);
