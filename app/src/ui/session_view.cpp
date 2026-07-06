@@ -574,7 +574,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
       ui.draw_rect(pb.x, pb.y, sty.accent_bar, pb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
       ui.draw_text(pb.x + 8.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 Pop in" : "\xE2\x87\xB1 Pop out",
                    sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-    panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
+    // UI-2: toggle the visuals node graph (a deep view under the output). Lit when open.
+    { const Rect gb = graph_button_rect(w.win_w, w.split_x);
+      const bool gbh = hit(gb, mx, my) || w.show_graph;
+      ui.draw_rounded_rect(gb.x, gb.y, gb.w, gb.h, sty.radius, gbh ? sty.card_hi[0] : sty.card[0], gbh ? sty.card_hi[1] : sty.card[1], gbh ? sty.card_hi[2] : sty.card[2], 1.0f);
+      ui.draw_rect(gb.x, gb.y, sty.accent_bar, gb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+      ui.draw_text(gb.x + 8.f, gb.y + 2.f, "Graph", w.show_graph ? sty.gpu[0] : sty.body[0],
+                   w.show_graph ? sty.gpu[1] : sty.body[1], w.show_graph ? sty.gpu[2] : sty.body[2], 1.0f, sty.fs_label); }
+    if (w.show_graph) panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped)

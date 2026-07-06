@@ -160,6 +160,12 @@ inline Rect popout_button_rect(int win_w, float split_x) {
     Rect p = output_panel(win_w, split_x);
     return { p.x + p.w - 82.f, p.y + 4.f, 78.f, kPanelHdH - 7.f };
 }
+// UI-2: OUTPUT-header toggle to reveal/hide the visuals node graph (a deep view under the
+// output). Sits just left of the pop-out button.
+inline Rect graph_button_rect(int win_w, float split_x) {
+    Rect p = output_panel(win_w, split_x);
+    return { p.x + p.w - 82.f - 62.f, p.y + 4.f, 58.f, kPanelHdH - 7.f };
+}
 inline Rect viewer_rect(int win_w, float split_x) {
     Rect p = output_panel(win_w, split_x);
     return { p.x + kPanePad, p.y + kPanelHdH + kPanePad, p.w - 2.f * kPanePad, p.h - kPanelHdH - 2.f * kPanePad };
