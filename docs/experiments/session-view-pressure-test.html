@@ -1,0 +1,639 @@
+<!doctype html>
+<!-- Vivid 4 experiment · Session View — original peer-row grid (baseline/control). Spine is session-view-variation-well.html. See docs/experiments/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivid 4 Session View Pressure Test</title>
+  <style>
+    :root {
+      --bg: #15181c;
+      --panel: #1a1e23;
+      --cell: #20252b;
+      --cell2: #252b31;
+      --line: #303740;
+      --line2: #46505a;
+      --text: #e8eaed;
+      --muted: #8d949e;
+      --audio: #f0a030;
+      --visual: #4ecdc4;
+      --control: #c0c8d0;
+      --ok: #7fd18b;
+      --warn: #f0c060;
+      --bad: #ff6b6b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    button {
+      font: inherit;
+      color: var(--text);
+      background: #242a31;
+      border: 1px solid var(--line);
+      padding: 6px 9px;
+      cursor: pointer;
+    }
+
+    button:hover, button:focus { border-color: var(--line2); outline: none; }
+
+    .app {
+      height: 100vh;
+      min-height: 720px;
+      display: grid;
+      grid-template-rows: 54px 1fr;
+    }
+
+    .transport {
+      display: grid;
+      grid-template-columns: auto auto auto auto 1fr;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 14px;
+      background: #13161a;
+      border-bottom: 1px solid var(--line);
+      white-space: nowrap;
+    }
+
+    .brand {
+      padding-right: 14px;
+      border-right: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .transport-block { display: flex; align-items: baseline; gap: 7px; }
+    .label { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    .value { color: var(--text); font-size: 16px; }
+    .queued { color: var(--warn); }
+
+    .main {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: minmax(760px, 1fr) 370px;
+    }
+
+    .workspace {
+      min-width: 0;
+      min-height: 0;
+      border-right: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    .session-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .session-title { font-size: 13px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 7px; justify-content: flex-end; }
+    .pill { border: 1px solid var(--line); background: var(--cell); color: var(--muted); padding: 5px 7px; font-size: 11px; }
+    .pill.hot { color: var(--text); border-color: var(--audio); }
+
+    .grid-wrap { min-height: 0; overflow: auto; padding: 14px; }
+
+    .session-grid {
+      min-width: 1050px;
+      display: grid;
+      grid-template-columns: 132px repeat(7, minmax(118px, 1fr));
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+
+    .head, .scene, .clip {
+      min-height: 74px;
+      padding: 8px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      background: var(--cell);
+      position: relative;
+    }
+
+    .head { min-height: 60px; background: #1b2025; }
+    .corner { background: #15191d; }
+    .scene { display: grid; grid-template-rows: auto 1fr auto; gap: 5px; background: #1b2025; }
+    .clip { cursor: pointer; transition: background 120ms linear; }
+    .clip:hover, .scene:hover, .head.clickable:hover { background: var(--cell2); }
+    .clip.selected, .scene.selected, .head.selected { outline: 2px solid var(--visual); outline-offset: -3px; }
+    .clip.active { box-shadow: inset 0 0 0 2px var(--audio); }
+    .clip.queued { box-shadow: inset 0 0 0 2px var(--warn); }
+
+    .kind { color: var(--muted); font-size: 10px; text-transform: uppercase; margin-bottom: 5px; }
+    .name { font-size: 13px; line-height: 1.25; overflow-wrap: anywhere; }
+    .scene-intent { color: var(--muted); font-size: 10px; line-height: 1.3; }
+    .scene-actions { display: flex; align-items: center; gap: 5px; }
+    .scene-actions button { width: 28px; height: 24px; padding: 0; }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+    .tag { color: var(--muted); border: 1px solid var(--line); background: #171b20; padding: 2px 4px; font-size: 10px; }
+    .tag.audio { color: var(--audio); }
+    .tag.visual { color: var(--visual); }
+    .tag.control { color: var(--control); }
+    .tag.ok { color: var(--ok); }
+    .tag.warn { color: var(--warn); }
+
+    .pattern {
+      height: 13px;
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 2px;
+      margin-top: 8px;
+    }
+
+    .pattern span { background: #313841; min-width: 0; }
+    .pattern .audio { background: var(--audio); }
+    .pattern .visual { background: var(--visual); }
+    .pattern .control { background: var(--control); }
+
+    .bottom {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) 430px;
+      min-height: 178px;
+      border-top: 1px solid var(--line);
+      background: #14181d;
+    }
+
+    .agent-panel, .preview-panel {
+      padding: 11px 14px;
+      min-width: 0;
+    }
+
+    .preview-panel { border-left: 1px solid var(--line); }
+    .panel-title { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 11px; text-transform: uppercase; margin-bottom: 8px; }
+    .agent-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 8px; }
+    .log { height: 86px; overflow: auto; border: 1px solid var(--line); background: #101318; padding: 8px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+    .log b { color: var(--text); font-weight: normal; }
+
+    .preview {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    canvas { width: 150px; height: 96px; display: block; border: 1px solid var(--line); background: #0c0f13; }
+    .preview-stats { display: grid; gap: 7px; align-content: center; }
+    .metric { display: grid; grid-template-columns: 92px 1fr 34px; gap: 7px; align-items: center; font-size: 11px; }
+    .metric span:first-child { color: var(--muted); }
+    .bar { height: 6px; border: 1px solid #303740; background: #101318; }
+    .bar i { display: block; height: 100%; background: var(--visual); }
+
+    .right {
+      min-height: 0;
+      background: var(--panel);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .section { border-bottom: 1px solid var(--line); }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .section-body { padding: 12px; overflow: auto; }
+    .scroll { min-height: 0; overflow: auto; }
+    .title { font-size: 17px; line-height: 1.25; margin-bottom: 7px; }
+    .copy { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid #252b31; font-size: 12px; }
+    .row:last-child { border-bottom: 0; }
+    .row span:first-child { color: var(--muted); }
+    .row span:last-child { text-align: right; }
+
+    .binding {
+      border: 1px solid var(--line);
+      background: var(--cell);
+      padding: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .binding:hover { background: var(--cell2); }
+    .binding.selected { border-color: var(--visual); }
+    .path { font-size: 12px; line-height: 1.35; margin-bottom: 5px; }
+    .source { color: var(--audio); }
+    .dest { color: var(--visual); }
+
+    @media (max-width: 1080px) {
+      .app { height: auto; min-height: 100vh; }
+      .main { grid-template-columns: 1fr; }
+      .right { border-top: 1px solid var(--line); }
+      .bottom { grid-template-columns: 1fr; }
+      .preview-panel { border-left: 0; border-top: 1px solid var(--line); }
+      .transport { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="transport">
+      <div class="brand">VIVID 4 SESSION PROOF</div>
+      <div class="transport-block"><span class="label">Transport</span><span class="value" id="transportReadout">124 BPM / 4-4</span></div>
+      <div class="transport-block"><span class="label">Now</span><span class="value" id="barReadout">Bar 17.1</span></div>
+      <div class="transport-block"><span class="label">Active</span><span class="value" id="activeReadout">Verse</span></div>
+      <div class="transport-block"><span class="label">Queued</span><span class="value queued" id="queuedReadout">none</span></div>
+    </header>
+
+    <main class="main">
+      <section class="workspace">
+        <div class="session-bar">
+          <div>
+            <div class="session-title">One-Song Loop</div>
+            <div class="copy">Session View primary path</div>
+          </div>
+          <div class="pills">
+            <span class="pill hot">Quantize: Bar</span>
+            <span class="pill">Key: D minor</span>
+            <span class="pill">Scenes: Intro / Verse / Chorus / Drop</span>
+          </div>
+        </div>
+
+        <div class="grid-wrap">
+          <div class="session-grid" id="sessionGrid"></div>
+        </div>
+
+        <div class="bottom">
+          <div class="agent-panel">
+            <div class="panel-title"><span>Mocked Agent Actions</span><span>Phase 1 placeholder</span></div>
+            <div class="agent-actions">
+              <button data-agent="bass">Generate 3 bass variations</button>
+              <button data-agent="binding">Bind kick to particles</button>
+              <button data-agent="explain">Explain Drop intensity</button>
+            </div>
+            <div class="log" id="agentLog">Ready. Select a clip, scene, track, or binding; then run one of the scripted actions.</div>
+          </div>
+
+          <div class="preview-panel">
+            <div class="panel-title"><span>Scene Preview</span><span id="previewName">Verse</span></div>
+            <div class="preview">
+              <canvas id="previewCanvas" width="300" height="192"></canvas>
+              <div class="preview-stats" id="previewStats"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="right">
+        <div class="section">
+          <div class="section-title"><span>Selection</span><span id="selectionKind">clip</span></div>
+          <div class="section-body" id="selectionPanel"></div>
+        </div>
+        <div class="scroll">
+          <div class="section">
+            <div class="section-title"><span>Visual Bindings</span><span id="bindingCount">0</span></div>
+            <div class="section-body" id="bindingPanel"></div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      transport: { bpm: 124, meter: "4/4", bar: 17, beat: 1 },
+      activeScene: "verse",
+      queuedScene: "",
+      selected: { type: "clip", id: "bass_verse" },
+      tracks: [
+        { id: "drums", name: "Drums", kind: "instrument", accent: "audio" },
+        { id: "bass", name: "Bass", kind: "instrument", accent: "audio" },
+        { id: "chords", name: "Chords", kind: "instrument", accent: "audio" },
+        { id: "lead", name: "Lead", kind: "instrument", accent: "audio" },
+        { id: "particles", name: "Particles", kind: "visual", accent: "visual" },
+        { id: "camera", name: "Camera/Palette", kind: "visual", accent: "visual" },
+        { id: "mapping", name: "AV Mapping", kind: "mapping", accent: "control" }
+      ],
+      scenes: [
+        { id: "intro", name: "Intro", intent: "Establish pulse with sparse visuals.", energy: 18, density: 14, motion: 8, color: 28 },
+        { id: "verse", name: "Verse", intent: "Tight groove, readable rhythm, low visual density.", energy: 34, density: 30, motion: 15, color: 38 },
+        { id: "chorus", name: "Chorus", intent: "Open harmony and wider visual response.", energy: 66, density: 58, motion: 34, color: 64 },
+        { id: "drop", name: "Drop", intent: "High energy: bass, particles, camera shake, heavy mappings.", energy: 94, density: 88, motion: 78, color: 82 }
+      ],
+      clips: {
+        intro: {
+          drums: { id: "drums_intro", name: "Half Kick", kind: "drum", tags: ["sparse"], pattern: "1000100010000000" },
+          bass: { id: "bass_intro", name: "Sub Hints", kind: "midi", tags: ["sub"], pattern: "1000000010000000" },
+          chords: { id: "chords_intro", name: "Air Pad", kind: "plugin", tags: ["pad"], pattern: "1000000000000000" },
+          lead: { id: "lead_intro", name: "Muted", kind: "midi", tags: ["off"], pattern: "0000000000000000" },
+          particles: { id: "particles_intro", name: "Dust Field", kind: "visual", tags: ["low"], pattern: "1000100010001000" },
+          camera: { id: "camera_intro", name: "Wide Blue", kind: "visual", tags: ["blue"], pattern: "1000000010000000" },
+          mapping: { id: "mapping_intro", name: "Light Pulse", kind: "binding", tags: ["kick -> glow"], pattern: "1000100010000000" }
+        },
+        verse: {
+          drums: { id: "drums_verse", name: "Tight Hats", kind: "drum", tags: ["closed hat"], pattern: "1010101010101010" },
+          bass: { id: "bass_verse", name: "D Minor Pulse", kind: "theory", tags: ["root/fifth"], pattern: "1000101010001010" },
+          chords: { id: "chords_verse", name: "Muted Stabs", kind: "midi", tags: ["short"], pattern: "1000100010001000" },
+          lead: { id: "lead_verse", name: "Answer Motif", kind: "midi", tags: ["call/resp"], pattern: "0000100000001000" },
+          particles: { id: "particles_verse", name: "Sparse Drift", kind: "visual", tags: ["bass env"], pattern: "1000100010001000" },
+          camera: { id: "camera_verse", name: "Locked Wide", kind: "visual", tags: ["stable"], pattern: "1000000000000000" },
+          mapping: { id: "mapping_verse", name: "Bass Size", kind: "binding", tags: ["bass -> size"], pattern: "1000101010001010" }
+        },
+        chorus: {
+          drums: { id: "drums_chorus", name: "Open Hats", kind: "drum", tags: ["drive"], pattern: "1011101110111011" },
+          bass: { id: "bass_chorus", name: "Wide Reese", kind: "plugin", tags: ["macro A"], pattern: "1000111010001110" },
+          chords: { id: "chords_chorus", name: "Bright Lift", kind: "theory", tags: ["i-III"], pattern: "1000100010001000" },
+          lead: { id: "lead_chorus", name: "Hook", kind: "midi", tags: ["high"], pattern: "0010001000100010" },
+          particles: { id: "particles_chorus", name: "Dense Swarm", kind: "visual", tags: ["snare flash"], pattern: "1010101010101010" },
+          camera: { id: "camera_chorus", name: "Slow Orbit", kind: "visual", tags: ["warm"], pattern: "1000100010001000" },
+          mapping: { id: "mapping_chorus", name: "Beat Reactive", kind: "binding", tags: ["snare -> flash"], pattern: "1011101110111011" }
+        },
+        drop: {
+          drums: { id: "drums_drop", name: "Break Kit", kind: "drum", tags: ["full"], pattern: "1110111011101110" },
+          bass: { id: "bass_drop", name: "Distorted Drop", kind: "plugin", tags: ["drive"], pattern: "1001111010011110" },
+          chords: { id: "chords_drop", name: "Chord Cuts", kind: "midi", tags: ["stabs"], pattern: "1000100010101000" },
+          lead: { id: "lead_drop", name: "Glitch Hook", kind: "midi", tags: ["prob"], pattern: "0010011010010110" },
+          particles: { id: "particles_drop", name: "Burst Swarm", kind: "visual", tags: ["kick burst"], pattern: "1110111011101110" },
+          camera: { id: "camera_drop", name: "Shake Amber", kind: "visual", tags: ["shake"], pattern: "1010101010101010" },
+          mapping: { id: "mapping_drop", name: "Heavy Reactivity", kind: "binding", tags: ["kick -> burst"], pattern: "1111111111111111" }
+        }
+      },
+      bindings: [
+        { id: "b1", scene: "verse", source: "Bass envelope", dest: "Particles / size", curve: "soft exponential", timing: "smoothed 80 ms", scope: "Verse + Chorus", reason: "Keeps verse movement tied to the groove without literal flashing." },
+        { id: "b2", scene: "chorus", source: "Snare transient", dest: "Particles / flash", curve: "fast peak", timing: "bar synced", scope: "Chorus + Drop", reason: "Makes the backbeat visible while the harmony opens." },
+        { id: "b3", scene: "drop", source: "Kick onset", dest: "Particles / burst count", curve: "hard gate", timing: "instant", scope: "Drop", reason: "Each kick increases particle density, making the Drop visibly heavier." },
+        { id: "b4", scene: "drop", source: "Scene energy", dest: "Camera / shake", curve: "limited ramp", timing: "2 bar fade", scope: "Drop", reason: "Camera movement rises with the arrangement instead of jittering randomly." },
+        { id: "b5", scene: "drop", source: "Chord brightness", dest: "Palette / amber-cyan mix", curve: "linear", timing: "per chord", scope: "Chorus + Drop", reason: "Harmony changes become color changes without leaving Session View." }
+      ],
+      variationCount: 0,
+      kickBindingPreviewed: false
+    };
+
+    const $ = id => document.getElementById(id);
+    const sceneById = id => state.scenes.find(scene => scene.id === id);
+    const trackById = id => state.tracks.find(track => track.id === id);
+    const clipFor = (sceneId, trackId) => state.clips[sceneId][trackId];
+
+    function selectedClip() {
+      for (const scene of state.scenes) {
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          if (clip.id === state.selected.id) return { clip, scene, track };
+        }
+      }
+      return null;
+    }
+
+    function bindingById(id) {
+      return state.bindings.find(binding => binding.id === id);
+    }
+
+    function pattern(patternText, accent) {
+      return `<div class="pattern">${patternText.split("").map(bit => `<span class="${bit === "1" ? accent : ""}"></span>`).join("")}</div>`;
+    }
+
+    function renderTransport() {
+      const active = sceneById(state.activeScene);
+      $("transportReadout").textContent = `${state.transport.bpm} BPM / ${state.transport.meter}`;
+      $("barReadout").textContent = `Bar ${state.transport.bar}.${state.transport.beat}`;
+      $("activeReadout").textContent = active.name;
+      $("queuedReadout").textContent = state.queuedScene ? sceneById(state.queuedScene).name : "none";
+      $("previewName").textContent = active.name;
+    }
+
+    function renderGrid() {
+      const grid = $("sessionGrid");
+      grid.innerHTML = `<div class="head corner"><div class="kind">Session</div><div class="name">One-Song Loop</div></div>`;
+      for (const track of state.tracks) {
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="head clickable ${state.selected.type === "track" && state.selected.id === track.id ? "selected" : ""}" data-select-type="track" data-id="${track.id}">
+            <div class="kind">${track.kind}</div>
+            <div class="name">${track.name}</div>
+          </div>`);
+      }
+
+      for (const scene of state.scenes) {
+        const active = scene.id === state.activeScene;
+        const queued = scene.id === state.queuedScene;
+        grid.insertAdjacentHTML("beforeend", `
+          <div class="scene ${state.selected.type === "scene" && state.selected.id === scene.id ? "selected" : ""}" data-select-type="scene" data-id="${scene.id}">
+            <div class="name">${scene.name}</div>
+            <div class="scene-intent">${scene.intent}</div>
+            <div class="scene-actions">
+              <button data-launch="${scene.id}" title="Launch ${scene.name}">&gt;</button>
+              <span class="tag ${active ? "audio" : queued ? "warn" : ""}">${active ? "active" : queued ? "queued" : "ready"}</span>
+            </div>
+          </div>`);
+
+        for (const track of state.tracks) {
+          const clip = clipFor(scene.id, track.id);
+          const selected = state.selected.type === "clip" && state.selected.id === clip.id ? "selected" : "";
+          const activeClass = active ? "active" : "";
+          const queuedClass = queued ? "queued" : "";
+          grid.insertAdjacentHTML("beforeend", `
+            <div class="clip ${selected} ${activeClass} ${queuedClass}" data-select-type="clip" data-id="${clip.id}" data-track="${track.id}" data-scene="${scene.id}">
+              <div class="name">${clip.name}</div>
+              <div class="tag-row">
+                <span class="tag ${track.accent}">${clip.kind}</span>
+                ${clip.tags.slice(0, 1).map(tag => `<span class="tag">${tag}</span>`).join("")}
+              </div>
+              ${pattern(clip.pattern, track.accent)}
+            </div>`);
+        }
+      }
+    }
+
+    function bindingsForSelection() {
+      if (state.selected.type === "binding") return [bindingById(state.selected.id)].filter(Boolean);
+      if (state.selected.type === "scene") return state.bindings.filter(binding => binding.scene === state.selected.id);
+      if (state.selected.type === "track") {
+        const track = trackById(state.selected.id);
+        if (!track) return [];
+        if (track.kind === "mapping") return state.bindings;
+        if (track.kind === "visual") return state.bindings.filter(binding => binding.dest.toLowerCase().includes(track.name.split("/")[0].toLowerCase()));
+        return state.bindings.filter(binding => binding.source.toLowerCase().includes(track.name.toLowerCase()));
+      }
+      const selected = selectedClip();
+      if (!selected) return state.bindings.filter(binding => binding.scene === state.activeScene);
+      if (selected.track.kind === "visual") return state.bindings.filter(binding => binding.dest.toLowerCase().includes(selected.track.name.split("/")[0].toLowerCase()));
+      if (selected.track.kind === "mapping") return state.bindings.filter(binding => binding.scene === selected.scene.id);
+      return state.bindings.filter(binding => binding.scene === selected.scene.id);
+    }
+
+    function renderSelection() {
+      $("selectionKind").textContent = state.selected.type;
+      const panel = $("selectionPanel");
+
+      if (state.selected.type === "scene") {
+        const scene = sceneById(state.selected.id);
+        panel.innerHTML = `<div class="title">${scene.name}</div>
+          <div class="copy">${scene.intent}</div>
+          <div class="row"><span>Launch</span><span>bar boundary</span></div>
+          <div class="row"><span>Energy</span><span>${scene.energy}%</span></div>
+          <div class="row"><span>Visual density</span><span>${scene.density}%</span></div>`;
+        return;
+      }
+
+      if (state.selected.type === "track") {
+        const track = trackById(state.selected.id);
+        panel.innerHTML = `<div class="title">${track.name}</div>
+          <div class="copy">Typed ${track.kind} track. Clips are behavior capsules across scenes.</div>
+          <div class="row"><span>Kind</span><span>${track.kind}</span></div>
+          <div class="row"><span>Scenes</span><span>${state.scenes.length}</span></div>`;
+        return;
+      }
+
+      if (state.selected.type === "binding") {
+        const binding = bindingById(state.selected.id);
+        panel.innerHTML = `<div class="title">${binding.source} -> ${binding.dest}</div>
+          <div class="copy">${binding.reason}</div>
+          <div class="row"><span>Curve</span><span>${binding.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${binding.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${binding.scope}</span></div>`;
+        return;
+      }
+
+      const selected = selectedClip();
+      if (!selected) return;
+      panel.innerHTML = `<div class="title">${selected.clip.name}</div>
+        <div class="copy">${selected.track.name} clip in ${selected.scene.name}. A ${selected.clip.kind} behavior capsule.</div>
+        <div class="row"><span>Track</span><span>${selected.track.name}</span></div>
+        <div class="row"><span>Scene</span><span>${selected.scene.name}</span></div>
+        <div class="row"><span>Kind</span><span>${selected.clip.kind}</span></div>
+        <div class="row"><span>Signals</span><span>${bindingsForSelection().map(binding => binding.source).join(", ") || "none"}</span></div>`;
+    }
+
+    function renderBindings() {
+      const list = bindingsForSelection();
+      $("bindingCount").textContent = String(list.length);
+      $("bindingPanel").innerHTML = list.map(binding => `
+        <div class="binding ${state.selected.type === "binding" && state.selected.id === binding.id ? "selected" : ""}" data-select-type="binding" data-id="${binding.id}">
+          <div class="path"><span class="source">${binding.source}</span> -> <span class="dest">${binding.dest}</span></div>
+          <div class="copy">${binding.reason}</div>
+          <div class="row"><span>Curve</span><span>${binding.curve}</span></div>
+          <div class="row"><span>Timing</span><span>${binding.timing}</span></div>
+          <div class="row"><span>Scope</span><span>${binding.scope}</span></div>
+        </div>`).join("") || `<div class="copy">No visual bindings for this selection.</div>`;
+    }
+
+    function renderPreviewStats() {
+      const scene = sceneById(state.activeScene);
+      const metrics = [
+        ["Energy", scene.energy],
+        ["Particles", scene.density],
+        ["Motion", scene.motion],
+        ["Color", scene.color]
+      ];
+      $("previewStats").innerHTML = metrics.map(([name, value]) => `
+        <div class="metric">
+          <span>${name}</span>
+          <span class="bar"><i style="width:${value}%"></i></span>
+          <span>${value}%</span>
+        </div>`).join("");
+    }
+
+    function drawPreview() {
+      const canvas = $("previewCanvas");
+      const ctx = canvas.getContext("2d");
+      const scene = sceneById(state.activeScene);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, `rgba(78, 205, 196, ${0.16 + scene.color / 220})`);
+      gradient.addColorStop(1, `rgba(240, 160, 48, ${0.10 + scene.energy / 240})`);
+      ctx.fillStyle = "#0c0f13";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const count = Math.floor(18 + scene.density * 1.9);
+      for (let i = 0; i < count; i++) {
+        const x = (i * 47) % canvas.width;
+        const y = (i * 83 + scene.motion * 2) % canvas.height;
+        const r = 1.5 + scene.energy / 38 + (i % 3);
+        ctx.globalAlpha = 0.28 + scene.energy / 180;
+        ctx.fillStyle = i % 2 ? "#4ecdc4" : "#f0a030";
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function renderAgentLog(message) {
+      $("agentLog").innerHTML = message;
+    }
+
+    function runAgentAction(action) {
+      if (action === "bass") {
+        state.variationCount = 3;
+        state.selected = { type: "clip", id: "bass_verse" };
+        renderAgentLog("<b>Generated 3 bass variations.</b> Kept the D minor role, preserved Verse/Chorus compatibility, and offered pulse, syncopated, and octave-lift alternatives.");
+      }
+      if (action === "binding") {
+        state.kickBindingPreviewed = true;
+        state.selected = { type: "binding", id: "b3" };
+        renderAgentLog("<b>Previewed kick -> particle burst.</b> The Drop binding uses kick onset, a hard gate curve, and instant timing scoped to Drop.");
+      }
+      if (action === "explain") {
+        state.selected = { type: "scene", id: "drop" };
+        renderAgentLog("<b>The Drop looks more intense</b> because energy, particle density, camera motion, and three visual bindings all rise together: kick -> burst, scene energy -> shake, chord brightness -> palette.");
+      }
+      renderAll();
+    }
+
+    function launchScene(sceneId) {
+      state.queuedScene = sceneId;
+      renderAll();
+      setTimeout(() => {
+        state.activeScene = sceneId;
+        state.queuedScene = "";
+        state.transport.bar += 4;
+        state.transport.beat = 1;
+        state.selected = { type: "scene", id: sceneId };
+        renderAll();
+      }, 420);
+    }
+
+    function select(type, id) {
+      state.selected = { type, id };
+      renderAll();
+    }
+
+    function renderAll() {
+      renderTransport();
+      renderGrid();
+      renderSelection();
+      renderBindings();
+      renderPreviewStats();
+      drawPreview();
+    }
+
+    document.addEventListener("click", event => {
+      const launch = event.target.closest("[data-launch]");
+      if (launch) {
+        event.stopPropagation();
+        launchScene(launch.dataset.launch);
+        return;
+      }
+
+      const agent = event.target.closest("[data-agent]");
+      if (agent) {
+        runAgentAction(agent.dataset.agent);
+        return;
+      }
+
+      const target = event.target.closest("[data-select-type]");
+      if (target) {
+        select(target.dataset.selectType, target.dataset.id);
+      }
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>

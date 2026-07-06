@@ -1,0 +1,709 @@
+<!doctype html>
+<!-- Vivid 4 experiment · DAW × Visuals split view + audio→visuals bridge (v1). Disposable prototype. See docs/experiments/README.md. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vivid · DAW × Visuals Bridge</title>
+  <style>
+    :root {
+      --bg: #0e1013; --panel: #15181c; --panel2: #1a1e23; --cell: #20252b;
+      --line: #262b31; --line-hot: #3a4048; --text: #e6e9ec; --muted: #878d96;
+      --audio: #f0a030; --visual: #4ecdc4; --data: #b48cff;
+      --gen: #4ecdc4; --fx: #5aa9e6; --comp: #f0a030; --color: #ed93b1; --output: #c0c8d0;
+      --ok: #78d08b; --warn: #f0c060;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); color: var(--text);
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; }
+    button { font: inherit; color: var(--text); background: var(--cell); border: 1px solid var(--line); cursor: pointer; padding: 4px 9px; }
+    button:hover { border-color: var(--line-hot); }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
+    ::-webkit-scrollbar-thumb { background: #333a42; }
+    ::-webkit-scrollbar-track { background: #14171b; }
+
+    .app { height: 100vh; display: grid; grid-template-rows: 46px 1fr; }
+
+    /* transport */
+    .transport { display: flex; align-items: center; gap: 18px; padding: 0 16px; background: #0b0d10; border-bottom: 1px solid var(--line); }
+    .brand { font-size: 13px; padding-right: 14px; border-right: 1px solid var(--line); }
+    .play { width: 34px; height: 26px; display: grid; place-items: center; }
+    .play.on { border-color: var(--ok); color: var(--ok); }
+    .tg { display: flex; align-items: baseline; gap: 7px; }
+    .tg .lab { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .tg .val { font-size: 15px; }
+    .beatdots { display: flex; gap: 5px; }
+    .beatdots i { width: 9px; height: 9px; background: #2a3038; display: block; }
+    .beatdots i.on { background: var(--audio); }
+    .hint { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+    /* split */
+    .split { display: grid; min-height: 0; }
+    .pane { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto 1fr; }
+    .pane-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+    .pane-title { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+    .pane-title b { color: var(--text); font-weight: normal; }
+    .divider { width: 6px; cursor: col-resize; background: var(--line); }
+    .divider:hover { background: var(--line-hot); }
+
+    /* ---- DAW ---- */
+    .daw { border-right: 0; }
+    .daw-body { min-height: 0; display: grid; grid-template-rows: 1fr auto auto; overflow: hidden; }
+    .session { overflow: auto; padding: 12px; }
+    .grid { display: grid; gap: 6px; }
+    .trackcol { display: grid; gap: 6px; }
+    .thead { background: var(--panel2); border: 1px solid var(--line); border-top: 3px solid var(--tc); padding: 7px 8px; cursor: pointer; position: relative; }
+    .thead.sel { border-color: var(--line-hot); background: #20252c; }
+    .thead .tn { font-size: 12px; }
+    .thead .tk { color: var(--muted); font-size: 9px; text-transform: uppercase; }
+    .meter { height: 6px; margin-top: 6px; background: #0c0f12; border: 1px solid #2a3038; cursor: context-menu; position: relative; overflow: hidden; }
+    .meter i { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--tc); }
+    .meter:hover { outline: 1px solid var(--data); }
+    .clip { background: var(--cell); border: 1px solid var(--line); border-left: 3px solid var(--tc); padding: 6px 7px; min-height: 40px; cursor: pointer; }
+    .clip.empty { background: #121519; border-left-color: #2a3038; color: #3a4049; }
+    .clip.empty::after { content: "+"; }
+    .clip.playing { box-shadow: inset 0 0 0 1px var(--tc); }
+    .clip .cn { font-size: 11px; overflow-wrap: anywhere; }
+    .clip .pat { display: grid; grid-template-columns: repeat(16,1fr); gap: 1px; height: 7px; margin-top: 5px; }
+    .clip .pat span { background: #2c333b; }
+    .clip .pat span.on { background: var(--tc); }
+    .scenecol { display: grid; gap: 6px; }
+    .scenelaunch { background: var(--panel2); border: 1px solid var(--line); padding: 7px 8px; min-height: 40px; display: grid; align-content: center; gap: 3px; cursor: pointer; }
+    .scenelaunch.active { border-color: var(--audio); }
+    .scenelaunch .sn { font-size: 11px; }
+    .scenelaunch .sl { color: var(--muted); font-size: 9px; }
+
+    .detail { border-top: 1px solid var(--line); background: var(--panel); padding: 10px 12px; display: grid; grid-template-columns: 200px 1fr; gap: 18px; min-height: 120px; }
+    .det-h { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px; }
+    .mixrow { display: grid; grid-template-columns: 42px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 11px; }
+    .mixrow span { color: var(--muted); }
+    input[type=range] { width: 100%; accent-color: var(--audio); }
+    .chain { display: flex; flex-wrap: wrap; gap: 6px; }
+    .device { background: var(--cell); border: 1px solid var(--line); padding: 5px 8px; font-size: 11px; }
+    .device.vst { border-color: var(--data); color: #d9ccff; }
+    .device .dk { color: var(--muted); font-size: 9px; }
+
+    /* modulators (visual→audio return path) */
+    .modbar { border-top: 1px solid var(--line); background: #12151a; padding: 8px 12px; display: flex; gap: 10px; align-items: stretch; min-height: 70px; max-height: 98px; overflow-x: auto; }
+    .modbar .mh { color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .06em; align-self: center; }
+    .mc-empty { color: var(--muted); font-size: 11px; align-self: center; max-width: 540px; line-height: 1.4; }
+    .modchip { min-width: 214px; background: var(--panel2); border: 1px solid var(--line); border-top: 3px solid var(--data); padding: 6px 8px; display: grid; gap: 5px; align-content: start; }
+    .modchip.new { animation: pop 1.1s ease; }
+    .modchip.arm { box-shadow: 0 0 0 1px var(--data); }
+    .mc-name { font-size: 11px; }
+    .mc-val { height: 6px; background: #0c0f12; border: 1px solid #2a3038; position: relative; }
+    .mc-val i { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--data); }
+    .mc-foot { display: flex; align-items: center; gap: 6px; }
+    .mc-foot button { font-size: 10px; padding: 2px 6px; }
+    .mc-target { color: var(--muted); font-size: 9px; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mc-target.mapped { color: var(--data); }
+    .mc-foot input[type=range] { width: 46px; accent-color: var(--data); }
+    .modind { height: 5px; margin: -3px 0 8px 50px; background: #0c0f12; border: 1px solid #2a3038; position: relative; }
+    .modind i { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--data); }
+    .modind small { position: absolute; right: 2px; top: -2px; font-size: 8px; color: var(--data); }
+    .mixrow.armtarget { cursor: crosshair; outline: 1px dashed var(--data); outline-offset: 2px; }
+    .mixrow.armtarget input { pointer-events: none; }
+
+    /* ---- Graph ---- */
+    .graph-body { min-height: 0; display: grid; grid-template-rows: 42% 1fr; }
+    .viewer { background: #000; border-bottom: 1px solid var(--line); position: relative; overflow: hidden; }
+    .viewer canvas { width: 100%; height: 100%; display: block; }
+    .viewer .vlabel { position: absolute; left: 8px; top: 6px; font-size: 10px; color: rgba(230,233,236,.7); text-transform: uppercase; letter-spacing: .05em; }
+    .net-wrap { min-height: 0; overflow: auto; position: relative; background:
+      radial-gradient(circle, #1a1f25 1px, transparent 1px); background-size: 22px 22px; background-color: #0c0e11; }
+    .net { position: relative; width: 1700px; height: 1100px; }
+    .wires { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+
+    .node { position: absolute; width: 156px; background: var(--panel2); border: 1px solid var(--line); border-top: 3px solid var(--nc); user-select: none; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    .node.sel { border-color: var(--line-hot); }
+    .node.new { animation: pop 1.1s ease; }
+    @keyframes pop { 0% { box-shadow: 0 0 0 3px var(--data); } 100% { box-shadow: 0 2px 8px rgba(0,0,0,.4); } }
+    .node-hd { padding: 5px 8px; cursor: move; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .node-hd .nt { font-size: 11px; }
+    .node-hd .ncat { font-size: 8px; text-transform: uppercase; color: var(--nc); }
+    .node-body { padding: 4px 8px 8px; }
+    .prow { display: flex; align-items: center; gap: 6px; height: 20px; position: relative; }
+    .prow .pl { color: var(--muted); font-size: 10px; width: 42px; }
+    .prow input[type=range] { flex: 1; height: 12px; }
+    .prow .pv { font-size: 9px; color: var(--muted); width: 26px; text-align: right; }
+    .prow.bound .pl { color: var(--data); }
+    .bound-tag { flex: 1; font-size: 9px; color: var(--data); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .dataval { height: 7px; background: #0c0f12; border: 1px solid #2a3038; margin-top: 4px; position: relative; }
+    .dataval i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--data); width: 0%; }
+
+    .port { width: 11px; height: 11px; border-radius: 50%; border: 1px solid #555c66; background: #1b2026; position: absolute; cursor: crosshair; z-index: 2; }
+    .port:hover { border-color: var(--text); transform: scale(1.25); }
+    .port.img.out { right: -6px; top: 50%; transform: translateY(-50%); background: var(--visual); border-color: var(--visual); }
+    .port.img.in { left: -6px; background: #2c333b; }
+    .port.img.in.s0 { top: 24px; } .port.img.in.s1 { top: 42px; }
+    .port.data.out { right: -6px; top: 50%; transform: translateY(-50%); background: var(--data); border-color: var(--data); }
+    .port.param { left: -6px; background: #241f33; border-color: var(--data); }
+
+    .palette { display: flex; gap: 6px; }
+    .palette button { font-size: 10px; padding: 3px 7px; }
+
+    /* context menu */
+    .ctx { position: fixed; z-index: 50; background: var(--panel2); border: 1px solid var(--line-hot); box-shadow: 0 6px 20px rgba(0,0,0,.5); min-width: 168px; display: none; }
+    .ctx.show { display: block; }
+    .ctx .ch { padding: 6px 10px; color: var(--muted); font-size: 9px; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid var(--line); }
+    .ctx .ci { padding: 7px 10px; cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 8px; }
+    .ctx .ci:hover { background: #20252c; }
+    .ctx .ci::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--data); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="transport">
+      <div class="brand">VIVID · BRIDGE</div>
+      <button class="play" id="play" title="Play / stop">▶</button>
+      <div class="tg"><span class="lab">Tempo</span><span class="val" id="bpm">124</span></div>
+      <div class="tg"><span class="lab">Meter</span><span class="val">4/4</span></div>
+      <div class="tg"><span class="lab">Beat</span><span class="beatdots" id="beats"></span></div>
+      <div class="hint">Right-click a track's meter → send a music characteristic into the graph. Drag its purple port onto a node parameter.</div>
+    </header>
+
+    <div class="split" id="split">
+      <section class="pane daw">
+        <div class="pane-head"><div class="pane-title">DAW · <b>Session</b></div><div class="pane-title">Ableton-style</div></div>
+        <div class="daw-body">
+          <div class="session"><div class="grid" id="grid"></div></div>
+          <div class="modbar" id="modbar"></div>
+          <div class="detail" id="detail"></div>
+        </div>
+      </section>
+
+      <div class="divider" id="divider"></div>
+
+      <section class="pane graph">
+        <div class="pane-head">
+          <div class="pane-title">Visuals · <b>Node graph</b></div>
+          <div class="palette" id="palette"></div>
+        </div>
+        <div class="graph-body">
+          <div class="viewer" data-modsource="output"><div class="vlabel">Output · right-click → DAW modulator</div><canvas id="gl"></canvas></div>
+          <div class="net-wrap" id="netWrap"><div class="net" id="net"><svg class="wires" id="wires"></svg></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="ctx" id="ctx"></div>
+
+  <script>
+  // ============================================================= STATE
+  const TRACKS = [
+    { id:"drums", name:"Drums", kind:"midi", color:"#f0a030", band:[1,.5,.8] },
+    { id:"bass",  name:"Bass",  kind:"midi", color:"#e0633a", band:[1,.3,.1] },
+    { id:"keys",  name:"Keys",  kind:"midi", color:"#5aa9e6", band:[.2,.9,.5] },
+    { id:"lead",  name:"Lead",  kind:"midi", color:"#b48cff", band:[.1,.7,.9] },
+    { id:"vox",   name:"Vox",   kind:"audio",color:"#78d08b", band:[.2,.8,.6] },
+  ];
+  const SCENES = [ {id:"A",name:"Verse"}, {id:"B",name:"Chorus"}, {id:"C",name:"Drop"} ];
+  const PAT = {
+    drums:{A:"1000100010001000",B:"1010101010101010",C:"1110111011101110"},
+    bass: {A:"1000001010000010",B:"1000101010001010",C:"1001101010011010"},
+    keys: {A:"1000000010000000",B:"1000100010001000",C:"1010001010100010"},
+    lead: {A:"0000000000000000",B:"0010001000100010",C:"0010011010010110"},
+    vox:  {A:"1000000000000000",B:"1000000010000000",C:"1000100010001000"},
+  };
+  const clips = {};   // clips[track][scene] = {name,pattern,notes?}
+  TRACKS.forEach(t => { clips[t.id] = {}; SCENES.forEach(s => {
+    const pat = PAT[t.id][s.id];
+    clips[t.id][s.id] = { name: clipName(t,s), pattern: pat };
+  });});
+  function clipName(t,s){ const m={drums:"Kit",bass:"Sub",keys:"Chords",lead:"Hook",vox:"Phrase"}; return m[t.id]+" "+s.id; }
+
+  const mixer = {}; TRACKS.forEach(t => mixer[t.id] = { vol: .8, pan: 0, send: .1 });
+  const devices = {
+    drums:[{n:"Drum Rack",vst:0},{n:"EQ Eight",vst:0}],
+    bass:[{n:"Operator",vst:0},{n:"Saturator",vst:0}],
+    keys:[{n:"Serum",vst:1},{n:"Reverb",vst:0}],
+    lead:[{n:"Pigments",vst:1},{n:"Delay",vst:0}],
+    vox:[{n:"EQ Eight",vst:0},{n:"Comp",vst:0},{n:"Vocoder",vst:1}],
+  };
+
+  const state = {
+    playing: false, bpm: 124, pos: 0, step: -1, clock: 0,
+    selTrack: "drums", activeScene: "B",
+    analysis: {},   // analysis[track] = {level,transient,low,mid,high,note,vel}
+  };
+  TRACKS.forEach(t => state.analysis[t.id] = {level:0,transient:0,low:0,mid:0,high:0,note:0,vel:0});
+
+  // graph model
+  let nodeSeq = 0;
+  const graph = { nodes: [], edges: [], bindings: {} };  // bindings["node:param"]={dataNode}
+  const nodeById = id => graph.nodes.find(n => n.id === id);
+  const imageSource = (to,slot) => graph.edges.find(e => e.to === to && e.slot === slot);
+
+  const NODE_TYPES = {
+    output:  { cat:"output", title:"Output", inputs:1, params:[] },
+    noise:   { cat:"gen", title:"Noise", inputs:0, params:[p("scale",1,10,3),p("speed",0,2,.5),p("gain",0,2,1)] },
+    plasma:  { cat:"gen", title:"Plasma", inputs:0, params:[p("scale",1,10,4),p("speed",0,2,.6),p("gain",0,2,1)] },
+    feedback:{ cat:"fx", title:"Feedback", inputs:1, params:[p("decay",0,.99,.94),p("zoom",.9,1.1,1.02),p("rotate",-.1,.1,.02)] },
+    blur:    { cat:"fx", title:"Blur", inputs:1, params:[p("radius",0,6,2)] },
+    blend:   { cat:"comp", title:"Blend", inputs:2, params:[p("mode",0,2,0,1),p("mix",0,1,.5)] },
+    palette: { cat:"color", title:"Palette", inputs:1, params:[p("shift",0,1,0),p("contrast",.5,2,1)] },
+  };
+  function p(k,min,max,v,step){ return {k,min,max,v,step:step||0.01}; }
+
+  // ============================================================= WEBGL ENGINE
+  const RES = { w: 512, h: 288 };
+  let gl, quad, blackTex, programs = {};
+  const VERT = "attribute vec2 p; varying vec2 uv; void main(){ uv=p*.5+.5; gl_Position=vec4(p,0.,1.);}";
+  const HEAD = "precision highp float; varying vec2 uv; uniform vec2 u_res; uniform float u_time; uniform float u_beat;";
+  const FRAG = {
+    output: HEAD+"uniform sampler2D u_tex0; void main(){ gl_FragColor=texture2D(u_tex0,uv);}",
+    noise: HEAD+`uniform float u_scale,u_speed,u_gain;
+      float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+      float fbm(vec2 p){float s=0.,a=.5;for(int i=0;i<5;i++){s+=a*n(p);p*=2.;a*=.5;}return s;}
+      void main(){vec2 p=uv*u_scale+vec2(u_time*u_speed,u_time*u_speed*.7);float v=fbm(p+fbm(p)*.5);
+      vec3 c=mix(vec3(.02,.05,.09),vec3(.25,.95,.85),v);gl_FragColor=vec4(c*u_gain,1.);}`,
+    plasma: HEAD+`uniform float u_scale,u_speed,u_gain;
+      void main(){vec2 p=uv*u_scale;float v=sin(p.x+u_time*u_speed)+sin(p.y*1.3+u_time*u_speed)+sin((p.x+p.y)*.7+u_time*.5);
+      vec3 c=.5+.5*cos(vec3(0.,2.,4.)+v+u_beat*.2);gl_FragColor=vec4(c*u_gain,1.);}`,
+    feedback: HEAD+`uniform sampler2D u_tex0,u_prev; uniform float u_decay,u_zoom,u_rotate;
+      void main(){vec2 c=uv-.5;float s=sin(u_rotate),co=cos(u_rotate);c=mat2(co,-s,s,co)*c/u_zoom;
+      vec4 pr=texture2D(u_prev,c+.5)*u_decay;vec4 inp=texture2D(u_tex0,uv);gl_FragColor=max(inp,pr);}`,
+    blur: HEAD+`uniform sampler2D u_tex0; uniform float u_radius;
+      void main(){vec2 px=u_radius/u_res;vec4 s=texture2D(u_tex0,uv)*.36;
+      s+=texture2D(u_tex0,uv+vec2(px.x,0))*.16;s+=texture2D(u_tex0,uv-vec2(px.x,0))*.16;
+      s+=texture2D(u_tex0,uv+vec2(0,px.y))*.16;s+=texture2D(u_tex0,uv-vec2(0,px.y))*.16;gl_FragColor=s;}`,
+    blend: HEAD+`uniform sampler2D u_tex0,u_tex1; uniform float u_mode,u_mix;
+      void main(){vec4 a=texture2D(u_tex0,uv),b=texture2D(u_tex1,uv);vec4 r;
+      if(u_mode<.5)r=a+b;else if(u_mode<1.5)r=a*b;else r=mix(a,b,b.a);gl_FragColor=mix(a,r,u_mix);}`,
+    palette: HEAD+`uniform sampler2D u_tex0; uniform float u_shift,u_contrast;
+      vec3 hue(vec3 c,float h){const mat3 toY=mat3(.299,.587,.114,-.169,-.331,.5,.5,-.419,-.081);
+      const mat3 toR=mat3(1.,0.,1.402,1.,-.344,-.714,1.,1.772,0.);vec3 y=toY*c;float a=h*6.2831;
+      float s=sin(a),co=cos(a);y.yz=mat2(co,-s,s,co)*y.yz;return toR*y;}
+      void main(){vec4 t=texture2D(u_tex0,uv);vec3 c=hue(t.rgb,u_shift);c=(c-.5)*u_contrast+.5;gl_FragColor=vec4(c,t.a);}`,
+  };
+
+  function initGL(){
+    const cv = document.getElementById("gl"); cv.width = RES.w; cv.height = RES.h;
+    gl = cv.getContext("webgl", { preserveDrawingBuffer:true });
+    if(!gl){ console.error("no webgl"); return; }
+    quad = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, -1,1, 1,-1, 1,1]), gl.STATIC_DRAW);
+    blackTex = makeTex(); gl.bindTexture(gl.TEXTURE_2D, blackTex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+    for(const t in FRAG) programs[t] = makeProgram(VERT, FRAG[t]);
+  }
+  function makeProgram(vs, fs){
+    const c = (type,src)=>{ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+      if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error("shader", gl.getShaderInfoLog(s), src); return s; };
+    const pr = gl.createProgram(); gl.attachShader(pr,c(gl.VERTEX_SHADER,vs)); gl.attachShader(pr,c(gl.FRAGMENT_SHADER,fs));
+    gl.linkProgram(pr); if(!gl.getProgramParameter(pr,gl.LINK_STATUS)) console.error("link", gl.getProgramInfoLog(pr));
+    return { pr, loc:{} };
+  }
+  function uloc(P,n){ if(!(n in P.loc)) P.loc[n]=gl.getUniformLocation(P.pr,n); return P.loc[n]; }
+  function makeTex(){ const tx=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tx);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE); return tx; }
+  function makeFBO(){ const tex=makeTex(); gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,RES.w,RES.h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0); return {fb,tex}; }
+  function drawQuad(P){ gl.useProgram(P.pr); const a=gl.getAttribLocation(P.pr,"p");
+    gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+    gl.drawArrays(gl.TRIANGLES,0,6); }
+
+  function paramValue(node, pp){
+    const b = graph.bindings[node.id+":"+pp.k];
+    if(b){ const dn = nodeById(b.dataNode); const v = dn ? dn.value : 0; return pp.min + (pp.max-pp.min)*Math.max(0,Math.min(1,v)); }
+    return node.params[pp.k];
+  }
+  function setCommon(P){ gl.uniform2f(uloc(P,"u_res"),RES.w,RES.h); gl.uniform1f(uloc(P,"u_time"),state.clock); gl.uniform1f(uloc(P,"u_beat"),state.pos/4); }
+
+  function evaluate(node, seen){
+    if(seen.has(node.id)) return node._tex || blackTex;
+    seen.add(node.id);
+    const def = NODE_TYPES[node.type];
+    const ins = [];
+    for(let i=0;i<def.inputs;i++){ const e=imageSource(node.id,i); ins[i] = e ? evaluate(nodeById(e.from),seen) : blackTex; }
+    const P = programs[node.type];
+    const target = node.type==="feedback" ? node.fbos[node.w^1] : node.fbo;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fb); gl.viewport(0,0,RES.w,RES.h);
+    gl.useProgram(P.pr); setCommon(P);
+    def.params.forEach(pp => gl.uniform1f(uloc(P,"u_"+pp.k), paramValue(node,pp)));
+    let unit = 0;
+    if(def.inputs>=1){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,ins[0]); gl.uniform1i(uloc(P,"u_tex0"),unit); unit++; }
+    if(def.inputs>=2){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,ins[1]); gl.uniform1i(uloc(P,"u_tex1"),unit); unit++; }
+    if(node.type==="feedback"){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,node.fbos[node.w].tex); gl.uniform1i(uloc(P,"u_prev"),unit); unit++; }
+    drawQuad(P);
+    if(node.type==="feedback"){ node.w ^= 1; node._tex = node.fbos[node.w].tex; }
+    else node._tex = node.fbo.tex;
+    return node._tex;
+  }
+
+  function renderGL(){
+    if(!gl) return;
+    const seen = new Set();
+    const out = graph.nodes.find(n => n.type==="output");
+    let tex = blackTex;
+    if(out){ const e = imageSource(out.id,0); if(e) tex = evaluate(nodeById(e.from), seen); }
+    state._outTex = tex;
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.viewport(0,0,RES.w,RES.h);
+    const P = programs.output; gl.useProgram(P.pr); setCommon(P);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,tex); gl.uniform1i(uloc(P,"u_tex0"),0);
+    drawQuad(P);
+  }
+
+  // ============================================================= ANALYSIS
+  const NOTES = { drums:[36,38,42,38], bass:[28,28,31,26], keys:[60,64,67,62], lead:[72,75,79,77], vox:[0] };
+  function updateAnalysis(advanced, newStep){
+    TRACKS.forEach((t,ti) => {
+      const a = state.analysis[t.id];
+      a.level *= 0.90; a.transient *= 0.55;
+      if(advanced && newStep){
+        const pat = clips[t.id][state.activeScene].pattern;
+        if(pat[state.step % 16] === "1"){
+          a.level = 1; a.transient = 1;
+          const seq = NOTES[t.id]; const nn = seq[(state.step) % seq.length];
+          a.note = Math.max(0, Math.min(1, (nn-24)/60)); a.vel = .6 + .4*Math.random();
+        }
+      }
+      a.low = a.level*t.band[0]; a.mid = a.level*t.band[1]; a.high = a.level*t.band[2];
+    });
+  }
+  function charValue(track, ch){ const a = state.analysis[track]; const vol = effectiveParam(track,"vol");
+    if(ch==="transient") return a.transient; if(ch==="vel") return a.vel; if(ch==="note") return a.note;
+    if(ch==="level") return a.level*vol; return (a[ch]||0)*vol; }
+  const CHARS = [
+    {k:"level",label:"Track level"}, {k:"transient",label:"Transient"},
+    {k:"low",label:"Low band"}, {k:"mid",label:"Mid band"}, {k:"high",label:"High band"},
+    {k:"note",label:"MIDI note"}, {k:"vel",label:"Velocity"},
+  ];
+
+  // ============================================================= VISUAL→AUDIO RETURN PATH
+  const VISUAL_CHARS = [{k:"bright",label:"Brightness"},{k:"r",label:"Red"},{k:"g",label:"Green"},{k:"b",label:"Blue"},{k:"motion",label:"Motion"}];
+  const AW=32, AH=18; let analysisFBO; const apx=new Uint8Array(AW*AH*4);
+  function makeFBOSized(w,h){ const tex=makeTex(); gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+    const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0); return {fb,tex}; }
+  function measureTex(tex){ if(!tex||!analysisFBO) return {r:0,g:0,b:0,bright:0};
+    const P=programs.output; gl.bindFramebuffer(gl.FRAMEBUFFER,analysisFBO.fb); gl.viewport(0,0,AW,AH);
+    gl.useProgram(P.pr); setCommon(P); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,tex); gl.uniform1i(uloc(P,"u_tex0"),0); drawQuad(P);
+    gl.readPixels(0,0,AW,AH,gl.RGBA,gl.UNSIGNED_BYTE,apx);
+    let r=0,g=0,b=0; const n=AW*AH; for(let i=0;i<n;i++){ r+=apx[i*4]; g+=apx[i*4+1]; b+=apx[i*4+2]; }
+    r/=n*255; g/=n*255; b/=n*255; return {r,g,b,bright:.299*r+.587*g+.114*b}; }
+
+  let modSeq=0; state.modulators=[]; state.mapArm=null; state._outTex=null;
+  const trackName = id => (TRACKS.find(t=>t.id===id)||{}).name||id;
+  function addModulator(src,char){
+    const label=(src==="output"?"Output":NODE_TYPES[nodeById(src).type].title)+" · "+VISUAL_CHARS.find(c=>c.k===char).label;
+    const m={ id:"m"+(++modSeq), src, char, depth:.6, value:0, target:null, label, _new:true };
+    state.modulators.push(m); state.mapArm=m.id; renderModbar(); renderDetail();
+    setTimeout(()=>{ m._new=false; renderModbar(); }, 1200); return m;
+  }
+  function removeModulator(id){ state.modulators=state.modulators.filter(m=>m.id!==id); if(state.mapArm===id) state.mapArm=null; renderModbar(); renderDetail(); }
+  function mapModulator(id,target){ const m=state.modulators.find(x=>x.id===id); if(m) m.target=target; state.mapArm=null; renderModbar(); renderDetail(); }
+  function effectiveParam(track,param){
+    let v=mixer[track][param]; const lim= param==="pan"?[-1,1]:[0,1];
+    state.modulators.forEach(m=>{ if(m.target&&m.target.track===track&&m.target.param===param) v+=m.value*m.depth; });
+    return Math.max(lim[0],Math.min(lim[1],v));
+  }
+  function renderModbar(){
+    const bar=document.getElementById("modbar"); if(!bar) return;
+    if(!state.modulators.length){ bar.innerHTML=`<div class="mh">Mod</div><div class="mc-empty">Right-click the Output viewer (or a node) → send a visual characteristic here, then click a mixer parameter to map it.</div>`; return; }
+    bar.innerHTML=`<div class="mh">Mod</div>`+state.modulators.map(m=>`
+      <div class="modchip ${m._new?"new":""} ${state.mapArm===m.id?"arm":""}" data-mod="${m.id}">
+        <div class="mc-name">${m.label}</div>
+        <div class="mc-val"><i data-modval="${m.id}"></i></div>
+        <div class="mc-foot"><button data-modmap="${m.id}">${state.mapArm===m.id?"click a param…":"Map"}</button>
+          <span class="mc-target ${m.target?"mapped":""}">${m.target?"→ "+trackName(m.target.track)+" "+m.target.param:"unmapped"}</span>
+          <input type="range" min="0" max="1" step="0.01" value="${m.depth}" data-moddepth="${m.id}" title="depth">
+          <button data-moddel="${m.id}" title="remove">×</button></div>
+      </div>`).join("");
+  }
+  function modIndicator(track,param){ const m=state.modulators.find(x=>x.target&&x.target.track===track&&x.target.param===param);
+    return m? `<div class="modind" data-modind="${param}"><i></i><small>◀ ${m.label}</small></div>` : ""; }
+
+  // ============================================================= GRAPH NODES
+  function addNode(type, x, y, extra){
+    const id = "n"+(++nodeSeq);
+    const node = { id, type, x, y, params:{}, _new:true, ...extra };
+    if(type==="data"){ node.value = 0; }
+    else { (NODE_TYPES[type].params||[]).forEach(pp => node.params[pp.k]=pp.v);
+      if(type==="feedback") node.fbos=[makeFBO(),makeFBO()], node.w=0; else node.fbo=makeFBO(); }
+    graph.nodes.push(node); renderGraph();
+    setTimeout(()=>{ node._new=false; renderGraph(); }, 1200);
+    return node;
+  }
+  function addDataNode(track, ch){
+    const t = TRACKS.find(x=>x.id===track); const label = CHARS.find(c=>c.k===ch).label;
+    const n = addNode("data", 30, 30 + (graph.nodes.filter(g=>g.type==="data").length)*92,
+      { track, ch, title: t.name+" · "+label });
+    select(n.id); return n;
+  }
+  function removeNode(id){
+    const n = nodeById(id); if(!n || n.type==="output") return;
+    graph.nodes = graph.nodes.filter(x=>x.id!==id);
+    graph.edges = graph.edges.filter(e=>e.from!==id && e.to!==id);
+    Object.keys(graph.bindings).forEach(k=>{ if(k.startsWith(id+":")||graph.bindings[k].dataNode===id) delete graph.bindings[k]; });
+    renderGraph();
+  }
+
+  // ============================================================= DAW RENDER
+  function renderDAW(){
+    const grid = document.getElementById("grid");
+    grid.style.gridTemplateColumns = `repeat(${TRACKS.length},150px) 96px`;
+    grid.style.display = "grid";
+    let html = "";
+    // track columns
+    TRACKS.forEach(t => {
+      html += `<div class="trackcol" style="--tc:${t.color}">
+        <div class="thead ${state.selTrack===t.id?'sel':''}" data-track="${t.id}">
+          <div class="tn">${t.name}</div><div class="tk">${t.kind}${t.kind==='audio'?'':' · vst'}</div>
+          <div class="meter" data-meter="${t.id}" data-chartarget="${t.id}" title="Right-click → send to visuals"><i></i></div>
+        </div>`;
+      SCENES.forEach(s => {
+        const c = clips[t.id][s.id]; const playing = state.playing && state.activeScene===s.id;
+        html += `<div class="clip ${playing?'playing':''}" data-track="${t.id}" data-scene="${s.id}" style="--tc:${t.color}">
+          <div class="cn">${c.name}</div>
+          <div class="pat">${c.pattern.split("").map(b=>`<span class="${b==='1'?'on':''}"></span>`).join("")}</div></div>`;
+      });
+      html += `</div>`;
+    });
+    // scene launch column
+    html += `<div class="scenecol"><div class="thead" style="--tc:#444">Scenes</div>`;
+    SCENES.forEach(s => html += `<div class="scenelaunch ${state.activeScene===s.id?'active':''}" data-launch="${s.id}">
+      <div class="sn">▶ ${s.name}</div><div class="sl">${s.id}</div></div>`);
+    html += `</div>`;
+    grid.innerHTML = html;
+    renderDetail();
+  }
+  function renderDetail(){
+    const t = TRACKS.find(x=>x.id===state.selTrack); const m = mixer[t.id]; const arm=state.mapArm?"armtarget":"";
+    const row=(lab,key,min,max,val)=>`<div class="mixrow ${arm}" data-mix="${key}" data-track="${t.id}"><span>${lab}</span><input type="range" min="${min}" max="${max}" step="0.01" value="${val}" data-mix="${key}"></div>${modIndicator(t.id,key)}`;
+    document.getElementById("detail").innerHTML = `
+      <div><div class="det-h">${t.name} · Mixer ${state.mapArm?'<span style="color:var(--data)">· click a row to map</span>':''}</div>
+        ${row("Vol","vol",0,1,m.vol)}${row("Pan","pan",-1,1,m.pan)}${row("Send","send",0,1,m.send)}
+      </div>
+      <div><div class="det-h">Device chain</div><div class="chain">
+        ${devices[t.id].map(d=>`<div class="device ${d.vst?'vst':''}">${d.n}<div class="dk">${d.vst?'VST':'native'}</div></div>`).join("")}
+        <div class="device" style="border-style:dashed;color:var(--muted)">+ add</div>
+      </div></div>`;
+  }
+
+  // ============================================================= GRAPH RENDER
+  function renderGraph(){
+    const net = document.getElementById("net");
+    [...net.querySelectorAll(".node")].forEach(e=>e.remove());
+    graph.nodes.forEach(n => net.appendChild(nodeEl(n)));
+    drawWires();
+  }
+  function nodeEl(n){
+    const el = document.createElement("div");
+    if(n.type==="data"){
+      el.className = "node"+(n._new?" new":"")+(state.sel===n.id?" sel":"");
+      el.style.cssText = `left:${n.x}px;top:${n.y}px;--nc:var(--data)`;
+      el.dataset.node = n.id;
+      el.innerHTML = `<div class="node-hd"><span class="nt">${n.title}</span><span class="ncat">data</span></div>
+        <div class="node-body"><div class="dataval"><i data-dataval="${n.id}"></i></div></div>
+        <div class="port data out" data-node="${n.id}" data-kind="data-out"></div>`;
+      return el;
+    }
+    const def = NODE_TYPES[n.type];
+    el.className = "node"+(n._new?" new":"")+(state.sel===n.id?" sel":"");
+    el.style.cssText = `left:${n.x}px;top:${n.y}px;--nc:var(--${def.cat})`;
+    el.dataset.node = n.id;
+    el.dataset.modsource = n.type==="output" ? "output" : n.id;
+    let ins = "";
+    for(let i=0;i<def.inputs;i++) ins += `<div class="port img in s${i}" data-node="${n.id}" data-kind="img-in" data-slot="${i}"></div>`;
+    const out = n.type==="output" ? "" : `<div class="port img out" data-node="${n.id}" data-kind="img-out"></div>`;
+    const rows = def.params.map(pp => {
+      const bound = graph.bindings[n.id+":"+pp.k];
+      const inner = bound
+        ? `<span class="pl">${pp.k}</span><span class="bound-tag" title="bound">▸ ${shortName(bound.dataNode)}</span>`
+        : `<span class="pl">${pp.k}</span><input type="range" min="${pp.min}" max="${pp.max}" step="${pp.step}" value="${n.params[pp.k]}" data-param="${pp.k}" data-node="${n.id}"><span class="pv">${(+n.params[pp.k]).toFixed(2)}</span>`;
+      return `<div class="prow ${bound?'bound':''}"><div class="port param" data-node="${n.id}" data-kind="param" data-param="${pp.k}"></div>${inner}</div>`;
+    }).join("");
+    el.innerHTML = `<div class="node-hd"><span class="nt">${def.title}</span><span class="ncat">${def.cat}</span></div>
+      <div class="node-body">${rows || (n.type==="output"?'<div class="pl" style="color:var(--muted)">final render</div>':'')}</div>${ins}${out}`;
+    return el;
+  }
+  const shortName = id => { const n=nodeById(id); return n?n.title.replace(/^.*· /,""):"?"; };
+
+  function portCenter(node, kind, key){
+    const sel = key!=null
+      ? `.port[data-node="${node}"][data-kind="${kind}"][data-${kind==="param"?"param":"slot"}="${key}"]`
+      : `.port[data-node="${node}"][data-kind="${kind}"]`;
+    const el = document.querySelector(sel); if(!el) return null;
+    const net = document.getElementById("net").getBoundingClientRect(); const r = el.getBoundingClientRect();
+    return { x: r.left+r.width/2-net.left, y: r.top+r.height/2-net.top };
+  }
+  function drawWires(){
+    const svg = document.getElementById("wires"); while(svg.firstChild) svg.removeChild(svg.firstChild);
+    const NS="http://www.w3.org/2000/svg";
+    // image edges
+    graph.edges.forEach(e => {
+      const a = portCenter(e.from,"img-out"), b = portCenter(e.to,"img-in",e.slot); if(!a||!b) return;
+      svg.appendChild(wirePath(a,b,"#4ecdc4",2,false));
+    });
+    // param bindings
+    Object.keys(graph.bindings).forEach(key => {
+      const [nid,pk] = key.split(":"); const dn = graph.bindings[key].dataNode;
+      const a = portCenter(dn,"data-out"), b = portCenter(nid,"param",pk); if(!a||!b) return;
+      svg.appendChild(wirePath(a,b,"#b48cff",1.8,true));
+    });
+    if(tmpWire) svg.appendChild(tmpWire);
+  }
+  function wirePath(a,b,color,w,dash){
+    const NS="http://www.w3.org/2000/svg"; const path=document.createElementNS(NS,"path");
+    const dx=Math.max(30,Math.abs(b.x-a.x)*0.5);
+    path.setAttribute("d",`M ${a.x} ${a.y} C ${a.x+dx} ${a.y}, ${b.x-dx} ${b.y}, ${b.x} ${b.y}`);
+    path.setAttribute("fill","none"); path.setAttribute("stroke",color); path.setAttribute("stroke-width",w);
+    if(dash) path.setAttribute("stroke-dasharray","5 4"); return path;
+  }
+
+  // ============================================================= INTERACTION
+  function select(id){ state.sel=id; renderGraph(); }
+
+  // transport clock (setInterval — rAF is throttled in some embeds)
+  function tick(){
+    const dt = 0.033; state.clock += dt;
+    let advanced=false, newStep=false;
+    if(state.playing){
+      const stepsPerSec = (state.bpm/60)*4; state.pos += dt*stepsPerSec; advanced=true;
+      const st = Math.floor(state.pos) % 16;
+      if(st !== state.step){ state.step = st; newStep=true; }
+    }
+    updateAnalysis(advanced,newStep);
+    renderGL();
+    // visual→audio: measure modulators from the rendered output / node textures
+    const cache={};
+    state.modulators.forEach(m => {
+      if(!(m.src in cache)){ const tex = m.src==="output" ? state._outTex : (nodeById(m.src)||{})._tex; cache[m.src]=measureTex(tex); }
+      const mm=cache[m.src]; let v;
+      if(m.char==="bright") v=mm.bright;
+      else if(m.char==="motion"){ v=Math.min(1, Math.abs(mm.bright-(m._last==null?mm.bright:m._last))*6); m._last=mm.bright; }
+      else v=mm[m.char];
+      m.value=Math.max(0,Math.min(1,v));
+      const el=document.querySelector(`[data-modval="${m.id}"]`); if(el) el.style.width=(m.value*100)+"%";
+    });
+    // meters + data nodes use effective level (incl. volume modulation → closes the loop)
+    TRACKS.forEach(t => { const el=document.querySelector(`[data-meter="${t.id}"] i`); if(el) el.style.width=(charValue(t.id,"level")*100)+"%"; });
+    graph.nodes.forEach(n => { if(n.type==="data"){ n.value=charValue(n.track,n.ch); const el=document.querySelector(`[data-dataval="${n.id}"]`); if(el) el.style.width=(n.value*100)+"%"; } });
+    // modulation indicators on the open track's mixer
+    document.querySelectorAll("[data-modind]").forEach(el => { const i=el.querySelector("i"); if(i) i.style.width=(effectiveParam(state.selTrack,el.dataset.modind)*100)+"%"; });
+    const beat = Math.floor(state.pos/4)%4;
+    document.querySelectorAll("#beats i").forEach((d,i)=>d.classList.toggle("on", state.playing && i===beat));
+  }
+
+  // node drag + wiring
+  let drag=null, tmpWire=null;
+  document.addEventListener("mousedown", e => {
+    const port = e.target.closest(".port");
+    if(port){ e.preventDefault();
+      drag = { type:"wire", from:{ node:port.dataset.node, kind:port.dataset.kind, slot:port.dataset.slot, param:port.dataset.param } };
+      return; }
+    const hd = e.target.closest(".node-hd");
+    if(hd){ const node=nodeById(hd.parentElement.dataset.node); select(node.id);
+      const net=document.getElementById("net").getBoundingClientRect();
+      drag={ type:"node", node, ox:e.clientX-net.left-node.x, oy:e.clientY-net.top-node.y }; return; }
+  });
+  document.addEventListener("mousemove", e => {
+    if(!drag) return;
+    const net=document.getElementById("net").getBoundingClientRect();
+    if(drag.type==="node"){ drag.node.x=Math.max(0,e.clientX-net.left-drag.ox); drag.node.y=Math.max(0,e.clientY-net.top-drag.oy);
+      const el=document.querySelector(`.node[data-node="${drag.node.id}"]`); if(el){ el.style.left=drag.node.x+"px"; el.style.top=drag.node.y+"px"; } drawWires(); }
+    else if(drag.type==="wire"){ const a=portCenter(drag.from.node, drag.from.kind, drag.from.kind==="param"?drag.from.param:(drag.from.kind==="img-in"?drag.from.slot:null));
+      const b={ x:e.clientX-net.left, y:e.clientY-net.top };
+      const col = drag.from.kind==="data-out"||drag.from.kind==="param" ? "#b48cff" : "#4ecdc4";
+      tmpWire = a ? wirePath(a,b,col,1.6,true) : null; drawWires(); }
+  });
+  document.addEventListener("mouseup", e => {
+    if(drag && drag.type==="wire"){
+      const port = e.target.closest(".port");
+      if(port){ const f=drag.from, t={ node:port.dataset.node, kind:port.dataset.kind, slot:port.dataset.slot, param:port.dataset.param };
+        connect(f,t); }
+    }
+    drag=null; tmpWire=null; drawWires();
+  });
+  function connect(a,b){
+    // normalize: out-source vs in-target
+    let src,dst;
+    if(a.kind.endsWith("out")) { src=a; dst=b; } else { src=b; dst=a; }
+    if(!src.kind.endsWith("out")) return;
+    if(src.kind==="img-out" && dst.kind==="img-in" && src.node!==dst.node){
+      graph.edges = graph.edges.filter(e=>!(e.to===dst.node && e.slot===+dst.slot));
+      graph.edges.push({ from:src.node, to:dst.node, slot:+dst.slot }); renderGraph();
+    } else if(src.kind==="data-out" && dst.kind==="param"){
+      graph.bindings[dst.node+":"+dst.param] = { dataNode: src.node }; renderGraph();
+    }
+  }
+
+  // clicks: transport, track select, scene, sliders, node delete
+  document.addEventListener("click", e => {
+    // visual→audio map-arm: click a mixer row to bind the armed modulator
+    if(state.mapArm){ const r=e.target.closest(".mixrow"); if(r && !e.target.closest("[data-modmap]")){ mapModulator(state.mapArm,{track:r.dataset.track,param:r.dataset.mix}); return; } }
+    const mm=e.target.closest("[data-modmap]"); if(mm){ state.mapArm = state.mapArm===mm.dataset.modmap ? null : mm.dataset.modmap; renderModbar(); renderDetail(); return; }
+    const mdel=e.target.closest("[data-moddel]"); if(mdel){ removeModulator(mdel.dataset.moddel); return; }
+    if(e.target.closest("#play")){ state.playing=!state.playing; document.getElementById("play").textContent=state.playing?"■":"▶"; document.getElementById("play").classList.toggle("on",state.playing); return; }
+    const th=e.target.closest("[data-track]"); if(th && !e.target.closest(".clip")){ state.selTrack=th.dataset.track; renderDAW(); return; }
+    const clip=e.target.closest(".clip"); if(clip){ state.selTrack=clip.dataset.track; renderDAW(); return; }
+    const sl=e.target.closest("[data-launch]"); if(sl){ state.activeScene=sl.dataset.launch; renderDAW(); return; }
+    const pal=e.target.closest("[data-add]"); if(pal){ const n=addNode(pal.dataset.add, 360+Math.random()*220, 120+Math.random()*260); select(n.id); return; }
+  });
+  document.addEventListener("dblclick", e => { const n=e.target.closest(".node"); if(n) removeNode(n.dataset.node); });
+  document.addEventListener("input", e => {
+    const dep=e.target.closest("[data-moddepth]"); if(dep){ const m=state.modulators.find(x=>x.id===dep.dataset.moddepth); if(m) m.depth=+dep.value; return; }
+    const ps=e.target.closest("[data-param]"); if(ps){ const node=nodeById(ps.dataset.node); node.params[ps.dataset.param]=+ps.value;
+      const pv=ps.parentElement.querySelector(".pv"); if(pv) pv.textContent=(+ps.value).toFixed(2); return; }
+    const mx=e.target.closest("[data-mix]"); if(mx){ mixer[state.selTrack][mx.dataset.mix]=+e.target.value; }
+  });
+
+  // right-click → characteristic menu
+  const ctx = document.getElementById("ctx");
+  document.addEventListener("contextmenu", e => {
+    const vt = e.target.closest("[data-modsource]");
+    if(vt){ e.preventDefault(); const src=vt.dataset.modsource;
+      const label = src==="output" ? "Output" : ((NODE_TYPES[(nodeById(src)||{}).type]||{}).title || "Node");
+      ctx.innerHTML = `<div class="ch">${label} → DAW modulator</div>` + VISUAL_CHARS.map(c=>`<div class="ci" data-vch="${c.k}" data-src="${src}">${c.label}</div>`).join("");
+      ctx.style.left=e.clientX+"px"; ctx.style.top=e.clientY+"px"; ctx.classList.add("show"); return; }
+    const tgt = e.target.closest("[data-chartarget]");
+    if(!tgt){ ctx.classList.remove("show"); return; }
+    e.preventDefault(); const track=tgt.dataset.chartarget; const t=TRACKS.find(x=>x.id===track);
+    const items = CHARS.filter(c => !((c.k==="note"||c.k==="vel") && t.kind==="audio"));
+    ctx.innerHTML = `<div class="ch">${t.name} → visuals</div>` + items.map(c=>`<div class="ci" data-ch="${c.k}" data-track="${track}">${c.label}</div>`).join("");
+    ctx.style.left=e.clientX+"px"; ctx.style.top=e.clientY+"px"; ctx.classList.add("show");
+  });
+  ctx.addEventListener("click", e => { const ci=e.target.closest(".ci"); if(!ci) return;
+    if(ci.dataset.vch) addModulator(ci.dataset.src, ci.dataset.vch);
+    else addDataNode(ci.dataset.track, ci.dataset.ch);
+    ctx.classList.remove("show"); });
+  document.addEventListener("mousedown", e => { if(!e.target.closest("#ctx")) ctx.classList.remove("show"); }, true);
+
+  // palette + divider + boot
+  function renderPalette(){
+    document.getElementById("palette").innerHTML =
+      [["noise","Noise"],["plasma","Plasma"],["feedback","Feedback"],["blur","Blur"],["blend","Blend"],["palette","Palette"]]
+      .map(([t,l])=>`<button data-add="${t}">+ ${l}</button>`).join("");
+  }
+  (function divider(){
+    const split=document.getElementById("split"), d=document.getElementById("divider");
+    let f=0.52; const apply=()=>split.style.gridTemplateColumns=`${f}fr 6px ${1-f}fr`; apply();
+    d.addEventListener("mousedown",ev=>{ ev.preventDefault();
+      const mv=m=>{ f=Math.max(.25,Math.min(.75, m.clientX/window.innerWidth)); apply(); drawWires(); };
+      const up=()=>{ document.removeEventListener("mousemove",mv); document.removeEventListener("mouseup",up); };
+      document.addEventListener("mousemove",mv); document.addEventListener("mouseup",up); });
+  })();
+  function boot(){
+    document.getElementById("bpm").textContent = state.bpm;
+    document.getElementById("beats").innerHTML = "<i></i><i></i><i></i><i></i>";
+    initGL(); analysisFBO = makeFBOSized(AW, AH); renderPalette(); renderDAW(); renderModbar();
+    // starter graph: noise → output, with a reactive default binding so it pulses on load
+    const outN = addNode("output", 980, 200); const noiseN = addNode("noise", 620, 180);
+    graph.edges.push({ from:noiseN.id, to:outN.id, slot:0 });
+    const dN = addDataNode("drums","level"); dN.x = 360; dN.y = 300;
+    graph.bindings[noiseN.id+":gain"] = { dataNode: dN.id };
+    renderGraph();
+    state.playing = true; document.getElementById("play").textContent="■"; document.getElementById("play").classList.add("on");
+    setInterval(tick, 33);
+  }
+  boot();
+  </script>
+</body>
+</html>

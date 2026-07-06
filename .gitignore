@@ -1,94 +1,90 @@
-# Build directories
-build/
-build-prod/
-build-bundle/
-cmake-build-*/
-out/
-zig-out/
-.zig-cache/
-zig-cache/
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
 
-# IDE and editor files
+# Editor and workspace state
 .vscode/
 .idea/
-.venv-mcp/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Compiled objects
-*.o
-*.a
-*.lib
-*.so
-*.dylib
-*.dll
+# Local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
 
-# Executables
-*.exe
-*.out
-*.app
+# Logs and diagnostics
+*.log
+logs/
+crash/
+crashes/
+diagnostics/
 
-# CMake generated files
-CMakeCache.txt
+# CMake and native build output
+build/
+build-*/
+cmake-build-*/
 CMakeFiles/
+CMakeCache.txt
 cmake_install.cmake
 compile_commands.json
-Makefile
+**/build/Testing/
+CTestTestfile.cmake
 
-# Cloudflare Pages / Wrangler local build cache
-.wrangler/
+# Native binaries and generated libraries
+*.app
+*.dSYM/
+*.dylib
+*.so
+*.dll
+*.a
+*.o
+*.obj
+*.exe
 
-# Node modules (for VS Code extension)
-extension/node_modules/
-extension/native/node_modules/
-extension/native/build/
-extension/out/
-extension/*.vsix
+# Generated runtime artifacts
+artifacts/
+captures/
+screenshots/
+recordings/
+reports/
+tmp/
+temp/
 
-# Dependencies (downloaded by CMake)
-_deps/
+# Node and web tooling
+node_modules/
+.npm/
+.pnpm-store/
+dist/
+.vite/
+.next/
 
-# Release packages
-release/
+# Python caches and tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
 
-# Generated documentation
-docs/api/
+# Rust tooling, if used for prototypes or tools
+target/
 
-# Temporary files
-*.tmp
-*.temp
-*.log
-!tests/cli/fixtures/**/*.log
-/.test_*
+# Xcode and Apple tooling
+DerivedData/
+*.xcuserdata/
+*.xcuserstate
 
-# Environment / secrets
-.env
-.env.local
+# Local package/link caches
+.vivid/
 
-# OS generated files
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-.claude
-
-TODO.md
-__pycache__
-
-# Generated catalog
-catalog/packages.json
-site/dist/
-
-# Personal/local docs
-crash.txt
-docs/private/
-docs/personal/
-docs/*.local.md
-DawnCache
-GPUCache
-.codex
-docs/ARCHITECTURE.pdf
-build-*
-.codex-tmp
-artifacts
+# Codex/local agent scratch
+.codex/
+.agents/

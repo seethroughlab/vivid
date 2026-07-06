@@ -1,6 +1,0 @@
-{
-  "nodes": {
-    "test": { "type": "TestOp", "params": { "scale": 5.0 } }
-  },
-  "connections": []
-}

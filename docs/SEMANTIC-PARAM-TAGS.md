@@ -1,210 +1,50 @@
-# Semantic Parameter Tags Spec (v1)
+# Semantic parameter & port tags
 
-Date: 2026-03-06
-Status: Accepted baseline
+Operator params and ports can carry **semantic hints** beyond their raw type, so agents
+and tooling can reason about meaning ("this is a frequency in Hz", "this output is an
+analysis signal") rather than guessing from names. The fields live on every param/port
+descriptor:
 
-## Purpose
+- `semantic_tag` — *what the value means* (e.g. `frequency_hz`, `gate`, `color_rgba`).
+- `semantic_shape` — *structural form* (e.g. `scalar`, `vec2`, `color`, `event`).
+- `semantic_unit` — *unit* for params (e.g. `Hz`, `dB`, `ms`).
+- `semantic_intent` — a free-form role hint (e.g. `input_gain`). **Not vocabulary-checked.**
 
-Define a stable, machine-readable semantic layer for operator parameters so tooling (especially LLM workflows) can make better decisions about defaults, wiring, hints, and safe conversions.
+All fields are **optional** — leave them unset when there's nothing meaningful to say.
 
-This spec defines taxonomy only. It does not require any runtime behavior changes yet.
+## The contract
 
-## Scope and Non-Goals
+If a field *is* set, its value must come from the vocabulary below, or use the `x_`
+**custom-extension** namespace (e.g. `x_my_house_metric`) for project-specific meaning.
+This is enforced by `vivid::validate_semantic_metadata()` in
+[`app/src/operator_api/semantic_vocab.h`](../app/src/operator_api/semantic_vocab.h) — the
+header IS the source of truth; this doc tracks it. `tests/test_semantic_metadata.cpp`
+locks the checker; the same function can be run live over any descriptor (built-in or
+dlopen'd) to flag drift.
 
-Scope:
-- Controlled vocabulary for semantic tags.
-- Value-shape categories.
-- Optional units and intent metadata.
-- Compatibility and forward-evolution rules.
+Today the only tag our built-in operators actually declare is `analysis` (on the standard
+rms/peak/waveform output ports, via `append_analysis_ports`). The rest of the vocabulary
+is seeded for operators to grow into.
 
-Non-goals (for v1):
-- No automatic rewiring.
-- No mandatory tag coverage for all operators.
-- No graph-file schema change requirement.
+## `semantic_tag`
 
-## Metadata Model (Conceptual)
+| Group | Tags |
+|-------|------|
+| audio / analysis | `analysis`, `amplitude_linear`, `gain_db`, `frequency_hz`, `pan`, `resonance`, `q_factor`, `bpm`, `beats`, `phase_01`, `time_seconds`, `time_milliseconds`, `midi_note`, `midi_velocity`, `gate`, `trigger`, `sample_rate_hz` |
+| visual / spatial | `color_rgba`, `position_xy`, `position_xyz`, `scale_xy`, `scale_xyz`, `rotation_degrees`, `rotation_radians`, `uv`, `resolution_px` |
+| generic | `seed`, `probability_01`, `count`, `index`, `enabled`, `path_audio`, `path_image`, `path_video`, `path_font` |
 
-Each parameter may expose:
-- `semantic_tag`: primary meaning label from controlled vocabulary.
-- `shape`: data shape category (scalar/vector/color/event/etc.).
-- `unit` (optional): unit string from allowed set for that tag.
-- `intent` (optional): human/tool hint such as `input_gain`, `cutoff_primary`, `tempo_sync`.
+## `semantic_shape`
 
-The metadata is authored in operator code/metadata, not in user parameter values.
+`scalar`, `vec2`, `vec3`, `vec4`, `color`, `bool`, `int`, `enum`, `event`, `string`,
+`path`, `pattern`
 
-## Controlled Vocabulary (v1)
+## `semantic_unit`
 
-### Timing and Transport
-- `time_seconds`
-- `time_milliseconds`
-- `phase_01`
-- `bpm`
-- `beats`
-- `sample_rate_hz`
+`Hz`, `s`, `ms`, `dB`, `deg`, `rad`, `bpm`, `px`
 
-### Audio Control
-- `frequency_hz`
-- `amplitude_linear`
-- `gain_db`
-- `pan`
-- `q_factor`
-- `resonance`
-- `gate`
-- `trigger`
-- `midi_note`
-- `midi_velocity`
-- `midi_pitch_bend`
-- `midi_pressure`
-- `midi_expression`
-- `midi_slide`
-- `midi_channel`
+## Extending
 
-### Visual and Spatial
-- `color_rgba`
-- `position_xy`
-- `position_xyz`
-- `scale_xy`
-- `scale_xyz`
-- `rotation_degrees`
-- `rotation_radians`
-- `uv`
-- `resolution_px`
-
-### Simulation/Control Utility
-- `seed`
-- `probability_01`
-- `count`
-- `index`
-- `enabled`
-
-### Content/Resource Paths
-- `path_audio`
-- `path_image`
-- `path_video`
-- `path_font`
-
-## Value Shapes (v1)
-
-- `scalar`
-- `vec2`
-- `vec3`
-- `vec4`
-- `color`
-- `bool`
-- `int`
-- `enum`
-- `event`
-- `string`
-- `path`
-- `pattern`
-
-Shape compatibility is independent of semantic meaning. Example: `frequency_hz` is usually `scalar`; `position_xy` is `vec2`.
-
-## Units (v1)
-
-Allowed units for common tags:
-- `frequency_hz`: `Hz`
-- `time_seconds`: `s`
-- `time_milliseconds`: `ms`
-- `gain_db`: `dB`
-- `rotation_degrees`: `deg`
-- `rotation_radians`: `rad`
-- `bpm`: `bpm`
-- `resolution_px`: `px`
-
-Rules:
-- Unit is optional but recommended for ambiguous numeric tags.
-- If present, unit must be compatible with the semantic tag.
-
-## Compatibility Rules
-
-- Untagged parameters are valid and must continue to work unchanged.
-- Unknown tags must be tolerated and treated as untyped hints (never fatal at runtime).
-- Unknown shapes must be ignored (fallback to existing type behavior).
-- Tooling may warn on invalid/unknown tags, but load/evaluation must remain non-breaking.
-
-## Explicit Coercion Rules (Behavior Contract)
-
-Tag-driven runtime remap/coercion between different semantic tags is allowed only for explicitly listed pairs.
-No implicit conversions are permitted for unlisted tag pairs.
-
-Allowed coercions in v1:
-- `time_milliseconds` -> `time_seconds` (scale `1/1000`)
-- `time_seconds` -> `time_milliseconds` (scale `1000`)
-- `rotation_degrees` -> `rotation_radians` (scale `pi/180`)
-- `rotation_radians` -> `rotation_degrees` (scale `180/pi`)
-
-Notes:
-- Same-tag remap (for range normalization) remains allowed.
-- Different-tag coercion outside this table must be ignored unless this contract is updated.
-
-## Serialization Boundary
-
-- Graph JSON remains source-of-truth for parameter values.
-- Semantic metadata is not required in graph JSON for v1.
-- If metadata is eventually serialized, it must be optional and non-authoritative versus operator definitions.
-
-## Validation Rules (for future lint/tests)
-
-- `semantic_tag` must match controlled vocabulary or extension namespace rule.
-- `shape` must match allowed shape set.
-- If `unit` exists, it must be in the allowed unit list for the selected tag.
-- `gate`/`trigger` should use shape `event` or boolean-compatible control type.
-- `path_*` tags should use shape `path` or `string`.
-
-## Extension Policy
-
-To avoid taxonomy drift:
-- Core vocabulary additions require PR review and doc update in this file.
-- Package-local experimental tags must be namespaced: `x_<package>_<name>` (example: `x_vivid3d_sdf_blend_mode`).
-- Namespaced tags are never promoted automatically; promotion requires explicit normalization into core vocabulary.
-
-## Examples
-
-Good:
-- cutoff param: `semantic_tag=frequency_hz`, `shape=scalar`, `unit=Hz`
-- envelope gate input: `semantic_tag=gate`, `shape=event`
-- texture path: `semantic_tag=path_image`, `shape=path`
-
-Anti-patterns:
-- Using `frequency_hz` with `unit=ms`
-- Using generic `count` for semantically rich params like MIDI note
-- Encoding multiple meanings in one tag (`frequency_or_rate`)
-
-## Operator Authoring Guidance: When To Tag vs Not To Tag
-
-Use semantic tags to help tooling reason about **meaning**, not just type.
-
-Tag a parameter when:
-- The parameter has clear, stable intent across operators (examples: frequency, time, gain, gate, color, file path).
-- The value is likely to be modulated, auto-wired, or adjusted by MCP/LLM workflows.
-- Unit context matters and ambiguity would hurt (`Hz`, `s`, `ms`, `dB`, `deg`, `rad`, `px`).
-- You want inspector hints and schema output to expose stronger guidance.
-
-Do not tag (or defer tagging) when:
-- The parameter is purely internal/temporary and likely to be renamed.
-- Meaning is highly operator-specific and no stable vocabulary fit exists yet.
-- The parameter mixes multiple concepts (split it first if possible).
-- You are unsure of stable semantics; leave untagged instead of guessing.
-
-Practical rule:
-- Prefer **untagged** over **wrongly tagged**.
-- Start with only high-impact params (one to three per operator), then expand.
-
-Recommended minimum for new scaffolded operators:
-- Tag at least one primary modulation/control parameter (e.g. `amount`, `gain`, `frequency`, `time`).
-- Add `shape` for every tagged parameter.
-- Add `unit` whenever numeric scale is not obvious from tag alone.
-
-Examples:
-- Good: `gain` -> `amplitude_linear`, `shape=scalar`
-- Good: `cutoff` -> `frequency_hz`, `shape=scalar`, `unit=Hz`
-- Good: `file` -> `path_audio|path_image|path_video`, `shape=path`
-- Avoid: tagging `mode` enum as `count` (prefer namespaced extension like `x_pkg_mode` if needed)
-- Avoid: tagging a generic `value` with a specific physical unit unless the operator contract guarantees it
-
-## Versioning
-
-- This document defines taxonomy version `v1`.
-- Future updates should be additive when possible.
-- Breaking semantic renames require compatibility aliases during transition.
+To add a vocabulary term: add it to the relevant set in `semantic_vocab.h` and to the
+table above, in the same change. For one-off or experimental meaning, prefer an `x_`
+custom tag rather than widening the shared vocabulary.

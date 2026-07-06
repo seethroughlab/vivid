@@ -1,349 +1,68 @@
-name: Release macOS
+# macOS release (P4.5) — UNVERIFIED SCAFFOLD: needs a self-hosted macOS runner + Apple
+# Developer ID secrets. On a vX.Y.Z tag, builds the app, signs+notarizes+DMGs it, and
+# generates the Sparkle appcast. The credential-free steps (version-guard, the gate, the
+# appcast generator) are verified; the sign/notarize step is not (no cert here).
+name: release-macos
 
 on:
   push:
-    tags:
-      - 'v*.*.*'
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "ref to build (pre-release validation)"
+        required: false
 
 permissions:
-  contents: write
+  contents: write   # create the GitHub release + upload the DMG
 
 jobs:
-  build-release:
+  release:
     runs-on: [self-hosted, macOS]
     env:
-      CMAKE_BUILD_TYPE: Release
-      APP_NAME: Vivid
-      SPARKLE_VERSION: 2.6.4
+      APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      # Notarization: either a notarytool keychain profile (NOTARY_PROFILE) on the runner,
+      # or the explicit-credential fallback below.
+      NOTARY_PROFILE: ${{ secrets.NOTARY_PROFILE }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
-          submodules: recursive
-          fetch-depth: 0
+          ref: ${{ github.event.inputs.ref || github.ref }}
+      - uses: astral-sh/setup-uv@v5
 
-      - name: Resolve tag/version
-        id: ver
-        shell: bash
+      - name: Version guard (tag must match CMake version)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: uv run tools/check_version.py --expect "${GITHUB_REF_NAME}"
+
+      - name: Build (release)
         run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]]; then
-            echo "Invalid tag: $tag" >&2
-            exit 1
-          fi
-          ver="${tag#v}"
-          base_ver="${ver%%-*}"
-          cmake_ver=$(grep -E '^project\(vivid VERSION ' CMakeLists.txt | sed -E 's/.*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-          [[ "$base_ver" == "$cmake_ver" ]] || { echo "Tag base $base_ver != CMake $cmake_ver" >&2; exit 1; }
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "version=$ver" >> "$GITHUB_OUTPUT"
-          echo "base_version=$base_ver" >> "$GITHUB_OUTPUT"
+          cmake -S app -B app/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build app/build -j
 
-      - name: Configure
-        env:
-          VIVID_SPARKLE_PUBLIC_KEY: ${{ secrets.VIVID_SPARKLE_PUBLIC_KEY }}
+      - name: Production gate (core) must pass before shipping
+        run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
+
+      - name: Sign + notarize + DMG
+        run: scripts/release/sign_and_notarize.sh app/build/vivid.app/Contents/MacOS/../.. build/dist
+
+      - name: Generate Sparkle appcast
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DVIVID_SPARKLE_PUBLIC_KEY="${VIVID_SPARKLE_PUBLIC_KEY}"
+          VER="${GITHUB_REF_NAME#v}"
+          DMG="build/dist/vivid.dmg"
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/$(basename "$DMG")"
+          uv run scripts/release/generate_appcast.py \
+            --version "$VER" --url "$URL" --length "$(stat -f%z "$DMG")" \
+            --pub-date "$(date -u '+%a, %d %b %Y %H:%M:%S +0000')" \
+            --notes-url "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}" \
+            --output build/dist/appcast.xml
 
-      - name: Build
-        run: cmake --build build --config ${CMAKE_BUILD_TYPE} -j$(sysctl -n hw.logicalcpu)
-
-      - name: Validate bundled demo resources
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/vivid.app"
-          [[ -d "$APP/Contents/Resources/graphs" ]] || { echo "Missing bundled graphs" >&2; exit 1; }
-          [[ -d "$APP/Contents/Resources/assets" ]] || { echo "Missing bundled assets" >&2; exit 1; }
-          [[ -f "$APP/Contents/Resources/assets/camera.mp4" ]] || { echo "Missing expected demo asset file camera.mp4" >&2; exit 1; }
-
-      - name: Normalize WebGPU dylib linkage
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/vivid.app"
-          FW_DIR="$APP/Contents/Frameworks"
-          mkdir -p "$FW_DIR"
-          # The upstream WebGPU-distribution dylib ships with install_name
-          # @rpath/libwgpu_native.dylib, and cmake/app.cmake already copies
-          # it into Contents/MacOS/ and Contents/Frameworks/ via POST_BUILD.
-          # Resolve the staged copy and normalize any stragglers.
-          WGPU_DEP="$(otool -L "$APP/Contents/MacOS/vivid" | awk '/libwgpu_native.dylib/{print $1; exit}')"
-          [[ -n "$WGPU_DEP" ]] || { echo "Failed to locate libwgpu_native.dylib dependency in vivid binary" >&2; exit 1; }
-          if [[ "$WGPU_DEP" == @rpath/* ]] || [[ "$WGPU_DEP" == @loader_path/* ]] || [[ "$WGPU_DEP" == @executable_path/* ]]; then
-            if [[ -f "$FW_DIR/libwgpu_native.dylib" ]]; then
-              WGPU_SRC="$FW_DIR/libwgpu_native.dylib"
-            elif [[ -f "$APP/Contents/MacOS/libwgpu_native.dylib" ]]; then
-              WGPU_SRC="$APP/Contents/MacOS/libwgpu_native.dylib"
-            else
-              echo "libwgpu_native.dylib not staged under $APP — build did not bundle WebGPU runtime" >&2
-              exit 1
-            fi
-          else
-            WGPU_SRC="$WGPU_DEP"
-          fi
-          # Safe copy: skip if src == dest (cp -f errors when paths resolve
-          # to the same file, which happens when the build already staged
-          # the dylib into Contents/Frameworks).
-          if ! [[ "$WGPU_SRC" -ef "$FW_DIR/libwgpu_native.dylib" ]]; then
-            cp -f "$WGPU_SRC" "$FW_DIR/libwgpu_native.dylib"
-          fi
-          chmod u+w "$FW_DIR/libwgpu_native.dylib"
-          install_name_tool -id "@rpath/libwgpu_native.dylib" "$FW_DIR/libwgpu_native.dylib"
-          for bin in "$APP/Contents/MacOS/vivid" "$APP/Contents/PlugIns/"*.dylib; do
-            [[ -e "$bin" ]] || continue
-            dep="$(otool -L "$bin" | awk '/libwgpu_native.dylib/{print $1; exit}')"
-            if [[ -n "$dep" && "$dep" != "@rpath/libwgpu_native.dylib" ]]; then
-              install_name_tool -change "$dep" "@rpath/libwgpu_native.dylib" "$bin"
-            fi
-            if [[ "$bin" == *"/Contents/PlugIns/"* ]] && ! otool -l "$bin" | grep -q "@loader_path/../Frameworks"; then
-              install_name_tool -add_rpath "@loader_path/../Frameworks" "$bin"
-            fi
-          done
-          # Strip any absolute-path LC_RPATHs left over from the build tree.
-          # These don't exist on end-user machines and would confuse dyld
-          # fallback resolution when debugging codesign / stapler failures.
-          strip_absolute_rpaths() {
-            local bin="$1"
-            local rpaths
-            # otool -l prints LC_RPATH blocks as:
-            #   cmd LC_RPATH
-            #   cmdsize N
-            #   path <value> (offset 12)
-            # Extract the <value> only when it starts with '/'.
-            rpaths="$(otool -l "$bin" \
-              | awk '/^ *cmd LC_RPATH/{in_rpath=1; next}
-                     in_rpath && /^ *path /{
-                       sub(/^ *path /, "");
-                       sub(/ \(offset [0-9]+\)$/, "");
-                       print; in_rpath=0
-                     }
-                     /^Load command/{in_rpath=0}' \
-              | grep -E '^/' || true)"
-            while IFS= read -r rp; do
-              [[ -z "$rp" ]] && continue
-              install_name_tool -delete_rpath "$rp" "$bin" 2>/dev/null || true
-            done <<< "$rpaths"
-          }
-          strip_absolute_rpaths "$APP/Contents/MacOS/vivid"
-          for p in "$APP/Contents/PlugIns"/*.dylib; do
-            [[ -e "$p" ]] || continue
-            strip_absolute_rpaths "$p"
-          done
-
-      - name: Embed Sparkle framework
-        shell: bash
-        run: |
-          set -euo pipefail
-          APP="build/vivid.app"
-          FW_DIR="$APP/Contents/Frameworks"
-          mkdir -p "$FW_DIR"
-          SPARKLE_EXTRACT_DIR="$RUNNER_TEMP/sparkle_extract"
-          rm -rf "$SPARKLE_EXTRACT_DIR"
-          mkdir -p "$SPARKLE_EXTRACT_DIR"
-          curl -L --fail \
-            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
-            -o "$RUNNER_TEMP/sparkle.tar.xz"
-          tar -xf "$RUNNER_TEMP/sparkle.tar.xz" -C "$SPARKLE_EXTRACT_DIR"
-          SPARKLE_FRAMEWORK="$(find "$SPARKLE_EXTRACT_DIR" -type d -path "*/macos-arm64*/Sparkle.framework" | head -n1 || true)"
-          if [[ -z "$SPARKLE_FRAMEWORK" ]]; then
-            SPARKLE_FRAMEWORK="$(find "$SPARKLE_EXTRACT_DIR" -type d -name "Sparkle.framework" | head -n1 || true)"
-          fi
-          [[ -n "$SPARKLE_FRAMEWORK" ]] || { echo "Could not find Sparkle.framework under $SPARKLE_EXTRACT_DIR" >&2; find "$SPARKLE_EXTRACT_DIR" -maxdepth 6 -type d | sed -n '1,200p'; exit 1; }
-          cp -R "$SPARKLE_FRAMEWORK" "$FW_DIR/"
-
-      - name: Import Developer ID certificate
-        env:
-          APPLE_CERT_P12_B64: ${{ secrets.APPLE_CERT_P12_B64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -n "${APPLE_CERT_P12_B64}" ]] || { echo "Missing APPLE_CERT_P12_B64" >&2; exit 1; }
-          [[ -n "${APPLE_CERT_PASSWORD}" ]] || { echo "Missing APPLE_CERT_PASSWORD" >&2; exit 1; }
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
-          security create-keychain -p "" "$KEYCHAIN_PATH"
-          security set-keychain-settings "$KEYCHAIN_PATH"
-          security unlock-keychain -p "" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          echo "$APPLE_CERT_P12_B64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
-          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$APPLE_CERT_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
-
-      - name: Codesign app bundle
-        env:
-          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -n "${APPLE_CODESIGN_IDENTITY}" ]] || { echo "Missing APPLE_CODESIGN_IDENTITY" >&2; exit 1; }
-          APP="build/vivid.app"
-          find "$APP/Contents/Frameworks" -name "*.framework" -maxdepth 1 -print0 | while IFS= read -r -d '' fw; do
-            codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$fw"
-          done
-          find "$APP/Contents/PlugIns" -name "*.dylib" -print0 | while IFS= read -r -d '' dylib; do
-            codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$dylib"
-          done
-          codesign --force --deep --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
-
-      - name: Notarize and staple .app
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          APPLE_ID="$(echo "${APPLE_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          APPLE_TEAM_ID="$(echo "${APPLE_TEAM_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          APPLE_APP_PASSWORD="$(echo "${APPLE_APP_PASSWORD:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          [[ -n "${APPLE_ID}" ]] || { echo "Missing APPLE_ID" >&2; exit 1; }
-          [[ -n "${APPLE_TEAM_ID}" ]] || { echo "Missing APPLE_TEAM_ID" >&2; exit 1; }
-          [[ -n "${APPLE_APP_PASSWORD}" ]] || { echo "Missing APPLE_APP_PASSWORD" >&2; exit 1; }
-          # Transient zip — submitting the .app to Apple notary requires
-          # a container format. This zip is deleted after stapling; the
-          # published artifact is a DMG built in a later step.
-          APP="build/vivid.app"
-          SUBMIT_ZIP="$RUNNER_TEMP/vivid-app-for-notary.zip"
-          rm -f "$SUBMIT_ZIP"
-          ditto -c -k --keepParent "$APP" "$SUBMIT_ZIP"
-          NOTARY_JSON="$RUNNER_TEMP/notary-app-result.json"
-          xcrun notarytool submit "$SUBMIT_ZIP" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
-          NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id",""))' "$NOTARY_JSON")"
-          NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$NOTARY_JSON")"
-          if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
-            echo "App notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
-            if [[ -n "$NOTARY_ID" ]]; then
-              xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" || true
-            fi
-            exit 1
-          fi
-          xcrun stapler staple "$APP"
-          rm -f "$SUBMIT_ZIP"
-
-      - name: Build DMG
-        env:
-          APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ -n "${APPLE_CODESIGN_IDENTITY}" ]] || { echo "Missing APPLE_CODESIGN_IDENTITY" >&2; exit 1; }
-          APP="build/vivid.app"
-          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.dmg"
-          STAGING="$RUNNER_TEMP/dmg_staging"
-          rm -rf "$STAGING"
-          mkdir -p "$STAGING"
-          cp -R "$APP" "$STAGING/"
-          # Drag-to-Applications convenience target in the mounted volume.
-          ln -s /Applications "$STAGING/Applications"
-          rm -f "$DMG"
-          hdiutil create -format UDZO -fs HFS+ -volname "Vivid" \
-                         -srcfolder "$STAGING" -ov "$DMG"
-          codesign --force --sign "$APPLE_CODESIGN_IDENTITY" --timestamp "$DMG"
-
-      - name: Notarize and staple DMG
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          APPLE_ID="$(echo "${APPLE_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          APPLE_TEAM_ID="$(echo "${APPLE_TEAM_ID:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          APPLE_APP_PASSWORD="$(echo "${APPLE_APP_PASSWORD:-}" | tr -d '\r\n' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.dmg"
-          NOTARY_JSON="$RUNNER_TEMP/notary-dmg-result.json"
-          xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$NOTARY_JSON"
-          NOTARY_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id",""))' "$NOTARY_JSON")"
-          NOTARY_STATUS="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("status",""))' "$NOTARY_JSON")"
-          if [[ "$NOTARY_STATUS" != "Accepted" ]]; then
-            echo "DMG notarization status: $NOTARY_STATUS (id: $NOTARY_ID)" >&2
-            if [[ -n "$NOTARY_ID" ]]; then
-              xcrun notarytool log "$NOTARY_ID" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" || true
-            fi
-            exit 1
-          fi
-          xcrun stapler staple "$DMG"
-
-      - name: Package artifact
-        id: artifact
-        shell: bash
-        run: |
-          set -euo pipefail
-          DMG="build/${APP_NAME}-${{ steps.ver.outputs.version }}-macos-arm64.dmg"
-          [[ -f "$DMG" ]] || { echo "Expected DMG not found: $DMG" >&2; exit 1; }
-          size=$(stat -f "%z" "$DMG")
-          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
-          echo "size=$size" >> "$GITHUB_OUTPUT"
-
-      - name: Validate final artifact (mounted DMG)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Validate what an end-user actually downloads: the DMG itself
-          # AND the .app inside it. Mirrors the real user flow — attach
-          # the image, inspect vivid.app on the read-only mount. Catches
-          # missing-staple / broken-signature regressions before upload.
-          DMG='${{ steps.artifact.outputs.dmg }}'
-          MOUNT="$RUNNER_TEMP/vivid_dmg_mount"
-          rm -rf "$MOUNT"
-          hdiutil attach "$DMG" -mountpoint "$MOUNT" -nobrowse -quiet -readonly
-          trap 'hdiutil detach "$MOUNT" -force -quiet || true' EXIT
-          APP="$MOUNT/vivid.app"
-          [[ -d "$APP" ]] || { echo "vivid.app not found in DMG mount" >&2; exit 1; }
-          echo "--- dmg stapler validate ---"
-          xcrun stapler validate "$DMG"
-          echo "--- dmg codesign verify ---"
-          codesign --verify --verbose=2 "$DMG"
-          echo "--- app stapler validate ---"
-          xcrun stapler validate "$APP"
-          echo "--- app codesign verify ---"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          echo "--- app spctl assess ---"
-          spctl --assess --type execute --verbose=4 "$APP"
-
-      - name: Generate appcast XML
-        id: appcast
-        shell: bash
-        run: |
-          set -euo pipefail
-          DMG_NAME="$(basename '${{ steps.artifact.outputs.dmg }}')"
-          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${{ steps.ver.outputs.tag }}/${DMG_NAME}"
-          NOTES_URL="https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.ver.outputs.tag }}"
-          python3 scripts/release/generate_appcast.py \
-            --version "${{ steps.ver.outputs.version }}" \
-            --url "$URL" \
-            --length "${{ steps.artifact.outputs.size }}" \
-            --title "Vivid" \
-            --notes-url "$NOTES_URL" \
-            --output build/appcast.xml
-          echo "path=build/appcast.xml" >> "$GITHUB_OUTPUT"
-
-      - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          generate_release_notes: true
-          files: |
-            ${{ steps.artifact.outputs.dmg }}
-            ${{ steps.appcast.outputs.path }}
-
-      - name: Update site/appcast.xml on master
-        if: ${{ github.event_name == 'push' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout master
-          cp build/appcast.xml site/appcast.xml
-          if git diff --quiet -- site/appcast.xml; then
-            echo "No appcast change"
-            exit 0
-          fi
-          git add site/appcast.xml
-          git commit -m "release: update appcast for ${{ steps.ver.outputs.tag }}"
-          git push origin HEAD:master
+          name: vivid-macos-release
+          path: build/dist/
+          retention-days: 30

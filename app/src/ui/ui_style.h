@@ -1,0 +1,191 @@
+#pragma once
+#include "ui/renderer_2d.h"
+#include "ui/layout.h"   // Rect (pure geometry; no dependency back on this file)
+#include <cmath>
+#include <algorithm>
+#include <string>
+
+// Shared visual design language for the Vivid UI: a design-token palette (surfaces,
+// a region/panel system, a spacing scale, a type ramp, domain accents) + reusable
+// widget helpers (panel, knob, card, section header, text fitting) built on
+// Renderer2D's primitives. Keeps colours/metrics out of the draw code so the
+// interface reads cohesively — bounded regions on a disciplined grid ("clean pro-DAW").
+namespace vivid::ui {
+
+struct Style {
+    // --- surfaces (dark canvas → bounded regions read as a step lighter) ---
+    float bg[3]      = { 0.045f, 0.050f, 0.060f };   // window canvas
+    float region[3]  = { 0.076f, 0.083f, 0.100f };   // a bounded panel's interior
+    float region_hd[3]={ 0.112f, 0.122f, 0.145f };   // a panel's header strip
+    float panel[3]   = { 0.100f, 0.110f, 0.130f };   // legacy chrome / menus
+    float card[3]    = { 0.130f, 0.140f, 0.170f };
+    float card_hi[3] = { 0.175f, 0.190f, 0.222f };   // hover / selected
+    float recess[3]  = { 0.028f, 0.032f, 0.042f };   // inset wells (previews, sliders)
+    // --- lines ---
+    float border[3]     = { 0.235f, 0.250f, 0.290f }; // visible 1px panel/cell hairline
+    float border_soft[3]= { 0.150f, 0.160f, 0.188f }; // internal dividers
+    float sep[3]        = { 0.200f, 0.210f, 0.240f }; // legacy separator
+    // --- text ---
+    float text[3]    = { 0.880f, 0.900f, 0.940f };   // primary
+    float body[3]    = { 0.700f, 0.720f, 0.770f };   // secondary
+    float dim[3]     = { 0.480f, 0.510f, 0.560f };   // labels / hints
+    // --- domain accents ---
+    float audio[3]   = { 0.94f, 0.63f, 0.19f };      // amber  (audio / instrument)
+    float gpu[3]     = { 0.35f, 0.66f, 0.90f };      // cyan   (visual / gpu)
+    float fx[3]      = { 0.60f, 0.45f, 0.85f };      // violet (effects)
+    float control[3] = { 0.55f, 0.60f, 0.66f };      // gray   (control)
+    float teal[3]    = { 0.31f, 0.80f, 0.75f };      // bridge (data sources)
+    float gold[3]    = { 0.95f, 0.78f, 0.30f };      // selection / queued
+    float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
+    // --- spacing scale (logical px) ---
+    float s1 = 2.f, s2 = 4.f, s3 = 6.f, s4 = 8.f, s5 = 12.f, s6 = 16.f, s7 = 24.f;
+    // --- type ramp (scale factor on the 15px base font) ---
+    float fs_kicker = 0.66f;   // UPPERCASE region/section labels
+    float fs_value  = 0.70f;   // numeric read-outs
+    float fs_label  = 0.76f;   // control labels
+    float fs_body   = 0.88f;   // names / body
+    float fs_title  = 1.02f;   // panel titles
+    float fs_brand  = 1.18f;   // the wordmark
+    // --- radii / bars ---
+    float radius = 4.f, radius_lg = 6.f, accent_bar = 3.f;
+    // --- legacy metrics (kept for existing call sites) ---
+    float pad = 8.f, row_h = 22.f, section_gap = 12.f;
+    float panel_hd_h = 22.f;   // region header strip height
+};
+inline const Style& style() { static const Style s; return s; }
+
+// Truncate `str` with a trailing ellipsis so it fits within `max_w` at `scale`.
+inline std::string fit_text(Renderer2D& r, const std::string& str, float max_w, float scale) {
+    if (str.empty() || r.text_width(str.c_str(), scale) <= max_w) return str;
+    std::string out = str;
+    const std::string ell = "\xE2\x80\xA6";
+    while (!out.empty() && r.text_width((out + ell).c_str(), scale) > max_w) out.pop_back();
+    return out + ell;
+}
+// Right-align text so its right edge lands at `rx`.
+inline void draw_text_r(Renderer2D& r, float rx, float y, const char* t, const float* c, float a, float scale) {
+    r.draw_text(rx - r.text_width(t, scale), y, t, c[0], c[1], c[2], a, scale);
+}
+
+// A bounded region: interior fill + a 1px hairline border + a header strip with an
+// accent tick and an UPPERCASE title. Returns the inner content rect (inside the
+// header + one unit of padding), so callers lay content out relative to it.
+inline Rect panel(Renderer2D& r, Rect b, const char* title, const float* accent) {
+    const Style& s = style();
+    r.draw_rounded_rect(b.x, b.y, b.w, b.h, s.radius_lg, s.border[0], s.border[1], s.border[2], 1.0f);            // border
+    r.draw_rounded_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, b.h - 2.f, s.radius_lg - 1.f, s.region[0], s.region[1], s.region[2], 1.0f);  // interior
+    const float hh = s.panel_hd_h;
+    r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);  // header rule
+    if (title) {
+        r.draw_rect(b.x + s.s4, b.y + 7.f, 3.f, hh - 13.f, accent[0], accent[1], accent[2], 1.0f);                 // accent tick
+        r.draw_text(b.x + s.s4 + 8.f, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_kicker);
+    }
+    return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
+}
+
+// A region FRAME (1px border + a filled header strip) that does NOT fill its interior,
+// for panels drawn over GPU content (the viewer) or the node graph, which paint the
+// body themselves. Returns the inner content rect (below the header).
+inline Rect panel_frame(Renderer2D& r, Rect b, const char* title, const float* accent) {
+    const Style& s = style();
+    const float hh = s.panel_hd_h;
+    r.draw_rect(b.x, b.y, b.w, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    r.draw_rect(b.x, b.y + b.h - 1.f, b.w, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    r.draw_rect(b.x, b.y, 1.f, b.h, s.border[0], s.border[1], s.border[2], 1.0f);
+    r.draw_rect(b.x + b.w - 1.f, b.y, 1.f, b.h, s.border[0], s.border[1], s.border[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, hh - 1.f, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (title) {
+        r.draw_rect(b.x + s.s4, b.y + 7.f, 3.f, hh - 13.f, accent[0], accent[1], accent[2], 1.0f);
+        r.draw_text(b.x + s.s4 + 8.f, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_kicker);
+    }
+    return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
+}
+
+// A card: filled rounded body with a thin accent bar across the top.
+inline void draw_card(Renderer2D& r, float x, float y, float w, float h,
+                      const float* accent, bool hot = false) {
+    const Style& s = style();
+    const float* bg = hot ? s.card_hi : s.card;
+    r.draw_rounded_rect(x, y, w, h, 5.f, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+}
+
+// A small left-aligned section label in dim text with an accent tick.
+inline void section_header(Renderer2D& r, float x, float y, const char* label,
+                           const float* accent) {
+    const Style& s = style();
+    r.draw_rect(x, y + 1.f, 3.f, 9.f, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_text(x + 8.f, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.78f);
+}
+
+// A rotary knob: dim track arc + accent value arc + pointer; name above, value
+// below (both centred on cx). `mapped` tints the value arc toward the bridge teal.
+inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,
+                 const char* label, const char* valtext, const float* accent, bool mapped = false) {
+    v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
+    const Style& s = style();
+    const float a0 = 2.3562f;                 // 135 deg (lower-left), sweeping CW (y-down)
+    const float sweep = 4.7124f;              // 270 deg
+    r.draw_arc(cx, cy, rad, a0, a0 + sweep, 2.6f, 0, s.recess[0] + 0.06f, s.recess[1] + 0.06f, s.recess[2] + 0.07f, 1.0f);  // 0 = auto (dpi-aware)
+    const float vr = mapped ? s.teal[0] : accent[0];
+    const float vg = mapped ? s.teal[1] : accent[1];
+    const float vb = mapped ? s.teal[2] : accent[2];
+    if (v01 > 0.001f)
+        r.draw_arc(cx, cy, rad, a0, a0 + sweep * v01, 2.6f, 0, vr, vg, vb, 1.0f);
+    const float pa = a0 + sweep * v01;        // pointer to the current value
+    r.draw_line(cx, cy, cx + std::cos(pa) * (rad - 2.f), cy + std::sin(pa) * (rad - 2.f), 2.0f, s.text[0], s.text[1], s.text[2], 1.0f);
+    if (label) {
+        const float tw = r.text_width(label, 0.66f);
+        r.draw_text(cx - tw * 0.5f, cy - rad - 12.f, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.66f);
+    }
+    if (valtext) {
+        const float tw = r.text_width(valtext, 0.66f);
+        r.draw_text(cx - tw * 0.5f, cy + rad + 3.f, valtext, s.text[0], s.text[1], s.text[2], 1.0f, 0.66f);
+    }
+}
+
+// A horizontal slider: recessed track + accent fill + a handle; name at the left,
+// value at the right. v01 is the normalized 0..1 position. `mapped` tints toward teal.
+inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
+                   const char* label, const char* valtext, const float* accent, bool mapped = false) {
+    v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
+    const Style& s = style();
+    const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
+    r.draw_rounded_rect(x, ty, w, th, th * 0.5f, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
+    if (v01 > 0.001f) r.draw_rounded_rect(x, ty, w * v01, th, th * 0.5f, fr, fg, fb, 1.0f);
+    const float hx = x + w * v01;
+    r.draw_rounded_rect(hx - 3.f, ty - 3.f, 6.f, th + 6.f, 2.f, s.text[0], s.text[1], s.text[2], 1.0f);  // handle
+    if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
+    if (valtext) {
+        const float tw = r.text_width(valtext, s.fs_label);
+        r.draw_text(x + w - tw, y, valtext, s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
+    }
+}
+
+// A toggle switch: rounded pill track + a sliding knob; on = accent, off = recess.
+inline void toggle(Renderer2D& r, float x, float y, float w, float h, bool on, const float* accent) {
+    const Style& s = style();
+    const float* bg = on ? accent : s.recess;
+    r.draw_rounded_rect(x, y, w, h, h * 0.5f, bg[0], bg[1], bg[2], 1.0f);
+    const float kr = h - 4.f, kx = on ? (x + w - kr - 2.f) : (x + 2.f);
+    r.draw_rounded_rect(kx, y + 2.f, kr, kr, kr * 0.5f, s.text[0], s.text[1], s.text[2], 1.0f);
+}
+
+// A dropdown field: a bordered box showing the current choice + a chevron. The popup
+// list itself is drawn separately by the caller (menu state lives with the view).
+inline void dropdown_field(Renderer2D& r, float x, float y, float w, float h,
+                           const char* current, const float* accent, bool hot) {
+    const Style& s = style();
+    const float* bg = hot ? s.card_hi : s.card;
+    r.draw_rounded_rect(x, y, w, h, s.radius, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);
+    if (current) r.draw_text(x + s.s3 + 2.f, y + (h - 10.f) * 0.5f, fit_text(r, current, w - 22.f, s.fs_label).c_str(),
+                             s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
+    // chevron
+    const float cx = x + w - 10.f, cy = y + h * 0.5f;
+    r.draw_tri(cx - 3.f, cy - 2.f, cx + 3.f, cy - 2.f, cx, cy + 2.f, s.dim[0], s.dim[1], s.dim[2], 1.0f);
+}
+
+}  // namespace vivid::ui

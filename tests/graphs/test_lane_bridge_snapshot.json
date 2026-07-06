@@ -1,9 +1,0 @@
-{
-    "nodes": {
-        "src":   { "type": "LaneSourceOp", "params": { "base": 1.0, "count": 3 } },
-        "audio": { "type": "AudioLaneOp",  "params": {} }
-    },
-    "connections": [
-        { "from": "src/out", "to": "audio/values", "bridge": "snapshot" }
-    ]
-}

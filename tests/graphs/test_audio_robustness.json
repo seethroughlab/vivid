@@ -1,7 +1,0 @@
-{
-    "nodes": {
-        "good": { "type": "AudioTestOp", "params": { "level": 0.5 } },
-        "bad":  { "type": "AudioThrowingOp" }
-    },
-    "connections": []
-}

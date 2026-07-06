@@ -1,86 +1,42 @@
-# Vivid — Code Navigation Guide
+# Vivid — repo navigation
 
-Vivid is a real-time audiovisual graph engine where audio and visuals are peers in the same graph. Operators process GPU textures, audio buffers, and control signals; the graph runtime compiles topology, executes at dual cadences (frame-rate and audio-rate), and hot-reloads operator code on save.
+Vivid is an agent-first audio-visual environment. The trunk (`vivid-4`) holds a real macOS C++
+application under **`app/`**: two best-in-class surfaces — a DAW (tracks × scenes of clips, each
+track an instrument + FX chain) and a rewireable visuals node-graph — joined by a bidirectional
+**mapping bridge** and driven MCP-natively.
 
-## Documentation Map
+## Where things are
+- **`app/`** — the C++ app (GLFW + wgpu-native + miniaudio + VST3). Entry: `app/src/main.cpp`.
+  - `app/src/audio/` — VST3 host + multi-track session (`vst3_host.h` is the session C API).
+  - `app/src/gpu/` — wgpu context, the visuals `VisualGraph`, shader/effect ops, video.
+  - `app/src/ui/` — `Renderer2D`, the node-graph editor, clip editor, `ui_style.h` (the palette/widgets).
+  - `app/src/cli/control_server.{h,cpp}` — loopback HTTP control server (the MCP backend).
+  - `app/src/mapping.h` — the `MappingRegistry` (the bridge); `app/src/persist.*` — session JSON.
+- **`mcp/`** — `vivid_mcp.py`, a FastMCP (stdio) bridge proxying tools to the control server. See `mcp/README.md`.
+- **`docs/decisions/`** — ADRs. Current: **ADR-0010** (PoC promoted to the product seed, accepted) →
+  **ADR-0011** (productization target + the trunk decision).
+- **`docs/roadmap/poc-to-product.md`** — the PoC→product assessment + phased roadmap (P0–P4).
+- **`vivid-classic`** (git branch) — the mature predecessor; the engineering benchmark (operator/ABI
+  model, codegen, packages, tests/CI, production gate, docs culture). Read via `git show vivid-classic:<path>`.
 
-| Document | Purpose |
-|----------|---------|
-| `AGENTS.md` | Behavioral instructions: conventions, build commands, anti-patterns |
-| `docs/ARCHITECTURE.md` | Design-level architecture: execution model, port types, lanes, operator contract |
-| `docs/runtime/*.md` | Per-subsystem engineering docs (graph, audio engine, control server, packages, etc.) |
-| `docs/INTERFACE.md` | UI architecture, visual style, session/variation surface |
-| `docs/LLM-INTEGRATION.md` | MCP server design and LLM integration roles |
-| `docs/COMPOSITION-GUIDE.md` | Mechanical primitives + reference-translation workflow for AV graphs. Opens with how to turn a user-supplied precedent (URL, YouTube, image, artist) into an operator graph; the rest is value-neutral mechanics (anti-patterns, metric thresholds, diagnostic tree). Not a menu of "good" patterns — what's compelling depends on the project. |
+## Build & run (macOS)
+```sh
+cmake -S app -B app/build && cmake --build app/build -j
+app/build/vivid.app/Contents/MacOS/vivid        # logs: control server on 127.0.0.1:9876
+uv run --directory mcp vivid_mcp.py                      # the MCP bridge (app must be running)
+```
 
-## Module Map
+## Status (2026-07-01)
+`app/` is the **product trunk** (the branch formerly `poc-cpp-prototype`, now folded into `vivid-4`;
+what began as a proof of concept, promoted per ADR-0010). Target is an extensible, cross-platform-capable
+platform (≈ vivid-classic's architecture where it helps). Strategy (ADR-0011, **accepted**): **keep `app/`
+as the trunk and adopt classic's platform by selective lift**. Build identity is now `vivid` / `com.vivid.app`
+/ "Vivid"; the audio-session C API lives in `namespace vivid::session`.
 
-### Runtime (`src/runtime/`)
-
-| Directory | Role | Deep Docs |
-|-----------|------|-----------|
-| `core/` | App bootstrap (`main.cpp`), main loop, `RuntimeCore` orchestration, settings, undo, hot reload, file watcher | `docs/runtime/architecture.md`, `docs/runtime/runtime_core.md` |
-| `graph/` | Graph compiler (7-pass), `CompiledGraph`, frame executor, audio executor, lane state, snapshot types | [CLAUDE.md](src/runtime/graph/CLAUDE.md), `docs/runtime/graph.md` |
-| `control/` | HTTP control server (port 9876), request dispatch, `RuntimeAPI` command layer | [CLAUDE.md](src/runtime/control/CLAUDE.md), `docs/runtime/control_server.md` |
-| `operators/` | Operator registry, dylib loading/probing, scaffolding code generation, source-derived docs | `docs/runtime/operator_loader.md` |
-| `packages/` | Package install/uninstall/link, CMake-based compilation, test runner, catalog | `docs/runtime/package_system.md` |
-| `audio/` | Audio device I/O via miniaudio, `AudioFrameBridge` double-buffered cross-cadence transport | `docs/runtime/audio_engine.md` |
-| `gpu/` | Dawn/WebGPU context, surface management, WGSL header parsing, Metal interop | `docs/runtime/gpu.md` |
-| `debug/` | Capture coordinator, analysis, recording | — |
-| `platform/` | macOS-specific: native menus, system MIDI | — |
-| `assets/` | Asset library for workspace/package media | — |
-
-### UI (`src/ui/`)
-
-| Directory | Role | Deep Docs |
-|-----------|------|-----------|
-| `graph/` | Node graph editor — drawing, input handling, inspector, overlays | [CLAUDE.md](src/ui/graph/CLAUDE.md), `docs/INTERFACE.md` |
-| `rendering/` | GPU-accelerated 2D renderer, thumbnail cache and renderer | — |
-| `inspector/` | Parameter inspector layout and controller | — |
-| `style/` | Theme loading and UI style constants | — |
-| `dialogs/` | Dialog manager (draw + input), modal dialogs | — |
-
-### Operator API (`src/operator_api/`)
-
-The public contract between the runtime and all operators. See [CLAUDE.md](src/operator_api/CLAUDE.md).
-
-### Other Top-Level Directories
-
-| Directory | Role |
-|-----------|------|
-| `src/common/` | Shared utilities: GPU helpers, string utils, topological sort, path utils |
-| `src/export/` | Standalone binary export pipeline |
-| `operators/` | Seed operators organized by domain: `gpu/`, `audio/`, `control/`, `shared/` |
-| `filters/` | Self-describing WGSL shader presets |
-| `mcp/` | Python MCP bridge servers (`vivid_mcp.py`, `vivid_opdev_mcp.py`) |
-| `tests/` | Integration and unit tests mirroring source structure |
-| `graphs/` | Demo/example graph JSON files |
-| `cmake/` | Build system modules (app, dependencies, operators, tests) |
-
-## Key Concepts
-
-**Three domains and dual cadences.** GPU and Control operators run at frame cadence (~60 Hz) on the main thread. Audio operators run at audio cadence (~48 kHz) on a real-time thread. Audio and GPU never communicate directly — everything routes through Control. See `docs/ARCHITECTURE.md` §5.3–5.4.
-
-**Lanes.** Every value in the graph can carry multiple parallel elements. A scalar is a one-lane value; an FFT output might be 512 lanes. Multi-lane outputs automatically vectorize downstream operators. Lane-set provenance tracks alignment; `vivid_lane_state()` provides identity-keyed per-lane persistent state. See `docs/ARCHITECTURE.md` §5.9.
-
-**Graph compilation.** The `GraphCompiler` transforms a `Graph` (pure data model) into a `CompiledGraph` (live execution state) in 7 passes. Topology changes trigger a full recompile — the `CompiledGraph` is never mutated during execution. See `src/runtime/graph/CLAUDE.md`.
-
-**Operator contract.** Operators are self-contained `.dylib` compilation units loaded via `dlopen`. They inherit `OperatorBase` plus one domain mixin (`FrameProcessable`, `AudioProcessable`, or `GpuProcessable`). `operator_codegen` generates the `extern "C"` boundary at build time — no registration macro is needed. See `docs/ARCHITECTURE.md` §5.7.
-
-**Cross-cadence bridges.** `AudioFrameBridge` uses lock-free double-buffered snapshots (`ParamSnapshot`, `AnalysisSnapshot`, `LaneSnapshot`) so neither cadence blocks the other. See `docs/ARCHITECTURE.md` §5.5.
-
-## Subsystem Guides
-
-Major subsystem directories have their own navigation guides where the orientation cost justifies it:
-
-- [`src/runtime/core/CLAUDE.md`](src/runtime/core/CLAUDE.md) — app bootstrap, main loop, RuntimeCore
-- [`src/runtime/graph/CLAUDE.md`](src/runtime/graph/CLAUDE.md) — graph compiler, executors, lane state
-- [`src/runtime/control/CLAUDE.md`](src/runtime/control/CLAUDE.md) — control server, RuntimeAPI
-- [`src/runtime/packages/CLAUDE.md`](src/runtime/packages/CLAUDE.md) — package lifecycle
-- [`src/runtime/gpu/CLAUDE.md`](src/runtime/gpu/CLAUDE.md) — WebGPU context, WGSL header parser
-- [`src/operator_api/CLAUDE.md`](src/operator_api/CLAUDE.md) — operator API headers
-- [`src/ui/graph/CLAUDE.md`](src/ui/graph/CLAUDE.md) — node graph editor
-- [`operators/CLAUDE.md`](operators/CLAUDE.md) — seed operator directory conventions
-- [`mcp/CLAUDE.md`](mcp/CLAUDE.md) — MCP bridge servers
-- [`tests/CLAUDE.md`](tests/CLAUDE.md) — test structure and partitioning
-- [`cmake/CLAUDE.md`](cmake/CLAUDE.md) — build system modules
+Current trunk has P0-P4 style productization work in place: App/Window decomposition, headless tests,
+CI/gate scaffolding, named control-server errors, runtime health/version surfaces, operator ABI +
+loader/package/hot-reload pieces, semantic metadata, MCP eval harness, and release scaffolding.
+Before choosing next work, read [ADR-0009](docs/decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md),
+[ADR-0010](docs/decisions/ADR-0010-poc-proven-production-seed.md),
+[ADR-0011](docs/decisions/ADR-0011-poc-to-product-architecture.md), and
+[the roadmap](docs/roadmap/poc-to-product.md).

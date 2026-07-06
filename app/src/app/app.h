@@ -1,0 +1,69 @@
+#pragma once
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "app/project_state.h"
+#include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
+#include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
+#include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
+#include "platform/midi_input.h"           // hardware MIDI input (M6.4)
+
+namespace vivid {
+class GpuContext;
+class VisualGraph;
+class ControlServer;
+class TextureSource;
+namespace ui { class NodeGraph; }
+}
+namespace vivid::session { struct Session; }
+struct Transport;
+struct VideoPlayer;
+
+namespace vivid {
+
+// Shared engine + document state: ONE per process, referenced by every Window via
+// Window::app. The audio thread sees only this (the ma_device user pointer is an
+// App*), never a Window — so opening/closing a window never touches audio.
+struct App {
+    // Engine / document (shared across all windows).
+    GpuContext*         gpu       = nullptr;   // owns the wgpu device/queue
+    VisualGraph*        vgraph    = nullptr;   // the visuals pipeline (model)
+    ui::NodeGraph*      graph     = nullptr;   // node editor + mapping registry (model)
+    vivid::session::Session* session   = nullptr;   // audio session (or null -> test tone)
+    Transport*          transport = nullptr;   // master clock
+    ControlServer*      control   = nullptr;   // MCP loopback server
+    TextureSource*      srcTex    = nullptr;   // shared visuals source texture
+    OpRegistry          op_registry;           // built-in + loaded operators
+    // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
+    // registry factory that captures its raw pointer (App lives the whole run).
+    std::vector<std::unique_ptr<OperatorLoader>> op_loaders;
+    HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
+    platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
+
+    int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
+
+    // Minimal project workflow (UI/main thread only). The session JSON remains the
+    // document format; these fields remember where it lives and where relative media starts.
+    ProjectState project;
+    void remember_project_path(const std::string& path);
+    void set_media_root(const std::string& root);
+
+    // Video playback (UI/main thread only).
+    VideoPlayer*             video = nullptr;
+    std::vector<std::string> video_paths;
+    int                      video_idx = -1;
+    void load_video_at(int i);   // open clip i (wraps), play if the source is video
+
+    // Audio-thread DSP state (touched only inside the audio callback).
+    float  m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states
+    float  tr_baseline = 0.f;                // onset detector baseline
+    double phase = 0.0;                      // test-tone oscillator phase
+    double tone_hz = 110.0;
+    double click_phase = 0.0;                // metronome click oscillator (M6.3)
+    float  click_amp = 0.f;                  // click envelope (decays each sample)
+    float  click_freq = 1000.f;              // downbeat vs. beat pitch
+    long long click_last_beat = -1;          // last integer beat that fired a click
+};
+
+}  // namespace vivid

@@ -1,67 +1,38 @@
-name: LLM MCP Evals
+# LLM-over-MCP evals (P4.6). The `fake` provider path runs anywhere (no app, no key) and
+# verifies the harness; real-provider runs (UNVERIFIED here) need a live app + an API key,
+# so this is manual-dispatch only and informational (not a merge gate).
+name: llm-mcp-evals
 
 on:
   workflow_dispatch:
     inputs:
-      openai_model:
-        description: "OpenAI model to evaluate"
-        default: "gpt-4o"
-      anthropic_model:
-        description: "Anthropic model to evaluate"
-        default: "claude-sonnet-4-20250514"
+      provider:
+        description: "fake | anthropic | openai"
+        default: "fake"
+      model:
+        description: "model id (real providers only)"
+        default: ""
 
 jobs:
   eval:
-    runs-on: [self-hosted, macOS]
-    env:
-      EVAL_HOME: ${{ github.workspace }}/build/.llm_mcp_eval_home
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-        with:
-          submodules: recursive
-
-      - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_OSX_ARCHITECTURES=arm64
-
-      - name: Create app bundle skeleton
-        run: mkdir -p build/vivid.app/Contents/PlugIns
-
-      - name: Build vivid CLI
-        run: cmake --build build --target vivid -j$(sysctl -n hw.logicalcpu)
-
-      - name: Install Python dependencies
-        run: uv pip install --system -r scripts/llm_mcp_eval_requirements.txt
-
-      - name: Run fake-provider smoke test
-        run: python3 scripts/llm_mcp_eval.py --provider fake --output-dir build/llm_mcp_evals/fake
-
-      - name: Run OpenAI evals
-        if: env.OPENAI_API_KEY != ''
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          HOME: ${{ env.EVAL_HOME }}
-        run: |
-          python3 scripts/llm_mcp_eval.py \
-            --provider openai \
-            --model "${{ inputs.openai_model }}" \
-            --output-dir build/llm_mcp_evals/openai
-
-      - name: Run Anthropic evals
-        if: env.ANTHROPIC_API_KEY != ''
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Harness smoke (fake provider, offline)
+        run: uv run mcp/evals/llm_mcp_eval.py --selftest
+      - name: Real eval (only when a provider + key are supplied)
+        if: ${{ github.event.inputs.provider != 'fake' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          HOME: ${{ env.EVAL_HOME }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          python3 scripts/llm_mcp_eval.py \
-            --provider anthropic \
-            --model "${{ inputs.anthropic_model }}" \
-            --output-dir build/llm_mcp_evals/anthropic
-
-      - name: Upload eval artifacts
+          echo "Real-provider runs need a live Vivid app reachable at --base-url."
+          echo "Left as a manual step: start the app, then run llm_mcp_eval.py --provider ${{ github.event.inputs.provider }}."
+      - name: Upload eval results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llm-mcp-eval-artifacts
-          path: build/llm_mcp_evals/
-          if-no-files-found: ignore
+          name: llm-mcp-evals
+          path: build/evals/
           retention-days: 14
