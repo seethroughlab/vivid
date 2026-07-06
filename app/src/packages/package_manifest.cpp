@@ -32,10 +32,20 @@ PackageManifest parse_package_manifest(const std::string& package_dir) {
         PackageOperator op;
         op.name   = jo.value("name", std::string());
         op.source = jo.value("source", std::string());
-        op.gpu    = jo.value("gpu", true);
+        op.kind   = jo.value("kind", std::string());
         if (op.name.empty() || op.source.empty()) {
             m.error = "each operator needs \"name\" and \"source\""; return m;
         }
+        if (!op.kind.empty() && op.kind != "gpu_visual" && op.kind != "audio_effect" &&
+            op.kind != "instrument" && op.kind != "frame") {
+            m.error = "operator \"" + op.name + "\" has unknown \"kind\": " + op.kind +
+                      " (expected gpu_visual | audio_effect | instrument | frame)"; return m;
+        }
+        // wgpu link flag: an explicit "gpu" wins; otherwise derive from kind (only gpu_visual
+        // links wgpu); with neither, default to linking (back-compat with kind-less manifests).
+        if (jo.contains("gpu"))       op.gpu = jo["gpu"].get<bool>();
+        else if (!op.kind.empty())    op.gpu = (op.kind == "gpu_visual");
+        else                          op.gpu = true;
         m.operators.push_back(std::move(op));
     }
     if (m.operators.empty()) { m.error = "manifest lists no operators"; return m; }

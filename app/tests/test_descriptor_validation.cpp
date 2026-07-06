@@ -85,5 +85,42 @@ int main() {
       d.param_count = 1; d.params = &p; d.port_count = 1; d.ports = &pt;
       CHECK(validate_descriptor(&d).empty()); }
 
+    // ---- audio operator port shape (single stereo in/out) ----
+    auto aud_desc = []() { VividOperatorDescriptor d{}; d.name = "AudOp"; d.has_process_audio = 1; return d; };
+    auto aport = [](const char* n, VividPortDirection dir, uint8_t ch = 0) {
+        VividPortDescriptor p{}; p.name = n; p.type = VIVID_PORT_AUDIO_BUFFER; p.direction = dir; p.channels = ch; return p; };
+
+    // Positive: a well-formed effect (1 stereo in + 1 out) and instrument (1 out only) are clean.
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pts[2] = { aport("input", VIVID_PORT_INPUT), aport("output", VIVID_PORT_OUTPUT) };
+      d.port_count = 2; d.ports = pts; CHECK(validate_descriptor(&d).empty()); }
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pt = aport("output", VIVID_PORT_OUTPUT);
+      d.port_count = 1; d.ports = &pt; CHECK(validate_descriptor(&d).empty()); }
+
+    // audio_too_many_input_ports (2 audio inputs; the runtime feeds only one)
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pts[3] = { aport("in1", VIVID_PORT_INPUT), aport("in2", VIVID_PORT_INPUT), aport("output", VIVID_PORT_OUTPUT) };
+      d.port_count = 3; d.ports = pts;
+      CHECK(has_code(validate_descriptor(&d), vc::kAudioTooManyInputPorts)); }
+
+    // audio_too_many_output_ports
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pts[2] = { aport("out1", VIVID_PORT_OUTPUT), aport("out2", VIVID_PORT_OUTPUT) };
+      d.port_count = 2; d.ports = pts;
+      CHECK(has_code(validate_descriptor(&d), vc::kAudioTooManyOutputPorts)); }
+
+    // audio_missing_output_port (an audio op must produce a stereo output)
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pt = aport("input", VIVID_PORT_INPUT);
+      d.port_count = 1; d.ports = &pt;
+      CHECK(has_code(validate_descriptor(&d), vc::kAudioMissingOutputPort)); }
+
+    // audio_non_stereo_channels (4-channel surround is silently downmixed by the runtime)
+    { VividOperatorDescriptor d = aud_desc();
+      VividPortDescriptor pt = aport("output", VIVID_PORT_OUTPUT, 4);
+      d.port_count = 1; d.ports = &pt;
+      CHECK(has_code(validate_descriptor(&d), vc::kAudioNonStereoChannels)); }
+
     return vivid::test::summary("test_descriptor_validation");
 }

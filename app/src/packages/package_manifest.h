@@ -13,14 +13,19 @@
 //   {
 //     "name": "example-visuals",
 //     "version": "0.1.0",
-//     "operators": [ { "name": "Gradient", "source": "gradient.cpp", "gpu": true } ]
+//     "operators": [ { "name": "Gradient", "kind": "gpu_visual", "source": "gradient.cpp" } ]
 //   }
 namespace vivid {
 
 struct PackageOperator {
     std::string name;        // output dylib stem (the registry name comes from the op's descriptor)
     std::string source;      // operator .cpp, relative to the package dir
-    bool        gpu = true;  // link wgpu (GPU operators); false = frame/audio-only
+    std::string kind;        // authoring intent: "gpu_visual" | "audio_effect" | "instrument" |
+                             // "frame" (or "" = unspecified). Describes the operator's domain for
+                             // discovery/tooling and DEFAULTS the wgpu link (gpu_visual links wgpu,
+                             // the others don't). The op's descriptor capability flags remain the
+                             // runtime authority; `kind` is manifest metadata, not enforced against them.
+    bool        gpu = true;  // link wgpu at build time. Derived from `kind` unless set explicitly.
 };
 
 struct PackageManifest {

@@ -143,6 +143,12 @@ add_dependencies(test_op_metadata test_fixture_op)
 target_compile_definitions(test_op_metadata PRIVATE
     FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")
 
+# Manifest parsing only (pure, no clang++/wgpu): the operator `kind` field + wgpu-link defaulting.
+vivid_add_test(test_package_manifest)
+target_sources(test_package_manifest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp)
+target_link_libraries(test_package_manifest PRIVATE nlohmann_json::nlohmann_json)
+
 # P2.3: package pipeline — parse manifest, compile the operator via clang++, load it.
 # Compiles a GPU-free fixture op so it needs no wgpu at test time (portable/headless).
 vivid_add_test(test_package_compile)
@@ -159,6 +165,28 @@ target_sources(test_package_compile PRIVATE
 target_link_libraries(test_package_compile PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
 target_compile_definitions(test_package_compile PRIVATE
     PKG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/pkg"
+    VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
+    VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
+    VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+
+# Audio operator packages end-to-end: compile the example-audio package (audio_effect +
+# instrument), load both, and RUN them through the native audio runtime (proves the loaded-dylib
+# adapter forwards process_audio + the capability flags come from the dylib).
+vivid_add_test(test_package_audio)
+target_sources(test_package_audio PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_compiler.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_package_audio PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
+target_compile_definitions(test_package_audio PRIVATE
+    PKG_AUDIO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../operators/packages/example-audio"
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")

@@ -34,6 +34,11 @@ struct AudioOp {
 
 AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
     if (!type_name || !*type_name) return nullptr;
+    // Gate on the descriptor's declared audio capability, not just the C++ cast: the loaded-dylib
+    // adapter implements AudioProcessable even for gpu/frame ops (the cast would wrongly succeed),
+    // so a non-audio op must be rejected by its has_process_audio flag.
+    const VividOperatorDescriptor* d = reg.descriptor_for(type_name);
+    if (!d || !d->has_process_audio) return nullptr;
     std::vector<DescriptorValidationIssue> issues;
     auto opt = reg.create(type_name, issues);
     if (!opt) return nullptr;

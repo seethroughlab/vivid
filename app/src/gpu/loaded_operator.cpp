@@ -47,10 +47,24 @@ LoadedOperator::~LoadedOperator() {
 void LoadedOperator::collect_params(std::vector<ParamBase*>& out) { out = synth_param_ptrs_; }
 void LoadedOperator::collect_ports(std::vector<VividPortDescriptor>& out) { out = ports_; }
 
+// Each stage forwards to the dylib's resolved fn-ptr (a no-op if the dylib didn't export
+// that stage). The runtimes only invoke the stage the descriptor's has_process_* declares,
+// so a gpu-only op never has its (no-op) process_audio called, and vice-versa.
 void LoadedOperator::process_gpu(const VividGpuContext* ctx) {
-    // The dylib re-syncs its own params from ctx->param_values and renders.
     if (loader_ && instance_)
         loader_->process_gpu(instance_, const_cast<VividGpuContext*>(ctx));
+}
+void LoadedOperator::process_audio(const VividAudioContext* ctx) {
+    if (loader_ && instance_)
+        loader_->process_audio(instance_, const_cast<VividAudioContext*>(ctx));
+}
+void LoadedOperator::process_frame(const VividFrameContext* ctx) {
+    if (loader_ && instance_)
+        loader_->process_frame(instance_, const_cast<VividFrameContext*>(ctx));
+}
+
+const VividOperatorDescriptor* LoadedOperator::host_capability_descriptor() const {
+    return loader_ ? loader_->descriptor() : nullptr;
 }
 
 }  // namespace vivid

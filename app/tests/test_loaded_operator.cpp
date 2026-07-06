@@ -57,7 +57,15 @@ int main() {
         CHECK(std::string(built->ports[i].name) == std::string(dyl->ports[i].name));
         CHECK(built->ports[i].direction == dyl->ports[i].direction);
     }
-    CHECK(built->has_process_gpu == 1);  // the adapter is a GpuProcessable
+    // Capability flags mirror the DYLIB descriptor, not the adapter's C++ interfaces (the adapter
+    // implements all three so it can process any kind). FixtureOp is a frame operator, so the
+    // built descriptor must report frame — NOT gpu (the pre-fix adapter mis-reported every loaded
+    // op as gpu because it only inherited GpuProcessable).
+    CHECK(built->has_process_gpu   == dyl->has_process_gpu);
+    CHECK(built->has_process_audio == dyl->has_process_audio);
+    CHECK(built->has_process_frame == dyl->has_process_frame);
+    CHECK(built->has_process_frame == 1);
+    CHECK(built->has_process_gpu == 0);
 
     return vivid::test::summary("test_loaded_operator");
 }

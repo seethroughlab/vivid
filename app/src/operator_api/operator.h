@@ -362,6 +362,12 @@ struct OperatorBase {
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
+    // Host-internal: a built-in operator's process_* capabilities ARE its C++ interfaces, so the
+    // host infers them by dynamic_cast (returns nullptr here). The loaded-dylib adapter implements
+    // all three interfaces at once, so it can't be told apart that way — it overrides this to hand
+    // back the dylib's own descriptor, whose has_process_* flags are the real capability set.
+    // Operator authors never override this.
+    virtual const VividOperatorDescriptor* host_capability_descriptor() const { return nullptr; }
 };
 
 // ---------------------------------------------------------------------------

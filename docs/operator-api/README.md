@@ -23,7 +23,8 @@ built-ins use the same API.
 - **`operator_descriptor_validation.{h,cpp}`** — descriptor validation run at load (named issue
   codes).
 
-> A full end-to-end authoring guide (choose a kind → descriptor metadata → package → build → test
-> → load → expose to agents, with the RT-safety rules) is planned under `docs/operator-authoring/`.
-> Until then, the built-in operators (`app/src/gpu/builtin_ops.*`, `app/src/audio/builtin_audio_ops.*`)
-> are the working references, and `app/docs/thread-safety.md` covers the RT constraints.
+> For the end-to-end authoring walkthrough (choose a kind → descriptor metadata → package → build →
+> test → load → expose to agents, with the RT-safety rules), see
+> [`../operator-authoring/`](../operator-authoring/). The built-in operators
+> (`app/src/gpu/builtin_ops.*`, `app/src/audio/builtin_audio_ops.*`) are the working references, and
+> `app/docs/thread-safety.md` covers the RT constraints.

@@ -80,6 +80,7 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
 
     std::unordered_set<std::string> input_ports;
     std::unordered_set<std::string> output_ports;
+    int audio_in_ports = 0, audio_out_ports = 0;
     if (desc->ports) {
         for (uint32_t i = 0; i < desc->port_count; ++i) {
             const auto& port = desc->ports[i];
@@ -107,6 +108,38 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
                     "custom port '" + name + "' is missing type_name"
                 });
             }
+            // Audio port shape: the runtime handles only stereo (2) or unspecified (0=auto).
+            if (port.type == VIVID_PORT_AUDIO_BUFFER) {
+                (port.direction == VIVID_PORT_OUTPUT ? audio_out_ports : audio_in_ports)++;
+                if (port.channels != 0 && port.channels != 2) {
+                    issues.push_back({
+                        vc::kAudioNonStereoChannels,
+                        "audio port '" + name + "' declares " + std::to_string(port.channels) +
+                            " channels; the audio runtime handles only stereo (2) or 0 (auto)"
+                    });
+                }
+            }
+        }
+    }
+
+    // An audio operator (effect: audio in->out; instrument/generator: ->out) must present exactly
+    // the single-stereo-port shape the runtime feeds it: at most one audio input, exactly one audio
+    // output. Extra audio ports would be silently dropped — reject them here so authors find out at
+    // load, not by hearing nothing on ports 1+.
+    if (desc->has_process_audio) {
+        if (audio_in_ports > 1) {
+            issues.push_back({vc::kAudioTooManyInputPorts,
+                "audio operator declares " + std::to_string(audio_in_ports) +
+                    " audio input ports; the runtime feeds only one (stereo)"});
+        }
+        if (audio_out_ports > 1) {
+            issues.push_back({vc::kAudioTooManyOutputPorts,
+                "audio operator declares " + std::to_string(audio_out_ports) +
+                    " audio output ports; the runtime reads only one (stereo)"});
+        }
+        if (audio_out_ports == 0) {
+            issues.push_back({vc::kAudioMissingOutputPort,
+                "audio operator declares no audio output port (it must produce a stereo output)"});
         }
     }
 
