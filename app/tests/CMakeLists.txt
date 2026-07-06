@@ -163,6 +163,10 @@ target_compile_definitions(test_package_compile PRIVATE
 
 # P2b: "Clone & Edit a built-in" — compile the real WGSL Plasma-clone template via the
 # package compiler and register it (a GPU op, so it needs the webgpu include/lib dirs).
+# App-only: the clone compiles against <webgpu/webgpu.h>, which is fetched with the GUI/GPU
+# deps (VIVID_BUILD_APP=ON). In the portable tests-only gate (VIVID_BUILD_APP=OFF) webgpu
+# isn't available, so this test is skipped there; it runs in the full-app / release gate.
+if(VIVID_BUILD_APP)
 vivid_add_test(test_operator_clone)
 target_sources(test_operator_clone PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/operator_clone.cpp
@@ -188,6 +192,7 @@ target_compile_definitions(test_operator_clone PRIVATE
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_clone_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_clone_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
+endif()  # VIVID_BUILD_APP (test_operator_clone needs webgpu)
 
 # P2.4: hot-reload infrastructure — classify_hot_reload + FileWatcher + HotReloader.
 vivid_add_test(test_hot_reload)

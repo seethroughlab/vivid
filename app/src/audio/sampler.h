@@ -70,8 +70,9 @@ struct Sampler {
             const double posf = ph / loop_beats * span;     // 0..span into the window (playback time)
             const double pos  = reverse ? (span - posf) : posf;   // read position (mirrored if reverse)
             const double rp   = a + pos;
-            const size_t i0 = static_cast<size_t>(rp);
-            const double fr = rp - static_cast<double>(i0);
+            size_t i0 = static_cast<size_t>(rp);
+            if (i0 >= L.size()) i0 = wrap;   // rp can reach b (== N when trim1=1, esp. reverse) -> wrap
+            const double fr = rp - std::floor(rp);
             const size_t i1 = (i0 + 1 < L.size()) ? i0 + 1 : wrap;
 
             float amp = gain;                                 // fades apply to playback time (posf)
