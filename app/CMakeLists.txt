@@ -42,6 +42,13 @@ FetchContent_Declare(nlohmann_json
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
+# --- signalsmith-stretch (vendored, header-only, MIT) — pitch-preserving time-stretch
+# for the audio-clip warp engine (A2). Bundles its signalsmith-linear dependency.
+# Defined BEFORE the tests subdir + the tests-only `return()` below: it's header-only and
+# portable, and `test_clip_dsp` links it, so it must exist even when VIVID_BUILD_APP=OFF. ---
+add_library(signalsmith_stretch INTERFACE)
+target_include_directories(signalsmith_stretch INTERFACE deps/signalsmith-stretch)
+
 if(VIVID_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
@@ -93,11 +100,6 @@ FetchContent_MakeAvailable(glfw3webgpu)
 # --- miniaudio (vendored, header-only) ---
 add_library(miniaudio INTERFACE)
 target_include_directories(miniaudio INTERFACE deps/miniaudio)
-
-# --- signalsmith-stretch (vendored, header-only, MIT) — pitch-preserving time-stretch
-# for the audio-clip warp engine (A2). Bundles its signalsmith-linear dependency. ---
-add_library(signalsmith_stretch INTERFACE)
-target_include_directories(signalsmith_stretch INTERFACE deps/signalsmith-stretch)
 
 # --- nlohmann/json: fetched above the app guard (shared with headless tests) ---
 
