@@ -29,7 +29,12 @@ struct BitcrushOp : OperatorBase, AudioProcessable {
     float hold_[2] = { 0.f, 0.f };
     int   cnt_[2]  = { 0, 0 };
 
-    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&bits); o.push_back(&downsample); o.push_back(&mix); }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        semantic_intent(bits, "bit depth");           description(bits, "quantization resolution");
+        semantic_intent(downsample, "sample-rate reduction factor");
+        semantic_shape(mix, "scalar");                semantic_intent(mix, "dry/wet mix");
+        o.push_back(&bits); o.push_back(&downsample); o.push_back(&mix);
+    }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_in()); o.push_back(aud_out()); }
 
     void process_audio(const VividAudioContext* c) override {

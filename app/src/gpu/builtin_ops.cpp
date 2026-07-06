@@ -102,7 +102,13 @@ struct PlasmaOp : OperatorBase, GpuProcessable {
     Param<float> density{"density", 0.5f, 0.f, 1.f};
     Param<float> glow   {"glow",    0.5f, 0.f, 1.f};
     ShaderOp shader_; bool tried_ = false;
-    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&warp); o.push_back(&hue); o.push_back(&density); o.push_back(&glow); }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        semantic_intent(warp, "domain warp amount");   warp.display_hint = VIVID_DISPLAY_KNOB;
+        semantic_tag(hue, "phase_01"); semantic_intent(hue, "color hue"); hue.display_hint = VIVID_DISPLAY_KNOB;
+        semantic_intent(density, "pattern density");    density.display_hint = VIVID_DISPLAY_KNOB;
+        semantic_intent(glow, "glow intensity");        glow.display_hint = VIVID_DISPLAY_KNOB;
+        o.push_back(&warp); o.push_back(&hue); o.push_back(&density); o.push_back(&glow);
+    }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
     void process_gpu(const VividGpuContext* c) override {
         if (!tried_) { tried_ = true; shader_.init(c->device, c->queue, c->output_format, kPlasmaGLSL); }
