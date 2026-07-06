@@ -778,6 +778,19 @@ void ControlServer::register_handlers() {
         return r;
     };
 
+    // The catalog of NATIVE audio operators (the audio peer of list_operators, which is
+    // visual): instruments (sources, no audio input) + effects (audio in->out). Names are
+    // stable registry keys for set_track_audio_instrument / add_audio_effect.
+    handlers_["list_audio_operators"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json inst = json::array(), fx = json::array();
+        for (int i = 0; i < P::session_available_audio_op_count(c.session, 1); ++i)
+            inst.push_back(P::session_available_audio_op_name(c.session, 1, i));
+        for (int i = 0; i < P::session_available_audio_op_count(c.session, 0); ++i)
+            fx.push_back(P::session_available_audio_op_name(c.session, 0, i));
+        json r = ok(); r["instruments"] = inst; r["effects"] = fx; return r;
+    };
+
     // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
     handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
         json arr = json::array();
