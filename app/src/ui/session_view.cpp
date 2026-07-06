@@ -246,10 +246,18 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     // header strip (title) — a defined band above the device chain / params
     ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), 20.f, sty.region_hd[0], sty.region_hd[1], sty.region_hd[2], 1.0f);
     ui.draw_rect(0.f, y0 + 20.f, static_cast<float>(w.win_w), 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+    // UI-1: the detail region always declares its domain (strict-zones principle) — an accent
+    // edge + a badge, driven by the explicit focus, so audio vs visual is never ambiguous.
+    {
+        const bool vis = (w.focus.dom == FocusContext::Dom::Visual);
+        const float* dc = vis ? sty.gpu : sty.audio;
+        ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
+        draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
+    }
 
-    // When a visual node is selected in the graph, the dock becomes its inspector.
-    const int selop = w.app->graph ? w.app->graph->selected_op() : -1;
-    if (selop >= 0) {
+    // The detail region's explicit focus (UI-1) decides device (audio) vs visual-node (visual).
+    if (w.focus.kind == FocusContext::Kind::VisualNode && w.app->graph) {
+        const int selop = w.focus.node;
         char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", w.app->graph->op_kind_name(selop));
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
         ui.draw_text(120.f, y0 + 7.f, "teal = wired (modulated) \xC2\xB7 click a track header for devices",

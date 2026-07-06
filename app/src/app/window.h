@@ -16,6 +16,20 @@ struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src
 // A right-click context menu on a visuals op node (open its source / clone it).
 struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
+// The one deep view the detail region is showing (ADR-0013, UI-1). Explicit focus is the
+// single source of truth for that region — recomputed once per frame — replacing the old
+// implicit race where the draw path and the input path each independently re-derived the mode
+// from the current selection. `domain` drives the region's header tint (strict-zones principle).
+struct FocusContext {
+    enum class Kind { Device, VisualNode, ClipEditor };   // AudioGraph joins at UI-3
+    enum class Dom  { Audio, Visual };
+    Kind kind  = Kind::Device;
+    Dom  dom   = Dom::Audio;
+    int  track = 0;     // Device / ClipEditor
+    int  scene = -1;    // ClipEditor
+    int  node  = -1;    // VisualNode (op index)
+};
+
 // Per-window view + interaction state. Many Windows can point at one App, each
 // with its own surface, layout, selection, and drag state. The GLFW user pointer
 // points at a Window; handlers reach shared state through win->app.
@@ -47,6 +61,7 @@ struct Window {
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
+    FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
     float   param_drag_v0 = 0.f; double param_drag_y0 = 0.0;
