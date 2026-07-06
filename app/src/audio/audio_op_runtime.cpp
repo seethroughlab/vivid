@@ -63,6 +63,33 @@ AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
 
 void audio_op_destroy(AudioOp* a) { delete a; }
 
+// Registry inspection (UI thread) — enumerate audio operators for the device pickers.
+// want_source: true = instruments/generators (no audio input), false = effects.
+static bool descriptor_is_source(const VividOperatorDescriptor* d) {
+    for (uint32_t i = 0; i < d->port_count; ++i)
+        if (d->ports[i].type == VIVID_PORT_AUDIO_BUFFER && d->ports[i].direction == VIVID_PORT_INPUT) return false;
+    return true;
+}
+int audio_op_registry_count(OpRegistry& reg, bool want_source) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) {
+        const VividOperatorDescriptor* d = reg.descriptor_for(nm);
+        if (d && d->has_process_audio && descriptor_is_source(d) == want_source) ++n;
+    }
+    return n;
+}
+const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
+    if (idx < 0) return "";
+    int n = 0;
+    for (const auto& nm : reg.type_names()) {
+        const VividOperatorDescriptor* d = reg.descriptor_for(nm);
+        if (!d || !d->has_process_audio || descriptor_is_source(d) != want_source) continue;
+        if (n == idx) return d->name ? d->name : "";   // descriptor name is stable (registry-owned)
+        ++n;
+    }
+    return "";
+}
+
 const char* audio_op_type(const AudioOp* a)   { return a ? a->type.c_str() : ""; }
 bool audio_op_is_source(const AudioOp* a)     { return a && a->is_source; }
 int  audio_op_param_count(const AudioOp* a)   { return a ? a->nparams : 0; }
@@ -75,6 +102,14 @@ const char* audio_op_param_name(const AudioOp* a, int i) {
 float audio_op_param_get(const AudioOp* a, int i) {
     if (!a || i < 0 || i >= a->nparams) return 0.f;
     return a->pvals[i].load(std::memory_order_relaxed);
+}
+float audio_op_param_min(const AudioOp* a, int i) {
+    if (!a || i < 0 || i >= a->nparams) return 0.f;
+    return a->inst.param_ptrs[i]->min_value;
+}
+float audio_op_param_max(const AudioOp* a, int i) {
+    if (!a || i < 0 || i >= a->nparams) return 1.f;
+    return a->inst.param_ptrs[i]->max_value;
 }
 void audio_op_param_set(AudioOp* a, int i, float v) {
     if (!a || i < 0 || i >= a->nparams) return;

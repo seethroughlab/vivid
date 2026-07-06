@@ -175,7 +175,15 @@ int         session_set_track_audio_instrument(Session*, int track, const char* 
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
 float       session_audio_op_param_get(Session*, int track, int index, int param);
+float       session_audio_op_param_min(Session*, int track, int index, int param);   // Param<> range (UI normalization)
+float       session_audio_op_param_max(Session*, int track, int index, int param);
 void        session_audio_op_param_set(Session*, int track, int index, int param, float value);
+
+// Native audio-operator catalog for the device-chain pickers. want_source: 1 =
+// instruments/generators (no audio input), 0 = effects (has audio input). Names are
+// stable registry keys usable with session_add_audio_effect / _set_track_audio_instrument.
+int         session_available_audio_op_count(Session*, int want_source);
+const char* session_available_audio_op_name(Session*, int want_source, int idx);
 
 // Audio thread: render `frames` interleaved stereo into `out` (mix of all tracks).
 // `playing` false = paused: instruments emit no new notes and the sampler is silent

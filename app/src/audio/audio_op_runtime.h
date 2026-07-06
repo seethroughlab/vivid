@@ -20,12 +20,18 @@ struct AudioOp;   // opaque native audio-operator instance
 
 // --- UI/main thread ---
 AudioOp*    audio_op_create(OpRegistry& reg, const char* type_name);  // null if not a valid audio op
+// Enumerate registered audio operators for the device pickers. want_source: true =
+// instruments/generators (no audio input), false = effects (has audio input).
+int         audio_op_registry_count(OpRegistry& reg, bool want_source);
+const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx);   // stable registry key
 void        audio_op_destroy(AudioOp*);
 const char* audio_op_type(const AudioOp*);
 bool        audio_op_is_source(const AudioOp*);      // true = instrument/generator (no audio input)
 int         audio_op_param_count(const AudioOp*);
 const char* audio_op_param_name(const AudioOp*, int i);
 float       audio_op_param_get(const AudioOp*, int i);
+float       audio_op_param_min(const AudioOp*, int i);      // Param<> range (for UI normalization)
+float       audio_op_param_max(const AudioOp*, int i);
 void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (single UI producer); lock-free
 
 // --- Audio thread (RT-safe) ---

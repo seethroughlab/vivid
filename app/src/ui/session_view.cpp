@@ -22,19 +22,90 @@ void draw_wave_preview(Renderer2D& ui, const float* bins, int n,
                        const Rect& b, float ar, float ag, float ab, float alpha);
 void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my);
 
-// The "+ FX" effect picker for the device chain.
-void draw_fx_menu(Renderer2D& ui, const CtxMenu& m) {
+// --- Unified device chain resolution (VST3 + native audio operators) ---
+// Chip layout: slot 0 = instrument; slots [1..nfx] = VST3 effects; slots
+// [nfx+1..nfx+nnat] = native audio effects; the "+ FX" tile follows at dock_device_count.
+int dock_device_count(vivid::session::Session* s, int track) {
+    if (!s) return 1;
+    return 1 + vivid::session::session_effect_count(s, track)
+             + vivid::session::session_audio_effect_count(s, track);
+}
+DevSlot dock_resolve(vivid::session::Session* s, int track, int slot) {
+    DevSlot d;
+    if (!s || slot < 0) return d;
+    const int nfx = vivid::session::session_effect_count(s, track);
+    if (slot == 0) {                       // instrument slot
+        d.valid = true; d.is_instrument = true;
+        d.native = vivid::session::session_audio_op_type(s, track, -1)[0] != '\0';
+        d.api_index = d.native ? -1 : 0;
+        return d;
+    }
+    if (slot <= nfx) {                     // VST3 effect
+        d.valid = true; d.native = false; d.api_index = slot;   // VST3 device index (0=inst,1+=fx)
+        return d;
+    }
+    const int ne = slot - nfx - 1;         // native effect index
+    if (ne < vivid::session::session_audio_effect_count(s, track)) {
+        d.valid = true; d.native = true; d.api_index = ne;
+    }
+    return d;
+}
+int dock_param_count(vivid::session::Session* s, int track, const DevSlot& d) {
+    if (!s || !d.valid) return 0;
+    return d.native ? vivid::session::session_audio_op_param_count(s, track, d.api_index)
+                    : vivid::session::session_param_count(s, track, d.api_index);
+}
+const char* dock_param_name(vivid::session::Session* s, int track, const DevSlot& d, int i) {
+    if (!s || !d.valid) return "";
+    return d.native ? vivid::session::session_audio_op_param_name(s, track, d.api_index, i)
+                    : vivid::session::session_param_name(s, track, d.api_index, i);
+}
+float dock_param_norm(vivid::session::Session* s, int track, const DevSlot& d, int i) {
+    if (!s || !d.valid) return 0.f;
+    if (!d.native) return vivid::session::session_param_value(s, track, d.api_index, i);
+    const float lo = vivid::session::session_audio_op_param_min(s, track, d.api_index, i);
+    const float hi = vivid::session::session_audio_op_param_max(s, track, d.api_index, i);
+    const float v  = vivid::session::session_audio_op_param_get(s, track, d.api_index, i);
+    return (hi > lo) ? std::clamp((v - lo) / (hi - lo), 0.f, 1.f) : 0.f;
+}
+void dock_param_set_norm(vivid::session::Session* s, int track, const DevSlot& d, int i, float norm) {
+    if (!s || !d.valid) return;
+    if (!d.native) {
+        vivid::session::session_set_param(s, track, d.api_index,
+            vivid::session::session_param_id(s, track, d.api_index, i), norm);
+        return;
+    }
+    const float lo = vivid::session::session_audio_op_param_min(s, track, d.api_index, i);
+    const float hi = vivid::session::session_audio_op_param_max(s, track, d.api_index, i);
+    vivid::session::session_audio_op_param_set(s, track, d.api_index, i, lo + std::clamp(norm, 0.f, 1.f) * (hi - lo));
+}
+std::string dock_param_dest(int track, const DevSlot& d, int i) {
+    if (d.native)   // native: "aparam:T:IDX:I" (IDX = -1 for instrument)
+        return "aparam:" + std::to_string(track) + ":" + std::to_string(d.api_index) + ":" + std::to_string(i);
+    return param_dest(track, d.api_index, i);
+}
+
+// The "+ FX" effect picker for the device chain. Rows: VST3 effects first (accent
+// sty.fx), then native audio operators (accent sty.audio). Row j in [0,nvst) adds a
+// VST3 effect; j in [nvst, nvst+nnat) adds the native audio op (j-nvst). The input
+// handler in input.cpp mirrors this ordering.
+void draw_fx_menu(Renderer2D& ui, vivid::session::Session* s, const CtxMenu& m) {
     if (!m.open) return;
     const Style& sty = style();
     const float w = 150.f;
-    const int n = vivid::session::session_available_effect_count();
+    const int nvst = vivid::session::session_available_effect_count();
+    const int nnat = s ? vivid::session::session_available_audio_op_count(s, 0) : 0;   // 0 = effects
     ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
-    for (int j = 0; j < n; ++j) {
+    for (int j = 0; j < nvst + nnat; ++j) {
+        const bool nat = (j >= nvst);
         const float iy = m.y + j * 24.f;
+        const float* acc = nat ? sty.audio : sty.fx;
+        const char* nm = nat ? vivid::session::session_available_audio_op_name(s, 0, j - nvst)
+                             : vivid::session::session_available_effect_name(j);
         ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-        ui.draw_rect(m.x, iy, 3.f, 24.f, sty.fx[0], sty.fx[1], sty.fx[2], 1.0f);
-        ui.draw_text(m.x + 12.f, iy + 5.f, vivid::session::session_available_effect_name(j), sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
+        ui.draw_rect(m.x, iy, 3.f, 24.f, acc[0], acc[1], acc[2], 1.0f);
+        ui.draw_text(m.x + 12.f, iy + 5.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
     }
 }
 
@@ -242,22 +313,28 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     ui.draw_rect(rack.x, rack.y, 3.f, rack.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);                        // domain accent tick
     ui.draw_text(rack.x + rack.w - 46.f, rack.y + 3.f, "CHAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
 
-    // device chips: instrument (0) + effects (1..nfx) + "+ FX"
-    const int nfx = vivid::session::session_effect_count(s, seltr);
-    for (int i = 0; i <= nfx + 1; ++i) {
-        const bool isInst = (i == 0), isAdd = (i == nfx + 1);
-        if (isInst && aud) continue;  // sampler track has no instrument plugin
+    // device chips: instrument (0) + VST3 fx + native audio-op fx + "+ FX".
+    // Native chips carry the audio-domain accent + an "AFX"/"INST" kicker.
+    const int ndev = dock_device_count(s, seltr);
+    for (int i = 0; i <= ndev; ++i) {
+        const bool isAdd = (i == ndev);
+        const DevSlot slot = isAdd ? DevSlot{} : dock_resolve(s, seltr, i);
+        if (!isAdd && slot.is_instrument && aud && !slot.native) continue;  // sampler track: no VST3 instrument
         const Rect b = w.dock_chip(i);
-        const bool sel = !isAdd && w.sel_device == (isInst ? 0 : i);
-        const float* acc = isAdd ? sty.control : (isInst ? sty.audio : sty.fx);
+        const bool sel = !isAdd && w.sel_device == i;
+        const float* acc = isAdd ? sty.control : ((slot.native || slot.is_instrument) ? sty.audio : sty.fx);
         draw_card(ui, b.x, b.y, b.w, b.h, acc, hit(b, mx, my) || sel);
         if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
         if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 11.f, "+ FX", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f); continue; }
-        ui.draw_text(b.x + 8.f, b.y + 6.f, isInst ? "INST" : "FX", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
-        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", isInst ? vivid::session::session_track_name(s, seltr)
-                                                                  : vivid::session::session_effect_name(s, seltr, i - 1));
+        const char* kicker = slot.is_instrument ? "INST" : (slot.native ? "AFX" : "FX");
+        ui.draw_text(b.x + 8.f, b.y + 6.f, kicker, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
+        const char* dispname = slot.is_instrument
+            ? (slot.native ? vivid::session::session_audio_op_type(s, seltr, -1) : vivid::session::session_track_name(s, seltr))
+            : (slot.native ? vivid::session::session_audio_op_type(s, seltr, slot.api_index)
+                           : vivid::session::session_effect_name(s, seltr, slot.api_index - 1));
+        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", dispname);
         ui.draw_text(b.x + 8.f, b.y + 17.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
-        if (!isInst) {
+        if (!slot.is_instrument) {   // effects (VST3 or native) get a remove ×
             const Rect xb = w.dock_chip_x(i);
             ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
             ui.draw_text(xb.x + 3.f, xb.y, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f);
@@ -265,16 +342,16 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     }
 
     // knob grid for the selected device's params (its own zone below the rack)
-    const int seldev = std::max(0, w.sel_device);
-    const int pc = vivid::session::session_param_count(s, seltr, seldev);
-    const float* pacc = (seldev == 0) ? sty.audio : sty.fx;
+    const DevSlot seldev = dock_resolve(s, seltr, std::max(0, w.sel_device));
+    const int pc = dock_param_count(s, seltr, seldev);
+    const float* pacc = (seldev.is_instrument || seldev.native) ? sty.audio : sty.fx;
     const int shown = std::min(pc, d.cols * d.maxRows);
     for (int i = 0; i < shown; ++i) {
         float cx, cy; dock_knob(i, d, cx, cy);
-        const float v = vivid::session::session_param_value(s, seltr, seldev, i);
-        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", vivid::session::session_param_name(s, seltr, seldev, i));
+        const float v = dock_param_norm(s, seltr, seldev, i);
+        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", dock_param_name(s, seltr, seldev, i));
         char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", v);
-        const bool mapped = w.app->graph && w.app->graph->source_of(param_dest(seltr, seldev, i)) != nullptr;
+        const bool mapped = w.app->graph && w.app->graph->source_of(dock_param_dest(seltr, seldev, i)) != nullptr;
         knob(ui, cx, cy, 15.f, v, nm, vt, pacc, mapped);
         const Rect mb = dock_knob_map(i, d);   // small map affordance (amber=unmapped, teal=mapped)
         ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? sty.teal[0] : 0.55f, mapped ? sty.teal[1] : 0.45f,

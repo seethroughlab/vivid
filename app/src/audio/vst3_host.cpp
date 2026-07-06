@@ -1277,7 +1277,19 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
 const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }
 float       session_audio_op_param_get(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_get(op, p) : 0.f; }
+float       session_audio_op_param_min(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_min(op, p) : 0.f; }
+float       session_audio_op_param_max(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_max(op, p) : 1.f; }
 void        session_audio_op_param_set(Session* s, int t, int index, int p, float v) { vivid::AudioOp* op = audio_op_at(s, t, index); if (op) vivid::audio_op_param_set(op, p, v); }
+
+// Enumerate registered native audio operators for the device-chain pickers.
+// want_source: 1 = instruments/generators (no audio input), 0 = effects (audio input).
+// The registry inspection lives in audio_op_runtime.cpp (the TU with the full operator_api).
+int session_available_audio_op_count(Session* s, int want_source) {
+    return (s && s->op_reg) ? vivid::audio_op_registry_count(*s->op_reg, want_source != 0) : 0;
+}
+const char* session_available_audio_op_name(Session* s, int want_source, int idx) {
+    return (s && s->op_reg) ? vivid::audio_op_registry_name(*s->op_reg, want_source != 0, idx) : "";
+}
 
 // A small catalog of effects offered in the device-chain "+ FX" menu.
 static const struct { const char* label; const char* match; } kEffectCatalog[] = {

@@ -123,12 +123,20 @@ void publish_bridge_sources(App& app, Window& win) {
 void apply_audio_param_mappings(App& app) {
     if (!app.session || !app.graph) return;
     for (const auto& m : app.graph->mappings()) {
-        if (m.dest.rfind("param:", 0) != 0) continue;
         int T = -1, D = 0, I = 0;
-        if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)
-            vivid::session::session_set_param(app.session, T, D,
-                                         vivid::session::session_param_id(app.session, T, D, I),
-                                         app.graph->dest_value(m.dest));
+        if (m.dest.rfind("param:", 0) == 0) {                 // VST3 device param (normalized)
+            if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)
+                vivid::session::session_set_param(app.session, T, D,
+                                             vivid::session::session_param_id(app.session, T, D, I),
+                                             app.graph->dest_value(m.dest));
+        } else if (m.dest.rfind("aparam:", 0) == 0) {         // native audio-op param (IDX=-1 instrument)
+            if (std::sscanf(m.dest.c_str(), "aparam:%d:%d:%d", &T, &D, &I) == 3 && T >= 0) {
+                const float lo = vivid::session::session_audio_op_param_min(app.session, T, D, I);
+                const float hi = vivid::session::session_audio_op_param_max(app.session, T, D, I);
+                vivid::session::session_audio_op_param_set(app.session, T, D, I,
+                                             lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
+            }
+        }
     }
 }
 
@@ -208,9 +216,8 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         } else if (app.session) {
             const int ntr = vivid::session::session_track_count(app.session);
             const int seltr = std::min(std::max(win.sel_track, 0), ntr - 1);
-            const int seldev = std::max(0, win.sel_device);
-            vivid::session::session_set_param(app.session, seltr, seldev,
-                                         vivid::session::session_param_id(app.session, seltr, seldev, win.param_drag), v);
+            const vivid::ui::DevSlot seldev = vivid::ui::dock_resolve(app.session, seltr, std::max(0, win.sel_device));
+            vivid::ui::dock_param_set_norm(app.session, seltr, seldev, win.param_drag, v);
         }
     }
 }
@@ -325,7 +332,7 @@ void run_frame_loop(App& app, Window& win) {
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
-            draw_fx_menu(ui, win.fx_menu);
+            draw_fx_menu(ui, app.session, win.fx_menu);
             draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);

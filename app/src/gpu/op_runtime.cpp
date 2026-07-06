@@ -37,8 +37,8 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
     d.port_count  = static_cast<uint32_t>(out.ports.size());
     d.ports       = out.ports.empty() ? nullptr : out.ports.data();
     d.has_process_gpu   = (dynamic_cast<GpuProcessable*>(&op) != nullptr) ? 1 : 0;
-    d.has_process_audio = 0;
-    d.has_process_frame = 0;
+    d.has_process_audio = (dynamic_cast<AudioProcessable*>(&op) != nullptr) ? 1 : 0;
+    d.has_process_frame = (dynamic_cast<FrameProcessable*>(&op) != nullptr) ? 1 : 0;
     d.multiplicity_behavior = VIVID_MULTIPLICITY_SCALAR_ONLY;  // P1: scalar only (no lanes)
 }
 
