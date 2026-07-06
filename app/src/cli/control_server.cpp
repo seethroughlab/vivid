@@ -750,6 +750,34 @@ void ControlServer::register_handlers() {
         r["effects"] = fx; return r;
     };
 
+    // AG-1: the track's authoritative audio graph (nodes + edges the RT executor runs). Distinct
+    // from list_audio_ops (the linear device view): this reports the persistent topology model —
+    // stable node ids, kinds, and (from_id -> to_id) edges — that the audio-graph UI + future
+    // rewiring build on. graph_ok is false for VST3 / inline tracks (empty graph).
+    handlers_["get_audio_graph"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        static const char* kKind[] = { "instrument", "effect", "output" };
+        json r = ok();
+        r["graph_ok"]   = P::session_track_audio_graph_ok(c.session, track) != 0;
+        r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
+        json nodes = json::array();
+        for (int i = 0; i < P::session_track_audio_graph_node_count(c.session, track); ++i) {
+            const int k = P::session_track_audio_graph_node_kind(c.session, track, i);
+            nodes.push_back({ {"id",   P::session_track_audio_graph_node_id(c.session, track, i)},
+                              {"kind", (k >= 0 && k < 3) ? kKind[k] : "unknown"},
+                              {"type", P::session_track_audio_graph_node_type(c.session, track, i)} });
+        }
+        r["nodes"] = nodes;
+        json edges = json::array();
+        for (int i = 0; i < P::session_track_audio_graph_edge_count(c.session, track); ++i)
+            edges.push_back({ {"from", P::session_track_audio_graph_edge_from(c.session, track, i)},
+                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)} });
+        r["edges"] = edges;
+        return r;
+    };
+
     // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
     handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
         json arr = json::array();

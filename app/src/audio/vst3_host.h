@@ -185,6 +185,23 @@ void        session_audio_op_param_set(Session*, int track, int index, int param
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
 
+// AG-1: read-only introspection of a track's authoritative audio graph (the persistent
+// per-track topology model behind the compiled RT plan). Reports what the executor actually
+// runs. `graph_ok` is 1 only when the track is on the native audio-graph path (a native
+// instrument + native FX, no VST3); 0 => the track runs the inline/VST3 chain and the graph
+// is empty. Node kind: 0 = instrument (source), 1 = effect, 2 = output (sink). Node ids are
+// stable across rebuilds; edges are (from_id -> to_id) node-id pairs. All accessors are
+// bounds-checked (safe defaults on a bad index) and read under the track's graph lock.
+int         session_track_audio_graph_ok(Session*, int track);
+int         session_track_audio_graph_node_count(Session*, int track);
+int         session_track_audio_graph_node_id(Session*, int track, int i);
+int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
+const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
+int         session_track_audio_graph_output_id(Session*, int track);
+int         session_track_audio_graph_edge_count(Session*, int track);
+int         session_track_audio_graph_edge_from(Session*, int track, int e);
+int         session_track_audio_graph_edge_to(Session*, int track, int e);
+
 // A6: slice the source audio clip into a new MIDI track driven by a native Sampler loaded
 // with the clip's PCM + slices (slice_mode: 1=transients, 3=16-grid). Ascending pitches from
 // C1 map to slices. Returns the new track index, or -1 on failure. UI thread only.
