@@ -30,6 +30,13 @@ inline constexpr const char* kParamMissingDefaultString    = "param_missing_defa
 inline constexpr const char* kPortMissingName              = "port_missing_name";
 inline constexpr const char* kDuplicatePortName            = "duplicate_port_name";
 inline constexpr const char* kCustomPortMissingTypeName    = "custom_port_missing_type_name";
+// Audio operator port-shape rules. The audio runtime is single-stereo-port: it feeds an effect
+// exactly one stereo input and takes exactly one stereo output; extra audio ports and non-stereo
+// channel counts are silently ignored. These make that contract explicit instead of a silent mismatch.
+inline constexpr const char* kAudioTooManyInputPorts       = "audio_too_many_input_ports";
+inline constexpr const char* kAudioTooManyOutputPorts      = "audio_too_many_output_ports";
+inline constexpr const char* kAudioMissingOutputPort       = "audio_missing_output_port";
+inline constexpr const char* kAudioNonStereoChannels       = "audio_non_stereo_channels";
 inline constexpr const char* kUniformLayoutMissingName     = "uniform_layout_missing_name";
 inline constexpr const char* kUniformLayoutEmpty           = "uniform_layout_empty";
 inline constexpr const char* kUniformLayoutNot16ByteAligned = "uniform_layout_not_16_byte_aligned";
