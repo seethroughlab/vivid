@@ -85,6 +85,23 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             fx.push_back(je);
         }
         if (!fx.empty()) jt["fx"] = fx;
+
+        // Native audio operators (AO-2): the instrument slot (index -1) + effect chain,
+        // each as { op, params:{name:value} }.
+        auto audio_op = [&](int index) {
+            json jo; jo["op"] = vivid::session::session_audio_op_type(s, t, index);
+            json ps = json::object();
+            for (int p = 0; p < vivid::session::session_audio_op_param_count(s, t, index); ++p)
+                ps[vivid::session::session_audio_op_param_name(s, t, index, p)] =
+                    vivid::session::session_audio_op_param_get(s, t, index, p);
+            jo["params"] = ps;
+            return jo;
+        };
+        if (*vivid::session::session_audio_op_type(s, t, -1)) jt["audio_instrument"] = audio_op(-1);
+        json afx = json::array();
+        for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
+        if (!afx.empty()) jt["audio_fx"] = afx;
+
         tracks.push_back(jt);
     }
     j["tracks"] = tracks;
@@ -250,6 +267,25 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                     if (ok) ++added;
                 }
             }
+            // Native audio operators (AO-2): recreate the instrument slot + effect chain,
+            // applying saved params by name (param order is stable per op type).
+            auto apply_audio_params = [&](int index, const json& params) {
+                for (auto it = params.begin(); it != params.end(); ++it)
+                    for (int p = 0; p < vivid::session::session_audio_op_param_count(s, t, index); ++p)
+                        if (it.key() == vivid::session::session_audio_op_param_name(s, t, index, p)) {
+                            vivid::session::session_audio_op_param_set(s, t, index, p, it.value().get<float>()); break;
+                        }
+            };
+            if (jt.contains("audio_instrument")) {
+                const auto& ai = jt["audio_instrument"];
+                if (vivid::session::session_set_track_audio_instrument(s, t, ai.value("op", std::string()).c_str())
+                    && ai.contains("params")) apply_audio_params(-1, ai["params"]);
+            }
+            if (jt.contains("audio_fx"))
+                for (const auto& jn : jt["audio_fx"]) {
+                    const int idx = vivid::session::session_add_audio_effect(s, t, jn.value("op", std::string()).c_str());
+                    if (idx >= 0 && jn.contains("params")) apply_audio_params(idx, jn["params"]);
+                }
             const int act = jt.value("active", -1);
             if (act >= 0) vivid::session::session_launch_clip(s, t, act);
         }
