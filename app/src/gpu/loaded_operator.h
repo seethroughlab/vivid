@@ -5,16 +5,21 @@
 #include <vector>
 
 // Adapts a dlopen'd operator (an opaque void* instance + extern "C" fn-ptrs +
-// a C descriptor) to the in-process OperatorBase/GpuProcessable interface, so a
+// a C descriptor) to the in-process OperatorBase + capability interfaces, so a
 // loaded operator flows through OpRegistry::create() → build_descriptor() →
-// VisualGraph::render() identically to a built-in. The dylib's params are mirrored
-// into synthetic ParamBase objects (build_descriptor reads only plain ParamBase
-// fields, so the mirror is lossless); the dylib re-syncs its own params from
-// ctx->param_values inside vivid_process_gpu, so the synthetic params exist purely
-// to satisfy descriptor build + the resolved-value index contract.
+// the visual/audio runtimes identically to a built-in. It implements ALL THREE
+// process interfaces and forwards to the dylib's resolved fn-ptr (a no-op if the
+// dylib didn't export that stage), so audio/frame/gpu operator packages all run —
+// not just gpu. Which stage(s) an op ACTUALLY has is the dylib descriptor's
+// has_process_* flags (see declared_descriptor()); build_descriptor copies those
+// rather than inferring capability from this adapter's C++ inheritance. The dylib's
+// params are mirrored into synthetic ParamBase objects (build_descriptor reads only
+// plain ParamBase fields, so the mirror is lossless); the dylib re-syncs its own
+// params from ctx->param_values inside its process fn.
 namespace vivid {
 
-class LoadedOperator : public OperatorBase, public GpuProcessable {
+class LoadedOperator : public OperatorBase, public GpuProcessable,
+                       public AudioProcessable, public FrameProcessable {
 public:
     // `loader` is non-owning and must outlive this operator (App owns the loaders).
     explicit LoadedOperator(const OperatorLoader* loader);
@@ -23,6 +28,12 @@ public:
     void collect_params(std::vector<ParamBase*>& out) override;
     void collect_ports(std::vector<VividPortDescriptor>& out) override;
     void process_gpu(const VividGpuContext* ctx) override;
+    void process_audio(const VividAudioContext* ctx) override;
+    void process_frame(const VividFrameContext* ctx) override;
+
+    // The dylib's own descriptor — the authority on which process_* stages this op has
+    // (this adapter inherits all three interfaces, so a dynamic_cast can't tell them apart).
+    const VividOperatorDescriptor* host_capability_descriptor() const override;
 
 private:
     const OperatorLoader*            loader_   = nullptr;
