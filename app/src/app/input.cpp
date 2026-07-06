@@ -118,7 +118,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     // Tab -> open the operator chooser at the cursor (visuals pane only).
     if (key == GLFW_KEY_TAB && app->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
-        if (mx >= win->split_x) { app->graph->chooser_show(mx, my); return; }
+        if (win->show_graph && mx >= win->split_x) { app->graph->chooser_show(mx, my); return; }
     }
 
     // File shortcuts (⌘N/⌘O/⌘S/⇧⌘S) are owned by the native File menu (AppKit intercepts
@@ -166,7 +166,7 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
         return;
     }
     // Scroll over the visuals pane zooms the node graph around the cursor.
-    if (win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
+    if (win->show_graph && win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
 }
 
 // The clip cell under (mx,my), or false. Fills t/sc on a hit.
@@ -302,6 +302,13 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         vivid::toggle_popout(*app, *win);
         return;
     }
+    // UI-2: reveal/hide the visuals node graph (a deep view under the output).
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+        && hit(vivid::ui::graph_button_rect(win->win_w, win->split_x), mx, my)) {
+        win->show_graph = !win->show_graph;
+        if (!win->show_graph && app->graph) app->graph->select_op(-1);   // closing clears node focus
+        return;
+    }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
 
     // Mapping overview is modal while open: per-row steppers/toggle/clear; click-away closes.
@@ -354,7 +361,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     }
 
     // Right-click a visuals op node -> its context menu (open source / clone).
-    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && app->graph && mx >= win->split_x) {
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && win->show_graph && app->graph && mx >= win->split_x) {
         const int on = app->graph->op_at(mx, my);
         if (on >= 0) {
             win->node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
@@ -543,11 +550,18 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     }
 
     // Bottom dock interactions. If a visual node is selected, the dock is its
-    // inspector: knobs edit the node's base param values (vertical drag).
+    // inspector: knobs edit the node's base param values (vertical drag). Routed through the
+    // explicit focus (UI-1) — the single source of truth shared with the draw path — not a
+    // re-derived selected_op. A close (x) in the header exits the focus back to the device view.
+    if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {
+        if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            app->graph->select_op(-1); return;   // close the visual-node inspector -> device view
+        }
+    }
     {
-        const int selop = app->graph ? app->graph->selected_op() : -1;
-        if (selop >= 0 && my >= win->dock_top()) {   // only consume clicks inside the dock
+        if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {   // consume clicks inside the dock
             auto* g = app->graph;
+            const int selop = win->focus.node;
             const int pc = g->op_param_count_at(selop);
             for (int i = 0; i < pc; ++i) {
                 const int hint = g->op_param_hint_at(selop, i);
@@ -659,7 +673,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             return;
         }
     }
-    if (app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it
+    if (win->show_graph && app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it
     // clip cells -> single click launches; double click opens the MIDI editor
     for (int t = 0; t < tracks; ++t)
         for (int sc = 0; sc < scenes; ++sc)

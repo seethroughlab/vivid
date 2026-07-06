@@ -246,10 +246,25 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     // header strip (title) — a defined band above the device chain / params
     ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), 20.f, sty.region_hd[0], sty.region_hd[1], sty.region_hd[2], 1.0f);
     ui.draw_rect(0.f, y0 + 20.f, static_cast<float>(w.win_w), 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+    // UI-1: the detail region always declares its domain (strict-zones principle) — an accent
+    // edge + a badge, driven by the explicit focus, so audio vs visual is never ambiguous.
+    {
+        const bool vis = (w.focus.dom == FocusContext::Dom::Visual);
+        const float* dc = vis ? sty.gpu : sty.audio;
+        ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
+        draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
+        // Close (x): exits a drilled-in focus back to the device view (progressive disclosure).
+        // Only shown when there's a focus to exit — the visual-node inspector.
+        if (w.focus.kind == FocusContext::Kind::VisualNode) {
+            const Rect cb = dock_close_rect(w.win_w, w.win_h, w.dock_h);
+            const bool ch = hit(cb, mx, my);
+            ui.draw_text(cb.x, cb.y - 2.f, "\xC3\x97", ch ? 0.9f : 0.55f, ch ? 0.6f : 0.5f, ch ? 0.6f : 0.55f, 1.0f, sty.fs_body);
+        }
+    }
 
-    // When a visual node is selected in the graph, the dock becomes its inspector.
-    const int selop = w.app->graph ? w.app->graph->selected_op() : -1;
-    if (selop >= 0) {
+    // The detail region's explicit focus (UI-1) decides device (audio) vs visual-node (visual).
+    if (w.focus.kind == FocusContext::Kind::VisualNode && w.app->graph) {
+        const int selop = w.focus.node;
         char nh[64]; std::snprintf(nh, sizeof nh, "NODE \xC2\xB7 %s", w.app->graph->op_kind_name(selop));
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
         ui.draw_text(120.f, y0 + 7.f, "teal = wired (modulated) \xC2\xB7 click a track header for devices",
@@ -559,7 +574,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
       ui.draw_rect(pb.x, pb.y, sty.accent_bar, pb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
       ui.draw_text(pb.x + 8.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 Pop in" : "\xE2\x87\xB1 Pop out",
                    sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-    panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
+    // UI-2: toggle the visuals node graph (a deep view under the output). Lit when open.
+    { const Rect gb = graph_button_rect(w.win_w, w.split_x);
+      const bool gbh = hit(gb, mx, my) || w.show_graph;
+      ui.draw_rounded_rect(gb.x, gb.y, gb.w, gb.h, sty.radius, gbh ? sty.card_hi[0] : sty.card[0], gbh ? sty.card_hi[1] : sty.card[1], gbh ? sty.card_hi[2] : sty.card[2], 1.0f);
+      ui.draw_rect(gb.x, gb.y, sty.accent_bar, gb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+      ui.draw_text(gb.x + 8.f, gb.y + 2.f, "Graph", w.show_graph ? sty.gpu[0] : sty.body[0],
+                   w.show_graph ? sty.gpu[1] : sty.body[1], w.show_graph ? sty.gpu[2] : sty.body[2], 1.0f, sty.fs_label); }
+    if (w.show_graph) panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped)

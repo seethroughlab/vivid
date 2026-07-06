@@ -7,6 +7,7 @@
 #include "audio/sampler.h"
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
+#include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
@@ -61,6 +62,26 @@ struct LiveMidi {
     }
 };
 
+// --- AG-0: per-track audio graph runtime (ADR-0012) --------------------------------------
+// The graph executor currently runs pure-native tracks (a native instrument + native FX, no
+// VST3): each node is dispatched by kind, reading a per-block context. VST3 and sampler-loop
+// tracks stay on the inline path (gok=false). The edit-mirror (ggen/gmtx) publishes a
+// UI-compiled plan (topology) + POD node bindings that the audio thread copies into
+// reserved working buffers — no RT alloc/free. A node's index == its out_buf (see
+// AudioGraph::compile), so bindings are addressed by out_buf.
+constexpr int      kGraphMaxNodes = 64;
+constexpr uint32_t kGraphMaxBlock = 4096;
+
+enum class GNKind : uint8_t { NativeInst, NativeFx, Output };
+struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; };   // POD; copyable
+
+// Per-block audio-thread context shared by a track's node processors this block.
+struct GraphBlockCtx {
+    uint32_t frames = 0, sample_rate = 48000;
+    float    bpm = 120.f; uint32_t bpb = 4; double beats = 0.0;
+    const NoteEvent* notes = nullptr; uint32_t note_count = 0;
+};
+
 struct Track {
     Vst3Handle*           handle = nullptr;
     std::string           name;
@@ -101,6 +122,18 @@ struct Track {
     std::atomic<uint64_t>        op_fx_gen{0};
     uint64_t                     op_fx_gen_seen = 0;
     std::vector<vivid::AudioOp*> op_retired;
+    // AG-0 audio graph (ADR-0012). Working copies (audio thread) + edit copies (UI thread),
+    // published via ggen/gmtx like the FX chain. `gok` gates the graph path per track (false
+    // => inline). Working buffers are reserved to capacity so the audio-thread copy from the
+    // edit copies never reallocates. `blk` is transient (filled each block).
+    vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
+    std::vector<GNodeBind>           gbinds, gbinds_edit;
+    std::vector<float>               gpool;            // node-buffer pool
+    bool                             gok = false, gok_edit = false;
+    std::mutex                       gmtx;
+    std::atomic<uint64_t>            ggen{0};
+    uint64_t                         ggen_seen = 0;
+    GraphBlockCtx                    blk;
     // Live MIDI editing: the UI edits edit_clips; the audio thread copies them
     // into `clips` element-wise (clip addresses stay stable) when edit_gen bumps.
     std::mutex            edit_mtx;
@@ -218,6 +251,89 @@ static void pad_aud_clips(Track* t, int scenes) {
     while (static_cast<int>(t->aud_clips.size()) < scenes) t->aud_clips.emplace_back();
 }
 
+// AG-0: reserve a track's audio-graph working buffers to capacity so the audio-thread copy
+// from the edit copies never reallocates (RT-safe). Call once at track creation.
+static void reserve_track_graph(Track* t) {
+    t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
+    t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
+    t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
+}
+
+// AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
+// currently runs only pure-native tracks — a native instrument + native FX, no VST3 handle
+// and no VST3 effects; anything else falls back to the inline path (gok=false). Builds a
+// linear graph inst -> fx0 -> ... -> Output, publishes it via the ggen/gmtx edit-mirror.
+static void rebuild_track_graph(Track* t) {
+    std::lock_guard<std::mutex> lk(t->gmtx);
+    t->gbinds_edit.clear();
+    const bool native_only = !t->is_audio && t->op_instrument_edit && !t->handle && t->effects_edit.empty();
+    if (!native_only || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
+        t->gok_edit = false;
+        t->ggen.fetch_add(1, std::memory_order_release);
+        return;
+    }
+    vivid::audio::AudioGraph g;
+    t->gbinds_edit.push_back({ GNKind::NativeInst, t->op_instrument_edit });
+    int prev = g.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
+    for (vivid::AudioOp* op : t->op_effects_edit) {
+        t->gbinds_edit.push_back({ GNKind::NativeFx, op });
+        const int fx = g.add_node(false, false, nullptr, nullptr, "fx");
+        g.connect(prev, fx);
+        prev = fx;
+    }
+    t->gbinds_edit.push_back({ GNKind::Output, nullptr });
+    const int out = g.add_node(false, true, nullptr, nullptr, "out");
+    g.connect(prev, out);
+    g.set_output_id(out);
+    t->gok_edit = g.compile(t->gcg_edit);
+    t->ggen.fetch_add(1, std::memory_order_release);
+}
+
+// AG-0: execute a track's compiled audio graph on the audio thread (RT-safe — no alloc, no
+// lock). Sums each node's inputs into the shared scratch buffer, dispatches the node's
+// processor by kind, writes its output buffer; finally copies the Output node's buffer into
+// L/R. `t.blk` must be filled for this block before calling.
+static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
+    const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty()) {
+        std::memset(L, 0, frames * sizeof(float)); std::memset(R, 0, frames * sizeof(float));
+        return;
+    }
+    const uint32_t stride = frames;
+    float* pool = t.gpool.data();
+    const int scratch = cg.buf_count;
+    const GraphBlockCtx& b = t.blk;
+    for (const vivid::audio::CompiledStep& s : cg.steps) {
+        float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+        float* oR = oL + stride;
+        const GNodeBind& nb = t.gbinds[s.out_buf];
+        if (s.n_in == 0) {   // source node
+            if (nb.kind == GNKind::NativeInst && nb.op)
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, b.notes, b.note_count);
+            else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
+            continue;
+        }
+        // Sum inputs into the scratch buffer (predecessors already ran — topo order).
+        float* iL = pool + static_cast<size_t>(scratch) * 2 * stride;
+        float* iR = iL + stride;
+        const float* a0L = pool + static_cast<size_t>(s.in_buf[0]) * 2 * stride;
+        std::memcpy(iL, a0L, frames * sizeof(float));
+        std::memcpy(iR, a0L + stride, frames * sizeof(float));
+        for (int k = 1; k < s.n_in; ++k) {
+            const float* akL = pool + static_cast<size_t>(s.in_buf[k]) * 2 * stride;
+            const float* akR = akL + stride;
+            for (uint32_t i = 0; i < frames; ++i) { iL[i] += akL[i]; iR[i] += akR[i]; }
+        }
+        std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
+        std::memcpy(oR, iR, frames * sizeof(float));
+        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
+            vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
+    }
+    const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
+    std::memcpy(L, outL, frames * sizeof(float));
+    std::memcpy(R, outL + stride, frames * sizeof(float));
+}
+
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
     DIR* d = opendir(dir.c_str());
     if (!d) return;
@@ -280,6 +396,7 @@ t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
+    reserve_track_graph(t);
     return t;
 }
 
@@ -296,6 +413,7 @@ t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->effects.reserve(16); t->effects_edit.reserve(16);
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
+    reserve_track_graph(t);
     return t;
 }
 
@@ -1030,6 +1148,19 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_fx_mtx.unlock();
             }
         }
+        // AG-0: apply a pending audio-graph edit (topology plan + node bindings). Reserved
+        // working buffers => these copies never reallocate (RT-safe); no free on this thread.
+        if (t.ggen.load(std::memory_order_acquire) != t.ggen_seen) {
+            if (t.gmtx.try_lock()) {
+                t.gcg.steps  = t.gcg_edit.steps;   // POD steps; capacity reserved to kGraphMaxNodes
+                t.gcg.buf_count  = t.gcg_edit.buf_count;
+                t.gcg.output_buf = t.gcg_edit.output_buf;
+                t.gbinds     = t.gbinds_edit;      // POD binds; capacity reserved
+                t.gok        = t.gok_edit;
+                t.ggen_seen  = t.ggen.load(std::memory_order_acquire);
+                t.gmtx.unlock();
+            }
+        }
         if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
         float* L = t.bl.data(); float* R = t.br.data();
         std::memset(L, 0, frames * sizeof(float));
@@ -1094,7 +1225,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                   t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
                                             kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
             // Source: a native instrument operator takes precedence over the VST3 instrument.
-            if (t.op_instrument) {
+            // When the audio graph is active (gok) the graph renders the instrument + FX
+            // below, so skip the inline native-instrument render here.
+            if (!t.gok && t.op_instrument) {
                 vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
                                         static_cast<float>(bpm), bpb, beats,
                                         t.nev.data(), static_cast<uint32_t>(t.nev.size()));
@@ -1135,10 +1268,19 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             std::memcpy(L, oL, frames * sizeof(float));
             std::memcpy(R, oR, frames * sizeof(float));
         }
-        // Native audio-operator effect chain (AO-1): each op transforms L/R in place.
-        for (vivid::AudioOp* op : t.op_effects) {
-            if (!op) continue;
-            vivid::audio_op_process(op, L, R, frames, sample_rate, static_cast<float>(bpm), bpb, beats, nullptr, 0);
+        // Native audio operators. When the audio graph is active (AG-0, gok), run the
+        // compiled graph — it renders the native instrument source + native FX chain (L/R was
+        // left at silence above). Otherwise fall back to the inline in-place native FX chain.
+        if (t.gok) {
+            t.blk.frames = frames; t.blk.sample_rate = sample_rate;
+            t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
+            t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
+            run_track_graph(t, L, R, frames);
+        } else {
+            for (vivid::AudioOp* op : t.op_effects) {
+                if (!op) continue;
+                vivid::audio_op_process(op, L, R, frames, sample_rate, static_cast<float>(bpm), bpb, beats, nullptr, 0);
+            }
         }
         t.steady += frames;
 
@@ -1210,6 +1352,7 @@ bool session_add_effect(Session* s, int t, const char* bundle) {
     Track& tr = *s->tracks[t];
     { std::lock_guard<std::mutex> lk(tr.fx_mtx); tr.effects_edit.push_back(fx); }
     tr.fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: a VST3 effect disqualifies the native graph path (gok=false)
     std::fprintf(stderr, "[Session] track %d + effect: %s\n", t, fx->plugin_name.c_str());
     return true;
 }
@@ -1224,6 +1367,7 @@ void session_remove_effect(Session* s, int t, int e) {
         }
     }
     tr.fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: a VST3 effect disqualifies the native graph path (gok=false)
 }
 
 // --- Native audio operators (AO-1). index -1 = the instrument slot; >=0 = an effect. ---
@@ -1244,6 +1388,7 @@ int session_add_audio_effect(Session* s, int t, const char* op_type) {
     int idx;
     { std::lock_guard<std::mutex> lk(tr.op_fx_mtx); idx = static_cast<int>(tr.op_effects_edit.size()); tr.op_effects_edit.push_back(op); }
     tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
     return idx;
 }
 void session_remove_audio_effect(Session* s, int t, int index) {
@@ -1255,6 +1400,7 @@ void session_remove_audio_effect(Session* s, int t, int index) {
           tr.op_effects_edit.erase(tr.op_effects_edit.begin() + index);
       } }
     tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
 }
 int session_audio_effect_count(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? static_cast<int>(s->tracks[t]->op_effects_edit.size()) : 0;
@@ -1275,6 +1421,7 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
       if (tr.op_instrument_edit) tr.op_retired.push_back(tr.op_instrument_edit);
       tr.op_instrument_edit = op; }
     tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
     return 1;
 }
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
@@ -1341,6 +1488,7 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
         }
     }
     tr.op_fx_gen.fetch_add(1, std::memory_order_release);
+    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
 
     // 4. Write the MIDI clip: one ascending-pitch note per slice at its beat position.
     {

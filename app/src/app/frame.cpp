@@ -322,17 +322,39 @@ void run_frame_loop(App& app, Window& win) {
             vgraph.render(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi, vp.w * win.dpi, vp.h * win.dpi, tsec, srcTex.view);
 
             draw_ui(ui, win, beats, mx, my);
-            const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
-            graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
-            graph.draw(ui);   // includes live node thumbnails via draw_texture
-            // The bottom dock is a shared inspector/editor space: the clip editor takes it
-            // over while docked; otherwise the device/node inspector shows there.
-            const bool editor_owns_dock = clip_editor.is_open() && clip_editor.is_docked();
-            if (!editor_owns_dock) draw_device_dock(ui, win, mx, my);   // bottom device-view dock (full width)
+            // UI-2: the visuals node graph is a deep view under the output — drawn only when
+            // revealed (win.show_graph). When hidden, the output fills the visual zone and the
+            // graph has no hit area (bounds zeroed) so it never consumes clicks.
+            if (win.show_graph) {
+                const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
+                graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
+                graph.draw(ui);   // includes live node thumbnails via draw_texture
+            } else {
+                graph.set_bounds(0.f, 0.f, 0.f, 0.f);
+            }
+            // UI-1: recompute the detail region's explicit focus — the single source of truth
+            // for what the bottom region shows + its domain — replacing the old implicit race
+            // where draw and input each re-derived the mode from the current selection.
+            {
+                FocusContext f;
+                const int selop = app.graph ? app.graph->selected_op() : -1;
+                if (clip_editor.is_open() && clip_editor.is_docked()) {
+                    f.kind = FocusContext::Kind::ClipEditor; f.dom = FocusContext::Dom::Audio;
+                    f.track = clip_editor.track(); f.scene = clip_editor.scene();
+                } else if (selop >= 0) {
+                    f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
+                } else {
+                    f.kind = FocusContext::Kind::Device; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
+                }
+                win.focus = f;
+            }
+            // The bottom dock is the detail region: the clip editor owns it while docked;
+            // otherwise it shows the focused device (audio) or visual-node (visual) inspector.
+            if (win.focus.kind != FocusContext::Kind::ClipEditor) draw_device_dock(ui, win, mx, my);
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
-            graph.draw_overlays(ui);  // operator chooser
+            if (win.show_graph) graph.draw_overlays(ui);  // operator chooser (graph deep view only)
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
