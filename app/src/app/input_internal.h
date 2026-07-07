@@ -18,4 +18,8 @@ namespace vivid::input {
 // (note-on/off need RELEASE, so this runs before the PRESS-only gate in key_callback).
 bool typing_key(Window& win, App& app, int key, int action);
 
+// ---- transport (input_transport.cpp) ----
+bool transport_mouse(Window& win, App& app, int button, int action, double mx, double my);
+bool transport_key(Window& win, App& app, int key);   // Space / R
+
 }  // namespace vivid::input
