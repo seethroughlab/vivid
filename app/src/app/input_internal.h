@@ -22,4 +22,9 @@ bool typing_key(Window& win, App& app, int key, int action);
 bool transport_mouse(Window& win, App& app, int button, int action, double mx, double my);
 bool transport_key(Window& win, App& app, int key);   // Space / R
 
+// ---- plugin browser drag/drop (input_plugins.cpp) ----
+bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
+bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
+void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
+
 }  // namespace vivid::input

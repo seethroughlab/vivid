@@ -108,11 +108,7 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
         win->editor->on_scroll(xoff, yoff, scroll_mods(w), mx, my); return;
     }
     // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
-    if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
-        const float smax = vivid::ui::plugins_scroll_max(win->sidebar_w, win->win_h, win->dock_h, vivid::session::plugin_count());
-        win->plugin_scroll = std::min(smax, std::max(0.f, win->plugin_scroll - static_cast<float>(yoff) * 26.f));
-        return;
-    }
+    if (vivid::input::plugins_scroll(*win, *win->app, yoff, mx, my)) return;
     // Scroll over the visuals pane zooms the node graph around the cursor.
     if (win->show_graph && win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
     // Scroll over the audio-graph deep view zooms it around the cursor (2i).
@@ -182,50 +178,6 @@ void stash_clip(vivid::App& app, int st, int ss) {
 
 // Add a browsed plugin (auto-routed): try it as an instrument (a MIDI-in bus makes a
 // new track); otherwise add it as an effect on the selected track. Loading happens here.
-void add_plugin(vivid::App& app, vivid::Window& win, int idx) {
-    auto* s = app.session;
-    if (!s) return;
-    const std::string path = vivid::session::plugin_at(idx).path;
-    if (path.empty()) return;
-    const int t = vivid::session::session_add_instrument_track(s, path.c_str());
-    if (t >= 0) { win.sel_track = t; win.sel_device = 0; if (app.graph) app.graph->select_op(-1); return; }
-    const int tracks = vivid::session::session_track_count(s);
-    if (tracks <= 0) return;
-    const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
-    vivid::session::session_add_effect(s, seltr, path.c_str());   // not an instrument -> effect on the selected track
-    if (app.graph) app.graph->select_op(-1);
-}
-
-// The plugin-drop target under (mx,my): a track index for an effect, -2 for the
-// "+Track" slot (new instrument), or -1 for nothing. dmx is DAW-pane x (mx - sidebar).
-int plugin_drop_target(const vivid::Window& win, int tracks, double dmx, double my) {
-    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) return -2;   // +Track slot
-    for (int t = 0; t < tracks; ++t)                     // a track header or its clip column
-        if (hit(track_header_rect(t), dmx, my) ||
-            (dmx >= track_x(t) && dmx < track_x(t) + kTrackW && my >= kHeaderY && my < win.dock_top()))
-            return t;
-    if (my >= win.dock_top()) return std::min(std::max(win.sel_track, 0), tracks - 1);   // the dock = selected track
-    return -1;
-}
-// Drop a browsed plugin onto a track (effect) or the +Track slot (new instrument).
-void drop_plugin(vivid::App& app, vivid::Window& win, int idx, double mx, double my) {
-    auto* s = app.session;
-    if (!s) return;
-    const std::string path = vivid::session::plugin_at(idx).path;
-    if (path.empty()) return;
-    const int tracks = vivid::session::session_track_count(s);
-    const int tgt = plugin_drop_target(win, tracks, mx - win.sidebar_w, my);
-    if (tgt == -1) return;
-    if (tgt == -2) {   // new instrument track
-        const int t = vivid::session::session_add_instrument_track(s, path.c_str());
-        if (t >= 0) { win.sel_track = t; win.sel_device = 0; }
-    } else {           // effect on the dropped-on track
-        vivid::session::session_add_effect(s, tgt, path.c_str());
-        win.sel_track = tgt;
-    }
-    if (app.graph) app.graph->select_op(-1);
-}
-
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
@@ -343,12 +295,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             win->ag_wire_from = -1;
             return;
         }
-        if (win->plugin_drag_i >= 0) {   // plugin drop (from the browser onto a track / +Track)
-            if (win->plugin_dragging) drop_plugin(*app, *win, win->plugin_drag_i, mx, my);
-            win->plugin_drag_i = -1; win->plugin_dragging = false;
-            if (app->graph) app->graph->on_up(mx, my);
-            return;
-        }
+        if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
         if (win->clip_drag_t >= 0 || win->clip_drag_from_pool >= 0) {   // clip drop (grid or pool source)
             int tt = -1, ts = -1;
             const bool onCell = clip_cell_at(tracks, scenes, mx - win->sidebar_w, my, tt, ts);   // grid is shifted
@@ -382,20 +329,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         if (pi >= 0 && vivid::ui::pool_item_visible(pi, win->sidebar_w, win->win_h, win->dock_h)) {
             win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; return;
         }
-        // PLUGINS panel: double-click a row to add (auto-route); or drag a row onto a
-        // track (effect) / the +Track slot (instrument).
-        const int np = vivid::session::plugin_count();
-        const int pr = vivid::ui::plugin_row_at(win->sidebar_w, win->win_h, win->dock_h, win->plugin_scroll, np, mx, my);
-        if (pr >= 0) {
-            const double now = glfwGetTime();
-            if (win->last_plugin_i == pr && now - win->last_plugin_t < 0.35) {
-                add_plugin(*app, *win, pr); win->last_plugin_t = -1; win->plugin_drag_i = -1;   // consumed by the double-click
-            } else {
-                win->last_plugin_i = pr; win->last_plugin_t = now;
-                win->plugin_drag_i = pr; win->plugin_dragging = false;   // arm a potential drag-to-track
-                win->plugin_drag_x0 = mx; win->plugin_drag_y0 = my;
-            }
-        }
+        // PLUGINS panel: double-click a row to add (auto-route), or drag a row onto a track/+Track.
+        vivid::input::plugins_sidebar_press(*win, *app, mx, my);
         return;   // consume all clicks over the sidebar
     }
 
