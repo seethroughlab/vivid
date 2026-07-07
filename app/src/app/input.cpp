@@ -1,4 +1,5 @@
 #include "app/input.h"
+#include "app/input_internal.h"   // Phase D (#8): per-concern input controllers
 #include "platform/platform.h"
 
 #define GLFW_INCLUDE_NONE
@@ -34,22 +35,6 @@ using namespace vivid::ui;  // Rect/hit, layout helpers + constants, meter_hit, 
 // platform/menu_bar.* + app/file_actions.*, wired in main.cpp. Its ⌘N/⌘O/⌘S/⇧⌘S key
 // equivalents are handled by AppKit, so there's no File handling here anymore.
 
-// Musical typing (M6.2): map a QWERTY key to a semitone slot 0..15 above the base C,
-// using Ableton's layout (bottom row = white keys, upper row = sharps). -1 = not a note key.
-int mt_slot(int key) {
-    switch (key) {
-        case GLFW_KEY_A: return 0;  case GLFW_KEY_W: return 1;
-        case GLFW_KEY_S: return 2;  case GLFW_KEY_E: return 3;
-        case GLFW_KEY_D: return 4;  case GLFW_KEY_F: return 5;
-        case GLFW_KEY_T: return 6;  case GLFW_KEY_G: return 7;
-        case GLFW_KEY_Y: return 8;  case GLFW_KEY_H: return 9;
-        case GLFW_KEY_U: return 10; case GLFW_KEY_J: return 11;
-        case GLFW_KEY_K: return 12; case GLFW_KEY_O: return 13;
-        case GLFW_KEY_L: return 14; case GLFW_KEY_P: return 15;
-        default: return -1;
-    }
-}
-
 // Number keys 1..N launch scene 0..N-1 across all tracks (applied on the next bar).
 void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
@@ -66,41 +51,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the chooser is up
     }
-    // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
-    // Toggle with ` (grave). Runs before the PRESS-only gate below because note-off needs
-    // the RELEASE event. Note/octave/velocity keys are swallowed so they don't also fire
-    // global shortcuts; everything else (space, etc.) still falls through.
-    if (action == GLFW_PRESS && key == GLFW_KEY_GRAVE_ACCENT) {
-        win->typing = !win->typing;
-        std::fprintf(stderr, "[vivid] musical typing %s\n", win->typing ? "ON" : "off");
-        if (!win->typing && app->session)   // silence held notes when leaving typing mode
-            for (int s = 0; s < 16; ++s)
-                if (win->typing_held[s]) { vivid::session::session_note_off(app->session, win->typing_held[s] - 1); win->typing_held[s] = 0; }
-        return;
-    }
-    if (win->typing && app->session) {
-        const int slot = mt_slot(key);
-        if (slot >= 0) {
-            const bool step = win->editor && win->editor->is_open() && win->editor->step_mode();
-            if (action == GLFW_PRESS && !win->typing_held[slot]) {
-                const int pitch = std::clamp(60 + 12 * win->typing_oct + slot, 0, 127);
-                vivid::session::session_note_on(app->session, pitch, win->typing_vel);
-                win->typing_held[slot] = pitch + 1;
-                if (step) win->editor->step_note_on(pitch, win->typing_vel);
-            } else if (action == GLFW_RELEASE && win->typing_held[slot]) {
-                vivid::session::session_note_off(app->session, win->typing_held[slot] - 1);
-                win->typing_held[slot] = 0;
-                if (step) win->editor->step_note_off();
-            }
-            return;  // swallow
-        }
-        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-            if (key == GLFW_KEY_Z) { win->typing_oct = std::max(-4, win->typing_oct - 1); return; }
-            if (key == GLFW_KEY_X) { win->typing_oct = std::min( 4, win->typing_oct + 1); return; }
-            if (key == GLFW_KEY_C) { win->typing_vel = std::max(0.1f, win->typing_vel - 0.1f); return; }
-            if (key == GLFW_KEY_V) { win->typing_vel = std::min(1.0f, win->typing_vel + 0.1f); return; }
-        }
-    }
+    // Musical typing (M6.2) — the ` toggle + note/octave/velocity keys. Runs before the PRESS-only
+    // gate below because note-off needs the RELEASE event; unhandled keys fall through.
+    if (vivid::input::typing_key(*win, *app, key, action)) return;
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
     if (key == GLFW_KEY_ESCAPE && win->editor && win->editor->is_open()) { win->editor->close(); return; }
     // The clip editor, when open, gets first crack at keys (Delete/undo/select-all/tool).
