@@ -27,6 +27,28 @@ bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
 bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
 void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
 
+// ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
+void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
+bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my);  // deep-view press
+bool graph_drill_in(Window& win, App& app, int button, int action, double mx, double my);     // Device "Graph" button
+bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
+bool graph_rewire_release(Window& win, App& app, double mx, double my);                        // complete a rewire
+bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
+
+// ---- bottom dock: menus + device chain + node inspector (input_dock.cpp) ----
+bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node
+bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     // fx / +Track / map pickers
+bool dock_inspector(Window& win, App& app, double mx, double my);             // visual-node param inspector
+bool dock_device_chain(Window& win, App& app, double mx, double my, int tracks);  // device chips + param knobs
+
+// ---- session grid / mixer / clip pool (input_clipgrid.cpp) ----
+bool clipgrid_release(Window& win, App& app, double mx, double my, int mods, int tracks, int scenes);  // clip drop
+bool clipgrid_pool_press(Window& win, App& app, double mx, double my);            // CLIPS-panel press (sidebar guard)
+bool clipgrid_meter_menu(Window& win, App& app, double mx, double my, int tracks, int scenes);  // meter char-menu
+bool clipgrid_track_header(Window& win, App& app, double mx, double my, int tracks);  // header ×/select + "+Track"
+bool clipgrid_mixer(Window& win, App& app, double mx, double my, int tracks, int scenes);   // arm + gain
+bool clipgrid_cells(Window& win, App& app, double mx, double my, int tracks, int scenes);   // clip cells + scene launch
+
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
 bool editor_scroll(Window& win, double xoff, double yoff, int mods, double mx, double my);
