@@ -94,7 +94,9 @@ void draw_fx_menu(Renderer2D& ui, vivid::session::Session* s, const CtxMenu& m) 
     if (!m.open) return;
     const Style& sty = style();
     const float w = 150.f;
-    const int nvst = vivid::session::session_available_effect_count();
+    // Graph mode (added from the audio-graph deep view) is native-only; the device chain lists
+    // the VST3 catalog first, then native operators.
+    const int nvst = m.graph ? 0 : vivid::session::session_available_effect_count();
     const int nnat = s ? vivid::session::session_available_audio_op_count(s, 0) : 0;   // 0 = effects
     ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     ui.draw_text(m.x + 10.f, m.y - 18.f, "+ effect", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);

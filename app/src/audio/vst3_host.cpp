@@ -1628,6 +1628,50 @@ int session_audio_graph_disconnect(Session* s, int t, int from_id, int to_id) {
     return 1;
 }
 
+// Node-id-keyed param access. The chain-index model (audio_op_at, -1/0+) can't address a node
+// in a non-linear graph, so params are addressed by stable node id (from the introspection API).
+// Works for both derived (linear) and authoritative graphs — agnodes holds each node's bound op.
+static vivid::AudioOp* graph_node_op(Track* tr, int node_id) {   // caller holds tr->gmtx
+    const int idx = tr->agraph.node_index(node_id);
+    return (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].op : nullptr;
+}
+int session_audio_graph_node_param_count(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_count(op) : 0;
+}
+const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_name(op, p) : "";
+}
+float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_get(op, p) : 0.f;
+}
+float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_min(op, p) : 0.f;
+}
+float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 1.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_max(op, p) : 1.f;
+}
+void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    if (op) vivid::audio_op_param_set(op, p, v);
+}
+
 // A6: slice an audio clip into a new MIDI track driven by a native Sampler. Computes the
 // clip's slices (`slice_mode`: 1=transients, 3=16-grid), creates a paired instrument track
 // whose native instrument is a Sampler loaded with the clip's PCM + those slices, and writes

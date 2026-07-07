@@ -18,11 +18,11 @@ namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
 
-// A laid-out node. `chain` addresses the underlying op for params/removal: -1 = instrument,
-// 0+ = effect index, -2 = output (no params, not removable).
+// A laid-out node. `node_id` is the stable graph node id — it addresses the node for params,
+// removal, and rewiring (the chain-index model can't address nodes in a non-linear graph).
 struct AudioNodeBox {
-    int   kind = 0;      // 0 instrument / 1 effect / 2 output
-    int   chain = -2;
+    int   kind = 0;         // 0 instrument / 1 effect / 2 output
+    int   node_id = -1;     // stable graph node id
     float x = 0, y = 0, w = 0, h = 0;
 };
 
@@ -44,11 +44,11 @@ public:
     Rect add_button_rect() const;
     // The remove (x) rect for an effect node card (only meaningful for kind==1 boxes).
     Rect remove_rect(const AudioNodeBox& b) const;
-    // The inline param cells for the selected op (chain: -1 instrument / 0+ effect); empty otherwise.
-    std::vector<AudioParamCell> param_cells(int sel_chain) const;
+    // The inline param cells for the selected node (by node id; -1 = none); empty otherwise.
+    std::vector<AudioParamCell> param_cells(int sel_node) const;
 
     // Render: the graph + (if a node is selected) its highlight + inline param strip.
-    void draw(Renderer2D& r, int sel_chain) const;
+    void draw(Renderer2D& r, int sel_node) const;
 
 private:
     Rect graph_region() const;   // the node-graph area (above the param strip)

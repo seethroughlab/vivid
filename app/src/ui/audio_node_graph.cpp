@@ -46,12 +46,10 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     if (n <= 0) return out;
 
-    std::vector<int> id(n), kind(n), rank(n, 0), slot(n, 0), chain(n, -2);
-    int fx = 0;
+    std::vector<int> id(n), kind(n), rank(n, 0), slot(n, 0);
     for (int i = 0; i < n; ++i) {
         id[i]   = P::session_track_audio_graph_node_id(s_, track_, i);
         kind[i] = P::session_track_audio_graph_node_kind(s_, track_, i);
-        chain[i] = kind[i] == 0 ? -1 : (kind[i] == 1 ? fx++ : -2);
     }
     auto idx_of = [&](int nid) { for (int i = 0; i < n; ++i) if (id[i] == nid) return i; return -1; };
     const int ne = P::session_track_audio_graph_edge_count(s_, track_);
@@ -76,16 +74,16 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     const float oy = g.y + (g.h - world_h * scale) * 0.5f;
     out.reserve(n);
     for (int i = 0; i < n; ++i)
-        out.push_back({ kind[i], chain[i],
+        out.push_back({ kind[i], id[i],
                         ox + rank[i] * (kCardW + kGapX) * scale, oy + slot[i] * (kCardH + kGapY) * scale,
                         kCardW * scale, kCardH * scale });
     return out;
 }
 
-std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_chain) const {
+std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     std::vector<AudioParamCell> out;
-    if (!s_ || sel_chain <= -2) return out;   // output / none: no params
-    const int pc = P::session_audio_op_param_count(s_, track_, sel_chain);
+    if (!s_ || sel_node < 0) return out;   // none selected
+    const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node);
     if (pc <= 0) return out;
     const Rect pr = param_region();
     const float cellW = std::min(78.f, (pr.w - 12.f) / static_cast<float>(pc));
@@ -100,7 +98,7 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_chain) const {
     return out;
 }
 
-void AudioNodeGraph::draw(Renderer2D& r, int sel_chain) const {
+void AudioNodeGraph::draw(Renderer2D& r, int sel_node) const {
     if (!s_ || track_ < 0) return;
     const Style& sty = style();
     if (x1_ - x0_ < 20.f || y1_ - y0_ < 20.f) return;
@@ -133,7 +131,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_chain) const {
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
         const float* acc = b.kind == 0 ? sty.audio : (b.kind == 1 ? sty.fx : sty.control);
-        const bool sel = (b.chain == sel_chain && sel_chain > -2);
+        const bool sel = (b.node_id == sel_node && sel_node >= 0);
         r.draw_rounded_rect(b.x, b.y, b.w, b.h, sty.radius,
                             sel ? sty.card_hi[0] : sty.card[0], sel ? sty.card_hi[1] : sty.card[1],
                             sel ? sty.card_hi[2] : sty.card[2], 1.0f);
@@ -158,18 +156,18 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_chain) const {
     // Inline param strip for the selected node.
     const Rect pr = param_region();
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
-    const std::vector<AudioParamCell> cells = param_cells(sel_chain);
+    const std::vector<AudioParamCell> cells = param_cells(sel_node);
     if (cells.empty()) {
         r.draw_text(pr.x + 4.f, pr.y + 20.f,
-                    sel_chain <= -2 ? "click a node to edit its parameters" : "this node has no parameters",
+                    sel_node < 0 ? "click a node to edit its parameters" : "this node has no parameters",
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
         return;
     }
     for (const auto& c : cells) {
-        const char* nm = P::session_audio_op_param_name(s_, track_, sel_chain, c.index);
-        const float v  = P::session_audio_op_param_get(s_, track_, sel_chain, c.index);
-        const float mn = P::session_audio_op_param_min(s_, track_, sel_chain, c.index);
-        const float mx = P::session_audio_op_param_max(s_, track_, sel_chain, c.index);
+        const char* nm = P::session_audio_graph_node_param_name(s_, track_, sel_node, c.index);
+        const float v  = P::session_audio_graph_node_param_get(s_, track_, sel_node, c.index);
+        const float mn = P::session_audio_graph_node_param_min(s_, track_, sel_node, c.index);
+        const float mx = P::session_audio_graph_node_param_max(s_, track_, sel_node, c.index);
         const float norm = (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f;
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
         knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vt, sty.audio, false);

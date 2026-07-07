@@ -11,8 +11,10 @@ namespace ui { class Renderer2D; class ClipEditor; }
 
 namespace vivid {
 
-// A right-click context menu of a track's audio characteristics (the bridge).
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
+// A right-click context menu of a track's audio characteristics (the bridge). `graph` marks the
+// fx picker as opened from the audio-graph deep view: native effects only, added via the graph
+// edit API (audio_graph_add_op → authoritative) rather than the linear device chain.
+struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; bool graph = false; };  // src: -1 master, >=0 track
 // A right-click context menu on a visuals op node (open its source / clone it).
 struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
@@ -71,8 +73,9 @@ struct Window {
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
-    // UI-3 Stage 1: the audio-graph node selected for inline param editing (chain index: -1 =
-    // instrument, 0+ = effect; kNoAudioNode = none) + the param knob being dragged.
+    // UI-3: the audio-graph node selected for inline param editing, by stable NODE ID (>= 0);
+    // kNoAudioNode = none. (Stage 2 moved this from chain index to node id so params work on any
+    // node of a rewired/non-linear graph.) Plus the param knob index being dragged.
     static constexpr int kNoAudioNode = -100;
     int     sel_audio_node = kNoAudioNode;
     int     ag_param_drag  = -1;            // param index being dragged (-1 = none)

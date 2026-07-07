@@ -407,6 +407,14 @@ def audio_graph_disconnect(track: int, from_node: int, to_node: int) -> dict:
     return _post("audio_graph_disconnect", {"track": track, "from": from_node, "to": to_node})
 
 
+@mcp.tool
+def audio_graph_set_node_param(track: int, node: int, param: int, value: float) -> dict:
+    """Set a param (by index) on an audio-graph node addressed by node id (from
+    get_audio_graph). Unlike set_audio_op_param (which uses linear chain index), this works for
+    any node in a non-linear/rewired graph."""
+    return _post("audio_graph_set_node_param", {"track": track, "node": node, "param": param, "value": value})
+
+
 # ---------------- live input / recording ----------------
 @mcp.tool
 def arm_track(track: int) -> dict:

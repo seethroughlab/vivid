@@ -754,6 +754,13 @@ void ControlServer::register_handlers() {
         P::session_audio_graph_disconnect(c.session, track, from, to);
         return ok();
     };
+    handlers_["audio_graph_set_node_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), node = b.value("node", -1), param = b.value("param", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_audio_graph_node_param_set(c.session, track, node, param, b.value("value", 0.f));
+        return ok();
+    };
     handlers_["slice_to_midi"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
