@@ -234,16 +234,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     }
 
     // Right-click a visuals op node -> its context menu (open source / clone).
-    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && win->show_graph && app->graph && mx >= win->split_x) {
-        const int on = app->graph->op_at(mx, my);
-        if (on >= 0) {
-            win->node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
-                               !app->graph->op_source_path(on).empty(),
-                               vivid::operator_has_clone_template(app->graph->op_kind_name(on)) };
-            win->menu.open = false;
-            return;
-        }
-    }
+    if (vivid::input::graph_node_rclick(*win, *app, button, action, mx, my)) return;
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         const int src = app->session ? meter_hit(tracks, scenes, mx - win->sidebar_w, my) : -2;
@@ -256,20 +247,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_panning = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
-        if (win->ag_wire_from >= 0 && app->session) {
-            namespace S = vivid::session;
-            const int tr = std::min(std::max(win->sel_track, 0), S::session_track_count(app->session) - 1);
-            vivid::ui::AudioNodeGraph ag; ag.set_source(app->session, tr);
-            const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
-            ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-            for (const auto& b : ag.layout())
-                if (b.kind != 0 && b.node_id != win->ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
-                    S::session_audio_graph_connect(app->session, tr, win->ag_wire_from, b.node_id);
-                    break;
-                }
-            win->ag_wire_from = -1;
-            return;
-        }
+        if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
         if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
         if (win->clip_drag_t >= 0 || win->clip_drag_from_pool >= 0) {   // clip drop (grid or pool source)
             int tt = -1, ts = -1;
@@ -328,22 +306,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         return;
     }
     // Node context menu: "Open source" (custom nodes) or "Clone & Edit" (built-ins).
-    if (win->node_menu.open) {
-        const int nn = win->node_menu.node;
-        if (app->graph && hit(Rect{ win->node_menu.x, win->node_menu.y, 172.f, 22.f }, mx, my)) {
-            if (win->node_menu.has_source) {
-                const std::string src = app->graph->op_source_path(nn);
-                if (!src.empty()) vivid::platform::open_in_editor(src);
-            } else if (win->node_menu.cloneable) {
-                vivid::CloneResult cr = vivid::clone_operator(app->op_registry, app->op_loaders,
-                                                              app->graph->op_kind_name(nn));
-                if (cr.ok) { app->graph->swap_op_type(nn, cr.name); vivid::platform::open_in_editor(cr.source_path); }
-                else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
-            }
-        }
-        win->node_menu.open = false;
-        return;
-    }
+    if (vivid::input::graph_nodemenu(*win, *app, mx, my)) return;
     // FX menu has priority: pick an effect -> add it to the menu's track. Rows are the
     // VST3 catalog first, then native audio operators (matches draw_fx_menu ordering).
     if (win->fx_menu.open) {

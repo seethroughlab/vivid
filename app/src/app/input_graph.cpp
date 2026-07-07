@@ -10,9 +10,13 @@
 #include "ui/audio_node_graph.h"
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
+#include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
+#include "platform/platform.h"      // open_in_editor
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
+#include <string>
 
 namespace {
 using namespace vivid::ui;          // hit, Rect, AudioNodeGraph/Box, dock/audio_graph rects
@@ -124,6 +128,59 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     win.ag_panning = true; win.ag_pan_mx0 = mx; win.ag_pan_my0 = my;
     win.ag_pan_ox0 = win.ag_pan_x; win.ag_pan_oy0 = win.ag_pan_y;
     return true;   // consume other clicks in the graph
+}
+
+// Right-click a visuals op node -> open its context menu (Open source / Clone & Edit).
+bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my) {
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && win.show_graph && app.graph && mx >= win.split_x) {
+        const int on = app.graph->op_at(mx, my);
+        if (on >= 0) {
+            win.node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
+                              !app.graph->op_source_path(on).empty(),
+                              vivid::operator_has_clone_template(app.graph->op_kind_name(on)) };
+            win.menu.open = false;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Complete an audio-graph rewire: a release over another node's input port connects the edge.
+// Returns true when a rewire drag was in progress (consumes the release).
+bool graph_rewire_release(Window& win, App& app, double mx, double my) {
+    if (win.ag_wire_from >= 0 && app.session) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        AudioNodeGraph ag; ag.set_source(app.session, tr);
+        const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        for (const auto& b : ag.layout())
+            if (b.kind != 0 && b.node_id != win.ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
+                S::session_audio_graph_connect(app.session, tr, win.ag_wire_from, b.node_id);
+                break;
+            }
+        win.ag_wire_from = -1;
+        return true;
+    }
+    return false;
+}
+
+// Node context menu press: "Open source" (custom nodes) or "Clone & Edit" (built-ins). Returns
+// true when the menu was open (it always closes + consumes the click).
+bool graph_nodemenu(Window& win, App& app, double mx, double my) {
+    if (!win.node_menu.open) return false;
+    const int nn = win.node_menu.node;
+    if (app.graph && hit(Rect{ win.node_menu.x, win.node_menu.y, 172.f, 22.f }, mx, my)) {
+        if (win.node_menu.has_source) {
+            const std::string src = app.graph->op_source_path(nn);
+            if (!src.empty()) vivid::platform::open_in_editor(src);
+        } else if (win.node_menu.cloneable) {
+            vivid::CloneResult cr = vivid::clone_operator(app.op_registry, app.op_loaders, app.graph->op_kind_name(nn));
+            if (cr.ok) { app.graph->swap_op_type(nn, cr.name); vivid::platform::open_in_editor(cr.source_path); }
+            else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
+        }
+    }
+    win.node_menu.open = false;
+    return true;
 }
 
 // Device header "Graph" button: drill into the audio node graph deep view. Returns true when hit.
