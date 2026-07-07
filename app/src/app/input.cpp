@@ -287,78 +287,12 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         return;   // consume all clicks over the sidebar
     }
 
-    // Menu has priority: pick a characteristic -> spawn a data node in the graph.
-    if (win->menu.open) {
-        for (int j = 0; j < kNumChars; ++j) {
-            const Rect r = { win->menu.x, win->menu.y + j * 26.f, 184.f, 26.f };
-            if (hit(r, mx, my) && app->graph) {
-                const int src = win->menu.src;   // -1 master, else a session track index
-                const char* sname = src < 0 ? "Master" : vivid::session::session_track_name(app->session, src);
-                // Encode by the track's STABLE id (master stays -1) so the wire follows the track.
-                const int sid = src < 0 ? -1 : vivid::session::session_track_id(app->session, src);
-                std::string title = std::string(sname) + "  " + kChars[j].label;
-                app->graph->add_data_node(title, char_id_for(sid, kChars[j].id));
-                std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[j].label);
-                break;
-            }
-        }
-        win->menu.open = false;
-        return;
-    }
+    // Characteristics menu: pick a characteristic -> spawn a bridge data node in the graph.
+    if (vivid::input::dock_char_menu(*win, *app, mx, my)) return;
     // Node context menu: "Open source" (custom nodes) or "Clone & Edit" (built-ins).
     if (vivid::input::graph_nodemenu(*win, *app, mx, my)) return;
-    // FX menu has priority: pick an effect -> add it to the menu's track. Rows are the
-    // VST3 catalog first, then native audio operators (matches draw_fx_menu ordering).
-    if (win->fx_menu.open) {
-        // Graph mode: native effects only, added via the graph edit API (authoritative). Device
-        // mode: the VST3 catalog first, then native operators (matches draw_fx_menu ordering).
-        const int nvst = win->fx_menu.graph ? 0 : vivid::session::session_available_effect_count();
-        const int nnat = vivid::session::session_available_audio_op_count(app->session, 0);
-        for (int j = 0; j < nvst + nnat; ++j) {
-            const Rect r = { win->fx_menu.x, win->fx_menu.y + j * 24.f, 150.f, 24.f };
-            if (hit(r, mx, my)) {
-                if (j < nvst) vivid::session::session_add_effect_by_index(app->session, win->fx_menu.src, j);
-                else {
-                    const char* op = vivid::session::session_available_audio_op_name(app->session, 0, j - nvst);
-                    if (win->fx_menu.graph) vivid::session::session_audio_graph_add_op(app->session, win->fx_menu.src, op);
-                    else                    vivid::session::session_add_audio_effect(app->session, win->fx_menu.src, op);
-                }
-                break;
-            }
-        }
-        win->fx_menu.open = false;
-        return;
-    }
-    // Track menu: pick an instrument (or "Audio track") -> create the track.
-    if (win->track_menu.open) {
-        const int n = vivid::session::session_available_instrument_count();
-        for (int j = 0; j <= n; ++j) {
-            const Rect r = { win->track_menu.x, win->track_menu.y + j * 24.f, 150.f, 24.f };
-            if (hit(r, mx, my)) {
-                if (j == n) vivid::session::session_add_audio_track(app->session);
-                else        vivid::session::session_add_instrument_track(app->session, vivid::session::session_available_instrument_name(j));
-                break;
-            }
-        }
-        win->track_menu.open = false;
-        return;
-    }
-    // Map menu: pick a source to drive the selected param (the return path).
-    if (win->map_menu.open) {
-        const int seltr = std::min(std::max(win->sel_track, 0), tracks - 1);
-        const DevSlot seldev = dock_resolve(app->session, seltr, std::max(0, win->sel_device));
-        for (int j = 0; j < kNumMapSources; ++j) {
-            const Rect rr = { win->map_menu.x, win->map_menu.y + j * 24.f, 168.f, 24.f };
-            if (hit(rr, mx, my) && app->graph) {
-                const std::string d = dock_param_dest(seltr, seldev, win->map_param);
-                if (kMapSources[j].id[0] == '\0') app->graph->disconnect_dest(d);
-                else app->graph->add_mapping(kMapSources[j].id, d, 1.0f);
-                break;
-            }
-        }
-        win->map_menu.open = false;
-        return;
-    }
+    // Device pickers (priority): FX effect / +Track instrument / mapping source.
+    if (vivid::input::dock_menus(*win, *app, mx, my, tracks)) return;
     if (!app->session) return;
 
     // A meter (master or per-track) -> open its characteristic menu (left-click).

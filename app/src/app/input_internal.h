@@ -35,6 +35,10 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
 bool graph_rewire_release(Window& win, App& app, double mx, double my);                        // complete a rewire
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
 
+// ---- bottom dock: menus + device chain + node inspector (input_dock.cpp) ----
+bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node
+bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     // fx / +Track / map pickers
+
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
 bool editor_scroll(Window& win, double xoff, double yoff, int mods, double mx, double my);
