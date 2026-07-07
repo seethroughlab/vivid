@@ -14,7 +14,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTROL = ROOT / "app" / "src" / "cli" / "control_server.cpp"
+CLI_DIR = ROOT / "app" / "src" / "cli"
+# Handlers register in control_server.cpp and (after the #7 split) in the per-family
+# control_handlers_*.cpp files. The register_* free functions name their Handlers& parameter
+# `handlers_`, so the `handlers_["..."]` regex matches uniformly across all of them.
+CONTROL_FILES = [CLI_DIR / "control_server.cpp"] + sorted(CLI_DIR.glob("control_handlers_*.cpp"))
 BRIDGE = ROOT / "mcp" / "vivid_mcp.py"
 
 # Control methods intentionally NOT exposed as their own MCP tool. Each needs a reason so a
@@ -25,7 +29,10 @@ INTENTIONALLY_UNEXPOSED = {
 
 
 def control_methods() -> set[str]:
-    return set(re.findall(r'handlers_\[\s*"([a-z0-9_]+)"\s*\]', CONTROL.read_text()))
+    methods: set[str] = set()
+    for f in CONTROL_FILES:
+        methods |= set(re.findall(r'handlers_\[\s*"([a-z0-9_]+)"\s*\]', f.read_text()))
+    return methods
 
 
 def bridge_methods() -> set[str]:
