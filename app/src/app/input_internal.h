@@ -29,6 +29,8 @@ void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLU
 
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
+bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my);  // deep-view press
+bool graph_drill_in(Window& win, App& app, int button, int action, double mx, double my);     // Device "Graph" button
 
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
