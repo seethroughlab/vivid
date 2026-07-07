@@ -41,6 +41,14 @@ bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     //
 bool dock_inspector(Window& win, App& app, double mx, double my);             // visual-node param inspector
 bool dock_device_chain(Window& win, App& app, double mx, double my, int tracks);  // device chips + param knobs
 
+// ---- session grid / mixer / clip pool (input_clipgrid.cpp) ----
+bool clipgrid_release(Window& win, App& app, double mx, double my, int mods, int tracks, int scenes);  // clip drop
+bool clipgrid_pool_press(Window& win, App& app, double mx, double my);            // CLIPS-panel press (sidebar guard)
+bool clipgrid_meter_menu(Window& win, App& app, double mx, double my, int tracks, int scenes);  // meter char-menu
+bool clipgrid_track_header(Window& win, App& app, double mx, double my, int tracks);  // header ×/select + "+Track"
+bool clipgrid_mixer(Window& win, App& app, double mx, double my, int tracks, int scenes);   // arm + gain
+bool clipgrid_cells(Window& win, App& app, double mx, double my, int tracks, int scenes);   // clip cells + scene launch
+
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
 bool editor_scroll(Window& win, double xoff, double yoff, int mods, double mx, double my);

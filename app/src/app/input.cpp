@@ -110,56 +110,6 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     vivid::input::graph_scroll(*win, *win->app, yoff, mx, my);
 }
 
-// The clip cell under (mx,my), or false. Fills t/sc on a hit.
-bool clip_cell_at(int tracks, int scenes, double mx, double my, int& t, int& sc) {
-    for (int a = 0; a < tracks; ++a)
-        for (int b = 0; b < scenes; ++b)
-            if (hit(clip_cell_rect(a, b), mx, my)) { t = a; sc = b; return true; }
-    return false;
-}
-// Move (or copy) a MIDI clip from (st,ss) to (tt,ts) via the thread-safe clip API.
-// Instrument tracks only (audio clips carry a sample and aren't relocatable here).
-void move_clip(vivid::App& app, int st, int ss, int tt, int ts, bool copy) {
-    auto* s = app.session;
-    if (!s || vivid::session::session_track_is_audio(s, st) || vivid::session::session_track_is_audio(s, tt)) return;
-    vivid::session::ClipNote buf[512];
-    const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
-    if (n <= 0) return;   // nothing to move
-    const double len = vivid::session::session_clip_length(s, st, ss);
-    vivid::session::session_set_clip(s, tt, ts, buf, n, len);
-    if (!copy) vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // clear the source
-}
-// Whether a pooled clip can be placed on a track (audio clip <-> audio track only).
-bool pool_clip_fits(vivid::App& app, int pool_i, int tt) {
-    auto* s = app.session;
-    return s && vivid::session::session_pool_is_audio(s, pool_i) == vivid::session::session_track_is_audio(s, tt);
-}
-// Place a clip-pool item into a grid cell (type must match: audio->audio, MIDI->instrument).
-void place_pool_clip(vivid::App& app, int pool_i, int tt, int ts) {
-    auto* s = app.session;
-    if (!s || !pool_clip_fits(app, pool_i, tt)) return;
-    if (vivid::session::session_pool_is_audio(s, pool_i)) { vivid::session::session_pool_place_audio(s, pool_i, tt, ts); return; }
-    vivid::session::ClipNote buf[512];
-    const int n = vivid::session::session_pool_get(s, pool_i, buf, 512);
-    vivid::session::session_set_clip(s, tt, ts, buf, n, vivid::session::session_pool_length(s, pool_i));
-}
-// Stash a grid clip into the pool: MOVE it out of the session (the source cell is cleared).
-// Handles both MIDI (instrument) and audio (sampler) tracks.
-void stash_clip(vivid::App& app, int st, int ss) {
-    auto* s = app.session;
-    if (!s) return;
-    char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", vivid::session::session_track_name(s, st), 'A' + ss);
-    if (vivid::session::session_track_is_audio(s, st)) { vivid::session::session_pool_stash_audio(s, st, ss, nm); return; }
-    vivid::session::ClipNote buf[512];
-    const int n = vivid::session::session_get_clip(s, st, ss, buf, 512);
-    if (n <= 0) return;
-    const double len = vivid::session::session_clip_length(s, st, ss);
-    vivid::session::session_pool_add(s, buf, n, len, nm);
-    vivid::session::session_set_clip(s, st, ss, nullptr, 0, len);   // take it out of the grid
-}
-
-// Add a browsed plugin (auto-routed): try it as an instrument (a MIDI-in bus makes a
-// new track); otherwise add it as an effect on the selected track. Loading happens here.
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
@@ -249,23 +199,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
         if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
-        if (win->clip_drag_t >= 0 || win->clip_drag_from_pool >= 0) {   // clip drop (grid or pool source)
-            int tt = -1, ts = -1;
-            const bool onCell = clip_cell_at(tracks, scenes, mx - win->sidebar_w, my, tt, ts);   // grid is shifted
-            const bool onBar  = vivid::ui::in_sidebar(win->sidebar_w, win->win_h, win->dock_h, mx, my);
-            if (win->clip_dragging) {
-                if (win->clip_drag_from_pool >= 0) {                     // pool -> grid cell
-                    if (onCell) place_pool_clip(*app, win->clip_drag_from_pool, tt, ts);
-                } else {                                                 // grid cell -> ...
-                    const int st = win->clip_drag_t, ss = win->clip_drag_sc;
-                    if (onCell && (tt != st || ts != ss)) move_clip(*app, st, ss, tt, ts, (mods & GLFW_MOD_ALT) != 0);
-                    else if (onBar) stash_clip(*app, st, ss);            // grid cell -> pool (stash a copy)
-                }
-            } else if (win->clip_drag_t >= 0) {
-                vivid::session::session_launch_clip(app->session, win->clip_drag_t, win->clip_drag_sc);  // plain click launches
-            }
-            win->clip_drag_t = -1; win->clip_drag_from_pool = -1; win->clip_dragging = false;
-        }
+        vivid::input::clipgrid_release(*win, *app, mx, my, mods, tracks, scenes);   // clip drop (grid/pool); no-op if no drag
         if (app->graph) app->graph->on_up(mx, my);
         return;
     }
@@ -275,13 +209,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // fall through to the shifted DAW pane behind it.
     if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
         // CLIPS panel: remove (×) or arm a drag of a pool clip.
-        const int nc = app->session ? vivid::session::session_pool_count(app->session) : 0;
-        for (int i = 0; i < nc; ++i)
-            if (hit(vivid::ui::pool_item_x_rect(i, win->sidebar_w), mx, my)) { vivid::session::session_pool_remove(app->session, i); return; }
-        const int pi = vivid::ui::pool_item_at(win->sidebar_w, nc, mx, my);
-        if (pi >= 0 && vivid::ui::pool_item_visible(pi, win->sidebar_w, win->win_h, win->dock_h)) {
-            win->clip_drag_from_pool = pi; win->clip_dragging = false; win->clip_drag_x0 = mx; win->clip_drag_y0 = my; return;
-        }
+        if (vivid::input::clipgrid_pool_press(*win, *app, mx, my)) return;
         // PLUGINS panel: double-click a row to add (auto-route), or drag a row onto a track/+Track.
         vivid::input::plugins_sidebar_press(*win, *app, mx, my);
         return;   // consume all clicks over the sidebar
@@ -296,31 +224,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (!app->session) return;
 
     // A meter (master or per-track) -> open its characteristic menu (left-click).
-    {
-        const int src = meter_hit(tracks, scenes, dmx, my);
-        if (src != -2) { win->menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return; }
-    }
+    if (vivid::input::clipgrid_meter_menu(*win, *app, mx, my, tracks, scenes)) return;
     // Track header: × removes the track; otherwise select it. "+ Track" opens the picker.
-    for (int t = 0; t < tracks; ++t) {
-        if (hit(track_header_x_rect(t), dmx, my)) {
-            // Close all open instrument editor windows first: removal shifts track indices,
-            // so the per-track window pool would otherwise misalign (they reopen on demand).
-            for (int k = 0; k < vivid::session::kMaxTracks; ++k)
-                if (win->track_win[k]) { vst3_plugin_window_close(win->track_win[k]); win->track_win[k] = nullptr; }
-            const int rid = vivid::session::session_track_id(app->session, t);   // capture before removal
-            if (vivid::session::session_remove_track(app->session, t)) {
-                if (app->graph) app->graph->drop_track_sources(rid);   // drop this track's mappings (id-based)
-                const int nt = vivid::session::session_track_count(app->session);
-                if (win->sel_track >= nt) win->sel_track = std::max(0, nt - 1);
-            }
-            return;
-        }
-        if (hit(track_header_rect(t), dmx, my)) { win->sel_track = t; if (app->graph) app->graph->select_op(-1); return; }
-    }
-    if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) {
-        win->track_menu = { true, static_cast<float>(mx), static_cast<float>(my), -1 };
-        return;
-    }
+    if (vivid::input::clipgrid_track_header(*win, *app, mx, my, tracks)) return;
 
     // Bottom dock interactions. If a visual node is selected, the dock is its
     // inspector: knobs edit the node's base param values (vertical drag). Routed through the
@@ -339,44 +245,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // Otherwise the dock is the selected track's device chain: chips (select / dbl-click open / x
     // remove / + FX) + the selected device's param knobs.
     if (vivid::input::dock_device_chain(*win, *app, mx, my, tracks)) return;
-    // mixer: ARM buttons (record-arm; toggling re-arms/disarms). Audio tracks are ignored
-    // by the engine (no instrument), so arming one is a harmless no-op.
-    for (int t = 0; t < tracks; ++t) {
-        if (hit(track_arm_rect(t, scenes), dmx, my)) {
-            const bool armed = vivid::session::session_armed_track(app->session) == t;
-            vivid::session::session_set_armed_track(app->session, armed ? -1 : t);
-            return;
-        }
-    }
-    // mixer gain sliders
-    for (int t = 0; t < tracks; ++t) {
-        const Rect gr = track_gain_rect(t, scenes);
-        if (hit(gr, dmx, my)) {
-            win->gain_drag = t;
-            vivid::session::session_set_track_gain(app->session, t, std::min(1.0, std::max(0.0, (dmx - gr.x) / gr.w)));
-            return;
-        }
-    }
+    // mixer: ARM buttons (record-arm) then gain sliders.
+    if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
     if (win->show_graph && app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it
-    // clip cells -> single click launches; double click opens the MIDI editor
-    for (int t = 0; t < tracks; ++t)
-        for (int sc = 0; sc < scenes; ++sc)
-            if (hit(clip_cell_rect(t, sc), dmx, my)) {
-                const double now = glfwGetTime();
-                if (win->editor && win->last_clip_track == t && win->last_clip_scene == sc && now - win->last_clip_t < 0.35) {
-                    vivid::input::editor_open_clip(*win, *app, t, sc, tracks);   // double-click opens the docked editor
-                    win->last_clip_t = -1; win->clip_drag_t = -1;
-                    return;
-                }
-                win->last_clip_t = now; win->last_clip_track = t; win->last_clip_scene = sc;
-                // Arm a potential drag; a plain click launches on release, a drag moves the clip.
-                win->clip_drag_t = t; win->clip_drag_sc = sc; win->clip_dragging = false;
-                win->clip_drag_x0 = mx; win->clip_drag_y0 = my;
-                return;
-            }
-    // scene launch buttons -> launch the whole row
-    for (int sc = 0; sc < scenes; ++sc)
-        if (hit(scene_launch_rect(sc), dmx, my)) { vivid::session::session_launch_scene(app->session, sc); return; }
+    // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
+    if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;
 }
 
 }  // namespace
