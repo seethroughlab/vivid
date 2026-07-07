@@ -71,6 +71,12 @@ struct Window {
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
+    // UI-3 Stage 1: the audio-graph node selected for inline param editing (chain index: -1 =
+    // instrument, 0+ = effect; kNoAudioNode = none) + the param knob being dragged.
+    static constexpr int kNoAudioNode = -100;
+    int     sel_audio_node = kNoAudioNode;
+    int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
+    float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
