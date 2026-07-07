@@ -145,5 +145,24 @@ int main() {
         CHECK(g_allocs.load() == 0);
     }
 
+    // --- 7. Stable node ids (Stage 2 foundation): remove never recycles an id; clear() keeps the
+    //        counter (authoritative editing), reset() restarts it (derived/loaded graphs). ---
+    {
+        AudioGraph g;
+        const int a = g.add_node(true,  false, nullptr, nullptr, "a");   // 0
+        const int b = g.add_node(false, false, nullptr, nullptr, "b");   // 1
+        CHECK(a == 0 && b == 1);
+        g.remove_node(a);                                // drop id 0
+        const int c = g.add_node(false, false, nullptr, nullptr, "c");   // must be 2, NOT reuse 0
+        CHECK(c == 2);
+        CHECK(g.node_index(a) < 0);                      // old id truly gone
+        g.clear();                                       // keeps the counter
+        const int d = g.add_node(false, false, nullptr, nullptr, "d");
+        CHECK(d == 3);                                   // still ascending past every prior id
+        g.reset();                                       // full reset → deterministic 0-based again
+        const int e = g.add_node(false, false, nullptr, nullptr, "e");
+        CHECK(e == 0);
+    }
+
     return vivid::test::summary("test_audio_graph");
 }

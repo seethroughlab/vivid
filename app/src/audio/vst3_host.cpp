@@ -276,7 +276,7 @@ static void reserve_track_graph(Track* t) {
 // (inst → fx… → out); edge surgery for arbitrary topology builds on this same persistent model.
 static void rebuild_track_graph(Track* t) {
     std::lock_guard<std::mutex> lk(t->gmtx);
-    t->agraph.clear();
+    t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
     const bool native_only = !t->is_audio && t->op_instrument_edit && !t->handle && t->effects_edit.empty();
     if (!native_only || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {

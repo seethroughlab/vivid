@@ -79,7 +79,14 @@ public:
     bool connect(int from_id, int to_id);        // returns false if it would create a self-loop / dup
     void disconnect(int from_id, int to_id);
     void set_node_processor(int id, ProcessFn fn, void* ctx);   // rebind after a device swap
+    // Drop all nodes/edges but KEEP the id counter, so a rebuilt/edited graph never recycles a
+    // stale id (edges saved against an old node can't silently re-bind to a new one). Use this
+    // whenever the graph is the authoritative source of topology (free rewiring, persistence).
     void clear();
+    // Full reset INCLUDING the id counter → deterministic 0-based ids on the next build. Use only
+    // when the whole graph is regenerated from scratch each time (the derived linear-chain path) or
+    // when loading a session (ids come from the saved file, so the counter is re-seeded past them).
+    void reset();
 
     // --- queries ---
     const std::vector<AudioGraphNode>& nodes() const { return nodes_; }

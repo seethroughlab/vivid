@@ -83,7 +83,8 @@ void AudioGraph::set_node_processor(int id, ProcessFn fn, void* ctx) {
     if (idx >= 0) { nodes_[idx].process = fn; nodes_[idx].ctx = ctx; }
 }
 
-void AudioGraph::clear() { nodes_.clear(); edges_.clear(); output_id_ = -1; next_id_ = 0; }
+void AudioGraph::clear() { nodes_.clear(); edges_.clear(); output_id_ = -1; }   // keeps next_id_
+void AudioGraph::reset() { nodes_.clear(); edges_.clear(); output_id_ = -1; next_id_ = 0; }
 
 // Kahn's-algorithm topological sort; assigns each node its own output buffer (== node index).
 // Returns false if a cycle is present (out untouched). Nodes unreachable from any edge still
