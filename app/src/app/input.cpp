@@ -1,6 +1,5 @@
 #include "app/input.h"
 #include "app/input_internal.h"   // Phase D (#8): per-concern input controllers
-#include "platform/platform.h"
 
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
@@ -11,14 +10,9 @@
 #include "ui/session_view.h"      // meter_hit
 #include "ui/mapping_overview.h"  // ov_geom, ov_row
 #include "ui/node_graph.h"
-#include "ui/audio_node_graph.h"
-#include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
-#include "audio/plugin_catalog.h"
 #include "app/frame.h"   // toggle_popout
-#include "app/operator_clone.h"   // clone_operator / operator_has_clone_template
 #include "transport.h"   // Transport play/stop (toggle_playing)
-#include "audio/vst3_plugin_window.h"   // vst3_plugin_window_* + Steinberg::Vst::IEditController
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
 
 #include <algorithm>
