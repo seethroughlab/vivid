@@ -38,6 +38,8 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my);               
 // ---- bottom dock: menus + device chain + node inspector (input_dock.cpp) ----
 bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     // fx / +Track / map pickers
+bool dock_inspector(Window& win, App& app, double mx, double my);             // visual-node param inspector
+bool dock_device_chain(Window& win, App& app, double mx, double my, int tracks);  // device chips + param knobs
 
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key

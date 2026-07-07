@@ -335,103 +335,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // rewire / edge-disconnect / pan) + the Device header "Graph" drill-in button.
     if (vivid::input::graph_audio_dock(*win, *app, button, action, mx, my)) return;
     if (vivid::input::graph_drill_in(*win, *app, button, action, mx, my)) return;
-    {
-        if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {   // consume clicks inside the dock
-            auto* g = app->graph;
-            const int selop = win->focus.node;
-            const int pc = g->op_param_count_at(selop);
-            for (int i = 0; i < pc; ++i) {
-                const int hint = g->op_param_hint_at(selop, i);
-                if (hint == VIVID_DISPLAY_HIDDEN || hint == VIVID_DISPLAY_EDITOR || hint == VIVID_DISPLAY_TRANSIENT) continue;
-                const Rect wr = node_param_widget_rect(i, win->win_w, win->win_h, win->dock_h);
-                if (!hit(wr, mx, my)) continue;
-                const float base = g->op_param_base_at(selop, i);
-                switch (node_widget_kind(g->op_param_type_at(selop, i), hint, g->op_param_choice_count_at(selop, i))) {
-                    case NodeWidget::Toggle:
-                        g->set_op_param_base_at(selop, i, base >= 0.5f ? 0.f : 1.f);
-                        break;
-                    case NodeWidget::Enum: {
-                        const int cc = g->op_param_choice_count_at(selop, i);
-                        if (cc > 1) { int idx = (int(std::lround(base * (cc - 1))) + 1) % cc; g->set_op_param_base_at(selop, i, float(idx) / (cc - 1)); }
-                        break;
-                    }
-                    case NodeWidget::Slider:
-                        g->set_op_param_base_at(selop, i, std::clamp((mx - wr.x) / wr.w, 0.0, 1.0));   // jump to click
-                        win->param_drag = i; win->param_is_node = true; win->param_drag_horiz = true;
-                        win->param_drag_v0 = 0.f; win->param_drag_y0 = my; break;
-                    default:  // Knob: vertical drag
-                        win->param_drag = i; win->param_is_node = true; win->param_drag_horiz = false;
-                        win->param_drag_v0 = base; win->param_drag_y0 = my; break;
-                }
-                return;
-            }
-            return;  // node inspector showing — consume dock clicks
-        }
-    }
-    // Otherwise the dock is the selected track's device chain: single-click selects
-    // (shows params), double-click opens the plugin editor; x removes; + FX adds.
-    {
-        const int seltr = std::min(std::max(win->sel_track, 0), tracks - 1);
-        const double now = glfwGetTime();
-        auto open_dev = [&](int dev) {
-            auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                dev == 0 ? vivid::session::session_track_controller(app->session, seltr)
-                         : vivid::session::session_effect_controller(app->session, seltr, dev - 1));
-            if (!ctrl) return;
-            const char* nm = dev == 0 ? vivid::session::session_track_name(app->session, seltr)
-                                      : vivid::session::session_effect_name(app->session, seltr, dev - 1);
-            if (dev == 0) {
-                if (win->track_win[seltr]) { vst3_plugin_window_close(win->track_win[seltr]); win->track_win[seltr] = nullptr; }
-                win->track_win[seltr] = vst3_plugin_window_open(ctrl, nm);
-            } else {
-                int slot = -1; for (int k = 0; k < 8; ++k) if (!win->fx_win[k]) { slot = k; break; }
-                if (slot >= 0) win->fx_win[slot] = vst3_plugin_window_open(ctrl, nm);
-            }
-        };
-        auto click_dev = [&](int dev) {
-            if (win->last_dev_i == dev && now - win->last_dev_t < 0.35) { open_dev(dev); win->last_dev_t = -1; }
-            else { win->sel_device = dev; win->last_dev_i = dev; win->last_dev_t = now; }
-        };
-        // device chips in the bottom dock (unified: instrument, VST3 fx, native fx, + FX)
-        const int ndev = dock_device_count(app->session, seltr);
-        for (int i = 0; i < ndev; ++i) {
-            const DevSlot slot = dock_resolve(app->session, seltr, i);
-            if (!slot.valid) continue;
-            if (slot.is_instrument) {
-                if (vivid::session::session_track_is_audio(app->session, seltr) && !slot.native) continue;  // no VST3 instrument on audio tracks
-                if (hit(win->dock_chip(i), mx, my)) { click_dev(i); return; }
-                continue;
-            }
-            if (hit(win->dock_chip_x(i), mx, my)) {   // remove × (VST3 or native effect)
-                if (slot.native) vivid::session::session_remove_audio_effect(app->session, seltr, slot.api_index);
-                else             vivid::session::session_remove_effect(app->session, seltr, slot.api_index - 1);
-                if (win->sel_device >= ndev - 1) win->sel_device = 0;
-                return;
-            }
-            if (hit(win->dock_chip(i), mx, my)) { click_dev(i); return; }
-        }
-        if (hit(win->dock_chip(ndev), mx, my)) {   // "+ FX" tile
-            win->fx_menu = { true, static_cast<float>(mx), static_cast<float>(my), seltr };
-            return;
-        }
-        // param knobs of the selected device (vertical drag; small map affordance)
-        const DevSlot seldev = dock_resolve(app->session, seltr, std::max(0, win->sel_device));
-        const DockGeom d = win->dock_geom();
-        const int npc = std::min(dock_param_count(app->session, seltr, seldev), d.cols * d.maxRows);
-        for (int i = 0; i < npc; ++i) {
-            if (hit(dock_knob_map(i, d), mx, my)) {
-                win->map_menu = { true, static_cast<float>(mx), static_cast<float>(my), 0 };
-                win->map_param = i; return;
-            }
-            float cx, cy; dock_knob(i, d, cx, cy);
-            if (std::hypot(mx - cx, my - cy) <= 16.0) {
-                win->param_drag = i; win->param_is_node = false;
-                win->param_drag_v0 = dock_param_norm(app->session, seltr, seldev, i);
-                win->param_drag_y0 = my;
-                return;
-            }
-        }
-    }
+    if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
+    // Otherwise the dock is the selected track's device chain: chips (select / dbl-click open / x
+    // remove / + FX) + the selected device's param knobs.
+    if (vivid::input::dock_device_chain(*win, *app, mx, my, tracks)) return;
     // mixer: ARM buttons (record-arm; toggling re-arms/disarms). Audio tracks are ignored
     // by the engine (no instrument), so arming one is a harmless no-op.
     for (int t = 0; t < tracks; ++t) {
