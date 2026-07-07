@@ -10,6 +10,7 @@
 #include "ui/session_view.h"      // meter_hit
 #include "ui/mapping_overview.h"  // ov_geom, ov_row
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"
 #include "ui/clip_editor.h"
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
@@ -381,7 +382,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1;
         if (win->plugin_drag_i >= 0) {   // plugin drop (from the browser onto a track / +Track)
             if (win->plugin_dragging) drop_plugin(*app, *win, win->plugin_drag_i, mx, my);
             win->plugin_drag_i = -1; win->plugin_dragging = false;
@@ -557,6 +558,63 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
             app->graph->select_op(-1); return;   // close the visual-node inspector -> device view
         }
+    }
+    // UI-3: audio node graph deep view. Drill in from the Device header "Graph" button; the close
+    // x returns to the device chain. Stage-1 interaction while drilled in: select a node, edit its
+    // params (knob drag), add an effect (+ FX), remove an effect (x). All dock clicks are consumed
+    // here so they never fall through to the device-chip handlers below.
+    if (win->focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win->dock_top()
+        && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->session) {
+        namespace S = vivid::session;
+        if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) { win->show_audio_graph = false; return; }
+        const int tr = std::min(std::max(win->sel_track, 0), S::session_track_count(app->session) - 1);
+        vivid::ui::AudioNodeGraph ag; ag.set_source(app->session, tr);
+        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        if (hit(ag.add_button_rect(), mx, my)) {   // + FX: the native-effect picker menu
+            // The button is pinned top-right, so anchor the 150px menu at the click but clamp its
+            // box (width + all rows) inside the window — otherwise it spills off the right/bottom edge.
+            const int rows = S::session_available_effect_count()
+                           + S::session_available_audio_op_count(app->session, 0);
+            const float menu_w = 150.f, item_h = 24.f, marg = 8.f;
+            float fx = std::min(static_cast<float>(mx), win->win_w - menu_w - marg);
+            float fy = static_cast<float>(my);
+            if (fy + rows * item_h > win->win_h - marg)
+                fy = std::max(marg + 22.f, win->win_h - rows * item_h - marg);
+            win->fx_menu.open = true; win->fx_menu.x = fx; win->fx_menu.y = fy; win->fx_menu.src = tr; return;
+        }
+        if (win->sel_audio_node > vivid::Window::kNoAudioNode) {   // param knob drag on the selected node
+            for (const auto& c : ag.param_cells(win->sel_audio_node)) {
+                if (mx >= c.x && mx < c.x + c.w && my >= c.y && my < c.y + c.h) {
+                    const float mn = S::session_audio_op_param_min(app->session, tr, win->sel_audio_node, c.index);
+                    const float mxx = S::session_audio_op_param_max(app->session, tr, win->sel_audio_node, c.index);
+                    const float v = S::session_audio_op_param_get(app->session, tr, win->sel_audio_node, c.index);
+                    win->ag_param_drag = c.index;
+                    win->ag_param_v0 = (mxx > mn) ? std::clamp((v - mn) / (mxx - mn), 0.f, 1.f) : 0.f;
+                    win->ag_param_y0 = my; return;
+                }
+            }
+        }
+        for (const auto& b : ag.layout()) {   // remove-x (effects) or select
+            if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
+                S::session_remove_audio_effect(app->session, tr, b.chain);
+                if (win->sel_audio_node == b.chain) win->sel_audio_node = vivid::Window::kNoAudioNode;
+                return;
+            }
+            if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
+                win->sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.chain;   // output has no params
+                return;
+            }
+        }
+        return;   // consume other clicks in the graph
+    }
+    if (win->focus.kind == vivid::FocusContext::Kind::Device && my >= win->dock_top()
+        && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+        && hit(vivid::ui::audio_graph_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+        win->show_audio_graph = true;
+        win->sel_audio_node = vivid::Window::kNoAudioNode;
+        if (app->graph) app->graph->select_op(-1);   // clear any stale visual-node selection
+        return;
     }
     {
         if (win->focus.kind == vivid::FocusContext::Kind::VisualNode && app->graph && my >= win->dock_top()) {   // consume clicks inside the dock

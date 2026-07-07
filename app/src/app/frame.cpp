@@ -224,6 +224,17 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
             vivid::ui::dock_param_set_norm(app.session, seltr, seldev, win.param_drag, v);
         }
     }
+    // UI-3 Stage 1: drag a selected audio-graph node's param knob (vertical). ag_param_v0 is the
+    // normalized value at drag start; convert back to the op's [min,max] to set it.
+    if (win.ag_param_drag >= 0 && app.session && win.sel_audio_node > Window::kNoAudioNode) {
+        namespace S = vivid::session;
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        const int ch = win.sel_audio_node;
+        const float mn = S::session_audio_op_param_min(app.session, tr, ch, win.ag_param_drag);
+        const float mxx = S::session_audio_op_param_max(app.session, tr, ch, win.ag_param_drag);
+        const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
+        S::session_audio_op_param_set(app.session, tr, ch, win.ag_param_drag, mn + norm * (mxx - mn));
+    }
 }
 
 void update_visual_source_frame(App& app) {
@@ -341,6 +352,8 @@ void run_frame_loop(App& app, Window& win) {
                 if (clip_editor.is_open() && clip_editor.is_docked()) {
                     f.kind = FocusContext::Kind::ClipEditor; f.dom = FocusContext::Dom::Audio;
                     f.track = clip_editor.track(); f.scene = clip_editor.scene();
+                } else if (win.show_audio_graph) {   // UI-3: audio graph deep view (drilled in from a track)
+                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 } else if (selop >= 0) {
                     f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
                 } else {

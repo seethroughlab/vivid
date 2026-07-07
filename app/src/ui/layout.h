@@ -181,6 +181,10 @@ inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f,
 // session default (the device view). Sits just left of the domain badge on the right edge.
 inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w - 78.f, dock_top(win_h, dock_h) + 4.f, 13.f, 13.f }; }
 
+// UI-3: the "Graph" toggle in the device-dock header — drills the detail region into the selected
+// track's audio node graph (deep view). Sits left of the close × / domain badge on the right edge.
+inline Rect audio_graph_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 150.f, dock_top(win_h, dock_h) + 3.f, 56.f, 15.f }; }
+
 // Bottom device-view dock: a title strip, a bounded CHAIN rack (the selected
 // track's instrument + FX chips) and a PARAMS knob grid below it. The rack is a
 // defined section that only appears in track mode (hidden when a visual node is
@@ -191,6 +195,10 @@ constexpr float kDockChainH = 42.f;   // chain-rack height (a chip + inset paddi
 constexpr float kDockChipY  = 30.f;   // chips sit inside the rack (kDockChainY + pad)
 inline Rect dock_chain_rect(int win_w, int win_h, float dock_h) {
     return { 8.f, dock_top(win_h, dock_h) + kDockChainY, static_cast<float>(win_w) - 16.f, kDockChainH };
+}
+// UI-3: the region the audio node graph deep view draws into — the dock interior below the title.
+inline Rect audio_graph_panel(int win_w, int win_h, float dock_h) {
+    return { 8.f, dock_top(win_h, dock_h) + kDockHdH + 6.f, static_cast<float>(win_w) - 16.f, dock_h - kDockHdH - 12.f };
 }
 struct DockGeom { float y0, gridY0, cellW, cellH, knobOff; int cols, maxRows; };
 inline DockGeom dock_geom_at(int win_w, int win_h, float dock_h, float grid_top) {

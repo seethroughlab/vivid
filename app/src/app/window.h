@@ -21,11 +21,13 @@ struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has
 // implicit race where the draw path and the input path each independently re-derived the mode
 // from the current selection. `domain` drives the region's header tint (strict-zones principle).
 struct FocusContext {
-    enum class Kind { Device, VisualNode, ClipEditor };   // AudioGraph joins at UI-3
+    // AudioGraph (UI-3): the drilled-in per-track audio node graph deep view (audio peer of
+    // VisualNode). Set by the dock "Graph" toggle; `track` is the track being viewed.
+    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph };
     enum class Dom  { Audio, Visual };
     Kind kind  = Kind::Device;
     Dom  dom   = Dom::Audio;
-    int  track = 0;     // Device / ClipEditor
+    int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
     int  node  = -1;    // VisualNode (op index)
 };
@@ -50,6 +52,10 @@ struct Window {
     // right column is the always-on OUTPUT canvas (filling the column); toggling this reveals
     // the node graph below the output (the drill-in "edit its graph" view).
     bool  show_graph = false;
+    // UI-3: drilled into the selected track's audio node graph (the detail region shows the
+    // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
+    // button; persists across frames (the focus recompute reads it).
+    bool  show_audio_graph = false;
 
     // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
     // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a
@@ -65,6 +71,12 @@ struct Window {
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
+    // UI-3 Stage 1: the audio-graph node selected for inline param editing (chain index: -1 =
+    // instrument, 0+ = effect; kNoAudioNode = none) + the param knob being dragged.
+    static constexpr int kNoAudioNode = -100;
+    int     sel_audio_node = kNoAudioNode;
+    int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
+    float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
