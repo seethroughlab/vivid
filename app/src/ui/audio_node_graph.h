@@ -37,6 +37,9 @@ class AudioNodeGraph {
 public:
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) { x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1; }
+    // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan.
+    void set_view(float zoom, float pan_x, float pan_y) { zoom_ = zoom; pan_x_ = pan_x; pan_y_ = pan_y; }
+    Rect graph_region() const;   // the node-graph area (above the param strip) — for input zoom/pan
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
     std::vector<AudioNodeBox> layout() const;
@@ -57,12 +60,12 @@ public:
     void draw(Renderer2D& r, int sel_node, int wire_from = -1, float cx = 0.f, float cy = 0.f) const;
 
 private:
-    Rect graph_region() const;   // the node-graph area (above the param strip)
     Rect param_region() const;   // the selected-node param strip (bottom band)
 
     vivid::session::Session* s_ = nullptr;
     int   track_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+    float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
 };
 
 }  // namespace vivid::ui

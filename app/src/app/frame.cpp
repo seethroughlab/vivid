@@ -142,6 +142,10 @@ void apply_audio_param_mappings(App& app) {
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
     win.cur_x = mx; win.cur_y = my;   // latest cursor (used by the audio-graph ghost wire)
+    if (win.ag_panning) {   // 2i: drag empty space in the audio graph to pan the view
+        win.ag_pan_x = win.ag_pan_ox0 + static_cast<float>(mx - win.ag_pan_mx0);
+        win.ag_pan_y = win.ag_pan_oy0 + static_cast<float>(my - win.ag_pan_my0);
+    }
     if ((win.clip_drag_t >= 0 || win.clip_drag_from_pool >= 0) && !win.clip_dragging) {   // clip drag crosses the move threshold
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
         if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px

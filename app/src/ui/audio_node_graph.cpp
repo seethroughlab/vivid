@@ -80,10 +80,15 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     const float ox = g.x + (g.w - world_w * scale) * 0.5f;
     const float oy = g.y + (g.h - world_h * scale) * 0.5f;
     out.reserve(n);
-    for (int i = 0; i < n; ++i)
+    for (int i = 0; i < n; ++i) {
+        // Auto-fit base position, then the user view transform (2i): zoom around the region origin
+        // + pan. zoom 1 / pan 0 leaves the fitted layout untouched.
+        const float bx = ox + rank[i] * (kCardW + kGapX) * scale;
+        const float by = oy + slot[i] * (kCardH + kGapY) * scale;
         out.push_back({ kind[i], id[i],
-                        ox + rank[i] * (kCardW + kGapX) * scale, oy + slot[i] * (kCardH + kGapY) * scale,
-                        kCardW * scale, kCardH * scale });
+                        g.x + (bx - g.x) * zoom_ + pan_x_, g.y + (by - g.y) * zoom_ + pan_y_,
+                        kCardW * scale * zoom_, kCardH * scale * zoom_ });
+    }
     return out;
 }
 
@@ -118,6 +123,10 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     }
 
     const std::vector<AudioNodeBox> boxes = layout();
+    // Clip the graph area (2i): with pan/zoom, nodes can fall outside the region — keep them from
+    // bleeding into the param strip or the rest of the dock.
+    const Rect gr = graph_region();
+    r.push_clip_rect(gr.x, gr.y, gr.w, gr.h);
     // Edges (behind cards): iterate the raw edges again mapped to laid-out boxes by node index.
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     std::vector<int> id(n);
@@ -172,7 +181,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
       r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
       r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
 
-    // Inline param strip for the selected node.
+    r.pop_clip_rect();   // end graph-area clip (2i)
+
+    // Inline param strip for the selected node (drawn unclipped, in its fixed bottom band).
     const Rect pr = param_region();
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
     const std::vector<AudioParamCell> cells = param_cells(sel_node);

@@ -168,6 +168,21 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     }
     // Scroll over the visuals pane zooms the node graph around the cursor.
     if (win->show_graph && win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
+    // Scroll over the audio-graph deep view zooms it around the cursor (2i).
+    if (win->focus.kind == vivid::FocusContext::Kind::AudioGraph && win->app->session) {
+        vivid::ui::AudioNodeGraph ag; ag.set_source(win->app->session, win->sel_track);
+        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        const vivid::ui::Rect gr = ag.graph_region();
+        if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
+            const float z0 = win->ag_zoom;
+            const float z1 = std::clamp(z0 * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
+            // keep the point under the cursor fixed: screen = gr.origin + (base-origin)*z + pan
+            win->ag_pan_x = static_cast<float>(mx) - gr.x - ((static_cast<float>(mx) - gr.x - win->ag_pan_x) / z0) * z1;
+            win->ag_pan_y = static_cast<float>(my) - gr.y - ((static_cast<float>(my) - gr.y - win->ag_pan_y) / z0) * z1;
+            win->ag_zoom = z1;
+        }
+    }
 }
 
 // The clip cell under (mx,my), or false. Fills t/sc on a hit.
@@ -382,7 +397,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_panning = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (win->ag_wire_from >= 0 && app->session) {
             namespace S = vivid::session;
@@ -648,6 +663,14 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                 return;
             }
         }
+        // Empty space: double-click resets the view (2i); otherwise start a pan drag.
+        const double now = glfwGetTime();
+        if (now - win->ag_last_click_t < 0.30) {
+            win->ag_zoom = 1.f; win->ag_pan_x = win->ag_pan_y = 0.f; win->ag_last_click_t = -1; return;
+        }
+        win->ag_last_click_t = now;
+        win->ag_panning = true; win->ag_pan_mx0 = mx; win->ag_pan_my0 = my;
+        win->ag_pan_ox0 = win->ag_pan_x; win->ag_pan_oy0 = win->ag_pan_y;
         return;   // consume other clicks in the graph
     }
     if (win->focus.kind == vivid::FocusContext::Kind::Device && my >= win->dock_top()
