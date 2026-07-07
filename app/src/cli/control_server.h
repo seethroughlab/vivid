@@ -44,8 +44,11 @@ public:
     int  port() const { return port_; }
     bool running() const { return running_.load(); }   // bound + listening (health signal)
 
-private:
+    // A method handler: (context, request-json) -> response-json. Public so the per-family
+    // register_<family>_handlers() free functions (audit #7, in control_handlers*.cpp) can name it.
     using Handler = std::function<nlohmann::json(const ControlCtx&, const nlohmann::json&)>;
+
+private:
     struct Pending { std::string method; nlohmann::json body; std::promise<nlohmann::json> reply; };
     void register_handlers();
 
