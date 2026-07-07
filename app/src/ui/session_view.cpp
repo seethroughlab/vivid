@@ -326,7 +326,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ag.set_source(s, tr);
         const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.draw(ui, w.sel_audio_node);
+        ag.draw(ui, w.sel_audio_node, w.ag_wire_from,
+                static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
 

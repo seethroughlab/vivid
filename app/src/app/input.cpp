@@ -383,6 +383,21 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1;
+        // Complete an audio-graph rewire: release over another node's input port connects the edge.
+        if (win->ag_wire_from >= 0 && app->session) {
+            namespace S = vivid::session;
+            const int tr = std::min(std::max(win->sel_track, 0), S::session_track_count(app->session) - 1);
+            vivid::ui::AudioNodeGraph ag; ag.set_source(app->session, tr);
+            const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
+            ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+            for (const auto& b : ag.layout())
+                if (b.kind != 0 && b.node_id != win->ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
+                    S::session_audio_graph_connect(app->session, tr, win->ag_wire_from, b.node_id);
+                    break;
+                }
+            win->ag_wire_from = -1;
+            return;
+        }
         if (win->plugin_drag_i >= 0) {   // plugin drop (from the browser onto a track / +Track)
             if (win->plugin_dragging) drop_plugin(*app, *win, win->plugin_drag_i, mx, my);
             win->plugin_drag_i = -1; win->plugin_dragging = false;
@@ -601,7 +616,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                 }
             }
         }
-        for (const auto& b : ag.layout()) {   // remove-x (effects) or select — both by node id
+        const auto boxes = ag.layout();
+        for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
+            if (b.kind != 2 && hit(ag.out_port_rect(b), mx, my)) { win->ag_wire_from = b.node_id; return; }
+        for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
             if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
                 S::session_audio_graph_remove_node(app->session, tr, b.node_id);
                 if (win->sel_audio_node == b.node_id) win->sel_audio_node = vivid::Window::kNoAudioNode;
@@ -609,6 +627,24 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             }
             if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
                 win->sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
+                return;
+            }
+        }
+        // Click an edge (in the empty space between cards) to disconnect it.
+        auto box_of = [&](int nid) -> const vivid::ui::AudioNodeBox* {
+            for (const auto& b : boxes) if (b.node_id == nid) return &b; return nullptr; };
+        const int ne = S::session_track_audio_graph_edge_count(app->session, tr);
+        for (int e = 0; e < ne; ++e) {
+            const vivid::ui::AudioNodeBox* a = box_of(S::session_track_audio_graph_edge_from(app->session, tr, e));
+            const vivid::ui::AudioNodeBox* b = box_of(S::session_track_audio_graph_edge_to(app->session, tr, e));
+            if (!a || !b) continue;
+            const float ax = a->x + a->w, ay = a->y + a->h * 0.5f, bx = b->x, by = b->y + b->h * 0.5f;
+            const float dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+            float t = (l2 > 0.f) ? ((mx - ax) * dx + (my - ay) * dy) / l2 : 0.f;
+            t = std::clamp(t, 0.f, 1.f);
+            const float px = ax + t * dx, py = ay + t * dy;
+            if ((mx - px) * (mx - px) + (my - py) * (my - py) < 36.f) {   // within ~6px of the edge
+                S::session_audio_graph_disconnect(app->session, tr, a->node_id, b->node_id);
                 return;
             }
         }

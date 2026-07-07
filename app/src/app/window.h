@@ -80,6 +80,10 @@ struct Window {
     int     sel_audio_node = kNoAudioNode;
     int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
     float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
+    // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
+    // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
+    int     ag_wire_from   = -1;
+    double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical

@@ -44,11 +44,17 @@ public:
     Rect add_button_rect() const;
     // The remove (x) rect for an effect node card (only meaningful for kind==1 boxes).
     Rect remove_rect(const AudioNodeBox& b) const;
+    // Wire ports for drag-to-rewire: the output port (right edge; source of a new edge — absent on
+    // the Output node) and the input port (left edge; target of an edge — absent on instruments).
+    Rect out_port_rect(const AudioNodeBox& b) const;
+    Rect in_port_rect(const AudioNodeBox& b) const;
     // The inline param cells for the selected node (by node id; -1 = none); empty otherwise.
     std::vector<AudioParamCell> param_cells(int sel_node) const;
 
-    // Render: the graph + (if a node is selected) its highlight + inline param strip.
-    void draw(Renderer2D& r, int sel_node) const;
+    // Render: the graph + (if a node is selected) its highlight + inline param strip. When
+    // wire_from >= 0 a rewire drag is in progress: draw a ghost wire from that node's output port
+    // to the cursor (cx, cy).
+    void draw(Renderer2D& r, int sel_node, int wire_from = -1, float cx = 0.f, float cy = 0.f) const;
 
 private:
     Rect graph_region() const;   // the node-graph area (above the param strip)

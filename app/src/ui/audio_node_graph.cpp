@@ -40,6 +40,13 @@ Rect AudioNodeGraph::remove_rect(const AudioNodeBox& b) const {
     return { b.x + b.w - 13.f, b.y + 3.f, 10.f, 10.f };
 }
 
+Rect AudioNodeGraph::out_port_rect(const AudioNodeBox& b) const {
+    return { b.x + b.w - 6.f, b.y + b.h * 0.5f - 6.f, 12.f, 12.f };   // right-edge dot hit area
+}
+Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
+    return { b.x - 6.f, b.y + b.h * 0.5f - 6.f, 12.f, 12.f };         // left-edge dot hit area
+}
+
 std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     std::vector<AudioNodeBox> out;
     if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return out;
@@ -98,7 +105,7 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     return out;
 }
 
-void AudioNodeGraph::draw(Renderer2D& r, int sel_node) const {
+void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, float cy) const {
     if (!s_ || track_ < 0) return;
     const Style& sty = style();
     if (x1_ - x0_ < 20.f || y1_ - y0_ < 20.f) return;
@@ -146,6 +153,18 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node) const {
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
         }
+        // Wire ports: an output dot (source; not on Output) and an input dot (target; not on inst).
+        if (b.kind != 2) { const Rect p = out_port_rect(b);
+            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f); }
+        if (b.kind != 0) { const Rect p = in_port_rect(b);
+            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f); }
+    }
+
+    // Ghost wire while dragging a rewire from a node's output port to the cursor.
+    if (wire_from >= 0) {
+        for (int i = 0; i < static_cast<int>(boxes.size()); ++i)
+            if (id[i] == wire_from) { const Rect p = out_port_rect(boxes[i]);
+                wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
     }
 
     // "+ FX" affordance.
