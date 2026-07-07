@@ -76,10 +76,20 @@ public:
     // --- topology edits (UI thread) ---
     int  add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label = "");
     void remove_node(int id);                    // also drops incident edges
+    // Remove a node but first "heal" the graph: reconnect each of its predecessors to each of its
+    // successors, so signal keeps flowing when a middle node is deleted (delete-and-bridge).
+    void remove_node_bridged(int id);
     bool connect(int from_id, int to_id);        // returns false if it would create a self-loop / dup
     void disconnect(int from_id, int to_id);
     void set_node_processor(int id, ProcessFn fn, void* ctx);   // rebind after a device swap
+    // Drop all nodes/edges but KEEP the id counter, so a rebuilt/edited graph never recycles a
+    // stale id (edges saved against an old node can't silently re-bind to a new one). Use this
+    // whenever the graph is the authoritative source of topology (free rewiring, persistence).
     void clear();
+    // Full reset INCLUDING the id counter → deterministic 0-based ids on the next build. Use only
+    // when the whole graph is regenerated from scratch each time (the derived linear-chain path) or
+    // when loading a session (ids come from the saved file, so the counter is re-seeded past them).
+    void reset();
 
     // --- queries ---
     const std::vector<AudioGraphNode>& nodes() const { return nodes_; }

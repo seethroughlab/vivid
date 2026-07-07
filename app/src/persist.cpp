@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 #include <fstream>
+#include <unordered_map>
 #include <vector>
 #include <cstdio>
 
@@ -97,10 +98,37 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             jo["params"] = ps;
             return jo;
         };
-        if (*vivid::session::session_audio_op_type(s, t, -1)) jt["audio_instrument"] = audio_op(-1);
-        json afx = json::array();
-        for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
-        if (!afx.empty()) jt["audio_fx"] = afx;
+        // AG-1 step 2: a rewired (authoritative) graph is saved as topology — nodes (stable id +
+        // kind + op + params) and (from->to) edges — since the linear chain can't represent a DAG.
+        // Otherwise the linear instrument/fx chain is saved as before (unchanged for old projects).
+        if (vivid::session::session_track_audio_graph_authoritative(s, t)) {
+            json g, nodes = json::array(), edges = json::array();
+            const int nn = vivid::session::session_track_audio_graph_node_count(s, t);
+            for (int i = 0; i < nn; ++i) {
+                const int id = vivid::session::session_track_audio_graph_node_id(s, t, i);
+                json jn; jn["id"] = id;
+                jn["kind"] = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
+                jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
+                json ps = json::object();
+                for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, id); ++p)
+                    ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
+                        vivid::session::session_audio_graph_node_param_get(s, t, id, p);
+                jn["params"] = ps;
+                nodes.push_back(jn);
+            }
+            const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
+            for (int e = 0; e < ne; ++e)
+                edges.push_back({ {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
+                                  {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} });
+            g["nodes"] = nodes; g["edges"] = edges;
+            g["output"] = vivid::session::session_track_audio_graph_output_id(s, t);
+            jt["audio_graph"] = g;
+        } else {
+            if (*vivid::session::session_audio_op_type(s, t, -1)) jt["audio_instrument"] = audio_op(-1);
+            json afx = json::array();
+            for (int e = 0; e < vivid::session::session_audio_effect_count(s, t); ++e) afx.push_back(audio_op(e));
+            if (!afx.empty()) jt["audio_fx"] = afx;
+        }
 
         tracks.push_back(jt);
     }
@@ -171,6 +199,10 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
         int added;
         if (kind == "audio") {
             added = vivid::session::session_add_audio_track(s);
+        } else if (jt.contains("audio_graph")) {
+            // A rewired (authoritative) track: the graph carries the instrument + effects, so create
+            // a bare native track and let the audio_graph block below populate it.
+            added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
@@ -276,6 +308,36 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                             vivid::session::session_audio_op_param_set(s, t, index, p, it.value().get<float>()); break;
                         }
             };
+            if (jt.contains("audio_graph")) {
+                // AG-1 step 2: rebuild an authoritative graph. The host assigns fresh node ids, so
+                // remap each saved id -> new id and replay edges (+ the output) by the new ids.
+                const auto& g = jt["audio_graph"];
+                vivid::session::session_audio_graph_clear(s, t);
+                std::unordered_map<int, int> id_map;
+                if (g.contains("nodes"))
+                    for (const auto& jn : g["nodes"]) {
+                        const int saved = jn.value("id", -1);
+                        const int nid = vivid::session::session_audio_graph_load_node(
+                            s, t, jn.value("kind", 1), jn.value("op", std::string()).c_str());
+                        if (nid < 0) continue;
+                        id_map[saved] = nid;
+                        if (jn.contains("params"))   // set params by name on the new node id
+                            for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
+                                for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, nid); ++p)
+                                    if (it.key() == vivid::session::session_audio_graph_node_param_name(s, t, nid, p)) {
+                                        vivid::session::session_audio_graph_node_param_set(s, t, nid, p, it.value().get<float>());
+                                        break;
+                                    }
+                    }
+                if (g.contains("edges"))
+                    for (const auto& je : g["edges"]) {
+                        auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
+                        if (f != id_map.end() && o != id_map.end())
+                            vivid::session::session_audio_graph_load_edge(s, t, f->second, o->second);
+                    }
+                auto out = id_map.find(g.value("output", -1));
+                vivid::session::session_audio_graph_finish_load(s, t, out != id_map.end() ? out->second : -1);
+            }
             if (jt.contains("audio_instrument")) {
                 const auto& ai = jt["audio_instrument"];
                 if (vivid::session::session_set_track_audio_instrument(s, t, ai.value("op", std::string()).c_str())

@@ -141,6 +141,11 @@ void apply_audio_param_mappings(App& app) {
 }
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
+    win.cur_x = mx; win.cur_y = my;   // latest cursor (used by the audio-graph ghost wire)
+    if (win.ag_panning) {   // 2i: drag empty space in the audio graph to pan the view
+        win.ag_pan_x = win.ag_pan_ox0 + static_cast<float>(mx - win.ag_pan_mx0);
+        win.ag_pan_y = win.ag_pan_oy0 + static_cast<float>(my - win.ag_pan_my0);
+    }
     if ((win.clip_drag_t >= 0 || win.clip_drag_from_pool >= 0) && !win.clip_dragging) {   // clip drag crosses the move threshold
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
         if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px
@@ -226,14 +231,14 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     }
     // UI-3 Stage 1: drag a selected audio-graph node's param knob (vertical). ag_param_v0 is the
     // normalized value at drag start; convert back to the op's [min,max] to set it.
-    if (win.ag_param_drag >= 0 && app.session && win.sel_audio_node > Window::kNoAudioNode) {
+    if (win.ag_param_drag >= 0 && app.session && win.sel_audio_node >= 0) {
         namespace S = vivid::session;
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        const int ch = win.sel_audio_node;
-        const float mn = S::session_audio_op_param_min(app.session, tr, ch, win.ag_param_drag);
-        const float mxx = S::session_audio_op_param_max(app.session, tr, ch, win.ag_param_drag);
+        const int nid = win.sel_audio_node;   // node id (not chain index)
+        const float mn = S::session_audio_graph_node_param_min(app.session, tr, nid, win.ag_param_drag);
+        const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
         const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
-        S::session_audio_op_param_set(app.session, tr, ch, win.ag_param_drag, mn + norm * (mxx - mn));
+        S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
     }
 }
 

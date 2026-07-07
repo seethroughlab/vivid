@@ -18,11 +18,11 @@ namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
 
-// A laid-out node. `chain` addresses the underlying op for params/removal: -1 = instrument,
-// 0+ = effect index, -2 = output (no params, not removable).
+// A laid-out node. `node_id` is the stable graph node id — it addresses the node for params,
+// removal, and rewiring (the chain-index model can't address nodes in a non-linear graph).
 struct AudioNodeBox {
-    int   kind = 0;      // 0 instrument / 1 effect / 2 output
-    int   chain = -2;
+    int   kind = 0;         // 0 instrument / 1 effect / 2 output
+    int   node_id = -1;     // stable graph node id
     float x = 0, y = 0, w = 0, h = 0;
 };
 
@@ -37,6 +37,9 @@ class AudioNodeGraph {
 public:
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) { x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1; }
+    // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan.
+    void set_view(float zoom, float pan_x, float pan_y) { zoom_ = zoom; pan_x_ = pan_x; pan_y_ = pan_y; }
+    Rect graph_region() const;   // the node-graph area (above the param strip) — for input zoom/pan
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
     std::vector<AudioNodeBox> layout() const;
@@ -44,19 +47,25 @@ public:
     Rect add_button_rect() const;
     // The remove (x) rect for an effect node card (only meaningful for kind==1 boxes).
     Rect remove_rect(const AudioNodeBox& b) const;
-    // The inline param cells for the selected op (chain: -1 instrument / 0+ effect); empty otherwise.
-    std::vector<AudioParamCell> param_cells(int sel_chain) const;
+    // Wire ports for drag-to-rewire: the output port (right edge; source of a new edge — absent on
+    // the Output node) and the input port (left edge; target of an edge — absent on instruments).
+    Rect out_port_rect(const AudioNodeBox& b) const;
+    Rect in_port_rect(const AudioNodeBox& b) const;
+    // The inline param cells for the selected node (by node id; -1 = none); empty otherwise.
+    std::vector<AudioParamCell> param_cells(int sel_node) const;
 
-    // Render: the graph + (if a node is selected) its highlight + inline param strip.
-    void draw(Renderer2D& r, int sel_chain) const;
+    // Render: the graph + (if a node is selected) its highlight + inline param strip. When
+    // wire_from >= 0 a rewire drag is in progress: draw a ghost wire from that node's output port
+    // to the cursor (cx, cy).
+    void draw(Renderer2D& r, int sel_node, int wire_from = -1, float cx = 0.f, float cy = 0.f) const;
 
 private:
-    Rect graph_region() const;   // the node-graph area (above the param strip)
     Rect param_region() const;   // the selected-node param strip (bottom band)
 
     vivid::session::Session* s_ = nullptr;
     int   track_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+    float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
 };
 
 }  // namespace vivid::ui

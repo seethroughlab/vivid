@@ -55,6 +55,7 @@ int  session_get_metronome(Session*);
 // add_* return the new track index, or -1 (catalog/path didn't resolve, or kMaxTracks).
 int  session_add_instrument_track(Session*, const char* instrument);  // catalog label OR a .vst3 path
 int  session_add_audio_track(Session*);                               // a sampler track
+int  session_add_graph_track(Session*, const char* name);            // bare native track for a loaded audio graph
 bool session_remove_track(Session*, int track);                       // retires the track (freed at shutdown)
 // Instrument catalog offered in the "+ Track" menu (resolved to a plugin on add).
 int         session_available_instrument_count();
@@ -201,6 +202,31 @@ int         session_track_audio_graph_output_id(Session*, int track);
 int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
+
+// AG-1 step 2 — authoritative topology edits (UI thread). The first such edit flips the track
+// to graph-authoritative: rebuild_track_graph stops regenerating from the linear device chain
+// and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
+int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
+int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
+int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
+int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
+// Node-id-keyed param access (works for derived + authoritative graphs; the chain-index API
+// can't address nodes in a non-linear graph). node_id comes from the introspection accessors.
+int         session_audio_graph_node_param_count(Session*, int track, int node_id);
+const char* session_audio_graph_node_param_name (Session*, int track, int node_id, int p);
+float       session_audio_graph_node_param_get  (Session*, int track, int node_id, int p);
+float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
+float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
+void        session_audio_graph_node_param_set  (Session*, int track, int node_id, int p, float v);
+// 1 if the track's audio graph is the authoritative source of topology (has been rewired) → its
+// graph should be persisted as nodes+edges rather than the linear instrument/fx chain.
+int         session_track_audio_graph_authoritative(Session*, int track);
+// Graph load (persistence). Host assigns fresh node ids (remap saved ids). Sequence:
+// clear -> load_node* (+ set node params) -> load_edge* -> finish_load(output). kind: 0 inst / 1 fx / 2 output.
+void        session_audio_graph_clear      (Session*, int track);
+int         session_audio_graph_load_node  (Session*, int track, int kind, const char* op_type);   // -> new node id
+void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
+void        session_audio_graph_finish_load(Session*, int track, int output_id);
 
 // Slice the source audio clip into a new MIDI track driven by a native Sampler loaded
 // with the clip's PCM + slices (slice_mode: 1=transients, 3=16-grid). Ascending pitches from

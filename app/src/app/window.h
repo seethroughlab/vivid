@@ -11,8 +11,10 @@ namespace ui { class Renderer2D; class ClipEditor; }
 
 namespace vivid {
 
-// A right-click context menu of a track's audio characteristics (the bridge).
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };  // src: -1 master, >=0 track
+// A right-click context menu of a track's audio characteristics (the bridge). `graph` marks the
+// fx picker as opened from the audio-graph deep view: native effects only, added via the graph
+// edit API (audio_graph_add_op → authoritative) rather than the linear device chain.
+struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; bool graph = false; };  // src: -1 master, >=0 track
 // A right-click context menu on a visuals op node (open its source / clone it).
 struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
@@ -71,12 +73,22 @@ struct Window {
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
-    // UI-3 Stage 1: the audio-graph node selected for inline param editing (chain index: -1 =
-    // instrument, 0+ = effect; kNoAudioNode = none) + the param knob being dragged.
+    // UI-3: the audio-graph node selected for inline param editing, by stable NODE ID (>= 0);
+    // kNoAudioNode = none. (Stage 2 moved this from chain index to node id so params work on any
+    // node of a rewired/non-linear graph.) Plus the param knob index being dragged.
     static constexpr int kNoAudioNode = -100;
     int     sel_audio_node = kNoAudioNode;
     int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
     float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
+    // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
+    // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
+    int     ag_wire_from   = -1;
+    double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
+    // UI-3 Stage 2 (2i): the audio-graph view transform (on top of the auto-fit). zoom 1 + pan 0 =
+    // the fitted view; scroll zooms around the cursor, dragging empty space pans, double-click resets.
+    float   ag_zoom = 1.f, ag_pan_x = 0.f, ag_pan_y = 0.f;
+    bool    ag_panning = false; double ag_pan_mx0 = 0, ag_pan_my0 = 0; float ag_pan_ox0 = 0, ag_pan_oy0 = 0;
+    double  ag_last_click_t = -1;   // for double-click-to-reset the audio-graph view
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical

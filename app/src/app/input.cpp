@@ -168,6 +168,21 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     }
     // Scroll over the visuals pane zooms the node graph around the cursor.
     if (win->show_graph && win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
+    // Scroll over the audio-graph deep view zooms it around the cursor (2i).
+    if (win->focus.kind == vivid::FocusContext::Kind::AudioGraph && win->app->session) {
+        vivid::ui::AudioNodeGraph ag; ag.set_source(win->app->session, win->sel_track);
+        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        const vivid::ui::Rect gr = ag.graph_region();
+        if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
+            const float z0 = win->ag_zoom;
+            const float z1 = std::clamp(z0 * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
+            // keep the point under the cursor fixed: screen = gr.origin + (base-origin)*z + pan
+            win->ag_pan_x = static_cast<float>(mx) - gr.x - ((static_cast<float>(mx) - gr.x - win->ag_pan_x) / z0) * z1;
+            win->ag_pan_y = static_cast<float>(my) - gr.y - ((static_cast<float>(my) - gr.y - win->ag_pan_y) / z0) * z1;
+            win->ag_zoom = z1;
+        }
+    }
 }
 
 // The clip cell under (mx,my), or false. Fills t/sc on a hit.
@@ -382,7 +397,22 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_panning = false;
+        // Complete an audio-graph rewire: release over another node's input port connects the edge.
+        if (win->ag_wire_from >= 0 && app->session) {
+            namespace S = vivid::session;
+            const int tr = std::min(std::max(win->sel_track, 0), S::session_track_count(app->session) - 1);
+            vivid::ui::AudioNodeGraph ag; ag.set_source(app->session, tr);
+            const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
+            ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+            for (const auto& b : ag.layout())
+                if (b.kind != 0 && b.node_id != win->ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
+                    S::session_audio_graph_connect(app->session, tr, win->ag_wire_from, b.node_id);
+                    break;
+                }
+            win->ag_wire_from = -1;
+            return;
+        }
         if (win->plugin_drag_i >= 0) {   // plugin drop (from the browser onto a track / +Track)
             if (win->plugin_dragging) drop_plugin(*app, *win, win->plugin_drag_i, mx, my);
             win->plugin_drag_i = -1; win->plugin_dragging = false;
@@ -477,14 +507,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // FX menu has priority: pick an effect -> add it to the menu's track. Rows are the
     // VST3 catalog first, then native audio operators (matches draw_fx_menu ordering).
     if (win->fx_menu.open) {
-        const int nvst = vivid::session::session_available_effect_count();
+        // Graph mode: native effects only, added via the graph edit API (authoritative). Device
+        // mode: the VST3 catalog first, then native operators (matches draw_fx_menu ordering).
+        const int nvst = win->fx_menu.graph ? 0 : vivid::session::session_available_effect_count();
         const int nnat = vivid::session::session_available_audio_op_count(app->session, 0);
         for (int j = 0; j < nvst + nnat; ++j) {
             const Rect r = { win->fx_menu.x, win->fx_menu.y + j * 24.f, 150.f, 24.f };
             if (hit(r, mx, my)) {
                 if (j < nvst) vivid::session::session_add_effect_by_index(app->session, win->fx_menu.src, j);
-                else vivid::session::session_add_audio_effect(app->session, win->fx_menu.src,
-                         vivid::session::session_available_audio_op_name(app->session, 0, j - nvst));
+                else {
+                    const char* op = vivid::session::session_available_audio_op_name(app->session, 0, j - nvst);
+                    if (win->fx_menu.graph) vivid::session::session_audio_graph_add_op(app->session, win->fx_menu.src, op);
+                    else                    vivid::session::session_add_audio_effect(app->session, win->fx_menu.src, op);
+                }
                 break;
             }
         }
@@ -571,41 +606,71 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         vivid::ui::AudioNodeGraph ag; ag.set_source(app->session, tr);
         const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        if (hit(ag.add_button_rect(), mx, my)) {   // + FX: the native-effect picker menu
-            // The button is pinned top-right, so anchor the 150px menu at the click but clamp its
-            // box (width + all rows) inside the window — otherwise it spills off the right/bottom edge.
-            const int rows = S::session_available_effect_count()
-                           + S::session_available_audio_op_count(app->session, 0);
+        if (hit(ag.add_button_rect(), mx, my)) {   // + FX: the NATIVE-effect picker (graph mode)
+            // Graph editing is native-only + authoritative, so the menu lists just native effects
+            // and selecting one calls audio_graph_add_op. The button is pinned top-right, so anchor
+            // the 150px menu at the click but clamp its box inside the window (no right/bottom spill).
+            const int rows = S::session_available_audio_op_count(app->session, 0);   // native effects only
             const float menu_w = 150.f, item_h = 24.f, marg = 8.f;
             float fx = std::min(static_cast<float>(mx), win->win_w - menu_w - marg);
             float fy = static_cast<float>(my);
             if (fy + rows * item_h > win->win_h - marg)
                 fy = std::max(marg + 22.f, win->win_h - rows * item_h - marg);
-            win->fx_menu.open = true; win->fx_menu.x = fx; win->fx_menu.y = fy; win->fx_menu.src = tr; return;
+            win->fx_menu = { true, fx, fy, tr, true /*graph*/ };
+            return;
         }
-        if (win->sel_audio_node > vivid::Window::kNoAudioNode) {   // param knob drag on the selected node
+        if (win->sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
             for (const auto& c : ag.param_cells(win->sel_audio_node)) {
                 if (mx >= c.x && mx < c.x + c.w && my >= c.y && my < c.y + c.h) {
-                    const float mn = S::session_audio_op_param_min(app->session, tr, win->sel_audio_node, c.index);
-                    const float mxx = S::session_audio_op_param_max(app->session, tr, win->sel_audio_node, c.index);
-                    const float v = S::session_audio_op_param_get(app->session, tr, win->sel_audio_node, c.index);
+                    const float mn = S::session_audio_graph_node_param_min(app->session, tr, win->sel_audio_node, c.index);
+                    const float mxx = S::session_audio_graph_node_param_max(app->session, tr, win->sel_audio_node, c.index);
+                    const float v = S::session_audio_graph_node_param_get(app->session, tr, win->sel_audio_node, c.index);
                     win->ag_param_drag = c.index;
                     win->ag_param_v0 = (mxx > mn) ? std::clamp((v - mn) / (mxx - mn), 0.f, 1.f) : 0.f;
                     win->ag_param_y0 = my; return;
                 }
             }
         }
-        for (const auto& b : ag.layout()) {   // remove-x (effects) or select
+        const auto boxes = ag.layout();
+        for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
+            if (b.kind != 2 && hit(ag.out_port_rect(b), mx, my)) { win->ag_wire_from = b.node_id; return; }
+        for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
             if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
-                S::session_remove_audio_effect(app->session, tr, b.chain);
-                if (win->sel_audio_node == b.chain) win->sel_audio_node = vivid::Window::kNoAudioNode;
+                S::session_audio_graph_remove_node(app->session, tr, b.node_id);
+                if (win->sel_audio_node == b.node_id) win->sel_audio_node = vivid::Window::kNoAudioNode;
                 return;
             }
             if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
-                win->sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.chain;   // output has no params
+                win->sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
                 return;
             }
         }
+        // Click an edge (in the empty space between cards) to disconnect it.
+        auto box_of = [&](int nid) -> const vivid::ui::AudioNodeBox* {
+            for (const auto& b : boxes) if (b.node_id == nid) return &b; return nullptr; };
+        const int ne = S::session_track_audio_graph_edge_count(app->session, tr);
+        for (int e = 0; e < ne; ++e) {
+            const vivid::ui::AudioNodeBox* a = box_of(S::session_track_audio_graph_edge_from(app->session, tr, e));
+            const vivid::ui::AudioNodeBox* b = box_of(S::session_track_audio_graph_edge_to(app->session, tr, e));
+            if (!a || !b) continue;
+            const float ax = a->x + a->w, ay = a->y + a->h * 0.5f, bx = b->x, by = b->y + b->h * 0.5f;
+            const float dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+            float t = (l2 > 0.f) ? ((mx - ax) * dx + (my - ay) * dy) / l2 : 0.f;
+            t = std::clamp(t, 0.f, 1.f);
+            const float px = ax + t * dx, py = ay + t * dy;
+            if ((mx - px) * (mx - px) + (my - py) * (my - py) < 36.f) {   // within ~6px of the edge
+                S::session_audio_graph_disconnect(app->session, tr, a->node_id, b->node_id);
+                return;
+            }
+        }
+        // Empty space: double-click resets the view (2i); otherwise start a pan drag.
+        const double now = glfwGetTime();
+        if (now - win->ag_last_click_t < 0.30) {
+            win->ag_zoom = 1.f; win->ag_pan_x = win->ag_pan_y = 0.f; win->ag_last_click_t = -1; return;
+        }
+        win->ag_last_click_t = now;
+        win->ag_panning = true; win->ag_pan_mx0 = mx; win->ag_pan_my0 = my;
+        win->ag_pan_ox0 = win->ag_pan_x; win->ag_pan_oy0 = win->ag_pan_y;
         return;   // consume other clicks in the graph
     }
     if (win->focus.kind == vivid::FocusContext::Kind::Device && my >= win->dock_top()
