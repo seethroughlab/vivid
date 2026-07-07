@@ -327,7 +327,12 @@ static void rebuild_track_graph(Track* t) {
 // L/R. `t.blk` must be filled for this block before calling.
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
-    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty()) {
+    // RT safety net: bail to silence on any inconsistency between the plan and the working
+    // buffers (e.g. a graph published before its pool/bindings were reserved). The audio thread
+    // must never index past gpool/gbinds — the pool holds (buf_count + 1) stereo buffers.
+    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty()
+        || static_cast<int>(t.gbinds.size()) < cg.buf_count
+        || t.gpool.size() < static_cast<size_t>(cg.buf_count + 1) * 2 * frames) {
         std::memset(L, 0, frames * sizeof(float)); std::memset(R, 0, frames * sizeof(float));
         return;
     }
@@ -1672,6 +1677,68 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
     if (op) vivid::audio_op_param_set(op, p, v);
 }
 
+int session_track_audio_graph_authoritative(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->graph_authoritative ? 1 : 0;
+}
+
+// AG-1 step 2 — graph load (persistence). Rebuilds an authoritative graph node-by-node; the host
+// assigns FRESH node ids (returned) so the caller remaps saved-id -> new-id and replays edges by
+// the new ids. Sequence: clear -> load_node* -> (set node params) -> load_edge* -> finish_load.
+// Nothing is RT-published until finish_load.
+void session_audio_graph_clear(Session* s, int t) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    { std::lock_guard<std::mutex> olk(tr->op_fx_mtx);   // retire any existing native ops (freed at shutdown)
+      for (vivid::AudioOp* op : tr->op_effects_edit) tr->op_retired.push_back(op);
+      tr->op_effects_edit.clear();
+      if (tr->op_instrument_edit) { tr->op_retired.push_back(tr->op_instrument_edit); tr->op_instrument_edit = nullptr; }
+      tr->op_fx_gen.fetch_add(1, std::memory_order_release); }
+    tr->agraph.reset(); tr->agnodes.clear(); tr->graph_authoritative = false;
+}
+int session_audio_graph_load_node(Session* s, int t, int kind, const char* op_type) {
+    Track* tr = graph_track(s, t); if (!tr || !s->op_reg) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
+    vivid::AudioOp* op = nullptr;
+    GNKind gk = GNKind::Output; bool is_src = false, is_out = false;
+    if (kind == 2) { is_out = true; }   // output sink: no op
+    else {
+        op = vivid::audio_op_create(*s->op_reg, op_type);
+        if (!op) return -1;
+        if (kind == 0) {   // instrument (source)
+            if (!vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
+            gk = GNKind::NativeInst; is_src = true;
+            std::lock_guard<std::mutex> olk(tr->op_fx_mtx);
+            if (tr->op_instrument_edit) tr->op_retired.push_back(tr->op_instrument_edit);
+            tr->op_instrument_edit = op;
+        } else {           // effect
+            if (vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
+            gk = GNKind::NativeFx;
+            std::lock_guard<std::mutex> olk(tr->op_fx_mtx);
+            tr->op_effects_edit.push_back(op);
+        }
+        tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+    }
+    const int nid = tr->agraph.add_node(is_src, is_out, nullptr, nullptr, op_type ? op_type : "node");
+    tr->agnodes.push_back({ gk, op });
+    return nid;
+}
+void session_audio_graph_load_edge(Session* s, int t, int from_id, int to_id) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.connect(from_id, to_id);
+}
+void session_audio_graph_finish_load(Session* s, int t, int output_id) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.set_output_id(output_id);
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+}
+
 // A6: slice an audio clip into a new MIDI track driven by a native Sampler. Computes the
 // clip's slices (`slice_mode`: 1=transients, 3=16-grid), creates a paired instrument track
 // whose native instrument is a Sampler loaded with the clip's PCM + those slices, and writes
@@ -1835,6 +1902,19 @@ int session_add_audio_track(Session* s) {
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);
+    return idx;
+}
+
+// A bare native-instrument track (no VST3 handle) whose instrument + effects come from an
+// authoritative audio graph loaded onto it — the home for a persisted rewired graph. Same shape
+// as the track slice_to_midi builds; reserve_track_graph runs inside make_instrument_track.
+int session_add_graph_track(Session* s, const char* name) {
+    if (!s || static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
+    s->tracks.emplace_back(make_instrument_track(nullptr, (name && *name) ? name : "Graph", s->scenes));
+    s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_view(s);
+    const int idx = static_cast<int>(s->tracks.size()) - 1;
+    std::fprintf(stderr, "[Session] + graph track %d: %s\n", idx, s->tracks.back()->name.c_str());
     return idx;
 }
 
