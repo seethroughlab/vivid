@@ -27,4 +27,10 @@ bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
 bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
 void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
 
+// ---- clip editor routing (input_editor.cpp) ----
+bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
+bool editor_scroll(Window& win, double xoff, double yoff, int mods, double mx, double my);
+bool editor_mouse(Window& win, int button, int action, double mx, double my, int mods);
+void editor_open_clip(Window& win, App& app, int t, int sc, int tracks);   // double-click a grid cell
+
 }  // namespace vivid::input

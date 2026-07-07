@@ -55,10 +55,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     // gate below because note-off needs the RELEASE event; unhandled keys fall through.
     if (vivid::input::typing_key(*win, *app, key, action)) return;
     if (action != GLFW_PRESS && action != GLFW_REPEAT) return;
-    if (key == GLFW_KEY_ESCAPE && win->editor && win->editor->is_open()) { win->editor->close(); return; }
-    // The clip editor, when open, gets first crack at keys (Delete/undo/select-all/tool).
-    // Unhandled keys fall through to the global shortcuts below.
-    if (win->editor && win->editor->is_open() && win->editor->on_key(key, mods)) return;
+    // The clip editor, when open, gets first crack at keys (Esc close / Delete / undo / select-all
+    // / tool). Unhandled keys fall through to the global shortcuts below.
+    if (vivid::input::editor_key(*win, key, mods)) return;
     if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
@@ -104,9 +103,7 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
-    if (win->editor && win->editor->is_open() && win->editor->contains(mx, my)) {
-        win->editor->on_scroll(xoff, yoff, scroll_mods(w), mx, my); return;
-    }
+    if (vivid::input::editor_scroll(*win, xoff, yoff, scroll_mods(w), mx, my)) return;
     // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
     if (vivid::input::plugins_scroll(*win, *win->app, yoff, mx, my)) return;
     // Scroll over the visuals pane zooms the node graph around the cursor.
@@ -236,15 +233,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->show_mappings = false; return;  // click outside: close
     }
 
-    // Clip editor is non-modal: route presses inside its panel to it; clicks
-    // elsewhere pass through to the session. A release always ends any editor drag.
-    if (win->editor && win->editor->is_open()) {
-        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) win->editor->on_up(mx, my);
-        if (action == GLFW_PRESS && win->editor->contains(mx, my)) {
-            if (button == GLFW_MOUSE_BUTTON_LEFT) win->editor->on_down(mx, my, glfwGetTime(), mods);
-            return;
-        }
-    }
+    // Clip editor (non-modal): presses inside route to it; a release ends any editor drag.
+    if (vivid::input::editor_mouse(*win, button, action, mx, my, mods)) return;
 
     // DAW | visuals splitter.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_RELEASE) { win->split_drag = false; win->dock_drag = false; }
@@ -668,46 +658,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             if (hit(clip_cell_rect(t, sc), dmx, my)) {
                 const double now = glfwGetTime();
                 if (win->editor && win->last_clip_track == t && win->last_clip_scene == sc && now - win->last_clip_t < 0.35) {
-                    char title[80];
-                    std::snprintf(title, sizeof title, "%s  \xC2\xB7  Clip %c",
-                                  vivid::session::session_track_name(app->session, t), 'A' + sc);
-                    // Grow the shared dock to a comfortable editing height (the piano roll
-                    // needs room); the user can still resize it. Capped to 60% of the window.
-                    win->dock_h = std::min(std::max(win->dock_h, 320.f), win->win_h * 0.6f);
-                    win->editor->set_window(static_cast<float>(win->win_w), static_cast<float>(win->win_h));
-                    win->editor->set_dock_h(win->dock_h);   // fit the docked view to the current dock height
-                    if (vivid::session::session_track_is_audio(app->session, t)) {  // waveform editor
-                        float bins[512]; float a = 0.f, b = 1.f;
-                        const int nb = vivid::session::session_audio_waveform(app->session, t, sc, bins, 512);
-                        vivid::session::session_get_audio_trim(app->session, t, sc, &a, &b);
-                        const double lb = vivid::session::session_audio_loop_beats(app->session, t, sc);
-                        win->editor->open_audio(t, sc, title, bins, nb, a, b, lb);
-                        // Load the clip's warp/pitch state + marker overlay (A5).
-                        win->editor->set_audio_shape(vivid::session::session_get_audio_warp(app->session, t, sc),
-                                                     vivid::session::session_get_audio_pitch(app->session, t, sc));
-                        float wp[256], tr[512]; double wb[256];
-                        const int nw = vivid::session::session_audio_get_warp_pts(app->session, t, sc, wp, 256);
-                        vivid::session::session_audio_get_warp_beats(app->session, t, sc, wb, 256);
-                        const int ntr = vivid::session::session_audio_get_transients(app->session, t, sc, tr, 512);
-                        win->editor->set_audio_markers(wp, wb, nw, tr, ntr);
-                    } else {                                                  // piano-roll editor
-                        vivid::session::ClipNote buf[256];
-                        const int n = vivid::session::session_get_clip(app->session, t, sc, buf, 256);
-                        const double len = vivid::session::session_clip_length(app->session, t, sc);
-                        win->editor->open(t, sc, title, buf, n, len);
-                        double ls = 0, le = 0;
-                        vivid::session::session_get_clip_loop(app->session, t, sc, &ls, &le);
-                        win->editor->set_loop(ls, le);
-                        // Ghost reference: gather the same-scene notes of the other MIDI tracks.
-                        std::vector<vivid::session::ClipNote> ghosts;
-                        for (int gt = 0; gt < tracks; ++gt) {
-                            if (gt == t || vivid::session::session_track_is_audio(app->session, gt)) continue;
-                            vivid::session::ClipNote gb[256];
-                            const int gn = vivid::session::session_get_clip(app->session, gt, sc, gb, 256);
-                            ghosts.insert(ghosts.end(), gb, gb + gn);
-                        }
-                        win->editor->set_ghost_notes(ghosts.data(), static_cast<int>(ghosts.size()));
-                    }
+                    vivid::input::editor_open_clip(*win, *app, t, sc, tracks);   // double-click opens the docked editor
                     win->last_clip_t = -1; win->clip_drag_t = -1;
                     return;
                 }
