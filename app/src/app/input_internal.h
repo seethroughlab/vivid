@@ -27,6 +27,9 @@ bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
 bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
 void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
 
+// ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
+void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
+
 // ---- clip editor routing (input_editor.cpp) ----
 bool editor_key(Window& win, int key, int mods);                            // Esc close + on_key
 bool editor_scroll(Window& win, double xoff, double yoff, int mods, double mx, double my);

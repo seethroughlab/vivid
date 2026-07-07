@@ -106,23 +106,8 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     if (vivid::input::editor_scroll(*win, xoff, yoff, scroll_mods(w), mx, my)) return;
     // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
     if (vivid::input::plugins_scroll(*win, *win->app, yoff, mx, my)) return;
-    // Scroll over the visuals pane zooms the node graph around the cursor.
-    if (win->show_graph && win->app->graph && mx >= win->split_x) win->app->graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
-    // Scroll over the audio-graph deep view zooms it around the cursor (2i).
-    if (win->focus.kind == vivid::FocusContext::Kind::AudioGraph && win->app->session) {
-        vivid::ui::AudioNodeGraph ag; ag.set_source(win->app->session, win->sel_track);
-        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win->win_w, win->win_h, win->dock_h);
-        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        const vivid::ui::Rect gr = ag.graph_region();
-        if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
-            const float z0 = win->ag_zoom;
-            const float z1 = std::clamp(z0 * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
-            // keep the point under the cursor fixed: screen = gr.origin + (base-origin)*z + pan
-            win->ag_pan_x = static_cast<float>(mx) - gr.x - ((static_cast<float>(mx) - gr.x - win->ag_pan_x) / z0) * z1;
-            win->ag_pan_y = static_cast<float>(my) - gr.y - ((static_cast<float>(my) - gr.y - win->ag_pan_y) / z0) * z1;
-            win->ag_zoom = z1;
-        }
-    }
+    // Zoom whichever node graph is under the cursor (visuals node graph / audio-graph deep view).
+    vivid::input::graph_scroll(*win, *win->app, yoff, mx, my);
 }
 
 // The clip cell under (mx,my), or false. Fills t/sc on a hit.

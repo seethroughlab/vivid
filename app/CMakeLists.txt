@@ -144,6 +144,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/input_transport.cpp
     src/app/input_plugins.cpp
     src/app/input_editor.cpp
+    src/app/input_graph.cpp
     src/app/frame.cpp
     src/app/project_io.cpp
     src/app/file_actions.cpp
