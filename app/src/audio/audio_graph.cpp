@@ -65,6 +65,16 @@ void AudioGraph::remove_node(int id) {
     if (output_id_ == id) output_id_ = -1;
 }
 
+void AudioGraph::remove_node_bridged(int id) {
+    std::vector<int> preds, succs;
+    for (const AudioGraphEdge& e : edges_) {
+        if (e.to_id == id)   preds.push_back(e.from_id);
+        if (e.from_id == id) succs.push_back(e.to_id);
+    }
+    remove_node(id);   // drops the node + its incident edges
+    for (int p : preds) for (int s : succs) connect(p, s);   // heal: preds -> succs (connect dedups)
+}
+
 bool AudioGraph::connect(int from_id, int to_id) {
     if (from_id == to_id || node_index(from_id) < 0 || node_index(to_id) < 0) return false;
     for (const AudioGraphEdge& e : edges_)

@@ -720,6 +720,40 @@ void ControlServer::register_handlers() {
         P::session_audio_op_param_set(c.session, track, index, param, b.value("value", 0.f));
         return ok();
     };
+    // AG-1 step 2: authoritative topology edits. The first flips the track's audio graph to the
+    // editable source of truth; get_audio_graph reflects the result (nodes/edges/output_id).
+    handlers_["audio_graph_add_op"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int nid = P::session_audio_graph_add_op(c.session, track, op.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add audio effect node: '" + op + "'");
+        json r = ok(); r["node"] = nid; return r;
+    };
+    handlers_["audio_graph_remove_node"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), node = b.value("node", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_audio_graph_remove_node(c.session, track, node))
+            return err(code::kBadArg, "node not removable (unknown, or an instrument/output)");
+        return ok();
+    };
+    handlers_["audio_graph_connect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        if (!P::session_audio_graph_connect(c.session, track, from, to))
+            return err(code::kBadArg, "edge rejected (duplicate, self-loop, unknown node, or would create a cycle)");
+        return ok();
+    };
+    handlers_["audio_graph_disconnect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_audio_graph_disconnect(c.session, track, from, to);
+        return ok();
+    };
     handlers_["slice_to_midi"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);

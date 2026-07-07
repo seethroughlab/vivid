@@ -76,6 +76,9 @@ public:
     // --- topology edits (UI thread) ---
     int  add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label = "");
     void remove_node(int id);                    // also drops incident edges
+    // Remove a node but first "heal" the graph: reconnect each of its predecessors to each of its
+    // successors, so signal keeps flowing when a middle node is deleted (delete-and-bridge).
+    void remove_node_bridged(int id);
     bool connect(int from_id, int to_id);        // returns false if it would create a self-loop / dup
     void disconnect(int from_id, int to_id);
     void set_node_processor(int id, ProcessFn fn, void* ctx);   // rebind after a device swap

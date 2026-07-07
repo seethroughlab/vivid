@@ -373,6 +373,40 @@ def slice_to_midi(track: int, scene: int, slice_mode: int = 3) -> dict:
     return _post("slice_to_midi", {"track": track, "scene": scene, "slice_mode": slice_mode})
 
 
+# ---------------- audio node graph (authoritative topology) ----------------
+# get_audio_graph reports a track's node graph (nodes with stable ids + kinds, from->to edges,
+# output_id). These edits make the GRAPH the source of truth (vs the linear device chain), so
+# parallel chains / racks become expressible. Node ids come from get_audio_graph.
+@mcp.tool
+def audio_graph_add_op(track: int, op: str) -> dict:
+    """Add a native effect (name from list_audio_operators) as a new node in a track's audio
+    graph, inserted just before the Output so it lands at the end of the signal path. Returns
+    its new node id. This flips the track to graph-authoritative editing."""
+    return _post("audio_graph_add_op", {"track": track, "op": op})
+
+
+@mcp.tool
+def audio_graph_remove_node(track: int, node: int) -> dict:
+    """Remove an effect node from a track's audio graph by node id (from get_audio_graph). Its
+    predecessors reconnect to its successors so signal keeps flowing. Instrument and Output
+    nodes are not removable."""
+    return _post("audio_graph_remove_node", {"track": track, "node": node})
+
+
+@mcp.tool
+def audio_graph_connect(track: int, from_node: int, to_node: int) -> dict:
+    """Add an edge between two audio-graph nodes (ids from get_audio_graph). Multiple edges into
+    a node sum (stereo). Rejected if it duplicates an edge, is a self-loop, or creates a cycle."""
+    return _post("audio_graph_connect", {"track": track, "from": from_node, "to": to_node})
+
+
+@mcp.tool
+def audio_graph_disconnect(track: int, from_node: int, to_node: int) -> dict:
+    """Remove the edge from_node -> to_node from a track's audio graph (ids from
+    get_audio_graph). No-op if the edge is absent."""
+    return _post("audio_graph_disconnect", {"track": track, "from": from_node, "to": to_node})
+
+
 # ---------------- live input / recording ----------------
 @mcp.tool
 def arm_track(track: int) -> dict:

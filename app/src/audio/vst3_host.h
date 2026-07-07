@@ -202,6 +202,14 @@ int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
 
+// AG-1 step 2 — authoritative topology edits (UI thread). The first such edit flips the track
+// to graph-authoritative: rebuild_track_graph stops regenerating from the linear device chain
+// and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
+int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
+int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
+int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
+int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
+
 // Slice the source audio clip into a new MIDI track driven by a native Sampler loaded
 // with the clip's PCM + slices (slice_mode: 1=transients, 3=16-grid). Ascending pitches from
 // C1 map to slices. Returns the new track index, or -1 on failure. UI thread only.
