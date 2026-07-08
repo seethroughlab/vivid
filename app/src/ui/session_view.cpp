@@ -7,6 +7,7 @@
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"
 #include "ui/compound_widget.h"   // UI-4a: host-composed compound inspector widgets
+#include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
 #include "transport.h"
@@ -14,6 +15,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 
 namespace vivid::ui {
 
@@ -23,6 +26,27 @@ void draw_midi_preview(Renderer2D& ui, const vivid::session::ClipNote* buf, int 
 void draw_wave_preview(Renderer2D& ui, const float* bins, int n,
                        const Rect& b, float ar, float ag, float ab, float alpha);
 void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my);
+
+// UI-4b: bridge the host palette + node-graph param writes to the operator editor ABI.
+namespace {
+inline VividColor vc(const float* c, float a = 1.f) { return { c[0], c[1], c[2], a }; }
+VividInspectorTheme editor_theme(const Style& s) {
+    VividInspectorTheme t{};
+    t.bg = vc(s.panel); t.accent = vc(s.gpu); t.dim_text = vc(s.dim); t.bright_text = vc(s.body);
+    t.separator = vc(s.border_soft); t.dark_bg = vc(s.bg); t.slider_fill = vc(s.gpu); t.slider_track = vc(s.card);
+    t.corner_radius = s.radius;
+    return t;
+}
+// Command sink: an operator editor's set_param(name, value) → the node's base param by that name.
+struct EditorCmd { NodeGraph* g; int node; };
+void editor_set_param(void* o, const char* name, float v) {
+    auto* c = static_cast<EditorCmd*>(o);
+    if (!c || !c->g || !name) return;
+    const int pc = c->g->op_param_count_at(c->node);
+    for (int l = 0; l < pc; ++l)
+        if (std::strcmp(c->g->op_param_label_at(c->node, l), name) == 0) { c->g->set_op_param_base_at(c->node, l, v); return; }
+}
+}  // namespace
 
 // --- Unified device chain resolution (VST3 + native audio operators) ---
 // Chip layout: slot 0 = instrument; slots [1..nfx] = VST3 effects; slots
@@ -259,7 +283,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
         // Close (x): exits a drilled-in focus back to the device view (progressive disclosure).
         // Shown for the drilled-in deep views (visual-node inspector, audio graph).
-        if (w.focus.kind == FocusContext::Kind::VisualNode || w.focus.kind == FocusContext::Kind::AudioGraph) {
+        if (w.focus.kind == FocusContext::Kind::VisualNode || w.focus.kind == FocusContext::Kind::AudioGraph
+            || w.focus.kind == FocusContext::Kind::OpEditor) {
             const Rect cb = dock_close_rect(w.win_w, w.win_h, w.dock_h);
             const bool ch = hit(cb, mx, my);
             ui.draw_text(cb.x, cb.y - 2.f, "\xC3\x97", ch ? 0.9f : 0.55f, ch ? 0.6f : 0.5f, ch ? 0.6f : 0.55f, 1.0f, sty.fs_body);
@@ -273,6 +298,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         section_header(ui, 12.f, y0 + 7.f, nh, sty.gpu);
         ui.draw_text(120.f, y0 + 7.f, "teal = wired (modulated) \xC2\xB7 click a track header for devices",
                      sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.7f);
+        // UI-4b: if this op exports a custom editor, offer an "Editor" drill-in button.
+        if (w.app->graph->op_has_editor(selop)) {
+            const Rect eb = dock_op_editor_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool eh = hit(eb, mx, my);
+            ui.draw_rounded_rect(eb.x, eb.y, eb.w, eb.h, 3.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+            ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.gpu[0], sty.gpu[1], sty.gpu[2], eh ? 1.0f : 0.85f, sty.fs_label);
+        }
         auto* g = w.app->graph;
         const int pc = g->op_param_count_at(selop);
         for (int i = 0; i < pc; ++i) {
@@ -337,6 +369,35 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
             }
         }
         if (pc == 0) ui.draw_text(12.f, y0 + 40.f, "this node has no parameters", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
+        return;
+    }
+
+    // UI-4b: an operator-exported custom editor, hosted in the detail region. The host builds a
+    // VividEditorContext over the dock content rect (draw bridged to Renderer2D, param values from
+    // the node's base, mouse from the live cursor + button state) and lets the op draw + self-edit
+    // via commands.set_param. Drilled in from the visual-node "Editor" button; close x exits.
+    if (w.focus.kind == FocusContext::Kind::OpEditor && w.app->graph) {
+        auto* g = w.app->graph;
+        const int selop = w.focus.node;
+        char eh[64]; std::snprintf(eh, sizeof eh, "EDITOR \xC2\xB7 %s", g->op_kind_name(selop));
+        section_header(ui, 12.f, y0 + 7.f, eh, sty.gpu);
+        const float ex = 8.f, ey = y0 + 24.f, ew = w.win_w - 16.f, eht = (y0 + w.dock_h) - ey - 6.f;
+        const int pc = g->op_param_count_at(selop);
+        std::vector<float> pv(pc > 0 ? pc : 1, 0.f);
+        for (int i = 0; i < pc; ++i) pv[i] = g->op_param_base_at(selop, i);
+        DrawBridge db{ &ui, ex, ey, ex, ey, ew, eht };
+        EditorCmd cmd{ g, selop };
+        VividEditorContext ctx{};
+        ctx.surface_width = ew; ctx.surface_height = eht; ctx.dpi_scale = 1.f;
+        ctx.draw = make_op_draw_api(&db);
+        ctx.theme = editor_theme(sty);
+        ctx.commands.opaque = &cmd; ctx.commands.set_param = editor_set_param;
+        ctx.param_values = pv.data(); ctx.param_count = static_cast<uint32_t>(pc);
+        ctx.mouse.x = static_cast<float>(w.cur_x) - ex; ctx.mouse.y = static_cast<float>(w.cur_y) - ey;
+        ctx.mouse.left_down = w.mouse_left_down ? 1 : 0;
+        ui.push_clip_rect(ex, ey, ew, eht);
+        g->op_draw_editor(selop, &ctx);
+        ui.pop_clip_rect();
         return;
     }
 

@@ -107,6 +107,9 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
 void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
+    // Track left-button held state first (before any early return) so the OpEditor (UI-4b), which
+    // reads it during draw, sees presses/releases even when another handler consumes the event.
+    if (button == GLFW_MOUSE_BUTTON_LEFT) win->mouse_left_down = (action == GLFW_PRESS);
     vivid::App* app = win->app;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     const double dmx = mx - win->sidebar_w;   // DAW-pane coords (the grid is shifted right by the sidebar)
@@ -230,6 +233,19 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
             app->graph->select_op(-1); return;   // close the visual-node inspector -> device view
         }
+        // UI-4b: "Editor" button → drill into the op's custom editor (only present when it has one).
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph->op_has_editor(win->focus.node)
+            && hit(vivid::ui::dock_op_editor_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            win->show_op_editor = true; return;
+        }
+    }
+    // UI-4b: the operator editor owns the dock while drilled in. Close × returns to the node
+    // inspector; every other press is consumed here (the editor self-edits from the live mouse
+    // state during draw, so there is no per-widget hit-test on this side).
+    if (win->focus.kind == vivid::FocusContext::Kind::OpEditor && my >= win->dock_top()
+        && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) { win->show_op_editor = false; return; }
+        return;   // consume clicks inside the editor region
     }
     // UI-3 audio node graph deep view: all its dock interaction (select / param / +FX / remove /
     // rewire / edge-disconnect / pan) + the Device header "Graph" drill-in button.

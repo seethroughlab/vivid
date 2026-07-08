@@ -25,13 +25,15 @@ struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has
 struct FocusContext {
     // AudioGraph (UI-3): the drilled-in per-track audio node graph deep view (audio peer of
     // VisualNode). Set by the dock "Graph" toggle; `track` is the track being viewed.
-    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph };
+    // OpEditor (UI-4b): the drilled-in custom editor an operator exports (vivid_draw_editor),
+    // hosted in the detail region. Set by the visual-node "Editor" button; `node` is the op.
+    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph, OpEditor };
     enum class Dom  { Audio, Visual };
     Kind kind  = Kind::Device;
     Dom  dom   = Dom::Audio;
     int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
-    int  node  = -1;    // VisualNode (op index)
+    int  node  = -1;    // VisualNode / OpEditor (op index)
 };
 
 // Per-window view + interaction state. Many Windows can point at one App, each
@@ -58,6 +60,13 @@ struct Window {
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
     bool  show_audio_graph = false;
+    // UI-4b: drilled into the selected visual node's operator-exported custom editor (the detail
+    // region hosts vivid_draw_editor). Set by the visual-node "Editor" button; the focus recompute
+    // only honors it while the selected op actually exports an editor.
+    bool  show_op_editor = false;
+    // Latest left-mouse-button state (set on GLFW press/release). The OpEditor draws every frame
+    // reading this + cur_x/cur_y, so a drag-based operator editor works without an event queue.
+    bool  mouse_left_down = false;
 
     // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
     // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a

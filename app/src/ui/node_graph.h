@@ -92,6 +92,11 @@ public:
     int   op_param_choice_count_at(int i, int local) const; // >0 for enums
     const char* op_param_choice_label_at(int i, int local, int choice) const;
 
+    // UI-4b: operator-exported custom editor. op_has_editor(i) is true when node i's op is a loaded
+    // dylib that exports the editor ABI; op_draw_editor forwards the host-built context to it.
+    bool op_has_editor(int i) const;
+    void op_draw_editor(int i, VividEditorContext* ctx) const;
+
     void layout_nodes();                 // auto-arrange op nodes into a layered left->right layout
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
