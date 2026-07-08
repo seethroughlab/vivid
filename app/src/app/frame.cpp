@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
+#include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -428,8 +429,15 @@ void run_frame_loop(App& app, Window& win) {
                 const VividEditorMetadata m = app.graph->op_editor_metadata(win.want_float_node);
                 std::string title = std::string("Vivid \xE2\x80\x94 ") + app.graph->op_kind_name(win.want_float_node)
                                   + (m.title_suffix ? m.title_suffix : "");
-                if (ew->open(app, win.want_float_node, title, (int)m.default_width, (int)m.default_height)) win.editor_win = ew;
-                else delete ew;
+                // UI-5.4c: reopen at the remembered size/position (clamped to the op's min), else the
+                // metadata default.
+                const WindowPrefs gp = load_window_prefs(editor_window_prefs_path());
+                const int ow = gp.has_size ? std::max<int>(gp.w, (int)m.min_width)  : (int)m.default_width;
+                const int oh = gp.has_size ? std::max<int>(gp.h, (int)m.min_height) : (int)m.default_height;
+                if (ew->open(app, win.want_float_node, title, ow, oh)) {
+                    if (gp.has_pos && ew->glfw()) glfwSetWindowPos(ew->glfw(), gp.x, gp.y);
+                    win.editor_win = ew;
+                } else delete ew;
             }
             win.want_float_node = -1;
         }

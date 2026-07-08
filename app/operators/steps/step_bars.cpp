@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 
 namespace {
@@ -52,6 +53,8 @@ struct StepBarsOp : vivid::OperatorBase, vivid::GpuProcessable {
         {"s0", 0.30f, 0.f, 1.f}, {"s1", 0.55f, 0.f, 1.f}, {"s2", 0.80f, 0.f, 1.f}, {"s3", 0.45f, 0.f, 1.f},
         {"s4", 0.65f, 0.f, 1.f}, {"s5", 0.25f, 0.f, 1.f}, {"s6", 0.90f, 0.f, 1.f}, {"s7", 0.50f, 0.f, 1.f},
     };
+
+    int editor_sel_ = 0;   // keyboard-selected column (editor-only UI state, lives on the instance)
 
     bool tried_ = false;
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
@@ -109,49 +112,98 @@ extern "C" VividEditorMetadata vivid_editor_metadata(void) {
     return m;
 }
 
-// Draw the 8 step values as draggable bars. Reads live values from ctx->param_values and writes
-// edits via ctx->commands.set_param (host-authoritative). `instance` is unused — the host node's
-// base params are the source of truth, not the op instance.
-extern "C" void vivid_draw_editor(void* /*instance*/, VividEditorContext* ctx) {
+// GLFW key codes + modifier bits (the editor ABI passes them through verbatim — see VividEditorEvent
+// `key`/`modifiers`). Hardcoded so the op stays self-contained against operator_api only (no GLFW).
+namespace {
+constexpr int kKeyRight = 262, kKeyLeft = 263, kKeyDown = 264, kKeyUp = 265, kKeyC = 67, kKeyV = 86;
+constexpr int kModShift = 0x0001, kModCtrl = 0x0002, kModSuper = 0x0008;
+}
+
+// The 8 step values as bars. UI-5.4 exercises the full editor input surface: drag (mouse), scroll
+// over a column to nudge it, arrow keys to select+adjust the keyboard column, ⌘/Ctrl-C/V to
+// copy/paste the whole pattern via the host clipboard, a crosshair cursor over the plot, and a
+// status footer. Editor-only UI state (the keyboard selection) lives on the op instance.
+extern "C" void vivid_draw_editor(void* instance, VividEditorContext* ctx) {
     if (!ctx) return;
+    auto* self = static_cast<StepBarsOp*>(instance);
     const VividDrawAPI& d = ctx->draw;
     const VividInspectorTheme& th = ctx->theme;
     const float W = ctx->surface_width, H = ctx->surface_height;
     const float pad = 14.f, top = 30.f, botpad = 22.f;
     const float plot_h = H - top - botpad;
     const float col_w = (W - 2 * pad) / float(kSteps);
-
-    d.draw_rect(d.opaque, 0, 0, W, H, th.dark_bg);
-    d.draw_text(d.opaque, pad, 8, "STEP BARS — drag a bar to set its value", th.dim_text, 0.85f);
-
     const int n = ctx->param_count < (uint32_t)kSteps ? (int)ctx->param_count : kSteps;
-    // Which column is the pointer over (for hover + drag).
-    const float mx = ctx->mouse.x, my = ctx->mouse.y;
-    int hover = -1;
-    if (mx >= pad && mx < W - pad && my >= top && my <= top + plot_h)
-        hover = (int)((mx - pad) / col_w);
-    if (hover >= n) hover = -1;
 
+    auto get_step = [&](int i) -> float { return (ctx->param_values && i >= 0 && i < n) ? ctx->param_values[i] : 0.f; };
+    auto set_step = [&](int i, float v) {
+        if (i < 0 || i >= n || !ctx->commands.set_param) return;
+        v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+        char nm[4] = { 's', (char)('0' + i), 0, 0 };
+        ctx->commands.set_param(ctx->commands.opaque, nm, v);
+    };
+    auto col_at = [&](float x, float y) -> int {
+        if (x < pad || x >= W - pad || y < top || y > top + plot_h) return -1;
+        const int c = (int)((x - pad) / col_w); return c < n ? c : -1;
+    };
+
+    static int sel_fallback = 0;
+    int& sel = self ? self->editor_sel_ : sel_fallback;   // keyboard selection (instance state)
+    if (sel >= n) sel = n - 1; if (sel < 0) sel = 0;
+
+    // --- process the event stream (scroll / keys / clipboard) ---
+    for (uint32_t k = 0; k < ctx->event_count; ++k) {
+        const VividEditorEvent& e = ctx->events[k];
+        if (e.type == VIVID_EDITOR_EVENT_MOUSE_SCROLL) {
+            const int c = col_at(e.x, e.y);
+            const int target = c >= 0 ? c : sel;
+            set_step(target, get_step(target) + e.scroll_dy * 0.05f);
+        } else if (e.type == VIVID_EDITOR_EVENT_KEY && e.action >= 1) {   // press or repeat
+            const bool cmd = (e.modifiers & (kModCtrl | kModSuper)) != 0;
+            if (e.key == kKeyLeft)       sel = sel > 0 ? sel - 1 : 0;
+            else if (e.key == kKeyRight) sel = sel < n - 1 ? sel + 1 : n - 1;
+            else if (e.key == kKeyUp)    set_step(sel, get_step(sel) + ((e.modifiers & kModShift) ? 0.01f : 0.05f));
+            else if (e.key == kKeyDown)  set_step(sel, get_step(sel) - ((e.modifiers & kModShift) ? 0.01f : 0.05f));
+            else if (e.key == kKeyC && cmd && ctx->host.set_clipboard_text) {   // copy the pattern
+                char buf[96]; int o = 0;
+                for (int i = 0; i < n; ++i) o += std::snprintf(buf + o, sizeof buf - o, i ? ",%.3f" : "%.3f", get_step(i));
+                ctx->host.set_clipboard_text(ctx->host.opaque, buf);
+                if (ctx->host.set_status_text) ctx->host.set_status_text(ctx->host.opaque, "copied pattern to clipboard");
+            } else if (e.key == kKeyV && cmd && ctx->host.get_clipboard_text) {   // paste the pattern
+                const char* txt = ctx->host.get_clipboard_text(ctx->host.opaque);
+                if (txt) { const char* p = txt;
+                    for (int i = 0; i < n && *p; ++i) { char* end = nullptr; float v = std::strtof(p, &end);
+                        if (end == p) break; set_step(i, v); p = (*end == ',') ? end + 1 : end; }
+                    if (ctx->host.set_status_text) ctx->host.set_status_text(ctx->host.opaque, "pasted pattern from clipboard");
+                }
+            }
+        }
+    }
+
+    // Pointer column (for hover + drag) + crosshair cursor over the plot.
+    const float mx = ctx->mouse.x, my = ctx->mouse.y;
+    const int hover = col_at(mx, my);
+    if (hover >= 0 && ctx->host.set_cursor) ctx->host.set_cursor(ctx->host.opaque, VIVID_CURSOR_CROSSHAIR);
+    ctx->wants_keyboard = 1;   // this editor wants key events
+
+    // --- draw ---
+    d.draw_rect(d.opaque, 0, 0, W, H, th.dark_bg);
+    d.draw_text(d.opaque, pad, 8, "STEP BARS — drag / scroll / \xE2\x86\x90\xE2\x86\x92 select \xC2\xB7 \xE2\x86\x91\xE2\x86\x93 adjust \xC2\xB7 Cmd-C/V", th.dim_text, 0.78f);
     for (int i = 0; i < n; ++i) {
-        const float v = ctx->param_values ? ctx->param_values[i] : 0.f;
-        const float x = pad + i * col_w + 2.f;
-        const float w = col_w - 4.f;
-        const float bh = v * plot_h;
-        const float y = top + (plot_h - bh);
-        d.draw_rect(d.opaque, x, top, w, plot_h, th.slider_track);        // track
+        const float v = get_step(i);
+        const float x = pad + i * col_w + 2.f, w = col_w - 4.f;
+        const float bh = v * plot_h, y = top + (plot_h - bh);
+        d.draw_rect(d.opaque, x, top, w, plot_h, th.slider_track);
         VividColor fill = (i == hover) ? th.accent : th.slider_fill;
         d.draw_rounded_rect(d.opaque, x, y, w, bh, th.corner_radius, fill);
+        if (i == sel) d.draw_line(d.opaque, x, top - 3.f, x + w, top - 3.f, 2.f, th.accent);   // selection marker
         char buf[16]; std::snprintf(buf, sizeof buf, "%.2f", v);
-        d.draw_text(d.opaque, x + 2.f, top + plot_h + 4.f, buf, th.dim_text, 0.7f);
+        d.draw_text(d.opaque, x + 2.f, top + plot_h + 4.f, buf, (i == sel) ? th.bright_text : th.dim_text, 0.7f);
     }
     d.draw_line(d.opaque, pad, top + plot_h, W - pad, top + plot_h, 1.f, th.separator);
 
     // Drag: while the button is held over a column, set that step to the pointer height.
-    if (ctx->mouse.left_down && hover >= 0 && ctx->commands.set_param) {
-        float v = 1.f - (my - top) / plot_h;
-        v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
-        char name[4] = { 's', (char)('0' + hover), 0, 0 };
-        ctx->commands.set_param(ctx->commands.opaque, name, v);
+    if (ctx->mouse.left_down && hover >= 0) {
+        set_step(hover, 1.f - (my - top) / plot_h);
+        sel = hover;   // dragging also moves the keyboard selection
     }
-    ctx->wants_keyboard = 0;
 }
