@@ -56,6 +56,12 @@ public:
     void process_audio(void* instance, VividAudioContext* ctx) const { if (process_audio_fn_) process_audio_fn_(instance, ctx); }
     void process_gpu(void* instance, struct VividGpuContext* ctx) const { if (process_gpu_fn_) process_gpu_fn_(instance, ctx); }
 
+    // UI-4b: optional operator-exported custom editor (vivid_editor_metadata + vivid_draw_editor,
+    // dlsym'd if present). An operator opts in by exporting both; has_editor() is false otherwise.
+    bool has_editor() const { return editor_meta_fn_ && draw_editor_fn_; }
+    VividEditorMetadata editor_metadata() const { return editor_meta_fn_ ? editor_meta_fn_() : VividEditorMetadata{}; }
+    void draw_editor(void* instance, VividEditorContext* ctx) const { if (draw_editor_fn_ && instance) draw_editor_fn_(instance, ctx); }
+
     const std::string& registration_mode() const { return registration_mode_; }
     bool is_loaded() const { return handle_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
@@ -76,6 +82,8 @@ private:
     VividProcessFrameFn  process_frame_fn_  = nullptr;
     VividProcessAudioFn  process_audio_fn_  = nullptr;
     VividProcessGpuFn    process_gpu_fn_    = nullptr;
+    VividEditorMetadataFn editor_meta_fn_   = nullptr;   // UI-4b: optional custom-editor ABI
+    VividDrawEditorFn    draw_editor_fn_    = nullptr;
     std::string          registration_mode_ = "unknown";
     bool                 reload_required_recompile_ = false;
     LastError            last_error_{};

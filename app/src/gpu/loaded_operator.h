@@ -35,6 +35,12 @@ public:
     // (this adapter inherits all three interfaces, so a dynamic_cast can't tell them apart).
     const VividOperatorDescriptor* host_capability_descriptor() const override;
 
+    // UI-4b: operator-exported custom editor (dlsym'd vivid_editor_metadata + vivid_draw_editor).
+    // The host dispatches through these so the opaque dylib instance never leaves this adapter.
+    bool has_editor() const { return loader_ && loader_->has_editor(); }
+    VividEditorMetadata editor_metadata() const { return loader_ ? loader_->editor_metadata() : VividEditorMetadata{}; }
+    void draw_editor(VividEditorContext* ctx) const { if (loader_) loader_->draw_editor(instance_, ctx); }
+
 private:
     const OperatorLoader*            loader_   = nullptr;
     void*                            instance_ = nullptr;
