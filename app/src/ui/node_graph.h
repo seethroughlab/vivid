@@ -123,7 +123,7 @@ private:
                       float hist[kHistN]; int hist_head; };
     std::vector<DataNode> data_;
     vivid::MappingRegistry reg_;
-    float sx_ = 900.f, sy_ = 488.f, sw_ = 0.f, sh_ = 0.f;   // vestigial (persistence)
+    float sx_ = 900.f, sy_ = 488.f;   // persisted shader-node position (get_shader/set_shader)
     float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;
     bool  bounds_init_ = false;
 
