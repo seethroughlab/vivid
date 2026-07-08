@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/window_prefs.h"   // UI-5.4c: persist the float window's geometry
 #include "gpu/gpu_context.h"
 #include "ui/node_graph.h"
 #include "ui/operator_draw_bridge.h"
@@ -136,6 +137,12 @@ bool EditorWindow::open(App& app, int node, const std::string& title, int w, int
 }
 
 void EditorWindow::close(App& app) {
+    // UI-5.4c: remember this window's size + position for the next float-out (across restarts).
+    if (glfw_) {
+        int w = 0, h = 0, x = 0, y = 0;
+        glfwGetWindowSize(glfw_, &w, &h); glfwGetWindowPos(glfw_, &x, &y);
+        if (w > 0 && h > 0) save_window_prefs({ w, h, x, y, true, true }, editor_window_prefs_path());
+    }
     for (auto*& c : cursors_) { if (c) glfwDestroyCursor(c); c = nullptr; }
     if (renderer_ok_) { renderer_.shutdown(); renderer_ok_ = false; }
     if (app.gpu) app.gpu->close_editor_surface();

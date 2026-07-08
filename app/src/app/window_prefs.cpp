@@ -48,6 +48,12 @@ std::string window_prefs_path() {
     return (std::filesystem::path(dir) / "window.json").string();
 }
 
+std::string editor_window_prefs_path() {
+    const std::string dir = platform::user_data_dir();
+    if (dir.empty()) return {};
+    return (std::filesystem::path(dir) / "editor_window.json").string();
+}
+
 WindowPrefs load_window_prefs(const std::string& path) {
     WindowPrefs p;
     if (path.empty()) return p;

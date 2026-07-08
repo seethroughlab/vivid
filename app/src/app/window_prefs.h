@@ -34,6 +34,9 @@ LaunchRect compute_launch_rect(int waX, int waY, int waW, int waH,
 
 // Absolute path to the prefs file (user_data_dir()/window.json); empty if no data dir.
 std::string window_prefs_path();
+// Absolute path to the floated editor-window geometry prefs (user_data_dir()/editor_window.json);
+// empty if no data dir. Reuses the WindowPrefs shape (w/h/x/y). UI-5.4.
+std::string editor_window_prefs_path();
 // Read prefs from `path`; a missing/invalid file yields has_size = has_pos = false.
 WindowPrefs load_window_prefs(const std::string& path);
 // Write prefs to `path`; returns false on I/O error.
