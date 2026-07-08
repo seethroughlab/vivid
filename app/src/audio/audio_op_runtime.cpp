@@ -114,6 +114,10 @@ const char* audio_op_param_name(const AudioOp* a, int i) {
     const char* n = a->inst.param_ptrs[i]->name;
     return n ? n : "";
 }
+int audio_op_param_hint(const AudioOp* a, int i) {
+    if (!a || i < 0 || i >= a->nparams) return 0;   // VIVID_DISPLAY_DEFAULT
+    return (int)a->inst.param_ptrs[i]->display_hint;
+}
 float audio_op_param_get(const AudioOp* a, int i) {
     if (!a || i < 0 || i >= a->nparams) return 0.f;
     return a->pvals[i].load(std::memory_order_relaxed);

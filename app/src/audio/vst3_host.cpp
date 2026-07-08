@@ -1463,6 +1463,7 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
 }
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
 const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }
+int         session_audio_op_param_hint(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_hint(op, p) : 0; }
 float       session_audio_op_param_get(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_get(op, p) : 0.f; }
 float       session_audio_op_param_min(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_min(op, p) : 0.f; }
 float       session_audio_op_param_max(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_max(op, p) : 1.f; }
@@ -1651,6 +1652,12 @@ const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, 
     std::lock_guard<std::mutex> lk(tr->gmtx);
     vivid::AudioOp* op = graph_node_op(tr, node_id);
     return op ? vivid::audio_op_param_name(op, p) : "";
+}
+int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    vivid::AudioOp* op = graph_node_op(tr, node_id);
+    return op ? vivid::audio_op_param_hint(op, p) : 0;
 }
 float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;

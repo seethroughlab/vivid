@@ -175,6 +175,7 @@ const char* session_audio_op_type(Session*, int track, int index);
 int         session_set_track_audio_instrument(Session*, int track, const char* op_type);  // "" clears; 1 on success
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
+int         session_audio_op_param_hint(Session*, int track, int index, int param);   // VividDisplayHint (0 = DEFAULT)
 float       session_audio_op_param_get(Session*, int track, int index, int param);
 float       session_audio_op_param_min(Session*, int track, int index, int param);   // Param<> range (UI normalization)
 float       session_audio_op_param_max(Session*, int track, int index, int param);
@@ -214,6 +215,7 @@ int         session_audio_graph_disconnect(Session*, int track, int from_id, int
 // can't address nodes in a non-linear graph). node_id comes from the introspection accessors.
 int         session_audio_graph_node_param_count(Session*, int track, int node_id);
 const char* session_audio_graph_node_param_name (Session*, int track, int node_id, int p);
+int         session_audio_graph_node_param_hint (Session*, int track, int node_id, int p);   // VividDisplayHint (0 = DEFAULT)
 float       session_audio_graph_node_param_get  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
