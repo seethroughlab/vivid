@@ -181,6 +181,14 @@ inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f,
 // session default (the device view). Sits just left of the domain badge on the right edge.
 inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w - 78.f, dock_top(win_h, dock_h) + 4.f, 13.f, 13.f }; }
 
+// UI-4b: the "Editor" button in the visual-node inspector header — drills into the op's custom
+// editor (only drawn/hit when the selected op exports one). Sits left of the close ×.
+inline Rect dock_op_editor_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 148.f, dock_top(win_h, dock_h) + 3.f, 60.f, 15.f }; }
+
+// UI-5: the "Float" button on the OpEditor header — pops the editor out into its own OS window.
+// Sits left of the close ×.
+inline Rect dock_op_float_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 140.f, dock_top(win_h, dock_h) + 3.f, 52.f, 15.f }; }
+
 // UI-3: the "Graph" toggle in the device-dock header — drills the detail region into the selected
 // track's audio node graph (deep view). Sits left of the close × / domain badge on the right edge.
 inline Rect audio_graph_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 150.f, dock_top(win_h, dock_h) + 3.f, 56.f, 15.f }; }
@@ -247,6 +255,14 @@ inline Rect node_param_widget_rect(int i, int win_w, int win_h, float dock_h) {
 inline Rect node_param_map_rect(int i, int win_w, int win_h, float dock_h) {  // small wire affordance
     Rect r = node_param_row(i, win_w, win_h, dock_h);
     return { r.x + kNodeLabelW - 14.f, r.y + (kNodeRowH - 9.f) * 0.5f, 9.f, 9.f };
+}
+// UI-4a: a compound widget (XY-pad/color/ADSR/…) claims `span` consecutive param rows; its rect is
+// the widget column spanning rows i..i+span-1 (assumes the group stays in one column — true when
+// the group starts a column, which is how operators declare them). Shared by draw + hit-test.
+inline Rect node_param_compound_rect(int i, int span, int win_w, int win_h, float dock_h) {
+    const Rect a = node_param_widget_rect(i, win_w, win_h, dock_h);
+    const Rect z = node_param_widget_rect(i + (span > 1 ? span - 1 : 0), win_w, win_h, dock_h);
+    return { a.x, a.y, a.w, (z.y + z.h) - a.y };
 }
 
 }  // namespace vivid::ui

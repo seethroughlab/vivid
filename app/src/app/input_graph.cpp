@@ -8,6 +8,7 @@
 #include "ui/layout.h"
 #include "ui/node_graph.h"          // NodeGraph::zoom_at
 #include "ui/audio_node_graph.h"
+#include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
@@ -38,6 +39,7 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
         vivid::ui::AudioNodeGraph ag; ag.set_source(app.session, win.sel_track);
         const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        ag.set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
         const vivid::ui::Rect gr = ag.graph_region();
         if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
             const float z0 = win.ag_zoom;
@@ -62,6 +64,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     AudioNodeGraph ag; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
     if (hit(ag.add_button_rect(), mx, my)) {   // + FX: the NATIVE-effect picker (graph mode)
         // Graph editing is native-only + authoritative, so the menu lists just native effects and
         // selecting one calls audio_graph_add_op. The button is pinned top-right, so anchor the
@@ -85,6 +88,16 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 win.ag_param_v0 = (mxx > mn) ? std::clamp((v - mn) / (mxx - mn), 0.f, 1.f) : 0.f;
                 win.ag_param_y0 = my; return true;
             }
+        }
+        // UI-4a: clicking the LFO waveform preview cycles the enum (wraps min..max).
+        for (const auto& cp : ag.compound_previews()) {
+            if (cp.hint != VIVID_DISPLAY_LFO || !hit(cp.rect, mx, my)) continue;
+            const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, cp.index);
+            const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, cp.index);
+            const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, cp.index);
+            const float next = (v >= mxx - 0.5f) ? mn : v + 1.f;   // integer enum step, wrap at max
+            S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, cp.index, next);
+            return true;
         }
     }
     const auto boxes = ag.layout();

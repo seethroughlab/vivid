@@ -2,11 +2,13 @@
 
 #include "app/app.h"
 #include "app/window.h"
+#include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "ui/layout.h"
+#include "ui/compound_widget.h"   // UI-4a: compound_span / xy_from_cursor / node_param_compound_rect
 #include "ui/session_view.h"
 #include "ui/mapping_overview.h"
 #include "ui/clip_editor.h"
@@ -212,6 +214,14 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
+        if (win.param_xy && app.graph) {   // UI-4a: XY-pad — both axes track the cursor in the pad rect
+            const int span = vivid::ui::compound_span(VIVID_DISPLAY_XY_PAD);
+            const vivid::ui::Rect cr = vivid::ui::node_param_compound_rect(win.param_drag, span, win.win_w, win.win_h, win.dock_h);
+            float x01, y01; vivid::ui::xy_from_cursor(cr, mx, my, x01, y01);
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, x01);
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag + 1, y01);
+            return;
+        }
         if (win.param_is_node && win.param_drag_horiz) {   // node slider: horizontal position = value
             const vivid::ui::Rect wr = vivid::ui::node_param_widget_rect(win.param_drag, win.win_w, win.win_h, win.dock_h);
             if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag,
@@ -359,6 +369,8 @@ void run_frame_loop(App& app, Window& win) {
                     f.track = clip_editor.track(); f.scene = clip_editor.scene();
                 } else if (win.show_audio_graph) {   // UI-3: audio graph deep view (drilled in from a track)
                     f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
+                } else if (selop >= 0 && win.show_op_editor && app.graph->op_has_editor(selop)) {
+                    f.kind = FocusContext::Kind::OpEditor; f.dom = FocusContext::Dom::Visual; f.node = selop;   // UI-4b
                 } else if (selop >= 0) {
                     f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
                 } else {
@@ -406,9 +418,28 @@ void run_frame_loop(App& app, Window& win) {
                 }
             }
         }
+
+        // UI-5: floated operator-editor window. Opened here (deferred out of the input callback so
+        // window creation happens on the main thread between polls), rendered every frame, and torn
+        // down when it wants to close (user closed it / operator asked / node lost its editor).
+        if (win.want_float_node >= 0) {
+            if (!win.editor_win && app.graph && app.graph->op_has_editor(win.want_float_node)) {
+                auto* ew = new EditorWindow();
+                const VividEditorMetadata m = app.graph->op_editor_metadata(win.want_float_node);
+                std::string title = std::string("Vivid \xE2\x80\x94 ") + app.graph->op_kind_name(win.want_float_node)
+                                  + (m.title_suffix ? m.title_suffix : "");
+                if (ew->open(app, win.want_float_node, title, (int)m.default_width, (int)m.default_height)) win.editor_win = ew;
+                else delete ew;
+            }
+            win.want_float_node = -1;
+        }
+        if (win.editor_win) {
+            if (!win.editor_win->render(app)) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }
+        }
         return true;
     };
     run_platform_frame_loop(poll_events, tick);
+    if (win.editor_win) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }  // UI-5 teardown
 }
 
 }  // namespace vivid

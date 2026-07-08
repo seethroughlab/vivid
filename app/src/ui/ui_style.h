@@ -24,7 +24,6 @@ struct Style {
     // --- lines ---
     float border[3]     = { 0.235f, 0.250f, 0.290f }; // visible 1px panel/cell hairline
     float border_soft[3]= { 0.150f, 0.160f, 0.188f }; // internal dividers
-    float sep[3]        = { 0.200f, 0.210f, 0.240f }; // legacy separator
     // --- text ---
     float text[3]    = { 0.880f, 0.900f, 0.940f };   // primary
     float body[3]    = { 0.700f, 0.720f, 0.770f };   // secondary
@@ -48,8 +47,6 @@ struct Style {
     float fs_brand  = 1.18f;   // the wordmark
     // --- radii / bars ---
     float radius = 4.f, radius_lg = 6.f, accent_bar = 3.f;
-    // --- legacy metrics (kept for existing call sites) ---
-    float pad = 8.f, row_h = 22.f, section_gap = 12.f;
     float panel_hd_h = 22.f;   // region header strip height
 };
 inline const Style& style() { static const Style s; return s; }

@@ -1,5 +1,7 @@
 #include "ui/node_graph.h"
 #include "ui/ui_style.h"   // design tokens (region colours, borders, type ramp)
+#include "gpu/visual_graph.h"    // VisualNode / nodes()
+#include "gpu/loaded_operator.h" // UI-4b: reach an op's dylib editor via dynamic_cast
 #include <cmath>
 #include <algorithm>
 #include <cctype>
@@ -350,6 +352,23 @@ const char* NodeGraph::op_param_choice_label_at(int i, int local, int choice) co
 }
 float NodeGraph::op_param_value_at(int i, int local) const {
     return (op_node_valid(vg_, i) && local >= 0 && local < int(vg_->nodes()[i].params.size())) ? vg_->nodes()[i].params[local] : 0.f;
+}
+// UI-4b: an op's custom editor is reachable only if its instance is a loaded dylib (LoadedOperator)
+// that exported the editor ABI. Built-in ops never have one.
+static vivid::LoadedOperator* node_loaded_op(const vivid::VisualGraph* vg, int i) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return nullptr;
+    return dynamic_cast<vivid::LoadedOperator*>(vg->nodes()[i].inst.op.get());
+}
+bool NodeGraph::op_has_editor(int i) const {
+    const vivid::LoadedOperator* lo = node_loaded_op(vg_, i);
+    return lo && lo->has_editor();
+}
+VividEditorMetadata NodeGraph::op_editor_metadata(int i) const {
+    const vivid::LoadedOperator* lo = node_loaded_op(vg_, i);
+    return lo ? lo->editor_metadata() : VividEditorMetadata{};
+}
+void NodeGraph::op_draw_editor(int i, VividEditorContext* ctx) const {
+    if (vivid::LoadedOperator* lo = node_loaded_op(vg_, i)) lo->draw_editor(ctx);
 }
 bool NodeGraph::op_param_wired_at(int i, int local) const {
     if (!op_node_valid(vg_, i)) return false;

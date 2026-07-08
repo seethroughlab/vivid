@@ -75,12 +75,15 @@ void OperatorLoader::move_from(OperatorLoader&& o) noexcept {
     process_frame_fn_  = o.process_frame_fn_;
     process_audio_fn_  = o.process_audio_fn_;
     process_gpu_fn_    = o.process_gpu_fn_;
+    editor_meta_fn_    = o.editor_meta_fn_;
+    draw_editor_fn_    = o.draw_editor_fn_;
     registration_mode_ = std::move(o.registration_mode_);
     reload_required_recompile_ = o.reload_required_recompile_;
     last_error_        = std::move(o.last_error_);
     o.handle_ = nullptr;
     o.desc_fn_ = nullptr; o.create_fn_ = nullptr; o.destroy_fn_ = nullptr;
     o.process_frame_fn_ = nullptr; o.process_audio_fn_ = nullptr; o.process_gpu_fn_ = nullptr;
+    o.editor_meta_fn_ = nullptr; o.draw_editor_fn_ = nullptr;
 }
 
 void OperatorLoader::set_last_error(std::string code, std::string message) {
@@ -92,6 +95,7 @@ void OperatorLoader::unload() {
     if (handle_) { dlclose(handle_); handle_ = nullptr; }
     desc_fn_ = nullptr; create_fn_ = nullptr; destroy_fn_ = nullptr;
     process_frame_fn_ = nullptr; process_audio_fn_ = nullptr; process_gpu_fn_ = nullptr;
+    editor_meta_fn_ = nullptr; draw_editor_fn_ = nullptr;
     registration_mode_ = "unknown";
 }
 
@@ -152,6 +156,10 @@ bool OperatorLoader::load(const char* path) {
     auto mode_fn = reinterpret_cast<VividRegistrationModeFn>(dlsym(new_handle, "vivid_registration_mode"));
     auto uniform_fn = reinterpret_cast<VividGeneratedUniformLayoutFn>(
         dlsym(new_handle, "vivid_generated_uniform_layout"));
+    // UI-4b: optional custom editor. Both symbols must be present to opt in; a partial
+    // export (only one) is treated as no editor.
+    auto editor_meta_fn = reinterpret_cast<VividEditorMetadataFn>(dlsym(new_handle, "vivid_editor_metadata"));
+    auto draw_editor_fn = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
     const std::string mode = (mode_fn && mode_fn() && *mode_fn()) ? mode_fn() : "legacy";
     const VividGeneratedUniformLayout* uniform_layout = uniform_fn ? uniform_fn() : nullptr;
 
@@ -184,6 +192,8 @@ bool OperatorLoader::load(const char* path) {
     process_frame_fn_  = frame_fn;
     process_audio_fn_  = audio_fn;
     process_gpu_fn_    = gpu_fn;
+    editor_meta_fn_    = (editor_meta_fn && draw_editor_fn) ? editor_meta_fn : nullptr;   // both-or-neither
+    draw_editor_fn_    = (editor_meta_fn && draw_editor_fn) ? draw_editor_fn : nullptr;
     registration_mode_ = mode;
     return true;
 }

@@ -148,6 +148,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/input_dock.cpp
     src/app/input_clipgrid.cpp
     src/app/frame.cpp
+    src/app/editor_window.cpp
     src/app/project_io.cpp
     src/app/file_actions.cpp
     src/app/window_prefs.cpp

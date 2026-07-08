@@ -6,6 +6,7 @@ struct GLFWwindow;
 struct Vst3PluginWindow;
 namespace vivid {
 struct App;
+class EditorWindow;   // UI-5: floated operator-editor window (app/editor_window.h)
 namespace ui { class Renderer2D; class ClipEditor; }
 }
 
@@ -25,13 +26,15 @@ struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has
 struct FocusContext {
     // AudioGraph (UI-3): the drilled-in per-track audio node graph deep view (audio peer of
     // VisualNode). Set by the dock "Graph" toggle; `track` is the track being viewed.
-    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph };
+    // OpEditor (UI-4b): the drilled-in custom editor an operator exports (vivid_draw_editor),
+    // hosted in the detail region. Set by the visual-node "Editor" button; `node` is the op.
+    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph, OpEditor };
     enum class Dom  { Audio, Visual };
     Kind kind  = Kind::Device;
     Dom  dom   = Dom::Audio;
     int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
-    int  node  = -1;    // VisualNode (op index)
+    int  node  = -1;    // VisualNode / OpEditor (op index)
 };
 
 // Per-window view + interaction state. Many Windows can point at one App, each
@@ -58,6 +61,17 @@ struct Window {
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
     bool  show_audio_graph = false;
+    // UI-4b: drilled into the selected visual node's operator-exported custom editor (the detail
+    // region hosts vivid_draw_editor). Set by the visual-node "Editor" button; the focus recompute
+    // only honors it while the selected op actually exports an editor.
+    bool  show_op_editor = false;
+    // Latest left-mouse-button state (set on GLFW press/release). The OpEditor draws every frame
+    // reading this + cur_x/cur_y, so a drag-based operator editor works without an event queue.
+    bool  mouse_left_down = false;
+    // UI-5: float-out. The "Float" button sets want_float_node to the visual op index; the frame
+    // loop opens editor_win for it next tick (window creation deferred out of the input callback).
+    int   want_float_node = -1;
+    EditorWindow* editor_win = nullptr;   // the floated operator-editor window (null = none)
 
     // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
     // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a
@@ -92,6 +106,7 @@ struct Window {
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
+    bool    param_xy = false;           // UI-4a: XY-pad drag (param_drag = the group's first param; sets it + the next)
     float   param_drag_v0 = 0.f; double param_drag_y0 = 0.0;
     bool    dock_drag = false;
     double  last_dev_t = -1; int last_dev_i = -1;

@@ -46,3 +46,4 @@ function(add_vivid_operator name)
 endfunction()
 
 add_vivid_operator(vivid_spike_solid spike/spike_solid.cpp)
+add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a custom editor

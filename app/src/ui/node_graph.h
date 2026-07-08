@@ -92,6 +92,12 @@ public:
     int   op_param_choice_count_at(int i, int local) const; // >0 for enums
     const char* op_param_choice_label_at(int i, int local, int choice) const;
 
+    // UI-4b: operator-exported custom editor. op_has_editor(i) is true when node i's op is a loaded
+    // dylib that exports the editor ABI; op_draw_editor forwards the host-built context to it.
+    bool op_has_editor(int i) const;
+    VividEditorMetadata op_editor_metadata(int i) const;   // default/min size + title suffix
+    void op_draw_editor(int i, VividEditorContext* ctx) const;
+
     void layout_nodes();                 // auto-arrange op nodes into a layered left->right layout
     void draw(Renderer2D& r);            // includes live node thumbnails (draw_texture)
     void draw_overlays(Renderer2D& r);   // chooser etc. — drawn after the node graph
@@ -117,7 +123,7 @@ private:
                       float hist[kHistN]; int hist_head; };
     std::vector<DataNode> data_;
     vivid::MappingRegistry reg_;
-    float sx_ = 900.f, sy_ = 488.f, sw_ = 0.f, sh_ = 0.f;   // vestigial (persistence)
+    float sx_ = 900.f, sy_ = 488.f;   // persisted shader-node position (get_shader/set_shader)
     float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;
     bool  bounds_init_ = false;
 

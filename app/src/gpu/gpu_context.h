@@ -17,6 +17,28 @@ struct FrameState {
     WGPUCommandEncoder encoder = nullptr;
 };
 
+// One auxiliary swap-chain surface for a secondary OS window (the visuals pop-out, an editor
+// float-out, …) plus its own MSAA color target. Shares the primary device/queue/format — the
+// methods take those so the struct owns no context. begin/end mirror GpuContext::begin/end_frame.
+struct AuxSurface {
+    WGPUSurface     surface   = nullptr;
+    WGPUTexture     msaa_tex  = nullptr;
+    WGPUTextureView msaa_view = nullptr;
+    uint32_t w = 0, h = 0, msaa_w = 0, msaa_h = 0;
+
+    bool is_open() const { return surface != nullptr; }
+    bool open(WGPUInstance inst, WGPUDevice dev, WGPUTextureFormat fmt, GLFWwindow* win,
+              uint32_t width, uint32_t height, const char* label);
+    void resize(WGPUDevice dev, WGPUTextureFormat fmt, uint32_t width, uint32_t height);
+    void close();
+    // Acquire the next surface texture + an MSAA view to render into. False if unavailable.
+    bool begin(WGPUDevice dev, WGPUTextureFormat fmt, bool device_lost, FrameState& frame, const char* label);
+    // Resolve + present. False (and frees the frame) on submit failure.
+    bool end(WGPUDevice dev, WGPUQueue queue, bool device_lost, const FrameState& frame, const char* label);
+private:
+    void ensure_msaa(WGPUDevice dev, WGPUTextureFormat fmt, uint32_t width, uint32_t height, const char* label);
+};
+
 class GpuContext {
 public:
     GpuContext() = default;
@@ -34,14 +56,23 @@ public:
     void shutdown();
 
     // Secondary output surface — the pop-out visuals window. Shares this device/queue;
-    // the visuals FBO is blitted into it (see VisualGraph::present_to). begin/end_secondary
-    // mirror begin/end_frame for surface2. Absent (has_secondary()==false) when closed.
+    // the visuals FBO is blitted into it (see VisualGraph::present_to). Thin delegators over
+    // aux_popout_ (an AuxSurface). Absent (has_secondary()==false) when closed.
     bool open_secondary(GLFWwindow* window, uint32_t width, uint32_t height);
     void close_secondary();
     void resize_secondary(uint32_t width, uint32_t height);
-    bool has_secondary() const { return surface2_ != nullptr; }
+    bool has_secondary() const { return aux_popout_.is_open(); }
     bool begin_secondary(FrameState& frame);
     bool end_secondary(const FrameState& frame);
+
+    // Editor float-out surface (UI-5) — an independent secondary window for an operator's custom
+    // editor, drawn with its own Renderer2D. Same shared device/queue as everything else.
+    bool open_editor_surface(GLFWwindow* window, uint32_t width, uint32_t height);
+    void close_editor_surface();
+    void resize_editor_surface(uint32_t width, uint32_t height);
+    bool has_editor_surface() const { return aux_editor_.is_open(); }
+    bool begin_editor_surface(FrameState& frame);
+    bool end_editor_surface(const FrameState& frame);
 
     uint32_t sample_count() const { return kMsaaSamples; }
 
@@ -79,12 +110,9 @@ private:
     uint32_t msaa_h_ = 0;
     void ensure_msaa(uint32_t width, uint32_t height);
 
-    // Secondary (pop-out) surface + its own MSAA target. Shares device_/queue_/format.
-    WGPUSurface     surface2_   = nullptr;
-    WGPUTexture     msaa2_tex_  = nullptr;
-    WGPUTextureView msaa2_view_ = nullptr;
-    uint32_t w2_ = 0, h2_ = 0, msaa2_w_ = 0, msaa2_h_ = 0;
-    void ensure_msaa2(uint32_t width, uint32_t height);
+    // Secondary (pop-out) + editor float-out surfaces. Share device_/queue_/format via AuxSurface.
+    AuxSurface aux_popout_;
+    AuxSurface aux_editor_;
 
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;

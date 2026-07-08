@@ -35,6 +35,7 @@ const char* audio_op_type(const AudioOp*);
 bool        audio_op_is_source(const AudioOp*);      // true = instrument/generator (no audio input)
 int         audio_op_param_count(const AudioOp*);
 const char* audio_op_param_name(const AudioOp*, int i);
+int         audio_op_param_hint(const AudioOp*, int i);    // VividDisplayHint (0 = DEFAULT); for compound-widget inspectors
 float       audio_op_param_get(const AudioOp*, int i);
 float       audio_op_param_min(const AudioOp*, int i);      // Param<> range (for UI normalization)
 float       audio_op_param_max(const AudioOp*, int i);

@@ -33,12 +33,23 @@ struct AudioParamCell {
     float knob_cx = 0, knob_cy = 0, knob_r = 0;
 };
 
+// A compound-widget preview (UI-4a): an ADSR envelope or LFO waveform drawn above the knob row.
+// `index` is the group-leader param; `rect` is its slot in the top preview strip.
+struct AudioCompoundPreview {
+    int  hint = 0;
+    int  index = -1;
+    Rect rect;
+};
+
 class AudioNodeGraph {
 public:
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) { x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1; }
     // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan.
     void set_view(float zoom, float pan_x, float pan_y) { zoom_ = zoom; pan_x_ = pan_x; pan_y_ = pan_y; }
+    // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
+    // when the selection carries one, so draw + input must agree on the selection before sizing.
+    void set_selection(int node_id) { sel_node_ = node_id; }
     Rect graph_region() const;   // the node-graph area (above the param strip) — for input zoom/pan
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
@@ -51,8 +62,11 @@ public:
     // the Output node) and the input port (left edge; target of an edge — absent on instruments).
     Rect out_port_rect(const AudioNodeBox& b) const;
     Rect in_port_rect(const AudioNodeBox& b) const;
-    // The inline param cells for the selected node (by node id; -1 = none); empty otherwise.
+    // The inline param cells for the selected node (by node id; -1 = none); empty otherwise. The
+    // LFO enum leader is claimed by its preview and omitted (no knob); ADSR channels stay as knobs.
     std::vector<AudioParamCell> param_cells(int sel_node) const;
+    // Compound-widget previews (ADSR/LFO) for the selected node — shared by draw + input hit-test.
+    std::vector<AudioCompoundPreview> compound_previews() const;
 
     // Render: the graph + (if a node is selected) its highlight + inline param strip. When
     // wire_from >= 0 a rewire drag is in progress: draw a ghost wire from that node's output port
@@ -60,10 +74,12 @@ public:
     void draw(Renderer2D& r, int sel_node, int wire_from = -1, float cx = 0.f, float cy = 0.f) const;
 
 private:
-    Rect param_region() const;   // the selected-node param strip (bottom band)
+    Rect  param_region() const;   // the selected-node param strip (bottom band)
+    float param_band_h() const;   // band height — taller when the selection has a compound preview
 
     vivid::session::Session* s_ = nullptr;
     int   track_ = -1;
+    int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
     float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
 };
