@@ -185,6 +185,10 @@ inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w
 // editor (only drawn/hit when the selected op exports one). Sits left of the close ×.
 inline Rect dock_op_editor_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 148.f, dock_top(win_h, dock_h) + 3.f, 60.f, 15.f }; }
 
+// UI-5: the "Float" button on the OpEditor header — pops the editor out into its own OS window.
+// Sits left of the close ×.
+inline Rect dock_op_float_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 140.f, dock_top(win_h, dock_h) + 3.f, 52.f, 15.f }; }
+
 // UI-3: the "Graph" toggle in the device-dock header — drills the detail region into the selected
 // track's audio node graph (deep view). Sits left of the close × / domain badge on the right edge.
 inline Rect audio_graph_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 150.f, dock_top(win_h, dock_h) + 3.f, 56.f, 15.f }; }

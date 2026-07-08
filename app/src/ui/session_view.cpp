@@ -381,6 +381,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const int selop = w.focus.node;
         char eh[64]; std::snprintf(eh, sizeof eh, "EDITOR \xC2\xB7 %s", g->op_kind_name(selop));
         section_header(ui, 12.f, y0 + 7.f, eh, sty.gpu);
+        // UI-5: "Float" — pop the editor out into its own OS window.
+        {
+            const Rect fb = dock_op_float_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool fh = hit(fb, mx, my);
+            ui.draw_rounded_rect(fb.x, fb.y, fb.w, fb.h, 3.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+            ui.draw_text(fb.x + 7.f, fb.y + 2.f, "Float", sty.gpu[0], sty.gpu[1], sty.gpu[2], fh ? 1.0f : 0.85f, sty.fs_label);
+        }
         const float ex = 8.f, ey = y0 + 24.f, ew = w.win_w - 16.f, eht = (y0 + w.dock_h) - ey - 6.f;
         const int pc = g->op_param_count_at(selop);
         std::vector<float> pv(pc > 0 ? pc : 1, 0.f);

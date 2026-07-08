@@ -65,6 +65,15 @@ public:
     bool begin_secondary(FrameState& frame);
     bool end_secondary(const FrameState& frame);
 
+    // Editor float-out surface (UI-5) — an independent secondary window for an operator's custom
+    // editor, drawn with its own Renderer2D. Same shared device/queue as everything else.
+    bool open_editor_surface(GLFWwindow* window, uint32_t width, uint32_t height);
+    void close_editor_surface();
+    void resize_editor_surface(uint32_t width, uint32_t height);
+    bool has_editor_surface() const { return aux_editor_.is_open(); }
+    bool begin_editor_surface(FrameState& frame);
+    bool end_editor_surface(const FrameState& frame);
+
     uint32_t sample_count() const { return kMsaaSamples; }
 
     WGPUInstance instance() const { return instance_; }
@@ -101,8 +110,9 @@ private:
     uint32_t msaa_h_ = 0;
     void ensure_msaa(uint32_t width, uint32_t height);
 
-    // Secondary (pop-out) surface. Shares device_/queue_/format via AuxSurface's method params.
+    // Secondary (pop-out) + editor float-out surfaces. Share device_/queue_/format via AuxSurface.
     AuxSurface aux_popout_;
+    AuxSurface aux_editor_;
 
     // Last error captured from the uncaptured error callback (for crash diagnostics)
     std::string last_error_;

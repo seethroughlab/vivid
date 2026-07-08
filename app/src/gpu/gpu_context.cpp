@@ -371,6 +371,21 @@ bool GpuContext::end_secondary(const FrameState& frame) {
     return aux_popout_.end(device_, queue_, device_lost_, frame, "Popout Commands");
 }
 
+// --- GpuContext editor float-out (UI-5): thin delegators over aux_editor_ ---
+bool GpuContext::open_editor_surface(GLFWwindow* window, uint32_t width, uint32_t height) {
+    return aux_editor_.open(instance_, device_, surface_format_, window, width, height, "editor");
+}
+void GpuContext::resize_editor_surface(uint32_t width, uint32_t height) {
+    aux_editor_.resize(device_, surface_format_, width, height);
+}
+void GpuContext::close_editor_surface() { aux_editor_.close(); }
+bool GpuContext::begin_editor_surface(FrameState& frame) {
+    return aux_editor_.begin(device_, surface_format_, device_lost_, frame, "Editor Surface");
+}
+bool GpuContext::end_editor_surface(const FrameState& frame) {
+    return aux_editor_.end(device_, queue_, device_lost_, frame, "Editor Commands");
+}
+
 bool GpuContext::begin_frame(FrameState& frame) {
     if (device_lost_) return false;
 
@@ -495,6 +510,7 @@ void GpuContext::discard_frame(const FrameState& frame) {
 
 void GpuContext::shutdown() {
     close_secondary();
+    close_editor_surface();
     if (msaa_view_) { wgpuTextureViewRelease(msaa_view_); msaa_view_ = nullptr; }
     if (msaa_tex_)  { wgpuTextureRelease(msaa_tex_);      msaa_tex_  = nullptr; }
     if (surface_) {

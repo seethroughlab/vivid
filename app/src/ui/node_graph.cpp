@@ -363,6 +363,10 @@ bool NodeGraph::op_has_editor(int i) const {
     const vivid::LoadedOperator* lo = node_loaded_op(vg_, i);
     return lo && lo->has_editor();
 }
+VividEditorMetadata NodeGraph::op_editor_metadata(int i) const {
+    const vivid::LoadedOperator* lo = node_loaded_op(vg_, i);
+    return lo ? lo->editor_metadata() : VividEditorMetadata{};
+}
 void NodeGraph::op_draw_editor(int i, VividEditorContext* ctx) const {
     if (vivid::LoadedOperator* lo = node_loaded_op(vg_, i)) lo->draw_editor(ctx);
 }

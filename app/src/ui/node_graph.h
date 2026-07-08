@@ -95,6 +95,7 @@ public:
     // UI-4b: operator-exported custom editor. op_has_editor(i) is true when node i's op is a loaded
     // dylib that exports the editor ABI; op_draw_editor forwards the host-built context to it.
     bool op_has_editor(int i) const;
+    VividEditorMetadata op_editor_metadata(int i) const;   // default/min size + title suffix
     void op_draw_editor(int i, VividEditorContext* ctx) const;
 
     void layout_nodes();                 // auto-arrange op nodes into a layered left->right layout

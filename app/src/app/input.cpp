@@ -245,6 +245,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (win->focus.kind == vivid::FocusContext::Kind::OpEditor && my >= win->dock_top()
         && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         if (hit(dock_close_rect(win->win_w, win->win_h, win->dock_h), mx, my)) { win->show_op_editor = false; return; }
+        // UI-5: "Float" pops the editor out into its own window (opened next tick) + closes the dock
+        // editor (returns to the node inspector). The window takes over from here.
+        if (hit(vivid::ui::dock_op_float_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            win->want_float_node = win->focus.node; win->show_op_editor = false; return;
+        }
         return;   // consume clicks inside the editor region
     }
     // UI-3 audio node graph deep view: all its dock interaction (select / param / +FX / remove /

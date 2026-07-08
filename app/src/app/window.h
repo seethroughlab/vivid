@@ -6,6 +6,7 @@ struct GLFWwindow;
 struct Vst3PluginWindow;
 namespace vivid {
 struct App;
+class EditorWindow;   // UI-5: floated operator-editor window (app/editor_window.h)
 namespace ui { class Renderer2D; class ClipEditor; }
 }
 
@@ -67,6 +68,10 @@ struct Window {
     // Latest left-mouse-button state (set on GLFW press/release). The OpEditor draws every frame
     // reading this + cur_x/cur_y, so a drag-based operator editor works without an event queue.
     bool  mouse_left_down = false;
+    // UI-5: float-out. The "Float" button sets want_float_node to the visual op index; the frame
+    // loop opens editor_win for it next tick (window creation deferred out of the input callback).
+    int   want_float_node = -1;
+    EditorWindow* editor_win = nullptr;   // the floated operator-editor window (null = none)
 
     // Musical typing (M6.2): the computer keyboard plays the armed track's instrument.
     // Toggle with `. typing_held[slot] holds pitch+1 currently sounding (0 = none) so a

@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/window.h"
+#include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -417,9 +418,28 @@ void run_frame_loop(App& app, Window& win) {
                 }
             }
         }
+
+        // UI-5: floated operator-editor window. Opened here (deferred out of the input callback so
+        // window creation happens on the main thread between polls), rendered every frame, and torn
+        // down when it wants to close (user closed it / operator asked / node lost its editor).
+        if (win.want_float_node >= 0) {
+            if (!win.editor_win && app.graph && app.graph->op_has_editor(win.want_float_node)) {
+                auto* ew = new EditorWindow();
+                const VividEditorMetadata m = app.graph->op_editor_metadata(win.want_float_node);
+                std::string title = std::string("Vivid \xE2\x80\x94 ") + app.graph->op_kind_name(win.want_float_node)
+                                  + (m.title_suffix ? m.title_suffix : "");
+                if (ew->open(app, win.want_float_node, title, (int)m.default_width, (int)m.default_height)) win.editor_win = ew;
+                else delete ew;
+            }
+            win.want_float_node = -1;
+        }
+        if (win.editor_win) {
+            if (!win.editor_win->render(app)) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }
+        }
         return true;
     };
     run_platform_frame_loop(poll_events, tick);
+    if (win.editor_win) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }  // UI-5 teardown
 }
 
 }  // namespace vivid
