@@ -764,6 +764,20 @@ def add_track(instrument: str = "", kind: str = "instrument") -> dict:
 
 
 @mcp.tool
+def add_graph_track(instrument: str = "", name: str = "") -> dict:
+    """Create a bare NATIVE-instrument track that hosts a native audio node graph (get_audio_graph
+    / audio_graph_* edits). Unlike add_track, this makes no VST3/plugin handle, so the track is
+    graph-capable. Pass `instrument` (a native audio-instrument op like "SineSynth") to set the
+    instrument in the same call. Returns the new track index."""
+    payload: dict = {}
+    if instrument:
+        payload["instrument"] = instrument
+    if name:
+        payload["name"] = name
+    return _post("add_graph_track", payload)
+
+
+@mcp.tool
 def remove_track(track: int) -> dict:
     """Delete a track by index. Tracks below it shift down by one INDEX, but each track keeps
     its stable `id` (see list_tracks): audio->visual mappings reference the id, so only the

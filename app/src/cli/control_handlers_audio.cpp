@@ -300,6 +300,20 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_remove_audio_effect(c.session, track, index);
         return ok();
     };
+    // A bare native-instrument track (no VST3 handle) — the home for a native audio node graph.
+    // This is the only programmatic way to create a graph-capable track (add_track's instrument
+    // path builds a VST3/plugin track; slice_to_midi needs an audio clip). Optional "instrument"
+    // sets the native instrument op in the same call so the track is graph-ok immediately.
+    handlers_["add_graph_track"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const std::string name = b.value("name", std::string());
+        const int idx = P::session_add_graph_track(c.session, name.c_str());
+        if (idx < 0) return err(code::kInternal, "add_graph_track failed (kMaxTracks reached?)");
+        const std::string inst = b.value("instrument", std::string());
+        if (!inst.empty() && !P::session_set_track_audio_instrument(c.session, idx, inst.c_str()))
+            return err(code::kBadArg, "track created but instrument invalid: '" + inst + "'");
+        json r = ok(); r["track"] = idx; return r;
+    };
     handlers_["set_track_audio_instrument"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
