@@ -17,7 +17,8 @@ namespace vivid::ui {
 // Is this display_hint a compound widget the host knows how to render? (Only implemented widgets
 // return true, so an un-implemented hint falls back to the normal per-param widget.)
 inline bool is_compound_widget(int hint) {
-    return hint == VIVID_DISPLAY_XY_PAD || hint == VIVID_DISPLAY_COLOR;
+    return hint == VIVID_DISPLAY_XY_PAD || hint == VIVID_DISPLAY_COLOR ||
+           hint == VIVID_DISPLAY_ADSR   || hint == VIVID_DISPLAY_LFO;
 }
 
 // How many consecutive params a compound widget claims (the group it renders as one unit).
@@ -61,6 +62,56 @@ inline void draw_color_swatch(Renderer2D& r, const Rect& sw, float rf, float gf,
     r.draw_rounded_rect(sw.x, sw.y, sw.w, sw.h, 3.f, 0.16f, 0.16f, 0.18f, 1.f);   // border/bg
     r.draw_rounded_rect(sw.x + 2.f, sw.y + 2.f, sw.w - 4.f, sw.h - 4.f, 2.f,
                         std::clamp(rf, 0.f, 1.f), std::clamp(gf, 0.f, 1.f), std::clamp(bf, 0.f, 1.f), 1.f);
+}
+
+// Draw an ADSR envelope PREVIEW (the grouping half of the widget; the A/D/S/R channels themselves
+// render as ordinary knobs so the standard knob-drag edits them, like COLOR's channel sliders).
+// a01/d01/r01 are the time params normalized to their [min,max]; s01 is the 0..1 sustain level.
+inline void draw_adsr(Renderer2D& r, const Rect& rc, float a01, float d01, float s01, float r01,
+                      const float accent[3], const char* label) {
+    r.draw_rounded_rect(rc.x, rc.y, rc.w, rc.h, 3.f, 0.10f, 0.11f, 0.13f, 1.f);
+    const float uw = rc.w - 8.f, base = rc.y + rc.h - 5.f, top = rc.y + 5.f;
+    const float sus_y = top + (1.f - std::clamp(s01, 0.f, 1.f)) * (base - top);
+    float a = std::max(a01, 0.f), d = std::max(d01, 0.f), rl = std::max(r01, 0.f);
+    const float sum = a + d + rl;
+    if (sum <= 1e-4f) { a = d = rl = 1.f; }               // no times set → show equal ramps
+    const float span = a + d + rl, tw = uw * 0.78f, ws = uw * 0.22f;   // reserve a sustain plateau
+    const float wa = tw * a / span, wd = tw * d / span, wr = tw * rl / span;
+    const float x0 = rc.x + 4.f;
+    const float x1 = x0 + wa, x2 = x1 + wd, x3 = x2 + ws, x4 = x3 + wr;
+    const float xs[5] = { x0, x1, x2, x3, x4 };
+    const float ys[5] = { base, top, sus_y, sus_y, base };
+    r.draw_polyline(xs, ys, 5, 1.8f, accent[0], accent[1], accent[2], 0.95f);
+    r.draw_circle(x1, top,   2.5f, 0.f, accent[0], accent[1], accent[2], 1.f);   // peak
+    r.draw_circle(x3, sus_y, 2.5f, 0.f, accent[0], accent[1], accent[2], 1.f);   // sustain
+    if (label && *label) r.draw_text(rc.x + 4.f, rc.y + 2.f, label, 0.6f, 0.6f, 0.64f, 1.f, 0.6f);
+}
+
+// One unipolar (0..1) sample of LFO waveform `w` at phase `ph` (0..1) — mirrors the synth's shapes.
+inline float lfo_preview_sample(int w, float ph) {
+    switch (w) {
+        case 1: return 1.f - std::fabs(2.f * ph - 1.f);                  // triangle
+        case 2: return ph < 0.5f ? 1.f : 0.f;                           // square
+        case 3: return ph;                                             // saw
+        default: return 0.5f - 0.5f * std::cos(6.2831853f * ph);        // sine
+    }
+}
+
+// Draw an LFO waveform PREVIEW (2 cycles) + its name. The waveform param is an enum; clicking the
+// widget cycles it (handled by the inspector's input path). `wave` is the 0..3 waveform index.
+inline void draw_lfo(Renderer2D& r, const Rect& rc, int wave, const char* wave_name,
+                     const float accent[3], const char* label) {
+    r.draw_rounded_rect(rc.x, rc.y, rc.w, rc.h, 3.f, 0.10f, 0.11f, 0.13f, 1.f);
+    const float base = rc.y + rc.h - 5.f, top = rc.y + 5.f, x0 = rc.x + 4.f, uw = rc.w - 8.f;
+    constexpr int N = 48; float xs[N], ys[N];
+    for (int i = 0; i < N; ++i) {
+        const float ph = 2.f * (i / float(N - 1));          // 2 cycles
+        xs[i] = x0 + uw * (i / float(N - 1));
+        ys[i] = base - lfo_preview_sample(wave, ph - std::floor(ph)) * (base - top);
+    }
+    r.draw_polyline(xs, ys, N, 1.8f, accent[0], accent[1], accent[2], 0.95f);
+    if (wave_name && *wave_name) r.draw_text(rc.x + rc.w - 52.f, rc.y + 2.f, wave_name, accent[0], accent[1], accent[2], 0.9f, 0.6f);
+    if (label && *label) r.draw_text(rc.x + 4.f, rc.y + 2.f, label, 0.6f, 0.6f, 0.64f, 1.f, 0.6f);
 }
 
 }  // namespace vivid::ui

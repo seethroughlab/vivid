@@ -1,5 +1,6 @@
 #include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
+#include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "audio/vst3_host.h"
 
 #include <algorithm>
@@ -13,7 +14,12 @@ namespace vivid::ui {
 namespace {
 namespace P = vivid::session;
 constexpr float kCardW = 108.f, kCardH = 44.f, kGapX = 46.f, kGapY = 16.f, kPad = 12.f;
-constexpr float kParamBand = 60.f;   // bottom strip that hosts the selected node's params
+constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
+constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
+constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
+// LFO waveform names, indexed by the enum value (matches the SineSynth convention). The session
+// API exposes the value but not the enum choice labels, so the widget names them by convention.
+const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
 
 void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
     constexpr int N = 24; float xs[N], ys[N];
@@ -28,8 +34,37 @@ void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c)
 }
 }  // namespace
 
-Rect AudioNodeGraph::param_region() const { return { x0_, y1_ - kParamBand, x1_ - x0_, kParamBand }; }
-Rect AudioNodeGraph::graph_region() const { return { x0_, y0_, x1_ - x0_, (y1_ - kParamBand) - y0_ }; }
+// Does the selected node carry any compound-widget group (ADSR/LFO)? Drives the band height so
+// the preview strip has room. Scans the selection's param hints (draw + input agree via sel_node_).
+float AudioNodeGraph::param_band_h() const {
+    if (!s_ || sel_node_ < 0) return kParamBand;
+    const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node_);
+    for (int i = 0; i < pc; ++i)
+        if (is_compound_widget(P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i)))
+            return kParamBandTall;
+    return kParamBand;
+}
+
+// The compound-widget previews to draw for the selected node (ADSR/LFO), laid out left-to-right in
+// the top preview strip. Shared by draw (render) and input (LFO click-to-cycle hit-test).
+std::vector<AudioCompoundPreview> AudioNodeGraph::compound_previews() const {
+    std::vector<AudioCompoundPreview> out;
+    if (!s_ || sel_node_ < 0) return out;
+    const Rect pr = param_region();
+    const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node_);
+    float px = pr.x + 6.f;
+    for (int i = 0; i < pc; ++i) {
+        const int hint = P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i);
+        if (!is_compound_widget(hint)) continue;
+        const float w = (hint == VIVID_DISPLAY_ADSR) ? 190.f : 150.f;
+        out.push_back({ hint, i, { px, pr.y + 3.f, w, kPreviewH - 4.f } });
+        px += w + 10.f;
+    }
+    return out;
+}
+
+Rect AudioNodeGraph::param_region() const { const float b = param_band_h(); return { x0_, y1_ - b, x1_ - x0_, b }; }
+Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); return { x0_, y0_, x1_ - x0_, (y1_ - b) - y0_ }; }
 
 Rect AudioNodeGraph::add_button_rect() const {
     const Rect g = graph_region();
@@ -97,14 +132,24 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     if (!s_ || sel_node < 0) return out;   // none selected
     const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node);
     if (pc <= 0) return out;
+    // The LFO enum leader is claimed by its waveform preview (no knob); every other param is a knob,
+    // including the ADSR channels (their preview groups them but they stay individually draggable).
+    std::vector<int> knobs;
+    for (int i = 0; i < pc; ++i)
+        if (P::session_audio_graph_node_param_hint(s_, track_, sel_node, i) != VIVID_DISPLAY_LFO)
+            knobs.push_back(i);
+    if (knobs.empty()) return out;
     const Rect pr = param_region();
-    const float cellW = std::min(78.f, (pr.w - 12.f) / static_cast<float>(pc));
-    out.reserve(pc);
-    for (int i = 0; i < pc; ++i) {
-        const float cx = pr.x + 6.f + i * cellW;
+    const bool tall = pr.h > kParamBand + 1.f;
+    const float row_y = pr.y + (tall ? kPreviewH : 4.f);   // knobs sit below the preview strip
+    const float row_h = pr.h - (tall ? kPreviewH : 0.f) - 8.f;
+    const float cellW = std::min(78.f, (pr.w - 12.f) / static_cast<float>(knobs.size()));
+    out.reserve(knobs.size());
+    for (size_t k = 0; k < knobs.size(); ++k) {
+        const float cx = pr.x + 6.f + k * cellW;
         AudioParamCell c;
-        c.index = i; c.x = cx; c.y = pr.y + 4.f; c.w = cellW; c.h = pr.h - 8.f;
-        c.knob_cx = cx + cellW * 0.5f; c.knob_cy = pr.y + 24.f; c.knob_r = 11.f;
+        c.index = knobs[k]; c.x = cx; c.y = row_y; c.w = cellW; c.h = row_h;
+        c.knob_cx = cx + cellW * 0.5f; c.knob_cy = row_y + 20.f; c.knob_r = 11.f;
         out.push_back(c);
     }
     return out;
@@ -186,8 +231,25 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     // Inline param strip for the selected node (drawn unclipped, in its fixed bottom band).
     const Rect pr = param_region();
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+    // UI-4a: compound-widget previews (ADSR envelope / LFO waveform) in the top strip. The channel
+    // params still render as knobs below (the preview groups them); the LFO enum is preview-only.
+    for (const auto& cp : compound_previews()) {
+        if (cp.hint == VIVID_DISPLAY_ADSR) {
+            auto nrm = [&](int p) {
+                const float v = P::session_audio_graph_node_param_get(s_, track_, sel_node, p);
+                const float mn = P::session_audio_graph_node_param_min(s_, track_, sel_node, p);
+                const float mx = P::session_audio_graph_node_param_max(s_, track_, sel_node, p);
+                return (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f; };
+            draw_adsr(r, cp.rect, nrm(cp.index), nrm(cp.index + 1), nrm(cp.index + 2), nrm(cp.index + 3),
+                      sty.audio, "ADSR");
+        } else if (cp.hint == VIVID_DISPLAY_LFO) {
+            const int w = std::clamp(static_cast<int>(std::lround(
+                P::session_audio_graph_node_param_get(s_, track_, sel_node, cp.index))), 0, 3);
+            draw_lfo(r, cp.rect, w, kLfoWaveNames[w], sty.audio, "LFO");
+        }
+    }
     const std::vector<AudioParamCell> cells = param_cells(sel_node);
-    if (cells.empty()) {
+    if (cells.empty() && compound_previews().empty()) {
         r.draw_text(pr.x + 4.f, pr.y + 20.f,
                     sel_node < 0 ? "click a node to edit its parameters" : "this node has no parameters",
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
