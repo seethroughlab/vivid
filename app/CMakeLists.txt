@@ -190,6 +190,11 @@ add_executable(vivid MACOSX_BUNDLE
     src/packages/hot_reload.cpp
     src/packages/hot_reload_manager.cpp
     src/cli/control_server.cpp
+    src/cli/control_handlers_introspection.cpp
+    src/cli/control_handlers_mappings.cpp
+    src/cli/control_handlers_visuals.cpp
+    src/cli/control_handlers_audio.cpp
+    src/cli/control_handlers_project.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
     src/ui/session_view.cpp

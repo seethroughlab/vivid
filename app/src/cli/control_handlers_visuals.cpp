@@ -1,0 +1,109 @@
+#include "cli/control_handlers_internal.h"
+
+#include "ui/node_graph.h"
+#include "gpu/visual_graph.h"
+#include "gpu/operator_scan.h"          // load_and_register_operator (live install)
+#include "packages/package_manager.h"   // install_package
+#include "app/app.h"                     // op_registry + op_loaders
+
+#include <string>
+#include <vector>
+
+namespace vivid {
+namespace {
+
+bool parse_vop(const std::string& s, VOp& out) {
+    if (s == "Plasma") out = VOp::Plasma;
+    else if (s == "Video") out = VOp::Video;
+    else if (s == "Feedback") out = VOp::Feedback;
+    else if (s == "Blur") out = VOp::Blur;
+    else if (s == "Output") out = VOp::Output;
+    else return false;
+    return true;
+}
+// vop_name now comes from gpu/visual_graph.h (vivid::vop_name).
+int op_index_by_id(VisualGraph* vg, int id) {
+    if (!vg) return -1;
+    auto& ns = vg->nodes();
+    for (int i = 0; i < static_cast<int>(ns.size()); ++i) if (ns[i].id == id) return i;
+    return -1;
+}
+}  // namespace
+
+// Node-graph construction: add/remove/connect nodes, set generator/asset/param, data nodes.
+void register_visuals_handlers(Handlers& handlers_) {
+    handlers_["add_node"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const std::string op = b.value("op", std::string());
+        OpRegistry* reg = c.vgraph->registry();
+        if (!reg || !reg->has(op)) {
+            std::string types; for (const auto& t : (reg ? reg->type_names() : std::vector<std::string>{})) { if (!types.empty()) types += ", "; types += t; }
+            return err(code::kBadArg, "unknown op '" + op + "' (valid: " + types + ")");
+        }
+        const int idx = c.vgraph->add_node(op);   // operator-driven: any registered op type
+        json r = ok(); r["id"] = c.vgraph->nodes()[idx].id; r["index"] = idx; return r;
+    };
+    handlers_["remove_node"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
+        c.vgraph->remove_node(idx);
+        return ok();
+    };
+    handlers_["connect_nodes"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const int in_id = b.value("input_id", -1);
+        const int in_idx = (in_id < 0) ? -1 : op_index_by_id(c.vgraph, in_id);
+        if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
+        c.vgraph->set_input(idx, in_idx);
+        return ok();
+    };
+    // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl
+    // resolved against the loaded project dir. Empty clears it. The op (re)loads on the
+    // next frame and degrades to a no-op if the file is missing or fails to compile.
+    handlers_["set_node_asset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
+        c.graph->set_op_asset_at(idx, b.value("asset", std::string()));
+        json r = ok(); r["id"] = b.value("id", -1); r["asset"] = c.graph->op_asset_at(idx); return r;
+    };
+    handlers_["set_generator"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op");
+        c.vgraph->set_generator(op);
+        return ok();
+    };
+    handlers_["set_active_output"] = [](const ControlCtx& c, const json& b) {
+        if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
+        const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that id");
+        c.vgraph->set_active_output(idx);
+        return ok();
+    };
+    handlers_["set_node_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const std::string name = b.value("name", std::string());
+        int local = -1;
+        for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+            if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+        if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
+        c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
+        return ok();
+    };
+    handlers_["add_data_node"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        const std::string src = b.value("source", std::string());
+        const int cid = char_id_from_source(src);
+        if (cid < 0) return err(code::kBadArg, "bad source (e.g. master.transient, track_2.low)");
+        c.graph->add_data_node(src, cid);
+        return ok();
+    };
+
+}
+
+}  // namespace vivid
