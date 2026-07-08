@@ -7,6 +7,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
 #include "ui/layout.h"
+#include "ui/compound_widget.h"   // UI-4a: compound_span / xy_from_cursor / node_param_compound_rect
 #include "ui/session_view.h"
 #include "ui/mapping_overview.h"
 #include "ui/clip_editor.h"
@@ -212,6 +213,14 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
+        if (win.param_xy && app.graph) {   // UI-4a: XY-pad — both axes track the cursor in the pad rect
+            const int span = vivid::ui::compound_span(VIVID_DISPLAY_XY_PAD);
+            const vivid::ui::Rect cr = vivid::ui::node_param_compound_rect(win.param_drag, span, win.win_w, win.win_h, win.dock_h);
+            float x01, y01; vivid::ui::xy_from_cursor(cr, mx, my, x01, y01);
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, x01);
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag + 1, y01);
+            return;
+        }
         if (win.param_is_node && win.param_drag_horiz) {   // node slider: horizontal position = value
             const vivid::ui::Rect wr = vivid::ui::node_param_widget_rect(win.param_drag, win.win_w, win.win_h, win.dock_h);
             if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag,

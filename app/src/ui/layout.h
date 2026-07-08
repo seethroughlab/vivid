@@ -248,5 +248,13 @@ inline Rect node_param_map_rect(int i, int win_w, int win_h, float dock_h) {  //
     Rect r = node_param_row(i, win_w, win_h, dock_h);
     return { r.x + kNodeLabelW - 14.f, r.y + (kNodeRowH - 9.f) * 0.5f, 9.f, 9.f };
 }
+// UI-4a: a compound widget (XY-pad/color/ADSR/…) claims `span` consecutive param rows; its rect is
+// the widget column spanning rows i..i+span-1 (assumes the group stays in one column — true when
+// the group starts a column, which is how operators declare them). Shared by draw + hit-test.
+inline Rect node_param_compound_rect(int i, int span, int win_w, int win_h, float dock_h) {
+    const Rect a = node_param_widget_rect(i, win_w, win_h, dock_h);
+    const Rect z = node_param_widget_rect(i + (span > 1 ? span - 1 : 0), win_w, win_h, dock_h);
+    return { a.x, a.y, a.w, (z.y + z.h) - a.y };
+}
 
 }  // namespace vivid::ui

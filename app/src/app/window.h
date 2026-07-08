@@ -92,6 +92,7 @@ struct Window {
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical
+    bool    param_xy = false;           // UI-4a: XY-pad drag (param_drag = the group's first param; sets it + the next)
     float   param_drag_v0 = 0.f; double param_drag_y0 = 0.0;
     bool    dock_drag = false;
     double  last_dev_t = -1; int last_dev_i = -1;

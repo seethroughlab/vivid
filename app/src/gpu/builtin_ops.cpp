@@ -103,7 +103,9 @@ struct PlasmaOp : OperatorBase, GpuProcessable {
     Param<float> glow   {"glow",    0.5f, 0.f, 1.f};
     ShaderOp shader_; bool tried_ = false;
     void collect_params(std::vector<ParamBase*>& o) override {
-        semantic_intent(warp, "domain warp amount");   warp.display_hint = VIVID_DISPLAY_KNOB;
+        // UI-4a: warp (x) + hue (y) form an XY-pad group — drag distortion × color together. The
+        // pad claims the next param (hue), so these two must stay adjacent in this list.
+        semantic_intent(warp, "domain warp amount");   warp.display_hint = VIVID_DISPLAY_XY_PAD;
         semantic_tag(hue, "phase_01"); semantic_intent(hue, "color hue"); hue.display_hint = VIVID_DISPLAY_KNOB;
         semantic_intent(density, "pattern density");    density.display_hint = VIVID_DISPLAY_KNOB;
         semantic_intent(glow, "glow intensity");        glow.display_hint = VIVID_DISPLAY_KNOB;

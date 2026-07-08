@@ -6,6 +6,7 @@
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"
+#include "ui/compound_widget.h"   // UI-4a: host-composed compound inspector widgets
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
 #include "transport.h"
@@ -277,6 +278,18 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         for (int i = 0; i < pc; ++i) {
             const int hint = g->op_param_hint_at(selop, i);
             if (hint == VIVID_DISPLAY_HIDDEN || hint == VIVID_DISPLAY_EDITOR || hint == VIVID_DISPLAY_TRANSIENT) continue;
+            // UI-4a: a compound widget claims several consecutive params and draws as one unit.
+            if (is_compound_widget(hint)) {
+                const int span = compound_span(hint);
+                const Rect cr = node_param_compound_rect(i, span, w.win_w, w.win_h, w.dock_h);
+                if (hint == VIVID_DISPLAY_XY_PAD) {
+                    char lbl[48]; std::snprintf(lbl, sizeof lbl, "%s / %s",
+                                                g->op_param_label_at(selop, i), g->op_param_label_at(selop, i + 1));
+                    draw_xy_pad(ui, cr, g->op_param_base_at(selop, i), g->op_param_base_at(selop, i + 1), sty.gpu, lbl);
+                }
+                i += span - 1;
+                continue;
+            }
             const Rect row = node_param_row(i, w.win_w, w.win_h, w.dock_h);
             const Rect wr  = node_param_widget_rect(i, w.win_w, w.win_h, w.dock_h);
             const float base = g->op_param_base_at(selop, i);

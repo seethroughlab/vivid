@@ -6,6 +6,7 @@
 #include "app/app.h"
 #include "app/window.h"
 #include "ui/layout.h"
+#include "ui/compound_widget.h"  // UI-4a: is_compound_widget / compound_span / xy_from_cursor
 #include "ui/session_view.h"     // DevSlot, dock_resolve, dock_param_dest, dock_device_count, meter_hit
 #include "ui/node_graph.h"       // add_data_node / add_mapping / disconnect_dest
 #include "audio/vst3_host.h"
@@ -108,6 +109,22 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
     for (int i = 0; i < pc; ++i) {
         const int hint = g->op_param_hint_at(selop, i);
         if (hint == VIVID_DISPLAY_HIDDEN || hint == VIVID_DISPLAY_EDITOR || hint == VIVID_DISPLAY_TRANSIENT) continue;
+        // UI-4a: a compound widget claims several params; hit its spanning rect, then start its drag.
+        if (is_compound_widget(hint)) {
+            const int span = compound_span(hint);
+            const Rect cr = node_param_compound_rect(i, span, win.win_w, win.win_h, win.dock_h);
+            if (hit(cr, mx, my)) {
+                if (hint == VIVID_DISPLAY_XY_PAD) {   // set both axes from the cursor + start an XY drag
+                    float x01, y01; xy_from_cursor(cr, mx, my, x01, y01);
+                    g->set_op_param_base_at(selop, i, x01);
+                    g->set_op_param_base_at(selop, i + 1, y01);
+                    win.param_drag = i; win.param_is_node = true; win.param_xy = true;
+                }
+                return true;
+            }
+            i += span - 1;
+            continue;
+        }
         const Rect wr = node_param_widget_rect(i, win.win_w, win.win_h, win.dock_h);
         if (!hit(wr, mx, my)) continue;
         const float base = g->op_param_base_at(selop, i);
@@ -122,10 +139,10 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
             }
             case NodeWidget::Slider:
                 g->set_op_param_base_at(selop, i, std::clamp((mx - wr.x) / wr.w, 0.0, 1.0));   // jump to click
-                win.param_drag = i; win.param_is_node = true; win.param_drag_horiz = true;
+                win.param_drag = i; win.param_is_node = true; win.param_drag_horiz = true; win.param_xy = false;
                 win.param_drag_v0 = 0.f; win.param_drag_y0 = my; break;
             default:  // Knob: vertical drag
-                win.param_drag = i; win.param_is_node = true; win.param_drag_horiz = false;
+                win.param_drag = i; win.param_is_node = true; win.param_drag_horiz = false; win.param_xy = false;
                 win.param_drag_v0 = base; win.param_drag_y0 = my; break;
         }
         return true;
