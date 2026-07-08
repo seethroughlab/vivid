@@ -119,6 +119,16 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
                     g->set_op_param_base_at(selop, i, x01);
                     g->set_op_param_base_at(selop, i + 1, y01);
                     win.param_drag = i; win.param_is_node = true; win.param_xy = true;
+                } else if (hint == VIVID_DISPLAY_COLOR) {   // a channel slider = an ordinary horizontal drag
+                    for (int k = 0; k < 3; ++k) {
+                        const Rect wr = node_param_widget_rect(i + k, win.win_w, win.win_h, win.dock_h);
+                        if (hit(wr, mx, my)) {
+                            g->set_op_param_base_at(selop, i + k, std::clamp((mx - wr.x) / wr.w, 0.0, 1.0));
+                            win.param_drag = i + k; win.param_is_node = true; win.param_drag_horiz = true; win.param_xy = false;
+                            win.param_drag_v0 = 0.f; win.param_drag_y0 = my;
+                            break;
+                        }
+                    }
                 }
                 return true;
             }

@@ -286,6 +286,18 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
                     char lbl[48]; std::snprintf(lbl, sizeof lbl, "%s / %s",
                                                 g->op_param_label_at(selop, i), g->op_param_label_at(selop, i + 1));
                     draw_xy_pad(ui, cr, g->op_param_base_at(selop, i), g->op_param_base_at(selop, i + 1), sty.gpu, lbl);
+                } else if (hint == VIVID_DISPLAY_COLOR) {
+                    const Rect r0 = node_param_row(i, w.win_w, w.win_h, w.dock_h);
+                    const Rect r2 = node_param_row(i + 2, w.win_w, w.win_h, w.dock_h);
+                    const Rect sw = { r0.x, r0.y + 2.f, kNodeLabelW - 12.f, (r2.y + r2.h) - r0.y - 4.f };
+                    draw_color_swatch(ui, sw, g->op_param_base_at(selop, i), g->op_param_base_at(selop, i + 1), g->op_param_base_at(selop, i + 2));
+                    static const char* ch[3] = { "R", "G", "B" };
+                    for (int k = 0; k < 3; ++k) {
+                        const Rect wr = node_param_widget_rect(i + k, w.win_w, w.win_h, w.dock_h);
+                        const float b = g->op_param_base_at(selop, i + k);
+                        char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", b);
+                        slider(ui, wr.x, wr.y, wr.w, wr.h, b, ch[k], vt, sty.gpu, false);
+                    }
                 }
                 i += span - 1;
                 continue;

@@ -17,7 +17,7 @@ namespace vivid::ui {
 // Is this display_hint a compound widget the host knows how to render? (Only implemented widgets
 // return true, so an un-implemented hint falls back to the normal per-param widget.)
 inline bool is_compound_widget(int hint) {
-    return hint == VIVID_DISPLAY_XY_PAD;   // UI-4a.1 (COLOR/ADSR/LFO land in later slices)
+    return hint == VIVID_DISPLAY_XY_PAD || hint == VIVID_DISPLAY_COLOR;
 }
 
 // How many consecutive params a compound widget claims (the group it renders as one unit).
@@ -51,6 +51,16 @@ inline void draw_xy_pad(Renderer2D& r, const Rect& rc, float x01, float y01,
     r.draw_line(hx, rc.y, hx, rc.y + rc.h, 1.f, accent[0], accent[1], accent[2], 0.35f);
     r.draw_circle(hx, hy, 5.f, 0.f, accent[0], accent[1], accent[2], 1.f);   // filled handle
     if (label && *label) r.draw_text(rc.x + 4.f, rc.y + 2.f, label, 0.6f, 0.6f, 0.64f, 1.f, 0.6f);
+}
+
+// Draw a live color swatch (the preview half of the COLOR widget). The r/g/b channels themselves
+// render as ordinary sliders at their per-param rects, so the standard horizontal drag edits them;
+// this is just the grouping preview. `sw` is the swatch rect (typically the label column, spanning
+// the group's rows).
+inline void draw_color_swatch(Renderer2D& r, const Rect& sw, float rf, float gf, float bf) {
+    r.draw_rounded_rect(sw.x, sw.y, sw.w, sw.h, 3.f, 0.16f, 0.16f, 0.18f, 1.f);   // border/bg
+    r.draw_rounded_rect(sw.x + 2.f, sw.y + 2.f, sw.w - 4.f, sw.h - 4.f, 2.f,
+                        std::clamp(rf, 0.f, 1.f), std::clamp(gf, 0.f, 1.f), std::clamp(bf, 0.f, 1.f), 1.f);
 }
 
 }  // namespace vivid::ui
