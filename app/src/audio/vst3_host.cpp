@@ -429,35 +429,135 @@ static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
     closedir(d);
 }
 
-static MidiClip transpose(const MidiClip& c, int semis) {
-    MidiClip o = c;
-    for (auto& n : o.notes) n.pitch += semis;
-    return o;
+// --- Demo song: a glitchy IDM sketch in A minor (8-beat / 2-bar scenes so it evolves, not a
+// 1-bar loop). Patterns are GENERATED with a fixed-seed xorshift RNG — rich, glitchy variation
+// (velocity jitter, ghost notes, 32nd ratchets, micro-timing) that's the same every launch. Lead
+// + bass paint per-note MPE expression (bend / pressure / timbre curves) to show that off. Change
+// a seed below (or the DemoRng seeds) to reroll the glitch. ---
+namespace demo {
+struct Rng {
+    uint32_t s;
+    explicit Rng(uint32_t seed) : s(seed ? seed : 0x9e3779b9u) {}
+    uint32_t u32() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; }
+    float unit() { return (u32() >> 8) * (1.0f / 16777216.0f); }         // 0..1
+    float range(float a, float b) { return a + unit() * (b - a); }
+    int   pick(int n) { return static_cast<int>(u32() % static_cast<uint32_t>(n)); }
+    bool  chance(float p) { return unit() < p; }
+};
+inline void nadd(MidiClip& c, int pitch, double start, double dur, float vel) {
+    ClipNote n{}; n.pitch = pitch; n.start = start; n.dur = dur;
+    n.vel = vel < 0.05f ? 0.05f : (vel > 1.f ? 1.f : vel);
+    c.notes.push_back(std::move(n));
 }
-// Three riffs (scene A/B/C); each track plays them transposed to a role.
+// A ratchet/stutter: k rapid retriggers of `pitch` across [start, start+span) — the IDM glitch.
+inline void nratchet(MidiClip& c, int pitch, double start, double span, int k, float vel, Rng& r) {
+    const double st = span / k;
+    for (int i = 0; i < k; ++i) nadd(c, pitch, start + i * st, st * 0.7, vel * r.range(0.6f, 1.f));
+}
+// Paint MPE curves on the most-recent note (played back as VST3 note-expression events).
+inline void nbend  (MidiClip& c, float fromSemi, float toSemi) { if (!c.notes.empty()) c.notes.back().expr[AXIS_BEND].bp = { {0.f, fromSemi}, {1.f, toSemi} }; }
+inline void ntimbre(MidiClip& c, float lo, float hi)           { if (!c.notes.empty()) c.notes.back().expr[AXIS_TIMBRE].bp = { {0.f, lo}, {0.45f, hi}, {1.f, lo} }; }
+inline void npress (MidiClip& c, float peak)                   { if (!c.notes.empty()) c.notes.back().expr[AXIS_PRESSURE].bp = { {0.f, 0.f}, {0.35f, peak}, {1.f, 0.f} }; }
+
+// A minor scale over two octaves (A3..A5) for the lead; low roots (A1..A2) for the bass.
+constexpr int LEAD[15] = { 57,59,60,62,64,65,67, 69,71,72,74,76,77,79, 81 };
+constexpr int A3 = 57, A4 = 69;
+}  // namespace demo
+
+// LEAD (played by the lead synth): glitch arps + expressive stabs. Scene A groove, B denser/higher
+// stutter, C sparse MPE breakdown.
 static std::vector<MidiClip> base_patterns() {
-    MidiClip a; a.length = 4.0; a.notes = {
-        {62,0.0,0.5,.85f},{65,0.5,0.5,.70f},{69,1.0,0.5,.85f},{65,1.5,0.5,.70f},{74,2.0,1.0,.90f},{69,3.0,0.9,.75f} };
-    MidiClip b; b.length = 4.0; b.notes = {
-        {81,0.0,0.4,.80f},{84,1.0,0.4,.75f},{88,2.0,0.4,.80f},{86,3.0,0.9,.70f} };
-    MidiClip c; c.length = 4.0; c.notes = {
-        {38,0.0,0.4,.95f},{38,0.5,0.4,.70f},{41,1.0,0.4,.90f},{38,1.5,0.4,.70f},
-        {36,2.0,0.4,.95f},{36,2.5,0.4,.70f},{43,3.0,0.4,.90f},{41,3.5,0.4,.70f} };
+    using namespace demo;
+    // A — 16th glitch arp cycling a minor shape, downbeat accents, occasional ratchet/timbre.
+    MidiClip a; a.length = 8.0; { Rng r(0x1EAD01u);
+        const int cell[8] = { 57,60,64,67, 60,64,69,72 };            // A C E G / C E A C
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            int p = cell[i % 8] + (r.chance(0.15f) ? 12 : 0);
+            if (!r.chance(0.88f)) continue;
+            const float v = (i % 4 == 0 ? 0.9f : 0.5f) * r.range(0.85f, 1.f);
+            if (r.chance(0.12f)) nratchet(a, p, t, 0.25, 2 + r.pick(3), v, r);
+            else { nadd(a, p, t, 0.18, v); if (r.chance(0.14f)) ntimbre(a, 0.2f, 0.9f); }
+        }
+        nadd(a, 76, 3.5, 0.5, 0.85f); nbend(a, -2.f, 0.f);           // a bent stab
+        nadd(a, 69, 7.0, 1.0, 0.8f);  npress(a, 0.7f);
+    }
+    // B — higher, busier, more stutter + pitch-drop bends (the "build").
+    MidiClip b; b.length = 8.0; { Rng r(0x1EAD02u);
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            if (!r.chance(0.82f)) continue;
+            int p = LEAD[7 + r.pick(8)];                              // upper octave
+            const float v = r.range(0.45f, 0.95f);
+            if (r.chance(0.28f)) nratchet(b, p, t, 0.25, 2 + r.pick(4), v, r);
+            else { nadd(b, p, t, 0.15, v); if (r.chance(0.2f)) { nbend(b, r.range(-3.f, 0.f), 0.f); } }
+        }
+    }
+    // C — sparse MPE breakdown: long held notes with bend sweeps + pressure/timbre swells.
+    MidiClip c; c.length = 8.0;
+    nadd(c, 69, 0.0, 2.25, 0.78f); nbend(c, -5.f, 0.f);  npress(c, 0.85f);
+    nadd(c, 72, 2.5, 1.25, 0.72f); ntimbre(c, 0.1f, 0.95f);
+    nadd(c, 76, 4.0, 3.5, 0.85f);  nbend(c, 0.f, 2.f);   npress(c, 0.9f); ntimbre(c, 0.2f, 0.85f);
     return { a, b, c };
 }
 
-// GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat.
+// BASS (played by the bass synth): syncopated sub in A minor. Its own patterns (not a transposed
+// lead), so lead + bass interlock.
+static std::vector<MidiClip> bass_patterns() {
+    using namespace demo;
+    // A — driving syncopated root/fifth with octave pops.
+    MidiClip a; a.length = 8.0; { Rng r(0xBA5501u);
+        const double hits[] = { 0.0, 0.75, 1.5, 2.0, 2.75, 3.5, 4.0, 4.75, 5.5, 6.0, 6.75, 7.5 };
+        const int deg[]     = { 33,   33,   40,  36,  33,   45,  33,  33,   38,  40,  33,   43 };  // A A E C A A' A A D E A G
+        for (int i = 0; i < 12; ++i) nadd(a, deg[i], hits[i], r.range(0.35, 0.6), r.range(0.75f, 1.f));
+        for (int i = 0; i < 8; ++i) if (r.chance(0.3f)) nadd(a, 33, i * 1.0 + 0.875, 0.12, r.range(0.3f, 0.5f)); // ghost 16ths
+    }
+    // B — faster gated 16ths glitch, octave jumps.
+    MidiClip b; b.length = 8.0; { Rng r(0xBA5502u);
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            if (!r.chance(0.6f)) continue;
+            int p = (r.chance(0.25f) ? 45 : 33) + (r.chance(0.15f) ? r.pick(3) * 3 : 0);
+            if (r.chance(0.2f)) nratchet(b, p, t, 0.25, 2 + r.pick(2), r.range(0.6f, 0.9f), r);
+            else nadd(b, p, t, 0.18, r.range(0.6f, 0.95f));
+        }
+    }
+    // C — long held sub with a slow reese-style bend (breakdown).
+    MidiClip c; c.length = 8.0;
+    nadd(c, 33, 0.0, 4.0, 0.9f);  nbend(c, 0.f, -0.4f);
+    nadd(c, 36, 4.0, 4.0, 0.85f); nbend(c, 0.f, 0.4f);
+    return { a, b, c };
+}
+
+// DRUMS: glitchy IDM kit. 36 kick, 38 snare, 39 clap, 37 rim, 42 closed hat, 46 open hat,
+// 40/75/67 glitch percs. Scene A broken groove, B rolling/amen, C half-time breakdown.
 static std::vector<MidiClip> drum_patterns() {
-    MidiClip a; a.length = 4.0;  // straight backbeat
-    a.notes = { {36,0.0,.2,.95f},{36,2.0,.2,.95f},{38,1.0,.2,.90f},{38,3.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 0.5) a.notes.push_back({42, t, 0.1, 0.55f});
-    MidiClip b; b.length = 4.0;  // busier, 16th hats
-    b.notes = { {36,0.0,.2,.95f},{36,1.5,.2,.85f},{36,2.0,.2,.95f},{36,2.75,.2,.80f},
-                {38,1.0,.2,.90f},{38,3.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 0.25) b.notes.push_back({42, t, 0.08, 0.5f});
-    MidiClip c; c.length = 4.0;  // half-time, open hats on the quarter
-    c.notes = { {36,0.0,.2,.95f},{38,2.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 1.0) c.notes.push_back({46, t, 0.2, 0.5f});
+    using namespace demo;
+    const int PERC[4] = { 75, 67, 40, 37 };
+    // A — syncopated kick, backbeat snare+clap, ghost snares, 16th hats with random ratchets.
+    MidiClip a; a.length = 8.0; { Rng r(0xD00301u);
+        for (double k : { 0.0, 2.75, 3.0, 4.0, 6.5, 7.0 }) nadd(a, 36, k, 0.22, r.range(0.85f, 1.f));
+        nadd(a, 38, 1.0, 0.2, 0.95f); nadd(a, 38, 5.0, 0.2, 0.95f);
+        nadd(a, 39, 3.0, 0.2, 0.85f); nadd(a, 39, 7.0, 0.2, 0.85f);   // clap layer
+        for (int i = 0; i < 16; ++i) if (r.chance(0.22f)) nadd(a, 38, i * 0.5 + r.range(-0.02, 0.02), 0.1, r.range(0.18f, 0.4f)); // ghosts
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25; if (!r.chance(0.85f)) continue;
+            if (r.chance(0.12f)) nratchet(a, 42, t, 0.25, 2 + r.pick(3), r.range(0.3f, 0.55f), r);
+            else nadd(a, 42, t, 0.07, r.range(0.22f, 0.7f)); }
+        for (int i = 0; i < 10; ++i) if (r.chance(0.35f)) nadd(a, PERC[r.pick(4)], r.range(0, 8), 0.1, r.range(0.3f, 0.6f)); // glitch
+    }
+    // B — rolling/amen: busy kicks, snare rolls (ratchets), dense hats.
+    MidiClip b; b.length = 8.0; { Rng r(0xD00302u);
+        for (int i = 0; i < 16; ++i) { const double t = i * 0.5;
+            if (r.chance(0.55f)) nadd(b, 36, t + (r.chance(0.3f) ? 0.25 : 0.0), 0.2, r.range(0.8f, 1.f)); }
+        nadd(b, 38, 1.0, 0.2, 0.95f); nadd(b, 38, 3.0, 0.2, 0.9f); nadd(b, 38, 5.0, 0.2, 0.95f); nadd(b, 38, 7.0, 0.2, 0.9f);
+        for (int i = 0; i < 16; ++i) if (r.chance(0.4f)) nratchet(b, 38, i * 0.5, 0.5, 2 + r.pick(4), r.range(0.25f, 0.55f), r); // rolls
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25; if (r.chance(0.9f)) nadd(b, 42, t, 0.06, r.range(0.2f, 0.65f)); }
+        for (int i = 0; i < 4; ++i) nadd(b, 46, i * 2.0 + 1.5, 0.25, r.range(0.4f, 0.6f));
+    }
+    // C — half-time breakdown: sparse big hits, occasional glitch perc.
+    MidiClip c; c.length = 8.0; { Rng r(0xD00303u);
+        nadd(c, 36, 0.0, 0.3, 1.f); nadd(c, 36, 4.0, 0.3, 1.f);
+        nadd(c, 38, 2.0, 0.3, 0.95f); nadd(c, 39, 6.0, 0.3, 0.9f);
+        for (int i = 0; i < 8; ++i) if (r.chance(0.4f)) nadd(c, 46, i * 1.0, 0.2, r.range(0.35f, 0.55f));
+        for (int i = 0; i < 6; ++i) if (r.chance(0.5f)) nratchet(c, PERC[r.pick(4)], r.range(0, 8), 0.4, 2 + r.pick(4), r.range(0.3f, 0.55f), r);
+    }
     return { a, b, c };
 }
 
@@ -467,12 +567,9 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
-    if (kind == kDrums) {
-        for (auto& p : drum_patterns()) t->clips.push_back(p);
-    } else {
-        const int off = (kind == kBass) ? -12 : 0;  // lead at pitch, bass an octave down
-        for (auto& bp : base_patterns()) t->clips.push_back(transpose(bp, off));
-    }
+    if (kind == kDrums)      for (auto& p : drum_patterns()) t->clips.push_back(p);
+    else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
+    else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
 t->eev.reserve(256);
