@@ -307,23 +307,26 @@ static void rebuild_track_graph(Track* t) {
     if (t->graph_authoritative) { republish_track_graph(t); return; }
     t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
-    // Derived chain (AG-0): source (native instrument takes precedence over a VST3 instrument, matching
-    // the inline path) → all VST3 FX → all native FX → Output, in the EXACT order session_process applies
-    // them today (VST3 FX loop before the native FX loop) so the graph is parity-by-construction. Sampler
-    // sources arrive in Stage 4, so audio (sampler) tracks still fall back to the inline path here.
+    // Derived chain (AG-0): source (sampler for an audio track; else a native instrument takes
+    // precedence over a VST3 instrument, matching the inline path) → all VST3 FX → all native FX →
+    // Output, in the EXACT order session_process applies them (VST3 FX loop before the native FX loop)
+    // so the graph is parity-by-construction.
     const bool has_native_inst = t->op_instrument_edit != nullptr;
     const bool has_vst3_inst   = t->handle != nullptr;
-    const bool derivable = !t->is_audio && (has_native_inst || has_vst3_inst);
+    const bool has_source = t->is_audio || has_native_inst || has_vst3_inst;
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
                               + static_cast<int>(t->op_effects_edit.size()) + 1;   // source + VST3 FX + native FX + output
-    if (!derivable || node_count > kGraphMaxNodes) {
+    if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
         t->ggen.fetch_add(1, std::memory_order_release);
         return;
     }
     int prev;
-    if (has_native_inst) {
+    if (t->is_audio) {
+        t->agnodes.push_back({ GNKind::Sampler, nullptr, nullptr });   // scene-resolved at process time
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "smp");
+    } else if (has_native_inst) {
         t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit, nullptr });
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
     } else {
@@ -390,6 +393,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
                 render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
+            }
+            else if (nb.kind == GNKind::Sampler) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
+                render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
             }
             else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
             continue;
@@ -1444,13 +1451,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         ctx.metronome_beats_elapsed = beats;
 
         if (t.is_audio) {
-            // Bar-quantized scene switch, then render the active sample loop.
+            // Bar-quantized scene switch (a transport action — stays here even when gok, since the
+            // Sampler node just reads t.active); then render the active loop unless the graph does it.
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            render_sampler_block(t, beats, delta, frames, sample_rate, playing, L, R);
+            if (!t.gok) render_sampler_block(t, beats, delta, frames, sample_rate, playing, L, R);
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
             if (new_bar) {
