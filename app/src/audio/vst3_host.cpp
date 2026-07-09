@@ -1134,6 +1134,73 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev,
     }
 }
 
+// --- Per-source/effect render primitives (AG-0). Extracted from session_process so BOTH the inline
+// path and (later) the audio-graph node dispatch call identical code — parity by construction. All
+// are RT-safe: fixed-capacity VST3 scratch, no heap, the sampler try_lock skip preserved. ---
+
+// VST3 instrument source. Appends this block's notes/expression (t.nev/t.eev) into `events` — which
+// may ALREADY hold scene-switch release events emitted by the caller — then runs the processor into
+// L/R. (The caller owns `events` so the scene-switch releases accumulate exactly as before.)
+static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
+                                   const VividAudioContext& ctx, uint32_t frames, float* L, float* R) {
+    emit_vst3(events, t.nev, t.eev);
+    float* ch[2] = { L, R };
+    AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
+    Vst3ParamChanges pc; pc.clear();
+    drain_params(h, pc);
+    ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
+    ProcessData data{};
+    data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
+    data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
+    data.inputs = nullptr; data.outputs = &ob;
+    data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+    h->processor->process(data);
+}
+
+// VST3 effect. Transforms L/R in place, using the track's fx scratch (t.fxl/t.fxr) as the plugin's
+// output bus, then copies back. Caller guards `fx && fx->processing`.
+static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
+                               uint32_t frames, float* L, float* R) {
+    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    float* oL = t.fxl.data(); float* oR = t.fxr.data();
+    float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
+    AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
+    AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
+    Vst3ParamChanges fpc; fpc.clear();
+    drain_params(fx, fpc);
+    ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
+    ProcessData fd{};
+    fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
+    fd.numSamples = static_cast<int32>(frames);
+    fd.numInputs = 1; fd.inputs = &ib;
+    fd.numOutputs = 1; fd.outputs = &fob;
+    fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
+    fx->processor->process(fd);
+    std::memcpy(L, oL, frames * sizeof(float));
+    std::memcpy(R, oR, frames * sizeof(float));
+}
+
+// Sampler-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
+// contended). Re-reads the scene-dependent state (t.active / aud_clips / aud_dsp / aud_trim*) and
+// keeps the aud_mtx try_lock skip-on-contention — the caller performs the bar-quantized scene switch
+// BEFORE calling this (it mutates t.active, a transport action, not a node op).
+static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames,
+                                 uint32_t sample_rate, bool playing, float* L, float* R) {
+    const int sc = t.active.load(std::memory_order_relaxed);
+    if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
+        if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok()) {
+            const float tr0 = t.aud_trim0[sc].load(std::memory_order_relaxed);
+            const float tr1 = t.aud_trim1[sc].load(std::memory_order_relaxed);
+            ClipDsp* d = (sc < static_cast<int>(t.aud_dsp.size())) ? t.aud_dsp[sc].get() : nullptr;
+            if (d && d->ready)  // warp enabled + stretcher ready -> pitch-preserving path
+                process_clip(t.aud_clips[sc], *d, beats, delta, frames, sample_rate, L, R, tr0, tr1);
+            else
+                t.aud_clips[sc].render(beats, delta, frames, L, R, tr0, tr1);
+        }
+        t.aud_mtx.unlock();
+    }
+}
+
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar,
                      bool playing, bool release_all) {
@@ -1235,21 +1302,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            const int sc = t.active.load(std::memory_order_relaxed);
-            // try_lock guards against a concurrent UI stash/place swapping this slot; on
-            // contention we simply skip this block (the UI's move is O(1), so it's rare).
-            if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
-                if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok()) {
-                    const float tr0 = t.aud_trim0[sc].load(std::memory_order_relaxed);
-                    const float tr1 = t.aud_trim1[sc].load(std::memory_order_relaxed);
-                    ClipDsp* d = (sc < static_cast<int>(t.aud_dsp.size())) ? t.aud_dsp[sc].get() : nullptr;
-                    if (d && d->ready)  // warp enabled + stretcher ready -> pitch-preserving path
-                        process_clip(t.aud_clips[sc], *d, beats, delta, frames, sample_rate, L, R, tr0, tr1);
-                    else
-                        t.aud_clips[sc].render(beats, delta, frames, L, R, tr0, tr1);
-                }
-                t.aud_mtx.unlock();
-            }
+            render_sampler_block(t, beats, delta, frames, sample_rate, playing, L, R);
         } else {
             Vst3EventList events;
             if (new_bar) {
@@ -1288,41 +1341,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                                         static_cast<float>(bpm), bpb, beats,
                                         t.nev.data(), static_cast<uint32_t>(t.nev.size()));
             } else if (t.handle) {
-                emit_vst3(events, t.nev, t.eev);
-                float* ch[2] = { L, R };
-                AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
-                Vst3ParamChanges pc; pc.clear();
-                drain_params(t.handle, pc);
-                ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
-                ProcessData data{};
-                data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
-                data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
-                data.inputs = nullptr; data.outputs = &ob;
-                data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
-                t.handle->processor->process(data);
+                render_vst3_instrument(t, t.handle, events, ctx, frames, L, R);
             }
         }
 
         // FX chain: process L/R through each effect in series (audio in -> out).
         for (Vst3Handle* fx : t.effects) {
             if (!fx || !fx->processing) continue;
-            if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
-            float* oL = t.fxl.data(); float* oR = t.fxr.data();
-            float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
-            AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
-            AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
-            Vst3ParamChanges fpc; fpc.clear();
-            drain_params(fx, fpc);
-            ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
-            ProcessData fd{};
-            fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
-            fd.numSamples = static_cast<int32>(frames);
-            fd.numInputs = 1; fd.inputs = &ib;
-            fd.numOutputs = 1; fd.outputs = &fob;
-            fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
-            fx->processor->process(fd);
-            std::memcpy(L, oL, frames * sizeof(float));
-            std::memcpy(R, oR, frames * sizeof(float));
+            render_vst3_effect(t, fx, ctx, frames, L, R);
         }
         // Native audio operators. When the audio graph is active (AG-0, gok), run the
         // compiled graph — it renders the native instrument source + native FX chain (L/R was
