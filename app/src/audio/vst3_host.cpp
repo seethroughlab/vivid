@@ -1444,21 +1444,13 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
-        VividAudioContext ctx{};   // shared by the instrument and the effect chain
-        ctx.sample_rate = sample_rate;
-        ctx.metronome_bpm = static_cast<float>(bpm);
-        ctx.metronome_beats_per_bar = bpb;
-        ctx.metronome_beats_elapsed = beats;
-
         if (t.is_audio) {
-            // Bar-quantized scene switch (a transport action — stays here even when gok, since the
-            // Sampler node just reads t.active); then render the active loop unless the graph does it.
+            // Bar-quantized scene switch (a transport action the Sampler graph node reads each block).
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            if (!t.gok) render_sampler_block(t, beats, delta, frames, sample_rate, playing, L, R);
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
             if (new_bar) {
@@ -1489,40 +1481,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
               while (t.preview_in.pop(pe))
                   t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
                                             kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
-            // Source: a native instrument operator takes precedence over the VST3 instrument.
-            // When the audio graph is active (gok) the graph renders the source + FX below, so skip
-            // the inline render (the event prep above still runs — the graph node reads t.vev/t.nev).
-            if (!t.gok) {
-                if (t.op_instrument)
-                    vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
-                                            static_cast<float>(bpm), bpb, beats,
-                                            t.nev.data(), static_cast<uint32_t>(t.nev.size()));
-                else if (t.handle)
-                    render_vst3_instrument(t, t.handle, ctx, frames, L, R);
-            }
+            // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }
 
-        // FX chain: process L/R through each VST3 effect in series (audio in -> out). Skipped when
-        // the graph is active — a gok track's chain runs through run_track_graph (Stage 2: gok tracks
-        // have no VST3 FX; Stage 3 makes them Vst3Fx nodes).
-        if (!t.gok) for (Vst3Handle* fx : t.effects) {
-            if (!fx || !fx->processing) continue;
-            render_vst3_effect(t, fx, ctx, frames, L, R);
-        }
-        // Native audio operators. When the audio graph is active (AG-0, gok), run the
-        // compiled graph — it renders the native instrument source + native FX chain (L/R was
-        // left at silence above). Otherwise fall back to the inline in-place native FX chain.
+        // AG-0: the compiled per-track audio graph is the SOLE RT render path — it renders the source
+        // (native / VST3 instrument / sampler) then the VST3 + native FX chain into L/R. A non-derivable
+        // track (no source, or > kGraphMaxNodes devices) leaves L/R silent (gok=false).
         if (t.gok) {
             t.blk.frames = frames; t.blk.sample_rate = sample_rate;
             t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
             t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
-            t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;   // AG-0: VST3/sampler ctx
+            t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;
             run_track_graph(t, L, R, frames);
-        } else {
-            for (vivid::AudioOp* op : t.op_effects) {
-                if (!op) continue;
-                vivid::audio_op_process(op, L, R, frames, sample_rate, static_cast<float>(bpm), bpb, beats, nullptr, 0);
-            }
         }
         t.steady += frames;
 
