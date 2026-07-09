@@ -72,14 +72,21 @@ struct LiveMidi {
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
 
-enum class GNKind : uint8_t { NativeInst, NativeFx, Output };
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; };   // POD; copyable
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, Sampler, Output };
+// POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
+// `handle` = VST3 inst/fx (raw, non-owning — Track owns it). Sampler carries no pointer (its
+// active clip is scene-dependent, re-read from Track& at process time).
+struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; Vst3Handle* handle = nullptr; };
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
     uint32_t frames = 0, sample_rate = 48000;
     float    bpm = 120.f; uint32_t bpb = 4; double beats = 0.0;
     const NoteEvent* notes = nullptr; uint32_t note_count = 0;
+    // AG-0: extra per-block context the VST3/sampler node dispatch consumes (native ops ignore
+    // these). `steady` is the track's running sample counter (also on Track); `delta` is
+    // beats-per-block; `playing` gates the sampler. Filled alongside the native fields each block.
+    uint64_t steady = 0; double delta = 0.0; bool playing = false;
 };
 
 struct Track {
@@ -99,6 +106,9 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
+    Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
+                                           // notes); on the Track so both the inline path AND the
+                                           // audio-graph Vst3Inst node dispatch share the same list.
     LiveMidi              preview_in;       // editor keyboard-audition notes (drained every block, any arm state)
     uint64_t              steady = 0;
     std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
@@ -297,22 +307,33 @@ static void rebuild_track_graph(Track* t) {
     if (t->graph_authoritative) { republish_track_graph(t); return; }
     t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
-    const bool native_only = !t->is_audio && t->op_instrument_edit && !t->handle && t->effects_edit.empty();
-    if (!native_only || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
+    // Derived source (AG-0): a native instrument takes precedence over a VST3 instrument (matching the
+    // inline path), then the native FX chain. Sampler sources + VST3 FX arrive in later stages, so a
+    // track with VST3 FX still falls back to the inline path here.
+    const bool has_native_inst = t->op_instrument_edit != nullptr;
+    const bool has_vst3_inst   = t->handle != nullptr;
+    const bool derivable = !t->is_audio && (has_native_inst || has_vst3_inst) && t->effects_edit.empty();
+    if (!derivable || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
         t->ggen.fetch_add(1, std::memory_order_release);
         return;
     }
-    t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit });
-    int prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
+    int prev;
+    if (has_native_inst) {
+        t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit, nullptr });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
+    } else {
+        t->agnodes.push_back({ GNKind::Vst3Inst, nullptr, t->handle });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "vst3");
+    }
     for (vivid::AudioOp* op : t->op_effects_edit) {
-        t->agnodes.push_back({ GNKind::NativeFx, op });
+        t->agnodes.push_back({ GNKind::NativeFx, op, nullptr });
         const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "fx");
         t->agraph.connect(prev, fx);
         prev = fx;
     }
-    t->agnodes.push_back({ GNKind::Output, nullptr });
+    t->agnodes.push_back({ GNKind::Output, nullptr, nullptr });
     const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
     t->agraph.connect(prev, out);
     t->agraph.set_output_id(out);
@@ -320,6 +341,12 @@ static void rebuild_track_graph(Track* t) {
     t->gok_edit = t->agraph.compile(t->gcg_edit);
     t->ggen.fetch_add(1, std::memory_order_release);
 }
+
+// The per-source/effect render primitives (defined below, near session_process); forward-declared
+// so the graph dispatch can call the same helpers the inline path does.
+static void render_vst3_instrument(Track& t, Vst3Handle* h, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
 // AG-0: execute a track's compiled audio graph on the audio thread (RT-safe — no alloc, no
 // lock). Sums each node's inputs into the shared scratch buffer, dispatches the node's
@@ -340,6 +367,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     float* pool = t.gpool.data();
     const int scratch = cg.buf_count;
     const GraphBlockCtx& b = t.blk;
+    // Rebuilt from the block context for VST3 nodes (ProcessContext); native/sampler read `b` directly.
+    VividAudioContext gctx{};
+    gctx.sample_rate = b.sample_rate; gctx.metronome_bpm = b.bpm;
+    gctx.metronome_beats_per_bar = b.bpb; gctx.metronome_beats_elapsed = b.beats;
     for (const vivid::audio::CompiledStep& s : cg.steps) {
         float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
         float* oR = oL + stride;
@@ -347,6 +378,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         if (s.n_in == 0) {   // source node
             if (nb.kind == GNKind::NativeInst && nb.op)
                 vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, b.notes, b.note_count);
+            else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
+                render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
+            }
             else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
             continue;
         }
@@ -1138,12 +1173,13 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev,
 // path and (later) the audio-graph node dispatch call identical code — parity by construction. All
 // are RT-safe: fixed-capacity VST3 scratch, no heap, the sampler try_lock skip preserved. ---
 
-// VST3 instrument source. Appends this block's notes/expression (t.nev/t.eev) into `events` — which
-// may ALREADY hold scene-switch release events emitted by the caller — then runs the processor into
-// L/R. (The caller owns `events` so the scene-switch releases accumulate exactly as before.)
-static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
+// VST3 instrument source. Appends this block's notes/expression (t.nev/t.eev) into t.vev — which the
+// caller has already primed with any scene-switch release events — then runs the processor into L/R.
+// Using t.vev (not a local) lets the inline path and the graph Vst3Inst dispatch build the identical
+// event list. The native path deliberately never sees the scene-switch releases; unchanged.
+static void render_vst3_instrument(Track& t, Vst3Handle* h,
                                    const VividAudioContext& ctx, uint32_t frames, float* L, float* R) {
-    emit_vst3(events, t.nev, t.eev);
+    emit_vst3(t.vev, t.nev, t.eev);
     float* ch[2] = { L, R };
     AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
     Vst3ParamChanges pc; pc.clear();
@@ -1153,7 +1189,7 @@ static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& event
     data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
     data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
     data.inputs = nullptr; data.outputs = &ob;
-    data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+    data.inputEvents = &t.vev; data.inputParameterChanges = &pc; data.processContext = &pctx;
     h->processor->process(data);
 }
 
@@ -1304,11 +1340,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
             render_sampler_block(t, beats, delta, frames, sample_rate, playing, L, R);
         } else {
-            Vst3EventList events;
+            t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
-                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev, t.eev);
+                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(t.vev, t.nev, t.eev);
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
                 }
@@ -1334,19 +1370,22 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                   t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
                                             kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
             // Source: a native instrument operator takes precedence over the VST3 instrument.
-            // When the audio graph is active (gok) the graph renders the instrument + FX
-            // below, so skip the inline native-instrument render here.
-            if (!t.gok && t.op_instrument) {
-                vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
-                                        static_cast<float>(bpm), bpb, beats,
-                                        t.nev.data(), static_cast<uint32_t>(t.nev.size()));
-            } else if (t.handle) {
-                render_vst3_instrument(t, t.handle, events, ctx, frames, L, R);
+            // When the audio graph is active (gok) the graph renders the source + FX below, so skip
+            // the inline render (the event prep above still runs — the graph node reads t.vev/t.nev).
+            if (!t.gok) {
+                if (t.op_instrument)
+                    vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
+                                            static_cast<float>(bpm), bpb, beats,
+                                            t.nev.data(), static_cast<uint32_t>(t.nev.size()));
+                else if (t.handle)
+                    render_vst3_instrument(t, t.handle, ctx, frames, L, R);
             }
         }
 
-        // FX chain: process L/R through each effect in series (audio in -> out).
-        for (Vst3Handle* fx : t.effects) {
+        // FX chain: process L/R through each VST3 effect in series (audio in -> out). Skipped when
+        // the graph is active — a gok track's chain runs through run_track_graph (Stage 2: gok tracks
+        // have no VST3 FX; Stage 3 makes them Vst3Fx nodes).
+        if (!t.gok) for (Vst3Handle* fx : t.effects) {
             if (!fx || !fx->processing) continue;
             render_vst3_effect(t, fx, ctx, frames, L, R);
         }
@@ -1357,6 +1396,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.blk.frames = frames; t.blk.sample_rate = sample_rate;
             t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
             t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
+            t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;   // AG-0: VST3/sampler ctx
             run_track_graph(t, L, R, frames);
         } else {
             for (vivid::AudioOp* op : t.op_effects) {
@@ -1556,8 +1596,8 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return -1;
     switch (tr->agnodes[i].kind) {
-        case GNKind::NativeInst: return 0;
-        case GNKind::NativeFx:   return 1;
+        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::Sampler: return 0;  // source/instrument
+        case GNKind::NativeFx:   case GNKind::Vst3Fx:   return 1;                         // effect
         case GNKind::Output:     return 2;
     }
     return -1;
@@ -1567,8 +1607,13 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     if (!tr) return "";
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return "";
-    vivid::AudioOp* op = tr->agnodes[i].op;
-    return op ? vivid::audio_op_type(op) : "";
+    const GNodeBind& nb = tr->agnodes[i];
+    if (nb.op) return vivid::audio_op_type(nb.op);
+    switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
+        case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
+        case GNKind::Sampler:                       return "Sampler";
+        default:                                    return "";
+    }
 }
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
