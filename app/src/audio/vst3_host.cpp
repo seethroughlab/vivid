@@ -307,13 +307,16 @@ static void rebuild_track_graph(Track* t) {
     if (t->graph_authoritative) { republish_track_graph(t); return; }
     t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
-    // Derived source (AG-0): a native instrument takes precedence over a VST3 instrument (matching the
-    // inline path), then the native FX chain. Sampler sources + VST3 FX arrive in later stages, so a
-    // track with VST3 FX still falls back to the inline path here.
+    // Derived chain (AG-0): source (native instrument takes precedence over a VST3 instrument, matching
+    // the inline path) → all VST3 FX → all native FX → Output, in the EXACT order session_process applies
+    // them today (VST3 FX loop before the native FX loop) so the graph is parity-by-construction. Sampler
+    // sources arrive in Stage 4, so audio (sampler) tracks still fall back to the inline path here.
     const bool has_native_inst = t->op_instrument_edit != nullptr;
     const bool has_vst3_inst   = t->handle != nullptr;
-    const bool derivable = !t->is_audio && (has_native_inst || has_vst3_inst) && t->effects_edit.empty();
-    if (!derivable || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
+    const bool derivable = !t->is_audio && (has_native_inst || has_vst3_inst);
+    const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
+                              + static_cast<int>(t->op_effects_edit.size()) + 1;   // source + VST3 FX + native FX + output
+    if (!derivable || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
         t->ggen.fetch_add(1, std::memory_order_release);
@@ -327,7 +330,13 @@ static void rebuild_track_graph(Track* t) {
         t->agnodes.push_back({ GNKind::Vst3Inst, nullptr, t->handle });
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "vst3");
     }
-    for (vivid::AudioOp* op : t->op_effects_edit) {
+    for (Vst3Handle* fx : t->effects_edit) {                                // VST3 FX first (inline order)
+        t->agnodes.push_back({ GNKind::Vst3Fx, nullptr, fx });
+        const int n = t->agraph.add_node(false, false, nullptr, nullptr, "vfx");
+        t->agraph.connect(prev, n);
+        prev = n;
+    }
+    for (vivid::AudioOp* op : t->op_effects_edit) {                         // then native FX
         t->agnodes.push_back({ GNKind::NativeFx, op, nullptr });
         const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "fx");
         t->agraph.connect(prev, fx);
@@ -400,6 +409,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         std::memcpy(oR, iR, frames * sizeof(float));
         if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
+        else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
+            render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
     }
     const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
     std::memcpy(L, outL, frames * sizeof(float));
@@ -612,6 +623,10 @@ Session* session_create(uint32_t sample_rate) {
 
     if (s->tracks.empty()) { delete s; return nullptr; }
     rebuild_track_view(s);   // publish the initial set to the audio thread
+    // AG-0: build each track's derived audio graph up front so gok tracks (native + VST3) run through
+    // the graph from the first block — not only after a device edit. Sampler tracks stay inline until
+    // Stage 4. Parity-by-construction (same source/FX helpers, same order).
+    for (auto& t : s->tracks) rebuild_track_graph(t.get());
     std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
     return s;
 }
