@@ -91,6 +91,7 @@ bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sam
     const double bars = std::max(1.0, std::round(natural_beats / 4.0));
     out.loop_beats = bars * 4.0;
     out.src_bpm = bpm;
+    out.src_path = path;   // persisted so the loop reloads on session open
     out.name = path.substr(path.find_last_of('/') + 1);
     std::fprintf(stderr, "[Sampler] loaded %s (%.2fs, %.0f beats)\n", out.name.c_str(), secs, out.loop_beats);
     return true;

@@ -834,6 +834,25 @@ float session_get_audio_gain(Session* s, int t, int sc) {
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
     return s->tracks[t]->aud_clips[sc].gain;
 }
+// Persistence: the loop's source WAV path + tempo (empty path = a generated loop, not persisted).
+// Read on the UI thread; src_path is only ever written on the UI thread (sampler_load_wav / the swap
+// below), so no lock is needed for the read.
+const char* session_get_audio_path(Session* s, int t, int sc) {
+    return aud_valid(s, t, sc) ? s->tracks[t]->aud_clips[sc].src_path.c_str() : "";
+}
+double session_get_audio_src_bpm(Session* s, int t, int sc) {
+    return aud_valid(s, t, sc) ? s->tracks[t]->aud_clips[sc].src_bpm : 0.0;
+}
+// Reload a loop from disk into (track, scene) — decode on the UI thread, then swap the clip under
+// aud_mtx (the RT-safe pattern from session_pool_place_audio). Used by session load to restore loops.
+bool session_load_audio_clip(Session* s, int t, int sc, const char* path, double src_bpm) {
+    if (!aud_valid(s, t, sc) || !path || !*path) return false;
+    Sampler smp;
+    if (!sampler_load_wav(path, s->sample_rate, src_bpm > 0.0 ? src_bpm : 120.0, smp)) return false;
+    Track& tr = *s->tracks[t];
+    { std::lock_guard<std::mutex> lk(tr.aud_mtx); tr.aud_clips[sc] = std::move(smp); }
+    return true;
+}
 void session_set_audio_reverse(Session* s, int t, int sc, int on) {
     if (!aud_valid(s, t, sc)) return;
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);

@@ -25,6 +25,8 @@ struct Sampler {
     double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
     uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
     std::string        name;
+    std::string        src_path;        // absolute WAV path (empty = generated); persisted so the
+                                        // loop reloads on session open (sampler_load_wav sets it).
 
     // --- clip shaping ---
     float  gain            = 1.0f;

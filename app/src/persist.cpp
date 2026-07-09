@@ -50,6 +50,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     { "reverse", vivid::session::session_get_audio_reverse(s, t, sc) != 0 },
                     { "warp",    vivid::session::session_get_audio_warp(s, t, sc) },
                     { "fade_in_ms", fin }, { "fade_out_ms", fout }, { "loop_xfade_ms", fx },
+                    // Source WAV so the loop reloads on open (empty = a generated loop, left as-is).
+                    { "src_path", vivid::session::session_get_audio_path(s, t, sc) },
+                    { "src_bpm",  vivid::session::session_get_audio_src_bpm(s, t, sc) },
                 });
             }
             jt["trims"] = trims;
@@ -256,6 +259,11 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 if (jt.contains("audio_clips"))
                     for (int sc = 0; sc < static_cast<int>(jt["audio_clips"].size()); ++sc) {
                         const json& ac = jt["audio_clips"][sc];
+                        // Reload the source loop first (if it was from disk); a missing/empty path
+                        // leaves the freshly-created track's generated loop in place.
+                        const std::string src = ac.value("src_path", std::string());
+                        if (!src.empty())
+                            vivid::session::session_load_audio_clip(s, t, sc, src.c_str(), ac.value("src_bpm", 0.0));
                         vivid::session::session_set_audio_gain(s, t, sc, ac.value("gain", 1.0f));
                         vivid::session::session_set_audio_pitch(s, t, sc, ac.value("pitch", 0.0f));
                         vivid::session::session_set_audio_reverse(s, t, sc, ac.value("reverse", false) ? 1 : 0);

@@ -123,6 +123,11 @@ float session_get_audio_gain   (Session*, int track, int scene);
 void  session_set_audio_reverse(Session*, int track, int scene, int on);
 int   session_get_audio_reverse(Session*, int track, int scene);
 void  session_set_audio_fades  (Session*, int track, int scene, float in_ms, float out_ms, float xfade_ms);
+// Persistence of the loop's source WAV (empty path = generated loop). save writes path/src_bpm; load
+// reloads the WAV into the scene (decode on the UI thread, RT-safe clip swap).
+const char* session_get_audio_path   (Session*, int track, int scene);
+double      session_get_audio_src_bpm(Session*, int track, int scene);
+bool        session_load_audio_clip  (Session*, int track, int scene, const char* path, double src_bpm);
 void  session_get_audio_fades  (Session*, int track, int scene, float* in_ms, float* out_ms, float* xfade_ms);
 
 // Auto-warp: detect transients on the clip's PCM, place a warp marker per hit at the nearest
