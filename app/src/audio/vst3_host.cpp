@@ -83,8 +83,16 @@ enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, 
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr;
-                   Vst3Handle* handle = nullptr; ClapHandle* clap = nullptr; };
+// `key_lo`/`key_hi` = the MIDI key range a *source* node voices (0..127 = full range = no
+// filtering). Two source nodes with disjoint ranges = a key-split; the audio thread filters the
+// shared note stream per source (run_track_graph). Ignored for effect/output nodes.
+struct GNodeBind {
+    GNKind kind = GNKind::Output;
+    vivid::AudioOp* op = nullptr;
+    Vst3Handle* handle = nullptr;
+    ClapHandle* clap = nullptr;
+    uint8_t key_lo = 0, key_hi = 127;
+};
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
@@ -138,6 +146,10 @@ struct Track {
     std::mutex                   op_fx_mtx;
     vivid::AudioOp*              op_instrument_edit = nullptr;
     std::vector<vivid::AudioOp*> op_effects_edit;
+    // Additional graph source ops beyond the primary op_instrument_edit (a key-split track has
+    // >1 instrument source). Ownership only — the audio thread reaches every source op via
+    // gbinds; these are retired at teardown. Only ever non-empty on an authoritative graph.
+    std::vector<vivid::AudioOp*> op_sources_edit;
     std::atomic<uint64_t>        op_fx_gen{0};
     uint64_t                     op_fx_gen_seen = 0;
     std::vector<vivid::AudioOp*> op_retired;
@@ -1724,6 +1736,7 @@ void session_destroy(Session* s) {
         for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
         destroy_handle(t->handle);
         for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
+        for (vivid::AudioOp* op : t->op_sources_edit) vivid::audio_op_destroy(op);   // extra graph sources
         for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
         vivid::audio_op_destroy(t->op_instrument_edit);
         delete t->clap_inst;                                    // CLAP instrument + FX + retired
@@ -2278,6 +2291,8 @@ void session_audio_graph_clear(Session* s, int t) {
     { std::lock_guard<std::mutex> olk(tr->op_fx_mtx);   // retire any existing native ops (freed at shutdown)
       for (vivid::AudioOp* op : tr->op_effects_edit) tr->op_retired.push_back(op);
       tr->op_effects_edit.clear();
+      for (vivid::AudioOp* op : tr->op_sources_edit) tr->op_retired.push_back(op);
+      tr->op_sources_edit.clear();
       if (tr->op_instrument_edit) { tr->op_retired.push_back(tr->op_instrument_edit); tr->op_instrument_edit = nullptr; }
       tr->op_fx_gen.fetch_add(1, std::memory_order_release); }
     tr->agraph.reset(); tr->agnodes.clear(); tr->graph_authoritative = false;
@@ -2296,8 +2311,10 @@ int session_audio_graph_load_node(Session* s, int t, int kind, const char* op_ty
             if (!vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
             gk = GNKind::NativeInst; is_src = true;
             std::lock_guard<std::mutex> olk(tr->op_fx_mtx);
-            if (tr->op_instrument_edit) tr->op_retired.push_back(tr->op_instrument_edit);
-            tr->op_instrument_edit = op;
+            // First source → the primary slot (back-compat); additional sources (a key-split) →
+            // op_sources_edit. Both are just ownership; the node references the op via agnodes.
+            if (!tr->op_instrument_edit) tr->op_instrument_edit = op;
+            else                         tr->op_sources_edit.push_back(op);
         } else {           // effect
             if (vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
             gk = GNKind::NativeFx;
