@@ -65,6 +65,13 @@ public:
     std::vector<AudioNodeBox> layout() const;
     // The "+ FX" affordance rect (adds an effect to the end of the chain).
     Rect add_button_rect() const;
+    // The "+ Src" affordance rect (adds a parallel instrument source — the key-split builder).
+    Rect source_add_button_rect() const;
+    // Key-range drag handles for a selected SOURCE node (the [lo,hi] the source voices). Both are
+    // empty rects when the selected node is not a source. Shared by draw + input hit-test.
+    bool sel_is_source(int sel_node) const;
+    Rect key_lo_rect(int sel_node) const;
+    Rect key_hi_rect(int sel_node) const;
     // The remove (x) rect for an effect node card (only meaningful for kind==1 boxes).
     Rect remove_rect(const AudioNodeBox& b) const;
     // Wire ports for drag-to-rewire: the output port (right edge; source of a new edge — absent on

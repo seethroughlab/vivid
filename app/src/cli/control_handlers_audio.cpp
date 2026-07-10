@@ -406,6 +406,23 @@ void register_audio_handlers(Handlers& handlers_) {
         if (nid < 0) return err(code::kBadArg, "could not add audio effect node: '" + op + "'");
         json r = ok(); r["node"] = nid; return r;
     };
+    handlers_["audio_graph_add_source"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int nid = P::session_audio_graph_add_source(c.session, track, op.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add audio source node: '" + op + "' (unknown or not an instrument)");
+        json r = ok(); r["node"] = nid; return r;
+    };
+    handlers_["audio_graph_set_node_key_range"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), node = b.value("node", -1);
+        const int lo = b.value("lo", 0), hi = b.value("hi", 127);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_audio_graph_node_key_range_set(c.session, track, node, lo, hi);
+        return ok();
+    };
     handlers_["audio_graph_remove_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), node = b.value("node", -1);
@@ -478,10 +495,18 @@ void register_audio_handlers(Handlers& handlers_) {
         r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
         json nodes = json::array();
         for (int i = 0; i < P::session_track_audio_graph_node_count(c.session, track); ++i) {
-            const int k = P::session_track_audio_graph_node_kind(c.session, track, i);
-            nodes.push_back({ {"id",   P::session_track_audio_graph_node_id(c.session, track, i)},
-                              {"kind", (k >= 0 && k < 3) ? kKind[k] : "unknown"},
-                              {"type", P::session_track_audio_graph_node_type(c.session, track, i)} });
+            const int k   = P::session_track_audio_graph_node_kind(c.session, track, i);
+            const int nid = P::session_track_audio_graph_node_id(c.session, track, i);
+            json jn = { {"id",   nid},
+                        {"kind", (k >= 0 && k < 3) ? kKind[k] : "unknown"},
+                        {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
+            if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
+                int lo = 0, hi = 127;
+                if (P::session_audio_graph_node_key_range_get(c.session, track, nid, &lo, &hi)) {
+                    jn["key_lo"] = lo; jn["key_hi"] = hi;
+                }
+            }
+            nodes.push_back(jn);
         }
         r["nodes"] = nodes;
         json edges = json::array();

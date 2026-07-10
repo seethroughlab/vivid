@@ -268,6 +268,16 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float wy = (static_cast<float>(my) - gr.y - win.ag_pan_y) / win.ag_zoom - win.ag_node_dy;
         S::session_audio_graph_node_set_pos(app.session, tr, win.ag_node_drag, wx, wy);
     }
+    // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
+    if (win.ag_key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
+        namespace S = vivid::session;
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        int lo = 0, hi = 127;
+        S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
+        const int nv = std::clamp(win.ag_key_v0 + static_cast<int>((win.ag_key_y0 - my) * 0.25), 0, 127);
+        if (win.ag_key_drag == 0) lo = std::min(nv, hi); else hi = std::max(nv, lo);
+        S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
+    }
 }
 
 void update_visual_source_frame(App& app) {

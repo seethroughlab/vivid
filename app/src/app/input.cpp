@@ -192,7 +192,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_node_drag = -1; win->ag_panning = false;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
         if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)

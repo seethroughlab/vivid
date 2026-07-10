@@ -413,6 +413,24 @@ def audio_graph_add_op(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def audio_graph_add_source(track: int, op: str) -> dict:
+    """Add a native instrument (name from list_audio_operators) as a new *source* node in a
+    track's audio graph, wired straight to the Output in parallel with any existing source.
+    Two sources with disjoint key ranges (see audio_graph_set_node_key_range) = a key-split
+    (e.g. a bass synth below C3, a lead above). Returns its new node id; flips the track to
+    graph-authoritative editing."""
+    return _post("audio_graph_add_source", {"track": track, "op": op})
+
+
+@mcp.tool
+def audio_graph_set_node_key_range(track: int, node: int, lo: int = 0, hi: int = 127) -> dict:
+    """Set the MIDI key range [lo,hi] (0..127) a source node voices (node id from
+    get_audio_graph). The audio thread then hands that source only its in-range notes, so two
+    sources with disjoint ranges split the keyboard. Full range 0..127 = no filtering."""
+    return _post("audio_graph_set_node_key_range", {"track": track, "node": node, "lo": lo, "hi": hi})
+
+
+@mcp.tool
 def audio_graph_remove_node(track: int, node: int) -> dict:
     """Remove an effect node from a track's audio graph by node id (from get_audio_graph). Its
     predecessors reconnect to its successors so signal keeps flowing. Instrument and Output

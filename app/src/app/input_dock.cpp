@@ -50,6 +50,19 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
 // instrument picker, and the mapping-source picker (the return path).
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
     if (win.fx_menu.open) {
+        if (win.fx_menu.sources) {   // "+ Src": add a parallel native instrument source to the graph
+            const int nsrc = S::session_available_audio_op_count(app.session, 1);
+            for (int j = 0; j < nsrc; ++j) {
+                const Rect r = { win.fx_menu.x, win.fx_menu.y + j * 24.f, 150.f, 24.f };
+                if (hit(r, mx, my)) {
+                    S::session_audio_graph_add_source(app.session, win.fx_menu.src,
+                                                      S::session_available_audio_op_name(app.session, 1, j));
+                    break;
+                }
+            }
+            win.fx_menu.open = false;
+            return true;
+        }
         const int nvst = win.fx_menu.graph ? 0 : S::session_available_effect_count();
         const int nnat = S::session_available_audio_op_count(app.session, 0);
         for (int j = 0; j < nvst + nnat; ++j) {

@@ -119,8 +119,21 @@ void draw_fx_menu(Renderer2D& ui, vivid::session::Session* s, const CtxMenu& m) 
     if (!m.open) return;
     const Style& sty = style();
     const float w = 150.f;
-    // Graph mode (added from the audio-graph deep view) is native-only; the device chain lists
-    // the VST3 catalog first, then native operators.
+    // Source mode (from "+ Src" in the audio-graph deep view) lists native INSTRUMENTS. Graph FX
+    // mode is native effects only; the device chain lists the VST3 catalog first, then native ops.
+    if (m.sources) {
+        const int nsrc = s ? vivid::session::session_available_audio_op_count(s, 1) : 0;   // 1 = sources
+        ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
+        ui.draw_text(m.x + 10.f, m.y - 18.f, "+ source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+        for (int j = 0; j < nsrc; ++j) {
+            const float iy = m.y + j * 24.f;
+            ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+            ui.draw_rect(m.x, iy, 3.f, 24.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
+            ui.draw_text(m.x + 12.f, iy + 5.f, vivid::session::session_available_audio_op_name(s, 1, j),
+                         sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
+        }
+        return;
+    }
     const int nvst = m.graph ? 0 : vivid::session::session_available_effect_count();
     const int nnat = s ? vivid::session::session_available_audio_op_count(s, 0) : 0;   // 0 = effects
     overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + (nvst + nnat) * 24.f }, "+ effect", sty.fx);
