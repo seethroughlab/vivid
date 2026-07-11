@@ -1864,6 +1864,24 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
     if (op) vivid::audio_op_param_set(op, p, v);
 }
 
+// Editor node position (UI thread; persisted). set is keyed by stable node id (drag / load);
+// get is by node INDEX for save/introspection iteration. Position is UI-only (not in the compiled
+// plan), so setting it needs no republish. get returns 0 when the node has never been placed.
+void session_audio_graph_node_set_pos(Session* s, int t, int node_id, float x, float y) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.set_node_pos(node_id, x, y);
+}
+int session_track_audio_graph_node_pos(Session* s, int t, int i, float* x, float* y) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (i < 0 || i >= static_cast<int>(tr->agraph.nodes().size())) return 0;
+    float gx = 0.f, gy = 0.f;
+    if (!tr->agraph.node_pos(tr->agraph.nodes()[i].id, gx, gy)) return 0;
+    if (x) *x = gx; if (y) *y = gy;
+    return 1;
+}
+
 int session_track_audio_graph_authoritative(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return 0;

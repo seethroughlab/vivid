@@ -225,6 +225,10 @@ float       session_audio_graph_node_param_get  (Session*, int track, int node_i
 float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
 void        session_audio_graph_node_param_set  (Session*, int track, int node_id, int p, float v);
+// Editor node position (UI thread; persisted). set by stable node id (drag/load); get by node index
+// (save/introspection) → 1 if the node has a stored position, else 0 (editor auto-lays it out).
+void        session_audio_graph_node_set_pos(Session*, int track, int node_id, float x, float y);
+int         session_track_audio_graph_node_pos(Session*, int track, int i, float* x, float* y);
 // 1 if the track's audio graph is the authoritative source of topology (has been rewired) → its
 // graph should be persisted as nodes+edges rather than the linear instrument/fx chain.
 int         session_track_audio_graph_authoritative(Session*, int track);

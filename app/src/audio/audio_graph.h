@@ -39,6 +39,10 @@ struct AudioGraphNode {
     ProcessFn   process = nullptr;
     void*       ctx = nullptr;
     std::string label;               // for debugging / UI
+    // UI-thread only (never read by the audio thread): the node's editor position. `positioned`
+    // is false until the user drags it / a session restores it — until then the editor auto-lays out.
+    float       ui_x = 0.f, ui_y = 0.f;
+    bool        positioned = false;
 };
 
 struct AudioGraphEdge { int from_id = -1; int to_id = -1; };
@@ -97,6 +101,10 @@ public:
     int  output_id() const { return output_id_; }
     void set_output_id(int id) { output_id_ = id; }
     int  node_index(int id) const;               // -1 if absent
+    // Editor node position (UI thread; persisted). set marks the node positioned; get returns
+    // false when the node is absent or has never been placed (→ the editor auto-lays it out).
+    void set_node_pos(int id, float x, float y);
+    bool node_pos(int id, float& x, float& y) const;
 
     // Compile into an immutable plan. Returns false on a cycle (out is left unchanged so the
     // caller keeps its last good plan). buf_count == node count; each node's out_buf == its

@@ -112,6 +112,8 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 json jn; jn["id"] = id;
                 jn["kind"] = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
+                float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
+                if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
                 json ps = json::object();
                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, id); ++p)
                     ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
@@ -329,6 +331,8 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                             s, t, jn.value("kind", 1), jn.value("op", std::string()).c_str());
                         if (nid < 0) continue;
                         id_map[saved] = nid;
+                        if (jn.contains("x") && jn.contains("y"))   // restore the editor position
+                            vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
                         if (jn.contains("params"))   // set params by name on the new node id
                             for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
                                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, nid); ++p)
