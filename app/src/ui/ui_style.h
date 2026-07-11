@@ -13,28 +13,29 @@
 namespace vivid::ui {
 
 struct Style {
-    // --- surfaces (dark canvas → bounded regions read as a step lighter) ---
-    float bg[3]      = { 0.045f, 0.050f, 0.060f };   // window canvas
-    float region[3]  = { 0.076f, 0.083f, 0.100f };   // a bounded panel's interior
-    float region_hd[3]={ 0.112f, 0.122f, 0.145f };   // a panel's header strip
-    float panel[3]   = { 0.100f, 0.110f, 0.130f };   // legacy chrome / menus
-    float card[3]    = { 0.130f, 0.140f, 0.170f };
-    float card_hi[3] = { 0.175f, 0.190f, 0.222f };   // hover / selected
-    float recess[3]  = { 0.028f, 0.032f, 0.042f };   // inset wells (previews, sliders)
+    // --- surfaces (vivid-classic "dark steel": flat, cool, near-black; framed by 1px rules, not fills) ---
+    float bg[3]      = { 0.071f, 0.071f, 0.078f };   // window canvas        (#121214)
+    float region[3]  = { 0.098f, 0.110f, 0.125f };   // a bounded panel's interior (#191C20)
+    float region_hd[3]={ 0.141f, 0.153f, 0.188f };   // a panel's header strip (#242730)
+    float panel[3]   = { 0.090f, 0.101f, 0.117f };   // legacy chrome / menus
+    float card[3]    = { 0.122f, 0.122f, 0.141f };   // node/card body       (#1F1F24)
+    float card_hi[3] = { 0.176f, 0.220f, 0.286f };   // hover / selected fill (#2D3849)
+    float recess[3]  = { 0.078f, 0.090f, 0.098f };   // inset wells (inputs, sliders) (#141719)
     // --- lines ---
-    float border[3]     = { 0.235f, 0.250f, 0.290f }; // visible 1px panel/cell hairline
-    float border_soft[3]= { 0.150f, 0.160f, 0.188f }; // internal dividers
+    float border[3]     = { 0.220f, 0.251f, 0.294f }; // visible 1px panel/cell frame (#38404B)
+    float border_soft[3]= { 0.149f, 0.165f, 0.192f }; // internal dividers (#262A31)
     // --- text ---
-    float text[3]    = { 0.880f, 0.900f, 0.940f };   // primary
-    float body[3]    = { 0.700f, 0.720f, 0.770f };   // secondary
-    float dim[3]     = { 0.480f, 0.510f, 0.560f };   // labels / hints
-    // --- domain accents ---
+    float text[3]    = { 0.900f, 0.920f, 0.950f };   // primary  (#E6EBEF)
+    float body[3]    = { 0.700f, 0.730f, 0.780f };   // secondary
+    float dim[3]     = { 0.550f, 0.580f, 0.620f };   // labels / hints (#8D9499; legible on steel)
+    // --- domain accents (unchanged — the strict-zone identity system) ---
     float audio[3]   = { 0.94f, 0.63f, 0.19f };      // amber  (audio / instrument)
     float gpu[3]     = { 0.35f, 0.66f, 0.90f };      // cyan   (visual / gpu)
     float fx[3]      = { 0.60f, 0.45f, 0.85f };      // violet (effects)
     float control[3] = { 0.55f, 0.60f, 0.66f };      // gray   (control)
     float teal[3]    = { 0.31f, 0.80f, 0.75f };      // bridge (data sources)
-    float gold[3]    = { 0.95f, 0.78f, 0.30f };      // selection / queued
+    float sel[3]     = { 0.353f, 0.549f, 0.851f };   // selection / focus frame (#5A8CD9, classic blue)
+    float gold[3]    = { 0.95f, 0.78f, 0.30f };      // queued / warn
     float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
     // --- spacing scale (logical px) ---
     float s1 = 2.f, s2 = 4.f, s3 = 6.f, s4 = 8.f, s5 = 12.f, s6 = 16.f, s7 = 24.f;
@@ -45,8 +46,8 @@ struct Style {
     float fs_body   = 0.88f;   // names / body
     float fs_title  = 1.02f;   // panel titles
     float fs_brand  = 1.18f;   // the wordmark
-    // --- radii / bars ---
-    float radius = 4.f, radius_lg = 6.f, accent_bar = 3.f;
+    // --- radii / bars: hard 90° angles (serious-tool look). accent_bar = the edge identity stripe. ---
+    float radius = 0.f, radius_lg = 0.f, accent_bar = 3.f;
     float panel_hd_h = 22.f;   // region header strip height
 };
 inline const Style& style() { static const Style s; return s; }
@@ -92,8 +93,8 @@ inline void draw_text_r(Renderer2D& r, float rx, float y, const char* t, const f
 // header + one unit of padding), so callers lay content out relative to it.
 inline Rect panel(Renderer2D& r, Rect b, const char* title, const float* accent) {
     const Style& s = style();
-    r.draw_rounded_rect(b.x, b.y, b.w, b.h, s.radius_lg, s.border[0], s.border[1], s.border[2], 1.0f);            // border
-    r.draw_rounded_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, b.h - 2.f, s.radius_lg - 1.f, s.region[0], s.region[1], s.region[2], 1.0f);  // interior
+    r.draw_rect(b.x, b.y, b.w, b.h, s.region[0], s.region[1], s.region[2], 1.0f);                                 // flat interior
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);                    // hard 1px frame
     const float hh = s.panel_hd_h;
     r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);  // header rule
     if (title) {
@@ -122,13 +123,16 @@ inline Rect panel_frame(Renderer2D& r, Rect b, const char* title, const float* a
     return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
 }
 
-// A card: filled rounded body with a thin accent bar across the top.
+// A card: a flat framed box — solid fill, a thin accent bar across the top, a hard 1px frame.
+// Selected/hot swaps the fill up and the frame to the blue selection accent (not a nested ring).
 inline void draw_card(Renderer2D& r, float x, float y, float w, float h,
                       const float* accent, bool hot = false) {
     const Style& s = style();
     const float* bg = hot ? s.card_hi : s.card;
-    r.draw_rounded_rect(x, y, w, h, 5.f, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
     r.draw_rect(x, y, w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    const float* fr = hot ? s.sel : s.border_soft;
+    r.draw_rect_outline(x, y, w, h, 1.f, fr[0], fr[1], fr[2], 1.0f);
 }
 
 // A small left-aligned section label in dim text with an accent tick.
@@ -172,11 +176,11 @@ inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
     v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
     const Style& s = style();
     const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
-    r.draw_rounded_rect(x, ty, w, th, th * 0.5f, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    r.draw_rect(x, ty, w, th, s.recess[0], s.recess[1], s.recess[2], 1.0f);
     const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
-    if (v01 > 0.001f) r.draw_rounded_rect(x, ty, w * v01, th, th * 0.5f, fr, fg, fb, 1.0f);
+    if (v01 > 0.001f) r.draw_rect(x, ty, w * v01, th, fr, fg, fb, 1.0f);
     const float hx = x + w * v01;
-    r.draw_rounded_rect(hx - 3.f, ty - 3.f, 6.f, th + 6.f, 2.f, s.text[0], s.text[1], s.text[2], 1.0f);  // handle
+    r.draw_rect(hx - 2.f, ty - 3.f, 4.f, th + 6.f, s.text[0], s.text[1], s.text[2], 1.0f);  // hard handle
     if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
     if (valtext) {
         const float tw = r.text_width(valtext, s.fs_label);
@@ -184,13 +188,15 @@ inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
     }
 }
 
-// A toggle switch: rounded pill track + a sliding knob; on = accent, off = recess.
+// A toggle switch: a hard rectangular track + a sliding square knob; on = accent, off = recess,
+// with a 1px frame so it reads as a control, not a pill.
 inline void toggle(Renderer2D& r, float x, float y, float w, float h, bool on, const float* accent) {
     const Style& s = style();
     const float* bg = on ? accent : s.recess;
-    r.draw_rounded_rect(x, y, w, h, h * 0.5f, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect_outline(x, y, w, h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     const float kr = h - 4.f, kx = on ? (x + w - kr - 2.f) : (x + 2.f);
-    r.draw_rounded_rect(kx, y + 2.f, kr, kr, kr * 0.5f, s.text[0], s.text[1], s.text[2], 1.0f);
+    r.draw_rect(kx, y + 2.f, kr, kr, s.text[0], s.text[1], s.text[2], 1.0f);
 }
 
 // A dropdown field: a bordered box showing the current choice + a chevron. The popup
@@ -199,8 +205,9 @@ inline void dropdown_field(Renderer2D& r, float x, float y, float w, float h,
                            const char* current, const float* accent, bool hot) {
     const Style& s = style();
     const float* bg = hot ? s.card_hi : s.card;
-    r.draw_rounded_rect(x, y, w, h, s.radius, bg[0], bg[1], bg[2], 1.0f);
-    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);   // left edge identity
+    r.draw_rect_outline(x, y, w, h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     if (current) r.draw_text(x + s.s3 + 2.f, y + (h - 10.f) * 0.5f, fit_text(r, current, w - 22.f, s.fs_label).c_str(),
                              s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
     // chevron
