@@ -93,6 +93,10 @@ struct GNodeBind {
     ClapHandle* clap = nullptr;
     uint8_t key_lo = 0, key_hi = 127;
 };
+// The audio thread swaps gbinds under a try_lock as a plain copy (reserved capacity, no move) —
+// that is only RT-safe while the bind is trivially copyable. Adding a non-POD member here would
+// silently break the real-time contract, so pin it.
+static_assert(std::is_trivially_copyable<GNodeBind>::value, "GNodeBind must stay POD for the RT gbinds swap");
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
@@ -746,6 +750,79 @@ inline void load_progress(const char* status) { if (g_load_cb) g_load_cb(g_load_
 }  // namespace
 
 void session_set_load_progress(SessionLoadCb cb, void* user) { g_load_cb = cb; g_load_user = user; }
+
+// Two showcase tracks for the per-track audio node graph — parallel routing a linear device chain
+// cannot express. Built via the public graph edit API (the exact calls a user/agent makes), then
+// given a clip that makes the split audible. Native ops only (no plugin dependency). The tracks are
+// graph-authoritative, so they persist as node/edge topology (and rebuild_track_graph won't wipe them).
+// Called AFTER session_set_op_registry (the native ops need the registry), then republishes the
+// track list. No-op without a registry.
+void session_build_split_showcase(Session* s) {
+    if (!s || !s->op_reg) return;
+    using namespace demo;
+    auto new_native_track = [&](const char* name) -> int {
+        s->tracks.emplace_back(make_instrument_track(nullptr, name, s->scenes));
+        s->tracks.back()->id = s->next_track_id++;
+        return static_cast<int>(s->tracks.size()) - 1;
+    };
+    auto set_clip = [&](int ti, const MidiClip& clip) {
+        Track& t = *s->tracks[ti];
+        for (auto& c : t.clips) c = clip;      // the same loop in every scene slot
+        t.edit_clips = t.clips;
+        t.sched.reset(&t.clips[0]);
+    };
+
+    // Track A — frequency-split rack: a sine fans out to a low-pass branch and a high-pass ->
+    // Bitcrush branch, merged. A wide arpeggio straddles the ~450 Hz crossover so low notes come
+    // out clean and high notes come out crushed.
+    {
+        const int ti  = new_native_track("Freq Split");
+        const int src = session_audio_graph_add_source(s, ti, "TestTone");   // creates the source + Output
+        const int out = session_track_audio_graph_output_id(s, ti);
+        const int lp  = session_audio_graph_add_op(s, ti, "SVFilter");
+        const int hp  = session_audio_graph_add_op(s, ti, "SVFilter");
+        const int cr  = session_audio_graph_add_op(s, ti, "Bitcrush");
+        // add_op splices linearly (src->lp->hp->cr->out); rewire into two parallel branches.
+        session_audio_graph_disconnect(s, ti, lp, hp);
+        session_audio_graph_connect(s, ti, lp, out);     // low branch:  src -> lp -> out
+        session_audio_graph_connect(s, ti, src, hp);     // high branch: src -> hp -> cr -> out
+        session_audio_graph_node_param_set(s, ti, lp, 0, 0.f);      // LowPass
+        session_audio_graph_node_param_set(s, ti, lp, 1, 450.f);
+        session_audio_graph_node_param_set(s, ti, hp, 0, 1.f);      // HighPass
+        session_audio_graph_node_param_set(s, ti, hp, 1, 450.f);
+        session_audio_graph_node_param_set(s, ti, cr, 0, 4.f);      // 4-bit crush on the high band
+        session_audio_graph_node_param_set(s, ti, cr, 2, 1.f);
+        MidiClip a; a.length = 8.0;
+        const int low[4] = { 36, 40, 43, 48 }, hi[4] = { 72, 76, 79, 84 };
+        for (int i = 0; i < 16; ++i)
+            nadd(a, (i % 2 == 0) ? low[(i / 2) % 4] : hi[(i / 2) % 4], i * 0.5, 0.45, 0.8f);
+        set_clip(ti, a);
+    }
+
+    // Track B — key-range split: two sine sources split at middle C. The low source (0..59) is a
+    // clean sub-bass; the high source (60..127) runs through a Bitcrush for a gritty lead — so the
+    // two registers are audibly distinct instruments. One clip carries a bassline under a melody;
+    // each note routes to its own source purely by pitch.
+    {
+        const int ti  = new_native_track("Key Split");
+        const int lo  = session_audio_graph_add_source(s, ti, "TestTone");   // creates the source + Output
+        const int out = session_track_audio_graph_output_id(s, ti);
+        const int hi  = session_audio_graph_add_source(s, ti, "TestTone");   // 2nd source -> Output
+        session_audio_graph_node_key_range_set(s, ti, lo, 0, 59);
+        session_audio_graph_node_key_range_set(s, ti, hi, 60, 127);
+        const int cr  = session_audio_graph_add_op(s, ti, "Bitcrush");       // splices both sources -> cr -> out
+        session_audio_graph_disconnect(s, ti, lo, cr);                       // pull the low (bass) source off the crush
+        session_audio_graph_connect(s, ti, lo, out);                         // clean sub-bass straight to Output
+        session_audio_graph_node_param_set(s, ti, cr, 0, 5.f);               // 5-bit crush on the lead
+        session_audio_graph_node_param_set(s, ti, cr, 2, 0.85f);
+        MidiClip b; b.length = 8.0;
+        const int bass[8] = { 36, 36, 43, 36, 41, 41, 38, 43 };
+        const int mel[8]  = { 72, 74, 76, 79, 76, 74, 72, 67 };
+        for (int i = 0; i < 8; ++i) { nadd(b, bass[i], i * 1.0, 0.9, 0.9f); nadd(b, mel[i], i * 1.0 + 0.25, 0.6, 0.7f); }
+        set_clip(ti, b);
+    }
+    rebuild_track_view(s);   // publish the two new tracks to the audio thread
+}
 
 Session* session_create(uint32_t sample_rate) {
     load_progress("Scanning plug-ins...");

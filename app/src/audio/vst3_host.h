@@ -180,6 +180,9 @@ void   session_get_clip_loop(Session*, int track, int scene, double* loop_start,
 // a native instrument (source op) + a chain of native audio effects, alongside VST3.
 // index -1 addresses the instrument slot; index >= 0 an effect in the chain.
 void        session_set_op_registry(Session*, vivid::OpRegistry* reg);
+// Append two node-graph showcase tracks (a frequency-split FX rack + a key-range instrument split),
+// built with native ops. Call once after session_set_op_registry; no-op without a registry.
+void        session_build_split_showcase(Session*);
 int         session_add_audio_effect(Session*, int track, const char* op_type);   // -> effect index, -1 on failure
 void        session_remove_audio_effect(Session*, int track, int index);
 int         session_audio_effect_count(Session*, int track);

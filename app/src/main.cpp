@@ -224,6 +224,7 @@ int main() {
         app.session = vivid::session::session_create(device.sampleRate);
         vivid::session::session_set_load_progress(nullptr, nullptr);
         vivid::session::session_set_op_registry(app.session, &app.op_registry);   // AO-1: native audio ops
+        vivid::session::session_build_split_showcase(app.session);   // node-graph demo tracks (needs the registry)
         std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
                      app.session ? vivid::session::session_track_count(app.session) : 0,
                      app.session ? vivid::session::session_track_name(app.session, 0) : "none — test tone");
