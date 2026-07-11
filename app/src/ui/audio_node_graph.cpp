@@ -99,24 +99,24 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             if (ef[e] >= 0 && et[e] >= 0) rank[et[e]] = std::max(rank[et[e]], rank[ef[e]] + 1);
     int max_rank = 0; for (int i = 0; i < n; ++i) max_rank = std::max(max_rank, rank[i]);
     for (int i = 0; i < n; ++i) if (kind[i] == 2) rank[i] = max_rank;
-    std::vector<int> fill(max_rank + 1, 0); int max_slots = 1;
-    for (int i = 0; i < n; ++i) { slot[i] = fill[rank[i]]++; max_slots = std::max(max_slots, fill[rank[i]]); }
+    std::vector<int> fill(max_rank + 1, 0);
+    for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
+    // Every node has a stored world position (region-relative; screen = region + world*zoom + pan).
+    // An unpositioned node is seeded from the auto-layout (rank = signal depth, slot = fan-out order)
+    // and stuck — so the graph opens tidy, then every node is freely draggable and the layout persists.
     const Rect g = graph_region();
-    const float world_w = max_rank * (kCardW + kGapX) + kCardW;
-    const float world_h = max_slots * kCardH + (max_slots - 1) * kGapY;
-    const float scale = std::min({ (g.w - 2 * kPad) / world_w, (g.h - 2 * kPad) / world_h, 1.0f });
-    const float ox = g.x + (g.w - world_w * scale) * 0.5f;
-    const float oy = g.y + (g.h - world_h * scale) * 0.5f;
     out.reserve(n);
     for (int i = 0; i < n; ++i) {
-        // Auto-fit base position, then the user view transform (2i): zoom around the region origin
-        // + pan. zoom 1 / pan 0 leaves the fitted layout untouched.
-        const float bx = ox + rank[i] * (kCardW + kGapX) * scale;
-        const float by = oy + slot[i] * (kCardH + kGapY) * scale;
+        float wx = 0.f, wy = 0.f;
+        if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
+            wx = kPad + rank[i] * (kCardW + kGapX);
+            wy = kPad + slot[i] * (kCardH + kGapY);
+            P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
+        }
         out.push_back({ kind[i], id[i],
-                        g.x + (bx - g.x) * zoom_ + pan_x_, g.y + (by - g.y) * zoom_ + pan_y_,
-                        kCardW * scale * zoom_, kCardH * scale * zoom_ });
+                        g.x + wx * zoom_ + pan_x_, g.y + wy * zoom_ + pan_y_,
+                        kCardW * zoom_, kCardH * zoom_ });
     }
     return out;
 }

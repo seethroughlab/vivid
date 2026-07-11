@@ -97,6 +97,9 @@ struct Window {
     // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
     // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
     int     ag_wire_from   = -1;
+    // Dragging an audio-graph node's body to reposition it: the node id (-1 = none) + the grab
+    // offset in world units (cursor-to-node-origin), so the node follows the cursor under zoom.
+    int     ag_node_drag   = -1; float ag_node_dx = 0.f, ag_node_dy = 0.f;
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
     // UI-3 Stage 2 (2i): the audio-graph view transform (on top of the auto-fit). zoom 1 + pan 0 =
     // the fitted view; scroll zooms around the cursor, dragging empty space pans, double-click resets.

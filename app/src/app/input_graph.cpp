@@ -111,6 +111,9 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         }
         if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
+            win.ag_node_drag = b.node_id;                                   // start a reposition drag (any node)
+            win.ag_node_dx = (mx - b.x) / win.ag_zoom;                      // grab offset in world units
+            win.ag_node_dy = (my - b.y) / win.ag_zoom;
             return true;
         }
     }

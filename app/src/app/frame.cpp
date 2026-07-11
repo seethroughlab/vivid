@@ -11,6 +11,7 @@
 #include "ui/layout.h"
 #include "ui/compound_widget.h"   // UI-4a: compound_span / xy_from_cursor / node_param_compound_rect
 #include "ui/session_view.h"
+#include "ui/audio_node_graph.h"   // AudioNodeGraph::graph_region for the node-reposition drag
 #include "ui/mapping_overview.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
@@ -250,6 +251,20 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
         const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
+    }
+    // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
+    // region-relative world units (screen = region_origin + world*zoom + pan); invert that here.
+    if (win.ag_node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+        namespace S = vivid::session;
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        vivid::ui::AudioNodeGraph ag; ag.set_source(app.session, tr);
+        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        ag.set_selection(win.sel_audio_node);   // graph_region height depends on the param band
+        const vivid::ui::Rect gr = ag.graph_region();
+        const float wx = (static_cast<float>(mx) - gr.x - win.ag_pan_x) / win.ag_zoom - win.ag_node_dx;
+        const float wy = (static_cast<float>(my) - gr.y - win.ag_pan_y) / win.ag_zoom - win.ag_node_dy;
+        S::session_audio_graph_node_set_pos(app.session, tr, win.ag_node_drag, wx, wy);
     }
 }
 
