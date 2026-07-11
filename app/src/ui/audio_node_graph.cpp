@@ -18,6 +18,8 @@ constexpr float kCardW = 116.f, kCardH = 76.f, kGapX = 46.f, kGapY = 18.f, kPad 
 constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
 constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
 constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
+constexpr float kPCellW = 66.f, kPCellH = 42.f;   // param knob cell; the band wraps knobs into a grid
+constexpr int   kPMaxRows = 3;          // cap the grid at 3 rows (a VST3 node's overflow lives in its plugin editor)
 // LFO waveform names, indexed by the enum value (matches the SineSynth convention). The session
 // API exposes the value but not the enum choice labels, so the widget names them by convention.
 const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
@@ -33,10 +35,17 @@ inline void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const fl
 float AudioNodeGraph::param_band_h() const {
     if (!s_ || sel_node_ < 0) return kParamBand;
     const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node_);
-    for (int i = 0; i < pc; ++i)
-        if (is_compound_widget(P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i)))
-            return kParamBandTall;
-    return kParamBand;
+    bool compound = false; int knobs = 0;
+    for (int i = 0; i < pc; ++i) {
+        const int h = P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i);
+        if (is_compound_widget(h)) compound = true;
+        if (h != VIVID_DISPLAY_LFO) ++knobs;
+    }
+    if (knobs == 0) return compound ? kParamBandTall : kParamBand;
+    const int perRow = std::max(1, static_cast<int>(((x1_ - x0_) - 12.f) / kPCellW));
+    const int rows = std::min(kPMaxRows, (knobs + perRow - 1) / perRow);
+    const float top = compound ? kPreviewH : 8.f;
+    return std::max(compound ? kParamBandTall : kParamBand, top + rows * kPCellH + 8.f);
 }
 
 // The compound-widget previews to draw for the selected node (ADSR/LFO), laid out left-to-right in
@@ -128,22 +137,27 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     if (pc <= 0) return out;
     // The LFO enum leader is claimed by its waveform preview (no knob); every other param is a knob,
     // including the ADSR channels (their preview groups them but they stay individually draggable).
+    bool compound = false;
     std::vector<int> knobs;
-    for (int i = 0; i < pc; ++i)
-        if (P::session_audio_graph_node_param_hint(s_, track_, sel_node, i) != VIVID_DISPLAY_LFO)
-            knobs.push_back(i);
+    for (int i = 0; i < pc; ++i) {
+        const int h = P::session_audio_graph_node_param_hint(s_, track_, sel_node, i);
+        if (is_compound_widget(h)) compound = true;
+        if (h != VIVID_DISPLAY_LFO) knobs.push_back(i);
+    }
     if (knobs.empty()) return out;
     const Rect pr = param_region();
-    const bool tall = pr.h > kParamBand + 1.f;
-    const float row_y = pr.y + (tall ? kPreviewH : 4.f);   // knobs sit below the preview strip
-    const float row_h = pr.h - (tall ? kPreviewH : 0.f) - 8.f;
-    const float cellW = std::min(78.f, (pr.w - 12.f) / static_cast<float>(knobs.size()));
-    out.reserve(knobs.size());
-    for (size_t k = 0; k < knobs.size(); ++k) {
-        const float cx = pr.x + 6.f + k * cellW;
+    // Wrap the knobs into a grid (a VST3 node has many params); cap at kPMaxRows — the full plugin
+    // set stays reachable by double-clicking the node to open its native editor.
+    const int perRow = std::max(1, static_cast<int>((pr.w - 12.f) / kPCellW));
+    const int show = std::min(static_cast<int>(knobs.size()), perRow * kPMaxRows);
+    const float top = pr.y + (compound ? kPreviewH : 8.f);
+    out.reserve(show);
+    for (int k = 0; k < show; ++k) {
+        const int col = k % perRow, row = k / perRow;
+        const float cx = pr.x + 6.f + col * kPCellW, cy = top + row * kPCellH;
         AudioParamCell c;
-        c.index = knobs[k]; c.x = cx; c.y = row_y; c.w = cellW; c.h = row_h;
-        c.knob_cx = cx + cellW * 0.5f; c.knob_cy = row_y + 20.f; c.knob_r = 11.f;
+        c.index = knobs[k]; c.x = cx; c.y = cy; c.w = kPCellW; c.h = kPCellH - 4.f;
+        c.knob_cx = cx + kPCellW * 0.5f; c.knob_cy = cy + 18.f; c.knob_r = 11.f;
         out.push_back(c);
     }
     return out;

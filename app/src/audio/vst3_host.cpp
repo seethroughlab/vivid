@@ -1873,47 +1873,68 @@ static vivid::AudioOp* graph_node_op(Track* tr, int node_id) {   // caller holds
     const int idx = tr->agraph.node_index(node_id);
     return (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].op : nullptr;
 }
+// A VST3 graph node → its handle (whose `params`/`controller`/`param_q` back the dock param band,
+// exactly as the old linear device view did). Null for native/sampler/output nodes.
+static Vst3Handle* graph_node_handle(Track* tr, int node_id) {   // caller holds tr->gmtx
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle : nullptr;
+}
+// The dock param band edits a graph node's params — native op params OR a VST3 node's exposed
+// (automatable) params, in NORMALIZED 0..1 space like the old linear knob grid.
 int session_audio_graph_node_param_count(Session* s, int t, int node_id) {
     Track* tr = graph_track(s, t); if (!tr) return 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_count(op) : 0;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_count(op);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id)) return static_cast<int>(h->params.size());
+    return 0;
 }
 const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return "";
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_name(op, p) : "";
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_name(op, p);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(h->params.size())) ? h->params[p].name.c_str() : "";
+    return "";
 }
 int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_hint(op, p) : 0;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_hint(op, p);
+    return 0;   // VST3 params → DEFAULT (a knob)
 }
 float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_get(op, p) : 0.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_get(op, p);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id))
+        return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
+                   ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    return 0.f;
 }
 float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_min(op, p) : 0.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_min(op, p);
+    return 0.f;   // VST3 params are normalized
 }
 float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 1.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_max(op, p) : 1.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_max(op, p);
+    return 1.f;
 }
 void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
     Track* tr = graph_track(s, t); if (!tr) return;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    if (op) vivid::audio_op_param_set(op, p, v);
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) { vivid::audio_op_param_set(op, p, v); return; }
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const ParamID id = h->params[p].id;
+        v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+        h->param_q.push(id, v);                                            // → audio thread (RT-safe SPSC)
+        if (h->controller) h->controller->setParamNormalized(id, v);       // → plugin GUI reflection
+    }
 }
 
 // Editor node position (UI thread; persisted). set is keyed by stable node id (drag / load);
