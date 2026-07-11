@@ -184,6 +184,90 @@ inline void separator(Renderer2D& r, float x, float y, float w) {
     r.draw_rect(x, y, w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
 }
 
+// Session is a primary workspace, not a framed panel. These helpers draw
+// structure with rules, accents, and state affordances instead of nested boxes.
+inline void session_workspace_header(Renderer2D& r, Rect b, const char* title, const float* accent) {
+    const Style& s = style();
+    const float hh = s.panel_hd_h;
+    if (title) {
+        r.draw_rect(b.x + s.s4, b.y + 7.f, 3.f, hh - 13.f, accent[0], accent[1], accent[2], 1.0f);
+        r.draw_text(b.x + s.s4 + 8.f, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_kicker);
+    }
+    r.draw_rect(b.x + s.s4, b.y + hh, b.w - 2.f * s.s4, 1.f,
+                s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.9f);
+}
+
+inline void session_header_cell(Renderer2D& r, Rect b, const float* accent, bool hot = false) {
+    const Style& s = style();
+    if (hot)
+        r.draw_rect(b.x, b.y, b.w, b.h, s.card_hi[0], s.card_hi[1], s.card_hi[2], 0.72f);
+    if (accent)
+        r.draw_rect(b.x, b.y + 3.f, s.accent_bar, b.h - 6.f, accent[0], accent[1], accent[2], 0.95f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                        hot ? s.border[0] : s.border_soft[0],
+                        hot ? s.border[1] : s.border_soft[1],
+                        hot ? s.border[2] : s.border_soft[2],
+                        hot ? 0.95f : 0.75f);
+}
+
+inline void session_scene_button(Renderer2D& r, Rect b, const float* accent, bool hot = false) {
+    const Style& s = style();
+    if (hot)
+        r.draw_rect(b.x, b.y, b.w, b.h, s.card_hi[0], s.card_hi[1], s.card_hi[2], 0.68f);
+    if (accent)
+        r.draw_rect(b.x, b.y, s.accent_bar, b.h, accent[0], accent[1], accent[2], hot ? 0.9f : 0.55f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                        hot ? s.border[0] : s.border_soft[0],
+                        hot ? s.border[1] : s.border_soft[1],
+                        hot ? s.border[2] : s.border_soft[2],
+                        hot ? 0.9f : 0.7f);
+}
+
+inline void session_control_button(Renderer2D& r, Rect b, const float* accent,
+                                   bool hot = false, bool selected = false) {
+    const Style& s = style();
+    if (hot || selected)
+        r.draw_rect(b.x, b.y, b.w, b.h,
+                    selected ? s.card_hi[0] : s.region[0],
+                    selected ? s.card_hi[1] : s.region[1],
+                    selected ? s.card_hi[2] : s.region[2],
+                    selected ? 0.92f : 0.82f);
+    r.draw_rect(b.x, b.y + b.h - 1.f, b.w, 1.f,
+                selected ? accent[0] : s.border_soft[0],
+                selected ? accent[1] : s.border_soft[1],
+                selected ? accent[2] : s.border_soft[2],
+                selected ? 1.0f : 0.65f);
+    if (hot && !selected)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 0.65f);
+}
+
+inline void session_meter_track(Renderer2D& r, Rect b) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y + b.h - 1.f, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.7f);
+}
+
+inline void session_clip_cell(Renderer2D& r, Rect b, const float* accent,
+                              bool hot = false, bool active = false, bool queued = false,
+                              float title_h = 14.f) {
+    const Style& s = style();
+    const float br = active ? 0.115f : s.recess[0] * 0.92f;
+    const float bg = active ? 0.130f : s.recess[1] * 0.88f;
+    const float bb = active ? 0.155f : s.recess[2] * 0.98f;
+    r.draw_rect(b.x, b.y, b.w, b.h, br, bg, bb, 1.0f);
+    const float k = (active ? 0.50f : 0.24f) + (hot ? 0.08f : 0.f);
+    r.draw_rect(b.x, b.y, b.w, title_h + 1.f, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
+    if (queued)
+        r.draw_rect(b.x, b.y, b.w, 2.f, s.gold[0], s.gold[1], s.gold[2], 1.0f);
+    if (active)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 2.f, s.sel[0], s.sel[1], s.sel[2], 0.95f);
+    else
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                            hot || queued ? s.border[0] : s.border_soft[0],
+                            hot || queued ? s.border[1] : s.border_soft[1],
+                            hot || queued ? s.border[2] : s.border_soft[2],
+                            hot || queued ? 0.85f : 0.72f);
+}
+
 // Modal/menu shell: flat panel fill, 1px frame, standard accent/header rule.
 inline Rect overlay_panel(Renderer2D& r, Rect b, const char* title, const float* accent,
                           bool scrim = false, Rect scrim_bounds = {}) {

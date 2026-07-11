@@ -497,11 +497,11 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.set_transform(SW, 0.f, 1.f);   // world x=0 is the DAW pane's left edge; content shifts past the sidebar
     ui.draw_rect(0.f, kTopBarH, dawW, w.dock_top() - kTopBarH, sty.bg[0], sty.bg[1], sty.bg[2], 1.0f);
     const Rect spanel = session_panel(dawW, w.win_h, w.dock_h);
-    panel(ui, spanel, "SESSION", sty.audio);   // the bounded region (draw the container first)
+    session_workspace_header(ui, spanel, "SESSION", sty.audio);
     const float contentR = dawW - kPaneMargin - kPanePad;                // right edge of the panel content
-    // Clip the grid to the panel's interior so extra track columns are cut cleanly at the
-    // panel border instead of bleeding into the gutter / the visuals pane. (screen coords)
-    ui.push_clip_rect(SW + spanel.x + 1.f, spanel.y + 1.f, spanel.w - 2.f, spanel.h - 2.f);
+    // Clip the session workspace so extra track columns are cut cleanly at the
+    // split gutter instead of bleeding into the visuals pane. (screen coords)
+    ui.push_clip_rect(SW + spanel.x, spanel.y, spanel.w, spanel.h);
 
     // track headers (accent left edge, ellipsised name, remove ×) + a "+ Track" cell
     for (int t = 0; t < tracks; ++t) {
@@ -509,7 +509,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         float ar, ag, ab; track_accent(t, ar, ag, ab);
         const bool hov = hit(h, mx, my);
         const float acc[3] = { ar, ag, ab };
-        item_box(ui, h, acc, hov);
+        session_header_cell(ui, h, acc, hov);
         std::string nm = fit_text(ui, vivid::session::session_track_name(s, t), h.w - 28.f, sty.fs_label);
         ui.draw_text(h.x + 10.f, h.y + 6.f, nm.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const Rect xb = track_header_x_rect(t);
@@ -519,14 +519,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     if (tracks < vivid::session::kMaxTracks) {
         const Rect a = track_add_rect(tracks);
         const bool ah = hit(a, mx, my);
-        item_box(ui, a, sty.audio, ah);
+        session_header_cell(ui, a, sty.audio, ah);
         ui.draw_text(a.x + 10.f, a.y + 6.f, "+ Track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     }
     // scene rows + clip cells
     for (int sc = 0; sc < scenes; ++sc) {
         const Rect sb = scene_launch_rect(sc);
         const bool sh = hit(sb, mx, my);
-        item_box(ui, sb, sty.audio, sh, false, AccentEdge::Top);
+        session_scene_button(ui, sb, sty.audio, sh);
         char sl[4]; std::snprintf(sl, sizeof sl, "%c", 'A' + sc);
         ui.draw_text(sb.x + (sb.w - ui.text_width(sl, sty.fs_body)) * 0.5f, sb.y + 5.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         ui.draw_tri(sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 15.f, sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 7.f, sb.x + sb.w * 0.5f + 4.f, sb.y + sb.h - 11.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
@@ -538,7 +538,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 14.f;  // title bar
             const float acc[3] = { ar, ag, ab };
-            clip_cell_box(ui, r, acc, hov, on, q, tbh);
+            session_clip_cell(ui, r, acc, hov, on, q, tbh);
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
             char cn[16];
@@ -547,27 +547,26 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(tx, r.y + 2.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, sty.fs_value);
             const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
-            recess(ui, pv);
             draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
         }
     }
-    // --- mixer sub-region (inside the Session panel) ---
+    // --- mixer strip ---
     const float my0 = mixer_y(scenes);
     ui.draw_rect(kSceneColX, mixer_divider_y(scenes), contentR - kSceneColX, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
     section_header(ui, kSceneColX, my0 + 3.f, "MIX", sty.audio);
     auto viz_button = [&](const Rect& b) {
         const bool h = hit(b, mx, my);
-        item_box(ui, b, sty.teal, h);
+        session_control_button(ui, b, sty.teal, h);
         const char* lbl = "VIZ";
         ui.draw_text(b.x + (b.w - ui.text_width(lbl, sty.fs_kicker)) * 0.5f, b.y + 3.f, lbl, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f, sty.fs_kicker);
     };
     for (int t = 0; t < tracks; ++t) {
         const Rect mr = track_meter_rect(t, scenes), gr = track_gain_rect(t, scenes);
         const float lvl = std::min(1.0f, vivid::session::session_track_level(s, t) * 4.0f);
-        recess(ui, mr);
+        session_meter_track(ui, mr);
         ui.draw_rect(mr.x, mr.y, mr.w * lvl, mr.h, sty.green[0], sty.green[1], sty.green[2], 1.0f);
         const float g = vivid::session::session_track_gain(s, t);
-        recess(ui, gr);
+        session_meter_track(ui, gr);
         ui.draw_rect(gr.x, gr.y, gr.w * g, gr.h, sty.gpu[0] * 0.7f, sty.gpu[1] * 0.7f, sty.gpu[2] * 0.75f, 1.0f);
         ui.draw_rect(gr.x + gr.w * g - 1.5f, gr.y - 1.f, 3.f, gr.h + 2.f, sty.text[0], sty.text[1], sty.text[2], 1.0f);
         // ARM: red when this track is record-armed. Audio tracks can't be armed (no instrument).
@@ -576,7 +575,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             const bool armed = vivid::session::session_armed_track(s) == t;
             const bool ah = hit(ar, mx, my);
             const float rc[3] = { 0.90f, 0.24f, 0.28f };
-            item_box(ui, ar, rc, ah || armed, armed);
+            session_control_button(ui, ar, rc, ah, armed);
             const char* al = "ARM";
             const float* ac = armed ? rc : sty.dim;
             ui.draw_text(ar.x + (ar.w - ui.text_width(al, sty.fs_kicker)) * 0.5f, ar.y + 3.f, al, ac[0], ac[1], ac[2], 1.0f, sty.fs_kicker);
@@ -585,12 +584,12 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     }
     const Rect mm = master_meter_rect(scenes);
     const float ml = w.app->transport ? std::min(1.0f, w.app->transport->level.load(std::memory_order_relaxed) * 4.0f) : 0.f;
-    recess(ui, mm);
+    session_meter_track(ui, mm);
     ui.draw_rect(mm.x, mm.y, mm.w * ml, mm.h, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);
     ui.draw_text(kSceneColX, mm.y + 6.f, "MAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     viz_button(master_viz_rect(scenes));
 
-    ui.pop_clip_rect();  // end the panel-interior grid clip
+    ui.pop_clip_rect();  // end the session workspace clip
     ui.set_transform(0.f, 0.f, 1.f);   // reset the DAW-pane shift
     ui.pop_clip_rect();  // end DAW pane
     // (clip drag feedback is drawn later as a screen-space overlay — it can cross the sidebar↔grid boundary)
