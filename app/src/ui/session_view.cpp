@@ -281,10 +281,9 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const float* dc = vis ? sty.gpu : sty.audio;
         ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
         draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
-        // Close (x): exits a drilled-in focus back to the device view (progressive disclosure).
-        // Shown for the drilled-in deep views (visual-node inspector, audio graph).
-        if (w.focus.kind == FocusContext::Kind::VisualNode || w.focus.kind == FocusContext::Kind::AudioGraph
-            || w.focus.kind == FocusContext::Kind::OpEditor) {
+        // Close (x): exits a drilled-in VISUAL focus back to the output. The audio graph is now a
+        // track's home detail view (not a drill-in), so it has no close-x.
+        if (w.focus.kind == FocusContext::Kind::VisualNode || w.focus.kind == FocusContext::Kind::OpEditor) {
             const Rect cb = dock_close_rect(w.win_w, w.win_h, w.dock_h);
             const bool ch = hit(cb, mx, my);
             ui.draw_text(cb.x, cb.y - 2.f, "\xC3\x97", ch ? 0.9f : 0.55f, ch ? 0.6f : 0.5f, ch ? 0.6f : 0.55f, 1.0f, sty.fs_body);
@@ -426,74 +425,8 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         return;
     }
 
-    const int tracks = vivid::session::session_track_count(s);
-    const int seltr = std::min(std::max(w.sel_track, 0), tracks - 1);
-    const bool aud = vivid::session::session_track_is_audio(s, seltr);
-    char hdr[80]; std::snprintf(hdr, sizeof hdr, "DEVICE \xC2\xB7 %.40s", vivid::session::session_track_name(s, seltr));
-    section_header(ui, 12.f, y0 + 7.f, hdr, sty.audio);
-    // UI-3: a "Graph" toggle to drill into this track's audio node graph (a deep view).
-    { const Rect gb = audio_graph_button_rect(w.win_w, w.win_h, w.dock_h);
-      draw_card(ui, gb.x, gb.y, gb.w, gb.h, sty.audio, hit(gb, mx, my));
-      ui.draw_text(gb.x + 9.f, gb.y + 2.f, "Graph", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-
-    // CHAIN rack — a bounded, recessed shelf that visually holds the device chips
-    // as their own section (distinct from the params grid below). Present only in
-    // track mode: inspecting a visual node hides it (handled by the early return above).
-    const Rect rack = dock_chain_rect(w.win_w, w.win_h, w.dock_h);
-    ui.draw_rect(rack.x, rack.y, rack.w, rack.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
-    ui.draw_rect(rack.x, rack.y, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);                    // top hairline
-    ui.draw_rect(rack.x, rack.y + rack.h - 1.f, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);     // bottom hairline
-    ui.draw_rect(rack.x, rack.y, 3.f, rack.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);                        // domain accent tick
-    ui.draw_text(rack.x + rack.w - 46.f, rack.y + 3.f, "CHAIN", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
-
-    // device chips: instrument (0) + VST3 fx + native audio-op fx + "+ FX".
-    // Native chips carry the audio-domain accent + an "AFX"/"INST" kicker.
-    const int ndev = dock_device_count(s, seltr);
-    for (int i = 0; i <= ndev; ++i) {
-        const bool isAdd = (i == ndev);
-        const DevSlot slot = isAdd ? DevSlot{} : dock_resolve(s, seltr, i);
-        if (!isAdd && slot.is_instrument && aud && !slot.native) continue;  // sampler track: no VST3 instrument
-        const Rect b = w.dock_chip(i);
-        const bool sel = !isAdd && w.sel_device == i;
-        const float* acc = isAdd ? sty.control : ((slot.native || slot.is_instrument) ? sty.audio : sty.fx);
-        draw_card(ui, b.x, b.y, b.w, b.h, acc, hit(b, mx, my) || sel);
-        if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
-        if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 11.f, "+ FX", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f); continue; }
-        const char* kicker = slot.is_instrument ? "INST" : (slot.native ? "AFX" : "FX");
-        ui.draw_text(b.x + 8.f, b.y + 6.f, kicker, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
-        const char* dispname = slot.is_instrument
-            ? (slot.native ? vivid::session::session_audio_op_type(s, seltr, -1) : vivid::session::session_track_name(s, seltr))
-            : (slot.native ? vivid::session::session_audio_op_type(s, seltr, slot.api_index)
-                           : vivid::session::session_effect_name(s, seltr, slot.api_index - 1));
-        char nm[24]; std::snprintf(nm, sizeof nm, "%.13s", dispname);
-        ui.draw_text(b.x + 8.f, b.y + 17.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
-        if (!slot.is_instrument) {   // effects (VST3 or native) get a remove ×
-            const Rect xb = w.dock_chip_x(i);
-            ui.draw_rect(xb.x, xb.y, xb.w, xb.h, 0.4f, 0.18f, 0.18f, 1.0f);
-            ui.draw_text(xb.x + 3.f, xb.y, "x", 0.85f, 0.6f, 0.6f, 1.0f, 0.8f);
-        }
-    }
-
-    // knob grid for the selected device's params (its own zone below the rack)
-    const DevSlot seldev = dock_resolve(s, seltr, std::max(0, w.sel_device));
-    const int pc = dock_param_count(s, seltr, seldev);
-    const float* pacc = (seldev.is_instrument || seldev.native) ? sty.audio : sty.fx;
-    const int shown = std::min(pc, d.cols * d.maxRows);
-    for (int i = 0; i < shown; ++i) {
-        float cx, cy; dock_knob(i, d, cx, cy);
-        const float v = dock_param_norm(s, seltr, seldev, i);
-        char nm[12]; std::snprintf(nm, sizeof nm, "%.10s", dock_param_name(s, seltr, seldev, i));
-        char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", v);
-        const bool mapped = w.app->graph && w.app->graph->source_of(dock_param_dest(seltr, seldev, i)) != nullptr;
-        knob(ui, cx, cy, 15.f, v, nm, vt, pacc, mapped);
-        const Rect mb = dock_knob_map(i, d);   // small map affordance (amber=unmapped, teal=mapped)
-        ui.draw_rect(mb.x, mb.y, mb.w, mb.h, mapped ? sty.teal[0] : 0.55f, mapped ? sty.teal[1] : 0.45f,
-                     mapped ? sty.teal[2] : 0.22f, mapped ? 1.0f : 0.7f);
-    }
-    if (pc > shown) {
-        char more[48]; std::snprintf(more, sizeof more, "+%d more \xE2\x80\x94 drag the dock taller", pc - shown);
-        ui.draw_text(12.f, y0 + w.dock_h - 13.f, more, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.68f);
-    }
+    // The linear device chip-row view was retired (G3): a track's primary detail view is now
+    // its audio node graph, drawn above. Every focus kind returns before reaching here.
 }
 
 // The Session view on Renderer2D: transport, a tracks×scenes clip grid, a mixer.

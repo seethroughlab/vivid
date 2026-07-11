@@ -60,7 +60,6 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
 bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my) {
     if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top()
           && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app.session)) return false;
-    if (hit(dock_close_rect(win.win_w, win.win_h, win.dock_h), mx, my)) { win.show_audio_graph = false; return true; }
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     AudioNodeGraph ag; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
@@ -208,19 +207,6 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     }
     win.node_menu.open = false;
     return true;
-}
-
-// Device header "Graph" button: drill into the audio node graph deep view. Returns true when hit.
-bool graph_drill_in(Window& win, App& app, int button, int action, double mx, double my) {
-    if (win.focus.kind == vivid::FocusContext::Kind::Device && my >= win.dock_top()
-        && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
-        && hit(audio_graph_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
-        win.show_audio_graph = true;
-        win.sel_audio_node = vivid::Window::kNoAudioNode;
-        if (app.graph) app.graph->select_op(-1);   // clear any stale visual-node selection
-        return true;
-    }
-    return false;
 }
 
 }  // namespace vivid::input

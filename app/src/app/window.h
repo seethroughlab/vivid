@@ -30,7 +30,7 @@ struct FocusContext {
     // hosted in the detail region. Set by the visual-node "Editor" button; `node` is the op.
     enum class Kind { Device, VisualNode, ClipEditor, AudioGraph, OpEditor };
     enum class Dom  { Audio, Visual };
-    Kind kind  = Kind::Device;
+    Kind kind  = Kind::AudioGraph;   // a track's default detail view is its audio node graph
     Dom  dom   = Dom::Audio;
     int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
@@ -60,7 +60,6 @@ struct Window {
     // UI-3: drilled into the selected track's audio node graph (the detail region shows the
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
-    bool  show_audio_graph = false;
     // UI-4b: drilled into the selected visual node's operator-exported custom editor (the detail
     // region hosts vivid_draw_editor). Set by the visual-node "Editor" button; the focus recompute
     // only honors it while the selected op actually exports an editor.

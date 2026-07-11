@@ -232,14 +232,8 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         }
         const float v = std::clamp(win.param_drag_v0 +
                                    static_cast<float>(win.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
-        if (win.param_is_node) {
-            if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
-        } else if (app.session) {
-            const int ntr = vivid::session::session_track_count(app.session);
-            const int seltr = std::min(std::max(win.sel_track, 0), ntr - 1);
-            const vivid::ui::DevSlot seldev = vivid::ui::dock_resolve(app.session, seltr, std::max(0, win.sel_device));
-            vivid::ui::dock_param_set_norm(app.session, seltr, seldev, win.param_drag, v);
-        }
+        if (win.param_is_node && app.graph)   // visual-node param drag (the linear device drag was retired)
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
     }
     // UI-3 Stage 1: drag a selected audio-graph node's param knob (vertical). ag_param_v0 is the
     // normalized value at drag start; convert back to the op's [min,max] to set it.
@@ -383,8 +377,6 @@ void run_frame_loop(App& app, Window& win) {
                 if (clip_editor.is_open() && clip_editor.is_docked()) {
                     f.kind = FocusContext::Kind::ClipEditor; f.dom = FocusContext::Dom::Audio;
                     f.track = clip_editor.track(); f.scene = clip_editor.scene();
-                } else if (win.show_audio_graph) {   // UI-3: audio graph deep view (drilled in from a track)
-                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 } else if (selop >= 0 && win.show_op_editor && app.graph->op_has_editor(selop)) {
                     f.kind = FocusContext::Kind::OpEditor; f.dom = FocusContext::Dom::Visual; f.node = selop;   // UI-4b
                 } else if (selop >= 0) {
