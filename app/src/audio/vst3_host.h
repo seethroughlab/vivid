@@ -185,6 +185,10 @@ void        session_remove_audio_effect(Session*, int track, int index);
 int         session_audio_effect_count(Session*, int track);
 const char* session_audio_op_type(Session*, int track, int index);
 int         session_set_track_audio_instrument(Session*, int track, const char* op_type);  // "" clears; 1 on success
+// CLAP plugin hosting: assign a `.clap` bundle as a track's instrument source ("" clears; 1 ok,
+// instruments must accept note input) or append one as an effect (-> effect index, -1 on failure).
+int         session_set_track_clap_instrument(Session*, int track, const char* clap_path);
+int         session_add_track_clap_effect(Session*, int track, const char* clap_path);
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
 int         session_audio_op_param_hint(Session*, int track, int index, int param);   // VividDisplayHint (0 = DEFAULT)

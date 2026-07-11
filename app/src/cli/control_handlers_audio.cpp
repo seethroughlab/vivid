@@ -265,9 +265,29 @@ void register_audio_handlers(Handlers& handlers_) {
         json arr = json::array();
         for (int i = 0, n = P::plugin_count(); i < n; ++i) {
             const auto& p = P::plugin_at(i);
-            arr.push_back({ {"name", p.name}, {"path", p.path}, {"format", "vst3"} });
+            arr.push_back({ {"name", p.name}, {"path", p.path},
+                            {"format", p.format == P::kFmtCLAP ? "clap" : "vst3"} });
         }
         json r = ok(); r["plugins"] = arr; return r;
+    };
+    // CLAP hosting: assign a `.clap` bundle as a track's instrument, or append one as an effect.
+    handlers_["set_track_clap_instrument"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string path = b.value("path", std::string());
+        if (!P::session_set_track_clap_instrument(c.session, track, path.c_str()))
+            return err(code::kBadArg, "could not load CLAP instrument: '" + path + "'");
+        return ok();
+    };
+    handlers_["add_track_clap_effect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string path = b.value("path", std::string());
+        const int idx = P::session_add_track_clap_effect(c.session, track, path.c_str());
+        if (idx < 0) return err(code::kBadArg, "could not load CLAP effect: '" + path + "'");
+        json r = ok(); r["index"] = idx; return r;
     };
     handlers_["remove_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

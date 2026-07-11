@@ -8,6 +8,7 @@
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
+#include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
@@ -74,11 +75,12 @@ constexpr uint32_t kGraphMaxBlock = 4096;
 constexpr int      kScopeN        = 128;   // per-node output-waveform ring length (UI preview)
 constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
 
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, Sampler, Output };
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
-// `handle` = VST3 inst/fx (raw, non-owning — Track owns it). Sampler carries no pointer (its
-// active clip is scene-dependent, re-read from Track& at process time).
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; Vst3Handle* handle = nullptr; };
+// `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
+// Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
+struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr;
+                   Vst3Handle* handle = nullptr; ClapHandle* clap = nullptr; };
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
@@ -134,6 +136,12 @@ struct Track {
     std::atomic<uint64_t>        op_fx_gen{0};
     uint64_t                     op_fx_gen_seen = 0;
     std::vector<vivid::AudioOp*> op_retired;
+    // CLAP instrument + FX chain (raw, owned by the Track; freed at shutdown via clap_retired).
+    // A track's single instrument source is CLAP > native > VST3 by precedence (rebuild_track_graph).
+    // Set on the UI thread + republished via ggen; the audio thread only reads them through gbinds.
+    ClapHandle*              clap_inst = nullptr;
+    std::vector<ClapHandle*> clap_effects;
+    std::vector<ClapHandle*> clap_retired;
     // AG-0 audio graph (ADR-0012). Working copies (audio thread) + edit copies (UI thread),
     // published via ggen/gmtx like the FX chain. `gok` gates the graph path per track (false
     // => inline). Working buffers are reserved to capacity so the audio-thread copy from the
@@ -320,11 +328,13 @@ static void rebuild_track_graph(Track* t) {
     // precedence over a VST3 instrument, matching the inline path) → all VST3 FX → all native FX →
     // Output, in the EXACT order session_process applies them (VST3 FX loop before the native FX loop)
     // so the graph is parity-by-construction.
+    const bool has_clap_inst   = t->clap_inst != nullptr;
     const bool has_native_inst = t->op_instrument_edit != nullptr;
     const bool has_vst3_inst   = t->handle != nullptr;
-    const bool has_source = t->is_audio || has_native_inst || has_vst3_inst;
+    const bool has_source = t->is_audio || has_clap_inst || has_native_inst || has_vst3_inst;
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
-                              + static_cast<int>(t->op_effects_edit.size()) + 1;   // source + VST3 FX + native FX + output
+                              + static_cast<int>(t->op_effects_edit.size())
+                              + static_cast<int>(t->clap_effects.size()) + 1;   // source + VST3 FX + native FX + CLAP FX + output
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -335,6 +345,9 @@ static void rebuild_track_graph(Track* t) {
     if (t->is_audio) {
         t->agnodes.push_back({ GNKind::Sampler, nullptr, nullptr });   // scene-resolved at process time
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "smp");
+    } else if (has_clap_inst) {
+        t->agnodes.push_back({ GNKind::ClapInst, nullptr, nullptr, t->clap_inst });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "clap");
     } else if (has_native_inst) {
         t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit, nullptr });
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
@@ -354,6 +367,12 @@ static void rebuild_track_graph(Track* t) {
         t->agraph.connect(prev, fx);
         prev = fx;
     }
+    for (ClapHandle* cfx : t->clap_effects) {                              // then CLAP FX
+        t->agnodes.push_back({ GNKind::ClapFx, nullptr, nullptr, cfx });
+        const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "cfx");
+        t->agraph.connect(prev, fx);
+        prev = fx;
+    }
     t->agnodes.push_back({ GNKind::Output, nullptr, nullptr });
     const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
     t->agraph.connect(prev, out);
@@ -367,6 +386,8 @@ static void rebuild_track_graph(Track* t) {
 // so the graph dispatch can call the same helpers the inline path does.
 static void render_vst3_instrument(Track& t, Vst3Handle* h, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
 static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
 static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
 // AG-0: execute a track's compiled audio graph on the audio thread (RT-safe — no alloc, no
@@ -403,6 +424,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
                 render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
             }
+            else if (nb.kind == GNKind::ClapInst && nb.clap) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+                render_clap_instrument(t, nb.clap, frames, oL, oR);
+            }
             else if (nb.kind == GNKind::Sampler) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
                 render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
@@ -427,6 +452,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
+        else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
+            render_clap_effect(t, nb.clap, frames, oL, oR);
     }
     // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
     // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
@@ -1371,6 +1398,32 @@ static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext
     std::memcpy(R, oR, frames * sizeof(float));
 }
 
+// CLAP instrument. Builds this block's note + param events into the handle's scratch, then
+// processes into L/R (silent input fed to any declared input port). Parallels the native path:
+// reads t.nev (clip + live/preview notes) directly. RT-safe (fixed scratch, no alloc/lock).
+static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+    h->events.clear();
+    clap_flush_params(h);
+    for (const NoteEvent& ne : t.nev)
+        h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
+    float* out[2] = { L, R };
+    float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
+    clap_run(h, static_cast<int64_t>(t.steady), frames, h->audio_in > 0 ? in : nullptr, 2, out, 2);
+}
+
+// CLAP effect. Transforms L/R in place via the track's fx scratch (t.fxl/t.fxr), like the VST3
+// effect path. Caller guards `clap && clap->processing`.
+static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    h->events.clear();
+    clap_flush_params(h);
+    float* in[2]  = { L, R };
+    float* out[2] = { t.fxl.data(), t.fxr.data() };
+    clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2);
+    std::memcpy(L, out[0], frames * sizeof(float));
+    std::memcpy(R, out[1], frames * sizeof(float));
+}
+
 // Sampler-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
 // contended). Re-reads the scene-dependent state (t.active / aud_clips / aud_dsp / aud_trim*) and
 // keeps the aud_mtx try_lock skip-on-contention — the caller performs the bar-quantized scene switch
@@ -1423,7 +1476,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
-        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit) continue;
+        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit && !t.clap_inst) continue;
         any = true;
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
@@ -1573,6 +1626,9 @@ void session_destroy(Session* s) {
         for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
         for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
         vivid::audio_op_destroy(t->op_instrument_edit);
+        delete t->clap_inst;                                    // CLAP instrument + FX + retired
+        for (ClapHandle* c : t->clap_effects) delete c;
+        for (ClapHandle* c : t->clap_retired) delete c;
     };
     for (auto& tp : s->tracks)         teardown(tp.get());
     for (auto& tp : s->tracks_retired) teardown(tp.get());   // tracks removed during the run
@@ -1672,6 +1728,32 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
     rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
     return 1;
 }
+// Assign a CLAP plugin as a track's instrument source (path to a `.clap` bundle; empty clears).
+// Loads outside any lock (slow), then retires the old handle (kept alive for the audio thread
+// until the new graph is published) and rebuilds. Must accept note input (instruments only).
+int session_set_track_clap_instrument(Session* s, int t, const char* clap_path) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    Track& tr = *s->tracks[t];
+    ClapHandle* h = nullptr;
+    if (clap_path && *clap_path) {
+        h = clap_load_plugin(clap_path, s->sample_rate > 0 ? s->sample_rate : 48000, kGraphMaxBlock);
+        if (!h || !h->has_note_in) { delete h; return 0; }
+    }
+    if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
+    tr.clap_inst = h;
+    rebuild_track_graph(&tr);
+    return 1;
+}
+// Append a CLAP plugin as a track effect (path to a `.clap`). Returns the new index, or -1.
+int session_add_track_clap_effect(Session* s, int t, const char* clap_path) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return -1;
+    Track& tr = *s->tracks[t];
+    ClapHandle* h = clap_load_plugin(clap_path, s->sample_rate > 0 ? s->sample_rate : 48000, kGraphMaxBlock);
+    if (!h) return -1;
+    tr.clap_effects.push_back(h);
+    rebuild_track_graph(&tr);
+    return static_cast<int>(tr.clap_effects.size()) - 1;
+}
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
 const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }
 int         session_audio_op_param_hint(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_hint(op, p) : 0; }
@@ -1722,8 +1804,8 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return -1;
     switch (tr->agnodes[i].kind) {
-        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::Sampler: return 0;  // source/instrument
-        case GNKind::NativeFx:   case GNKind::Vst3Fx:   return 1;                         // effect
+        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::ClapInst: case GNKind::Sampler: return 0;  // source/instrument
+        case GNKind::NativeFx:   case GNKind::Vst3Fx:   case GNKind::ClapFx:   return 1;              // effect
         case GNKind::Output:     return 2;
     }
     return -1;
@@ -1735,6 +1817,7 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return "";
     const GNodeBind& nb = tr->agnodes[i];
     if (nb.op) return vivid::audio_op_type(nb.op);
+    if (nb.clap) return nb.clap->name.c_str();          // CLAP nodes: the plugin's display name
     switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
         case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
         case GNKind::Sampler:                       return "Sampler";
