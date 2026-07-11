@@ -206,6 +206,53 @@ inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selecte
     item_box(r, b, nullptr, hot || selected, selected, AccentEdge::None);
 }
 
+// Full-width focused detail region, used by the bottom dock/editor area.
+inline Rect detail_dock(Renderer2D& r, Rect b, const float* accent, bool resize_hot = false) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
+    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f,
+                resize_hot ? s.control[0] : s.border[0],
+                resize_hot ? s.control[1] : s.border[1],
+                resize_hot ? s.control[2] : s.border[2], 1.0f);
+    const float hh = 20.f;
+    r.draw_rect(b.x, b.y, b.w, hh, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
+    r.draw_rect(b.x, b.y + hh, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (accent)
+        r.draw_rect(b.x, b.y, 4.f, hh, accent[0], accent[1], accent[2], 1.0f);
+    return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
+}
+
+// Session clip cells have a compact title strip plus an optional queued bar.
+inline void clip_cell_box(Renderer2D& r, Rect b, const float* accent,
+                          bool hot = false, bool active = false, bool queued = false,
+                          float title_h = 14.f) {
+    const Style& s = style();
+    const float br = active ? 0.115f : s.recess[0] * 0.90f;
+    const float bg = active ? 0.130f : s.recess[1] * 0.86f;
+    const float bb = active ? 0.155f : s.recess[2] * 0.96f;
+    r.draw_rect(b.x, b.y, b.w, b.h, br, bg, bb, 1.0f);
+    const float k = (active ? 0.50f : 0.22f) + (hot ? 0.06f : 0.f);
+    r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, title_h, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
+    if (queued)
+        r.draw_rect(b.x, b.y, b.w, 2.f, s.gold[0], s.gold[1], s.gold[2], 1.0f);
+    const float* fr = active ? s.sel : s.border_soft;
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, active ? 2.f : 1.f, fr[0], fr[1], fr[2], active ? 0.95f : 0.75f);
+}
+
+inline Rect editor_panel(Renderer2D& r, Rect b, const char* title, const float* accent,
+                         float header_h = 30.f) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.region[0], s.region[1], s.region[2], 1.0f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    if (accent)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, header_h - 1.f, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + header_h, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (title)
+        r.draw_text(b.x + s.s5, b.y + 9.f, title, s.text[0], s.text[1], s.text[2], 1.0f, s.fs_title);
+    return { b.x + s.s4, b.y + header_h + s.s4, b.w - 2.f * s.s4, b.h - header_h - 2.f * s.s4 };
+}
+
 // A rotary knob: dim track arc + accent value arc + pointer; name above, value
 // below (both centred on cx). `mapped` tints the value arc toward the bridge teal.
 inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,

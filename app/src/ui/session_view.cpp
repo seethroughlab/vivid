@@ -247,7 +247,7 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
         const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
         if (r.y + r.h < plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) || r.y > pp.y + pp.h) continue;  // offscreen
         const bool hov = hit(r, mx, my);
-        if (hov) ui.draw_rect(r.x, r.y, r.w, r.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        if (hov) item_box(ui, r, sty.fx, true);
         ui.draw_text(r.x + 6.f, r.y + 3.f, fit_text(ui, vivid::session::plugin_at(i).name, r.w - 12.f, sty.fs_label).c_str(),
                      hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1], hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
     }
@@ -262,19 +262,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
     const DockGeom d = w.dock_geom();
     const float y0 = d.y0;
-    ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), w.dock_h, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
     const bool rhov = hit(w.dock_resize_rect(), mx, my);
-    ui.draw_rect(0.f, y0 - 1.f, static_cast<float>(w.win_w), 2.f,   // strong top border (drag to resize)
-                 rhov ? sty.control[0] : sty.border[0], rhov ? sty.control[1] : sty.border[1], rhov ? sty.control[2] : sty.border[2], 1.0f);
-    // header strip (title) — a defined band above the device chain / params
-    ui.draw_rect(0.f, y0, static_cast<float>(w.win_w), 20.f, sty.region_hd[0], sty.region_hd[1], sty.region_hd[2], 1.0f);
-    ui.draw_rect(0.f, y0 + 20.f, static_cast<float>(w.win_w), 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
     // UI-1: the detail region always declares its domain (strict-zones principle) — an accent
     // edge + a badge, driven by the explicit focus, so audio vs visual is never ambiguous.
+    const bool vis = (w.focus.dom == FocusContext::Dom::Visual);
+    const float* dc = vis ? sty.gpu : sty.audio;
+    detail_dock(ui, { 0.f, y0, static_cast<float>(w.win_w), w.dock_h }, dc, rhov);
     {
-        const bool vis = (w.focus.dom == FocusContext::Dom::Visual);
-        const float* dc = vis ? sty.gpu : sty.audio;
-        ui.draw_rect(0.f, y0, 4.f, 20.f, dc[0], dc[1], dc[2], 1.0f);
         draw_text_r(ui, w.win_w - 12.f, y0 + 6.f, vis ? "VISUAL" : "AUDIO", dc, 0.9f, sty.fs_kicker);
         // Close (x): exits a drilled-in VISUAL focus back to the output. The audio graph is now a
         // track's home detail view (not a drill-in), so it has no close-x.
@@ -543,10 +537,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             const bool hov = hit(r, mx, my);
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 14.f;  // title bar
-            ui.draw_rect(r.x, r.y, r.w, r.h, on ? 0.115f : 0.07f, on ? 0.13f : 0.078f, on ? 0.155f : 0.095f, 1.0f);
-            const float k = (on ? 0.5f : 0.22f) + (hov ? 0.06f : 0.f);
-            ui.draw_rect(r.x + 1.f, r.y + 1.f, r.w - 2.f, tbh, ar * k, ag * k, ab * k, 1.0f);
-            if (q) ui.draw_rect(r.x, r.y, r.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+            const float acc[3] = { ar, ag, ab };
+            clip_cell_box(ui, r, acc, hov, on, q, tbh);
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
             char cn[16];
