@@ -1,6 +1,7 @@
 #include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
 #include "ui/node_canvas.h"       // shared node-editor drawing (node_card / node_wire / node_port)
+#include "ui/node_graph.h"        // NodeGraph::source_of — the bridge mapped-state query
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "audio/vst3_host.h"
 
@@ -273,6 +274,12 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
         knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vt, sty.audio, false);
         r.draw_text(c.x + 2.f, c.y + c.h - 10.f, nm ? nm : "", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);
+        // Bridge map dot (return path): lit teal when a source drives this node param, dim gold
+        // otherwise. Clicking it (input_graph) opens the map-source picker (emits a "gnode:" dest).
+        const Rect md = ag_param_map_dot(c);
+        const bool mapped = map_ && map_->source_of(gnode_param_dest(track_, sel_node, c.index)) != nullptr;
+        if (mapped) r.draw_rect(md.x, md.y, md.w, md.h, 0.31f, 0.80f, 0.75f, 1.0f);
+        else        r.draw_rect(md.x + 2.f, md.y + 2.f, md.w - 4.f, md.h - 4.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.55f);
     }
 }
 

@@ -86,7 +86,11 @@ bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
         for (int j = 0; j < kNumMapSources; ++j) {
             const Rect rr = { win.map_menu.x, win.map_menu.y + j * 24.f, 168.f, 24.f };
             if (hit(rr, mx, my) && app.graph) {
-                const std::string d = dock_param_dest(seltr, seldev, win.map_param);
+                // Graph mode (opened from an audio-graph node's map dot): address the node by its
+                // stable id via "gnode:"; else the linear device-param dest. map_menu.src = node id.
+                const std::string d = win.map_menu.graph
+                    ? gnode_param_dest(seltr, win.map_menu.src, win.map_param)
+                    : dock_param_dest(seltr, seldev, win.map_param);
                 if (kMapSources[j].id[0] == '\0') app.graph->disconnect_dest(d);
                 else app.graph->add_mapping(kMapSources[j].id, d, 1.0f);
                 break;

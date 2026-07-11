@@ -140,6 +140,14 @@ void apply_audio_param_mappings(App& app) {
                 vivid::session::session_audio_op_param_set(app.session, T, D, I,
                                              lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
             }
+        } else if (m.dest.rfind("gnode:", 0) == 0) {          // audio-graph node param (by STABLE node id)
+            int NID = -1;
+            if (std::sscanf(m.dest.c_str(), "gnode:%d:%d:%d", &T, &NID, &I) == 3 && T >= 0) {
+                const float lo = vivid::session::session_audio_graph_node_param_min(app.session, T, NID, I);
+                const float hi = vivid::session::session_audio_graph_node_param_max(app.session, T, NID, I);
+                vivid::session::session_audio_graph_node_param_set(app.session, T, NID, I,
+                                             lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
+            }
         }
     }
 }

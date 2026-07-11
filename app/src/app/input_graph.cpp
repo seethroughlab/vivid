@@ -80,6 +80,22 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     }
     if (win.sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
         for (const auto& c : ag.param_cells(win.sel_audio_node)) {
+            // The map dot (top-right of the cell) takes priority over the knob rect it sits inside:
+            // open the bridge map-source picker for this node param (dock_menus emits a "gnode:" dest).
+            // The clickable area is padded larger than the drawn dot (a 10px dot is a hard target) but
+            // stays clear of the knob to its left.
+            const Rect dd = ag_param_map_dot(c);
+            if (hit(Rect{ dd.x - 4.f, dd.y - 2.f, dd.w + 8.f, dd.h + 9.f }, mx, my)) {
+                // The dot is in the param band at the dock's bottom, so open the whole picker ABOVE the
+                // dock: rows overlapping dock_top would be stolen by the dock-resize handle (handled
+                // before dock_menus). Clamp x too (no right spill), and keep it below the top bar.
+                const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
+                const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+                const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
+                win.map_menu = { true, fx, fy, win.sel_audio_node, true /*graph*/ };
+                win.map_param = c.index;
+                return true;
+            }
             if (mx >= c.x && mx < c.x + c.w && my >= c.y && my < c.y + c.h) {
                 const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, c.index);
                 const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, c.index);

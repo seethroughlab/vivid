@@ -18,6 +18,8 @@ namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
 
+class NodeGraph;   // the visuals graph owns the MappingRegistry (the bridge); queried for mapped state
+
 // A laid-out node. `node_id` is the stable graph node id — it addresses the node for params,
 // removal, and rewiring (the chain-index model can't address nodes in a non-linear graph).
 struct AudioNodeBox {
@@ -32,6 +34,10 @@ struct AudioParamCell {
     float x = 0, y = 0, w = 0, h = 0;
     float knob_cx = 0, knob_cy = 0, knob_r = 0;
 };
+
+// The small map dot in a param cell's top-right corner: click it to open the bridge map-source
+// picker for that node param. Shared by draw + input so the hit-rect matches the drawn dot.
+inline Rect ag_param_map_dot(const AudioParamCell& c) { return { c.x + c.w - 13.f, c.y + 1.f, 10.f, 10.f }; }
 
 // A compound-widget preview (UI-4a): an ADSR envelope or LFO waveform drawn above the knob row.
 // `index` is the group-leader param; `rect` is its slot in the top preview strip.
@@ -50,6 +56,9 @@ public:
     // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
     // when the selection carries one, so draw + input must agree on the selection before sizing.
     void set_selection(int node_id) { sel_node_ = node_id; }
+    // The bridge (MappingRegistry, owned by the visuals graph): draw lights a param cell's map dot
+    // when that node param has a mapped source. Optional (null = don't light any dot).
+    void set_mapping(const NodeGraph* g) { map_ = g; }
     Rect graph_region() const;   // the node-graph area (above the param strip) — for input zoom/pan
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
@@ -78,6 +87,7 @@ private:
     float param_band_h() const;   // band height — taller when the selection has a compound preview
 
     vivid::session::Session* s_ = nullptr;
+    const NodeGraph* map_ = nullptr;   // the bridge (for the mapped-state dot); not owned
     int   track_ = -1;
     int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;

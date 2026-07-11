@@ -71,6 +71,11 @@ constexpr int kNumMapSources = 9;
 inline std::string param_dest(int track, int device, int i) {
     return "param:" + std::to_string(track) + ":" + std::to_string(device) + ":" + std::to_string(i);
 }
+// A per-track AUDIO-GRAPH node param (the bridge return path onto the node graph). Addressed by the
+// node's STABLE id (not a chain index, which can't name a node in a rewired DAG); i = the param index.
+inline std::string gnode_param_dest(int track, int node_id, int i) {
+    return "gnode:" + std::to_string(track) + ":" + std::to_string(node_id) + ":" + std::to_string(i);
+}
 inline void track_accent(int t, float& r, float& g, float& b) {
     static const float P[3][3] = { {0.94f,0.63f,0.19f}, {0.88f,0.39f,0.23f}, {0.35f,0.66f,0.90f} };
     r = P[t%3][0]; g = P[t%3][1]; b = P[t%3][2];
