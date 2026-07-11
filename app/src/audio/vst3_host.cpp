@@ -72,14 +72,21 @@ struct LiveMidi {
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
 
-enum class GNKind : uint8_t { NativeInst, NativeFx, Output };
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; };   // POD; copyable
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, Sampler, Output };
+// POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
+// `handle` = VST3 inst/fx (raw, non-owning — Track owns it). Sampler carries no pointer (its
+// active clip is scene-dependent, re-read from Track& at process time).
+struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; Vst3Handle* handle = nullptr; };
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
     uint32_t frames = 0, sample_rate = 48000;
     float    bpm = 120.f; uint32_t bpb = 4; double beats = 0.0;
     const NoteEvent* notes = nullptr; uint32_t note_count = 0;
+    // AG-0: extra per-block context the VST3/sampler node dispatch consumes (native ops ignore
+    // these). `steady` is the track's running sample counter (also on Track); `delta` is
+    // beats-per-block; `playing` gates the sampler. Filled alongside the native fields each block.
+    uint64_t steady = 0; double delta = 0.0; bool playing = false;
 };
 
 struct Track {
@@ -99,6 +106,9 @@ struct Track {
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
+    Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
+                                           // notes); on the Track so both the inline path AND the
+                                           // audio-graph Vst3Inst node dispatch share the same list.
     LiveMidi              preview_in;       // editor keyboard-audition notes (drained every block, any arm state)
     uint64_t              steady = 0;
     std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
@@ -297,22 +307,45 @@ static void rebuild_track_graph(Track* t) {
     if (t->graph_authoritative) { republish_track_graph(t); return; }
     t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
-    const bool native_only = !t->is_audio && t->op_instrument_edit && !t->handle && t->effects_edit.empty();
-    if (!native_only || static_cast<int>(t->op_effects_edit.size()) + 2 > kGraphMaxNodes) {
+    // Derived chain (AG-0): source (sampler for an audio track; else a native instrument takes
+    // precedence over a VST3 instrument, matching the inline path) → all VST3 FX → all native FX →
+    // Output, in the EXACT order session_process applies them (VST3 FX loop before the native FX loop)
+    // so the graph is parity-by-construction.
+    const bool has_native_inst = t->op_instrument_edit != nullptr;
+    const bool has_vst3_inst   = t->handle != nullptr;
+    const bool has_source = t->is_audio || has_native_inst || has_vst3_inst;
+    const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
+                              + static_cast<int>(t->op_effects_edit.size()) + 1;   // source + VST3 FX + native FX + output
+    if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
         t->ggen.fetch_add(1, std::memory_order_release);
         return;
     }
-    t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit });
-    int prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
-    for (vivid::AudioOp* op : t->op_effects_edit) {
-        t->agnodes.push_back({ GNKind::NativeFx, op });
+    int prev;
+    if (t->is_audio) {
+        t->agnodes.push_back({ GNKind::Sampler, nullptr, nullptr });   // scene-resolved at process time
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "smp");
+    } else if (has_native_inst) {
+        t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit, nullptr });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
+    } else {
+        t->agnodes.push_back({ GNKind::Vst3Inst, nullptr, t->handle });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "vst3");
+    }
+    for (Vst3Handle* fx : t->effects_edit) {                                // VST3 FX first (inline order)
+        t->agnodes.push_back({ GNKind::Vst3Fx, nullptr, fx });
+        const int n = t->agraph.add_node(false, false, nullptr, nullptr, "vfx");
+        t->agraph.connect(prev, n);
+        prev = n;
+    }
+    for (vivid::AudioOp* op : t->op_effects_edit) {                         // then native FX
+        t->agnodes.push_back({ GNKind::NativeFx, op, nullptr });
         const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "fx");
         t->agraph.connect(prev, fx);
         prev = fx;
     }
-    t->agnodes.push_back({ GNKind::Output, nullptr });
+    t->agnodes.push_back({ GNKind::Output, nullptr, nullptr });
     const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
     t->agraph.connect(prev, out);
     t->agraph.set_output_id(out);
@@ -320,6 +353,12 @@ static void rebuild_track_graph(Track* t) {
     t->gok_edit = t->agraph.compile(t->gcg_edit);
     t->ggen.fetch_add(1, std::memory_order_release);
 }
+
+// The per-source/effect render primitives (defined below, near session_process); forward-declared
+// so the graph dispatch can call the same helpers the inline path does.
+static void render_vst3_instrument(Track& t, Vst3Handle* h, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
 // AG-0: execute a track's compiled audio graph on the audio thread (RT-safe — no alloc, no
 // lock). Sums each node's inputs into the shared scratch buffer, dispatches the node's
@@ -340,6 +379,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     float* pool = t.gpool.data();
     const int scratch = cg.buf_count;
     const GraphBlockCtx& b = t.blk;
+    // Rebuilt from the block context for VST3 nodes (ProcessContext); native/sampler read `b` directly.
+    VividAudioContext gctx{};
+    gctx.sample_rate = b.sample_rate; gctx.metronome_bpm = b.bpm;
+    gctx.metronome_beats_per_bar = b.bpb; gctx.metronome_beats_elapsed = b.beats;
     for (const vivid::audio::CompiledStep& s : cg.steps) {
         float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
         float* oR = oL + stride;
@@ -347,6 +390,14 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         if (s.n_in == 0) {   // source node
             if (nb.kind == GNKind::NativeInst && nb.op)
                 vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, b.notes, b.note_count);
+            else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
+                render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
+            }
+            else if (nb.kind == GNKind::Sampler) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
+                render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
+            }
             else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
             continue;
         }
@@ -365,6 +416,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         std::memcpy(oR, iR, frames * sizeof(float));
         if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
+        else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
+            render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
     }
     const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
     std::memcpy(L, outL, frames * sizeof(float));
@@ -383,35 +436,135 @@ static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
     closedir(d);
 }
 
-static MidiClip transpose(const MidiClip& c, int semis) {
-    MidiClip o = c;
-    for (auto& n : o.notes) n.pitch += semis;
-    return o;
+// --- Demo song: a glitchy IDM sketch in A minor (8-beat / 2-bar scenes so it evolves, not a
+// 1-bar loop). Patterns are GENERATED with a fixed-seed xorshift RNG — rich, glitchy variation
+// (velocity jitter, ghost notes, 32nd ratchets, micro-timing) that's the same every launch. Lead
+// + bass paint per-note MPE expression (bend / pressure / timbre curves) to show that off. Change
+// a seed below (or the DemoRng seeds) to reroll the glitch. ---
+namespace demo {
+struct Rng {
+    uint32_t s;
+    explicit Rng(uint32_t seed) : s(seed ? seed : 0x9e3779b9u) {}
+    uint32_t u32() { s ^= s << 13; s ^= s >> 17; s ^= s << 5; return s; }
+    float unit() { return (u32() >> 8) * (1.0f / 16777216.0f); }         // 0..1
+    float range(float a, float b) { return a + unit() * (b - a); }
+    int   pick(int n) { return static_cast<int>(u32() % static_cast<uint32_t>(n)); }
+    bool  chance(float p) { return unit() < p; }
+};
+inline void nadd(MidiClip& c, int pitch, double start, double dur, float vel) {
+    ClipNote n{}; n.pitch = pitch; n.start = start; n.dur = dur;
+    n.vel = vel < 0.05f ? 0.05f : (vel > 1.f ? 1.f : vel);
+    c.notes.push_back(std::move(n));
 }
-// Three riffs (scene A/B/C); each track plays them transposed to a role.
+// A ratchet/stutter: k rapid retriggers of `pitch` across [start, start+span) — the IDM glitch.
+inline void nratchet(MidiClip& c, int pitch, double start, double span, int k, float vel, Rng& r) {
+    const double st = span / k;
+    for (int i = 0; i < k; ++i) nadd(c, pitch, start + i * st, st * 0.7, vel * r.range(0.6f, 1.f));
+}
+// Paint MPE curves on the most-recent note (played back as VST3 note-expression events).
+inline void nbend  (MidiClip& c, float fromSemi, float toSemi) { if (!c.notes.empty()) c.notes.back().expr[AXIS_BEND].bp = { {0.f, fromSemi}, {1.f, toSemi} }; }
+inline void ntimbre(MidiClip& c, float lo, float hi)           { if (!c.notes.empty()) c.notes.back().expr[AXIS_TIMBRE].bp = { {0.f, lo}, {0.45f, hi}, {1.f, lo} }; }
+inline void npress (MidiClip& c, float peak)                   { if (!c.notes.empty()) c.notes.back().expr[AXIS_PRESSURE].bp = { {0.f, 0.f}, {0.35f, peak}, {1.f, 0.f} }; }
+
+// A minor scale over two octaves (A3..A5) for the lead; low roots (A1..A2) for the bass.
+constexpr int LEAD[15] = { 57,59,60,62,64,65,67, 69,71,72,74,76,77,79, 81 };
+constexpr int A3 = 57, A4 = 69;
+}  // namespace demo
+
+// LEAD (played by the lead synth): glitch arps + expressive stabs. Scene A groove, B denser/higher
+// stutter, C sparse MPE breakdown.
 static std::vector<MidiClip> base_patterns() {
-    MidiClip a; a.length = 4.0; a.notes = {
-        {62,0.0,0.5,.85f},{65,0.5,0.5,.70f},{69,1.0,0.5,.85f},{65,1.5,0.5,.70f},{74,2.0,1.0,.90f},{69,3.0,0.9,.75f} };
-    MidiClip b; b.length = 4.0; b.notes = {
-        {81,0.0,0.4,.80f},{84,1.0,0.4,.75f},{88,2.0,0.4,.80f},{86,3.0,0.9,.70f} };
-    MidiClip c; c.length = 4.0; c.notes = {
-        {38,0.0,0.4,.95f},{38,0.5,0.4,.70f},{41,1.0,0.4,.90f},{38,1.5,0.4,.70f},
-        {36,2.0,0.4,.95f},{36,2.5,0.4,.70f},{43,3.0,0.4,.90f},{41,3.5,0.4,.70f} };
+    using namespace demo;
+    // A — 16th glitch arp cycling a minor shape, downbeat accents, occasional ratchet/timbre.
+    MidiClip a; a.length = 8.0; { Rng r(0x1EAD01u);
+        const int cell[8] = { 57,60,64,67, 60,64,69,72 };            // A C E G / C E A C
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            int p = cell[i % 8] + (r.chance(0.15f) ? 12 : 0);
+            if (!r.chance(0.88f)) continue;
+            const float v = (i % 4 == 0 ? 0.9f : 0.5f) * r.range(0.85f, 1.f);
+            if (r.chance(0.12f)) nratchet(a, p, t, 0.25, 2 + r.pick(3), v, r);
+            else { nadd(a, p, t, 0.18, v); if (r.chance(0.14f)) ntimbre(a, 0.2f, 0.9f); }
+        }
+        nadd(a, 76, 3.5, 0.5, 0.85f); nbend(a, -2.f, 0.f);           // a bent stab
+        nadd(a, 69, 7.0, 1.0, 0.8f);  npress(a, 0.7f);
+    }
+    // B — higher, busier, more stutter + pitch-drop bends (the "build").
+    MidiClip b; b.length = 8.0; { Rng r(0x1EAD02u);
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            if (!r.chance(0.82f)) continue;
+            int p = LEAD[7 + r.pick(8)];                              // upper octave
+            const float v = r.range(0.45f, 0.95f);
+            if (r.chance(0.28f)) nratchet(b, p, t, 0.25, 2 + r.pick(4), v, r);
+            else { nadd(b, p, t, 0.15, v); if (r.chance(0.2f)) { nbend(b, r.range(-3.f, 0.f), 0.f); } }
+        }
+    }
+    // C — sparse MPE breakdown: long held notes with bend sweeps + pressure/timbre swells.
+    MidiClip c; c.length = 8.0;
+    nadd(c, 69, 0.0, 2.25, 0.78f); nbend(c, -5.f, 0.f);  npress(c, 0.85f);
+    nadd(c, 72, 2.5, 1.25, 0.72f); ntimbre(c, 0.1f, 0.95f);
+    nadd(c, 76, 4.0, 3.5, 0.85f);  nbend(c, 0.f, 2.f);   npress(c, 0.9f); ntimbre(c, 0.2f, 0.85f);
     return { a, b, c };
 }
 
-// GM drum map: 36 kick, 38 snare, 42 closed hat, 46 open hat.
+// BASS (played by the bass synth): syncopated sub in A minor. Its own patterns (not a transposed
+// lead), so lead + bass interlock.
+static std::vector<MidiClip> bass_patterns() {
+    using namespace demo;
+    // A — driving syncopated root/fifth with octave pops.
+    MidiClip a; a.length = 8.0; { Rng r(0xBA5501u);
+        const double hits[] = { 0.0, 0.75, 1.5, 2.0, 2.75, 3.5, 4.0, 4.75, 5.5, 6.0, 6.75, 7.5 };
+        const int deg[]     = { 33,   33,   40,  36,  33,   45,  33,  33,   38,  40,  33,   43 };  // A A E C A A' A A D E A G
+        for (int i = 0; i < 12; ++i) nadd(a, deg[i], hits[i], r.range(0.35, 0.6), r.range(0.75f, 1.f));
+        for (int i = 0; i < 8; ++i) if (r.chance(0.3f)) nadd(a, 33, i * 1.0 + 0.875, 0.12, r.range(0.3f, 0.5f)); // ghost 16ths
+    }
+    // B — faster gated 16ths glitch, octave jumps.
+    MidiClip b; b.length = 8.0; { Rng r(0xBA5502u);
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25;
+            if (!r.chance(0.6f)) continue;
+            int p = (r.chance(0.25f) ? 45 : 33) + (r.chance(0.15f) ? r.pick(3) * 3 : 0);
+            if (r.chance(0.2f)) nratchet(b, p, t, 0.25, 2 + r.pick(2), r.range(0.6f, 0.9f), r);
+            else nadd(b, p, t, 0.18, r.range(0.6f, 0.95f));
+        }
+    }
+    // C — long held sub with a slow reese-style bend (breakdown).
+    MidiClip c; c.length = 8.0;
+    nadd(c, 33, 0.0, 4.0, 0.9f);  nbend(c, 0.f, -0.4f);
+    nadd(c, 36, 4.0, 4.0, 0.85f); nbend(c, 0.f, 0.4f);
+    return { a, b, c };
+}
+
+// DRUMS: glitchy IDM kit. 36 kick, 38 snare, 39 clap, 37 rim, 42 closed hat, 46 open hat,
+// 40/75/67 glitch percs. Scene A broken groove, B rolling/amen, C half-time breakdown.
 static std::vector<MidiClip> drum_patterns() {
-    MidiClip a; a.length = 4.0;  // straight backbeat
-    a.notes = { {36,0.0,.2,.95f},{36,2.0,.2,.95f},{38,1.0,.2,.90f},{38,3.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 0.5) a.notes.push_back({42, t, 0.1, 0.55f});
-    MidiClip b; b.length = 4.0;  // busier, 16th hats
-    b.notes = { {36,0.0,.2,.95f},{36,1.5,.2,.85f},{36,2.0,.2,.95f},{36,2.75,.2,.80f},
-                {38,1.0,.2,.90f},{38,3.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 0.25) b.notes.push_back({42, t, 0.08, 0.5f});
-    MidiClip c; c.length = 4.0;  // half-time, open hats on the quarter
-    c.notes = { {36,0.0,.2,.95f},{38,2.0,.2,.90f} };
-    for (double t = 0; t < 4; t += 1.0) c.notes.push_back({46, t, 0.2, 0.5f});
+    using namespace demo;
+    const int PERC[4] = { 75, 67, 40, 37 };
+    // A — syncopated kick, backbeat snare+clap, ghost snares, 16th hats with random ratchets.
+    MidiClip a; a.length = 8.0; { Rng r(0xD00301u);
+        for (double k : { 0.0, 2.75, 3.0, 4.0, 6.5, 7.0 }) nadd(a, 36, k, 0.22, r.range(0.85f, 1.f));
+        nadd(a, 38, 1.0, 0.2, 0.95f); nadd(a, 38, 5.0, 0.2, 0.95f);
+        nadd(a, 39, 3.0, 0.2, 0.85f); nadd(a, 39, 7.0, 0.2, 0.85f);   // clap layer
+        for (int i = 0; i < 16; ++i) if (r.chance(0.22f)) nadd(a, 38, i * 0.5 + r.range(-0.02, 0.02), 0.1, r.range(0.18f, 0.4f)); // ghosts
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25; if (!r.chance(0.85f)) continue;
+            if (r.chance(0.12f)) nratchet(a, 42, t, 0.25, 2 + r.pick(3), r.range(0.3f, 0.55f), r);
+            else nadd(a, 42, t, 0.07, r.range(0.22f, 0.7f)); }
+        for (int i = 0; i < 10; ++i) if (r.chance(0.35f)) nadd(a, PERC[r.pick(4)], r.range(0, 8), 0.1, r.range(0.3f, 0.6f)); // glitch
+    }
+    // B — rolling/amen: busy kicks, snare rolls (ratchets), dense hats.
+    MidiClip b; b.length = 8.0; { Rng r(0xD00302u);
+        for (int i = 0; i < 16; ++i) { const double t = i * 0.5;
+            if (r.chance(0.55f)) nadd(b, 36, t + (r.chance(0.3f) ? 0.25 : 0.0), 0.2, r.range(0.8f, 1.f)); }
+        nadd(b, 38, 1.0, 0.2, 0.95f); nadd(b, 38, 3.0, 0.2, 0.9f); nadd(b, 38, 5.0, 0.2, 0.95f); nadd(b, 38, 7.0, 0.2, 0.9f);
+        for (int i = 0; i < 16; ++i) if (r.chance(0.4f)) nratchet(b, 38, i * 0.5, 0.5, 2 + r.pick(4), r.range(0.25f, 0.55f), r); // rolls
+        for (int i = 0; i < 32; ++i) { const double t = i * 0.25; if (r.chance(0.9f)) nadd(b, 42, t, 0.06, r.range(0.2f, 0.65f)); }
+        for (int i = 0; i < 4; ++i) nadd(b, 46, i * 2.0 + 1.5, 0.25, r.range(0.4f, 0.6f));
+    }
+    // C — half-time breakdown: sparse big hits, occasional glitch perc.
+    MidiClip c; c.length = 8.0; { Rng r(0xD00303u);
+        nadd(c, 36, 0.0, 0.3, 1.f); nadd(c, 36, 4.0, 0.3, 1.f);
+        nadd(c, 38, 2.0, 0.3, 0.95f); nadd(c, 39, 6.0, 0.3, 0.9f);
+        for (int i = 0; i < 8; ++i) if (r.chance(0.4f)) nadd(c, 46, i * 1.0, 0.2, r.range(0.35f, 0.55f));
+        for (int i = 0; i < 6; ++i) if (r.chance(0.5f)) nratchet(c, PERC[r.pick(4)], r.range(0, 8), 0.4, 2 + r.pick(4), r.range(0.3f, 0.55f), r);
+    }
     return { a, b, c };
 }
 
@@ -421,12 +574,9 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
-    if (kind == kDrums) {
-        for (auto& p : drum_patterns()) t->clips.push_back(p);
-    } else {
-        const int off = (kind == kBass) ? -12 : 0;  // lead at pitch, bass an octave down
-        for (auto& bp : base_patterns()) t->clips.push_back(transpose(bp, off));
-    }
+    if (kind == kDrums)      for (auto& p : drum_patterns()) t->clips.push_back(p);
+    else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
+    else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64);
 t->eev.reserve(256);
@@ -577,6 +727,10 @@ Session* session_create(uint32_t sample_rate) {
 
     if (s->tracks.empty()) { delete s; return nullptr; }
     rebuild_track_view(s);   // publish the initial set to the audio thread
+    // AG-0: build each track's derived audio graph up front so gok tracks (native + VST3) run through
+    // the graph from the first block — not only after a device edit. Sampler tracks stay inline until
+    // Stage 4. Parity-by-construction (same source/FX helpers, same order).
+    for (auto& t : s->tracks) rebuild_track_graph(t.get());
     std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
     return s;
 }
@@ -1134,6 +1288,74 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev,
     }
 }
 
+// --- Per-source/effect render primitives (AG-0). Extracted from session_process so BOTH the inline
+// path and (later) the audio-graph node dispatch call identical code — parity by construction. All
+// are RT-safe: fixed-capacity VST3 scratch, no heap, the sampler try_lock skip preserved. ---
+
+// VST3 instrument source. Appends this block's notes/expression (t.nev/t.eev) into t.vev — which the
+// caller has already primed with any scene-switch release events — then runs the processor into L/R.
+// Using t.vev (not a local) lets the inline path and the graph Vst3Inst dispatch build the identical
+// event list. The native path deliberately never sees the scene-switch releases; unchanged.
+static void render_vst3_instrument(Track& t, Vst3Handle* h,
+                                   const VividAudioContext& ctx, uint32_t frames, float* L, float* R) {
+    emit_vst3(t.vev, t.nev, t.eev);
+    float* ch[2] = { L, R };
+    AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
+    Vst3ParamChanges pc; pc.clear();
+    drain_params(h, pc);
+    ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
+    ProcessData data{};
+    data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
+    data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
+    data.inputs = nullptr; data.outputs = &ob;
+    data.inputEvents = &t.vev; data.inputParameterChanges = &pc; data.processContext = &pctx;
+    h->processor->process(data);
+}
+
+// VST3 effect. Transforms L/R in place, using the track's fx scratch (t.fxl/t.fxr) as the plugin's
+// output bus, then copies back. Caller guards `fx && fx->processing`.
+static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
+                               uint32_t frames, float* L, float* R) {
+    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    float* oL = t.fxl.data(); float* oR = t.fxr.data();
+    float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
+    AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
+    AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
+    Vst3ParamChanges fpc; fpc.clear();
+    drain_params(fx, fpc);
+    ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
+    ProcessData fd{};
+    fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
+    fd.numSamples = static_cast<int32>(frames);
+    fd.numInputs = 1; fd.inputs = &ib;
+    fd.numOutputs = 1; fd.outputs = &fob;
+    fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
+    fx->processor->process(fd);
+    std::memcpy(L, oL, frames * sizeof(float));
+    std::memcpy(R, oR, frames * sizeof(float));
+}
+
+// Sampler-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
+// contended). Re-reads the scene-dependent state (t.active / aud_clips / aud_dsp / aud_trim*) and
+// keeps the aud_mtx try_lock skip-on-contention — the caller performs the bar-quantized scene switch
+// BEFORE calling this (it mutates t.active, a transport action, not a node op).
+static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames,
+                                 uint32_t sample_rate, bool playing, float* L, float* R) {
+    const int sc = t.active.load(std::memory_order_relaxed);
+    if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
+        if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok()) {
+            const float tr0 = t.aud_trim0[sc].load(std::memory_order_relaxed);
+            const float tr1 = t.aud_trim1[sc].load(std::memory_order_relaxed);
+            ClipDsp* d = (sc < static_cast<int>(t.aud_dsp.size())) ? t.aud_dsp[sc].get() : nullptr;
+            if (d && d->ready)  // warp enabled + stretcher ready -> pitch-preserving path
+                process_clip(t.aud_clips[sc], *d, beats, delta, frames, sample_rate, L, R, tr0, tr1);
+            else
+                t.aud_clips[sc].render(beats, delta, frames, L, R, tr0, tr1);
+        }
+        t.aud_mtx.unlock();
+    }
+}
+
 bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_rate,
                      double bpm, double beats, uint32_t beats_per_bar,
                      bool playing, bool release_all) {
@@ -1222,40 +1444,19 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
-        VividAudioContext ctx{};   // shared by the instrument and the effect chain
-        ctx.sample_rate = sample_rate;
-        ctx.metronome_bpm = static_cast<float>(bpm);
-        ctx.metronome_beats_per_bar = bpb;
-        ctx.metronome_beats_elapsed = beats;
-
         if (t.is_audio) {
-            // Bar-quantized scene switch, then render the active sample loop.
+            // Bar-quantized scene switch (a transport action the Sampler graph node reads each block).
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            const int sc = t.active.load(std::memory_order_relaxed);
-            // try_lock guards against a concurrent UI stash/place swapping this slot; on
-            // contention we simply skip this block (the UI's move is O(1), so it's rare).
-            if (playing && sc >= 0 && t.aud_mtx.try_lock()) {
-                if (sc < static_cast<int>(t.aud_clips.size()) && t.aud_clips[sc].ok()) {
-                    const float tr0 = t.aud_trim0[sc].load(std::memory_order_relaxed);
-                    const float tr1 = t.aud_trim1[sc].load(std::memory_order_relaxed);
-                    ClipDsp* d = (sc < static_cast<int>(t.aud_dsp.size())) ? t.aud_dsp[sc].get() : nullptr;
-                    if (d && d->ready)  // warp enabled + stretcher ready -> pitch-preserving path
-                        process_clip(t.aud_clips[sc], *d, beats, delta, frames, sample_rate, L, R, tr0, tr1);
-                    else
-                        t.aud_clips[sc].render(beats, delta, frames, L, R, tr0, tr1);
-                }
-                t.aud_mtx.unlock();
-            }
         } else {
-            Vst3EventList events;
+            t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
-                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(events, t.nev, t.eev);
+                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(t.vev, t.nev, t.eev);
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
                 }
@@ -1280,63 +1481,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
               while (t.preview_in.pop(pe))
                   t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
                                             kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
-            // Source: a native instrument operator takes precedence over the VST3 instrument.
-            // When the audio graph is active (gok) the graph renders the instrument + FX
-            // below, so skip the inline native-instrument render here.
-            if (!t.gok && t.op_instrument) {
-                vivid::audio_op_process(t.op_instrument, L, R, frames, sample_rate,
-                                        static_cast<float>(bpm), bpb, beats,
-                                        t.nev.data(), static_cast<uint32_t>(t.nev.size()));
-            } else if (t.handle) {
-                emit_vst3(events, t.nev, t.eev);
-                float* ch[2] = { L, R };
-                AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
-                Vst3ParamChanges pc; pc.clear();
-                drain_params(t.handle, pc);
-                ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
-                ProcessData data{};
-                data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
-                data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
-                data.inputs = nullptr; data.outputs = &ob;
-                data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
-                t.handle->processor->process(data);
-            }
+            // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }
 
-        // FX chain: process L/R through each effect in series (audio in -> out).
-        for (Vst3Handle* fx : t.effects) {
-            if (!fx || !fx->processing) continue;
-            if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
-            float* oL = t.fxl.data(); float* oR = t.fxr.data();
-            float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
-            AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
-            AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
-            Vst3ParamChanges fpc; fpc.clear();
-            drain_params(fx, fpc);
-            ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
-            ProcessData fd{};
-            fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;
-            fd.numSamples = static_cast<int32>(frames);
-            fd.numInputs = 1; fd.inputs = &ib;
-            fd.numOutputs = 1; fd.outputs = &fob;
-            fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
-            fx->processor->process(fd);
-            std::memcpy(L, oL, frames * sizeof(float));
-            std::memcpy(R, oR, frames * sizeof(float));
-        }
-        // Native audio operators. When the audio graph is active (AG-0, gok), run the
-        // compiled graph — it renders the native instrument source + native FX chain (L/R was
-        // left at silence above). Otherwise fall back to the inline in-place native FX chain.
+        // AG-0: the compiled per-track audio graph is the SOLE RT render path — it renders the source
+        // (native / VST3 instrument / sampler) then the VST3 + native FX chain into L/R. A non-derivable
+        // track (no source, or > kGraphMaxNodes devices) leaves L/R silent (gok=false).
         if (t.gok) {
             t.blk.frames = frames; t.blk.sample_rate = sample_rate;
             t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
             t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
+            t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;
             run_track_graph(t, L, R, frames);
-        } else {
-            for (vivid::AudioOp* op : t.op_effects) {
-                if (!op) continue;
-                vivid::audio_op_process(op, L, R, frames, sample_rate, static_cast<float>(bpm), bpb, beats, nullptr, 0);
-            }
         }
         t.steady += frames;
 
@@ -1530,8 +1686,8 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return -1;
     switch (tr->agnodes[i].kind) {
-        case GNKind::NativeInst: return 0;
-        case GNKind::NativeFx:   return 1;
+        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::Sampler: return 0;  // source/instrument
+        case GNKind::NativeFx:   case GNKind::Vst3Fx:   return 1;                         // effect
         case GNKind::Output:     return 2;
     }
     return -1;
@@ -1541,8 +1697,13 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     if (!tr) return "";
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return "";
-    vivid::AudioOp* op = tr->agnodes[i].op;
-    return op ? vivid::audio_op_type(op) : "";
+    const GNodeBind& nb = tr->agnodes[i];
+    if (nb.op) return vivid::audio_op_type(nb.op);
+    switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
+        case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
+        case GNKind::Sampler:                       return "Sampler";
+        default:                                    return "";
+    }
 }
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
