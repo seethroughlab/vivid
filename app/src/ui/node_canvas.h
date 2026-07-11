@@ -68,4 +68,27 @@ inline void node_card(Renderer2D& r, float x, float y, float w, float h,
     r.draw_rect(x, y, w, 3.f, accent[0], accent[1], accent[2], 1.0f);                               // accent bar
 }
 
+// A recessed preview panel (a node thumbnail well): a 1px frame + a near-black inset. Each editor
+// fills it with its own content — the visuals graph blits a GPU texture, the audio graph draws a
+// live waveform (node_waveform), an op can draw itself.
+inline void node_preview_panel(Renderer2D& r, float x, float y, float w, float h) {
+    r.draw_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);   // frame
+    r.draw_rect(x, y, w, h, 0.03f, 0.035f, 0.045f, 1.0f);                          // inset well
+}
+
+// Draw a waveform (n samples, roughly in [-1,1]) as a centred polyline inside the rect. Clamped so a
+// hot signal stays in the well. The default audio-node preview: the node's real output signal.
+inline void node_waveform(Renderer2D& r, float x, float y, float w, float h,
+                          const float* v, int n, float cr, float cg, float cb) {
+    if (!v || n < 2 || w <= 1.f) return;
+    const float midY = y + h * 0.5f, amp = h * 0.46f;
+    constexpr int kMax = 256; if (n > kMax) n = kMax;
+    float xs[kMax], ys[kMax];
+    for (int i = 0; i < n; ++i) {
+        xs[i] = x + w * (i / static_cast<float>(n - 1));
+        ys[i] = midY - std::clamp(v[i], -1.f, 1.f) * amp;
+    }
+    r.draw_polyline(xs, ys, static_cast<uint32_t>(n), 1.2f, cr, cg, cb, 0.95f);
+}
+
 }  // namespace vivid::ui

@@ -14,7 +14,7 @@ namespace vivid::ui {
 
 namespace {
 namespace P = vivid::session;
-constexpr float kCardW = 108.f, kCardH = 44.f, kGapX = 46.f, kGapY = 16.f, kPad = 12.f;
+constexpr float kCardW = 116.f, kCardH = 76.f, kGapX = 46.f, kGapY = 18.f, kPad = 12.f;   // taller: hosts a live waveform preview
 constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
 constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
 constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
@@ -196,6 +196,14 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         if (b.kind == 1) {   // effect: removable
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
+        }
+        // Live output-waveform preview — the node's real audio, in a recessed panel (shared substrate).
+        const float pvx = b.x + 6.f, pvy = b.y + 23.f, pvw = b.w - 12.f, pvh = b.h - 40.f;
+        if (pvh > 6.f) {
+            node_preview_panel(r, pvx, pvy, pvw, pvh);
+            float scope[128];
+            const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
+            if (ns > 1) node_waveform(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, scope, ns, acc[0], acc[1], acc[2]);
         }
         // Wire ports: an output nub (source; not on Output) and an input nub (target; not on inst).
         if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }

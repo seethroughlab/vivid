@@ -71,6 +71,8 @@ struct LiveMidi {
 // AudioGraph::compile), so bindings are addressed by out_buf.
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
+constexpr int      kScopeN        = 128;   // per-node output-waveform ring length (UI preview)
+constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
 
 enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, Sampler, Output };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
@@ -139,6 +141,11 @@ struct Track {
     vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
     std::vector<GNodeBind>           gbinds, gbinds_edit;
     std::vector<float>               gpool;            // node-buffer pool
+    // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
+    // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
+    // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
+    std::vector<float>               node_scope;       // kGraphMaxNodes * kScopeN
+    std::vector<uint32_t>            node_scope_head;  // kGraphMaxNodes write positions
     bool                             gok = false, gok_edit = false;
     std::mutex                       gmtx;
     std::atomic<uint64_t>            ggen{0};
@@ -277,6 +284,8 @@ static void reserve_track_graph(Track* t) {
     t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
     t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
     t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
+    t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
+    t->node_scope_head.assign(kGraphMaxNodes, 0u);
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -418,6 +427,22 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
+    }
+    // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
+    // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
+    if (!t.node_scope.empty()) {
+        for (const vivid::audio::CompiledStep& s : cg.steps) {
+            if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes) continue;
+            const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+            float* ring = t.node_scope.data() + static_cast<size_t>(s.out_buf) * kScopeN;
+            uint32_t h = t.node_scope_head[s.out_buf];
+            for (int c = 0; c < kScopePerBlock; ++c) {
+                uint32_t si = static_cast<uint32_t>((2 * c + 1)) * frames / (2u * kScopePerBlock);
+                ring[h % kScopeN] = nl[si < frames ? si : frames - 1];
+                ++h;
+            }
+            t.node_scope_head[s.out_buf] = h;
+        }
     }
     const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
     std::memcpy(L, outL, frames * sizeof(float));
@@ -1705,6 +1730,21 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
         default:                                    return "";
     }
 }
+// Copy node i's output-waveform scope (oldest→newest) into out[n]; returns samples written (0 if
+// unavailable). Display-only: node_scope is a fixed-size ring the audio thread writes lock-free, so a
+// concurrent read is benign (a torn value = a one-pixel blip). node index i == the compiled out_buf.
+int session_track_audio_graph_node_scope(Session* s, int t, int i, float* out, int n) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !out || n <= 0 || i < 0 || i >= kGraphMaxNodes ||
+        static_cast<size_t>(i + 1) * kScopeN > tr->node_scope.size()) return 0;
+    const float* ring = tr->node_scope.data() + static_cast<size_t>(i) * kScopeN;
+    const uint32_t head = tr->node_scope_head[i];   // next write position; newest is head-1
+    const int cnt = std::min(n, kScopeN);
+    for (int k = 0; k < cnt; ++k)
+        out[k] = ring[(head + kScopeN - static_cast<uint32_t>(cnt) + static_cast<uint32_t>(k)) % kScopeN];
+    return cnt;
+}
+
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;

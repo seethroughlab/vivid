@@ -205,6 +205,8 @@ int         session_track_audio_graph_node_id(Session*, int track, int i);
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_output_id(Session*, int track);
+// Node i's live output-waveform scope (oldest→newest) → out[n]; returns samples written. Display-only.
+int         session_track_audio_graph_node_scope(Session*, int track, int i, float* out, int n);
 int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
