@@ -11,6 +11,7 @@
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
+#include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
 #include "platform/platform.h"      // open_in_editor
 
@@ -111,6 +112,16 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         }
         if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
+            // Double-click a VST3 node → open its native plugin editor (replaces the old chip double-click).
+            const double now = glfwGetTime();
+            if (win.ag_last_node == b.node_id && now - win.ag_last_node_t < 0.35) {
+                if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                        S::session_audio_graph_node_controller(app.session, tr, b.node_id))) {
+                    int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
+                    if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
+                }
+                win.ag_last_node_t = -1;
+            } else { win.ag_last_node = b.node_id; win.ag_last_node_t = now; }
             win.ag_node_drag = b.node_id;                                   // start a reposition drag (any node)
             win.ag_node_dx = (mx - b.x) / win.ag_zoom;                      // grab offset in world units
             win.ag_node_dy = (my - b.y) / win.ag_zoom;

@@ -106,6 +106,7 @@ struct Window {
     float   ag_zoom = 1.f, ag_pan_x = 0.f, ag_pan_y = 0.f;
     bool    ag_panning = false; double ag_pan_mx0 = 0, ag_pan_my0 = 0; float ag_pan_ox0 = 0, ag_pan_oy0 = 0;
     double  ag_last_click_t = -1;   // for double-click-to-reset the audio-graph view
+    int     ag_last_node = -1; double ag_last_node_t = -1;   // double-click a node → open its plugin editor
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical

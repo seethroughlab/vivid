@@ -389,8 +389,8 @@ void run_frame_loop(App& app, Window& win) {
                     f.kind = FocusContext::Kind::OpEditor; f.dom = FocusContext::Dom::Visual; f.node = selop;   // UI-4b
                 } else if (selop >= 0) {
                     f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
-                } else {
-                    f.kind = FocusContext::Kind::Device; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
+                } else {   // a track's default detail view IS its audio node graph (supersedes the linear chain)
+                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 }
                 win.focus = f;
             }

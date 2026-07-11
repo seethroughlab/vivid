@@ -1745,6 +1745,18 @@ int session_track_audio_graph_node_scope(Session* s, int t, int i, float* out, i
     return cnt;
 }
 
+// The VST3 IEditController behind a graph node (Vst3Inst / Vst3Fx), so the audio graph can open the
+// plugin's native editor for it. Null for native / sampler / output nodes (which have no plugin GUI).
+void* session_audio_graph_node_controller(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return nullptr;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle->controller : nullptr;
+}
+
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;

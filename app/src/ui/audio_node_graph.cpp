@@ -155,8 +155,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     if (x1_ - x0_ < 20.f || y1_ - y0_ < 20.f) return;
 
     if (!P::session_track_audio_graph_ok(s_, track_)) {
-        r.draw_text(x0_ + 4.f, y0_ + 6.f,
-                    "No native audio graph for this track (a VST3 or audio track runs the inline path).",
+        r.draw_text(x0_ + 4.f, y0_ + 6.f, "This track has no audio graph yet \xE2\x80\x94 add an instrument or a device.",
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
         return;
     }

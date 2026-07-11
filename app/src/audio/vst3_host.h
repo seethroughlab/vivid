@@ -207,6 +207,9 @@ const char* session_track_audio_graph_node_type(Session*, int track, int i);    
 int         session_track_audio_graph_output_id(Session*, int track);
 // Node i's live output-waveform scope (oldest→newest) → out[n]; returns samples written. Display-only.
 int         session_track_audio_graph_node_scope(Session*, int track, int i, float* out, int n);
+// The VST3 IEditController behind a graph node (by node id), for opening its plugin editor; null if
+// the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
+void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
