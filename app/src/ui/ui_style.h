@@ -143,6 +143,69 @@ inline void section_header(Renderer2D& r, float x, float y, const char* label,
     r.draw_text(x + 8.f, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.78f);
 }
 
+enum class AccentEdge { None, Left, Top };
+
+// One standard interactive item substrate: flat fill, optional accent edge, 1px frame.
+// Use for clips, track headers, compact buttons, menu rows, graph palette rows, and chips.
+inline void item_box(Renderer2D& r, Rect b, const float* accent,
+                     bool hot = false, bool selected = false,
+                     AccentEdge edge = AccentEdge::Left) {
+    const Style& s = style();
+    const float* bg = hot ? s.card_hi : s.card;
+    r.draw_rect(b.x, b.y, b.w, b.h, bg[0], bg[1], bg[2], 1.0f);
+    if (accent && edge == AccentEdge::Left)
+        r.draw_rect(b.x, b.y, s.accent_bar, b.h, accent[0], accent[1], accent[2], 1.0f);
+    else if (accent && edge == AccentEdge::Top)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    const float* fr = selected ? s.sel : s.border_soft;
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, selected ? 2.f : 1.f, fr[0], fr[1], fr[2], 1.0f);
+}
+
+inline void item_box(Renderer2D& r, float x, float y, float w, float h, const float* accent,
+                     bool hot = false, bool selected = false,
+                     AccentEdge edge = AccentEdge::Left) {
+    item_box(r, { x, y, w, h }, accent, hot, selected, edge);
+}
+
+// A dark inset well for content: previews, thumbnails, meters, piano-roll substrates, and pads.
+inline void recess(Renderer2D& r, Rect b, bool framed = false) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    if (framed)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+}
+
+inline void recess(Renderer2D& r, float x, float y, float w, float h, bool framed = false) {
+    recess(r, { x, y, w, h }, framed);
+}
+
+inline void separator(Renderer2D& r, float x, float y, float w) {
+    const Style& s = style();
+    r.draw_rect(x, y, w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+}
+
+// Modal/menu shell: flat panel fill, 1px frame, standard accent/header rule.
+inline Rect overlay_panel(Renderer2D& r, Rect b, const char* title, const float* accent,
+                          bool scrim = false, Rect scrim_bounds = {}) {
+    const Style& s = style();
+    if (scrim)
+        r.draw_rect(scrim_bounds.x, scrim_bounds.y, scrim_bounds.w, scrim_bounds.h, 0.f, 0.f, 0.f, 0.45f);
+    r.draw_shadow(b.x, b.y, b.w, b.h);
+    r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    const float hh = s.panel_hd_h;
+    if (accent)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (title)
+        r.draw_text(b.x + s.s5, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
+    return { b.x + s.s4, b.y + hh + s.s2, b.w - 2.f * s.s4, b.h - hh - s.s4 };
+}
+
+inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selected = false) {
+    item_box(r, b, nullptr, hot || selected, selected, AccentEdge::None);
+}
+
 // A rotary knob: dim track arc + accent value arc + pointer; name above, value
 // below (both centred on cx). `mapped` tints the value arc toward the bridge teal.
 inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,

@@ -61,19 +61,15 @@ inline void node_grid(Renderer2D& r, const NodeView& v, float x0, float y0, floa
 inline void node_card(Renderer2D& r, float x, float y, float w, float h,
                       const float* accent, bool selected) {
     const Style& s = style();
-    if (selected) r.draw_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, s.sel[0], s.sel[1], s.sel[2], 1.0f);
-    r.draw_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, s.border[0], s.border[1], s.border[2], 1.0f);   // border
-    r.draw_rect(x, y, w, h, s.card[0], s.card[1], s.card[2], 1.0f);                                 // body
+    item_box(r, { x, y, w, h }, accent, false, selected, AccentEdge::Top);
     r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, s.card_hi[0], s.card_hi[1], s.card_hi[2], 1.0f);   // header strip
-    r.draw_rect(x, y, w, 3.f, accent[0], accent[1], accent[2], 1.0f);                               // accent bar
 }
 
 // A recessed preview panel (a node thumbnail well): a 1px frame + a near-black inset. Each editor
 // fills it with its own content — the visuals graph blits a GPU texture, the audio graph draws a
 // live waveform (node_waveform), an op can draw itself.
 inline void node_preview_panel(Renderer2D& r, float x, float y, float w, float h) {
-    r.draw_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);   // frame
-    r.draw_rect(x, y, w, h, 0.03f, 0.035f, 0.045f, 1.0f);                          // inset well
+    recess(r, { x, y, w, h }, true);
 }
 
 // Draw a waveform (n samples, roughly in [-1,1]) as a centred polyline inside the rect. Clamped so a

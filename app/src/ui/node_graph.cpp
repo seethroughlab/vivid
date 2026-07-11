@@ -436,15 +436,13 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
     r.draw_text(bx0_, by1_ - 38.f, "ADD OP", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     for (int j = 0; j < 4; ++j) {
         const float rx = bx0_ + j * 84.f, ry = by1_ - 22.f;
-        r.draw_rect(rx, ry, 80.f, 18.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-        r.draw_rect(rx, ry, 3.f, 18.f, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
+        item_box(r, { rx, ry, 80.f, 18.f }, sty.gpu);
         char b[20]; std::snprintf(b, sizeof b, "+ %s", op_name(kPalette[j]));
         r.draw_text(rx + 9.f, ry + 3.f, b, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
     }
     // Re-layout (auto-arrange) — right-aligned in the palette row.
     const float rlx = bx1_ - 96.f, rly = by1_ - 22.f;
-    r.draw_rect(rlx, rly, 88.f, 18.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-    r.draw_rect(rlx, rly, 3.f, 18.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+    item_box(r, { rlx, rly, 88.f, 18.f }, sty.gold);
     r.draw_text(rlx + 9.f, rly + 3.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
 }
 bool NodeGraph::relayout_hit(double x, double y) const { return in_rect(bx1_ - 96.f, by1_ - 22.f, 88.f, 18.f, x, y); }
@@ -730,8 +728,7 @@ void NodeGraph::draw_chooser(Renderer2D& r) {
     const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
     const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
     const float h = hdr + vis * rowh + 6.f;
-    r.draw_rect(px, py, w, h, 0.11f, 0.12f, 0.145f, 0.98f);
-    r.draw_rect(px, py, w, 2.f, 0.35f, 0.62f, 0.95f, 1.0f);  // accent bar
+    overlay_panel(r, { px, py, w, h }, nullptr, style().gpu);
     const bool empty = chooser_filter_.empty();
     const std::string f = empty ? std::string("type to filter\xE2\x80\xA6") : (chooser_filter_ + "_");
     r.draw_text(px + 10.f, py + 7.f, f.c_str(), empty ? 0.45f : 0.9f, empty ? 0.47f : 0.92f, empty ? 0.5f : 0.95f, 1.0f, 0.92f);
