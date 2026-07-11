@@ -944,11 +944,11 @@ void ClipEditor::draw(Renderer2D& r) {
     { float tx, ty, tw, th, t0, tl;
       if (vscroll_geom(tx, ty, tw, th, t0, tl)) {
           r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
-          r.draw_rounded_rect(tx + 1.f, t0, tw - 2.f, tl, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+          r.draw_rect(tx + 1.f, t0, tw - 2.f, tl, 0.42f, 0.45f, 0.52f, 0.9f);
       }
       if (hscroll_geom(tx, ty, tw, th, t0, tl)) {
           r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
-          r.draw_rounded_rect(t0, ty + 1.f, tl, th - 2.f, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+          r.draw_rect(t0, ty + 1.f, tl, th - 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
       } }
     // Step-input cursor: a gold vertical marking where the next note lands.
     if (step_mode_ && length_ > 0.0) {

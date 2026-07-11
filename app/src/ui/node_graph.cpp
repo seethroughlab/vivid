@@ -184,7 +184,7 @@ static void op_accent(VOp op, float& r, float& g, float& b) {
     }
 }
 static void port_dot(Renderer2D& rr, float px, float py, float rad, float r, float g, float b) {
-    rr.draw_rounded_rect(px - rad, py - rad, rad * 2.f, rad * 2.f, rad, r, g, b, 1.0f);  // filled circle
+    rr.draw_rect(px - rad, py - rad, rad * 2.f, rad * 2.f, r, g, b, 1.0f);  // filled circle
 }
 bool NodeGraph::op_in_port(int i, float& px, float& py) const {  // texture input: left, row 0
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_input(vg_->nodes()[i].op)) return false;
@@ -449,14 +449,14 @@ void NodeGraph::draw_op_palette(Renderer2D& r) {
     r.draw_text(bx0_, by1_ - 38.f, "ADD OP", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
     for (int j = 0; j < 4; ++j) {
         const float rx = bx0_ + j * 84.f, ry = by1_ - 22.f;
-        r.draw_rounded_rect(rx, ry, 80.f, 18.f, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        r.draw_rect(rx, ry, 80.f, 18.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
         r.draw_rect(rx, ry, 3.f, 18.f, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
         char b[20]; std::snprintf(b, sizeof b, "+ %s", op_name(kPalette[j]));
         r.draw_text(rx + 9.f, ry + 3.f, b, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
     }
     // Re-layout (auto-arrange) — right-aligned in the palette row.
     const float rlx = bx1_ - 96.f, rly = by1_ - 22.f;
-    r.draw_rounded_rect(rlx, rly, 88.f, 18.f, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+    r.draw_rect(rlx, rly, 88.f, 18.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
     r.draw_rect(rlx, rly, 3.f, 18.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
     r.draw_text(rlx + 9.f, rly + 3.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
 }
@@ -517,12 +517,12 @@ void NodeGraph::draw(Renderer2D& r) {
         const bool out = (op == VOp::Output);
         const bool active_out = out && i == active_out_idx;   // drives the viewer
         float ar, ag, ab; op_accent(op, ar, ag, ab);
-        if (i == sel_op_)  // selection ring (inspector target) — bright outline
-            r.draw_rounded_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, 7.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+        if (i == sel_op_)  // selection ring (inspector target) — bright blue outline
+            r.draw_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
         else if (active_out)  // highlight ring on the active output
-            r.draw_rounded_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, 6.f, ar, ag, ab, 1.0f);
-        r.draw_rounded_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, sty.radius_lg, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // 1px border
-        r.draw_rounded_rect(x, y, w, h, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);            // body
+            r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, ar, ag, ab, 1.0f);
+        r.draw_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // 1px border
+        r.draw_rect(x, y, w, h, sty.card[0], sty.card[1], sty.card[2], 1.0f);            // body
         r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
         r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                                                         // accent bar
         r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
@@ -566,9 +566,9 @@ void NodeGraph::draw(Renderer2D& r) {
 
     // data nodes (matching card style)
     for (auto& nd : data_) {
-        if (nd.flash > 0) { r.draw_rounded_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        r.draw_rounded_rect(nd.x - 1.f, nd.y - 1.f, nd.w + 2.f, nd.h + 2.f, sty.radius_lg, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // border
-        r.draw_rounded_rect(nd.x, nd.y, nd.w, nd.h, sty.radius, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+        if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
+        r.draw_rect(nd.x - 1.f, nd.y - 1.f, nd.w + 2.f, nd.h + 2.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // border
+        r.draw_rect(nd.x, nd.y, nd.w, nd.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
         r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
         r.draw_rect(nd.x, nd.y, nd.w, 3.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);   // teal accent (data source)
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
@@ -758,7 +758,7 @@ void NodeGraph::draw_chooser(Renderer2D& r) {
     const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
     const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
     const float h = hdr + vis * rowh + 6.f;
-    r.draw_rounded_rect(px, py, w, h, 5.f, 0.11f, 0.12f, 0.145f, 0.98f);
+    r.draw_rect(px, py, w, h, 0.11f, 0.12f, 0.145f, 0.98f);
     r.draw_rect(px, py, w, 2.f, 0.35f, 0.62f, 0.95f, 1.0f);  // accent bar
     const bool empty = chooser_filter_.empty();
     const std::string f = empty ? std::string("type to filter\xE2\x80\xA6") : (chooser_filter_ + "_");
@@ -770,7 +770,7 @@ void NodeGraph::draw_chooser(Renderer2D& r) {
         const float iy = py + hdr + vi * rowh;
         if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, rowh, 0.20f, 0.28f, 0.40f, 0.9f);
         const float dr = e.env == 0 ? 0.55f : 0.35f, dg = e.env == 0 ? 0.55f : 0.78f, db = e.env == 0 ? 0.95f : 0.55f;
-        r.draw_rounded_rect(px + 12.f, iy + rowh * 0.5f - 3.f, 6.f, 6.f, 3.f, dr, dg, db, 1.0f);
+        r.draw_rect(px + 12.f, iy + rowh * 0.5f - 3.f, 6.f, 6.f, dr, dg, db, 1.0f);
         r.draw_text(px + 26.f, iy + 4.f, e.label.c_str(), 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
         r.draw_text(px + w - 42.f, iy + 4.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
     }

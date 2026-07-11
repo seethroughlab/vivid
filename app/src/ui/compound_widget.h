@@ -42,7 +42,7 @@ inline void xy_from_cursor(const Rect& rc, double mx, double my, float& x01, flo
 // crosshair + handle; `label` (e.g. "warp / density") names the two axes.
 inline void draw_xy_pad(Renderer2D& r, const Rect& rc, float x01, float y01,
                         const float accent[3], const char* label) {
-    r.draw_rounded_rect(rc.x, rc.y, rc.w, rc.h, 3.f, 0.10f, 0.11f, 0.13f, 1.f);
+    r.draw_rect(rc.x, rc.y, rc.w, rc.h, 0.10f, 0.11f, 0.13f, 1.f);
     // center grid lines
     r.draw_line(rc.x, rc.y + rc.h * 0.5f, rc.x + rc.w, rc.y + rc.h * 0.5f, 1.f, 0.20f, 0.20f, 0.23f, 1.f);
     r.draw_line(rc.x + rc.w * 0.5f, rc.y, rc.x + rc.w * 0.5f, rc.y + rc.h, 1.f, 0.20f, 0.20f, 0.23f, 1.f);
@@ -59,7 +59,7 @@ inline void draw_xy_pad(Renderer2D& r, const Rect& rc, float x01, float y01,
 // this is just the grouping preview. `sw` is the swatch rect (typically the label column, spanning
 // the group's rows).
 inline void draw_color_swatch(Renderer2D& r, const Rect& sw, float rf, float gf, float bf) {
-    r.draw_rounded_rect(sw.x, sw.y, sw.w, sw.h, 3.f, 0.16f, 0.16f, 0.18f, 1.f);   // border/bg
+    r.draw_rect(sw.x, sw.y, sw.w, sw.h, 0.16f, 0.16f, 0.18f, 1.f);   // border/bg
     r.draw_rounded_rect(sw.x + 2.f, sw.y + 2.f, sw.w - 4.f, sw.h - 4.f, 2.f,
                         std::clamp(rf, 0.f, 1.f), std::clamp(gf, 0.f, 1.f), std::clamp(bf, 0.f, 1.f), 1.f);
 }
@@ -69,7 +69,7 @@ inline void draw_color_swatch(Renderer2D& r, const Rect& sw, float rf, float gf,
 // a01/d01/r01 are the time params normalized to their [min,max]; s01 is the 0..1 sustain level.
 inline void draw_adsr(Renderer2D& r, const Rect& rc, float a01, float d01, float s01, float r01,
                       const float accent[3], const char* label) {
-    r.draw_rounded_rect(rc.x, rc.y, rc.w, rc.h, 3.f, 0.10f, 0.11f, 0.13f, 1.f);
+    r.draw_rect(rc.x, rc.y, rc.w, rc.h, 0.10f, 0.11f, 0.13f, 1.f);
     const float uw = rc.w - 8.f, base = rc.y + rc.h - 5.f, top = rc.y + 5.f;
     const float sus_y = top + (1.f - std::clamp(s01, 0.f, 1.f)) * (base - top);
     float a = std::max(a01, 0.f), d = std::max(d01, 0.f), rl = std::max(r01, 0.f);
@@ -101,7 +101,7 @@ inline float lfo_preview_sample(int w, float ph) {
 // widget cycles it (handled by the inspector's input path). `wave` is the 0..3 waveform index.
 inline void draw_lfo(Renderer2D& r, const Rect& rc, int wave, const char* wave_name,
                      const float accent[3], const char* label) {
-    r.draw_rounded_rect(rc.x, rc.y, rc.w, rc.h, 3.f, 0.10f, 0.11f, 0.13f, 1.f);
+    r.draw_rect(rc.x, rc.y, rc.w, rc.h, 0.10f, 0.11f, 0.13f, 1.f);
     const float base = rc.y + rc.h - 5.f, top = rc.y + 5.f, x0 = rc.x + 4.f, uw = rc.w - 8.f;
     constexpr int N = 48; float xs[N], ys[N];
     for (int i = 0; i < N; ++i) {

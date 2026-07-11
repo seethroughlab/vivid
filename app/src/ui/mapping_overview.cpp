@@ -44,7 +44,7 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session
     const OvGeom o = ov_geom(n, win_w);
     const float px = o.px, py = o.py, w = o.w, rowh = o.rowh, hdr = o.hdr;
     ui.draw_rect(0.f, 40.f, static_cast<float>(win_w), static_cast<float>(win_h) - 40.f, 0.f, 0.f, 0.f, 0.45f);  // scrim
-    ui.draw_rounded_rect(px, py, w, o.h, 6.f, 0.12f, 0.13f, 0.155f, 1.0f);
+    ui.draw_rect(px, py, w, o.h, 0.12f, 0.13f, 0.155f, 1.0f);
     ui.draw_rect(px, py, w, 3.f, 0.45f, 0.62f, 0.85f, 1.0f);
     char title[48]; std::snprintf(title, sizeof title, "MAPPINGS  (%d)", n);
     ui.draw_text(px + 16.f, py + 12.f, title, 0.9f, 0.92f, 0.95f, 1.0f, 1.0f);

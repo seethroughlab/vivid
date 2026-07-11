@@ -196,7 +196,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         r.draw_rounded_rect(b.x, b.y, b.w, b.h, sty.radius,
                             sel ? sty.card_hi[0] : sty.card[0], sel ? sty.card_hi[1] : sty.card[1],
                             sel ? sty.card_hi[2] : sty.card[2], 1.0f);
-        if (sel) r.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+        if (sel) r.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
         r.draw_rect(b.x, b.y, 3.f, b.h, acc[0], acc[1], acc[2], 1.0f);
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
         const char* label = (type && *type) ? type : (b.kind == 2 ? "Output" : "?");
@@ -209,9 +209,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         }
         // Wire ports: an output dot (source; not on Output) and an input dot (target; not on inst).
         if (b.kind != 2) { const Rect p = out_port_rect(b);
-            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f); }
+            r.draw_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f); }
         if (b.kind != 0) { const Rect p = in_port_rect(b);
-            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f); }
+            r.draw_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f); }
     }
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor.
@@ -223,7 +223,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
 
     // "+ FX" affordance.
     { const Rect a = add_button_rect();
-      r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+      r.draw_rect(a.x, a.y, a.w, a.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
       r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
 
     r.pop_clip_rect();   // end graph-area clip (2i)

@@ -222,7 +222,7 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
             const bool hov = hit(r, mx, my);
             const bool aud = vivid::session::session_pool_is_audio(s, i);
             const float* acc = aud ? sty.fx : sty.teal;   // audio = violet, MIDI = teal
-            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+            ui.draw_rect(r.x, r.y, r.w, r.h, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
             ui.draw_rect(r.x, r.y + 2.f, 3.f, r.h - 4.f, acc[0], acc[1], acc[2], 1.0f);
             std::string nm = vivid::session::session_pool_name(s, i);
             if (nm.empty()) nm = "clip " + std::to_string(i + 1);
@@ -252,7 +252,7 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
         const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
         if (r.y + r.h < plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) || r.y > pp.y + pp.h) continue;  // offscreen
         const bool hov = hit(r, mx, my);
-        if (hov) ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        if (hov) ui.draw_rect(r.x, r.y, r.w, r.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
         ui.draw_text(r.x + 6.f, r.y + 3.f, fit_text(ui, vivid::session::plugin_at(i).name, r.w - 12.f, sty.fs_label).c_str(),
                      hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1], hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
     }
@@ -302,7 +302,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         if (w.app->graph->op_has_editor(selop)) {
             const Rect eb = dock_op_editor_button_rect(w.win_w, w.win_h, w.dock_h);
             const bool eh = hit(eb, mx, my);
-            ui.draw_rounded_rect(eb.x, eb.y, eb.w, eb.h, 3.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+            ui.draw_rect(eb.x, eb.y, eb.w, eb.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
             ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.gpu[0], sty.gpu[1], sty.gpu[2], eh ? 1.0f : 0.85f, sty.fs_label);
         }
         auto* g = w.app->graph;
@@ -385,7 +385,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         {
             const Rect fb = dock_op_float_button_rect(w.win_w, w.win_h, w.dock_h);
             const bool fh = hit(fb, mx, my);
-            ui.draw_rounded_rect(fb.x, fb.y, fb.w, fb.h, 3.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+            ui.draw_rect(fb.x, fb.y, fb.w, fb.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
             ui.draw_text(fb.x + 7.f, fb.y + 2.f, "Float", sty.gpu[0], sty.gpu[1], sty.gpu[2], fh ? 1.0f : 0.85f, sty.fs_label);
         }
         const float ex = 8.f, ey = y0 + 24.f, ew = w.win_w - 16.f, eht = (y0 + w.dock_h) - ey - 6.f;
@@ -440,7 +440,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     // as their own section (distinct from the params grid below). Present only in
     // track mode: inspecting a visual node hides it (handled by the early return above).
     const Rect rack = dock_chain_rect(w.win_w, w.win_h, w.dock_h);
-    ui.draw_rounded_rect(rack.x, rack.y, rack.w, rack.h, sty.radius, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+    ui.draw_rect(rack.x, rack.y, rack.w, rack.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
     ui.draw_rect(rack.x, rack.y, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);                    // top hairline
     ui.draw_rect(rack.x, rack.y + rack.h - 1.f, rack.w, 1.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);     // bottom hairline
     ui.draw_rect(rack.x, rack.y, 3.f, rack.h, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);                        // domain accent tick
@@ -457,7 +457,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const bool sel = !isAdd && w.sel_device == i;
         const float* acc = isAdd ? sty.control : ((slot.native || slot.is_instrument) ? sty.audio : sty.fx);
         draw_card(ui, b.x, b.y, b.w, b.h, acc, hit(b, mx, my) || sel);
-        if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
+        if (sel) ui.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
         if (isAdd) { ui.draw_text(b.x + 10.f, b.y + 11.f, "+ FX", 0.62f, 0.80f, 0.72f, 1.0f, 0.9f); continue; }
         const char* kicker = slot.is_instrument ? "INST" : (slot.native ? "AFX" : "FX");
         ui.draw_text(b.x + 8.f, b.y + 6.f, kicker, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.64f);
@@ -546,7 +546,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
                              hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
         const float rc[3] = { 0.90f, 0.24f, 0.28f };
         const float* c = recording ? rc : sty.dim;
-        ui.draw_rounded_rect(r.x + r.w * 0.5f - 6.f, r.y + r.h * 0.5f - 6.f, 12.f, 12.f, 6.f, c[0], c[1], c[2], 1.0f);   // filled disc
+        ui.draw_rect(r.x + r.w * 0.5f - 6.f, r.y + r.h * 0.5f - 6.f, 12.f, 12.f, c[0], c[1], c[2], 1.0f);   // filled disc
     }
     {
         const Rect r = transport_metro_rect();
@@ -558,7 +558,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_tri(r.x + r.w * 0.5f, r.y + 3.f, r.x + 3.f, r.y + r.h - 3.f, r.x + r.w - 3.f, r.y + r.h - 3.f, c[0], c[1], c[2], 1.0f);
     }
     if (w.typing) {
-        ui.draw_rounded_rect(550.f, 12.f, 40.f, 16.f, sty.radius, sty.audio[0] * 0.35f, sty.audio[1] * 0.35f, sty.audio[2] * 0.35f, 1.0f);
+        ui.draw_rect(550.f, 12.f, 40.f, 16.f, sty.audio[0] * 0.35f, sty.audio[1] * 0.35f, sty.audio[2] * 0.35f, 1.0f);
         ui.draw_text(556.f, 14.f, "TYPE", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_kicker);
     }
 
@@ -589,7 +589,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const Rect h = track_header_rect(t);
         float ar, ag, ab; track_accent(t, ar, ag, ab);
         const bool hov = hit(h, mx, my);
-        ui.draw_rounded_rect(h.x, h.y, h.w, h.h, sty.radius, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rect(h.x, h.y, h.w, h.h, hov ? sty.card_hi[0] : sty.card[0], hov ? sty.card_hi[1] : sty.card[1], hov ? sty.card_hi[2] : sty.card[2], 1.0f);
         ui.draw_rect(h.x, h.y + 3.f, 3.f, h.h - 6.f, ar, ag, ab, 1.0f);   // accent edge
         std::string nm = fit_text(ui, vivid::session::session_track_name(s, t), h.w - 28.f, sty.fs_label);
         ui.draw_text(h.x + 10.f, h.y + 6.f, nm.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
@@ -600,14 +600,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     if (tracks < vivid::session::kMaxTracks) {
         const Rect a = track_add_rect(tracks);
         const bool ah = hit(a, mx, my);
-        ui.draw_rounded_rect(a.x, a.y, a.w, a.h, sty.radius, ah ? sty.card[0] : sty.region[0], ah ? sty.card[1] : sty.region[1], ah ? sty.card[2] : sty.region[2], 1.0f);
+        ui.draw_rect(a.x, a.y, a.w, a.h, ah ? sty.card[0] : sty.region[0], ah ? sty.card[1] : sty.region[1], ah ? sty.card[2] : sty.region[2], 1.0f);
         ui.draw_text(a.x + 10.f, a.y + 6.f, "+ Track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     }
     // scene rows + clip cells
     for (int sc = 0; sc < scenes; ++sc) {
         const Rect sb = scene_launch_rect(sc);
         const bool sh = hit(sb, mx, my);
-        ui.draw_rounded_rect(sb.x, sb.y, sb.w, sb.h, sty.radius, sh ? sty.card_hi[0] : sty.card[0], sh ? sty.card_hi[1] : sty.card[1], sh ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rect(sb.x, sb.y, sb.w, sb.h, sh ? sty.card_hi[0] : sty.card[0], sh ? sty.card_hi[1] : sty.card[1], sh ? sty.card_hi[2] : sty.card[2], 1.0f);
         char sl[4]; std::snprintf(sl, sizeof sl, "%c", 'A' + sc);
         ui.draw_text(sb.x + (sb.w - ui.text_width(sl, sty.fs_body)) * 0.5f, sb.y + 5.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         ui.draw_tri(sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 15.f, sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 7.f, sb.x + sb.w * 0.5f + 4.f, sb.y + sb.h - 11.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
@@ -618,7 +618,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             const bool hov = hit(r, mx, my);
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 14.f;  // title bar
-            ui.draw_rounded_rect(r.x, r.y, r.w, r.h, sty.radius, on ? 0.115f : 0.07f, on ? 0.13f : 0.078f, on ? 0.155f : 0.095f, 1.0f);
+            ui.draw_rect(r.x, r.y, r.w, r.h, on ? 0.115f : 0.07f, on ? 0.13f : 0.078f, on ? 0.155f : 0.095f, 1.0f);
             const float k = (on ? 0.5f : 0.22f) + (hov ? 0.06f : 0.f);
             ui.draw_rect(r.x + 1.f, r.y + 1.f, r.w - 2.f, tbh, ar * k, ag * k, ab * k, 1.0f);
             if (q) ui.draw_rect(r.x, r.y, r.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
@@ -640,7 +640,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     section_header(ui, kSceneColX, my0 + 3.f, "MIX", sty.audio);
     auto viz_button = [&](const Rect& b) {
         const bool h = hit(b, mx, my);
-        ui.draw_rounded_rect(b.x, b.y, b.w, b.h, 3.f, h ? sty.card_hi[0] : sty.card[0], h ? sty.card_hi[1] : sty.card[1], h ? sty.card_hi[2] : sty.card[2], 1.0f);
+        ui.draw_rect(b.x, b.y, b.w, b.h, h ? sty.card_hi[0] : sty.card[0], h ? sty.card_hi[1] : sty.card[1], h ? sty.card_hi[2] : sty.card[2], 1.0f);
         const char* lbl = "VIZ";
         ui.draw_text(b.x + (b.w - ui.text_width(lbl, sty.fs_kicker)) * 0.5f, b.y + 3.f, lbl, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f, sty.fs_kicker);
     };
@@ -688,14 +688,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     // Pop-out toggle in the OUTPUT header (second window / performance screen).
     { const Rect pb = popout_button_rect(w.win_w, w.split_x);
       const bool pbh = hit(pb, mx, my);
-      ui.draw_rounded_rect(pb.x, pb.y, pb.w, pb.h, sty.radius, pbh ? sty.card_hi[0] : sty.card[0], pbh ? sty.card_hi[1] : sty.card[1], pbh ? sty.card_hi[2] : sty.card[2], 1.0f);
+      ui.draw_rect(pb.x, pb.y, pb.w, pb.h, pbh ? sty.card_hi[0] : sty.card[0], pbh ? sty.card_hi[1] : sty.card[1], pbh ? sty.card_hi[2] : sty.card[2], 1.0f);
       ui.draw_rect(pb.x, pb.y, sty.accent_bar, pb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
       ui.draw_text(pb.x + 8.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 Pop in" : "\xE2\x87\xB1 Pop out",
                    sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     // UI-2: toggle the visuals node graph (a deep view under the output). Lit when open.
     { const Rect gb = graph_button_rect(w.win_w, w.split_x);
       const bool gbh = hit(gb, mx, my) || w.show_graph;
-      ui.draw_rounded_rect(gb.x, gb.y, gb.w, gb.h, sty.radius, gbh ? sty.card_hi[0] : sty.card[0], gbh ? sty.card_hi[1] : sty.card[1], gbh ? sty.card_hi[2] : sty.card[2], 1.0f);
+      ui.draw_rect(gb.x, gb.y, gb.w, gb.h, gbh ? sty.card_hi[0] : sty.card[0], gbh ? sty.card_hi[1] : sty.card[1], gbh ? sty.card_hi[2] : sty.card[2], 1.0f);
       ui.draw_rect(gb.x, gb.y, sty.accent_bar, gb.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);
       ui.draw_text(gb.x + 8.f, gb.y + 2.f, "Graph", w.show_graph ? sty.gpu[0] : sty.body[0],
                    w.show_graph ? sty.gpu[1] : sty.body[1], w.show_graph ? sty.gpu[2] : sty.body[2], 1.0f, sty.fs_label); }
@@ -738,7 +738,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const float gy = static_cast<float>(my) - (static_cast<float>(w.clip_drag_y0) - src.y);
         float ar = sty.teal[0], ag = sty.teal[1], ab = sty.teal[2];
         if (!fromPool) track_accent(w.clip_drag_t, ar, ag, ab);
-        ui.draw_rounded_rect(gx, gy, src.w, src.h, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
+        ui.draw_rect(gx, gy, src.w, src.h, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.9f);
         ui.draw_rect(gx + 1.f, gy + 1.f, src.w - 2.f, 13.f, ar * 0.6f, ag * 0.6f, ab * 0.6f, 0.95f);
         char cn[24];
         if (fromPool) std::snprintf(cn, sizeof cn, "%.14s", vivid::session::session_pool_name(s, w.clip_drag_from_pool));
@@ -770,7 +770,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const std::string& pn = vivid::session::plugin_at(w.plugin_drag_i).name;
         const bool inst = (tgt == -2);
         const float gw = 156.f, gh = 20.f, gx = static_cast<float>(mx) + 10.f, gy = static_cast<float>(my) + 6.f;
-        ui.draw_rounded_rect(gx, gy, gw, gh, sty.radius, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.95f);
+        ui.draw_rect(gx, gy, gw, gh, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.95f);
         const float* bar = inst ? sty.audio : sty.fx;
         ui.draw_rect(gx, gy, 3.f, gh, bar[0], bar[1], bar[2], 1.0f);
         char pt[40]; std::snprintf(pt, sizeof pt, "%s %.24s", inst ? "\xE2\x86\x92 track:" : "\xE2\x86\x92 fx:", pn.c_str());
