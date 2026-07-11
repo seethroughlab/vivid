@@ -157,6 +157,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
+    src/gpu/splash.cpp
     src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
@@ -214,12 +215,16 @@ if(APPLE)
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm
         src/platform/menu_bar.mm
-        src/platform/midi_input.mm)
+        src/platform/midi_input.mm
+        platform/macos/Vivid.icns)   # app icon (the node-graph "V"), copied into Resources below
+    set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_ICON_FILE Vivid.icns)
 endif()
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)

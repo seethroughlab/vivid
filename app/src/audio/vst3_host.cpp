@@ -650,7 +650,16 @@ static Vst3Handle* load_role(const std::vector<std::string>& bundles,
     return nullptr;
 }
 
+namespace {
+SessionLoadCb g_load_cb = nullptr;
+void*         g_load_user = nullptr;
+inline void load_progress(const char* status) { if (g_load_cb) g_load_cb(g_load_user, status); }
+}  // namespace
+
+void session_set_load_progress(SessionLoadCb cb, void* user) { g_load_cb = cb; g_load_user = user; }
+
 Session* session_create(uint32_t sample_rate) {
+    load_progress("Scanning plug-ins...");
     std::vector<std::string> bundles;
     list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
     if (const char* home = std::getenv("HOME"))
@@ -671,6 +680,7 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
     for (const auto& role : kRoles) {
+        load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
@@ -700,6 +710,7 @@ Session* session_create(uint32_t sample_rate) {
     // tempos (warped to the session) from the Dan Mayo library if present, else
     // falls back to the procedural demo loops.
     {
+        load_progress("Loading audio loops...");
         auto at = std::make_unique<Track>();
         at->is_audio = true;
         at->name = "Audio";

@@ -21,6 +21,13 @@ struct Session;  // opaque
 // gen-counter try_lock swap never allocates) and the per-track UI arrays in window.h.
 constexpr int kMaxTracks = 32;
 
+// Optional startup load-progress hook: session_create blocks while it scans + loads the
+// default project's VST3 instruments (seconds). Set this before session_create to drive a
+// splash frame after each load phase; `status` is a short human label. Cleared by passing
+// nullptr. Runs on the calling (main) thread. Off by default.
+using SessionLoadCb = void(*)(void* user, const char* status);
+void     session_set_load_progress(SessionLoadCb cb, void* user);
+
 Session* session_create(uint32_t sample_rate);
 void     session_destroy(Session*);
 
