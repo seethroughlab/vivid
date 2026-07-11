@@ -518,8 +518,7 @@ void NodeGraph::draw(Renderer2D& r) {
         if (op_has_thumb(op)) {
             const int rows = std::max(1, op_input_rows_at(vg_, i));
             const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
-            r.draw_rect(tx - 1.f, ty - 1.f, tw + 2.f, th + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
-            r.draw_rect(tx, ty, tw, th, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
+            node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
             if (WGPUTextureView v = vg_->node_view(i)) {
                 const float srcA = vg_->rt_aspect(), dstA = tw / th;
                 float fw = tw, fh = th;
@@ -548,8 +547,7 @@ void NodeGraph::draw(Renderer2D& r) {
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         // live value history (rolling bar sparkline) in a recessed panel
         const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
-        r.draw_rect(gx - 1.f, gy - 1.f, gw + 2.f, gh + 2.f, 0.07f, 0.08f, 0.10f, 1.0f);  // frame
-        r.draw_rect(gx, gy, gw, gh, 0.03f, 0.035f, 0.045f, 1.0f);                          // panel
+        node_preview_panel(r, gx, gy, gw, gh);   // shared recessed well
         const float colw = gw / kHistN;
         for (int j = 0; j < kHistN; ++j) {
             const float v = std::clamp(nd.hist[(nd.hist_head + j) % kHistN], 0.f, 1.f);  // oldest..newest
