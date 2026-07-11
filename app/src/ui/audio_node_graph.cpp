@@ -1,5 +1,6 @@
 #include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
+#include "ui/node_canvas.h"       // shared node-editor drawing (node_card / node_wire / node_port)
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "audio/vst3_host.h"
 
@@ -21,16 +22,9 @@ constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top
 // API exposes the value but not the enum choice labels, so the widget names them by convention.
 const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
 
-void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
-    constexpr int N = 24; float xs[N], ys[N];
-    const float dx = std::max(std::fabs(x1 - x0) * 0.5f, 22.f);
-    const float c1x = x0 + dx, c2x = x1 - dx;
-    for (int i = 0; i < N; ++i) {
-        const float t = i / float(N - 1), u = 1.f - t;
-        xs[i] = u*u*u*x0 + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*x1;
-        ys[i] = u*u*u*y0 + 3*u*u*t*y0  + 3*u*t*t*y1  + t*t*t*y1;
-    }
-    r.draw_polyline(xs, ys, N, 2.0f, c[0], c[1], c[2], 0.9f);
+// Forward to the shared substrate bezier so both editors draw identical wires.
+inline void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
+    node_wire(r, x0, y0, x1, y1, c[0], c[1], c[2]);
 }
 }  // namespace
 
@@ -193,25 +187,19 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         const AudioNodeBox& b = boxes[i];
         const float* acc = b.kind == 0 ? sty.audio : (b.kind == 1 ? sty.fx : sty.control);
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
-        r.draw_rounded_rect(b.x, b.y, b.w, b.h, sty.radius,
-                            sel ? sty.card_hi[0] : sty.card[0], sel ? sty.card_hi[1] : sty.card[1],
-                            sel ? sty.card_hi[2] : sty.card[2], 1.0f);
-        if (sel) r.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
-        r.draw_rect(b.x, b.y, 3.f, b.h, acc[0], acc[1], acc[2], 1.0f);
+        node_card(r, b.x, b.y, b.w, b.h, acc, sel);   // shared: border/body/header/top accent + blue sel ring
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
         const char* label = (type && *type) ? type : (b.kind == 2 ? "Output" : "?");
-        r.draw_text(b.x + 10.f, b.y + 7.f, label, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+        r.draw_text(b.x + 10.f, b.y + 6.f, label, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "instrument" : (b.kind == 1 ? "effect" : "output");
-        r.draw_text(b.x + 10.f, b.y + b.h - 15.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.7f);
+        r.draw_text(b.x + 10.f, b.y + b.h - 13.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.66f);
         if (b.kind == 1) {   // effect: removable
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
         }
-        // Wire ports: an output dot (source; not on Output) and an input dot (target; not on inst).
-        if (b.kind != 2) { const Rect p = out_port_rect(b);
-            r.draw_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f); }
-        if (b.kind != 0) { const Rect p = in_port_rect(b);
-            r.draw_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f); }
+        // Wire ports: an output nub (source; not on Output) and an input nub (target; not on inst).
+        if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
+        if (b.kind != 0) { const Rect p = in_port_rect(b);  node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]); }
     }
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor.
