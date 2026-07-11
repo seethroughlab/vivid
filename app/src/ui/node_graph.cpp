@@ -1,4 +1,5 @@
 #include "ui/node_graph.h"
+#include "ui/node_canvas.h"   // shared card/wire/port/grid + NodeView
 #include "ui/ui_style.h"   // design tokens (region colours, borders, type ramp)
 #include "gpu/visual_graph.h"    // VisualNode / nodes()
 #include "gpu/loaded_operator.h" // UI-4b: reach an op's dylib editor via dynamic_cast
@@ -182,9 +183,6 @@ static void op_accent(VOp op, float& r, float& g, float& b) {
         case VOp::Output: r = 0.93f; g = 0.78f; b = 0.38f; break;                   // output: amber
         default:          r = 0.60f; g = 0.45f; b = 0.85f; break;                   // effect: violet
     }
-}
-static void port_dot(Renderer2D& rr, float px, float py, float rad, float r, float g, float b) {
-    rr.draw_rect(px - rad, py - rad, rad * 2.f, rad * 2.f, r, g, b, 1.0f);  // filled circle
 }
 bool NodeGraph::op_in_port(int i, float& px, float& py) const {  // texture input: left, row 0
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_input(vg_->nodes()[i].op)) return false;
@@ -423,17 +421,6 @@ bool NodeGraph::in_rect(float rx, float ry, float rw, float rh, double x, double
     return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
 }
 
-static void draw_wire(Renderer2D& r, float x0, float y0, float x1, float y1, float cr, float cg, float cb) {
-    const int N = 26; float xs[N], ys[N];
-    float dx = std::fabs(x1 - x0) * 0.5f; if (dx < 28.f) dx = 28.f;
-    const float c1x = x0 + dx, c1y = y0, c2x = x1 - dx, c2y = y1;
-    for (int i = 0; i < N; ++i) {
-        const float t = i / float(N - 1), u = 1.f - t;
-        xs[i] = u*u*u*x0 + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*x1;
-        ys[i] = u*u*u*y0 + 3*u*u*t*c1y + 3*u*t*t*c2y + t*t*t*y1;
-    }
-    r.draw_polyline(xs, ys, N, 2.2f, cr, cg, cb, 1.0f);
-}
 
 // ---- op palette (add nodes) ----
 static const VOp kPalette[4] = { VOp::Plasma, VOp::Video, VOp::Feedback, VOp::Blur };
@@ -470,15 +457,9 @@ void NodeGraph::draw(Renderer2D& r) {
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
     r.set_transform(view_ox_, view_oy_, view_scale_);
-    // grid: cover the visible world region; 1px-on-screen line width = 1/scale world
-    const float gs = 38.f;
-    const float gx0 = bx0_ - 6.f, gy0 = by0_ - 6.f, gx1 = bx1_ + 6.f, gy1 = by1_ + 6.f;
-    double wl, wt, wr, wb; to_world(gx0, gy0, wl, wt); to_world(gx1, gy1, wr, wb);
-    const float lw = 1.f / view_scale_;
-    for (float gx = std::floor(float(wl) / gs) * gs; gx < float(wr); gx += gs)
-        r.draw_rect(gx, float(wt), lw, float(wb - wt), 0.105f, 0.115f, 0.14f, 1.0f);
-    for (float gy = std::floor(float(wt) / gs) * gs; gy < float(wb); gy += gs)
-        r.draw_rect(float(wl), gy, float(wr - wl), lw, 0.105f, 0.115f, 0.14f, 1.0f);
+    // grid: cover the visible world region (shared substrate)
+    { const NodeView v{ view_ox_, view_oy_, view_scale_ };
+      node_grid(r, v, bx0_ - 6.f, by0_ - 6.f, bx1_ + 6.f, by1_ + 6.f); }
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input)
@@ -486,7 +467,7 @@ void NodeGraph::draw(Renderer2D& r) {
         const int in = vg_->nodes()[i].input;
         float ox, oy, ix, iy;
         if (in >= 0 && in < n && op_out_port(in, ox, oy) && op_in_port(i, ix, iy))
-            draw_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
+            node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
     }
     // param wires (data node -> per-node param port)
     for (int i = 0; i < n; ++i) {
@@ -497,15 +478,15 @@ void NodeGraph::draw(Renderer2D& r) {
             const int dn = find_source_node(*src);
             float px, py; if (dn < 0 || !param_port(i, l, px, py)) continue;
             float ox, oy; data_out(data_[dn], ox, oy);
-            draw_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
+            node_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
         }
     }
     // drag preview
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < n + int(data_.size())) {
-        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy); draw_wire(r, ox, oy, float(cx_), float(cy_), 0.55f, 0.85f, 0.80f); }
+        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy); node_wire(r, ox, oy, float(cx_), float(cy_), 0.55f, 0.85f, 0.80f); }
     }
     if (drag_mode_ == 4 && wire_from_ >= 0) {
-        float ox, oy; if (op_out_port(wire_from_, ox, oy)) draw_wire(r, ox, oy, float(cx_), float(cy_), 0.5f, 0.65f, 0.9f);
+        float ox, oy; if (op_out_port(wire_from_, ox, oy)) node_wire(r, ox, oy, float(cx_), float(cy_), 0.5f, 0.65f, 0.9f);
     }
 
     // op-nodes (classic-style cards)
@@ -517,23 +498,19 @@ void NodeGraph::draw(Renderer2D& r) {
         const bool out = (op == VOp::Output);
         const bool active_out = out && i == active_out_idx;   // drives the viewer
         float ar, ag, ab; op_accent(op, ar, ag, ab);
-        if (i == sel_op_)  // selection ring (inspector target) — bright blue outline
-            r.draw_rect(x - 3.f, y - 3.f, w + 6.f, h + 6.f, sty.sel[0], sty.sel[1], sty.sel[2], 1.0f);
-        else if (active_out)  // highlight ring on the active output
+        const float acc[3] = { ar, ag, ab };
+        if (i != sel_op_ && active_out)  // active-output ring (accent) when not the inspector selection
             r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, ar, ag, ab, 1.0f);
-        r.draw_rect(x - 1.f, y - 1.f, w + 2.f, h + 2.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // 1px border
-        r.draw_rect(x, y, w, h, sty.card[0], sty.card[1], sty.card[2], 1.0f);            // body
-        r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
-        r.draw_rect(x, y, w, 3.f, ar, ag, ab, 1.0f);                                                         // accent bar
+        node_card(r, x, y, w, h, acc, i == sel_op_);   // shared: blue ring if selected + border/body/header/accent
         r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
         if (op_in_port(i, px, py)) {  // texture input
-            port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+            node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
             r.draw_text(px + 10.f, py - 5.f, "in", 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
         }
-        if (op_out_port(i, px, py)) port_dot(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
+        if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
         if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
         // thumbnail: a recessed panel with the node's live output drawn on top via
         // Renderer2D's textured-quad path (scales/pans with the view, clipped to the
@@ -558,7 +535,7 @@ void NodeGraph::draw(Renderer2D& r) {
             float px, py; if (!param_port(i, l, px, py)) continue;
             const char* name = node_plabel(vg_, i, l);
             const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
-            port_dot(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
+            node_port(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
             r.draw_text(px + 10.f, py - 5.f, name,
                         on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.68f);
         }
@@ -567,10 +544,7 @@ void NodeGraph::draw(Renderer2D& r) {
     // data nodes (matching card style)
     for (auto& nd : data_) {
         if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        r.draw_rect(nd.x - 1.f, nd.y - 1.f, nd.w + 2.f, nd.h + 2.f, sty.border[0], sty.border[1], sty.border[2], 1.0f);  // border
-        r.draw_rect(nd.x, nd.y, nd.w, nd.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-        r.draw_rect(nd.x + 1.f, nd.y + 3.f, nd.w - 2.f, 20.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);  // header strip
-        r.draw_rect(nd.x, nd.y, nd.w, 3.f, sty.teal[0], sty.teal[1], sty.teal[2], 1.0f);   // teal accent (data source)
+        node_card(r, nd.x, nd.y, nd.w, nd.h, sty.teal, false);   // shared card (teal accent = data source)
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         // live value history (rolling bar sparkline) in a recessed panel
         const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
@@ -585,7 +559,7 @@ void NodeGraph::draw(Renderer2D& r) {
         // current-value readout bar under the panel
         r.draw_rect(gx, nd.y + 62.f, gw * std::clamp(nd.value, 0.f, 1.f), 4.f, 0.31f, 0.80f, 0.75f, 1.0f);
         float px, py; data_out(nd, px, py);
-        port_dot(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
+        node_port(r, px, py, 5.f, 0.31f, 0.80f, 0.75f);
     }
 
     r.set_transform(0.f, 0.f, 1.f);   // back to identity for chrome
