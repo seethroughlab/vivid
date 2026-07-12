@@ -248,6 +248,7 @@ int         session_track_audio_graph_node_count(Session*, int track);
 int         session_track_audio_graph_node_id(Session*, int track, int i);
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
+int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
 int         session_track_audio_graph_output_id(Session*, int track);
 // Node i's live output-waveform scope (oldest→newest) → out[n]; returns samples written. Display-only.
 int         session_track_audio_graph_node_scope(Session*, int track, int i, float* out, int n);
@@ -288,8 +289,10 @@ int         session_track_audio_graph_node_pos(Session*, int track, int i, float
 int         session_track_audio_graph_authoritative(Session*, int track);
 // Graph load (persistence). Host assigns fresh node ids (remap saved ids). Sequence:
 // clear -> load_node* (+ set node params) -> load_edge* -> finish_load(output). kind: 0 inst / 1 fx / 2 output.
+// plugin_kind (0 native/1 vst3/2 clap/3 sampler) selects the placeholder for a non-native source/fx node:
+// the VST3/CLAP handle is bound after the (async) plugin load lands (rebind on rebuild/finish_load).
 void        session_audio_graph_clear      (Session*, int track);
-int         session_audio_graph_load_node  (Session*, int track, int kind, const char* op_type);   // -> new node id
+int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type);   // -> new node id
 void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
 void        session_audio_graph_finish_load(Session*, int track, int output_id);
 

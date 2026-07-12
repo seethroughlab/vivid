@@ -124,6 +124,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 const int kind = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
                 jn["kind"] = kind;
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
+                // Binding family so the loader can rebuild a VST3/CLAP source or effect node (whose "op"
+                // is a plugin display name, not a native operator) as a placeholder instead of dropping
+                // it. 0 native (omitted) / 1 vst3 / 2 clap / 3 sampler; the handle rebinds on plugin load.
+                if (const int pk = vivid::session::session_track_audio_graph_node_plugin_kind(s, t, i)) jn["src"] = pk;
                 float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
                 if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
                 if (kind == 0) {   // source: persist its key range (a key-split has disjoint ranges)
@@ -211,6 +215,18 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     return j;
 }
 
+// True if the track's saved authoritative graph has a VST3 instrument source node (a source node,
+// kind 0, whose binding family "src" is 1 = vst3). Such a track must load its VST3 synchronously on
+// reload (there is no async VST3 loader) so rebind can bind the handle into the Vst3Inst placeholder.
+static bool graph_source_is_vst3(const json& jt) {
+    if (!jt.contains("audio_graph")) return false;
+    const auto& g = jt["audio_graph"];
+    if (!g.contains("nodes")) return false;
+    for (const auto& jn : g["nodes"])
+        if (jn.value("kind", 1) == 0 && jn.value("src", 0) == 1) return true;
+    return false;
+}
+
 // v2: the document owns the track SET. Replace the live tracks with the document's, so
 // the existing per-track restore loop (below) then fills state onto them by index. An
 // instrument that won't load on this machine falls back to an audio placeholder, keeping
@@ -223,27 +239,22 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
         int added;
         if (kind == "audio") {
             added = vivid::session::session_add_audio_track(s);
-        } else if (jt.contains("audio_graph")) {
-            // A rewired (authoritative) track: the graph carries the instrument + effects, so create
-            // a bare native track and let the audio_graph block below populate it.
+        } else if (jt.contains("audio_graph") && graph_source_is_vst3(jt)) {
+            // A rewired (authoritative) track whose source is a VST3 instrument. VST3 has no async
+            // loader, so load it synchronously as the track's instrument (matches session startup);
+            // the audio_graph block below rebuilds the authoritative topology and rebind binds the
+            // handle into the Vst3Inst source node. Its preset is restored by the `state` block below.
+            const std::string inst = jt.value("instrument", jt.value("name", std::string()));
+            added = vivid::session::session_add_instrument_track(s, inst.c_str());
+            if (added < 0) {   // plugin missing on this machine: keep the topology, source stays silent
+                std::fprintf(stderr, "[vivid] load: VST3 source '%s' unavailable — bare graph track (silent source)\n", inst.c_str());
+                added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            }
+        } else if (jt.contains("audio_graph") || jt.contains("clap_instrument")) {
+            // A rewired (authoritative) track OR a bare CLAP-instrument track: create a bare native
+            // graph track. The authoritative graph block below (if any) rebuilds the topology; the
+            // CLAP instrument itself is loaded async (requested after the id restore below).
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
-            // A graph-authoritative track may ALSO carry a CLAP instrument (save writes both keys) —
-            // restore it + its state so they aren't lost. NOTE: the authoritative graph loader still
-            // recreates only native op nodes, so a CLAP *source node's* graph binding isn't yet rebuilt
-            // on load (tracked as a follow-up); the plugin + patch state are at least preserved here.
-            if (added >= 0 && jt.contains("clap_instrument"))
-                vivid::session::session_request_track_clap_instrument_state(
-                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
-                    jt.value("state", std::string()).c_str());
-        } else if (jt.contains("clap_instrument")) {
-            // A CLAP-instrument track: a bare instrument track with the plugin attached from its path.
-            // Load ASYNC (a slow plugin ctor must not block load_project on the main thread) and carry
-            // the saved patch `state` so it's restored once the load lands (session_poll_plugin_loads).
-            added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
-            if (added >= 0)
-                vivid::session::session_request_track_clap_instrument_state(
-                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
-                    jt.value("state", std::string()).c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
@@ -252,8 +263,19 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
                 added = vivid::session::session_add_audio_track(s);
             }
         }
-        // Restore the stable id so saved mappings ("track_<id>.…") reload onto the same track.
+        // Restore the stable id BEFORE issuing any async plugin request. enqueue_clap_load captures
+        // the track's stable id, and session_poll_plugin_loads resolves the completion by that id —
+        // so if we requested first and renumbered after, the completion would carry the pre-restore
+        // id, find no matching track, and drop the loaded handle (the CLAP would never bind).
         if (added >= 0 && jt.contains("id")) vivid::session::session_set_track_id(s, added, jt.value("id", added));
+        // Async CLAP instrument load (+ saved patch state), for both authoritative-graph and bare-CLAP
+        // tracks. A slow plugin ctor must not block load on the main thread; poll_plugin_loads applies
+        // the completion — and for an authoritative graph, binds the handle into the CLAP source node's
+        // placeholder (rebuilt from the node's "src" discriminator) so the graph source plays.
+        if (added >= 0 && jt.contains("clap_instrument"))
+            vivid::session::session_request_track_clap_instrument_state(
+                s, added, jt["clap_instrument"].get<std::string>().c_str(),
+                jt.value("state", std::string()).c_str());
     }
 }
 
@@ -369,7 +391,7 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                     for (const auto& jn : g["nodes"]) {
                         const int saved = jn.value("id", -1);
                         const int nid = vivid::session::session_audio_graph_load_node(
-                            s, t, jn.value("kind", 1), jn.value("op", std::string()).c_str());
+                            s, t, jn.value("kind", 1), jn.value("src", 0), jn.value("op", std::string()).c_str());
                         if (nid < 0) continue;
                         id_map[saved] = nid;
                         if (jn.contains("x") && jn.contains("y"))   // restore the editor position
