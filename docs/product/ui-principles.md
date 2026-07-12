@@ -30,10 +30,12 @@ explicitly (an ADR), not to quietly violate it.
 
 ## Sharpened by ADR-0013
 
-1. **Session is home; graphs and rich editors are deep views you drill into.** The node graph is
-   *"a depth, not a place"* — reached contextually from a selected object, never a permanent pane
-   competing for space. *(Recommits [ADR-0002](../decisions/ADR-0002-session-view-first.md) +
-   [ADR-0007](../decisions/ADR-0007-node-graph-contextual-deep-view.md).)*
+1. **In the audio domain, session is home; graphs and rich editors are deep views you drill into.**
+   A track's audio graph is *"a depth, not a place"* — reached contextually from a selected object,
+   never a permanent pane competing for space. *(Recommits
+   [ADR-0002](../decisions/ADR-0002-session-view-first.md) +
+   [ADR-0007](../decisions/ADR-0007-node-graph-contextual-deep-view.md).)* The **visual** domain
+   inverts this — see principle 5 — because visual authoring happens *on* the graph.
 
 2. **One focused editor at a time (progressive disclosure).** An explicit *focus context* — what
    the user chose to open — drives a single detail region. The UI never multiplexes a region
@@ -51,8 +53,15 @@ explicitly (an ADR), not to quietly violate it.
    from operator metadata via a compound-widget registry (ADSR / XY-pad / color / LFO). Don't cram
    a rich editor into inspector param-rows, and don't make inspectors bespoke per operator.
 
-5. **The visual output is the always-on canvas.** The rendered output — the thing you're making —
-   is persistently on screen. The visual graph is its *depth*, opened on demand.
+5. **In the visual domain, the graph is home and the output is a floatable surface.** Visual
+   authoring *is* graph work, so the visuals graph is the persistent visual zone. The rendered
+   output — the artifact — is a floating preview over it that can pop out to its own OS window
+   (second display, live performance). Its identity (resolution, aspect, fit, preview/pop-out) lives
+   as **params on the Output node**, not in app chrome — so it is inspectable, persisted, and
+   MCP-addressable like any operator param. *(Amended by
+   [ADR-0014](../decisions/ADR-0014-visual-graph-is-home.md), which replaces ADR-0013's
+   "output is the always-on canvas, graph is its depth". Audio keeps session-is-home,
+   graph-is-depth — parity, not symmetry.)*
 
 6. **Editors are floatable.** A deep view can pop out to its own OS window (second monitor, live
    performance), reusing the App/Window seam. Docked and floating are the same editor.
