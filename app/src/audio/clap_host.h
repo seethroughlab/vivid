@@ -15,13 +15,17 @@
 #include <clap/ext/state.h>
 #include <clap/ext/audio-ports.h>
 #include <clap/ext/note-ports.h>
+#include <clap/ext/preset-load.h>
+#include <clap/factory/preset-discovery.h>
 
 #include "audio/base64.h"
 
 #include <atomic>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -119,6 +123,7 @@ struct ClapHandle {
     const clap_plugin_state_t*       ext_state = nullptr;
     const clap_plugin_audio_ports_t* ext_audio_ports = nullptr;
     const clap_plugin_note_ports_t*  ext_note_ports = nullptr;
+    const clap_plugin_preset_load_t* ext_preset_load = nullptr;
 
     bool   activated = false, processing = false, has_note_in = false;
     uint32_t audio_in = 0, audio_out = 2, max_block = 0;
@@ -207,6 +212,9 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     h->ext_state       = static_cast<const clap_plugin_state_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_STATE));
     h->ext_audio_ports = static_cast<const clap_plugin_audio_ports_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_AUDIO_PORTS));
     h->ext_note_ports  = static_cast<const clap_plugin_note_ports_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_NOTE_PORTS));
+    h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD));
+    if (!h->ext_preset_load)
+        h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
 
     if (h->ext_note_ports)
         h->has_note_in = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
@@ -302,6 +310,149 @@ inline bool clap_load_state(ClapHandle* h, const std::string& b64) {
         return static_cast<int64_t>(take);
     };
     return h->ext_state->load(h->plugin, &is);
+}
+
+// --- Preset browse (clap.preset-discovery factory) + load (clap.preset-load ext) ---
+// A single discovered preset. `location_kind` + `location` + `load_key` are what preset-load
+// wants; `id` is a flat token the host round-trips through MCP (a file path, or "clap:<key>").
+struct ClapPresetInfo { std::string name, id; };
+
+// Load a preset by the flat id produced by clap_list_presets. Main-thread only.
+inline bool clap_load_preset(ClapHandle* h, const std::string& id) {
+    if (!h || !h->ext_preset_load || id.empty()) return false;
+    if (id.rfind("clap:", 0) == 0)   // plugin-internal preset: location null, load_key follows
+        return h->ext_preset_load->from_location(h->plugin, CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN,
+                                                 nullptr, id.c_str() + 5);
+    return h->ext_preset_load->from_location(h->plugin, CLAP_PRESET_DISCOVERY_LOCATION_FILE,
+                                             id.c_str(), nullptr);   // a file path
+}
+
+// Collector threaded through the discovery indexer + metadata receiver callbacks.
+struct ClapDiscovery {
+    std::vector<std::string> exts;                              // declared file extensions (no dot)
+    std::vector<std::pair<uint32_t, std::string>> locations;   // (kind, path)
+    uint32_t cur_kind = 0; std::string cur_loc;                // set before each get_metadata
+    std::vector<ClapPresetInfo>* out = nullptr;
+    size_t cap = 4000;                                         // safety cap on the list size
+};
+inline bool CLAP_ABI clap_idx_declare_filetype(const clap_preset_discovery_indexer_t* ix,
+                                               const clap_preset_discovery_filetype_t* ft) {
+    auto* d = static_cast<ClapDiscovery*>(ix->indexer_data);
+    if (ft && ft->file_extension && *ft->file_extension) {
+        std::string e = ft->file_extension; if (!e.empty() && e[0] == '.') e.erase(0, 1);
+        d->exts.push_back(e);
+    }
+    return true;
+}
+inline bool CLAP_ABI clap_idx_declare_location(const clap_preset_discovery_indexer_t* ix,
+                                               const clap_preset_discovery_location_t* loc) {
+    auto* d = static_cast<ClapDiscovery*>(ix->indexer_data);
+    if (loc) d->locations.push_back({ loc->kind, loc->location ? loc->location : "" });
+    return true;
+}
+inline bool CLAP_ABI clap_idx_declare_soundpack(const clap_preset_discovery_indexer_t*,
+                                                const clap_preset_discovery_soundpack_t*) { return true; }
+inline const void* CLAP_ABI clap_idx_get_extension(const clap_preset_discovery_indexer_t*, const char*) { return nullptr; }
+inline bool CLAP_ABI clap_rx_begin_preset(const clap_preset_discovery_metadata_receiver_t* rx,
+                                          const char* name, const char* load_key) {
+    auto* d = static_cast<ClapDiscovery*>(rx->receiver_data);
+    if (d->out->size() >= d->cap) return false;
+    ClapPresetInfo pi;
+    pi.name = name && *name ? name : (load_key ? load_key : "");
+    if (d->cur_kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN)
+        pi.id = std::string("clap:") + (load_key ? load_key : "");
+    else
+        pi.id = d->cur_loc;   // a file path; load_key on file presets is usually null
+    if (!pi.name.empty() && !pi.id.empty()) d->out->push_back(std::move(pi));
+    return true;
+}
+
+// Case-insensitive substring test (for the browse filter).
+inline bool clap_ci_contains(const std::string& hay, const std::string& needle) {
+    if (needle.empty()) return true;
+    auto lower = [](std::string s) { for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; };
+    return lower(hay).find(lower(needle)) != std::string::npos;
+}
+
+// Enumerate a loaded CLAP plugin's presets via its DSO's preset-discovery factory. Main-thread
+// (filesystem crawl); safe to call off the audio path. Appends to `out`. For FILE presets the
+// filename stem IS the name (fast: no per-file get_metadata read — Surge alone ships ~5k patches);
+// `filter` narrows by a case-insensitive substring so the list stays usable + quick.
+inline void clap_list_presets(ClapHandle* h, std::vector<ClapPresetInfo>& out, const std::string& filter = "") {
+    if (!h || !h->entry) return;
+    auto* factory = static_cast<const clap_preset_discovery_factory_t*>(
+        h->entry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID));
+    if (!factory)
+        factory = static_cast<const clap_preset_discovery_factory_t*>(
+            h->entry->get_factory(CLAP_PRESET_DISCOVERY_FACTORY_ID_COMPAT));
+    if (!factory) return;
+
+    ClapDiscovery d; d.out = &out;
+    clap_preset_discovery_indexer_t indexer{};
+    indexer.clap_version = CLAP_VERSION;
+    indexer.name = "Vivid"; indexer.vendor = "Vivid"; indexer.url = "https://vivid.app"; indexer.version = "1.0";
+    indexer.indexer_data = &d;
+    indexer.declare_filetype  = &clap_idx_declare_filetype;
+    indexer.declare_location  = &clap_idx_declare_location;
+    indexer.declare_soundpack = &clap_idx_declare_soundpack;
+    indexer.get_extension     = &clap_idx_get_extension;
+
+    clap_preset_discovery_metadata_receiver_t rx{};
+    rx.receiver_data = &d;
+    rx.begin_preset = &clap_rx_begin_preset;
+    // The remaining receiver callbacks are metadata we ignore — the provider may call any of them.
+    rx.on_error         = [](const clap_preset_discovery_metadata_receiver_t*, int32_t, const char*) {};
+    rx.add_plugin_id    = [](const clap_preset_discovery_metadata_receiver_t*, const clap_universal_plugin_id_t*) {};
+    rx.set_soundpack_id = [](const clap_preset_discovery_metadata_receiver_t*, const char*) {};
+    rx.set_flags        = [](const clap_preset_discovery_metadata_receiver_t*, uint32_t) {};
+    rx.add_creator      = [](const clap_preset_discovery_metadata_receiver_t*, const char*) {};
+    rx.set_description   = [](const clap_preset_discovery_metadata_receiver_t*, const char*) {};
+    rx.set_timestamps   = [](const clap_preset_discovery_metadata_receiver_t*, clap_timestamp, clap_timestamp) {};
+    rx.add_feature      = [](const clap_preset_discovery_metadata_receiver_t*, const char*) {};
+    rx.add_extra_info   = [](const clap_preset_discovery_metadata_receiver_t*, const char*, const char*) {};
+
+    namespace fs = std::filesystem;
+    const uint32_t nprov = factory->count(factory);
+    for (uint32_t p = 0; p < nprov && out.size() < d.cap; ++p) {
+        const auto* pd = factory->get_descriptor(factory, p);
+        if (!pd || !pd->id) continue;
+        const auto* prov = factory->create(factory, &indexer, pd->id);
+        if (!prov) continue;
+        d.exts.clear(); d.locations.clear();
+        if (prov->init(prov)) {
+            for (const auto& [kind, path] : d.locations) {
+                if (out.size() >= d.cap) break;
+                if (kind == CLAP_PRESET_DISCOVERY_LOCATION_PLUGIN) {
+                    d.cur_kind = kind; d.cur_loc.clear();
+                    prov->get_metadata(prov, kind, nullptr, &rx);
+                    continue;
+                }
+                std::error_code ec;
+                // FILE presets: the filename stem is the name; no per-file get_metadata (5k reads).
+                auto push_file = [&](const fs::path& fp) {
+                    std::string ext = fp.extension().string();
+                    if (!ext.empty() && ext[0] == '.') ext.erase(0, 1);
+                    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                    bool match_ext = d.exts.empty();
+                    for (const auto& e : d.exts) { if (clap_ci_contains(ext, e) && ext.size() == e.size()) { match_ext = true; break; } }
+                    if (!match_ext) return;
+                    const std::string name = fp.stem().string();
+                    if (!clap_ci_contains(name, filter)) return;
+                    out.push_back({ name, fp.string() });
+                };
+                if (fs::is_directory(path, ec)) {
+                    for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+                         it != end && out.size() < d.cap; it.increment(ec)) {
+                        if (ec) break;
+                        if (it->is_regular_file(ec)) push_file(it->path());
+                    }
+                } else if (fs::is_regular_file(path, ec)) {
+                    push_file(path);
+                }
+            }
+        }
+        prov->destroy(prov);
+    }
 }
 
 }  // namespace vivid::session

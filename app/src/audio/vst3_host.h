@@ -195,6 +195,13 @@ int         session_track_clap_effect_count(Session*, int track);
 const char* session_track_clap_effect_path(Session*, int track, int index);
 std::string session_get_track_clap_effect_state(Session*, int track, int index);
 void        session_set_track_clap_effect_state(Session*, int track, int index, const std::string& state);
+// Generic instrument preset browse/load (no per-plugin code). scan fills the cache + returns the
+// count; name/id read it by index; load applies a preset by its id. CLAP today (VST3 = follow-up).
+int         session_track_preset_scan(Session*, int track, const char* filter);   // filter = "" for all
+int         session_track_preset_count(Session*, int track);
+const char* session_track_preset_name(Session*, int track, int index);
+const char* session_track_preset_id(Session*, int track, int index);
+bool        session_track_preset_load(Session*, int track, const char* id);
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
 int         session_audio_op_param_hint(Session*, int track, int index, int param);   // VividDisplayHint (0 = DEFAULT)

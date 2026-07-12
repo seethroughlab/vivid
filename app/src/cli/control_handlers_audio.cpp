@@ -289,6 +289,31 @@ void register_audio_handlers(Handlers& handlers_) {
         if (idx < 0) return err(code::kBadArg, "could not load CLAP effect: '" + path + "'");
         json r = ok(); r["index"] = idx; return r;
     };
+    // Generic preset browse/load for a track's instrument (no per-plugin code). list_presets
+    // scans + returns [{name,id}]; the agent picks by name (sonic-intent guidance) and calls
+    // load_preset with the id. CLAP today via the plugin's preset-discovery + preset-load exts.
+    handlers_["list_presets"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string filter = b.value("filter", std::string());   // narrow by name substring
+        const int n = P::session_track_preset_scan(c.session, track, filter.c_str());
+        json arr = json::array();
+        for (int i = 0; i < n; ++i)
+            arr.push_back({ {"name", P::session_track_preset_name(c.session, track, i)},
+                            {"id",   P::session_track_preset_id(c.session, track, i)} });
+        json r = ok(); r["count"] = n; r["presets"] = arr; return r;
+    };
+    handlers_["load_preset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string id = b.value("id", b.value("preset", std::string()));
+        if (id.empty()) return err(code::kBadArg, "need a preset id (from list_presets)");
+        if (!P::session_track_preset_load(c.session, track, id.c_str()))
+            return err(code::kBadArg, "preset load failed (no CLAP instrument, or unknown id): '" + id + "'");
+        return ok();
+    };
     handlers_["remove_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), effect = b.value("effect", 0);

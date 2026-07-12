@@ -142,6 +142,9 @@ struct Track {
     ClapHandle*              clap_inst = nullptr;
     std::vector<ClapHandle*> clap_effects;
     std::vector<ClapHandle*> clap_retired;
+    // Preset browse cache (UI thread only): (display name, load id) for the track's instrument,
+    // filled by session_track_preset_scan and read by the count/name/id accessors.
+    std::vector<std::pair<std::string, std::string>> preset_cache;
     // AG-0 audio graph (ADR-0012). Working copies (audio thread) + edit copies (UI thread),
     // published via ggen/gmtx like the FX chain. `gok` gates the graph path per track (false
     // => inline). Working buffers are reserved to capacity so the audio-thread copy from the
@@ -999,6 +1002,44 @@ void session_set_track_clap_effect_state(Session* s, int t, int i, const std::st
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || st.empty()) return;
     const auto& e = s->tracks[t]->clap_effects;
     if (i >= 0 && i < static_cast<int>(e.size())) clap_load_state(e[i], st);
+}
+
+// --- Preset browse / load for a track's instrument (generic; no per-plugin code). ---
+// Scan the instrument's presets into the track cache. CLAP: the plugin's preset-discovery
+// factory. VST3: TODO (.vstpreset scan); returns 0 for now. Returns the preset count.
+int session_track_preset_scan(Session* s, int t, const char* filter) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    Track& tr = *s->tracks[t];
+    tr.preset_cache.clear();
+    if (tr.clap_inst) {
+        std::vector<ClapPresetInfo> pl;
+        clap_list_presets(tr.clap_inst, pl, filter ? filter : "");
+        tr.preset_cache.reserve(pl.size());
+        for (auto& p : pl) tr.preset_cache.push_back({ std::move(p.name), std::move(p.id) });
+    }
+    // (VST3 .vstpreset directory scan: a follow-up; the demos run on the CLAP Surge.)
+    return static_cast<int>(tr.preset_cache.size());
+}
+int session_track_preset_count(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    return static_cast<int>(s->tracks[t]->preset_cache.size());
+}
+const char* session_track_preset_name(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
+    const auto& c = s->tracks[t]->preset_cache;
+    return (i >= 0 && i < static_cast<int>(c.size())) ? c[i].first.c_str() : "";
+}
+const char* session_track_preset_id(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
+    const auto& c = s->tracks[t]->preset_cache;
+    return (i >= 0 && i < static_cast<int>(c.size())) ? c[i].second.c_str() : "";
+}
+// Load a preset by its id (from the scan). CLAP: preset-load ext. Returns true on success.
+bool session_track_preset_load(Session* s, int t, const char* id) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !id) return false;
+    Track& tr = *s->tracks[t];
+    if (tr.clap_inst) return clap_load_preset(tr.clap_inst, id);
+    return false;   // VST3 .vstpreset load: a follow-up
 }
 int session_audio_clip_bpm(Session* s, int t, int sc) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;

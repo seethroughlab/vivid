@@ -753,6 +753,33 @@ def list_instruments() -> dict:
 
 
 @mcp.tool
+def list_presets(track: int, filter: str = "") -> dict:
+    """Browse the presets/patches of a track's instrument — GENERIC (no per-plugin code).
+    Returns [{name, id}]. `filter` narrows by a case-insensitive name substring; USE IT — a
+    synth can ship thousands of patches (Surge ~5k). Pick by matching the name to the SOUND you
+    want and pass its `id` to load_preset.
+
+    Sonic guidance (the point of this flow): you know the musical intent; you choose the patch.
+    State the target in plain terms, then filter/scan for a matching name:
+      pad / warm / strings / choir   -> lush sustained beds     (avoid: lead, bass, pluck)
+      bass / sub / 808 / reese       -> low end
+      lead / solo / saw / pluck      -> melodic top
+      keys / ep / piano / bell       -> tonal comping
+      arp / seq / motion             -> rhythmic
+    If unsure, show the user a shortlist with why each fits and let them choose.
+    (CLAP instruments today, e.g. Surge XT; VST3 preset browse is a follow-up.)"""
+    return _post("list_presets", {"track": track, "filter": filter})
+
+
+@mcp.tool
+def load_preset(track: int, id: str) -> dict:
+    """Load a preset onto a track's instrument by the `id` from list_presets (a patch file path
+    or an internal key). Audibly changes the timbre and is saved with the project (save_project
+    captures the plugin state). Use after list_presets to give a part its voice."""
+    return _post("load_preset", {"track": track, "id": id})
+
+
+@mcp.tool
 def add_track(instrument: str = "", kind: str = "instrument") -> dict:
     """Create a track. kind="instrument" (default) needs `instrument` (a list_instruments
     label or a .vst3 path); kind="audio" makes a sampler track (no instrument). Returns the
