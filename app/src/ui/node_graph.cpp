@@ -380,6 +380,10 @@ void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, floa
     op_pos_.push_back({ x, y });
 }
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
+void NodeGraph::chain_load_set_input_b(int i, int input) { if (vg_) vg_->set_input_b(i, input); }
+int  NodeGraph::op_input_b_at(int i) const {
+    return (vg_ && i >= 0 && i < static_cast<int>(vg_->nodes().size())) ? vg_->nodes()[i].input_b : -1;
+}
 std::string NodeGraph::op_asset_at(int i) const {
     return op_node_valid(vg_, i) ? vg_->nodes()[i].asset : std::string();
 }

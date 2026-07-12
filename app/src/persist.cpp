@@ -192,6 +192,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             params[g.op_param_label_at(i, p)] = g.op_param_base_at(i, p);
         json jn = { {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
                     {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
+        if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // 2-in ops (Composite)
         const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
         if (!asset.empty()) jn["asset"] = asset;
         chain.push_back(jn);
@@ -414,6 +415,7 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             }
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 g.chain_load_set_input(i, ch[i].value("in", -1));
+                g.chain_load_set_input_b(i, ch[i].value("in_b", -1));   // 2-in ops (Composite)
                 if (ch[i].contains("asset"))   // CustomShader .glsl reference (project-relative)
                     g.set_op_asset_at(i, ch[i]["asset"].get<std::string>());
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {

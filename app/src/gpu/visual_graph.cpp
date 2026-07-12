@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 
 namespace vivid {
 
@@ -133,8 +134,8 @@ void VisualGraph::remove_node(int i) {
     }
     nodes_.erase(nodes_.begin() + i);
     for (auto& n : nodes_) {
-        if (n.input == i) n.input = -1;
-        else if (n.input > i) --n.input;
+        if (n.input == i) n.input = -1;           else if (n.input   > i) --n.input;
+        if (n.input_b == i) n.input_b = -1;       else if (n.input_b > i) --n.input_b;
     }
     ensure_resources(nodes_.size());
 }
@@ -142,6 +143,11 @@ void VisualGraph::set_input(int node, int input) {
     if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
     if (input == node) return;                       // no self-loops
     nodes_[node].input = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
+}
+void VisualGraph::set_input_b(int node, int input) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
+    if (input == node) return;                       // no self-loops
+    nodes_[node].input_b = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
 }
 int VisualGraph::output_index() const {
     int first = -1;
@@ -175,23 +181,33 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
     if (outIdx < 0) return;
     const int feed = nodes_[outIdx].input;
 
-    // Walk the input chain back from the node feeding Output, then reverse.
-    std::vector<int> order; std::vector<char> seen(nodes_.size(), 0);
-    for (int cur = feed; cur >= 0 && cur < static_cast<int>(nodes_.size()) && !seen[cur]; cur = nodes_[cur].input) {
-        seen[cur] = 1; order.push_back(cur);
-    }
-    std::reverse(order.begin(), order.end());
+    // Topological order via a post-order DFS from the node feeding Output, over BOTH inputs
+    // (port A + port B). Each node lands after its inputs; a shared node renders once (both
+    // consumers read its RT). This subsumes the old linear back-walk (a single-input chain
+    // yields the identical order) and supports 2-in ops (Composite). `state`: 0 unvisited,
+    // 1 in-progress (a cycle edge is skipped), 2 done.
+    std::vector<int> order; std::vector<char> state(nodes_.size(), 0);
+    const int nnodes = static_cast<int>(nodes_.size());
+    std::function<void(int)> visit = [&](int i) {
+        if (i < 0 || i >= nnodes || state[i]) return;
+        state[i] = 1;
+        visit(nodes_[i].input);
+        visit(nodes_[i].input_b);
+        state[i] = 2;
+        order.push_back(i);
+    };
+    visit(feed);
 
     for (int idx : order) {
         VisualNode& n = nodes_[idx];
         if (!n.inst.op) continue;
-        const int in = n.input;
-        const bool hasIn = (in >= 0 && in < static_cast<int>(nodes_.size()));
-        WGPUTextureView inview = nullptr;
-        if (n.op == VOp::Video)   inview = video_tex;       // external source feeds the generator
-        else if (hasIn)           inview = rts_[in].view;
-        if (!inview)              inview = fallback_.view;  // disconnected -> black
-        WGPUTextureView inputs[1] = { inview };
+        const int inA = n.input, inB = n.input_b;
+        WGPUTextureView va = (inA >= 0 && inA < nnodes) ? rts_[inA].view : fallback_.view;
+        if (n.op == VOp::Video) va = video_tex;             // external source feeds the generator
+        if (!va) va = fallback_.view;
+        WGPUTextureView vb = (inB >= 0 && inB < nnodes) ? rts_[inB].view : fallback_.view;
+        WGPUTextureView inputs[2] = { va, vb };
+        const uint32_t nin = static_cast<uint32_t>(std::min(n.inst.input_port_count, 2));
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
@@ -200,8 +216,8 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         ctx.output_texture = rts_[idx].tex;
         ctx.output_texture_view = rts_[idx].view;
         ctx.output_width = rtW_; ctx.output_height = rtH_; ctx.output_format = fmt_;
-        ctx.input_texture_views = (n.inst.input_port_count > 0) ? inputs : nullptr;
-        ctx.input_texture_count = (n.inst.input_port_count > 0) ? 1u : 0u;
+        ctx.input_texture_views = (nin > 0) ? inputs : nullptr;
+        ctx.input_texture_count = nin;
 
         sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
                     static_cast<int>(n.params.size()));
