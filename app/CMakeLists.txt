@@ -145,6 +145,19 @@ FetchContent_MakeAvailable(clap)
 add_library(clap_headers INTERFACE)
 target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
 
+# --- FreeType (real font rendering — hinted glyph atlas + glyph outlines for text geometry).
+# Vendored via FetchContent as vivid-4 did; minimal build (TrueType only, no optional codecs). ---
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+FetchContent_Declare(freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG        VER-2-13-3
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(freetype)
+
 # MACOSX_BUNDLE is required so hosted VST3 plugin GUI windows receive mouse
 # events: a non-bundled CLI process can't become a proper foreground app, so its
 # secondary NSWindows render but stay non-interactive.
@@ -254,7 +267,7 @@ target_compile_definitions(vivid PRIVATE
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio signalsmith_stretch vst3_iids clap_headers z nlohmann_json::nlohmann_json httplib::httplib)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio signalsmith_stretch vst3_iids clap_headers freetype z nlohmann_json::nlohmann_json httplib::httplib)
 
 if(APPLE)
     target_link_libraries(vivid PRIVATE

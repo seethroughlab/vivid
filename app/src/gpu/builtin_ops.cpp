@@ -7,7 +7,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "stb_truetype.h"       // declarations only; the impl (STB_TRUETYPE_IMPLEMENTATION) is in renderer_2d.cpp
+#include "gpu/freetype_font.h"   // FreeType face wrapper (hinted glyph bitmaps + outlines)
 
 #include <array>
 #include <cstdio>
@@ -459,8 +459,7 @@ struct TextOp : OperatorBase, GpuProcessable, AssetShader {
 
     // Text source (asset file) + baked font.
     std::string asset_path_, loaded_path_, text_, baked_text_;
-    std::vector<unsigned char> font_data_;
-    stbtt_fontinfo font_{}; bool font_ok_ = false, font_tried_ = false;
+    FtFont font_; bool font_tried_ = false;   // FreeType face: hinted glyph bitmaps + kerning
     // GPU.
     bool tried_ = false;
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
@@ -486,35 +485,39 @@ struct TextOp : OperatorBase, GpuProcessable, AssetShader {
     }
 
     void ensure_font() {
-        if (font_tried_) return;
+        if (font_.ok || font_tried_) return;
         font_tried_ = true;
-        std::ifstream f(VIVID_FONT_PATH, std::ios::binary);
-        if (!f) return;
-        font_data_.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
-        font_ok_ = !font_data_.empty() && stbtt_InitFont(&font_, font_data_.data(), 0);
+        font_.load(VIVID_FONT_PATH, 180);       // FreeType: raster the atlas at 180px
     }
-    // Bake `text_` into a tight R8 coverage texture. No-op string -> a 1x1 transparent texture.
+    // Bake `text_` into a tight R8 coverage texture via FreeType (hinted + kerned). Empty -> 1x1.
     void bake(const VividGpuContext* c) {
         ensure_font();
-        const std::string s = text_.empty() || !font_ok_ ? std::string() : text_;
-        const float rh = 180.f;
-        float sc = font_ok_ ? stbtt_ScaleForPixelHeight(&font_, rh) : 0.f;
-        int asc = 0, desc = 0, lg = 0;
-        if (font_ok_) stbtt_GetFontVMetrics(&font_, &asc, &desc, &lg);
-        const int base = static_cast<int>(asc * sc);
-        const int H = std::max(1, static_cast<int>((asc - desc) * sc) + 2);
-        float wf = 0.f;
-        for (unsigned char ch : s) { int adv = 0, lsb = 0; stbtt_GetCodepointHMetrics(&font_, ch, &adv, &lsb); wf += adv * sc; }
+        const std::string s = (text_.empty() || !font_.ok) ? std::string() : text_;
+        FT_Face face = font_.face;
+        const int base = font_.ascent() + 1;
+        const int H = std::max(1, font_.ascent() + font_.descent() + 2);
+        float wf = 0.f; uint32_t prev = 0;                 // measure: advances + kerning
+        for (unsigned char ch : s) {
+            wf += font_.kerning(prev, ch);
+            if (!FT_Load_Char(face, ch, FT_LOAD_RENDER)) wf += static_cast<float>(face->glyph->advance.x >> 6);
+            prev = ch;
+        }
         const int W = std::max(1, static_cast<int>(wf) + 2);
         std::vector<unsigned char> bmp(static_cast<size_t>(W) * H, 0);
-        float pen = 1.f;
+        float pen = 1.f; prev = 0;
         for (unsigned char ch : s) {
-            int x0, y0, x1, y1; stbtt_GetCodepointBitmapBox(&font_, ch, sc, sc, &x0, &y0, &x1, &y1);
-            const int gw = x1 - x0, gh = y1 - y0;
-            const int ox = static_cast<int>(pen) + x0, oy = base + y0;
-            if (gw > 0 && gh > 0 && ox >= 0 && oy >= 0 && ox + gw <= W && oy + gh <= H)
-                stbtt_MakeCodepointBitmap(&font_, bmp.data() + static_cast<size_t>(oy) * W + ox, gw, gh, W, sc, sc, ch);
-            int adv = 0, lsb = 0; stbtt_GetCodepointHMetrics(&font_, ch, &adv, &lsb); pen += adv * sc;
+            pen += font_.kerning(prev, ch);
+            if (FT_Load_Char(face, ch, FT_LOAD_RENDER)) { prev = ch; continue; }
+            FT_GlyphSlot gsl = face->glyph;
+            const int ox = static_cast<int>(pen) + gsl->bitmap_left, oy = base - gsl->bitmap_top;
+            for (int row = 0; row < static_cast<int>(gsl->bitmap.rows); ++row)
+                for (int col = 0; col < static_cast<int>(gsl->bitmap.width); ++col) {
+                    const int ax = ox + col, ay = oy + row;
+                    if (ax >= 0 && ay >= 0 && ax < W && ay < H)
+                        bmp[static_cast<size_t>(ay) * W + ax] = gsl->bitmap.buffer[row * gsl->bitmap.pitch + col];
+                }
+            pen += static_cast<float>(gsl->advance.x >> 6);
+            prev = ch;
         }
         // (Re)create the R8 texture at W x H.
         if (txtv_) { wgpuTextureViewRelease(txtv_); txtv_ = nullptr; }
