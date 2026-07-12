@@ -220,6 +220,14 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             // A rewired (authoritative) track: the graph carries the instrument + effects, so create
             // a bare native track and let the audio_graph block below populate it.
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            // A graph-authoritative track may ALSO carry a CLAP instrument (save writes both keys) —
+            // restore it + its state so they aren't lost. NOTE: the authoritative graph loader still
+            // recreates only native op nodes, so a CLAP *source node's* graph binding isn't yet rebuilt
+            // on load (tracked as a follow-up); the plugin + patch state are at least preserved here.
+            if (added >= 0 && jt.contains("clap_instrument"))
+                vivid::session::session_request_track_clap_instrument_state(
+                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
+                    jt.value("state", std::string()).c_str());
         } else if (jt.contains("clap_instrument")) {
             // A CLAP-instrument track: a bare instrument track with the plugin attached from its path.
             // Load ASYNC (a slow plugin ctor must not block load_project on the main thread) and carry

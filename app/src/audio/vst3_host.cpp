@@ -113,6 +113,7 @@ struct Track {
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
+    std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
     Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
                                            // notes); on the Track so both the inline path AND the
@@ -248,8 +249,10 @@ struct Session {
     // minutes) must NOT run on the main thread, or it wedges the frame loop + the control-server
     // drain. Requests run on one background worker; session_poll_plugin_loads() applies the
     // finished handles on the main thread (all Track/graph edits stay UI-thread). ---
-    struct ClapLoadReq  { int track; bool is_instrument; std::string path; double sr; std::string state; };
-    struct ClapLoadDone { int track; bool is_instrument; std::string path; ClapHandle* handle; std::string state; };
+    // track_id is the STABLE per-track id (not the slot index) — a load can finish after tracks are
+    // reordered/removed (e.g. opening another project), so the completion must re-resolve identity.
+    struct ClapLoadReq  { int track_id; bool is_instrument; std::string path; double sr; std::string state; };
+    struct ClapLoadDone { int track_id; bool is_instrument; std::string path; ClapHandle* handle; std::string state; };
     std::thread              clap_worker;
     std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
     std::condition_variable  clap_load_cv;
@@ -651,7 +654,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
     else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64);
+    t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
@@ -668,7 +671,7 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
     t->name = name;
     for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64);
+    t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->effects.reserve(16); t->effects_edit.reserve(16);
@@ -1495,6 +1498,8 @@ static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext
 static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
     h->events.clear();
     clap_flush_params(h);
+    for (const NoteEvent& ne : t.scene_rel)   // scene-switch note-offs first, so held voices release
+        h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     for (const NoteEvent& ne : t.nev)
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     float* out[2] = { L, R };
@@ -1633,10 +1638,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
+            t.scene_rel.clear();   // scene-switch note-offs for the CLAP path (parallel to t.vev)
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
                     t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(t.vev, t.nev, t.eev);
+                    t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
                 }
@@ -1840,7 +1847,7 @@ static void clap_worker_main(Session* s) {
         ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
         {
             std::lock_guard<std::mutex> lk(s->clap_load_mtx);
-            s->clap_done.push_back({ req.track, req.is_instrument, req.path, h, std::move(req.state) });
+            s->clap_done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state) });
         }
     }
 }
@@ -1850,10 +1857,11 @@ static void ensure_clap_worker(Session* s) {
 static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path, const char* state) {
     ensure_clap_worker(s);
     const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
+    const int tid = s->tracks[t]->id;   // capture the STABLE id (callers validated t in range)
     {
         std::lock_guard<std::mutex> lk(s->clap_load_mtx);
         s->clap_last_error.clear();
-        s->clap_reqs.push_back({ t, is_instrument, clap_path, sr, state ? state : "" });
+        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "" });
     }
     s->clap_pending.fetch_add(1, std::memory_order_release);
     s->clap_load_cv.notify_one();
@@ -1896,8 +1904,10 @@ void session_poll_plugin_loads(Session* s) {
     }
     for (auto& d : done) {
         ClapHandle* h = d.handle;
-        if (d.track >= 0 && d.track < static_cast<int>(s->tracks.size())) {
-            Track& tr = *s->tracks[d.track];
+        Track* trp = nullptr;                                // resolve the STABLE id to the current slot
+        for (auto& tp : s->tracks) if (tp->id == d.track_id) { trp = tp.get(); break; }
+        if (trp) {
+            Track& tr = *trp;
             if (d.is_instrument) {
                 if (h && !h->has_note_in) { delete h; h = nullptr; s->clap_last_error = d.path + ": not a CLAP instrument"; }
                 if (h) {
