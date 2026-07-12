@@ -168,9 +168,7 @@ VOp VisualGraph::generator() const {
     return VOp::Plasma;
 }
 
-void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
-                         float vx, float vy, float vw, float vh, float time,
-                         WGPUTextureView video_tex) {
+void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex) {
     ensure_resources(nodes_.size());
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
     const int outIdx = output_index();
@@ -240,21 +238,16 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
     }
     ++frame_;
-
-    if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
-        WGPUTextureView f[1] = { rts_[feed].view };
-        blit_.render(enc, screen, vx, vy, vw, vh, /*clear*/false, f, 1, time, nullptr, 0);
-    }
 }
 
 void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
-                             float vx, float vy, float vw, float vh, float time) {
+                             float vx, float vy, float vw, float vh, float time, bool clear) {
     const int outIdx = output_index();
     if (outIdx < 0) return;
     const int feed = nodes_[outIdx].in(0);
     if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
         WGPUTextureView f[1] = { rts_[feed].view };
-        blit_.render(enc, view, vx, vy, vw, vh, /*clear*/true, f, 1, time, nullptr, 0);
+        blit_.render(enc, view, vx, vy, vw, vh, clear, f, 1, time, nullptr, 0);
     }
 }
 

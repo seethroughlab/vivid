@@ -86,20 +86,24 @@ public:
         return (i >= 0 && i < static_cast<int>(nodes_.size())) ? make_instance(nodes_[i], type) : false;
     }
 
-    void render(WGPUCommandEncoder enc, WGPUTextureView screen,
-                float vx, float vy, float vw, float vh, float time,
-                WGPUTextureView video_tex);
-    // Blit the already-rendered output FBO (from the last render()) into another view —
-    // e.g. a pop-out window's surface, fullscreen. Does NOT re-run the graph.
+    // Run the chain: every node's operator renders into its own RenderTarget. Does NOT touch the
+    // screen — presenting is a separate step (ADR-0014), so the caller can draw the node graph
+    // first and blit the output OVER it (the floating preview sits above the canvas).
+    void run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex);
+    // Blit the already-rendered output FBO (from the last run_chain()) into a view at a rect —
+    // the floating preview, or a pop-out window's surface. Letterboxes per the Output node's fit
+    // mode, so every surface shows the output's true aspect. Does NOT re-run the graph.
     void present_to(WGPUCommandEncoder enc, WGPUTextureView view,
-                    float vx, float vy, float vw, float vh, float time);
+                    float vx, float vy, float vw, float vh, float time, bool clear);
 
     WGPUTextureView node_view(int idx) const {
         if (idx < 0 || idx >= static_cast<int>(rts_.size())) return nullptr;
         if (idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output) return nullptr;
         return rts_[idx].view;
     }
-    float rt_aspect() const { return rtH_ ? static_cast<float>(rtW_) / static_cast<float>(rtH_) : 1.f; }
+    float    rt_aspect() const { return rtH_ ? static_cast<float>(rtW_) / static_cast<float>(rtH_) : 1.f; }
+    uint32_t rt_w() const { return rtW_; }
+    uint32_t rt_h() const { return rtH_; }
 
 private:
     void ensure_resources(size_t n);

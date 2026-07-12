@@ -56,10 +56,13 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)
-    // Tab -> open the operator chooser at the cursor (visuals pane only).
+    // Tab -> open the operator chooser at the cursor. The graph now owns the whole visuals column
+    // (ADR-0014), so this is the ONE way to add an op: anywhere over the column, above the dock.
     if (key == GLFW_KEY_TAB && app->graph) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
-        if (win->show_graph && mx >= win->split_x) { app->graph->chooser_show(mx, my); return; }
+        if (mx >= win->split_x && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+            app->graph->chooser_show(mx, my); return;
+        }
     }
 
     // File shortcuts (⌘N/⌘O/⌘S/⇧⌘S) are owned by the native File menu (AppKit intercepts
@@ -123,17 +126,28 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->sidebar_w = (win->sidebar_w > 0.f) ? 0.f : vivid::ui::kSidebarW;
         return;
     }
-    // Pop-out visuals window toggle (OUTPUT header).
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
-        && hit(vivid::ui::popout_button_rect(win->win_w, win->split_x), mx, my)) {
-        vivid::toggle_popout(*app, *win);
-        return;
+    // ADR-0014: the floating OUTPUT preview. It sits ON TOP of the graph canvas, so its handles are
+    // tested BEFORE the graph gets the press (below) — otherwise dragging the preview would pan the
+    // canvas underneath it.
+    if (win->preview_show && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (hit(win->preview_close(), mx, my)) { win->preview_show = false; return; }
+        if (hit(vivid::ui::preview_popout_rect(win->preview_x, win->preview_y, win->preview_w), mx, my)) {
+            vivid::toggle_popout(*app, *win); return;
+        }
+        if (hit(win->preview_grip(), mx, my)) {
+            win->preview_resize = true; win->preview_grab_x = mx - win->preview_w; return;
+        }
+        if (hit(win->preview_header(), mx, my)) {
+            win->preview_drag = true;
+            win->preview_grab_x = mx - win->preview_x; win->preview_grab_y = my - win->preview_y;
+            return;
+        }
+        if (hit(win->preview_panel(), mx, my)) return;   // clicks on the output itself: consume, don't pan
     }
-    // UI-2: reveal/hide the visuals node graph (a deep view under the output).
-    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
-        && hit(vivid::ui::graph_button_rect(win->win_w, win->split_x), mx, my)) {
-        win->show_graph = !win->show_graph;
-        if (!win->show_graph && app->graph) app->graph->select_op(-1);   // closing clears node focus
+    // The graph "Re-layout" chrome (top-right of the visuals column).
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
+        && hit(vivid::ui::graph_relayout_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
+        app->graph->layout_nodes();
         return;
     }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
@@ -193,6 +207,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false;
+        win->preview_drag = false; win->preview_resize = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
         if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
@@ -258,7 +273,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
     // mixer: ARM buttons (record-arm) then gain sliders.
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
-    if (win->show_graph && app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it
+    if (app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it (it owns the visuals column)
     // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
     if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;
 }

@@ -32,8 +32,8 @@ namespace vivid::input {
 // around the cursor). Neither "consumes" the scroll (matches the original fall-through order), so
 // this returns void and is called last in scroll_callback.
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
-    // Visuals pane: zoom the node graph around the cursor.
-    if (win.show_graph && app.graph && mx >= win.split_x)
+    // Visuals column: zoom the node graph around the cursor (the graph owns the column, ADR-0014).
+    if (app.graph && mx >= win.split_x && my < win.dock_top())
         app.graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
     // Audio-graph deep view: zoom around the cursor (keeps the point under the cursor fixed).
     if (win.focus.kind == vivid::FocusContext::Kind::AudioGraph && app.session) {
@@ -190,7 +190,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
 
 // Right-click a visuals op node -> open its context menu (Open source / Clone & Edit).
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my) {
-    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && win.show_graph && app.graph && mx >= win.split_x) {
+    if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && app.graph && mx >= win.split_x) {
         const int on = app.graph->op_at(mx, my);
         if (on >= 0) {
             win.node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,

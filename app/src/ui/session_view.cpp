@@ -615,23 +615,16 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     ui.pop_clip_rect();  // end DAW pane
     // (clip drag feedback is drawn later as a screen-space overlay — it can cross the sidebar↔grid boundary)
 
-    // ================= visuals pane (Output + Signal regions; content drawn by the GPU / node graph) =================
+    // ================= visuals zone (ADR-0014: the node graph IS the zone) =================
+    // The graph draws itself (frame.cpp) into this column; no enclosing panel frame — the canvas
+    // is the surface. Only the column's thin cyan domain accent + its corner chrome live here.
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
-    char oh[48]; std::snprintf(oh, sizeof oh, "OUTPUT \xC2\xB7 %s", w.app->visual_source ? "VIDEO" : "SHADER");
-    panel_frame(ui, w.output_panel(), oh, sty.gpu);
-    // Pop-out toggle in the OUTPUT header (second window / performance screen).
-    { const Rect pb = popout_button_rect(w.win_w, w.split_x);
-      const bool pbh = hit(pb, mx, my);
-      item_box(ui, pb, sty.gpu, pbh);
-      ui.draw_text(pb.x + 8.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 Pop in" : "\xE2\x87\xB1 Pop out",
-                   sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-    // UI-2: toggle the visuals node graph (a deep view under the output). Lit when open.
-    { const Rect gb = graph_button_rect(w.win_w, w.split_x);
-      const bool gbh = hit(gb, mx, my) || w.show_graph;
-      item_box(ui, gb, sty.gpu, gbh, w.show_graph);
-      ui.draw_text(gb.x + 8.f, gb.y + 2.f, "Graph", w.show_graph ? sty.gpu[0] : sty.body[0],
-                   w.show_graph ? sty.gpu[1] : sty.body[1], w.show_graph ? sty.gpu[2] : sty.body[2], 1.0f, sty.fs_label); }
-    if (w.show_graph) panel_frame(ui, w.signal_panel(), "SIGNAL \xC2\xB7 VISUALS", sty.gpu);
+    { const Rect g = w.visuals_panel();
+      ui.draw_rect(g.x, g.y, 2.f, g.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);   // domain edge accent
+      const Rect rl = graph_relayout_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
+      const bool rlh = hit(rl, mx, my);
+      item_box(ui, rl, sty.gpu, rlh);
+      ui.draw_text(rl.x + 8.f, rl.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     ui.pop_clip_rect();
 
     // DAW | visuals splitter (on top, unclipped)
@@ -754,6 +747,40 @@ void draw_node_menu(Renderer2D& ui, const Window& w) {
         ui.draw_text(m.x + 12.f, m.y + 5.f, "Clone & Edit", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
     else
         ui.draw_text(m.x + 12.f, m.y + 5.f, "built-in \xC2\xB7 no editable source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+}
+
+// ADR-0014: the floating OUTPUT preview's chrome. The body is NOT filled here — the output FBO was
+// already blitted into it by the GPU pass — so this only draws the frame, header and handles over
+// it. Shadowed, because unlike a region panel this thing floats above the graph canvas.
+void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my) {
+    const Style& sty = style();
+    const Rect p = w.preview_panel();
+    ui.draw_shadow(p.x, p.y, p.w, p.h);
+    char title[64];
+    std::snprintf(title, sizeof title, "OUTPUT \xC2\xB7 %d\xC3\x97%d",
+                  w.app && w.app->vgraph ? static_cast<int>(w.app->vgraph->rt_w()) : 0,
+                  w.app && w.app->vgraph ? static_cast<int>(w.app->vgraph->rt_h()) : 0);
+    panel_frame(ui, p, title, sty.gpu);
+    // Pop the output out to its own window (second display / performance screen).
+    { const Rect pb = preview_popout_rect(w.preview_x, w.preview_y, w.preview_w);
+      const bool pbh = hit(pb, mx, my);
+      item_box(ui, pb, sty.gpu, pbh, w.popout != nullptr);
+      ui.draw_text(pb.x + 6.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 In" : "\xE2\x87\xB1 Out",
+                   sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+    // Close × (hides the preview; the output keeps rendering — the graph and the pop-out still show it).
+    { const Rect cb = w.preview_close();
+      const bool cbh = hit(cb, mx, my);
+      ui.draw_text(cb.x + 2.f, cb.y - 1.f, "\xC3\x97", cbh ? sty.body[0] : sty.dim[0],
+                   cbh ? sty.body[1] : sty.dim[1], cbh ? sty.body[2] : sty.dim[2], 1.0f, sty.fs_label); }
+    // Bottom-right resize grip: two hard rules, no rounding.
+    { const Rect g = w.preview_grip();
+      const bool gh = hit(g, mx, my);
+      const float* c = gh ? sty.gpu : sty.border;
+      for (int i = 1; i <= 2; ++i) {
+          const float o = i * 4.f;
+          ui.draw_rect(g.x + g.w - o, g.y + g.h - 3.f, o, 1.f, c[0], c[1], c[2], 1.0f);
+          ui.draw_rect(g.x + g.w - 3.f, g.y + g.h - o, 1.f, o, c[0], c[1], c[2], 1.0f);
+      } }
 }
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.

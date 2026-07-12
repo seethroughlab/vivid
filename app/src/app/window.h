@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>          // std::min / std::max (preview placement)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
 
@@ -53,10 +54,18 @@ struct Window {
     float dpi = 1.0f;
     float split_x = 512.f;   // DAW|visuals splitter x
     float dock_h  = 210.f;   // bottom device-view dock height
-    // UI-2 (ADR-0013): the visuals graph is a deep view, not a permanent pane. By default the
-    // right column is the always-on OUTPUT canvas (filling the column); toggling this reveals
-    // the node graph below the output (the drill-in "edit its graph" view).
-    bool  show_graph = false;
+    // V1 (ADR-0014): the visuals GRAPH is the persistent right column, and the rendered output
+    // floats over it as a movable/resizable preview panel. `preview_show` mirrors the Output
+    // node's `preview` param (V4); the geometry is view state. preview_x < 0 = "not placed yet"
+    // (the frame loop parks it in the column's bottom-right on the first frame it draws).
+    bool  preview_show = true;
+    float preview_x = -1.f, preview_y = -1.f, preview_w = 420.f;
+    bool  preview_drag = false, preview_resize = false;
+    double preview_grab_x = 0, preview_grab_y = 0;   // cursor->panel offset while dragging
+    // The live output aspect (w/h), cached from VisualGraph::rt_aspect() each frame so the pure
+    // geometry helpers (and the input hit-tests) can derive the preview's height without this
+    // header having to know about the GPU layer. Derived state — never a param slot.
+    float out_aspect = 16.f / 9.f;
     // UI-3: drilled into the selected track's audio node graph (the detail region shows the
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
@@ -141,19 +150,22 @@ struct Window {
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }
-    // The OUTPUT panel fills the whole visual zone (down to the dock) when the graph is
-    // hidden (its deep-view default), or the fixed top band when the graph is revealed below.
-    ui::Rect     output_panel()     const {
-        ui::Rect p = ui::output_panel(win_w, split_x);
-        if (!show_graph) p.h = ui::dock_top(win_h, dock_h) - ui::kPaneMargin - p.y;
-        return p;
+    // ADR-0014: the graph owns the visuals column; the output preview floats over it.
+    ui::Rect     visuals_panel()    const { return ui::visuals_panel(win_w, win_h, split_x, dock_h); }
+    ui::Rect     preview_panel()    const { return ui::preview_panel(preview_x, preview_y, preview_w, out_aspect); }
+    ui::Rect     viewer_rect()      const { return ui::preview_viewer_rect(preview_x, preview_y, preview_w, out_aspect); }
+    ui::Rect     preview_header()   const { return ui::preview_header_rect(preview_x, preview_y, preview_w); }
+    ui::Rect     preview_close()    const { return ui::preview_close_rect(preview_x, preview_y, preview_w); }
+    ui::Rect     preview_grip()     const { return ui::preview_grip_rect(preview_x, preview_y, preview_w, out_aspect); }
+    // Park the preview in the visuals column's bottom-right if it has never been placed.
+    void place_preview_if_needed() {
+        if (preview_x >= 0.f) return;
+        const ui::Rect g = visuals_panel();
+        preview_w = std::min(preview_w, std::max(ui::kPreviewMinW, g.w - 24.f));
+        const ui::Rect p = ui::preview_panel(0.f, 0.f, preview_w, out_aspect);
+        preview_x = g.x + g.w - p.w - 12.f;
+        preview_y = g.y + g.h - p.h - 12.f;
     }
-    ui::Rect     viewer_rect()      const {
-        const ui::Rect p = output_panel();
-        return { p.x + ui::kPanePad, p.y + ui::kPanelHdH + ui::kPanePad,
-                 p.w - 2.f * ui::kPanePad, p.h - ui::kPanelHdH - 2.f * ui::kPanePad };
-    }
-    ui::Rect     signal_panel()     const { return ui::signal_panel(win_w, win_h, split_x, dock_h); }
     ui::Rect     splitter_rect()    const { return ui::splitter_rect(win_h, dock_h, split_x); }
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom()        const { return ui::dock_geom(win_w, win_h, dock_h); }

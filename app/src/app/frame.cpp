@@ -170,6 +170,22 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         win.split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(win.win_w) - 40.f);
     if (win.dock_drag)
         win.dock_h = std::clamp(static_cast<float>(win.win_h) - static_cast<float>(my), 120.f, win.win_h * 0.5f);
+    // ADR-0014: the floating output preview — drag the header to move it, the corner grip to size it
+    // (width only; the height follows the output's aspect). Kept loosely inside the visuals column so
+    // it can't be lost off-screen.
+    if (win.preview_drag || win.preview_resize) {
+        const Rect g = win.visuals_panel();
+        if (win.preview_resize) {
+            win.preview_w = std::clamp(static_cast<float>(mx - win.preview_grab_x),
+                                       ui::kPreviewMinW, std::min(ui::kPreviewMaxW, g.w));
+        } else {
+            win.preview_x = static_cast<float>(mx - win.preview_grab_x);
+            win.preview_y = static_cast<float>(my - win.preview_grab_y);
+        }
+        const Rect p = win.preview_panel();
+        win.preview_x = std::clamp(win.preview_x, g.x - p.w * 0.5f, g.x + g.w - 40.f);
+        win.preview_y = std::clamp(win.preview_y, g.y, g.y + g.h - ui::kPanelHdH);
+    }
     if (app.graph) app.graph->on_move(mx, my);
     if (win.editor && win.editor->is_open()) {
         win.editor->on_move(mx, my);
@@ -371,22 +387,20 @@ void run_frame_loop(App& app, Window& win) {
         FrameState frame;
         if (gpu.begin_frame(frame)) {
             update_visual_source_frame(app);
-            // composable visuals chain -> viewer (per-node params, set by apply_params)
+            // ADR-0014: run the chain into the node RTs FIRST (so this frame's node thumbnails are
+            // current), but do NOT present yet — the output is blitted over the graph further down,
+            // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
-            const Rect vp = win.viewer_rect();
-            vgraph.render(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi, vp.w * win.dpi, vp.h * win.dpi, tsec, srcTex.view);
+            vgraph.run_chain(frame.encoder, tsec, srcTex.view);
+            win.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
+            win.place_preview_if_needed();
 
             draw_ui(ui, win, beats, mx, my);
-            // UI-2: the visuals node graph is a deep view under the output — drawn only when
-            // revealed (win.show_graph). When hidden, the output fills the visual zone and the
-            // graph has no hit area (bounds zeroed) so it never consumes clicks.
-            if (win.show_graph) {
-                const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
-                graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
-                graph.draw(ui);   // includes live node thumbnails via draw_texture
-            } else {
-                graph.set_bounds(0.f, 0.f, 0.f, 0.f);
-            }
+            // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
+            // always drawn, no reveal toggle.
+            { const Rect g = win.visuals_panel();
+              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);
+              graph.draw(ui); }   // includes live node thumbnails via draw_texture
             // UI-1: recompute the detail region's explicit focus — the single source of truth
             // for what the bottom region shows + its domain — replacing the old implicit race
             // where draw and input each re-derived the mode from the current selection.
@@ -410,8 +424,16 @@ void run_frame_loop(App& app, Window& win) {
             if (win.focus.kind != FocusContext::Kind::ClipEditor) draw_device_dock(ui, win, mx, my);
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
+            // The floating OUTPUT preview: blitted OVER the graph canvas (a GPU pass recorded after
+            // pass 1's, so it lands on top), with its chrome drawn above it in pass 2.
+            if (win.preview_show) {
+                const Rect vp = win.viewer_rect();
+                vgraph.present_to(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi,
+                                  vp.w * win.dpi, vp.h * win.dpi, tsec, /*clear*/false);
+            }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
-            if (win.show_graph) graph.draw_overlays(ui);  // operator chooser (graph deep view only)
+            if (win.preview_show) draw_output_preview(ui, win, mx, my);
+            graph.draw_overlays(ui);  // operator chooser
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
@@ -439,7 +461,8 @@ void run_frame_loop(App& app, Window& win) {
                     }
                     FrameState f2;
                     if (gpu.begin_secondary(f2)) {
-                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f, static_cast<float>(fbw), static_cast<float>(fbh), tsec);
+                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f, static_cast<float>(fbw),
+                                          static_cast<float>(fbh), tsec, /*clear*/true);
                         gpu.end_secondary(f2);
                     }
                 }
