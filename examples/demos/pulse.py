@@ -9,7 +9,7 @@ Visual: a bespoke CustomShader "acid tunnel" (custom op, shaders/pulse_tunnel.gl
 Run with the app running:  uv run examples/demos/pulse.py
 """
 import os
-from vivid_demo import Vivid, find, save_demo, surge_voice
+from vivid_demo import Vivid, find, save_demo, surge_preset
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -25,10 +25,9 @@ def build(v: Vivid, save: bool = True):
     v.new_project()
     v.bpm(128)
 
-    # --- instruments : Surge XT (free CLAP synth — audible) shaped into a punchy acid bass and
-    # a bright stab lead; drums stay on EZdrummer. ---
-    surge_voice(v, BASS, cutoff=0.45, res=0.30, gain=1.0)   # dark, punchy acid bass
-    surge_voice(v, LEAD, cutoff=0.78, res=0.18, gain=0.8)   # bright stab
+    # --- instruments : real Surge XT factory patches (generic preset flow — pick by name). ---
+    surge_preset(v, BASS, "acid", prefer="Bassline 1", gain=1.0)   # acid bass
+    surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.7)        # bright stab
 
     # --- drums (2 bars) : four-on-the-floor + clap on 2 & 4 + driving hats ---
     v.drums(DRUMS, 0, {
@@ -62,16 +61,20 @@ def build(v: Vivid, save: bool = True):
     g = v.graph()["nodes"]
     fb, blur = find(g, "Feedback"), find(g, "Blur")
     cs = v.add_node("CustomShader")
-    v.connect(fb, cs)                                # Feedback now reads the custom shader
+    kal = v.add_node("Kaleidoscope")                 # NEW primitive: fold the tunnel into a mandala
+    v.connect(kal, cs)                               # Kaleidoscope reads the tunnel
+    v.connect(fb, kal)                               # Feedback reads the Kaleidoscope
     v.set_node_asset(cs, SHADER)                     # absolute path for live preview
+    v.set_node_param(kal, "segments", 0.3)          # ~6 wedges
     v.set_node_param(fb, "decay", 0.82)             # long trails
-    v.set_node_param(blur, "radius", 0.15)
+    v.set_node_param(blur, "radius", 0.12)
 
     # --- the bridge : audio -> visual params ---
     v.map("master.transient", cs, "glow", amount=1.0)     # kick flashes the core
     v.map("master.low",       cs, "warp", amount=0.9)     # bass bends the tunnel
     v.map("master.level",     cs, "density", amount=0.8)  # loudness swells the rings
     v.map("master.mid",       cs, "hue", amount=0.6)      # mids rotate the colour
+    v.map("master.mid",       kal, "angle", amount=0.5)   # the mandala rotates with the mids
     v.map("master.level",     fb, "decay", amount=0.4, lo=0.6, hi=0.95)
 
     v.launch_scene(0)

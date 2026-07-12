@@ -162,8 +162,15 @@ class Vivid:
     def add_node(self, op: str) -> int:
         return self.call("add_node", op=op)["id"]
 
-    def connect(self, node_id: int, input_id: int):
-        return self.call("connect_nodes", node_id=node_id, input_id=input_id)
+    def connect(self, node_id: int, input_id: int, port: int = 0):
+        return self.call("connect_nodes", node_id=node_id, input_id=input_id, port=port)
+
+    # --- instrument presets (generic browse/load) ---
+    def list_presets(self, track: int, filter: str = "") -> dict:
+        return self.call("list_presets", track=track, filter=filter)
+
+    def load_preset(self, track: int, id: str):
+        return self.call("load_preset", track=track, id=id)
 
     def set_generator(self, op: str):
         return self.call("set_generator", op=op)
@@ -238,3 +245,23 @@ def surge_voice(v: "Vivid", track: int, cutoff=0.6, res=0.1, uni_voices=None, un
         if val is not None:
             v.node_param(track, n, p[key], val)
     return n
+
+
+def surge_preset(v: "Vivid", track: int, name_filter: str, prefer: str = "", gain: float = 1.0) -> int:
+    """Assign Surge XT to a track and load a factory PATCH whose name matches `name_filter` (the
+    generic preset flow — pick the timbre by name, not by tweaking knobs). `prefer` biases the
+    choice to the first name containing it. Returns the Surge instrument node id."""
+    v.clear_vst_fx(track)
+    v.clap_instrument(track, SURGE)
+    v.set_track_gain(track, gain)
+    presets = v.list_presets(track, name_filter).get("presets", [])
+    if presets:
+        pick = None
+        if prefer:
+            pick = next((p for p in presets if prefer.lower() in p["name"].lower()), None)
+        pick = pick or presets[0]
+        v.load_preset(track, pick["id"])
+        print(f"  t{track}: '{pick['name']}'  ({name_filter!r})")
+    else:
+        print(f"  t{track}: no preset matched {name_filter!r} — using Surge init")
+    return v.audio_node_id(track, "instrument")

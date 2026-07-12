@@ -9,7 +9,7 @@ Visual: a bespoke CustomShader digital-glitch field (shaders/grid_glitch.glsl, c
 Run with the app running:  uv run examples/demos/grid.py
 """
 import os
-from vivid_demo import Vivid, find, save_demo, surge_voice
+from vivid_demo import Vivid, find, save_demo, surge_preset
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,10 +24,10 @@ def build(v: Vivid, save: bool = True):
     v.bpm(90)
 
     # --- instruments : a bitcrushed Surge lead + a dark Surge bass; EZdrummer for the beat ---
-    surge_voice(v, LEAD, cutoff=0.7, res=0.2, gain=0.8)
+    surge_preset(v, LEAD, "lead", prefer="Digi", gain=0.8)     # digital/detuned lead
     crush = v.add_audio_fx(LEAD, "Bitcrush")     # native glitch op after the Surge lead
     v.set_audio_node_param(LEAD, crush, 0, 6.0)  # ~6-bit
-    surge_voice(v, BASS, cutoff=0.38, res=0.3, uni_voices=0.2, uni_detune=0.5, gain=1.0)
+    surge_preset(v, BASS, "FM Bass", prefer="FM Bass 3", gain=1.0)   # gritty FM bass
 
     # --- broken beat : Euclidean kick, off-beat snare, busy hats (2 bars) ---
     v.euclid(DRUMS, 0, "kick", pulses=5, steps=16, bars=2, vel=0.95, append=False)
@@ -52,8 +52,11 @@ def build(v: Vivid, save: bool = True):
     g = v.graph()["nodes"]
     fb, blur = find(g, "Feedback"), find(g, "Blur")
     cs = v.add_node("CustomShader")
-    v.connect(fb, cs)
+    xform = v.add_node("Transform")              # NEW primitive: tile/rotate the glitch field
+    v.connect(xform, cs)                         # Transform reads the glitch field
+    v.connect(fb, xform)                         # Feedback reads the Transform
     v.set_node_asset(cs, SHADER)
+    v.set_node_param(xform, "tile", 0.14)        # ~2x2 tiling
     v.set_node_param(fb, "decay", 0.6)           # short, twitchy trails
     v.set_node_param(blur, "radius", 0.04)
 
@@ -62,6 +65,8 @@ def build(v: Vivid, save: bool = True):
     v.map("master.high",      cs, "density", amount=0.9)  # hats shrink the cells
     v.map("master.low",       cs, "warp", amount=0.7)     # bass shoves the blocks
     v.map("master.mid",       cs, "hue", amount=0.5)
+    v.map("master.transient", xform, "tile", amount=0.2)  # beats jolt the tiling
+    v.map("master.low",       xform, "rot", amount=0.08)  # bass skews the grid
 
     v.launch_scene(0)
     v.play()

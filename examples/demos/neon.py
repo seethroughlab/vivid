@@ -9,7 +9,7 @@ Visual: a bespoke CustomShader retro grid + neon sun (shaders/neon_grid.glsl, cu
 Run with the app running:  uv run examples/demos/neon.py
 """
 import os
-from vivid_demo import Vivid, find, save_demo, surge_voice, SURGE_FX, SURGE_FX_TYPE
+from vivid_demo import Vivid, find, save_demo, surge_preset, SURGE_FX, SURGE_FX_TYPE
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,10 +26,10 @@ def build(v: Vivid, save: bool = True):
 
     # --- instruments : Surge XT — a bright detuned arp (with a shimmer FX) and a dark bass;
     # drums stay on EZdrummer. ---
-    an = surge_voice(v, ARP, cutoff=0.72, res=0.12, uni_voices=0.35, uni_detune=0.3, gain=0.75)
+    an = surge_preset(v, ARP, "pluck", prefer="Sync", gain=0.75)   # bright synthwave pluck arp
     v.clap_effect(ARP, SURGE_FX)                  # synthwave shimmer/space on the arp
     v.node_param(ARP, v.audio_node_id(ARP, "effect"), SURGE_FX_TYPE, 0.05)
-    surge_voice(v, BASS, cutoff=0.4, res=0.25, gain=1.0)
+    surge_preset(v, BASS, "bass", prefer="Square", gain=1.0)       # driving square bass
 
     # --- arp : classic driving 16th synthwave arp, one chord per bar ---
     notes = []
@@ -60,6 +60,12 @@ def build(v: Vivid, save: bool = True):
     v.set_node_asset(cs, SHADER)
     nodes = v.graph()["nodes"]
     fb, blur = find(nodes, "Feedback"), find(nodes, "Blur")
+    # NEW primitive: a glowing Shape "sun" sitting low on the retro grid.
+    sun = v.add_node("Shape")
+    v.connect(sun, cs)                            # Shape overlays the grid
+    v.connect(fb, sun)                            # Feedback reads the Shape
+    for k, val in dict(sides=0.0, x=0.5, y=0.66, size=0.22, softness=0.06, r=1.0, g=0.35, b=0.65, a=0.9).items():
+        v.set_node_param(sun, k, val)            # a magenta circle sun on the horizon
     v.set_node_param(fb, "decay", 0.7)           # neon glow trails
     v.set_node_param(blur, "radius", 0.08)
 
@@ -69,6 +75,7 @@ def build(v: Vivid, save: bool = True):
     v.map("master.high",      cs, "density", amount=0.9)  # hats sharpen scanlines
     v.map("master.mid",       cs, "hue", amount=0.5)      # neon hue drift
     v.map("master.transient", fb, "decay", amount=0.3, lo=0.55, hi=0.85)
+    v.map("master.transient", sun, "size", amount=0.15, lo=0.22, hi=0.32)   # the sun pulses on the beat
 
     v.launch_scene(0)
     v.play()

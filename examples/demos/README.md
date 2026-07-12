@@ -5,16 +5,18 @@ Vivid's control server** (the same backend the MCP bridge speaks). The script *i
 point: it shows how MCP-friendly Vivid is — a whole song, a reactive visual graph, and
 the audio→visual bridge, authored in ~60 readable lines.
 
-| demo | vibe | sound | visual (custom + built-in) |
-|------|------|-------|----------------------------|
-| **pulse** | techno / acid, 128 BPM | Surge acid bass + stabs, 4-on-floor | `pulse_tunnel.glsl` (acid tunnel) → Feedback → Blur |
-| **drift** | ambient / cinematic, 70 BPM | Surge pad + Surge reverb, sparkle arp | `drift_flow.glsl` (nebula) → Feedback → Tint |
-| **neon** | synthwave, 100 BPM | Surge arp + shimmer, dark bass, backbeat | `neon_grid.glsl` (retro grid) → Feedback → Blur |
-| **grid** | glitch / IDM, 90 BPM | bitcrushed Surge lead, Euclidean beat | `grid_glitch.glsl` (datamosh) → Feedback → Blur |
+| demo | vibe | sound (real Surge patches) | visual (custom + built-in + primitives) |
+|------|------|---------------------------|------------------------------------------|
+| **pulse** | techno / acid, 128 BPM | *Acid Bassline* + *Sync Pluck*, 4-on-floor | `pulse_tunnel.glsl` → **Kaleidoscope** → Feedback → Blur |
+| **drift** | ambient / cinematic, 70 BPM | *Verb Pad* + Surge reverb, *Bell Keys* | `drift_flow.glsl` → Tint → **Gradient × Composite** (vignette) |
+| **neon** | synthwave, 100 BPM | *Sync Pluck* arp + *Square Bass*, backbeat | `neon_grid.glsl` + a **Shape** sun → Feedback → Blur |
+| **grid** | glitch / IDM, 90 BPM | *Digi* lead (bitcrushed) + *FM Bass* | `grid_glitch.glsl` → **Transform** (tile) → Feedback |
 
-Every demo mixes **built-in visual ops** (Feedback / Blur / Tint / Output) with a **custom
-op** (a bespoke CustomShader `.glsl` you can edit live), and wires audio characteristics to
-the visual params through the bridge, so the picture moves with the music.
+Each part's timbre is a **real Surge factory patch** chosen through the generic preset flow
+(`list_presets` → pick by name → `load_preset`). Every demo mixes **built-in ops** (Feedback /
+Blur / Tint), a bespoke **CustomShader** `.glsl` you can edit live, and the **primitive ops**
+(Shape / Gradient / Composite / Transform / Kaleidoscope), all wired to audio characteristics
+through the bridge so the picture moves with the music.
 
 ## Requirements
 - The app running (`app/build/vivid.app/Contents/MacOS/vivid`) — it serves the control
@@ -39,7 +41,10 @@ With a demo playing, try these over MCP (or the control server) — changes are 
   reloads.
 - **Re-map the bridge** — `connect_mapping("master.high", "node:<cs>.warp")` to drive a
   different visual param from a different band.
-- **Repatch the synth** — `set_track_clap_instrument(track, ".../Surge XT.clap")` then set
+- **Browse presets** — `list_presets(track, filter="pad")` returns matching Surge patches by
+  name; `load_preset(track, id)` loads one. Pick by the sound you want ("warm", "bass",
+  "lead", "bell"); the agent guides the choice. (Generic — no per-plugin code.)
+- **Repatch the synth** — or `set_track_clap_instrument(track, ".../Surge XT.clap")` and set
   params by index (filter cutoff = 319, amp release = 334), or open Surge's own UI.
 - **Add space** — `add_track_clap_effect(track, ".../Surge XT Effects.clap")` and set the
   FX Type param.

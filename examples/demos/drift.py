@@ -9,7 +9,7 @@ Visual: a bespoke CustomShader flowing nebula (shaders/drift_flow.glsl, custom o
 Run with the app running:  uv run examples/demos/drift.py
 """
 import os
-from vivid_demo import Vivid, find, save_demo, surge_voice, SURGE_FX, SURGE_FX_TYPE
+from vivid_demo import Vivid, find, save_demo, surge_preset, SURGE_FX, SURGE_FX_TYPE
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +27,7 @@ def build(v: Vivid, save: bool = True):
 
     # --- pad : Surge XT as a soft, wide pad (slow attack + unison), HELD maj7 chords (Surge
     # sustains — no pluck workaround needed) + Surge XT Effects reverb for real ambient space. ---
-    surge_voice(v, PAD, cutoff=0.55, res=0.08, uni_voices=0.5, uni_detune=0.35, atk=0.16, rel=0.45, gain=0.9)
+    surge_preset(v, PAD, "pad", prefer="Verb", gain=0.9)   # lush reverbed pad patch
     bed = []
     for i, c in enumerate(prog):
         for p in theory.chord(c, octave=3, voicing="open"):
@@ -38,7 +38,7 @@ def build(v: Vivid, save: bool = True):
     v.node_param(PAD, rvb, SURGE_FX_TYPE, 0.05)   # FX Type ~ reverb/delay family (a lush tail; tweak to taste)
 
     # --- sparkle : Surge, a slow high sparse arpeggio drifting over the top ---
-    surge_voice(v, ARP, cutoff=0.8, res=0.1, atk=0.05, rel=0.5, gain=0.6)
+    surge_preset(v, ARP, "keys", prefer="Bell", gain=0.55)   # bell keys sparkle
     top = []
     for i, c in enumerate(prog):
         ps = theory.chord(c, octave=5)
@@ -56,10 +56,19 @@ def build(v: Vivid, save: bool = True):
     out = find(nodes, "Output")
     tint = v.add_node("Tint")                     # built-in WGSL op, inserted before Output
     v.connect(tint, blur)
-    v.connect(out, tint)
+    # NEW primitives: a radial Gradient multiplied over the nebula = a cinematic vignette that breathes.
+    grad = v.add_node("Gradient")
+    comp = v.add_node("Composite")
+    v.connect(comp, tint, port=0)                 # A = the nebula chain
+    v.connect(comp, grad, port=1)                 # B = the gradient
+    v.connect(out, comp)                          # Output <- Composite
     v.set_node_param(fb, "decay", 0.94)          # very long, dreamy trails
     v.set_node_param(blur, "radius", 0.3)
     v.set_node_param(tint, "hue", 0.55)
+    for k, val in dict(mode=1.0, ar=1.0, ag=1.0, ab=1.0, br=0.15, bg=0.1, bb=0.28, scale=0.28).items():
+        v.set_node_param(grad, k, val)            # radial: bright center -> dark cool edges
+    v.set_node_param(comp, "mode", 0.5)          # multiply (vignette)
+    v.set_node_param(comp, "opacity", 0.85)
 
     # --- the bridge : slow, gentle reactivity ---
     v.map("master.level", cs, "glow", amount=0.9)
@@ -67,6 +76,7 @@ def build(v: Vivid, save: bool = True):
     v.map("master.mid",   cs, "hue", amount=0.5)
     v.map("master.low",   cs, "warp", amount=0.5)
     v.map("master.mid",   tint, "hue", amount=0.4)
+    v.map("master.level", grad, "scale", amount=0.25, lo=0.28, hi=0.5)   # the vignette opens with loudness
 
     v.launch_scene(0)
     v.play()
