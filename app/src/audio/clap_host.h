@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -112,6 +113,11 @@ inline std::unordered_map<std::string, ClapDso>& clap_dsos() {
     static std::unordered_map<std::string, ClapDso> m;
     return m;
 }
+// Guards clap_dsos() — clap_load_plugin now runs on a background loader thread while
+// ClapHandle::destroy() runs on the main thread, so the shared DSO map + refcounts must
+// be serialized. (Pointers into an unordered_map stay valid across other insertions, so a
+// ClapDso* held across the slow create_plugin() is safe as long as its ref is claimed.)
+inline std::mutex& clap_dsos_mtx() { static std::mutex m; return m; }
 
 struct ClapHandle {
     std::string bundle_path;
@@ -144,6 +150,7 @@ struct ClapHandle {
             plugin->destroy(plugin);
             plugin = nullptr;
         }
+        std::lock_guard<std::mutex> lk(clap_dsos_mtx());
         auto& dsos = clap_dsos();
         auto it = dsos.find(bundle_path);
         if (it != dsos.end() && --it->second.refs <= 0) {
@@ -166,30 +173,47 @@ inline void CLAP_ABI clap_host_request_callback(const clap_host_t*) {}
 // Load `.clap` at `path`, create + activate its first plugin. Returns nullptr on any failure.
 inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate, uint32_t max_frames) {
 #ifdef __APPLE__
-    auto& dsos = clap_dsos();
+    // Acquire (or create) the DSO refcount entry and CLAIM a reference under the lock, so the
+    // slow create_plugin() below (Surge's ctor scans its wavetable dir — seconds) runs UNLOCKED
+    // on the loader thread without another thread erasing this DSO out from under `dso`.
     ClapDso* dso = nullptr;
-    auto it = dsos.find(path);
-    if (it != dsos.end()) {
-        dso = &it->second;
-    } else {
-        CFURLRef url = CFURLCreateFromFileSystemRepresentation(
-            nullptr, reinterpret_cast<const UInt8*>(path.c_str()), static_cast<CFIndex>(path.size()), true);
-        if (!url) return nullptr;
-        CFBundleRef bundle = CFBundleCreate(nullptr, url);
-        CFRelease(url);
-        if (!bundle) return nullptr;
-        auto* entry = static_cast<const clap_plugin_entry_t*>(
-            CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry")));
-        if (!entry || !entry->init(path.c_str())) { CFRelease(bundle); return nullptr; }
-        dso = &dsos[path];
-        dso->entry = entry; dso->bundle = bundle; dso->refs = 0;
+    {
+        std::lock_guard<std::mutex> lk(clap_dsos_mtx());
+        auto& dsos = clap_dsos();
+        auto it = dsos.find(path);
+        if (it != dsos.end()) {
+            dso = &it->second;
+        } else {
+            CFURLRef url = CFURLCreateFromFileSystemRepresentation(
+                nullptr, reinterpret_cast<const UInt8*>(path.c_str()), static_cast<CFIndex>(path.size()), true);
+            if (!url) return nullptr;
+            CFBundleRef bundle = CFBundleCreate(nullptr, url);
+            CFRelease(url);
+            if (!bundle) return nullptr;
+            auto* entry = static_cast<const clap_plugin_entry_t*>(
+                CFBundleGetDataPointerForName(bundle, CFSTR("clap_entry")));
+            if (!entry || !entry->init(path.c_str())) { CFRelease(bundle); return nullptr; }
+            dso = &dsos[path];
+            dso->entry = entry; dso->bundle = bundle; dso->refs = 0;
+        }
+        dso->refs++;   // claimed; released by ClapHandle::destroy() or release_claim() on failure
     }
+    auto release_claim = [&path]() {   // undo the claim on a failure path where no ClapHandle exists yet
+        std::lock_guard<std::mutex> lk(clap_dsos_mtx());
+        auto& dsos = clap_dsos();
+        auto it = dsos.find(path);
+        if (it != dsos.end() && --it->second.refs <= 0) {
+            if (it->second.entry) it->second.entry->deinit();
+            if (it->second.bundle) CFRelease(it->second.bundle);
+            dsos.erase(it);
+        }
+    };
 
     const auto* factory = static_cast<const clap_plugin_factory_t*>(
         dso->entry->get_factory(CLAP_PLUGIN_FACTORY_ID));
-    if (!factory || factory->get_plugin_count(factory) == 0) return nullptr;
+    if (!factory || factory->get_plugin_count(factory) == 0) { release_claim(); return nullptr; }
     const clap_plugin_descriptor_t* desc = factory->get_plugin_descriptor(factory, 0);
-    if (!desc) return nullptr;
+    if (!desc) { release_claim(); return nullptr; }
 
     auto* h = new ClapHandle();
     h->bundle_path = path;
@@ -204,9 +228,9 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     h->host.request_process = &clap_host_request_process;
     h->host.request_callback = &clap_host_request_callback;
 
-    h->plugin = factory->create_plugin(factory, &h->host, desc->id);
-    if (!h->plugin || !h->plugin->init(h->plugin)) { delete h; return nullptr; }
-    dso->refs++;   // committed: this handle owns a DSO reference
+    h->plugin = factory->create_plugin(factory, &h->host, desc->id);   // SLOW (unlocked, loader thread)
+    if (!h->plugin || !h->plugin->init(h->plugin)) { delete h; return nullptr; }   // destroy() releases the claim
+    // (the DSO reference was already claimed above, before create_plugin)
 
     h->ext_params      = static_cast<const clap_plugin_params_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PARAMS));
     h->ext_state       = static_cast<const clap_plugin_state_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_STATE));

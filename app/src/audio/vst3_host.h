@@ -189,6 +189,15 @@ int         session_set_track_audio_instrument(Session*, int track, const char* 
 // instruments must accept note input) or append one as an effect (-> effect index, -1 on failure).
 int         session_set_track_clap_instrument(Session*, int track, const char* clap_path);
 int         session_add_track_clap_effect(Session*, int track, const char* clap_path);
+// Async variants: the slow plugin ctor runs on a background loader thread so it never blocks the
+// main thread / control-server drain. They return immediately (1 = queued; "" instrument path
+// clears inline). session_poll_plugin_loads() applies finished loads on the main thread (call it
+// once per frame); pending()>0 means loads are in flight; last_plugin_load_error() reports failures.
+int         session_request_track_clap_instrument(Session*, int track, const char* clap_path);
+int         session_request_track_clap_effect(Session*, int track, const char* clap_path);
+void        session_poll_plugin_loads(Session*);
+int         session_plugin_loads_pending(Session*);
+const char* session_last_plugin_load_error(Session*);
 // CLAP identity + state for persistence ("" / empty when the track has no CLAP plugin there).
 const char* session_track_clap_instrument_path(Session*, int track);
 int         session_track_clap_effect_count(Session*, int track);

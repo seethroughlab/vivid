@@ -315,6 +315,7 @@ void run_frame_loop(App& app, Window& win) {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
+        if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the

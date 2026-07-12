@@ -16,6 +16,9 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <thread>
+#include <condition_variable>
+#include <deque>
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -240,6 +243,20 @@ struct Session {
     std::mutex            rec_mtx;
     std::vector<RecNote>  rec_notes;
     std::atomic<bool>     metronome{false};   // audible click on each beat while enabled
+    // --- Async CLAP loading. A slow plugin ctor (Surge scans its wavetable dir — seconds to
+    // minutes) must NOT run on the main thread, or it wedges the frame loop + the control-server
+    // drain. Requests run on one background worker; session_poll_plugin_loads() applies the
+    // finished handles on the main thread (all Track/graph edits stay UI-thread). ---
+    struct ClapLoadReq  { int track; bool is_instrument; std::string path; double sr; };
+    struct ClapLoadDone { int track; bool is_instrument; std::string path; ClapHandle* handle; };
+    std::thread              clap_worker;
+    std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
+    std::condition_variable  clap_load_cv;
+    std::deque<ClapLoadReq>  clap_reqs;
+    std::deque<ClapLoadDone> clap_done;
+    std::atomic<int>         clap_pending{0};    // requested-but-not-yet-applied loads
+    bool                     clap_worker_stop = false;
+    std::string              clap_last_error;    // main-thread only (last failed async load)
 };
 
 // Republish the current track membership for the audio thread (UI/main thread only).
@@ -1686,8 +1703,10 @@ static void destroy_handle(Vst3Handle* h) {
     if (h->processing) h->processor->setProcessing(false);
     h->destroy(); delete h;
 }
+static void stop_clap_loader(Session* s);   // defined below (with the async-loader machinery)
 void session_destroy(Session* s) {
     if (!s) return;
+    stop_clap_loader(s);   // join the async loader + free unapplied handles before the tracks go
     auto teardown = [](Track* t) {
         for (Vst3Handle* fx : t->effects_edit) destroy_handle(fx);  // authoritative FX list
         for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
@@ -1822,6 +1841,100 @@ int session_add_track_clap_effect(Session* s, int t, const char* clap_path) {
     tr.clap_effects.push_back(h);
     rebuild_track_graph(&tr);
     return static_cast<int>(tr.clap_effects.size()) - 1;
+}
+
+// --- Async CLAP loading (see the Session members). The worker instantiates plugins off the
+// main thread; the main thread applies completions via session_poll_plugin_loads(). ---
+static void clap_worker_main(Session* s) {
+    for (;;) {
+        Session::ClapLoadReq req;
+        {
+            std::unique_lock<std::mutex> lk(s->clap_load_mtx);
+            s->clap_load_cv.wait(lk, [s]{ return s->clap_worker_stop || !s->clap_reqs.empty(); });
+            if (s->clap_worker_stop) return;                 // dying: drop any queued requests
+            req = std::move(s->clap_reqs.front());
+            s->clap_reqs.pop_front();
+        }
+        ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
+        {
+            std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+            s->clap_done.push_back({ req.track, req.is_instrument, req.path, h });
+        }
+    }
+}
+static void ensure_clap_worker(Session* s) {
+    if (!s->clap_worker.joinable()) s->clap_worker = std::thread(clap_worker_main, s);
+}
+static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path) {
+    ensure_clap_worker(s);
+    const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
+    {
+        std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+        s->clap_last_error.clear();
+        s->clap_reqs.push_back({ t, is_instrument, clap_path, sr });
+    }
+    s->clap_pending.fetch_add(1, std::memory_order_release);
+    s->clap_load_cv.notify_one();
+    return 1;
+}
+// Async instrument assign. Empty path clears synchronously (fast). Otherwise the load runs on the
+// worker; poll session_plugin_loads_pending()/get_audio_graph to know when it's live.
+int session_request_track_clap_instrument(Session* s, int t, const char* clap_path) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    if (!clap_path || !*clap_path) {                         // clear: no load needed, do it inline
+        Track& tr = *s->tracks[t];
+        if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
+        tr.clap_inst = nullptr; rebuild_track_graph(&tr);
+        return 1;
+    }
+    return enqueue_clap_load(s, t, /*is_instrument*/true, clap_path);
+}
+int session_request_track_clap_effect(Session* s, int t, const char* clap_path) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return 0;
+    return enqueue_clap_load(s, t, /*is_instrument*/false, clap_path);
+}
+// Main thread: apply any finished async loads (swap into the Track + rebuild its graph). Call
+// once per frame from the run loop. Failed / not-an-instrument loads set the last-error string.
+void session_poll_plugin_loads(Session* s) {
+    if (!s) return;
+    std::deque<Session::ClapLoadDone> done;
+    {
+        std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+        if (s->clap_done.empty()) return;
+        done.swap(s->clap_done);
+    }
+    for (auto& d : done) {
+        ClapHandle* h = d.handle;
+        if (d.track >= 0 && d.track < static_cast<int>(s->tracks.size())) {
+            Track& tr = *s->tracks[d.track];
+            if (d.is_instrument) {
+                if (h && !h->has_note_in) { delete h; h = nullptr; s->clap_last_error = d.path + ": not a CLAP instrument"; }
+                if (h) { if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst); tr.clap_inst = h; rebuild_track_graph(&tr); }
+                else if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
+            } else {
+                if (h) { tr.clap_effects.push_back(h); rebuild_track_graph(&tr); }
+                else s->clap_last_error = d.path + ": failed to load CLAP effect";
+            }
+        } else if (h) {
+            delete h;                                        // track was removed while loading
+        }
+        s->clap_pending.fetch_sub(1, std::memory_order_release);
+    }
+}
+int session_plugin_loads_pending(Session* s) { return s ? s->clap_pending.load(std::memory_order_acquire) : 0; }
+const char* session_last_plugin_load_error(Session* s) {
+    return (s && !s->clap_last_error.empty()) ? s->clap_last_error.c_str() : "";
+}
+// Stop + join the loader thread and free any completions that were never applied. Call before
+// tearing down the tracks (a handle in `clap_done` still owns a DSO ref).
+static void stop_clap_loader(Session* s) {
+    if (s->clap_worker.joinable()) {
+        { std::lock_guard<std::mutex> lk(s->clap_load_mtx); s->clap_worker_stop = true; }
+        s->clap_load_cv.notify_all();
+        s->clap_worker.join();
+    }
+    for (auto& d : s->clap_done) delete d.handle;   // finished-but-unapplied handles
+    s->clap_done.clear();
 }
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
 const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }

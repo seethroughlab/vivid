@@ -73,11 +73,30 @@ class Vivid:
                 break
 
     # --- CLAP plugins (Surge XT + Surge XT Effects — free, audible, patch-rich) ---
+    # Loading is async in the app (a slow plugin ctor won't wedge the control server); these
+    # helpers fire the request then block CLIENT-SIDE until it's applied, so callers keep their
+    # simple synchronous flow while the app stays responsive throughout.
+    def wait_for_plugins(self, timeout: float = 240.0):
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            st = self.call("plugin_load_status")
+            if st.get("pending", 0) == 0:
+                if st.get("error"):
+                    raise RuntimeError(f"CLAP load failed: {st['error']}")
+                return
+            time.sleep(0.3)
+        raise RuntimeError("CLAP load timed out (plugin still instantiating)")
+
     def clap_instrument(self, track: int, path: str):
-        return self.call("set_track_clap_instrument", track=track, path=path)
+        r = self.call("set_track_clap_instrument", track=track, path=path)
+        if r.get("loading"):
+            self.wait_for_plugins()
+        return r
 
     def clap_effect(self, track: int, path: str) -> int:
-        return self.call("add_track_clap_effect", track=track, path=path)["index"]
+        self.call("add_track_clap_effect", track=track, path=path)
+        self.wait_for_plugins()
+        return self.audio_node_id(track, "effect") or 0   # first effect node (index no longer sync)
 
     def audio_node_id(self, track: int, kind: str) -> int | None:
         """The graph node id of the first node of a kind ('instrument'/'effect'/'output')."""

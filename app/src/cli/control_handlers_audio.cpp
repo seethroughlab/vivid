@@ -271,23 +271,34 @@ void register_audio_handlers(Handlers& handlers_) {
         json r = ok(); r["plugins"] = arr; return r;
     };
     // CLAP hosting: assign a `.clap` bundle as a track's instrument, or append one as an effect.
+    // Loading is ASYNC — a slow plugin ctor (e.g. Surge scanning its wavetable dir) runs on a
+    // background worker so it never wedges the control-server drain. These return immediately with
+    // `loading:true`; poll `plugin_load_status` (or watch get_audio_graph) until the node appears.
     handlers_["set_track_clap_instrument"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
         const std::string path = b.value("path", std::string());
-        if (!P::session_set_track_clap_instrument(c.session, track, path.c_str()))
-            return err(code::kBadArg, "could not load CLAP instrument: '" + path + "'");
-        return ok();
+        if (!P::session_request_track_clap_instrument(c.session, track, path.c_str()))
+            return err(code::kBadArg, "could not queue CLAP instrument: '" + path + "'");
+        json r = ok(); r["loading"] = !path.empty(); return r;   // "" clears inline (not loading)
     };
     handlers_["add_track_clap_effect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
         const std::string path = b.value("path", std::string());
-        const int idx = P::session_add_track_clap_effect(c.session, track, path.c_str());
-        if (idx < 0) return err(code::kBadArg, "could not load CLAP effect: '" + path + "'");
-        json r = ok(); r["index"] = idx; return r;
+        if (!P::session_request_track_clap_effect(c.session, track, path.c_str()))
+            return err(code::kBadArg, "could not queue CLAP effect: '" + path + "'");
+        json r = ok(); r["loading"] = true; return r;   // effect index is known once applied (see get_audio_graph)
+    };
+    // Poll the async CLAP loader: {pending: <in-flight loads>, error: "<last failure or ''>"}.
+    handlers_["plugin_load_status"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json r = ok();
+        r["pending"] = P::session_plugin_loads_pending(c.session);
+        r["error"] = P::session_last_plugin_load_error(c.session);
+        return r;
     };
     // Generic preset browse/load for a track's instrument (no per-plugin code). list_presets
     // scans + returns [{name,id}]; the agent picks by name (sonic-intent guidance) and calls
