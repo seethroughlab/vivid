@@ -222,9 +222,13 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
         } else if (jt.contains("clap_instrument")) {
             // A CLAP-instrument track: a bare instrument track with the plugin attached from its path.
+            // Load ASYNC (a slow plugin ctor must not block load_project on the main thread) and carry
+            // the saved patch `state` so it's restored once the load lands (session_poll_plugin_loads).
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
             if (added >= 0)
-                vivid::session::session_set_track_clap_instrument(s, added, jt["clap_instrument"].get<std::string>().c_str());
+                vivid::session::session_request_track_clap_instrument_state(
+                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
+                    jt.value("state", std::string()).c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
@@ -309,12 +313,11 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             }
             if (jt.contains("state"))
                 vivid::session::session_set_track_state(s, t, jt["state"].get<std::string>());
-            if (jt.contains("clap_effects"))   // re-add each CLAP effect from its path + restore state
-                for (const auto& je : jt["clap_effects"]) {
-                    const int idx = vivid::session::session_add_track_clap_effect(s, t, je.value("path", std::string()).c_str());
-                    if (idx >= 0 && je.contains("state"))
-                        vivid::session::session_set_track_clap_effect_state(s, t, idx, je["state"].get<std::string>());
-                }
+            if (jt.contains("clap_effects"))   // re-add each CLAP effect (async) + restore its state on land
+                for (const auto& je : jt["clap_effects"])   // serial loader preserves the saved chain order
+                    vivid::session::session_request_track_clap_effect_state(
+                        s, t, je.value("path", std::string()).c_str(),
+                        je.value("state", std::string()).c_str());
             if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
                 while (vivid::session::session_effect_count(s, t) > 0)
                     vivid::session::session_remove_effect(s, t, vivid::session::session_effect_count(s, t) - 1);

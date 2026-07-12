@@ -247,8 +247,8 @@ struct Session {
     // minutes) must NOT run on the main thread, or it wedges the frame loop + the control-server
     // drain. Requests run on one background worker; session_poll_plugin_loads() applies the
     // finished handles on the main thread (all Track/graph edits stay UI-thread). ---
-    struct ClapLoadReq  { int track; bool is_instrument; std::string path; double sr; };
-    struct ClapLoadDone { int track; bool is_instrument; std::string path; ClapHandle* handle; };
+    struct ClapLoadReq  { int track; bool is_instrument; std::string path; double sr; std::string state; };
+    struct ClapLoadDone { int track; bool is_instrument; std::string path; ClapHandle* handle; std::string state; };
     std::thread              clap_worker;
     std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
     std::condition_variable  clap_load_cv;
@@ -1014,11 +1014,6 @@ std::string session_get_track_clap_effect_state(Session* s, int t, int i) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return {};
     const auto& e = s->tracks[t]->clap_effects;
     return (i >= 0 && i < static_cast<int>(e.size())) ? clap_save_state(e[i]) : std::string{};
-}
-void session_set_track_clap_effect_state(Session* s, int t, int i, const std::string& st) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || st.empty()) return;
-    const auto& e = s->tracks[t]->clap_effects;
-    if (i >= 0 && i < static_cast<int>(e.size())) clap_load_state(e[i], st);
 }
 
 // --- Preset browse / load for a track's instrument (generic; no per-plugin code). ---
@@ -1816,32 +1811,9 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
     rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
     return 1;
 }
-// Assign a CLAP plugin as a track's instrument source (path to a `.clap` bundle; empty clears).
-// Loads outside any lock (slow), then retires the old handle (kept alive for the audio thread
-// until the new graph is published) and rebuilds. Must accept note input (instruments only).
-int session_set_track_clap_instrument(Session* s, int t, const char* clap_path) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
-    Track& tr = *s->tracks[t];
-    ClapHandle* h = nullptr;
-    if (clap_path && *clap_path) {
-        h = clap_load_plugin(clap_path, s->sample_rate > 0 ? s->sample_rate : 48000, kGraphMaxBlock);
-        if (!h || !h->has_note_in) { delete h; return 0; }
-    }
-    if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
-    tr.clap_inst = h;
-    rebuild_track_graph(&tr);
-    return 1;
-}
-// Append a CLAP plugin as a track effect (path to a `.clap`). Returns the new index, or -1.
-int session_add_track_clap_effect(Session* s, int t, const char* clap_path) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return -1;
-    Track& tr = *s->tracks[t];
-    ClapHandle* h = clap_load_plugin(clap_path, s->sample_rate > 0 ? s->sample_rate : 48000, kGraphMaxBlock);
-    if (!h) return -1;
-    tr.clap_effects.push_back(h);
-    rebuild_track_graph(&tr);
-    return static_cast<int>(tr.clap_effects.size()) - 1;
-}
+// CLAP instrument/effect assignment is ASYNC — see session_request_track_clap_* below. (A slow
+// plugin ctor must never run on the main thread.) The old synchronous session_set_track_clap_*
+// entry points were removed once persist + the control server both moved to the async path.
 
 // --- Async CLAP loading (see the Session members). The worker instantiates plugins off the
 // main thread; the main thread applies completions via session_poll_plugin_loads(). ---
@@ -1858,28 +1830,29 @@ static void clap_worker_main(Session* s) {
         ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
         {
             std::lock_guard<std::mutex> lk(s->clap_load_mtx);
-            s->clap_done.push_back({ req.track, req.is_instrument, req.path, h });
+            s->clap_done.push_back({ req.track, req.is_instrument, req.path, h, std::move(req.state) });
         }
     }
 }
 static void ensure_clap_worker(Session* s) {
     if (!s->clap_worker.joinable()) s->clap_worker = std::thread(clap_worker_main, s);
 }
-static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path) {
+static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path, const char* state) {
     ensure_clap_worker(s);
     const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
     {
         std::lock_guard<std::mutex> lk(s->clap_load_mtx);
         s->clap_last_error.clear();
-        s->clap_reqs.push_back({ t, is_instrument, clap_path, sr });
+        s->clap_reqs.push_back({ t, is_instrument, clap_path, sr, state ? state : "" });
     }
     s->clap_pending.fetch_add(1, std::memory_order_release);
     s->clap_load_cv.notify_one();
     return 1;
 }
-// Async instrument assign. Empty path clears synchronously (fast). Otherwise the load runs on the
-// worker; poll session_plugin_loads_pending()/get_audio_graph to know when it's live.
-int session_request_track_clap_instrument(Session* s, int t, const char* clap_path) {
+// Async instrument assign, optionally restoring a saved patch `state` once the (off-thread) load
+// finishes. Empty path clears synchronously (fast). Poll session_plugin_loads_pending() /
+// get_audio_graph to know when it's live.
+int session_request_track_clap_instrument_state(Session* s, int t, const char* clap_path, const char* state) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
     if (!clap_path || !*clap_path) {                         // clear: no load needed, do it inline
         Track& tr = *s->tracks[t];
@@ -1887,14 +1860,22 @@ int session_request_track_clap_instrument(Session* s, int t, const char* clap_pa
         tr.clap_inst = nullptr; rebuild_track_graph(&tr);
         return 1;
     }
-    return enqueue_clap_load(s, t, /*is_instrument*/true, clap_path);
+    return enqueue_clap_load(s, t, /*is_instrument*/true, clap_path, state);
+}
+int session_request_track_clap_effect_state(Session* s, int t, const char* clap_path, const char* state) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return 0;
+    return enqueue_clap_load(s, t, /*is_instrument*/false, clap_path, state);
+}
+int session_request_track_clap_instrument(Session* s, int t, const char* clap_path) {
+    return session_request_track_clap_instrument_state(s, t, clap_path, "");
 }
 int session_request_track_clap_effect(Session* s, int t, const char* clap_path) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return 0;
-    return enqueue_clap_load(s, t, /*is_instrument*/false, clap_path);
+    return session_request_track_clap_effect_state(s, t, clap_path, "");
 }
-// Main thread: apply any finished async loads (swap into the Track + rebuild its graph). Call
-// once per frame from the run loop. Failed / not-an-instrument loads set the last-error string.
+// Main thread: apply any finished async loads (swap into the Track, restore saved patch state, and
+// rebuild its graph). Call once per frame from the run loop. Failed / not-an-instrument loads set
+// the last-error string. For a serial worker the completions arrive in request order, so per-track
+// the instrument is applied before its effects and the effect chain keeps its saved order.
 void session_poll_plugin_loads(Session* s) {
     if (!s) return;
     std::deque<Session::ClapLoadDone> done;
@@ -1909,11 +1890,18 @@ void session_poll_plugin_loads(Session* s) {
             Track& tr = *s->tracks[d.track];
             if (d.is_instrument) {
                 if (h && !h->has_note_in) { delete h; h = nullptr; s->clap_last_error = d.path + ": not a CLAP instrument"; }
-                if (h) { if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst); tr.clap_inst = h; rebuild_track_graph(&tr); }
-                else if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
+                if (h) {
+                    if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
+                    tr.clap_inst = h;
+                    if (!d.state.empty()) clap_load_state(h, d.state);   // restore the saved patch (persist)
+                    rebuild_track_graph(&tr);
+                } else if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
             } else {
-                if (h) { tr.clap_effects.push_back(h); rebuild_track_graph(&tr); }
-                else s->clap_last_error = d.path + ": failed to load CLAP effect";
+                if (h) {
+                    tr.clap_effects.push_back(h);
+                    if (!d.state.empty()) clap_load_state(h, d.state);
+                    rebuild_track_graph(&tr);
+                } else s->clap_last_error = d.path + ": failed to load CLAP effect";
             }
         } else if (h) {
             delete h;                                        // track was removed while loading
