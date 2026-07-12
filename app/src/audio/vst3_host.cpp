@@ -364,11 +364,32 @@ static bool republish_track_graph(Track* t) {
     return true;
 }
 
+// Bind the track's loaded plugin handles into its authoritative-graph placeholder nodes. A saved
+// authoritative graph reloads its topology as bare Vst3Inst/ClapInst/Vst3Fx/ClapFx placeholders
+// (session_audio_graph_load_node) because the plugins load asynchronously; when they land
+// (session_poll_plugin_loads) their handles must be threaded back into those nodes before the plan
+// republishes, or the graph keeps a null source/effect and stays silent. Matches placeholders to
+// handles by kind + node order (the seed built them in the same order the plugins are saved/loaded).
+// Caller MUST hold t->gmtx. Non-plugin nodes (native ops / Sampler / Output) are left untouched.
+static void rebind_authoritative_plugins(Track* t) {
+    size_t vfx = 0, cfx = 0;                          // next VST3/CLAP effect to bind (node order)
+    for (GNodeBind& nb : t->agnodes) {
+        switch (nb.kind) {
+            case GNKind::Vst3Inst: nb.handle = t->handle;    break;   // single source per track
+            case GNKind::ClapInst: nb.clap   = t->clap_inst; break;
+            case GNKind::Vst3Fx:   nb.handle = (vfx < t->effects_edit.size()) ? t->effects_edit[vfx++] : nullptr; break;
+            case GNKind::ClapFx:   nb.clap   = (cfx < t->clap_effects.size()) ? t->clap_effects[cfx++]  : nullptr; break;
+            default: break;
+        }
+    }
+}
+
 static void rebuild_track_graph(Track* t) {
     std::lock_guard<std::mutex> lk(t->gmtx);
     // Once the graph is authoritative, a legacy device-chain edit must not wipe the user's
-    // topology — just recompile what's there (e.g. after a param change that calls rebuild).
-    if (t->graph_authoritative) { republish_track_graph(t); return; }
+    // topology — just re-bind any (newly landed) plugin handles into their placeholder nodes and
+    // recompile what's there (e.g. after a param change, or an async plugin load completing).
+    if (t->graph_authoritative) { rebind_authoritative_plugins(t); republish_track_graph(t); return; }
     t->agraph.reset();   // derived linear path regenerates from scratch → deterministic 0-based ids
     t->agnodes.clear();
     // Derived chain (AG-0): source (sampler for an audio track; else a native instrument takes
@@ -2146,6 +2167,23 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
         default:                                    return "";
     }
 }
+// Persistence discriminator for a node's binding family (the UI-facing node_type returns the
+// plugin's display name, which the loader can't map back to a plugin family). Stable codes:
+// 0 = native op (createable via audio_op_create) or Output, 1 = VST3, 2 = CLAP, 3 = Sampler.
+// The loader uses this to build the right placeholder agnode for a source/effect whose op isn't
+// a native operator (VST3/CLAP handles are bound later; see rebind_authoritative_plugins).
+int session_track_audio_graph_node_plugin_kind(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return 0;
+    switch (tr->agnodes[i].kind) {
+        case GNKind::Vst3Inst: case GNKind::Vst3Fx: return 1;
+        case GNKind::ClapInst: case GNKind::ClapFx: return 2;
+        case GNKind::Sampler:                       return 3;
+        default:                                    return 0;   // native inst/fx + Output
+    }
+}
 // Copy node i's output-waveform scope (oldest→newest) into out[n]; returns samples written (0 if
 // unavailable). Display-only: node_scope is a fixed-size ring the audio thread writes lock-free, so a
 // concurrent read is benign (a torn value = a one-pixel blip). node index i == the compiled out_buf.
@@ -2465,14 +2503,26 @@ void session_audio_graph_clear(Session* s, int t) {
       tr->op_fx_gen.fetch_add(1, std::memory_order_release); }
     tr->agraph.reset(); tr->agnodes.clear(); tr->graph_authoritative = false;
 }
-int session_audio_graph_load_node(Session* s, int t, int kind, const char* op_type) {
+int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, const char* op_type) {
     Track* tr = graph_track(s, t); if (!tr || !s->op_reg) return -1;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
     vivid::AudioOp* op = nullptr;
     GNKind gk = GNKind::Output; bool is_src = false, is_out = false;
     if (kind == 2) { is_out = true; }   // output sink: no op
-    else {
+    else if (plugin_kind != 0) {
+        // Plugin source/effect (VST3/CLAP) or the audio-loop Sampler: no native op. Create the
+        // placeholder binding — its handle is filled once the (async) plugin load lands, via
+        // rebind_authoritative_plugins on the next rebuild/finish_load. This keeps the topology
+        // node (and its edges) intact instead of dropping it because audio_op_create can't make it.
+        is_src = (kind == 0);
+        switch (plugin_kind) {
+            case 1: gk = is_src ? GNKind::Vst3Inst : GNKind::Vst3Fx; break;   // VST3
+            case 2: gk = is_src ? GNKind::ClapInst : GNKind::ClapFx; break;   // CLAP
+            case 3: gk = GNKind::Sampler; is_src = true; break;              // audio-loop scene source
+            default: return -1;
+        }
+    } else {
         op = vivid::audio_op_create(*s->op_reg, op_type);
         if (!op) return -1;
         if (kind == 0) {   // instrument (source)
@@ -2505,6 +2555,7 @@ void session_audio_graph_finish_load(Session* s, int t, int output_id) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     tr->agraph.set_output_id(output_id);
     tr->graph_authoritative = true;
+    rebind_authoritative_plugins(tr);   // bind any plugin handle that already landed (else no-op)
     republish_track_graph(tr);
 }
 
