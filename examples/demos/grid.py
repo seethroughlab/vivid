@@ -2,18 +2,18 @@
 
 Music : a broken Euclidean beat (kick E(5,16), off-beat snare, busy hats), a bitcrushed
         Surge lead, and a dark detuned Surge bass. The native Bitcrush op mangles the lead.
-Visual: a bespoke CustomShader digital-glitch field (shaders/grid_glitch.glsl, custom op)
-        → Feedback → Blur → Output. Transients burst the RGB tear, the highs shrink the
-        cells, the lows shove the blocks.
+Visual: TECHNICAL / WIREFRAME — REAL geometry, not a field. A teal Lines grid (real
+        LineList) with a white wireframe icosahedron Mesh spinning over it, added → Output
+        (sharp, no blur). Transients jolt the solid's scale, the highs jitter the grid,
+        the lows spin the icosahedron.
 
 Run with the app running:  uv run examples/demos/grid.py
 """
 import os
-from vivid_demo import Vivid, find, save_demo, surge_preset
+from vivid_demo import Vivid, find, save_geo, surge_preset
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SHADER = os.path.join(HERE, "shaders", "grid_glitch.glsl")
 PROJECT = os.path.join(HERE, "projects", "grid")
 
 LEAD, BASS, DRUMS = 0, 1, 2
@@ -48,30 +48,32 @@ def build(v: Vivid, save: bool = True):
     seq = [(theory.scale_notes("A", "pentatonic_minor", octave=2)[0], b * 1.0, 0.9) for b in range(8)]
     v.bassline(BASS, 0, seq, length=8.0, vel=0.95)
 
-    # --- visuals : glitch field -> Feedback -> Blur -> Output ---
-    g = v.graph()["nodes"]
-    fb, blur = find(g, "Feedback"), find(g, "Blur")
-    cs = v.add_node("CustomShader")
-    xform = v.add_node("Transform")              # NEW primitive: tile/rotate the glitch field
-    v.connect(xform, cs)                         # Transform reads the glitch field
-    v.connect(fb, xform)                         # Feedback reads the Transform
-    v.set_node_asset(cs, SHADER)
-    v.set_node_param(xform, "tile", 0.14)        # ~2x2 tiling
-    v.set_node_param(fb, "decay", 0.6)           # short, twitchy trails
-    v.set_node_param(blur, "radius", 0.04)
+    # --- visuals : REAL geometry (a Lines grid + a wireframe Mesh icosahedron), added -> Output ---
+    out = find(v.graph()["nodes"], "Output")
+    lines = v.add_node("Lines")                  # real LineList: a technical grid
+    for k, val in dict(mode=0.0, count=0.5, sides=0.6, size=0.85, rotation=0.0,
+                       r=0.2, g=0.9, b=0.7, bg_r=0.02, bg_g=0.03, bg_b=0.05).items():
+        v.set_node_param(lines, k, val)          # teal grid on near-black
+    mesh = v.add_node("Mesh")                    # a spinning wireframe icosahedron
+    for k, val in dict(shape=1.0, wireframe=1.0, size=0.42, spin=0.4, tilt=0.55,
+                       r=0.75, g=1.0, b=0.85, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+        v.set_node_param(mesh, k, val)           # white wireframe, black bg (ADD keys it over the grid)
+    comp = v.add_node("Composite")
+    v.connect(comp, lines, port=0)               # A = the grid
+    v.connect(comp, mesh, port=1)                # B = the icosahedron
+    v.set_node_param(comp, "mode", 0.25)         # ADD (sharp, no blur/haze — a data-viz look)
+    v.connect(out, comp)                         # Output <- Composite
 
-    # --- the bridge ---
-    v.map("master.transient", cs, "glow", amount=1.0)     # transient bursts the RGB tear
-    v.map("master.high",      cs, "density", amount=0.9)  # hats shrink the cells
-    v.map("master.low",       cs, "warp", amount=0.7)     # bass shoves the blocks
-    v.map("master.mid",       cs, "hue", amount=0.5)
-    v.map("master.transient", xform, "tile", amount=0.2)  # beats jolt the tiling
-    v.map("master.low",       xform, "rot", amount=0.08)  # bass skews the grid
+    # --- the bridge (smooth params only; grid/mesh structure stays baked) ---
+    v.map("master.transient", mesh,  "size", amount=1.0, lo=0.3, hi=0.62)   # beats jolt the solid
+    v.map("master.high",      lines, "rotation", amount=0.15)               # hats jitter the grid
+    v.map("master.transient", lines, "size", amount=0.5, lo=0.78, hi=0.92)  # + the grid snaps
+    v.map("master.low",       mesh,  "spin", amount=0.7, lo=0.25, hi=0.8)   # bass spins the icosahedron
 
     v.launch_scene(0)
     v.play()
     if save:
-        save_demo(v, PROJECT, SHADER, cs)
+        save_geo(v, PROJECT)
 
 
 if __name__ == "__main__":

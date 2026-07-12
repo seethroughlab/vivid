@@ -2,9 +2,9 @@
 
 Music : a lush I-vi-IV-V pad of maj7/min7 chords in slow open voicings, a whole-note
         root bass an octave down, and a sparse high arpeggio drifting over the top.
-Visual: a bespoke CustomShader flowing nebula (shaders/drift_flow.glsl, custom op)
-        → Feedback (long trails) → Tint (built-in) → Output. Loudness lifts the bloom,
-        the mids drift the colour, the lows gently bend the flow.
+Visual: SWISS / TYPOGRAPHIC — minimal REAL geometry. A "DRIFT" title as filled vector
+        type (VectorText: real FreeType glyph outlines → triangles) added over a slow
+        radial Gradient → Output. Loudness breathes the title, the mids drift the field.
 
 Run with the app running:  uv run examples/demos/drift.py
 """
@@ -13,7 +13,7 @@ from vivid_demo import Vivid, find, save_demo, surge_preset, SURGE_FX, SURGE_FX_
 import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SHADER = os.path.join(HERE, "shaders", "drift_flow.glsl")
+TEXT = os.path.join(HERE, "text", "drift.txt")   # the vector-type title string
 PROJECT = os.path.join(HERE, "projects", "drift")
 
 ARP, PAD, EXTRA = 0, 1, 2         # Pigments (arp), Serum 2 (pad), EZdrummer (unused here)
@@ -48,40 +48,29 @@ def build(v: Vivid, save: bool = True):
     v.set_clip(ARP, 0, top, 32.0)
     v.clear_clip(EXTRA, 0)   # no drums for the ambient bed
 
-    # --- visuals : flowing nebula -> Feedback (long) -> Tint -> Output ---
-    cs = v.swap_generator("CustomShader")
-    v.set_node_asset(cs, SHADER)
-    nodes = v.graph()["nodes"]
-    fb, blur = find(nodes, "Feedback"), find(nodes, "Blur")
-    out = find(nodes, "Output")
-    tint = v.add_node("Tint")                     # built-in WGSL op, inserted before Output
-    v.connect(tint, blur)
-    # NEW primitives: a radial Gradient multiplied over the nebula = a cinematic vignette that breathes.
-    grad = v.add_node("Gradient")
+    # --- visuals : a "DRIFT" vector-type title over a slow radial Gradient, added -> Output ---
+    out = find(v.graph()["nodes"], "Output")
+    grad = v.add_node("Gradient")                 # the calm cinematic field
+    for k, val in dict(mode=1.0, ar=0.55, ag=0.62, ab=0.78, br=0.04, bg=0.05, bb=0.1, scale=0.4).items():
+        v.set_node_param(grad, k, val)            # radial: soft blue-white center -> deep cool edges
+    title = v.add_node("VectorText")              # REAL filled vector type (glyph outlines -> triangles)
+    for k, val in dict(size=0.16, x=0.5, y=0.5, r=0.97, g=0.98, b=1.0, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+        v.set_node_param(title, k, val)           # white title, black bg (ADD keys it over the gradient)
+    v.set_node_asset(title, TEXT)                 # absolute path for live preview (save_demo makes it portable)
     comp = v.add_node("Composite")
-    v.connect(comp, tint, port=0)                 # A = the nebula chain
-    v.connect(comp, grad, port=1)                 # B = the gradient
+    v.connect(comp, grad, port=0)                 # A = the gradient field
+    v.connect(comp, title, port=1)                # B = the title
+    v.set_node_param(comp, "mode", 0.25)          # ADD (white type glows over the field)
     v.connect(out, comp)                          # Output <- Composite
-    v.set_node_param(fb, "decay", 0.94)          # very long, dreamy trails
-    v.set_node_param(blur, "radius", 0.3)
-    v.set_node_param(tint, "hue", 0.55)
-    for k, val in dict(mode=1.0, ar=1.0, ag=1.0, ab=1.0, br=0.15, bg=0.1, bb=0.28, scale=0.28).items():
-        v.set_node_param(grad, k, val)            # radial: bright center -> dark cool edges
-    v.set_node_param(comp, "mode", 0.5)          # multiply (vignette)
-    v.set_node_param(comp, "opacity", 0.85)
 
-    # --- the bridge : slow, gentle reactivity ---
-    v.map("master.level", cs, "glow", amount=0.9)
-    v.map("master.level", cs, "density", amount=0.7)
-    v.map("master.mid",   cs, "hue", amount=0.5)
-    v.map("master.low",   cs, "warp", amount=0.5)
-    v.map("master.mid",   tint, "hue", amount=0.4)
-    v.map("master.level", grad, "scale", amount=0.25, lo=0.28, hi=0.5)   # the vignette opens with loudness
+    # --- the bridge : slow, gentle reactivity (smooth params only) ---
+    v.map("master.level", title, "size", amount=0.06, lo=0.16, hi=0.2)   # the title breathes with loudness
+    v.map("master.mid",   grad,  "scale", amount=0.2, lo=0.4, hi=0.6)    # the field drifts with the mids
 
     v.launch_scene(0)
     v.play()
     if save:
-        save_demo(v, PROJECT, SHADER, cs)
+        save_demo(v, PROJECT, TEXT, title)
 
 
 if __name__ == "__main__":

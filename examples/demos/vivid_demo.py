@@ -213,6 +213,13 @@ def save_demo(v: Vivid, project_dir: str, shader_src: str, cs_id: int):
     print(f"saved -> {project_dir}")
 
 
+def save_geo(v: Vivid, project_dir: str):
+    """Save a geometry-only demo (real-geometry ops need no external data asset)."""
+    os.makedirs(project_dir, exist_ok=True)
+    v.save_project(project_dir)
+    print(f"saved -> {project_dir}")
+
+
 def find(nodes, op_type):
     """First node id of a given op type in a get_graph() `nodes` list."""
     for n in nodes:
