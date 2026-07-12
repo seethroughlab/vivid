@@ -75,8 +75,24 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         float fy = static_cast<float>(my);
         if (fy + rows * item_h > win.win_h - marg)
             fy = std::max(marg + 22.f, win.win_h - rows * item_h - marg);
-        win.fx_menu = { true, fx, fy, tr, true /*graph*/ };
+        win.fx_menu = { true, fx, fy, tr, true /*graph*/, false /*effects*/ };
         return true;
+    }
+    if (hit(ag.source_add_button_rect(), mx, my)) {   // + Src: the native-INSTRUMENT picker (add a parallel source)
+        const int rows = S::session_available_audio_op_count(app.session, 1);   // sources only
+        const float menu_w = 150.f, item_h = 24.f, marg = 8.f;
+        float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+        float fy = static_cast<float>(my);
+        if (fy + rows * item_h > win.win_h - marg)
+            fy = std::max(marg + 22.f, win.win_h - rows * item_h - marg);
+        win.fx_menu = { true, fx, fy, tr, true /*graph*/, true /*sources*/ };
+        return true;
+    }
+    if (win.sel_audio_node >= 0 && ag.sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
+        int lo = 0, hi = 127;
+        S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
+        if (hit(ag.key_lo_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 0; win.ag_key_v0 = lo; win.ag_key_y0 = my; return true; }
+        if (hit(ag.key_hi_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 1; win.ag_key_v0 = hi; win.ag_key_y0 = my; return true; }
     }
     if (win.sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
         for (const auto& c : ag.param_cells(win.sel_audio_node)) {

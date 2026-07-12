@@ -25,6 +25,12 @@ constexpr int   kPMaxRows = 3;          // cap the grid at 3 rows (a VST3 node's
 // API exposes the value but not the enum choice labels, so the widget names them by convention.
 const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
 
+// MIDI note number -> name (60 -> "C4"), for the key-range readout.
+void note_name(int n, char* buf, size_t sz) {
+    static const char* names[12] = { "C","C#","D","D#","E","F","F#","G","G#","A","A#","B" };
+    std::snprintf(buf, sz, "%s%d", names[((n % 12) + 12) % 12], n / 12 - 1);
+}
+
 // Forward to the shared substrate bezier so both editors draw identical wires.
 inline void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
     node_wire(r, x0, y0, x1, y1, c[0], c[1], c[2]);
@@ -73,6 +79,31 @@ Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); retu
 Rect AudioNodeGraph::add_button_rect() const {
     const Rect g = graph_region();
     return { g.x + g.w - 54.f, g.y + 2.f, 48.f, 16.f };
+}
+Rect AudioNodeGraph::source_add_button_rect() const {
+    const Rect a = add_button_rect();
+    return { a.x - 54.f, a.y, 48.f, 16.f };   // pinned left of "+ FX"
+}
+
+bool AudioNodeGraph::sel_is_source(int sel_node) const {
+    if (!s_ || sel_node < 0) return false;
+    const int n = P::session_track_audio_graph_node_count(s_, track_);
+    for (int i = 0; i < n; ++i)
+        if (P::session_track_audio_graph_node_id(s_, track_, i) == sel_node)
+            return P::session_track_audio_graph_node_kind(s_, track_, i) == 0;
+    return false;
+}
+// Two small drag handles at the bottom-right of the param strip (source nodes only). Empty
+// otherwise. Draw + input share these so the hit-rects agree.
+Rect AudioNodeGraph::key_lo_rect(int sel_node) const {
+    if (!sel_is_source(sel_node)) return { 0.f, 0.f, 0.f, 0.f };
+    const Rect pr = param_region();
+    return { pr.x + pr.w - 150.f, pr.y + pr.h - 28.f, 66.f, 21.f };
+}
+Rect AudioNodeGraph::key_hi_rect(int sel_node) const {
+    if (!sel_is_source(sel_node)) return { 0.f, 0.f, 0.f, 0.f };
+    const Rect pr = param_region();
+    return { pr.x + pr.w - 78.f, pr.y + pr.h - 28.f, 66.f, 21.f };
 }
 
 Rect AudioNodeGraph::remove_rect(const AudioNodeBox& b) const {
@@ -207,6 +238,14 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         r.draw_text(b.x + 10.f, b.y + 6.f, label, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "instrument" : (b.kind == 1 ? "effect" : "output");
         r.draw_text(b.x + 10.f, b.y + b.h - 13.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.66f);
+        if (b.kind == 0) {   // source: show its key range on the card when it's a key-split (non-full)
+            int lo = 0, hi = 127;
+            if (P::session_audio_graph_node_key_range_get(s_, track_, b.node_id, &lo, &hi) && (lo > 0 || hi < 127)) {
+                char a[8], z[8], rng[20]; note_name(lo, a, sizeof a); note_name(hi, z, sizeof z);
+                std::snprintf(rng, sizeof rng, "%s-%s", a, z);
+                r.draw_text(b.x + b.w - 46.f, b.y + b.h - 13.f, rng, sty.gold[0], sty.gold[1], sty.gold[2], 0.95f, 0.66f);
+            }
+        }
         if (b.kind == 1) {   // effect: removable
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
@@ -231,10 +270,13 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                 wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
     }
 
-    // "+ FX" affordance.
+    // "+ FX" / "+ Src" affordances (add an effect / a parallel instrument source).
     { const Rect a = add_button_rect();
       r.draw_rect(a.x, a.y, a.w, a.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
       r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
+    { const Rect a = source_add_button_rect();
+      r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+      r.draw_text(a.x + 5.f, a.y + 1.f, "+ Src", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
 
     r.pop_clip_rect();   // end graph-area clip (2i)
 
@@ -258,8 +300,22 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
             draw_lfo(r, cp.rect, w, kLfoWaveNames[w], sty.audio, "LFO");
         }
     }
+    // Key-range editor for a selected SOURCE node (two draggable handles + a note-name readout).
+    // A key-split = two sources with disjoint ranges; drag lo/hi to carve the keyboard.
+    if (sel_is_source(sel_node)) {
+        int lo = 0, hi = 127;
+        P::session_audio_graph_node_key_range_get(s_, track_, sel_node, &lo, &hi);
+        const Rect kl = key_lo_rect(sel_node), kh = key_hi_rect(sel_node);
+        r.draw_text(kl.x, kl.y - 12.f, "key range (drag)", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.62f);
+        char a[8], z[8]; note_name(lo, a, sizeof a); note_name(hi, z, sizeof z);
+        r.draw_rounded_rect(kl.x, kl.y, kl.w, kl.h, 3.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        r.draw_text(kl.x + 7.f, kl.y + 4.f, a, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+        r.draw_rounded_rect(kh.x, kh.y, kh.w, kh.h, 3.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        r.draw_text(kh.x + 7.f, kh.y + 4.f, z, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+    }
+
     const std::vector<AudioParamCell> cells = param_cells(sel_node);
-    if (cells.empty() && compound_previews().empty()) {
+    if (cells.empty() && compound_previews().empty() && !sel_is_source(sel_node)) {
         r.draw_text(pr.x + 4.f, pr.y + 20.f,
                     sel_node < 0 ? "click a node to edit its parameters" : "this node has no parameters",
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);

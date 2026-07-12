@@ -15,7 +15,7 @@ namespace vivid {
 // A right-click context menu of a track's audio characteristics (the bridge). `graph` marks the
 // fx picker as opened from the audio-graph deep view: native effects only, added via the graph
 // edit API (audio_graph_add_op → authoritative) rather than the linear device chain.
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; bool graph = false; };  // src: -1 master, >=0 track
+struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; bool graph = false; bool sources = false; };  // src: -1 master, >=0 track; sources = list instruments (add a graph source)
 // A right-click context menu on a visuals op node (open its source / clone it).
 struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
@@ -93,6 +93,9 @@ struct Window {
     int     sel_audio_node = kNoAudioNode;
     int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
     float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
+    // Dragging a source node's key-range handle (a key-split): 0 = lo, 1 = hi, -1 = none.
+    int     ag_key_drag    = -1;
+    int     ag_key_v0      = 0; double ag_key_y0 = 0.0;
     // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
     // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
     int     ag_wire_from   = -1;

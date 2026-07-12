@@ -180,6 +180,9 @@ void   session_get_clip_loop(Session*, int track, int scene, double* loop_start,
 // a native instrument (source op) + a chain of native audio effects, alongside VST3.
 // index -1 addresses the instrument slot; index >= 0 an effect in the chain.
 void        session_set_op_registry(Session*, vivid::OpRegistry* reg);
+// Append two node-graph showcase tracks (a frequency-split FX rack + a key-range instrument split),
+// built with native ops. Call once after session_set_op_registry; no-op without a registry.
+void        session_build_split_showcase(Session*);
 int         session_add_audio_effect(Session*, int track, const char* op_type);   // -> effect index, -1 on failure
 void        session_remove_audio_effect(Session*, int track, int index);
 int         session_audio_effect_count(Session*, int track);
@@ -259,9 +262,14 @@ int         session_track_audio_graph_edge_to(Session*, int track, int e);
 // to graph-authoritative: rebuild_track_graph stops regenerating from the linear device chain
 // and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
 int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
+int         session_audio_graph_add_source(Session*, int track, const char* op_type);   // instrument source node, fan-in to Output
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
+// A source node's MIDI key range [lo,hi] (0..127 = full). Two sources with disjoint ranges = a
+// key-split; the audio thread hands each source only its in-range notes. get returns 1 on success.
+void        session_audio_graph_node_key_range_set(Session*, int track, int node_id, int lo, int hi);
+int         session_audio_graph_node_key_range_get(Session*, int track, int node_id, int* lo, int* hi);
 // Node-id-keyed param access (works for derived + authoritative graphs; the chain-index API
 // can't address nodes in a non-linear graph). node_id comes from the introspection accessors.
 int         session_audio_graph_node_param_count(Session*, int track, int node_id);

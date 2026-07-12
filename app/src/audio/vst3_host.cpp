@@ -83,8 +83,20 @@ enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, 
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr;
-                   Vst3Handle* handle = nullptr; ClapHandle* clap = nullptr; };
+// `key_lo`/`key_hi` = the MIDI key range a *source* node voices (0..127 = full range = no
+// filtering). Two source nodes with disjoint ranges = a key-split; the audio thread filters the
+// shared note stream per source (run_track_graph). Ignored for effect/output nodes.
+struct GNodeBind {
+    GNKind kind = GNKind::Output;
+    vivid::AudioOp* op = nullptr;
+    Vst3Handle* handle = nullptr;
+    ClapHandle* clap = nullptr;
+    uint8_t key_lo = 0, key_hi = 127;
+};
+// The audio thread swaps gbinds under a try_lock as a plain copy (reserved capacity, no move) —
+// that is only RT-safe while the bind is trivially copyable. Adding a non-POD member here would
+// silently break the real-time contract, so pin it.
+static_assert(std::is_trivially_copyable<GNodeBind>::value, "GNodeBind must stay POD for the RT gbinds swap");
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
@@ -118,6 +130,12 @@ struct Track {
     Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
                                            // notes); on the Track so both the inline path AND the
                                            // audio-graph Vst3Inst node dispatch share the same list.
+    // Key-range routing scratch (a key-split track has >1 source, each voicing one pitch range).
+    // Source nodes run sequentially in run_track_graph, so ONE filtered buffer per track is reused
+    // across sources (like t.vev). Reserved off the audio thread; src_vev is fixed-capacity (256).
+    std::vector<NoteEvent> src_nev;
+    std::vector<ExprEvent> src_eev;
+    Vst3EventList          src_vev;
     LiveMidi              preview_in;       // editor keyboard-audition notes (drained every block, any arm state)
     uint64_t              steady = 0;
     std::vector<Vst3Handle*> effects;      // post-generator FX chain (audio working copy)
@@ -138,6 +156,10 @@ struct Track {
     std::mutex                   op_fx_mtx;
     vivid::AudioOp*              op_instrument_edit = nullptr;
     std::vector<vivid::AudioOp*> op_effects_edit;
+    // Additional graph source ops beyond the primary op_instrument_edit (a key-split track has
+    // >1 instrument source). Ownership only — the audio thread reaches every source op via
+    // gbinds; these are retired at teardown. Only ever non-empty on an authoritative graph.
+    std::vector<vivid::AudioOp*> op_sources_edit;
     std::atomic<uint64_t>        op_fx_gen{0};
     uint64_t                     op_fx_gen_seen = 0;
     std::vector<vivid::AudioOp*> op_retired;
@@ -318,6 +340,7 @@ static void reserve_track_graph(Track* t) {
     t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
+    t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -408,9 +431,12 @@ static void rebuild_track_graph(Track* t) {
 
 // The per-source/effect render primitives (defined below, near session_process); forward-declared
 // so the graph dispatch can call the same helpers the inline path does.
-static void render_vst3_instrument(Track& t, Vst3Handle* h, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev, const std::vector<ExprEvent>& eev);
+static inline void filter_notes_by_range(const std::vector<NoteEvent>& src, uint8_t lo, uint8_t hi, std::vector<NoteEvent>& dst);
+static inline void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t hi, std::vector<ExprEvent>& dst);
+static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
 static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
-static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+static void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R);
 static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
 static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
@@ -442,15 +468,33 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         float* oR = oL + stride;
         const GNodeBind& nb = t.gbinds[s.out_buf];
         if (s.n_in == 0) {   // source node
-            if (nb.kind == GNKind::NativeInst && nb.op)
-                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, b.notes, b.note_count);
+            const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
+            if (nb.kind == GNKind::NativeInst && nb.op) {
+                const NoteEvent* nn = b.notes; uint32_t nc = b.note_count;
+                if (!full_range) {   // key-split: hand this source only its in-range notes
+                    filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);
+                    nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
+                }
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc);
+            }
             else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
-                render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
+                if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
+                    emit_vst3(t.vev, t.nev, t.eev);
+                    render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR);
+                } else {            // key-split: independent filtered event list for this source
+                    filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);
+                    filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);
+                    t.src_vev.clear();
+                    emit_vst3(t.src_vev, t.src_nev, t.src_eev);
+                    render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR);
+                }
             }
             else if (nb.kind == GNKind::ClapInst && nb.clap) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                render_clap_instrument(t, nb.clap, frames, oL, oR);
+                if (full_range) render_clap_instrument(t, nb.clap, t.nev, frames, oL, oR);
+                else { filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
+                       render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
             }
             else if (nb.kind == GNKind::Sampler) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
@@ -708,6 +752,79 @@ inline void load_progress(const char* status) { if (g_load_cb) g_load_cb(g_load_
 }  // namespace
 
 void session_set_load_progress(SessionLoadCb cb, void* user) { g_load_cb = cb; g_load_user = user; }
+
+// Two showcase tracks for the per-track audio node graph — parallel routing a linear device chain
+// cannot express. Built via the public graph edit API (the exact calls a user/agent makes), then
+// given a clip that makes the split audible. Native ops only (no plugin dependency). The tracks are
+// graph-authoritative, so they persist as node/edge topology (and rebuild_track_graph won't wipe them).
+// Called AFTER session_set_op_registry (the native ops need the registry), then republishes the
+// track list. No-op without a registry.
+void session_build_split_showcase(Session* s) {
+    if (!s || !s->op_reg) return;
+    using namespace demo;
+    auto new_native_track = [&](const char* name) -> int {
+        s->tracks.emplace_back(make_instrument_track(nullptr, name, s->scenes));
+        s->tracks.back()->id = s->next_track_id++;
+        return static_cast<int>(s->tracks.size()) - 1;
+    };
+    auto set_clip = [&](int ti, const MidiClip& clip) {
+        Track& t = *s->tracks[ti];
+        for (auto& c : t.clips) c = clip;      // the same loop in every scene slot
+        t.edit_clips = t.clips;
+        t.sched.reset(&t.clips[0]);
+    };
+
+    // Track A — frequency-split rack: a sine fans out to a low-pass branch and a high-pass ->
+    // Bitcrush branch, merged. A wide arpeggio straddles the ~450 Hz crossover so low notes come
+    // out clean and high notes come out crushed.
+    {
+        const int ti  = new_native_track("Freq Split");
+        const int src = session_audio_graph_add_source(s, ti, "TestTone");   // creates the source + Output
+        const int out = session_track_audio_graph_output_id(s, ti);
+        const int lp  = session_audio_graph_add_op(s, ti, "SVFilter");
+        const int hp  = session_audio_graph_add_op(s, ti, "SVFilter");
+        const int cr  = session_audio_graph_add_op(s, ti, "Bitcrush");
+        // add_op splices linearly (src->lp->hp->cr->out); rewire into two parallel branches.
+        session_audio_graph_disconnect(s, ti, lp, hp);
+        session_audio_graph_connect(s, ti, lp, out);     // low branch:  src -> lp -> out
+        session_audio_graph_connect(s, ti, src, hp);     // high branch: src -> hp -> cr -> out
+        session_audio_graph_node_param_set(s, ti, lp, 0, 0.f);      // LowPass
+        session_audio_graph_node_param_set(s, ti, lp, 1, 450.f);
+        session_audio_graph_node_param_set(s, ti, hp, 0, 1.f);      // HighPass
+        session_audio_graph_node_param_set(s, ti, hp, 1, 450.f);
+        session_audio_graph_node_param_set(s, ti, cr, 0, 4.f);      // 4-bit crush on the high band
+        session_audio_graph_node_param_set(s, ti, cr, 2, 1.f);
+        MidiClip a; a.length = 8.0;
+        const int low[4] = { 36, 40, 43, 48 }, hi[4] = { 72, 76, 79, 84 };
+        for (int i = 0; i < 16; ++i)
+            nadd(a, (i % 2 == 0) ? low[(i / 2) % 4] : hi[(i / 2) % 4], i * 0.5, 0.45, 0.8f);
+        set_clip(ti, a);
+    }
+
+    // Track B — key-range split: two sine sources split at middle C. The low source (0..59) is a
+    // clean sub-bass; the high source (60..127) runs through a Bitcrush for a gritty lead — so the
+    // two registers are audibly distinct instruments. One clip carries a bassline under a melody;
+    // each note routes to its own source purely by pitch.
+    {
+        const int ti  = new_native_track("Key Split");
+        const int lo  = session_audio_graph_add_source(s, ti, "TestTone");   // creates the source + Output
+        const int out = session_track_audio_graph_output_id(s, ti);
+        const int hi  = session_audio_graph_add_source(s, ti, "TestTone");   // 2nd source -> Output
+        session_audio_graph_node_key_range_set(s, ti, lo, 0, 59);
+        session_audio_graph_node_key_range_set(s, ti, hi, 60, 127);
+        const int cr  = session_audio_graph_add_op(s, ti, "Bitcrush");       // splices both sources -> cr -> out
+        session_audio_graph_disconnect(s, ti, lo, cr);                       // pull the low (bass) source off the crush
+        session_audio_graph_connect(s, ti, lo, out);                         // clean sub-bass straight to Output
+        session_audio_graph_node_param_set(s, ti, cr, 0, 5.f);               // 5-bit crush on the lead
+        session_audio_graph_node_param_set(s, ti, cr, 2, 0.85f);
+        MidiClip b; b.length = 8.0;
+        const int bass[8] = { 36, 36, 43, 36, 41, 41, 38, 43 };
+        const int mel[8]  = { 72, 74, 76, 79, 76, 74, 72, 67 };
+        for (int i = 0; i < 8; ++i) { nadd(b, bass[i], i * 1.0, 0.9, 0.9f); nadd(b, mel[i], i * 1.0 + 0.25, 0.6, 0.7f); }
+        set_clip(ti, b);
+    }
+    rebuild_track_view(s);   // publish the two new tracks to the audio thread
+}
 
 Session* session_create(uint32_t sample_rate) {
     load_progress("Scanning plug-ins...");
@@ -1449,13 +1566,25 @@ static void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev,
 // path and (later) the audio-graph node dispatch call identical code — parity by construction. All
 // are RT-safe: fixed-capacity VST3 scratch, no heap, the sampler try_lock skip preserved. ---
 
-// VST3 instrument source. Appends this block's notes/expression (t.nev/t.eev) into t.vev — which the
-// caller has already primed with any scene-switch release events — then runs the processor into L/R.
-// Using t.vev (not a local) lets the inline path and the graph Vst3Inst dispatch build the identical
-// event list. The native path deliberately never sees the scene-switch releases; unchanged.
-static void render_vst3_instrument(Track& t, Vst3Handle* h,
+// Copy only the note/expr events whose pitch is within [lo,hi] into dst — the key-range router.
+// RT-safe: dst is pre-reserved (reserve_track_graph). note-on and note-off both carry pitch, so a
+// filtered-in note's off is filtered in too — on/off pairs stay balanced (no stuck notes).
+static inline void filter_notes_by_range(const std::vector<NoteEvent>& src, uint8_t lo, uint8_t hi,
+                                         std::vector<NoteEvent>& dst) {
+    dst.clear();
+    for (const NoteEvent& n : src) if (n.pitch >= lo && n.pitch <= hi) dst.push_back(n);
+}
+static inline void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t hi,
+                                        std::vector<ExprEvent>& dst) {
+    dst.clear();
+    for (const ExprEvent& x : src) if (x.pitch >= lo && x.pitch <= hi) dst.push_back(x);
+}
+
+// VST3 instrument source. Runs the processor into L/R using the caller-supplied `events` list.
+// For a full-range source the caller passes t.vev (primed with scene-switch releases + this block's
+// notes), keeping behavior identical; for a key-split source it passes a filtered per-source list.
+static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
                                    const VividAudioContext& ctx, uint32_t frames, float* L, float* R) {
-    emit_vst3(t.vev, t.nev, t.eev);
     float* ch[2] = { L, R };
     AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
     Vst3ParamChanges pc; pc.clear();
@@ -1465,7 +1594,7 @@ static void render_vst3_instrument(Track& t, Vst3Handle* h,
     data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
     data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
     data.inputs = nullptr; data.outputs = &ob;
-    data.inputEvents = &t.vev; data.inputParameterChanges = &pc; data.processContext = &pctx;
+    data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
     h->processor->process(data);
 }
 
@@ -1493,14 +1622,16 @@ static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext
 }
 
 // CLAP instrument. Builds this block's note + param events into the handle's scratch, then
-// processes into L/R (silent input fed to any declared input port). Parallels the native path:
-// reads t.nev (clip + live/preview notes) directly. RT-safe (fixed scratch, no alloc/lock).
-static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+// processes into L/R (silent input fed to any declared input port). Plays `notes` (t.nev for a
+// full-range source, or a key-range-filtered list) plus this block's scene-switch note-offs.
+// RT-safe (fixed scratch, no alloc/lock).
+static void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
+                                   uint32_t frames, float* L, float* R) {
     h->events.clear();
     clap_flush_params(h);
     for (const NoteEvent& ne : t.scene_rel)   // scene-switch note-offs first, so held voices release
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
-    for (const NoteEvent& ne : t.nev)
+    for (const NoteEvent& ne : notes)         // this source's notes (full range = t.nev; key-split = filtered)
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     float* out[2] = { L, R };
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
@@ -1724,6 +1855,7 @@ void session_destroy(Session* s) {
         for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
         destroy_handle(t->handle);
         for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
+        for (vivid::AudioOp* op : t->op_sources_edit) vivid::audio_op_destroy(op);   // extra graph sources
         for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
         vivid::audio_op_destroy(t->op_instrument_edit);
         delete t->clap_inst;                                    // CLAP instrument + FX + retired
@@ -2100,6 +2232,55 @@ int session_audio_graph_add_op(Session* s, int t, const char* op_type) {
     return nid;
 }
 
+// Add a native instrument as a new *source* node, wired straight to Output (a parallel source —
+// two of these with disjoint key ranges = a key-split). Sibling of add_op but sources-only and
+// fan-in (no inline splice). Returns the new node id, or -1 (unknown/effect op / node cap / no track).
+int session_audio_graph_add_source(Session* s, int t, const char* op_type) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !s->op_reg) return -1;
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
+    if (!op || !vivid::audio_op_is_source(op)) { if (op) vivid::audio_op_destroy(op); return -1; }  // sources only
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) { vivid::audio_op_destroy(op); return -1; }
+    { std::lock_guard<std::mutex> olk(tr->op_fx_mtx);   // ownership: primary slot if free, else an extra source
+      if (!tr->op_instrument_edit) tr->op_instrument_edit = op;
+      else                         tr->op_sources_edit.push_back(op); }
+    tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+    const int nid = tr->agraph.add_node(true, false, nullptr, nullptr, op_type ? op_type : "src");
+    tr->agnodes.push_back({ GNKind::NativeInst, op });   // full range by default; set via key_range_set
+    int out = tr->agraph.output_id();
+    if (out < 0) {   // bare graph (no source yet): materialize the Output sink so the source is heard
+        out = tr->agraph.add_node(false, true, nullptr, nullptr, "out");
+        tr->agnodes.push_back({ GNKind::Output, nullptr });
+        tr->agraph.set_output_id(out);
+    }
+    tr->agraph.connect(nid, out);                        // fan-in to Output (parallel with existing sources)
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+    return nid;
+}
+
+// Set / get a source node's MIDI key range [lo,hi] (0..127). The audio thread then hands that
+// source only its in-range notes (run_track_graph). No-op on a non-source / unknown node.
+void session_audio_graph_node_key_range_set(Session* s, int t, int node_id, int lo, int hi) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return;
+    tr->agnodes[idx].key_lo = static_cast<uint8_t>(std::clamp(lo, 0, 127));
+    tr->agnodes[idx].key_hi = static_cast<uint8_t>(std::clamp(hi, 0, 127));
+    republish_track_graph(tr);   // push the updated bindings to the audio thread
+}
+int session_audio_graph_node_key_range_get(Session* s, int t, int node_id, int* lo, int* hi) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return 0;
+    if (lo) *lo = tr->agnodes[idx].key_lo;
+    if (hi) *hi = tr->agnodes[idx].key_hi;
+    return 1;
+}
+
 // Remove an effect node (delete-and-bridge: its predecessors reconnect to its successors so
 // signal keeps flowing). Instrument and Output nodes are not removable. Returns 1 / 0.
 int session_audio_graph_remove_node(Session* s, int t, int node_id) {
@@ -2278,6 +2459,8 @@ void session_audio_graph_clear(Session* s, int t) {
     { std::lock_guard<std::mutex> olk(tr->op_fx_mtx);   // retire any existing native ops (freed at shutdown)
       for (vivid::AudioOp* op : tr->op_effects_edit) tr->op_retired.push_back(op);
       tr->op_effects_edit.clear();
+      for (vivid::AudioOp* op : tr->op_sources_edit) tr->op_retired.push_back(op);
+      tr->op_sources_edit.clear();
       if (tr->op_instrument_edit) { tr->op_retired.push_back(tr->op_instrument_edit); tr->op_instrument_edit = nullptr; }
       tr->op_fx_gen.fetch_add(1, std::memory_order_release); }
     tr->agraph.reset(); tr->agnodes.clear(); tr->graph_authoritative = false;
@@ -2296,8 +2479,10 @@ int session_audio_graph_load_node(Session* s, int t, int kind, const char* op_ty
             if (!vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
             gk = GNKind::NativeInst; is_src = true;
             std::lock_guard<std::mutex> olk(tr->op_fx_mtx);
-            if (tr->op_instrument_edit) tr->op_retired.push_back(tr->op_instrument_edit);
-            tr->op_instrument_edit = op;
+            // First source → the primary slot (back-compat); additional sources (a key-split) →
+            // op_sources_edit. Both are just ownership; the node references the op via agnodes.
+            if (!tr->op_instrument_edit) tr->op_instrument_edit = op;
+            else                         tr->op_sources_edit.push_back(op);
         } else {           // effect
             if (vivid::audio_op_is_source(op)) { vivid::audio_op_destroy(op); return -1; }
             gk = GNKind::NativeFx;

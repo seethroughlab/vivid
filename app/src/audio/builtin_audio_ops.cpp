@@ -58,6 +58,72 @@ struct BitcrushOp : OperatorBase, AudioProcessable {
     }
 };
 
+// --- State-Variable Filter: one filter core, LP/HP/BP by a type param -----------------
+// A TPT (topology-preserving transform) state-variable filter — the audio-graph's missing
+// primitive. The frequency-split rack instantiates it twice (one LowPass, one HighPass) and
+// fans a source out to both branches, so this single op powers the whole parallel-FX demo.
+// RT-safe: per-channel POD state, coefficients computed once per block, denormal-flushed.
+struct StateVariableFilterOp : OperatorBase, AudioProcessable {
+    static constexpr const char* kDisplayName = "Filter";
+    static constexpr const char* kSummary = "State-variable filter (low/high/band-pass) with resonance.";
+    static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "filter", "eq" };
+
+    Param<int>   type{ "type", 0, 0, 2 };                    // 0 = LowPass, 1 = HighPass, 2 = BandPass
+    Param<float> cutoff{ "cutoff", 1000.f, 20.f, 20000.f };  // Hz
+    Param<float> resonance{ "resonance", 0.1f, 0.f, 1.f };
+
+    float ic1eq_[2] = { 0.f, 0.f };   // integrator states (per channel)
+    float ic2eq_[2] = { 0.f, 0.f };
+
+    static inline float flush(float x) { return std::abs(x) < 1e-18f ? 0.f : x; }   // denormal guard
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        semantic_intent(type, "filter type: 0 low-pass, 1 high-pass, 2 band-pass");
+        semantic_intent(cutoff, "cutoff frequency (Hz)");    description(cutoff, "corner frequency");
+        semantic_shape(resonance, "scalar");                 semantic_intent(resonance, "resonance / Q");
+        o.push_back(&type); o.push_back(&cutoff); o.push_back(&resonance);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_in()); o.push_back(aud_out()); }
+
+    void process_audio(const VividAudioContext* c) override {
+        if (!c->input_buffers || !c->output_buffers) return;
+        const uint32_t N   = c->buffer_size;
+        const uint8_t  nch = c->input_channel_counts ? c->input_channel_counts[0] : 1;
+        const float    sr  = static_cast<float>(c->sample_rate > 0 ? c->sample_rate : 48000);
+        const int   ty  = c->param_values ? static_cast<int>(std::lround(c->param_values[0])) : type.int_value();
+        float       fc  = c->param_values ? c->param_values[1] : cutoff.value;
+        const float res = c->param_values ? c->param_values[2] : resonance.value;
+
+        // Clamp cutoff to a stable range; map resonance 0..1 -> damping k (2 = flat, ~0.02 = high-Q).
+        fc = std::min(std::max(fc, 20.f), 0.45f * sr);
+        const float g  = std::tan(static_cast<float>(kPi) * fc / sr);
+        const float k  = std::max(0.02f, 2.f - 1.98f * std::min(std::max(res, 0.f), 1.f));
+        const float a1 = 1.f / (1.f + g * (g + k));
+        const float a2 = g * a1;
+        const float a3 = g * a2;
+
+        for (uint8_t ch = 0; ch < nch && ch < 2; ++ch) {
+            const float* in  = c->input_buffers[0]  + ch * N;
+            float*       out = c->output_buffers[0] + ch * N;
+            float ic1 = ic1eq_[ch], ic2 = ic2eq_[ch];
+            for (uint32_t i = 0; i < N; ++i) {
+                const float x  = in[i];
+                const float v3 = x - ic2;
+                const float v1 = a1 * ic1 + a2 * v3;
+                const float v2 = ic2 + a2 * ic1 + a3 * v3;
+                ic1 = 2.f * v1 - ic1;
+                ic2 = 2.f * v2 - ic2;
+                const float low  = v2;
+                const float band = v1;
+                const float high = x - k * v1 - v2;
+                out[i] = (ty == 1) ? high : (ty == 2) ? band : low;
+            }
+            ic1eq_[ch] = flush(ic1);
+            ic2eq_[ch] = flush(ic2);
+        }
+    }
+};
+
 // --- Test Tone: a simple polyphonic sine instrument (an instrument spike) --------------
 struct TestToneOp : OperatorBase, AudioProcessable {
     static constexpr const char* kDisplayName = "Test Tone";
@@ -189,6 +255,7 @@ void register_glitch_ops(OpRegistry& reg);   // audio/glitch/glitch_ops.cpp
 
 void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<BitcrushOp>(reg, "Bitcrush");
+    register_op<StateVariableFilterOp>(reg, "SVFilter");
     register_op<TestToneOp>(reg, "TestTone");
     register_op<SamplerOp>(reg, "Sampler");
     register_glitch_ops(reg);

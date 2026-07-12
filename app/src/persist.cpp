@@ -121,10 +121,17 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             for (int i = 0; i < nn; ++i) {
                 const int id = vivid::session::session_track_audio_graph_node_id(s, t, i);
                 json jn; jn["id"] = id;
-                jn["kind"] = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
+                const int kind = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
+                jn["kind"] = kind;
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
                 float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
                 if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
+                if (kind == 0) {   // source: persist its key range (a key-split has disjoint ranges)
+                    int lo = 0, hi = 127;
+                    if (vivid::session::session_audio_graph_node_key_range_get(s, t, id, &lo, &hi) && (lo > 0 || hi < 127)) {
+                        jn["key_lo"] = lo; jn["key_hi"] = hi;
+                    }
+                }
                 json ps = json::object();
                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, id); ++p)
                     ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
@@ -367,6 +374,9 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                         id_map[saved] = nid;
                         if (jn.contains("x") && jn.contains("y"))   // restore the editor position
                             vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
+                        if (jn.value("kind", 1) == 0 && (jn.contains("key_lo") || jn.contains("key_hi")))
+                            vivid::session::session_audio_graph_node_key_range_set(
+                                s, t, nid, jn.value("key_lo", 0), jn.value("key_hi", 127));
                         if (jn.contains("params"))   // set params by name on the new node id
                             for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
                                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, nid); ++p)
