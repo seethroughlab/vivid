@@ -965,12 +965,40 @@ bool session_track_is_audio(Session* s, int t) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio;
 }
 std::string session_get_track_state(Session* s, int t) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle) return {};
-    return vst3_save_state(s->tracks[t]->handle);
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return {};
+    if (s->tracks[t]->clap_inst) return clap_save_state(s->tracks[t]->clap_inst);   // CLAP instrument state
+    if (s->tracks[t]->handle)    return vst3_save_state(s->tracks[t]->handle);
+    return {};
 }
 void session_set_track_state(Session* s, int t, const std::string& state) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle || state.empty()) return;
-    vst3_load_state(s->tracks[t]->handle, state);
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || state.empty()) return;
+    if (s->tracks[t]->clap_inst) { clap_load_state(s->tracks[t]->clap_inst, state); return; }
+    if (s->tracks[t]->handle)    vst3_load_state(s->tracks[t]->handle, state);
+}
+// CLAP instrument/effect identity + state, for project persistence (save the path + state; load
+// recreates the plugin then restores its state).
+const char* session_track_clap_instrument_path(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->clap_inst) return "";
+    return s->tracks[t]->clap_inst->bundle_path.c_str();
+}
+int session_track_clap_effect_count(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    return static_cast<int>(s->tracks[t]->clap_effects.size());
+}
+const char* session_track_clap_effect_path(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
+    const auto& e = s->tracks[t]->clap_effects;
+    return (i >= 0 && i < static_cast<int>(e.size())) ? e[i]->bundle_path.c_str() : "";
+}
+std::string session_get_track_clap_effect_state(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return {};
+    const auto& e = s->tracks[t]->clap_effects;
+    return (i >= 0 && i < static_cast<int>(e.size())) ? clap_save_state(e[i]) : std::string{};
+}
+void session_set_track_clap_effect_state(Session* s, int t, int i, const std::string& st) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || st.empty()) return;
+    const auto& e = s->tracks[t]->clap_effects;
+    if (i >= 0 && i < static_cast<int>(e.size())) clap_load_state(e[i], st);
 }
 int session_audio_clip_bpm(Session* s, int t, int sc) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
@@ -1975,6 +2003,13 @@ static Vst3Handle* graph_node_handle(Track* tr, int node_id) {   // caller holds
     const GNodeBind& nb = tr->agnodes[idx];
     return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle : nullptr;
 }
+// A CLAP graph node → its handle (params in PLAIN units; edits go via its SPSC param_q). Null otherwise.
+static ClapHandle* graph_node_clap(Track* tr, int node_id) {   // caller holds tr->gmtx
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.clap && (nb.kind == GNKind::ClapInst || nb.kind == GNKind::ClapFx)) ? nb.clap : nullptr;
+}
 // The dock param band edits a graph node's params — native op params OR a VST3 node's exposed
 // (automatable) params, in NORMALIZED 0..1 space like the old linear knob grid.
 int session_audio_graph_node_param_count(Session* s, int t, int node_id) {
@@ -1982,6 +2017,7 @@ int session_audio_graph_node_param_count(Session* s, int t, int node_id) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_count(op);
     if (Vst3Handle* h = graph_node_handle(tr, node_id)) return static_cast<int>(h->params.size());
+    if (ClapHandle* c = graph_node_clap(tr, node_id)) return static_cast<int>(c->params.size());
     return 0;
 }
 const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, int p) {
@@ -1990,6 +2026,8 @@ const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, 
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_name(op, p);
     if (Vst3Handle* h = graph_node_handle(tr, node_id))
         return (p >= 0 && p < static_cast<int>(h->params.size())) ? h->params[p].name.c_str() : "";
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? c->params[p].name.c_str() : "";
     return "";
 }
 int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
@@ -2005,18 +2043,25 @@ float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) 
     if (Vst3Handle* h = graph_node_handle(tr, node_id))
         return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
                    ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size()))
+                   ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
     return 0.f;
 }
 float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_min(op, p);
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].min) : 0.f;
     return 0.f;   // VST3 params are normalized
 }
 float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 1.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_max(op, p);
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].max) : 1.f;
     return 1.f;
 }
 void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
@@ -2028,6 +2073,11 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
         v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
         h->param_q.push(id, v);                                            // → audio thread (RT-safe SPSC)
         if (h->controller) h->controller->setParamNormalized(id, v);       // → plugin GUI reflection
+        return;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
+        double val = std::clamp(static_cast<double>(v), c->params[p].min, c->params[p].max);
+        c->param_q.push(c->params[p].id, val);   // plain value → audio thread emits a CLAP param event
     }
 }
 

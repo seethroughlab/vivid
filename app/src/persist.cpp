@@ -74,8 +74,19 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 clips.push_back(jc);
             }
             jt["clips"] = clips;
-            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset
+            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset (VST3 or CLAP)
             if (!state.empty()) jt["state"] = state;
+            // CLAP instrument + effects: save the .clap path (load recreates the plugin) + its state.
+            const char* cpath = vivid::session::session_track_clap_instrument_path(s, t);
+            if (cpath && *cpath) jt["clap_instrument"] = cpath;
+            json cfx = json::array();
+            for (int e = 0; e < vivid::session::session_track_clap_effect_count(s, t); ++e) {
+                json je = { {"path", vivid::session::session_track_clap_effect_path(s, t, e)} };
+                const std::string est = vivid::session::session_get_track_clap_effect_state(s, t, e);
+                if (!est.empty()) je["state"] = est;
+                cfx.push_back(je);
+            }
+            if (!cfx.empty()) jt["clap_effects"] = cfx;
         }
         json fx = json::array();   // per-track effect chain (name + exposed param values)
         for (int e = 0; e < vivid::session::session_effect_count(s, t); ++e) {
@@ -208,6 +219,11 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             // A rewired (authoritative) track: the graph carries the instrument + effects, so create
             // a bare native track and let the audio_graph block below populate it.
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+        } else if (jt.contains("clap_instrument")) {
+            // A CLAP-instrument track: a bare instrument track with the plugin attached from its path.
+            added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            if (added >= 0)
+                vivid::session::session_set_track_clap_instrument(s, added, jt["clap_instrument"].get<std::string>().c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
@@ -292,6 +308,12 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             }
             if (jt.contains("state"))
                 vivid::session::session_set_track_state(s, t, jt["state"].get<std::string>());
+            if (jt.contains("clap_effects"))   // re-add each CLAP effect from its path + restore state
+                for (const auto& je : jt["clap_effects"]) {
+                    const int idx = vivid::session::session_add_track_clap_effect(s, t, je.value("path", std::string()).c_str());
+                    if (idx >= 0 && je.contains("state"))
+                        vivid::session::session_set_track_clap_effect_state(s, t, idx, je["state"].get<std::string>());
+                }
             if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
                 while (vivid::session::session_effect_count(s, t) > 0)
                     vivid::session::session_remove_effect(s, t, vivid::session::session_effect_count(s, t) - 1);

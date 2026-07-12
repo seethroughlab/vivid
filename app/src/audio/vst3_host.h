@@ -189,6 +189,12 @@ int         session_set_track_audio_instrument(Session*, int track, const char* 
 // instruments must accept note input) or append one as an effect (-> effect index, -1 on failure).
 int         session_set_track_clap_instrument(Session*, int track, const char* clap_path);
 int         session_add_track_clap_effect(Session*, int track, const char* clap_path);
+// CLAP identity + state for persistence ("" / empty when the track has no CLAP plugin there).
+const char* session_track_clap_instrument_path(Session*, int track);
+int         session_track_clap_effect_count(Session*, int track);
+const char* session_track_clap_effect_path(Session*, int track, int index);
+std::string session_get_track_clap_effect_state(Session*, int track, int index);
+void        session_set_track_clap_effect_state(Session*, int track, int index, const std::string& state);
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
 int         session_audio_op_param_hint(Session*, int track, int index, int param);   // VividDisplayHint (0 = DEFAULT)
