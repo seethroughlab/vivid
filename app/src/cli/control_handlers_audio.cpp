@@ -322,7 +322,7 @@ void register_audio_handlers(Handlers& handlers_) {
         const std::string id = b.value("id", b.value("preset", std::string()));
         if (id.empty()) return err(code::kBadArg, "need a preset id (from list_presets)");
         if (!P::session_track_preset_load(c.session, track, id.c_str()))
-            return err(code::kBadArg, "preset load failed (no CLAP instrument, or unknown id): '" + id + "'");
+            return err(code::kBadArg, "preset load failed (no instrument loaded, or unknown/invalid preset id): '" + id + "'");
         return ok();
     };
     handlers_["remove_effect"] = [](const ControlCtx& c, const json& b) {

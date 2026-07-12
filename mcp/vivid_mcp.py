@@ -767,15 +767,17 @@ def list_presets(track: int, filter: str = "") -> dict:
       keys / ep / piano / bell       -> tonal comping
       arp / seq / motion             -> rhythmic
     If unsure, show the user a shortlist with why each fits and let them choose.
-    (CLAP instruments today, e.g. Surge XT; VST3 preset browse is a follow-up.)"""
+    (Works for CLAP instruments via their preset-discovery factory, and for VST3 instruments via
+    the standard `.vstpreset` files in the plugin's preset folders. A plugin with a proprietary
+    preset format and no `.vstpreset` files returns none.)"""
     return _post("list_presets", {"track": track, "filter": filter})
 
 
 @mcp.tool
 def load_preset(track: int, id: str) -> dict:
-    """Load a preset onto a track's instrument by the `id` from list_presets (a patch file path
-    or an internal key). Audibly changes the timbre and is saved with the project (save_project
-    captures the plugin state). Use after list_presets to give a part its voice."""
+    """Load a preset onto a track's instrument by the `id` from list_presets (a `.vstpreset`/patch
+    file path, or an internal CLAP key). Audibly changes the timbre and is saved with the project
+    (save_project captures the plugin state). Use after list_presets to give a part its voice."""
     return _post("load_preset", {"track": track, "id": id})
 
 

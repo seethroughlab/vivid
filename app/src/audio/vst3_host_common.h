@@ -18,11 +18,15 @@
 #include "pluginterfaces/vst/ivstpluginterfacesupport.h"
 
 #include <dlfcn.h>
+#include <cctype>
 #include <cstring>
 #include <cstdio>
 #include <atomic>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -723,6 +727,110 @@ static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
         stream.pos = 0;
         h->controller->setComponentState(&stream);
     }
+}
+
+// ---------------------------------------------------------------------------
+// VST3 presets: the standard `.vstpreset` files (the format the SDK writes/reads).
+// We enumerate the documented preset directories for the loaded plugin and apply a
+// preset by feeding its Comp (component) + Cont (controller) chunks through the SAME
+// setState path as state restore — a `.vstpreset` Comp chunk IS a component->getState()
+// blob, so this is symmetric. Factory patches exposed only via program lists
+// (IUnitInfo / IProgramListData) are a separate mechanism, not covered here.
+//
+// File layout (little-endian): header = "VST3" | int32 version | char[32] classID |
+// int64 chunkListOffset (48 bytes). At the offset: "List" | int32 entryCount | entries
+// of { char[4] id ("Comp"/"Cont"/...) | int64 offset | int64 size }. Data chunks sit
+// between the header and the list.
+// ---------------------------------------------------------------------------
+namespace vst3_preset_detail {
+    inline bool ci_contains(const std::string& hay, const std::string& needle) {
+        if (needle.empty()) return true;
+        auto lower = [](std::string s) { for (auto& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return s; };
+        return lower(hay).find(lower(needle)) != std::string::npos;
+    }
+    inline uint32_t rd_u32(const uint8_t* p) {
+        return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+               (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+    }
+    inline uint64_t rd_u64(const uint8_t* p) {
+        uint64_t v = 0; for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(p[i]) << (8 * i); return v;
+    }
+}
+
+// Enumerate this plugin's `.vstpreset` files into out=(display name, absolute path). `filter`
+// is a case-insensitive name substring. Recurses the standard macOS preset roots for the
+// plugin (<root>/<vendor>/<plugin_name>) plus the bundle's Resources (factory presets).
+static void vst3_scan_presets(Vst3Handle* h, const char* filter,
+                              std::vector<std::pair<std::string, std::string>>& out) {
+    if (!h || h->plugin_name.empty()) return;
+    namespace fs = std::filesystem;
+    const std::string flt = filter ? filter : "";
+    const std::string sub = (h->vendor.empty() ? std::string() : h->vendor + "/") + h->plugin_name;
+    std::vector<fs::path> roots;
+    if (const char* home = std::getenv("HOME"))
+        roots.push_back(fs::path(home) / "Library" / "Audio" / "Presets" / sub);
+    roots.push_back(fs::path("/Library/Audio/Presets") / sub);
+    if (!h->bundle_path_.empty())
+        roots.push_back(fs::path(h->bundle_path_) / "Contents" / "Resources");   // factory presets sometimes ship here
+    std::unordered_set<std::string> seen;   // dedup by name across roots (user shadows shared)
+    const size_t cap = 4000;                // a synth can ship thousands of patches; bound the scan
+    for (const auto& root : roots) {
+        std::error_code ec;
+        if (!fs::is_directory(root, ec)) continue;
+        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+             it != end && out.size() < cap; it.increment(ec)) {
+            if (ec) break;
+            const fs::path& p = it->path();
+            if (p.extension() != ".vstpreset") continue;
+            std::string name = p.stem().string();
+            if (!vst3_preset_detail::ci_contains(name, flt)) continue;
+            if (!seen.insert(name).second) continue;
+            out.emplace_back(name, p.string());
+        }
+    }
+    fprintf(stderr, "[Vst3] preset scan '%s/%s': %zu .vstpreset (root: %s)\n",
+            h->vendor.c_str(), h->plugin_name.c_str(), out.size(),
+            roots.empty() ? "" : roots.front().string().c_str());
+}
+
+// Apply a `.vstpreset` file (id = its absolute path) to the plugin. Reads the Comp/Cont chunks
+// and feeds them through setState — mirrors vst3_load_state (the Comp chunk is a component
+// getState() blob). Returns true if any chunk was applied.
+static bool vst3_load_preset_file(Vst3Handle* h, const std::string& path) {
+    if (!h || !h->component || path.empty()) return false;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    using vst3_preset_detail::rd_u32;
+    using vst3_preset_detail::rd_u64;
+    if (data.size() < 48 || std::memcmp(data.data(), "VST3", 4) != 0) return false;   // magic
+    const uint64_t listOff = rd_u64(data.data() + 40);
+    if (listOff + 8 > data.size() || std::memcmp(data.data() + listOff, "List", 4) != 0) return false;
+    const uint32_t count = rd_u32(data.data() + listOff + 4);
+    std::vector<uint8_t> comp, cont;
+    size_t ep = static_cast<size_t>(listOff) + 8;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (ep + 20 > data.size()) break;                       // entry: char[4] id + int64 off + int64 size
+        char id[4]; std::memcpy(id, data.data() + ep, 4);
+        const uint64_t off = rd_u64(data.data() + ep + 4);
+        const uint64_t sz  = rd_u64(data.data() + ep + 12);
+        ep += 20;
+        if (off + sz > data.size()) continue;
+        if      (std::memcmp(id, "Comp", 4) == 0) comp.assign(data.begin() + off, data.begin() + off + sz);
+        else if (std::memcmp(id, "Cont", 4) == 0) cont.assign(data.begin() + off, data.begin() + off + sz);
+    }
+    if (comp.empty() && cont.empty()) return false;
+    bool applied = false;
+    if (!comp.empty()) {                                        // component (DSP) state
+        MemIBStream cs; cs.buf = comp;
+        if (h->component->setState(&cs) == kResultOk) applied = true;
+        if (h->controller_is_owned && h->controller) { cs.pos = 0; h->controller->setComponentState(&cs); }
+    }
+    if (!cont.empty() && h->controller_is_owned && h->controller) {   // controller (UI) state
+        MemIBStream cs; cs.buf = cont;
+        if (h->controller->setState(&cs) == kResultOk) applied = true;
+    }
+    return applied;
 }
 
 // ---------------------------------------------------------------------------

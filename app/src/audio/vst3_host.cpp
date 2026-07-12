@@ -1018,7 +1018,7 @@ std::string session_get_track_clap_effect_state(Session* s, int t, int i) {
 
 // --- Preset browse / load for a track's instrument (generic; no per-plugin code). ---
 // Scan the instrument's presets into the track cache. CLAP: the plugin's preset-discovery
-// factory. VST3: TODO (.vstpreset scan); returns 0 for now. Returns the preset count.
+// factory. VST3: the standard `.vstpreset` files in the plugin's preset dirs. Returns the count.
 int session_track_preset_scan(Session* s, int t, const char* filter) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
     Track& tr = *s->tracks[t];
@@ -1028,8 +1028,9 @@ int session_track_preset_scan(Session* s, int t, const char* filter) {
         clap_list_presets(tr.clap_inst, pl, filter ? filter : "");
         tr.preset_cache.reserve(pl.size());
         for (auto& p : pl) tr.preset_cache.push_back({ std::move(p.name), std::move(p.id) });
+    } else if (tr.handle) {
+        vst3_scan_presets(tr.handle, filter, tr.preset_cache);   // .vstpreset files -> (name, absolute path)
     }
-    // (VST3 .vstpreset directory scan: a follow-up; the demos run on the CLAP Surge.)
     return static_cast<int>(tr.preset_cache.size());
 }
 int session_track_preset_count(Session* s, int t) {
@@ -1046,12 +1047,14 @@ const char* session_track_preset_id(Session* s, int t, int i) {
     const auto& c = s->tracks[t]->preset_cache;
     return (i >= 0 && i < static_cast<int>(c.size())) ? c[i].second.c_str() : "";
 }
-// Load a preset by its id (from the scan). CLAP: preset-load ext. Returns true on success.
+// Load a preset by its id (from the scan). CLAP: preset-load ext. VST3: apply the `.vstpreset`
+// file at that path (Comp/Cont chunks -> setState). Returns true on success.
 bool session_track_preset_load(Session* s, int t, const char* id) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !id) return false;
     Track& tr = *s->tracks[t];
     if (tr.clap_inst) return clap_load_preset(tr.clap_inst, id);
-    return false;   // VST3 .vstpreset load: a follow-up
+    if (tr.handle)    return vst3_load_preset_file(tr.handle, id);
+    return false;
 }
 int session_audio_clip_bpm(Session* s, int t, int sc) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;

@@ -206,7 +206,8 @@ int         session_track_clap_effect_count(Session*, int track);
 const char* session_track_clap_effect_path(Session*, int track, int index);
 std::string session_get_track_clap_effect_state(Session*, int track, int index);   // save side (load restores via the async request)
 // Generic instrument preset browse/load (no per-plugin code). scan fills the cache + returns the
-// count; name/id read it by index; load applies a preset by its id. CLAP today (VST3 = follow-up).
+// count; name/id read it by index; load applies a preset by its id. CLAP (preset-discovery +
+// preset-load exts) and VST3 (`.vstpreset` files in the plugin's preset dirs) both supported.
 int         session_track_preset_scan(Session*, int track, const char* filter);   // filter = "" for all
 int         session_track_preset_count(Session*, int track);
 const char* session_track_preset_name(Session*, int track, int index);
