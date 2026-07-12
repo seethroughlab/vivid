@@ -436,7 +436,7 @@ static inline void filter_notes_by_range(const std::vector<NoteEvent>& src, uint
 static inline void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t hi, std::vector<ExprEvent>& dst);
 static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
 static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
-static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+static void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R);
 static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
 static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
@@ -492,7 +492,9 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             }
             else if (nb.kind == GNKind::ClapInst && nb.clap) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                render_clap_instrument(t, nb.clap, frames, oL, oR);
+                if (full_range) render_clap_instrument(t, nb.clap, t.nev, frames, oL, oR);
+                else { filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
+                       render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
             }
             else if (nb.kind == GNKind::Sampler) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
@@ -1620,14 +1622,16 @@ static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext
 }
 
 // CLAP instrument. Builds this block's note + param events into the handle's scratch, then
-// processes into L/R (silent input fed to any declared input port). Parallels the native path:
-// reads t.nev (clip + live/preview notes) directly. RT-safe (fixed scratch, no alloc/lock).
-static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+// processes into L/R (silent input fed to any declared input port). Plays `notes` (t.nev for a
+// full-range source, or a key-range-filtered list) plus this block's scene-switch note-offs.
+// RT-safe (fixed scratch, no alloc/lock).
+static void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
+                                   uint32_t frames, float* L, float* R) {
     h->events.clear();
     clap_flush_params(h);
     for (const NoteEvent& ne : t.scene_rel)   // scene-switch note-offs first, so held voices release
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
-    for (const NoteEvent& ne : t.nev)
+    for (const NoteEvent& ne : notes)         // this source's notes (full range = t.nev; key-split = filtered)
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     float* out[2] = { L, R };
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
