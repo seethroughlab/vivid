@@ -66,6 +66,8 @@ public:
     void chain_load_begin();
     void chain_load_add(const std::string& op_type, int id, float x, float y);
     void chain_load_set_input(int i, int input);
+    void chain_load_set_input_b(int i, int input);   // second input (2-in ops)
+    int  op_input_b_at(int i) const;                 // -1 if none
     std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
     void        set_op_asset_at(int i, const std::string& asset);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none

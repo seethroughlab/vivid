@@ -57,7 +57,8 @@ void register_visuals_handlers(Handlers& handlers_) {
         const int in_id = b.value("input_id", -1);
         const int in_idx = (in_id < 0) ? -1 : op_index_by_id(c.vgraph, in_id);
         if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
-        c.vgraph->set_input(idx, in_idx);
+        if (b.value("port", 0) == 1) c.vgraph->set_input_b(idx, in_idx);   // second input (2-in ops)
+        else                         c.vgraph->set_input(idx, in_idx);
         return ok();
     };
     // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl

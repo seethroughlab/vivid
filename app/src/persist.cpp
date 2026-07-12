@@ -74,8 +74,19 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 clips.push_back(jc);
             }
             jt["clips"] = clips;
-            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset
+            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset (VST3 or CLAP)
             if (!state.empty()) jt["state"] = state;
+            // CLAP instrument + effects: save the .clap path (load recreates the plugin) + its state.
+            const char* cpath = vivid::session::session_track_clap_instrument_path(s, t);
+            if (cpath && *cpath) jt["clap_instrument"] = cpath;
+            json cfx = json::array();
+            for (int e = 0; e < vivid::session::session_track_clap_effect_count(s, t); ++e) {
+                json je = { {"path", vivid::session::session_track_clap_effect_path(s, t, e)} };
+                const std::string est = vivid::session::session_get_track_clap_effect_state(s, t, e);
+                if (!est.empty()) je["state"] = est;
+                cfx.push_back(je);
+            }
+            if (!cfx.empty()) jt["clap_effects"] = cfx;
         }
         json fx = json::array();   // per-track effect chain (name + exposed param values)
         for (int e = 0; e < vivid::session::session_effect_count(s, t); ++e) {
@@ -112,6 +123,8 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 json jn; jn["id"] = id;
                 jn["kind"] = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
+                float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
+                if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
                 json ps = json::object();
                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, id); ++p)
                     ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
@@ -179,6 +192,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             params[g.op_param_label_at(i, p)] = g.op_param_base_at(i, p);
         json jn = { {"op_type", g.op_type_at(i)}, {"in", in}, {"id", id}, {"x", x}, {"y", y},
                     {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
+        if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // 2-in ops (Composite)
         const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
         if (!asset.empty()) jn["asset"] = asset;
         chain.push_back(jn);
@@ -206,6 +220,23 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             // A rewired (authoritative) track: the graph carries the instrument + effects, so create
             // a bare native track and let the audio_graph block below populate it.
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            // A graph-authoritative track may ALSO carry a CLAP instrument (save writes both keys) —
+            // restore it + its state so they aren't lost. NOTE: the authoritative graph loader still
+            // recreates only native op nodes, so a CLAP *source node's* graph binding isn't yet rebuilt
+            // on load (tracked as a follow-up); the plugin + patch state are at least preserved here.
+            if (added >= 0 && jt.contains("clap_instrument"))
+                vivid::session::session_request_track_clap_instrument_state(
+                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
+                    jt.value("state", std::string()).c_str());
+        } else if (jt.contains("clap_instrument")) {
+            // A CLAP-instrument track: a bare instrument track with the plugin attached from its path.
+            // Load ASYNC (a slow plugin ctor must not block load_project on the main thread) and carry
+            // the saved patch `state` so it's restored once the load lands (session_poll_plugin_loads).
+            added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            if (added >= 0)
+                vivid::session::session_request_track_clap_instrument_state(
+                    s, added, jt["clap_instrument"].get<std::string>().c_str(),
+                    jt.value("state", std::string()).c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
@@ -290,6 +321,11 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             }
             if (jt.contains("state"))
                 vivid::session::session_set_track_state(s, t, jt["state"].get<std::string>());
+            if (jt.contains("clap_effects"))   // re-add each CLAP effect (async) + restore its state on land
+                for (const auto& je : jt["clap_effects"])   // serial loader preserves the saved chain order
+                    vivid::session::session_request_track_clap_effect_state(
+                        s, t, je.value("path", std::string()).c_str(),
+                        je.value("state", std::string()).c_str());
             if (jt.contains("fx")) {  // rebuild the effect chain: clear, then re-add by catalog name
                 while (vivid::session::session_effect_count(s, t) > 0)
                     vivid::session::session_remove_effect(s, t, vivid::session::session_effect_count(s, t) - 1);
@@ -329,6 +365,8 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                             s, t, jn.value("kind", 1), jn.value("op", std::string()).c_str());
                         if (nid < 0) continue;
                         id_map[saved] = nid;
+                        if (jn.contains("x") && jn.contains("y"))   // restore the editor position
+                            vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
                         if (jn.contains("params"))   // set params by name on the new node id
                             for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
                                 for (int p = 0; p < vivid::session::session_audio_graph_node_param_count(s, t, nid); ++p)
@@ -388,6 +426,7 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
             }
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 g.chain_load_set_input(i, ch[i].value("in", -1));
+                g.chain_load_set_input_b(i, ch[i].value("in_b", -1));   // 2-in ops (Composite)
                 if (ch[i].contains("asset"))   // CustomShader .glsl reference (project-relative)
                     g.set_op_asset_at(i, ch[i]["asset"].get<std::string>());
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {

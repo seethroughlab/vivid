@@ -11,6 +11,7 @@
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
+#include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
 #include "platform/platform.h"      // open_in_editor
 
@@ -59,7 +60,6 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
 bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my) {
     if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top()
           && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app.session)) return false;
-    if (hit(dock_close_rect(win.win_w, win.win_h, win.dock_h), mx, my)) { win.show_audio_graph = false; return true; }
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     AudioNodeGraph ag; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
@@ -80,6 +80,22 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     }
     if (win.sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
         for (const auto& c : ag.param_cells(win.sel_audio_node)) {
+            // The map dot (top-right of the cell) takes priority over the knob rect it sits inside:
+            // open the bridge map-source picker for this node param (dock_menus emits a "gnode:" dest).
+            // The clickable area is padded larger than the drawn dot (a 10px dot is a hard target) but
+            // stays clear of the knob to its left.
+            const Rect dd = ag_param_map_dot(c);
+            if (hit(Rect{ dd.x - 4.f, dd.y - 2.f, dd.w + 8.f, dd.h + 9.f }, mx, my)) {
+                // The dot is in the param band at the dock's bottom, so open the whole picker ABOVE the
+                // dock: rows overlapping dock_top would be stolen by the dock-resize handle (handled
+                // before dock_menus). Clamp x too (no right spill), and keep it below the top bar.
+                const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
+                const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+                const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
+                win.map_menu = { true, fx, fy, win.sel_audio_node, true /*graph*/ };
+                win.map_param = c.index;
+                return true;
+            }
             if (mx >= c.x && mx < c.x + c.w && my >= c.y && my < c.y + c.h) {
                 const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, c.index);
                 const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, c.index);
@@ -111,6 +127,19 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         }
         if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
+            // Double-click a VST3 node → open its native plugin editor (replaces the old chip double-click).
+            const double now = glfwGetTime();
+            if (win.ag_last_node == b.node_id && now - win.ag_last_node_t < 0.35) {
+                if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                        S::session_audio_graph_node_controller(app.session, tr, b.node_id))) {
+                    int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
+                    if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
+                }
+                win.ag_last_node_t = -1;
+            } else { win.ag_last_node = b.node_id; win.ag_last_node_t = now; }
+            win.ag_node_drag = b.node_id;                                   // start a reposition drag (any node)
+            win.ag_node_dx = (mx - b.x) / win.ag_zoom;                      // grab offset in world units
+            win.ag_node_dy = (my - b.y) / win.ag_zoom;
             return true;
         }
     }
@@ -194,19 +223,6 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     }
     win.node_menu.open = false;
     return true;
-}
-
-// Device header "Graph" button: drill into the audio node graph deep view. Returns true when hit.
-bool graph_drill_in(Window& win, App& app, int button, int action, double mx, double my) {
-    if (win.focus.kind == vivid::FocusContext::Kind::Device && my >= win.dock_top()
-        && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
-        && hit(audio_graph_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
-        win.show_audio_graph = true;
-        win.sel_audio_node = vivid::Window::kNoAudioNode;
-        if (app.graph) app.graph->select_op(-1);   // clear any stale visual-node selection
-        return true;
-    }
-    return false;
 }
 
 }  // namespace vivid::input

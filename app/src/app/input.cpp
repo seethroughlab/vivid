@@ -192,7 +192,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_panning = false;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_node_drag = -1; win->ag_panning = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
         if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
@@ -255,11 +255,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // UI-3 audio node graph deep view: all its dock interaction (select / param / +FX / remove /
     // rewire / edge-disconnect / pan) + the Device header "Graph" drill-in button.
     if (vivid::input::graph_audio_dock(*win, *app, button, action, mx, my)) return;
-    if (vivid::input::graph_drill_in(*win, *app, button, action, mx, my)) return;
     if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
-    // Otherwise the dock is the selected track's device chain: chips (select / dbl-click open / x
-    // remove / + FX) + the selected device's param knobs.
-    if (vivid::input::dock_device_chain(*win, *app, mx, my, tracks)) return;
     // mixer: ARM buttons (record-arm) then gain sliders.
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
     if (win->show_graph && app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it

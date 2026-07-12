@@ -13,28 +13,29 @@
 namespace vivid::ui {
 
 struct Style {
-    // --- surfaces (dark canvas → bounded regions read as a step lighter) ---
-    float bg[3]      = { 0.045f, 0.050f, 0.060f };   // window canvas
-    float region[3]  = { 0.076f, 0.083f, 0.100f };   // a bounded panel's interior
-    float region_hd[3]={ 0.112f, 0.122f, 0.145f };   // a panel's header strip
-    float panel[3]   = { 0.100f, 0.110f, 0.130f };   // legacy chrome / menus
-    float card[3]    = { 0.130f, 0.140f, 0.170f };
-    float card_hi[3] = { 0.175f, 0.190f, 0.222f };   // hover / selected
-    float recess[3]  = { 0.028f, 0.032f, 0.042f };   // inset wells (previews, sliders)
+    // --- surfaces (vivid-classic "dark steel": flat, cool, near-black; framed by 1px rules, not fills) ---
+    float bg[3]      = { 0.071f, 0.071f, 0.078f };   // window canvas        (#121214)
+    float region[3]  = { 0.098f, 0.110f, 0.125f };   // a bounded panel's interior (#191C20)
+    float region_hd[3]={ 0.141f, 0.153f, 0.188f };   // a panel's header strip (#242730)
+    float panel[3]   = { 0.090f, 0.101f, 0.117f };   // legacy chrome / menus
+    float card[3]    = { 0.122f, 0.122f, 0.141f };   // node/card body       (#1F1F24)
+    float card_hi[3] = { 0.176f, 0.220f, 0.286f };   // hover / selected fill (#2D3849)
+    float recess[3]  = { 0.078f, 0.090f, 0.098f };   // inset wells (inputs, sliders) (#141719)
     // --- lines ---
-    float border[3]     = { 0.235f, 0.250f, 0.290f }; // visible 1px panel/cell hairline
-    float border_soft[3]= { 0.150f, 0.160f, 0.188f }; // internal dividers
+    float border[3]     = { 0.220f, 0.251f, 0.294f }; // visible 1px panel/cell frame (#38404B)
+    float border_soft[3]= { 0.149f, 0.165f, 0.192f }; // internal dividers (#262A31)
     // --- text ---
-    float text[3]    = { 0.880f, 0.900f, 0.940f };   // primary
-    float body[3]    = { 0.700f, 0.720f, 0.770f };   // secondary
-    float dim[3]     = { 0.480f, 0.510f, 0.560f };   // labels / hints
-    // --- domain accents ---
+    float text[3]    = { 0.900f, 0.920f, 0.950f };   // primary  (#E6EBEF)
+    float body[3]    = { 0.700f, 0.730f, 0.780f };   // secondary
+    float dim[3]     = { 0.550f, 0.580f, 0.620f };   // labels / hints (#8D9499; legible on steel)
+    // --- domain accents (unchanged — the strict-zone identity system) ---
     float audio[3]   = { 0.94f, 0.63f, 0.19f };      // amber  (audio / instrument)
     float gpu[3]     = { 0.35f, 0.66f, 0.90f };      // cyan   (visual / gpu)
     float fx[3]      = { 0.60f, 0.45f, 0.85f };      // violet (effects)
     float control[3] = { 0.55f, 0.60f, 0.66f };      // gray   (control)
     float teal[3]    = { 0.31f, 0.80f, 0.75f };      // bridge (data sources)
-    float gold[3]    = { 0.95f, 0.78f, 0.30f };      // selection / queued
+    float sel[3]     = { 0.353f, 0.549f, 0.851f };   // selection / focus frame (#5A8CD9, classic blue)
+    float gold[3]    = { 0.95f, 0.78f, 0.30f };      // queued / warn
     float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
     // --- spacing scale (logical px) ---
     float s1 = 2.f, s2 = 4.f, s3 = 6.f, s4 = 8.f, s5 = 12.f, s6 = 16.f, s7 = 24.f;
@@ -45,8 +46,8 @@ struct Style {
     float fs_body   = 0.88f;   // names / body
     float fs_title  = 1.02f;   // panel titles
     float fs_brand  = 1.18f;   // the wordmark
-    // --- radii / bars ---
-    float radius = 4.f, radius_lg = 6.f, accent_bar = 3.f;
+    // --- radii / bars: hard 90° angles (serious-tool look). accent_bar = the edge identity stripe. ---
+    float radius = 0.f, radius_lg = 0.f, accent_bar = 3.f;
     float panel_hd_h = 22.f;   // region header strip height
 };
 inline const Style& style() { static const Style s; return s; }
@@ -92,8 +93,8 @@ inline void draw_text_r(Renderer2D& r, float rx, float y, const char* t, const f
 // header + one unit of padding), so callers lay content out relative to it.
 inline Rect panel(Renderer2D& r, Rect b, const char* title, const float* accent) {
     const Style& s = style();
-    r.draw_rounded_rect(b.x, b.y, b.w, b.h, s.radius_lg, s.border[0], s.border[1], s.border[2], 1.0f);            // border
-    r.draw_rounded_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, b.h - 2.f, s.radius_lg - 1.f, s.region[0], s.region[1], s.region[2], 1.0f);  // interior
+    r.draw_rect(b.x, b.y, b.w, b.h, s.region[0], s.region[1], s.region[2], 1.0f);                                 // flat interior
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);                    // hard 1px frame
     const float hh = s.panel_hd_h;
     r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);  // header rule
     if (title) {
@@ -122,13 +123,16 @@ inline Rect panel_frame(Renderer2D& r, Rect b, const char* title, const float* a
     return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
 }
 
-// A card: filled rounded body with a thin accent bar across the top.
+// A card: a flat framed box — solid fill, a thin accent bar across the top, a hard 1px frame.
+// Selected/hot swaps the fill up and the frame to the blue selection accent (not a nested ring).
 inline void draw_card(Renderer2D& r, float x, float y, float w, float h,
                       const float* accent, bool hot = false) {
     const Style& s = style();
     const float* bg = hot ? s.card_hi : s.card;
-    r.draw_rounded_rect(x, y, w, h, 5.f, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
     r.draw_rect(x, y, w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    const float* fr = hot ? s.sel : s.border_soft;
+    r.draw_rect_outline(x, y, w, h, 1.f, fr[0], fr[1], fr[2], 1.0f);
 }
 
 // A small left-aligned section label in dim text with an accent tick.
@@ -137,6 +141,200 @@ inline void section_header(Renderer2D& r, float x, float y, const char* label,
     const Style& s = style();
     r.draw_rect(x, y + 1.f, 3.f, 9.f, accent[0], accent[1], accent[2], 1.0f);
     r.draw_text(x + 8.f, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.78f);
+}
+
+enum class AccentEdge { None, Left, Top };
+
+// One standard interactive item substrate: flat fill, optional accent edge, 1px frame.
+// Use for clips, track headers, compact buttons, menu rows, graph palette rows, and chips.
+inline void item_box(Renderer2D& r, Rect b, const float* accent,
+                     bool hot = false, bool selected = false,
+                     AccentEdge edge = AccentEdge::Left) {
+    const Style& s = style();
+    const float* bg = hot ? s.card_hi : s.card;
+    r.draw_rect(b.x, b.y, b.w, b.h, bg[0], bg[1], bg[2], 1.0f);
+    if (accent && edge == AccentEdge::Left)
+        r.draw_rect(b.x, b.y, s.accent_bar, b.h, accent[0], accent[1], accent[2], 1.0f);
+    else if (accent && edge == AccentEdge::Top)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    const float* fr = selected ? s.sel : s.border_soft;
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, selected ? 2.f : 1.f, fr[0], fr[1], fr[2], 1.0f);
+}
+
+inline void item_box(Renderer2D& r, float x, float y, float w, float h, const float* accent,
+                     bool hot = false, bool selected = false,
+                     AccentEdge edge = AccentEdge::Left) {
+    item_box(r, { x, y, w, h }, accent, hot, selected, edge);
+}
+
+// A dark inset well for content: previews, thumbnails, meters, piano-roll substrates, and pads.
+inline void recess(Renderer2D& r, Rect b, bool framed = false) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    if (framed)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+}
+
+inline void recess(Renderer2D& r, float x, float y, float w, float h, bool framed = false) {
+    recess(r, { x, y, w, h }, framed);
+}
+
+inline void separator(Renderer2D& r, float x, float y, float w) {
+    const Style& s = style();
+    r.draw_rect(x, y, w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+}
+
+// Session is a primary workspace, not a framed panel. These helpers draw
+// structure with rules, accents, and state affordances instead of nested boxes.
+inline void session_workspace_header(Renderer2D& r, Rect b, const char* title, const float* accent) {
+    const Style& s = style();
+    const float hh = s.panel_hd_h;
+    if (title) {
+        r.draw_rect(b.x + s.s4, b.y + 7.f, 3.f, hh - 13.f, accent[0], accent[1], accent[2], 1.0f);
+        r.draw_text(b.x + s.s4 + 8.f, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_kicker);
+    }
+    r.draw_rect(b.x + s.s4, b.y + hh, b.w - 2.f * s.s4, 1.f,
+                s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.9f);
+}
+
+inline void session_header_cell(Renderer2D& r, Rect b, const float* accent, bool hot = false) {
+    const Style& s = style();
+    if (hot)
+        r.draw_rect(b.x, b.y, b.w, b.h, s.card_hi[0], s.card_hi[1], s.card_hi[2], 0.72f);
+    if (accent)
+        r.draw_rect(b.x, b.y + 3.f, s.accent_bar, b.h - 6.f, accent[0], accent[1], accent[2], 0.95f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                        hot ? s.border[0] : s.border_soft[0],
+                        hot ? s.border[1] : s.border_soft[1],
+                        hot ? s.border[2] : s.border_soft[2],
+                        hot ? 0.95f : 0.75f);
+}
+
+inline void session_scene_button(Renderer2D& r, Rect b, const float* accent, bool hot = false) {
+    const Style& s = style();
+    if (hot)
+        r.draw_rect(b.x, b.y, b.w, b.h, s.card_hi[0], s.card_hi[1], s.card_hi[2], 0.68f);
+    if (accent)
+        r.draw_rect(b.x, b.y, s.accent_bar, b.h, accent[0], accent[1], accent[2], hot ? 0.9f : 0.55f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                        hot ? s.border[0] : s.border_soft[0],
+                        hot ? s.border[1] : s.border_soft[1],
+                        hot ? s.border[2] : s.border_soft[2],
+                        hot ? 0.9f : 0.7f);
+}
+
+inline void session_control_button(Renderer2D& r, Rect b, const float* accent,
+                                   bool hot = false, bool selected = false) {
+    const Style& s = style();
+    if (hot || selected)
+        r.draw_rect(b.x, b.y, b.w, b.h,
+                    selected ? s.card_hi[0] : s.region[0],
+                    selected ? s.card_hi[1] : s.region[1],
+                    selected ? s.card_hi[2] : s.region[2],
+                    selected ? 0.92f : 0.82f);
+    r.draw_rect(b.x, b.y + b.h - 1.f, b.w, 1.f,
+                selected ? accent[0] : s.border_soft[0],
+                selected ? accent[1] : s.border_soft[1],
+                selected ? accent[2] : s.border_soft[2],
+                selected ? 1.0f : 0.65f);
+    if (hot && !selected)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 0.65f);
+}
+
+inline void session_meter_track(Renderer2D& r, Rect b) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y + b.h - 1.f, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.7f);
+}
+
+inline void session_clip_cell(Renderer2D& r, Rect b, const float* accent,
+                              bool hot = false, bool active = false, bool queued = false,
+                              float title_h = 14.f) {
+    const Style& s = style();
+    const float br = active ? 0.115f : s.recess[0] * 0.92f;
+    const float bg = active ? 0.130f : s.recess[1] * 0.88f;
+    const float bb = active ? 0.155f : s.recess[2] * 0.98f;
+    r.draw_rect(b.x, b.y, b.w, b.h, br, bg, bb, 1.0f);
+    const float k = (active ? 0.50f : 0.24f) + (hot ? 0.08f : 0.f);
+    r.draw_rect(b.x, b.y, b.w, title_h + 1.f, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
+    if (queued)
+        r.draw_rect(b.x, b.y, b.w, 2.f, s.gold[0], s.gold[1], s.gold[2], 1.0f);
+    if (active)
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 2.f, s.sel[0], s.sel[1], s.sel[2], 0.95f);
+    else
+        r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f,
+                            hot || queued ? s.border[0] : s.border_soft[0],
+                            hot || queued ? s.border[1] : s.border_soft[1],
+                            hot || queued ? s.border[2] : s.border_soft[2],
+                            hot || queued ? 0.85f : 0.72f);
+}
+
+// Modal/menu shell: flat panel fill, 1px frame, standard accent/header rule.
+inline Rect overlay_panel(Renderer2D& r, Rect b, const char* title, const float* accent,
+                          bool scrim = false, Rect scrim_bounds = {}) {
+    const Style& s = style();
+    if (scrim)
+        r.draw_rect(scrim_bounds.x, scrim_bounds.y, scrim_bounds.w, scrim_bounds.h, 0.f, 0.f, 0.f, 0.45f);
+    r.draw_shadow(b.x, b.y, b.w, b.h);
+    r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    const float hh = s.panel_hd_h;
+    if (accent)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + hh, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (title)
+        r.draw_text(b.x + s.s5, b.y + 6.f, title, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
+    return { b.x + s.s4, b.y + hh + s.s2, b.w - 2.f * s.s4, b.h - hh - s.s4 };
+}
+
+inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selected = false) {
+    item_box(r, b, nullptr, hot || selected, selected, AccentEdge::None);
+}
+
+// Full-width focused detail region, used by the bottom dock/editor area.
+inline Rect detail_dock(Renderer2D& r, Rect b, const float* accent, bool resize_hot = false) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
+    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f,
+                resize_hot ? s.control[0] : s.border[0],
+                resize_hot ? s.control[1] : s.border[1],
+                resize_hot ? s.control[2] : s.border[2], 1.0f);
+    const float hh = 20.f;
+    r.draw_rect(b.x, b.y, b.w, hh, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
+    r.draw_rect(b.x, b.y + hh, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (accent)
+        r.draw_rect(b.x, b.y, 4.f, hh, accent[0], accent[1], accent[2], 1.0f);
+    return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
+}
+
+// Session clip cells have a compact title strip plus an optional queued bar.
+inline void clip_cell_box(Renderer2D& r, Rect b, const float* accent,
+                          bool hot = false, bool active = false, bool queued = false,
+                          float title_h = 14.f) {
+    const Style& s = style();
+    const float br = active ? 0.115f : s.recess[0] * 0.90f;
+    const float bg = active ? 0.130f : s.recess[1] * 0.86f;
+    const float bb = active ? 0.155f : s.recess[2] * 0.96f;
+    r.draw_rect(b.x, b.y, b.w, b.h, br, bg, bb, 1.0f);
+    const float k = (active ? 0.50f : 0.22f) + (hot ? 0.06f : 0.f);
+    r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, title_h, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
+    if (queued)
+        r.draw_rect(b.x, b.y, b.w, 2.f, s.gold[0], s.gold[1], s.gold[2], 1.0f);
+    const float* fr = active ? s.sel : s.border_soft;
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, active ? 2.f : 1.f, fr[0], fr[1], fr[2], active ? 0.95f : 0.75f);
+}
+
+inline Rect editor_panel(Renderer2D& r, Rect b, const char* title, const float* accent,
+                         float header_h = 30.f) {
+    const Style& s = style();
+    r.draw_rect(b.x, b.y, b.w, b.h, s.region[0], s.region[1], s.region[2], 1.0f);
+    r.draw_rect_outline(b.x, b.y, b.w, b.h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    if (accent)
+        r.draw_rect(b.x, b.y, b.w, s.accent_bar, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + 1.f, b.w - 2.f, header_h - 1.f, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
+    r.draw_rect(b.x + 1.f, b.y + header_h, b.w - 2.f, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
+    if (title)
+        r.draw_text(b.x + s.s5, b.y + 9.f, title, s.text[0], s.text[1], s.text[2], 1.0f, s.fs_title);
+    return { b.x + s.s4, b.y + header_h + s.s4, b.w - 2.f * s.s4, b.h - header_h - 2.f * s.s4 };
 }
 
 // A rotary knob: dim track arc + accent value arc + pointer; name above, value
@@ -172,11 +370,11 @@ inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
     v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
     const Style& s = style();
     const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
-    r.draw_rounded_rect(x, ty, w, th, th * 0.5f, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    r.draw_rect(x, ty, w, th, s.recess[0], s.recess[1], s.recess[2], 1.0f);
     const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
-    if (v01 > 0.001f) r.draw_rounded_rect(x, ty, w * v01, th, th * 0.5f, fr, fg, fb, 1.0f);
+    if (v01 > 0.001f) r.draw_rect(x, ty, w * v01, th, fr, fg, fb, 1.0f);
     const float hx = x + w * v01;
-    r.draw_rounded_rect(hx - 3.f, ty - 3.f, 6.f, th + 6.f, 2.f, s.text[0], s.text[1], s.text[2], 1.0f);  // handle
+    r.draw_rect(hx - 2.f, ty - 3.f, 4.f, th + 6.f, s.text[0], s.text[1], s.text[2], 1.0f);  // hard handle
     if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
     if (valtext) {
         const float tw = r.text_width(valtext, s.fs_label);
@@ -184,13 +382,15 @@ inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
     }
 }
 
-// A toggle switch: rounded pill track + a sliding knob; on = accent, off = recess.
+// A toggle switch: a hard rectangular track + a sliding square knob; on = accent, off = recess,
+// with a 1px frame so it reads as a control, not a pill.
 inline void toggle(Renderer2D& r, float x, float y, float w, float h, bool on, const float* accent) {
     const Style& s = style();
     const float* bg = on ? accent : s.recess;
-    r.draw_rounded_rect(x, y, w, h, h * 0.5f, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect_outline(x, y, w, h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     const float kr = h - 4.f, kx = on ? (x + w - kr - 2.f) : (x + 2.f);
-    r.draw_rounded_rect(kx, y + 2.f, kr, kr, kr * 0.5f, s.text[0], s.text[1], s.text[2], 1.0f);
+    r.draw_rect(kx, y + 2.f, kr, kr, s.text[0], s.text[1], s.text[2], 1.0f);
 }
 
 // A dropdown field: a bordered box showing the current choice + a chevron. The popup
@@ -199,8 +399,9 @@ inline void dropdown_field(Renderer2D& r, float x, float y, float w, float h,
                            const char* current, const float* accent, bool hot) {
     const Style& s = style();
     const float* bg = hot ? s.card_hi : s.card;
-    r.draw_rounded_rect(x, y, w, h, s.radius, bg[0], bg[1], bg[2], 1.0f);
-    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);
+    r.draw_rect(x, y, w, h, bg[0], bg[1], bg[2], 1.0f);
+    r.draw_rect(x, y, s.accent_bar, h, accent[0], accent[1], accent[2], 1.0f);   // left edge identity
+    r.draw_rect_outline(x, y, w, h, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     if (current) r.draw_text(x + s.s3 + 2.f, y + (h - 10.f) * 0.5f, fit_text(r, current, w - 22.f, s.fs_label).c_str(),
                              s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
     // chevron

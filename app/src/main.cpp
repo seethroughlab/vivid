@@ -42,7 +42,10 @@
 #include "gpu/visual_graph.h"
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
+#include "gpu/splash.h"          // animated startup splash (nebula + node-graph "V")
+#include "gpu/gpu_util.h"        // kMsaaSamples (splash pipeline must match the frame)
 #include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
+#include <functional>
 #include "packages/package_manager.h"  // P2.3: the managed installed-operators dir
 #include "platform/platform.h"   // P3: executable_path (locate the bundle PlugIns/)
 #include <filesystem>
@@ -131,6 +134,20 @@ int main() {
         std::fprintf(stderr, "[vivid] Renderer2D init failed (UI disabled)\n");
     win.ui = &ui;
 
+    // Animated startup splash: a branded frame shown while the engine finishes booting
+    // (the blocking bit is the default project's VST3 instrument load in session_create,
+    // which drives it via the load-progress callback below).
+    vivid::Splash splash;
+    splash.init(gpu.device(), gpu.surface_format(), vivid::kMsaaSamples);
+    std::function<void(const char*)> render_splash =
+        [&](const char* status) { splash.render(gpu, ui, window, status); };
+    // Force the window on-screen now so the splash is visible during the blocking load
+    // (macOS otherwise defers first composite until the run loop turns / the app activates).
+    glfwShowWindow(window);
+    glfwFocusWindow(window);
+    for (int i = 0; i < 4; ++i) glfwPollEvents();
+    render_splash("Starting up...");
+
     // Composable visuals chain (generator -> feedback -> blur -> viewer).
     const uint32_t kRtW = static_cast<uint32_t>(kViewW), kRtH = static_cast<uint32_t>(kViewH);
     vivid::VisualGraph vgraph;
@@ -199,8 +216,13 @@ int main() {
     ma_device device;
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
-        // Now that we know the device sample rate, scan + load an instrument.
+        // Now that we know the device sample rate, scan + load the default project. This
+        // blocks for seconds on VST3 instrument load — drive the splash from each phase.
+        vivid::session::session_set_load_progress(
+            [](void* u, const char* s) { (*static_cast<std::function<void(const char*)>*>(u))(s); },
+            &render_splash);
         app.session = vivid::session::session_create(device.sampleRate);
+        vivid::session::session_set_load_progress(nullptr, nullptr);
         vivid::session::session_set_op_registry(app.session, &app.op_registry);   // AO-1: native audio ops
         std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
                      app.session ? vivid::session::session_track_count(app.session) : 0,

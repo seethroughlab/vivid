@@ -22,8 +22,16 @@ namespace S = vivid::session;
 void add_plugin(vivid::App& app, vivid::Window& win, int idx) {
     auto* s = app.session;
     if (!s) return;
-    const std::string path = S::plugin_at(idx).path;
+    const S::PluginInfo& pi = S::plugin_at(idx);
+    const std::string path = pi.path;
     if (path.empty()) return;
+    if (pi.format == S::kFmtCLAP) {   // CLAP loads async via the request API (not the VST3 loader)
+        const int t = S::session_add_graph_track(s, "");   // a bare track for the CLAP instrument
+        if (t >= 0) { S::session_request_track_clap_instrument(s, t, path.c_str());
+                      win.sel_track = t; win.sel_device = 0; }
+        if (app.graph) app.graph->select_op(-1);
+        return;
+    }
     const int t = S::session_add_instrument_track(s, path.c_str());
     if (t >= 0) { win.sel_track = t; win.sel_device = 0; if (app.graph) app.graph->select_op(-1); return; }
     const int tracks = S::session_track_count(s);
@@ -49,16 +57,21 @@ int plugin_drop_target(const vivid::Window& win, int tracks, double dmx, double 
 void drop_plugin(vivid::App& app, vivid::Window& win, int idx, double mx, double my) {
     auto* s = app.session;
     if (!s) return;
-    const std::string path = S::plugin_at(idx).path;
+    const S::PluginInfo& pi = S::plugin_at(idx);
+    const std::string path = pi.path;
     if (path.empty()) return;
     const int tracks = S::session_track_count(s);
     const int tgt = plugin_drop_target(win, tracks, mx - win.sidebar_w, my);
     if (tgt == -1) return;
+    const bool is_clap = (pi.format == S::kFmtCLAP);   // CLAP loads async via the request API
     if (tgt == -2) {   // new instrument track
-        const int t = S::session_add_instrument_track(s, path.c_str());
-        if (t >= 0) { win.sel_track = t; win.sel_device = 0; }
+        const int t = is_clap ? S::session_add_graph_track(s, "")
+                              : S::session_add_instrument_track(s, path.c_str());
+        if (t >= 0) { if (is_clap) S::session_request_track_clap_instrument(s, t, path.c_str());
+                      win.sel_track = t; win.sel_device = 0; }
     } else {           // effect on the dropped-on track
-        S::session_add_effect(s, tgt, path.c_str());
+        if (is_clap) S::session_request_track_clap_effect(s, tgt, path.c_str());
+        else         S::session_add_effect(s, tgt, path.c_str());
         win.sel_track = tgt;
     }
     if (app.graph) app.graph->select_op(-1);

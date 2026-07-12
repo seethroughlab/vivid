@@ -54,8 +54,12 @@ void ensure_scanned() { if (!g_scanned) rescan_plugins(); }
 void rescan_plugins() {
     std::vector<PluginInfo> found;
     scan_dir("/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, found);
-    if (const char* home = std::getenv("HOME"))
-        scan_dir(std::string(home) + "/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, found);
+    scan_dir("/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, found);
+    if (const char* home = std::getenv("HOME")) {
+        const std::string h = home;
+        scan_dir(h + "/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, found);
+        scan_dir(h + "/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, found);
+    }
     std::sort(found.begin(), found.end(), less_ci);
     g_plugins.swap(found);
     g_scanned = true;

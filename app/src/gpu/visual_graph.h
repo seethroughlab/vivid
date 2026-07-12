@@ -24,7 +24,8 @@ struct VisualNode {
     std::string op_type;        // registry key — the source of truth
     OpInstance  inst;           // the hosted operator (move-only)
     VOp   op = VOp::Plasma;     // legacy mirror of op_type
-    int   input = -1;
+    int   input = -1;           // primary texture input (port A)
+    int   input_b = -1;         // second input (port B) — used by 2-in ops (Composite); -1 otherwise
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
@@ -50,7 +51,8 @@ public:
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
     void reset_to_default();                   // the out-of-box Plasma->Feedback->Blur->Output chain
-    void set_input(int node, int input);       // wire input's output -> node's texture input
+    void set_input(int node, int input);       // wire input's output -> node's texture input (port A)
+    void set_input_b(int node, int input);     // wire the SECOND input (port B; for 2-in ops)
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
     void set_active_output(int idx);
     int  active_output_id() const { return active_output_id_; }

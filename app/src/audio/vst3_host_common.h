@@ -725,6 +725,9 @@ static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
     }
 }
 
+// VST3 preset discovery + loading (`.vstpreset` files + native-format adapters for
+// Serum/Pigments) lives in vst3_presets.h, included by vst3_host.cpp after this header.
+
 // ---------------------------------------------------------------------------
 // Build ProcessContext from VividAudioContext
 // ---------------------------------------------------------------------------

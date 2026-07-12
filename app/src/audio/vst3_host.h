@@ -21,6 +21,13 @@ struct Session;  // opaque
 // gen-counter try_lock swap never allocates) and the per-track UI arrays in window.h.
 constexpr int kMaxTracks = 32;
 
+// Optional startup load-progress hook: session_create blocks while it scans + loads the
+// default project's VST3 instruments (seconds). Set this before session_create to drive a
+// splash frame after each load phase; `status` is a short human label. Cleared by passing
+// nullptr. Runs on the calling (main) thread. Off by default.
+using SessionLoadCb = void(*)(void* user, const char* status);
+void     session_set_load_progress(SessionLoadCb cb, void* user);
+
 Session* session_create(uint32_t sample_rate);
 void     session_destroy(Session*);
 
@@ -178,6 +185,40 @@ void        session_remove_audio_effect(Session*, int track, int index);
 int         session_audio_effect_count(Session*, int track);
 const char* session_audio_op_type(Session*, int track, int index);
 int         session_set_track_audio_instrument(Session*, int track, const char* op_type);  // "" clears; 1 on success
+// CLAP plugin hosting: assign a `.clap` bundle as a track's instrument source ("" clears;
+// instruments must accept note input) or append one as an effect. Loading is ASYNC — the slow
+// plugin ctor runs on a background loader thread so it never blocks the main thread /
+// control-server drain. They return immediately (1 = queued; "" instrument path clears inline).
+// session_poll_plugin_loads() applies finished loads on the main thread (call it once per frame);
+// pending()>0 means loads are in flight; last_plugin_load_error() reports failures.
+int         session_request_track_clap_instrument(Session*, int track, const char* clap_path);
+int         session_request_track_clap_effect(Session*, int track, const char* clap_path);
+// State-carrying variants (persist): restore the saved patch `state` once the async load finishes,
+// so load_project never blocks on a slow plugin ctor. Empty state = no restore.
+int         session_request_track_clap_instrument_state(Session*, int track, const char* clap_path, const char* state);
+int         session_request_track_clap_effect_state(Session*, int track, const char* clap_path, const char* state);
+void        session_poll_plugin_loads(Session*);
+int         session_plugin_loads_pending(Session*);
+const char* session_last_plugin_load_error(Session*);
+// CLAP identity + state for persistence ("" / empty when the track has no CLAP plugin there).
+const char* session_track_clap_instrument_path(Session*, int track);
+int         session_track_clap_effect_count(Session*, int track);
+const char* session_track_clap_effect_path(Session*, int track, int index);
+std::string session_get_track_clap_effect_state(Session*, int track, int index);   // save side (load restores via the async request)
+// Generic instrument preset browse/load (no per-plugin code). scan fills the cache + returns the
+// count; name/id read it by index; load applies a preset by its id. CLAP (preset-discovery +
+// preset-load exts) and VST3 (`.vstpreset` files in the plugin's preset dirs) both supported.
+int         session_track_preset_scan(Session*, int track, const char* filter);   // filter = "" for all
+int         session_track_preset_count(Session*, int track);
+const char* session_track_preset_name(Session*, int track, int index);
+const char* session_track_preset_id(Session*, int track, int index);
+// Discovery metadata for a scanned preset (empty/0 when absent): bank/folder/type, whether it can
+// be loaded on this host (some native formats are browse-only), and taxonomy tags.
+const char* session_track_preset_category(Session*, int track, int index);
+int         session_track_preset_loadable(Session*, int track, int index);
+int         session_track_preset_tag_count(Session*, int track, int index);
+const char* session_track_preset_tag(Session*, int track, int index, int tag);
+bool        session_track_preset_load(Session*, int track, const char* id);
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);
 int         session_audio_op_param_hint(Session*, int track, int index, int param);   // VividDisplayHint (0 = DEFAULT)
@@ -205,6 +246,11 @@ int         session_track_audio_graph_node_id(Session*, int track, int i);
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_output_id(Session*, int track);
+// Node i's live output-waveform scope (oldest→newest) → out[n]; returns samples written. Display-only.
+int         session_track_audio_graph_node_scope(Session*, int track, int i, float* out, int n);
+// The VST3 IEditController behind a graph node (by node id), for opening its plugin editor; null if
+// the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
+void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
@@ -225,6 +271,10 @@ float       session_audio_graph_node_param_get  (Session*, int track, int node_i
 float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
 void        session_audio_graph_node_param_set  (Session*, int track, int node_id, int p, float v);
+// Editor node position (UI thread; persisted). set by stable node id (drag/load); get by node index
+// (save/introspection) → 1 if the node has a stored position, else 0 (editor auto-lays it out).
+void        session_audio_graph_node_set_pos(Session*, int track, int node_id, float x, float y);
+int         session_track_audio_graph_node_pos(Session*, int track, int i, float* x, float* y);
 // 1 if the track's audio graph is the authoritative source of topology (has been rewired) → its
 // graph should be persisted as nodes+edges rather than the linear instrument/fx chain.
 int         session_track_audio_graph_authoritative(Session*, int track);

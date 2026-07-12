@@ -1,4 +1,5 @@
 #include "ui/clip_editor.h"
+#include "ui/ui_style.h"
 #include "midi/note_ops.h"
 #include "midi/note_tools.h"
 #include <GLFW/glfw3.h>
@@ -13,7 +14,7 @@ using vivid::session::ExprCurve;
 
 static constexpr float kFloatW = 900.f, kFloatH = 560.f;  // floating size
 static constexpr float kDockH  = 300.f;                   // docked bottom-strip height
-static constexpr float kHeaderH = 30.f;
+static constexpr float kEditorHeaderH = 30.f;
 
 // Grid/snap presets (beats). Straight + triplet subdivisions.
 struct GridPreset { double v; const char* label; };
@@ -63,9 +64,9 @@ void ClipEditor::panel(float& x, float& y, float& w, float& h) const {
     else         { x = px_; y = py_;                    w = kFloatW;       h = kFloatH; }
 }
 float ClipEditor::gx() const { float x,y,w,h; panel(x,y,w,h); return x + 10.f; }
-float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kHeaderH + 10.f; }
+float ClipEditor::gy() const { float x,y,w,h; panel(x,y,w,h); return y + kEditorHeaderH + 10.f; }
 float ClipEditor::gw() const { float x,y,w,h; panel(x,y,w,h); return w - 20.f; }
-float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kHeaderH - 20.f; }
+float ClipEditor::gh() const { float x,y,w,h; panel(x,y,w,h); return h - kEditorHeaderH - 20.f; }
 
 int ClipEditor::pitch_of_row(int r) const {
     if (fold_) {
@@ -272,7 +273,7 @@ bool ClipEditor::on_down(double x, double y, double now, int mods) {
     const bool shift = (mods & GLFW_MOD_SHIFT) != 0;
     float px, py, pw, ph; panel(px, py, pw, ph);
     // Header: close [X], dock toggle, per-mode controls, or drag-to-move.
-    if (y < py + kHeaderH) {
+    if (y < py + kEditorHeaderH) {
         if (x >= px + pw - 28.f) { close(); return true; }                              // [X]
         if (x >= px + pw - 64.f) { docked_ = !docked_; drag_ = 0; return true; }         // dock
         if (audio_) {
@@ -457,7 +458,7 @@ void ClipEditor::on_move(double x, double y) {
     }
     if (drag_ == 3) {  // move floating panel
         px_ = std::clamp(static_cast<float>(x - down_off_x_), -kFloatW + 80.f, win_w_ - 80.f);
-        py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, win_h_ - kHeaderH - 4.f);
+        py_ = std::clamp(static_cast<float>(y - down_off_y_), 44.f, win_h_ - kEditorHeaderH - 4.f);
         return;
     }
     if (drag_ == 10 || drag_ == 11) {  // audio trim handles (in the zoomed view)
@@ -720,10 +721,8 @@ bool ClipEditor::on_key(int key, int mods) {
 void ClipEditor::draw(Renderer2D& r) {
     if (!open_) return;
     float px, py, pw, ph; panel(px, py, pw, ph);
-    r.draw_rect(px, py, pw, ph, 0.10f, 0.11f, 0.13f, 1.0f);          // panel (non-modal)
-    r.draw_rect(px, py, pw, 2.f, 0.31f, 0.55f, 0.80f, 1.0f);         // top accent
-    r.draw_rect(px, py, pw, kHeaderH, 0.15f, 0.16f, 0.19f, 1.0f);    // header
-    r.draw_text(px + 12.f, py + 9.f, title_.c_str(), 0.88f, 0.91f, 0.95f, 1.0f, 0.95f);
+    const Style& sty = style();
+    editor_panel(r, { px, py, pw, ph }, title_.c_str(), sty.gpu, kEditorHeaderH);
     if (!audio_) {
         const bool draw = tool_ == Tool::Draw;
         char sc[16];
@@ -756,7 +755,7 @@ void ClipEditor::draw(Renderer2D& r) {
     r.draw_text(px + pw - 22.f, py + 8.f, "X", 0.8f, 0.55f, 0.55f, 1.0f, 1.0f);
 
     const float GX = roll_x0(), GY = gy(), GW = roll_w(), GH = gh();   // roll content (inset past the keys, MIDI)
-    r.draw_rect(gx(), GY, gw(), GH, 0.07f, 0.08f, 0.10f, 1.0f);
+    recess(r, { gx(), GY, gw(), GH });
     r.push_clip_rect(GX, GY, GW, GH);
 
     if (audio_) {
@@ -944,11 +943,11 @@ void ClipEditor::draw(Renderer2D& r) {
     { float tx, ty, tw, th, t0, tl;
       if (vscroll_geom(tx, ty, tw, th, t0, tl)) {
           r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
-          r.draw_rounded_rect(tx + 1.f, t0, tw - 2.f, tl, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+          r.draw_rect(tx + 1.f, t0, tw - 2.f, tl, 0.42f, 0.45f, 0.52f, 0.9f);
       }
       if (hscroll_geom(tx, ty, tw, th, t0, tl)) {
           r.draw_rect(tx, ty, tw, th, 0.10f, 0.11f, 0.13f, 0.7f);
-          r.draw_rounded_rect(t0, ty + 1.f, tl, th - 2.f, 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
+          r.draw_rect(t0, ty + 1.f, tl, th - 2.f, 0.42f, 0.45f, 0.52f, 0.9f);
       } }
     // Step-input cursor: a gold vertical marking where the next note lands.
     if (step_mode_ && length_ > 0.0) {

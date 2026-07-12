@@ -11,6 +11,7 @@
 #include "ui/layout.h"
 #include "ui/compound_widget.h"   // UI-4a: compound_span / xy_from_cursor / node_param_compound_rect
 #include "ui/session_view.h"
+#include "ui/audio_node_graph.h"   // AudioNodeGraph::graph_region for the node-reposition drag
 #include "ui/mapping_overview.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
@@ -139,6 +140,14 @@ void apply_audio_param_mappings(App& app) {
                 vivid::session::session_audio_op_param_set(app.session, T, D, I,
                                              lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
             }
+        } else if (m.dest.rfind("gnode:", 0) == 0) {          // audio-graph node param (by STABLE node id)
+            int NID = -1;
+            if (std::sscanf(m.dest.c_str(), "gnode:%d:%d:%d", &T, &NID, &I) == 3 && T >= 0) {
+                const float lo = vivid::session::session_audio_graph_node_param_min(app.session, T, NID, I);
+                const float hi = vivid::session::session_audio_graph_node_param_max(app.session, T, NID, I);
+                vivid::session::session_audio_graph_node_param_set(app.session, T, NID, I,
+                                             lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
+            }
         }
     }
 }
@@ -231,14 +240,8 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         }
         const float v = std::clamp(win.param_drag_v0 +
                                    static_cast<float>(win.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
-        if (win.param_is_node) {
-            if (app.graph) app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
-        } else if (app.session) {
-            const int ntr = vivid::session::session_track_count(app.session);
-            const int seltr = std::min(std::max(win.sel_track, 0), ntr - 1);
-            const vivid::ui::DevSlot seldev = vivid::ui::dock_resolve(app.session, seltr, std::max(0, win.sel_device));
-            vivid::ui::dock_param_set_norm(app.session, seltr, seldev, win.param_drag, v);
-        }
+        if (win.param_is_node && app.graph)   // visual-node param drag (the linear device drag was retired)
+            app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
     }
     // UI-3 Stage 1: drag a selected audio-graph node's param knob (vertical). ag_param_v0 is the
     // normalized value at drag start; convert back to the op's [min,max] to set it.
@@ -250,6 +253,20 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
         const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
+    }
+    // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
+    // region-relative world units (screen = region_origin + world*zoom + pan); invert that here.
+    if (win.ag_node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+        namespace S = vivid::session;
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        vivid::ui::AudioNodeGraph ag; ag.set_source(app.session, tr);
+        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        ag.set_selection(win.sel_audio_node);   // graph_region height depends on the param band
+        const vivid::ui::Rect gr = ag.graph_region();
+        const float wx = (static_cast<float>(mx) - gr.x - win.ag_pan_x) / win.ag_zoom - win.ag_node_dx;
+        const float wy = (static_cast<float>(my) - gr.y - win.ag_pan_y) / win.ag_zoom - win.ag_node_dy;
+        S::session_audio_graph_node_set_pos(app.session, tr, win.ag_node_drag, wx, wy);
     }
 }
 
@@ -298,6 +315,7 @@ void run_frame_loop(App& app, Window& win) {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
+        if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
@@ -368,14 +386,12 @@ void run_frame_loop(App& app, Window& win) {
                 if (clip_editor.is_open() && clip_editor.is_docked()) {
                     f.kind = FocusContext::Kind::ClipEditor; f.dom = FocusContext::Dom::Audio;
                     f.track = clip_editor.track(); f.scene = clip_editor.scene();
-                } else if (win.show_audio_graph) {   // UI-3: audio graph deep view (drilled in from a track)
-                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 } else if (selop >= 0 && win.show_op_editor && app.graph->op_has_editor(selop)) {
                     f.kind = FocusContext::Kind::OpEditor; f.dom = FocusContext::Dom::Visual; f.node = selop;   // UI-4b
                 } else if (selop >= 0) {
                     f.kind = FocusContext::Kind::VisualNode; f.dom = FocusContext::Dom::Visual; f.node = selop;
-                } else {
-                    f.kind = FocusContext::Kind::Device; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
+                } else {   // a track's default detail view IS its audio node graph (supersedes the linear chain)
+                    f.kind = FocusContext::Kind::AudioGraph; f.dom = FocusContext::Dom::Audio; f.track = win.sel_track;
                 }
                 win.focus = f;
             }

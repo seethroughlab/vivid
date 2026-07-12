@@ -1,6 +1,7 @@
 #include "ui/mapping_overview.h"
 
 #include "ui/renderer_2d.h"
+#include "ui/ui_style.h"
 #include "ui/node_graph.h"
 #include "audio/vst3_host.h"
 
@@ -43,10 +44,10 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session
     const int n = static_cast<int>(maps.size());
     const OvGeom o = ov_geom(n, win_w);
     const float px = o.px, py = o.py, w = o.w, rowh = o.rowh, hdr = o.hdr;
-    ui.draw_rect(0.f, 40.f, static_cast<float>(win_w), static_cast<float>(win_h) - 40.f, 0.f, 0.f, 0.f, 0.45f);  // scrim
-    ui.draw_rounded_rect(px, py, w, o.h, 6.f, 0.12f, 0.13f, 0.155f, 1.0f);
-    ui.draw_rect(px, py, w, 3.f, 0.45f, 0.62f, 0.85f, 1.0f);
+    const Style& sty = style();
     char title[48]; std::snprintf(title, sizeof title, "MAPPINGS  (%d)", n);
+    overlay_panel(ui, { px, py, w, o.h }, nullptr, sty.gpu, true,
+                  { 0.f, 40.f, static_cast<float>(win_w), static_cast<float>(win_h) - 40.f });
     ui.draw_text(px + 16.f, py + 12.f, title, 0.9f, 0.92f, 0.95f, 1.0f, 1.0f);
     ui.draw_text(px + w - 150.f, py + 14.f, "M or Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.78f);
     const OvRow hc = ov_row(px, w, py + 38.f);
@@ -62,9 +63,9 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session
         return;
     }
     auto stepper = [&](const Rect& minus, const Rect& plus, float valX, float ry, const char* val) {
-        ui.draw_rect(minus.x, minus.y, minus.w, minus.h, 0.18f, 0.19f, 0.22f, 1.0f);
+        item_box(ui, minus, nullptr, false, false, AccentEdge::None);
         ui.draw_text(minus.x + 4.f, ry + 3.f, "-", 0.8f, 0.82f, 0.86f, 1.0f, 0.9f);
-        ui.draw_rect(plus.x, plus.y, plus.w, plus.h, 0.18f, 0.19f, 0.22f, 1.0f);
+        item_box(ui, plus, nullptr, false, false, AccentEdge::None);
         ui.draw_text(plus.x + 3.f, ry + 3.f, "+", 0.8f, 0.82f, 0.86f, 1.0f, 0.9f);
         ui.draw_text(valX, ry + 4.f, val, 0.78f, 0.81f, 0.85f, 1.0f, 0.82f);
     };
@@ -85,7 +86,7 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session
         char dst22[26]; std::snprintf(dst22, sizeof dst22, "%.24s", mapping_dest_label(s, m.dest).c_str());
         ui.draw_text(px + 168.f, ry + 4.f, dst22, 0.82f, 0.85f, 0.9f, 1.0f, 0.82f);
         // polarity chip
-        ui.draw_rect(rc.inv.x, rc.inv.y, rc.inv.w, rc.inv.h, m.invert ? 0.5f : 0.18f, m.invert ? 0.4f : 0.19f, m.invert ? 0.55f : 0.22f, 1.0f);
+        item_box(ui, rc.inv, m.invert ? sty.teal : nullptr, m.invert, m.invert, AccentEdge::Left);
         ui.draw_text(rc.inv.x + 5.f, ry + 3.f, "inv", m.invert ? 0.95f : 0.6f, 0.9f, 0.95f, 1.0f, 0.74f);
         char amt[10]; std::snprintf(amt, sizeof amt, "%.2f", m.amount);
         stepper(rc.amtMinus, rc.amtPlus, rc.amtValX, ry, amt);

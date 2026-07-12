@@ -133,6 +133,31 @@ add_library(vst3_iids STATIC
     src/audio/vst3_vstiids.cpp)
 target_link_libraries(vst3_iids PUBLIC vst3_headers)
 
+# --- CLAP SDK (header-only C API; hosts CLAP plugins e.g. Surge XT / Surge XT Effects) ---
+# SOURCE_SUBDIR points at a nonexistent dir so MakeAvailable populates the headers
+# without running CLAP's own CMakeLists.
+FetchContent_Declare(clap
+    GIT_REPOSITORY https://github.com/free-audio/clap.git
+    GIT_TAG        1.2.8
+    GIT_SHALLOW    TRUE
+    SOURCE_SUBDIR  _skip_clap_cmake)
+FetchContent_MakeAvailable(clap)
+add_library(clap_headers INTERFACE)
+target_include_directories(clap_headers INTERFACE ${clap_SOURCE_DIR}/include)
+
+# --- FreeType (real font rendering — hinted glyph atlas + glyph outlines for text geometry).
+# Vendored via FetchContent as vivid-4 did; minimal build (TrueType only, no optional codecs). ---
+set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG      ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI   ON CACHE BOOL "" FORCE)
+FetchContent_Declare(freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG        VER-2-13-3
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(freetype)
+
 # MACOSX_BUNDLE is required so hosted VST3 plugin GUI windows receive mouse
 # events: a non-bundled CLI process can't become a proper foreground app, so its
 # secondary NSWindows render but stay non-interactive.
@@ -157,6 +182,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/runtime_health_collect.cpp
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
+    src/gpu/splash.cpp
     src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
@@ -214,12 +240,16 @@ if(APPLE)
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm
         src/platform/menu_bar.mm
-        src/platform/midi_input.mm)
+        src/platform/midi_input.mm
+        platform/macos/Vivid.icns)   # app icon (the node-graph "V"), copied into Resources below
+    set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
+        MACOSX_PACKAGE_LOCATION Resources)
     set_target_properties(vivid PROPERTIES
         MACOSX_BUNDLE_BUNDLE_NAME "Vivid"
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_ICON_FILE Vivid.icns)
 endif()
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
@@ -237,7 +267,7 @@ target_compile_definitions(vivid PRIVATE
     VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
     VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio signalsmith_stretch vst3_iids z nlohmann_json::nlohmann_json httplib::httplib)
+target_link_libraries(vivid PRIVATE webgpu glfw glfw3webgpu miniaudio signalsmith_stretch vst3_iids clap_headers freetype z nlohmann_json::nlohmann_json httplib::httplib)
 
 if(APPLE)
     target_link_libraries(vivid PRIVATE

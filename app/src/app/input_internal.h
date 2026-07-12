@@ -30,7 +30,6 @@ void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLU
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
 bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my);  // deep-view press
-bool graph_drill_in(Window& win, App& app, int button, int action, double mx, double my);     // Device "Graph" button
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
 bool graph_rewire_release(Window& win, App& app, double mx, double my);                        // complete a rewire
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
@@ -39,7 +38,6 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my);               
 bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     // fx / +Track / map pickers
 bool dock_inspector(Window& win, App& app, double mx, double my);             // visual-node param inspector
-bool dock_device_chain(Window& win, App& app, double mx, double my, int tracks);  // device chips + param knobs
 
 // ---- session grid / mixer / clip pool (input_clipgrid.cpp) ----
 bool clipgrid_release(Window& win, App& app, double mx, double my, int mods, int tracks, int scenes);  // clip drop

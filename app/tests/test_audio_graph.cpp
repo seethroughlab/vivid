@@ -164,5 +164,19 @@ int main() {
         CHECK(e == 0);
     }
 
+    // --- 8. Editor node positions: unpositioned by default; set marks it; absent id is safe ---
+    {
+        AudioGraph g;
+        const int a = g.add_node(true,  false, nullptr, nullptr, "a");
+        const int b = g.add_node(false, true,  nullptr, nullptr, "b");
+        float x = 0, y = 0;
+        CHECK(!g.node_pos(a, x, y));                       // unpositioned → false
+        g.set_node_pos(a, 12.5f, -3.f);
+        CHECK(g.node_pos(a, x, y));
+        CHECK(std::fabs(x - 12.5f) < 1e-6f && std::fabs(y + 3.f) < 1e-6f);
+        CHECK(!g.node_pos(b, x, y));                       // sibling still unpositioned
+        CHECK(!g.node_pos(999, x, y));                     // absent id → false, no crash
+    }
+
     return vivid::test::summary("test_audio_graph");
 }

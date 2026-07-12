@@ -30,7 +30,7 @@ struct FocusContext {
     // hosted in the detail region. Set by the visual-node "Editor" button; `node` is the op.
     enum class Kind { Device, VisualNode, ClipEditor, AudioGraph, OpEditor };
     enum class Dom  { Audio, Visual };
-    Kind kind  = Kind::Device;
+    Kind kind  = Kind::AudioGraph;   // a track's default detail view is its audio node graph
     Dom  dom   = Dom::Audio;
     int  track = 0;     // Device / ClipEditor / AudioGraph
     int  scene = -1;    // ClipEditor
@@ -60,7 +60,6 @@ struct Window {
     // UI-3: drilled into the selected track's audio node graph (the detail region shows the
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
-    bool  show_audio_graph = false;
     // UI-4b: drilled into the selected visual node's operator-exported custom editor (the detail
     // region hosts vivid_draw_editor). Set by the visual-node "Editor" button; the focus recompute
     // only honors it while the selected op actually exports an editor.
@@ -97,12 +96,16 @@ struct Window {
     // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
     // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
     int     ag_wire_from   = -1;
+    // Dragging an audio-graph node's body to reposition it: the node id (-1 = none) + the grab
+    // offset in world units (cursor-to-node-origin), so the node follows the cursor under zoom.
+    int     ag_node_drag   = -1; float ag_node_dx = 0.f, ag_node_dy = 0.f;
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
     // UI-3 Stage 2 (2i): the audio-graph view transform (on top of the auto-fit). zoom 1 + pan 0 =
     // the fitted view; scroll zooms around the cursor, dragging empty space pans, double-click resets.
     float   ag_zoom = 1.f, ag_pan_x = 0.f, ag_pan_y = 0.f;
     bool    ag_panning = false; double ag_pan_mx0 = 0, ag_pan_my0 = 0; float ag_pan_ox0 = 0, ag_pan_oy0 = 0;
     double  ag_last_click_t = -1;   // for double-click-to-reset the audio-graph view
+    int     ag_last_node = -1; double ag_last_node_t = -1;   // double-click a node → open its plugin editor
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical

@@ -66,6 +66,12 @@ public:
 
     void draw_text(float x, float y, const char* text, float r, float g, float b, float a = 1.0f, float scale = 1.0f);
     void draw_rect(float x, float y, float w, float h, float r, float g, float b, float a = 1.0f);
+    // A crisp rectangle OUTLINE (four `stroke`-px edges, drawn inward). The serious-tool frame:
+    // flat fill + this = a highlighted box with hard 90° corners.
+    void draw_rect_outline(float x, float y, float w, float h, float stroke,
+                           float r, float g, float b, float a = 1.0f);
+    // A lo-fi drop shadow (two hard offset rects, no blur) behind a popup/menu at (x,y,w,h).
+    void draw_shadow(float x, float y, float w, float h);
     void draw_rounded_rect(float x, float y, float w, float h, float radius,
                            float r, float g, float b, float a = 1.0f);
     void draw_line(float x1, float y1, float x2, float y2, float thickness,

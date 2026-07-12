@@ -346,6 +346,33 @@ def set_track_audio_instrument(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def set_track_clap_instrument(track: int, path: str) -> dict:
+    """Assign a CLAP plugin (a `.clap` bundle path from list_plugins) as a track's instrument.
+    Loading is ASYNC — a slow plugin ctor never blocks the server — so this returns immediately
+    with {loading: true} (or clears synchronously when path=""). Poll plugin_load_status until
+    pending==0 before using the instrument (list_presets / params). Free/open CLAP synths like
+    Surge XT are the reliable audible instruments here."""
+    return _post("set_track_clap_instrument", {"track": track, "path": path})
+
+
+@mcp.tool
+def add_track_clap_effect(track: int, path: str) -> dict:
+    """Append a CLAP plugin (a `.clap` bundle path from list_plugins) as a track effect. Loads
+    ASYNC like set_track_clap_instrument — returns {loading: true}; poll plugin_load_status until
+    pending==0. (e.g. Surge XT Effects for reverb/delay.)"""
+    return _post("add_track_clap_effect", {"track": track, "path": path})
+
+
+@mcp.tool
+def plugin_load_status() -> dict:
+    """Poll the async CLAP loader: {pending: <in-flight loads>, error: "<last failure or ''>"}.
+    After set_track_clap_instrument / add_track_clap_effect (or load_project restoring CLAP
+    plugins), wait until pending==0 before driving the plugin; a non-empty error reports a
+    failed load."""
+    return _post("plugin_load_status")
+
+
+@mcp.tool
 def add_audio_effect(track: int, op: str) -> dict:
     """Append a native audio effect (an effect operator name from list_audio_operators) to a
     track's chain. Returns its effect index."""
@@ -750,6 +777,38 @@ def list_instruments() -> dict:
     """The instrument catalog you can pass to add_track (a label like "Pigments"; a .vst3
     path also works). Call before add_track to see what instruments are available."""
     return _post("list_instruments")
+
+
+@mcp.tool
+def list_presets(track: int, filter: str = "") -> dict:
+    """Browse the presets/patches of a track's instrument — GENERIC (no per-plugin code).
+    Returns [{name, id, loadable, category?, tags?}]. `filter` narrows by a case-insensitive name
+    substring; USE IT — a synth can ship thousands of patches (Serum ~626, Pigments ~1651, Surge
+    ~5k). Pick by matching name/category/tags to the SOUND you want and pass its `id` to
+    load_preset. `loadable:false` means browse-only (see below) — don't call load_preset on those.
+
+    Sonic guidance (the point of this flow): you know the musical intent; you choose the patch.
+    State the target in plain terms, then filter/scan for a matching name:
+      pad / warm / strings / choir   -> lush sustained beds     (avoid: lead, bass, pluck)
+      bass / sub / 808 / reese       -> low end
+      lead / solo / saw / pluck      -> melodic top
+      keys / ep / piano / bell       -> tonal comping
+      arp / seq / motion             -> rhythmic
+    If unsure, show the user a shortlist with why each fits and let them choose.
+    (Sources: CLAP preset-discovery factory; VST3 `.vstpreset` files; VST3 program lists (IUnitInfo
+    factory programs, loadable); and native-format adapters — Arturia Pigments presets are browsable
+    AND loadable, Xfer Serum `.SerumPreset` are browsable with rich metadata but `loadable:false` —
+    Serum's format can't be host-loaded, so recommend one by its metadata and have the user load it
+    in Serum's own UI, then save_project captures it.)"""
+    return _post("list_presets", {"track": track, "filter": filter})
+
+
+@mcp.tool
+def load_preset(track: int, id: str) -> dict:
+    """Load a preset onto a track's instrument by the `id` from list_presets (a `.vstpreset`/patch
+    file path, or an internal CLAP key). Audibly changes the timbre and is saved with the project
+    (save_project captures the plugin state). Use after list_presets to give a part its voice."""
+    return _post("load_preset", {"track": track, "id": id})
 
 
 @mcp.tool

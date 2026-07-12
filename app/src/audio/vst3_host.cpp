@@ -8,6 +8,8 @@
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
+#include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
+#include "audio/vst3_presets.h"                         // VST3 preset discovery/load (.vstpreset + Serum/Pigments adapters)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
 #include <vector>
@@ -15,6 +17,9 @@
 #include <string>
 #include <atomic>
 #include <mutex>
+#include <thread>
+#include <condition_variable>
+#include <deque>
 #include <cstring>
 #include <cmath>
 #include <cstdlib>
@@ -71,12 +76,15 @@ struct LiveMidi {
 // AudioGraph::compile), so bindings are addressed by out_buf.
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
+constexpr int      kScopeN        = 128;   // per-node output-waveform ring length (UI preview)
+constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
 
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, Sampler, Output };
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
-// `handle` = VST3 inst/fx (raw, non-owning — Track owns it). Sampler carries no pointer (its
-// active clip is scene-dependent, re-read from Track& at process time).
-struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr; Vst3Handle* handle = nullptr; };
+// `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
+// Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
+struct GNodeBind { GNKind kind = GNKind::Output; vivid::AudioOp* op = nullptr;
+                   Vst3Handle* handle = nullptr; ClapHandle* clap = nullptr; };
 
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
@@ -105,6 +113,7 @@ struct Track {
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
+    std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
     Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
                                            // notes); on the Track so both the inline path AND the
@@ -132,6 +141,15 @@ struct Track {
     std::atomic<uint64_t>        op_fx_gen{0};
     uint64_t                     op_fx_gen_seen = 0;
     std::vector<vivid::AudioOp*> op_retired;
+    // CLAP instrument + FX chain (raw, owned by the Track; freed at shutdown via clap_retired).
+    // A track's single instrument source is CLAP > native > VST3 by precedence (rebuild_track_graph).
+    // Set on the UI thread + republished via ggen; the audio thread only reads them through gbinds.
+    ClapHandle*              clap_inst = nullptr;
+    std::vector<ClapHandle*> clap_effects;
+    std::vector<ClapHandle*> clap_retired;
+    // Preset browse cache (UI thread only): the track instrument's presets (name/id + discovery
+    // metadata), filled by session_track_preset_scan and read by the count/name/id/... accessors.
+    std::vector<PresetEntry> preset_cache;
     // AG-0 audio graph (ADR-0012). Working copies (audio thread) + edit copies (UI thread),
     // published via ggen/gmtx like the FX chain. `gok` gates the graph path per track (false
     // => inline). Working buffers are reserved to capacity so the audio-thread copy from the
@@ -139,6 +157,11 @@ struct Track {
     vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
     std::vector<GNodeBind>           gbinds, gbinds_edit;
     std::vector<float>               gpool;            // node-buffer pool
+    // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
+    // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
+    // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
+    std::vector<float>               node_scope;       // kGraphMaxNodes * kScopeN
+    std::vector<uint32_t>            node_scope_head;  // kGraphMaxNodes write positions
     bool                             gok = false, gok_edit = false;
     std::mutex                       gmtx;
     std::atomic<uint64_t>            ggen{0};
@@ -222,6 +245,22 @@ struct Session {
     std::mutex            rec_mtx;
     std::vector<RecNote>  rec_notes;
     std::atomic<bool>     metronome{false};   // audible click on each beat while enabled
+    // --- Async CLAP loading. A slow plugin ctor (Surge scans its wavetable dir — seconds to
+    // minutes) must NOT run on the main thread, or it wedges the frame loop + the control-server
+    // drain. Requests run on one background worker; session_poll_plugin_loads() applies the
+    // finished handles on the main thread (all Track/graph edits stay UI-thread). ---
+    // track_id is the STABLE per-track id (not the slot index) — a load can finish after tracks are
+    // reordered/removed (e.g. opening another project), so the completion must re-resolve identity.
+    struct ClapLoadReq  { int track_id; bool is_instrument; std::string path; double sr; std::string state; };
+    struct ClapLoadDone { int track_id; bool is_instrument; std::string path; ClapHandle* handle; std::string state; };
+    std::thread              clap_worker;
+    std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
+    std::condition_variable  clap_load_cv;
+    std::deque<ClapLoadReq>  clap_reqs;
+    std::deque<ClapLoadDone> clap_done;
+    std::atomic<int>         clap_pending{0};    // requested-but-not-yet-applied loads
+    bool                     clap_worker_stop = false;
+    std::string              clap_last_error;    // main-thread only (last failed async load)
 };
 
 // Republish the current track membership for the audio thread (UI/main thread only).
@@ -277,6 +316,8 @@ static void reserve_track_graph(Track* t) {
     t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
     t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
     t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
+    t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
+    t->node_scope_head.assign(kGraphMaxNodes, 0u);
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -311,11 +352,13 @@ static void rebuild_track_graph(Track* t) {
     // precedence over a VST3 instrument, matching the inline path) → all VST3 FX → all native FX →
     // Output, in the EXACT order session_process applies them (VST3 FX loop before the native FX loop)
     // so the graph is parity-by-construction.
+    const bool has_clap_inst   = t->clap_inst != nullptr;
     const bool has_native_inst = t->op_instrument_edit != nullptr;
     const bool has_vst3_inst   = t->handle != nullptr;
-    const bool has_source = t->is_audio || has_native_inst || has_vst3_inst;
+    const bool has_source = t->is_audio || has_clap_inst || has_native_inst || has_vst3_inst;
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
-                              + static_cast<int>(t->op_effects_edit.size()) + 1;   // source + VST3 FX + native FX + output
+                              + static_cast<int>(t->op_effects_edit.size())
+                              + static_cast<int>(t->clap_effects.size()) + 1;   // source + VST3 FX + native FX + CLAP FX + output
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -326,6 +369,9 @@ static void rebuild_track_graph(Track* t) {
     if (t->is_audio) {
         t->agnodes.push_back({ GNKind::Sampler, nullptr, nullptr });   // scene-resolved at process time
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "smp");
+    } else if (has_clap_inst) {
+        t->agnodes.push_back({ GNKind::ClapInst, nullptr, nullptr, t->clap_inst });
+        prev = t->agraph.add_node(true, false, nullptr, nullptr, "clap");
     } else if (has_native_inst) {
         t->agnodes.push_back({ GNKind::NativeInst, t->op_instrument_edit, nullptr });
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "inst");   // node 0 == out_buf 0
@@ -345,6 +391,12 @@ static void rebuild_track_graph(Track* t) {
         t->agraph.connect(prev, fx);
         prev = fx;
     }
+    for (ClapHandle* cfx : t->clap_effects) {                              // then CLAP FX
+        t->agnodes.push_back({ GNKind::ClapFx, nullptr, nullptr, cfx });
+        const int fx = t->agraph.add_node(false, false, nullptr, nullptr, "cfx");
+        t->agraph.connect(prev, fx);
+        prev = fx;
+    }
     t->agnodes.push_back({ GNKind::Output, nullptr, nullptr });
     const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
     t->agraph.connect(prev, out);
@@ -358,6 +410,8 @@ static void rebuild_track_graph(Track* t) {
 // so the graph dispatch can call the same helpers the inline path does.
 static void render_vst3_instrument(Track& t, Vst3Handle* h, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
 static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
 static void render_sampler_block(Track& t, double beats, double delta, uint32_t frames, uint32_t sample_rate, bool playing, float* L, float* R);
 
 // AG-0: execute a track's compiled audio graph on the audio thread (RT-safe — no alloc, no
@@ -394,6 +448,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
                 render_vst3_instrument(t, nb.handle, gctx, frames, oL, oR);
             }
+            else if (nb.kind == GNKind::ClapInst && nb.clap) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+                render_clap_instrument(t, nb.clap, frames, oL, oR);
+            }
             else if (nb.kind == GNKind::Sampler) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
                 render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
@@ -418,6 +476,24 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
+        else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
+            render_clap_effect(t, nb.clap, frames, oL, oR);
+    }
+    // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
+    // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
+    if (!t.node_scope.empty()) {
+        for (const vivid::audio::CompiledStep& s : cg.steps) {
+            if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes) continue;
+            const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+            float* ring = t.node_scope.data() + static_cast<size_t>(s.out_buf) * kScopeN;
+            uint32_t h = t.node_scope_head[s.out_buf];
+            for (int c = 0; c < kScopePerBlock; ++c) {
+                uint32_t si = static_cast<uint32_t>((2 * c + 1)) * frames / (2u * kScopePerBlock);
+                ring[h % kScopeN] = nl[si < frames ? si : frames - 1];
+                ++h;
+            }
+            t.node_scope_head[s.out_buf] = h;
+        }
     }
     const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
     std::memcpy(L, outL, frames * sizeof(float));
@@ -578,7 +654,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
     else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64);
+    t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
@@ -595,7 +671,7 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
     t->name = name;
     for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64);
+    t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->effects.reserve(16); t->effects_edit.reserve(16);
@@ -625,7 +701,16 @@ static Vst3Handle* load_role(const std::vector<std::string>& bundles,
     return nullptr;
 }
 
+namespace {
+SessionLoadCb g_load_cb = nullptr;
+void*         g_load_user = nullptr;
+inline void load_progress(const char* status) { if (g_load_cb) g_load_cb(g_load_user, status); }
+}  // namespace
+
+void session_set_load_progress(SessionLoadCb cb, void* user) { g_load_cb = cb; g_load_user = user; }
+
 Session* session_create(uint32_t sample_rate) {
+    load_progress("Scanning plug-ins...");
     std::vector<std::string> bundles;
     list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
     if (const char* home = std::getenv("HOME"))
@@ -646,6 +731,7 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
     for (const auto& role : kRoles) {
+        load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
@@ -675,6 +761,7 @@ Session* session_create(uint32_t sample_rate) {
     // tempos (warped to the session) from the Dan Mayo library if present, else
     // falls back to the procedural demo loops.
     {
+        load_progress("Loading audio loops...");
         auto at = std::make_unique<Track>();
         at->is_audio = true;
         at->name = "Audio";
@@ -902,12 +989,82 @@ bool session_track_is_audio(Session* s, int t) {
     return s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->is_audio;
 }
 std::string session_get_track_state(Session* s, int t) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle) return {};
-    return vst3_save_state(s->tracks[t]->handle);
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return {};
+    if (s->tracks[t]->clap_inst) return clap_save_state(s->tracks[t]->clap_inst);   // CLAP instrument state
+    if (s->tracks[t]->handle)    return vst3_save_state(s->tracks[t]->handle);
+    return {};
 }
 void session_set_track_state(Session* s, int t, const std::string& state) {
-    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->handle || state.empty()) return;
-    vst3_load_state(s->tracks[t]->handle, state);
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || state.empty()) return;
+    if (s->tracks[t]->clap_inst) { clap_load_state(s->tracks[t]->clap_inst, state); return; }
+    if (s->tracks[t]->handle)    vst3_load_state(s->tracks[t]->handle, state);
+}
+// CLAP instrument/effect identity + state, for project persistence (save the path + state; load
+// recreates the plugin then restores its state).
+const char* session_track_clap_instrument_path(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !s->tracks[t]->clap_inst) return "";
+    return s->tracks[t]->clap_inst->bundle_path.c_str();
+}
+int session_track_clap_effect_count(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    return static_cast<int>(s->tracks[t]->clap_effects.size());
+}
+const char* session_track_clap_effect_path(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return "";
+    const auto& e = s->tracks[t]->clap_effects;
+    return (i >= 0 && i < static_cast<int>(e.size())) ? e[i]->bundle_path.c_str() : "";
+}
+std::string session_get_track_clap_effect_state(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return {};
+    const auto& e = s->tracks[t]->clap_effects;
+    return (i >= 0 && i < static_cast<int>(e.size())) ? clap_save_state(e[i]) : std::string{};
+}
+
+// --- Preset browse / load for a track's instrument (generic; no per-plugin code). ---
+// Scan the instrument's presets into the track cache. CLAP: the plugin's preset-discovery
+// factory. VST3: `.vstpreset` files + native-format adapters (Serum/Pigments). Returns the count.
+// Each entry carries {name, id, category, tags[], loadable} read by the accessors below.
+int session_track_preset_scan(Session* s, int t, const char* filter) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    Track& tr = *s->tracks[t];
+    tr.preset_cache.clear();
+    if (tr.clap_inst) {
+        std::vector<ClapPresetInfo> pl;
+        clap_list_presets(tr.clap_inst, pl, filter ? filter : "");
+        tr.preset_cache.reserve(pl.size());
+        for (auto& p : pl) { PresetEntry e; e.name = std::move(p.name); e.id = std::move(p.id);
+                             e.source = "clap"; e.loadable = true; tr.preset_cache.push_back(std::move(e)); }
+    } else if (tr.handle) {
+        vst3_scan_presets(tr.handle, filter, tr.preset_cache);
+    }
+    return static_cast<int>(tr.preset_cache.size());
+}
+static const PresetEntry* preset_at(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return nullptr;
+    const auto& c = s->tracks[t]->preset_cache;
+    return (i >= 0 && i < static_cast<int>(c.size())) ? &c[i] : nullptr;
+}
+int session_track_preset_count(Session* s, int t) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    return static_cast<int>(s->tracks[t]->preset_cache.size());
+}
+const char* session_track_preset_name(Session* s, int t, int i)     { const PresetEntry* e = preset_at(s, t, i); return e ? e->name.c_str() : ""; }
+const char* session_track_preset_id(Session* s, int t, int i)       { const PresetEntry* e = preset_at(s, t, i); return e ? e->id.c_str() : ""; }
+const char* session_track_preset_category(Session* s, int t, int i) { const PresetEntry* e = preset_at(s, t, i); return e ? e->category.c_str() : ""; }
+int         session_track_preset_loadable(Session* s, int t, int i) { const PresetEntry* e = preset_at(s, t, i); return (e && e->loadable) ? 1 : 0; }
+int         session_track_preset_tag_count(Session* s, int t, int i){ const PresetEntry* e = preset_at(s, t, i); return e ? static_cast<int>(e->tags.size()) : 0; }
+const char* session_track_preset_tag(Session* s, int t, int i, int k) {
+    const PresetEntry* e = preset_at(s, t, i);
+    return (e && k >= 0 && k < static_cast<int>(e->tags.size())) ? e->tags[k].c_str() : "";
+}
+// Load a preset by its id (from the scan). CLAP: preset-load ext. VST3: `.vstpreset` container or
+// an adapter-owned native file -> setState. Returns true on success (browse-only presets => false).
+bool session_track_preset_load(Session* s, int t, const char* id) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !id) return false;
+    Track& tr = *s->tracks[t];
+    if (tr.clap_inst) return clap_load_preset(tr.clap_inst, id);
+    if (tr.handle)    return vst3_load_preset(tr.handle, id);
+    return false;
 }
 int session_audio_clip_bpm(Session* s, int t, int sc) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
@@ -1335,6 +1492,34 @@ static void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext
     std::memcpy(R, oR, frames * sizeof(float));
 }
 
+// CLAP instrument. Builds this block's note + param events into the handle's scratch, then
+// processes into L/R (silent input fed to any declared input port). Parallels the native path:
+// reads t.nev (clip + live/preview notes) directly. RT-safe (fixed scratch, no alloc/lock).
+static void render_clap_instrument(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+    h->events.clear();
+    clap_flush_params(h);
+    for (const NoteEvent& ne : t.scene_rel)   // scene-switch note-offs first, so held voices release
+        h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
+    for (const NoteEvent& ne : t.nev)
+        h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
+    float* out[2] = { L, R };
+    float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
+    clap_run(h, static_cast<int64_t>(t.steady), frames, h->audio_in > 0 ? in : nullptr, 2, out, 2);
+}
+
+// CLAP effect. Transforms L/R in place via the track's fx scratch (t.fxl/t.fxr), like the VST3
+// effect path. Caller guards `clap && clap->processing`.
+static void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    h->events.clear();
+    clap_flush_params(h);
+    float* in[2]  = { L, R };
+    float* out[2] = { t.fxl.data(), t.fxr.data() };
+    clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2);
+    std::memcpy(L, out[0], frames * sizeof(float));
+    std::memcpy(R, out[1], frames * sizeof(float));
+}
+
 // Sampler-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
 // contended). Re-reads the scene-dependent state (t.active / aud_clips / aud_dsp / aud_trim*) and
 // keeps the aud_mtx try_lock skip-on-contention — the caller performs the bar-quantized scene switch
@@ -1387,7 +1572,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
-        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit) continue;
+        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit && !t.clap_inst) continue;
         any = true;
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
@@ -1453,10 +1638,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
+            t.scene_rel.clear();   // scene-switch note-offs for the CLAP path (parallel to t.vev)
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
                     t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(t.vev, t.nev, t.eev);
+                    t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
                 }
@@ -1528,8 +1715,10 @@ static void destroy_handle(Vst3Handle* h) {
     if (h->processing) h->processor->setProcessing(false);
     h->destroy(); delete h;
 }
+static void stop_clap_loader(Session* s);   // defined below (with the async-loader machinery)
 void session_destroy(Session* s) {
     if (!s) return;
+    stop_clap_loader(s);   // join the async loader + free unapplied handles before the tracks go
     auto teardown = [](Track* t) {
         for (Vst3Handle* fx : t->effects_edit) destroy_handle(fx);  // authoritative FX list
         for (Vst3Handle* fx : t->fx_retired)   destroy_handle(fx);  // removed-but-not-freed
@@ -1537,6 +1726,9 @@ void session_destroy(Session* s) {
         for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
         for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
         vivid::audio_op_destroy(t->op_instrument_edit);
+        delete t->clap_inst;                                    // CLAP instrument + FX + retired
+        for (ClapHandle* c : t->clap_effects) delete c;
+        for (ClapHandle* c : t->clap_retired) delete c;
     };
     for (auto& tp : s->tracks)         teardown(tp.get());
     for (auto& tp : s->tracks_retired) teardown(tp.get());   // tracks removed during the run
@@ -1636,6 +1828,122 @@ int session_set_track_audio_instrument(Session* s, int t, const char* op_type) {
     rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
     return 1;
 }
+// CLAP instrument/effect assignment is ASYNC — see session_request_track_clap_* below. (A slow
+// plugin ctor must never run on the main thread.) The old synchronous session_set_track_clap_*
+// entry points were removed once persist + the control server both moved to the async path.
+
+// --- Async CLAP loading (see the Session members). The worker instantiates plugins off the
+// main thread; the main thread applies completions via session_poll_plugin_loads(). ---
+static void clap_worker_main(Session* s) {
+    for (;;) {
+        Session::ClapLoadReq req;
+        {
+            std::unique_lock<std::mutex> lk(s->clap_load_mtx);
+            s->clap_load_cv.wait(lk, [s]{ return s->clap_worker_stop || !s->clap_reqs.empty(); });
+            if (s->clap_worker_stop) return;                 // dying: drop any queued requests
+            req = std::move(s->clap_reqs.front());
+            s->clap_reqs.pop_front();
+        }
+        ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
+        {
+            std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+            s->clap_done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state) });
+        }
+    }
+}
+static void ensure_clap_worker(Session* s) {
+    if (!s->clap_worker.joinable()) s->clap_worker = std::thread(clap_worker_main, s);
+}
+static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path, const char* state) {
+    ensure_clap_worker(s);
+    const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
+    const int tid = s->tracks[t]->id;   // capture the STABLE id (callers validated t in range)
+    {
+        std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+        s->clap_last_error.clear();
+        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "" });
+    }
+    s->clap_pending.fetch_add(1, std::memory_order_release);
+    s->clap_load_cv.notify_one();
+    return 1;
+}
+// Async instrument assign, optionally restoring a saved patch `state` once the (off-thread) load
+// finishes. Empty path clears synchronously (fast). Poll session_plugin_loads_pending() /
+// get_audio_graph to know when it's live.
+int session_request_track_clap_instrument_state(Session* s, int t, const char* clap_path, const char* state) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    if (!clap_path || !*clap_path) {                         // clear: no load needed, do it inline
+        Track& tr = *s->tracks[t];
+        if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
+        tr.clap_inst = nullptr; rebuild_track_graph(&tr);
+        return 1;
+    }
+    return enqueue_clap_load(s, t, /*is_instrument*/true, clap_path, state);
+}
+int session_request_track_clap_effect_state(Session* s, int t, const char* clap_path, const char* state) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return 0;
+    return enqueue_clap_load(s, t, /*is_instrument*/false, clap_path, state);
+}
+int session_request_track_clap_instrument(Session* s, int t, const char* clap_path) {
+    return session_request_track_clap_instrument_state(s, t, clap_path, "");
+}
+int session_request_track_clap_effect(Session* s, int t, const char* clap_path) {
+    return session_request_track_clap_effect_state(s, t, clap_path, "");
+}
+// Main thread: apply any finished async loads (swap into the Track, restore saved patch state, and
+// rebuild its graph). Call once per frame from the run loop. Failed / not-an-instrument loads set
+// the last-error string. For a serial worker the completions arrive in request order, so per-track
+// the instrument is applied before its effects and the effect chain keeps its saved order.
+void session_poll_plugin_loads(Session* s) {
+    if (!s) return;
+    std::deque<Session::ClapLoadDone> done;
+    {
+        std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+        if (s->clap_done.empty()) return;
+        done.swap(s->clap_done);
+    }
+    for (auto& d : done) {
+        ClapHandle* h = d.handle;
+        Track* trp = nullptr;                                // resolve the STABLE id to the current slot
+        for (auto& tp : s->tracks) if (tp->id == d.track_id) { trp = tp.get(); break; }
+        if (trp) {
+            Track& tr = *trp;
+            if (d.is_instrument) {
+                if (h && !h->has_note_in) { delete h; h = nullptr; s->clap_last_error = d.path + ": not a CLAP instrument"; }
+                if (h) {
+                    if (tr.clap_inst) tr.clap_retired.push_back(tr.clap_inst);
+                    tr.clap_inst = h;
+                    if (!d.state.empty()) clap_load_state(h, d.state);   // restore the saved patch (persist)
+                    rebuild_track_graph(&tr);
+                } else if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
+            } else {
+                if (h) {
+                    tr.clap_effects.push_back(h);
+                    if (!d.state.empty()) clap_load_state(h, d.state);
+                    rebuild_track_graph(&tr);
+                } else s->clap_last_error = d.path + ": failed to load CLAP effect";
+            }
+        } else if (h) {
+            delete h;                                        // track was removed while loading
+        }
+        s->clap_pending.fetch_sub(1, std::memory_order_release);
+    }
+}
+int session_plugin_loads_pending(Session* s) { return s ? s->clap_pending.load(std::memory_order_acquire) : 0; }
+const char* session_last_plugin_load_error(Session* s) {
+    return (s && !s->clap_last_error.empty()) ? s->clap_last_error.c_str() : "";
+}
+// Stop + join the loader thread and free any completions that were never applied. Call before
+// tearing down the tracks (a handle in `clap_done` still owns a DSO ref).
+static void stop_clap_loader(Session* s) {
+    if (s->clap_worker.joinable()) {
+        { std::lock_guard<std::mutex> lk(s->clap_load_mtx); s->clap_worker_stop = true; }
+        s->clap_load_cv.notify_all();
+        s->clap_worker.join();
+    }
+    for (auto& d : s->clap_done) delete d.handle;   // finished-but-unapplied handles
+    s->clap_done.clear();
+}
 int         session_audio_op_param_count(Session* s, int t, int index) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_count(op) : 0; }
 const char* session_audio_op_param_name(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_name(op, p) : ""; }
 int         session_audio_op_param_hint(Session* s, int t, int index, int p) { vivid::AudioOp* op = audio_op_at(s, t, index); return op ? vivid::audio_op_param_hint(op, p) : 0; }
@@ -1686,8 +1994,8 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return -1;
     switch (tr->agnodes[i].kind) {
-        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::Sampler: return 0;  // source/instrument
-        case GNKind::NativeFx:   case GNKind::Vst3Fx:   return 1;                         // effect
+        case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::ClapInst: case GNKind::Sampler: return 0;  // source/instrument
+        case GNKind::NativeFx:   case GNKind::Vst3Fx:   case GNKind::ClapFx:   return 1;              // effect
         case GNKind::Output:     return 2;
     }
     return -1;
@@ -1699,12 +2007,40 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     if (i < 0 || i >= static_cast<int>(tr->agnodes.size())) return "";
     const GNodeBind& nb = tr->agnodes[i];
     if (nb.op) return vivid::audio_op_type(nb.op);
+    if (nb.clap) return nb.clap->name.c_str();          // CLAP nodes: the plugin's display name
     switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
         case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
         case GNKind::Sampler:                       return "Sampler";
         default:                                    return "";
     }
 }
+// Copy node i's output-waveform scope (oldest→newest) into out[n]; returns samples written (0 if
+// unavailable). Display-only: node_scope is a fixed-size ring the audio thread writes lock-free, so a
+// concurrent read is benign (a torn value = a one-pixel blip). node index i == the compiled out_buf.
+int session_track_audio_graph_node_scope(Session* s, int t, int i, float* out, int n) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !out || n <= 0 || i < 0 || i >= kGraphMaxNodes ||
+        static_cast<size_t>(i + 1) * kScopeN > tr->node_scope.size()) return 0;
+    const float* ring = tr->node_scope.data() + static_cast<size_t>(i) * kScopeN;
+    const uint32_t head = tr->node_scope_head[i];   // next write position; newest is head-1
+    const int cnt = std::min(n, kScopeN);
+    for (int k = 0; k < cnt; ++k)
+        out[k] = ring[(head + kScopeN - static_cast<uint32_t>(cnt) + static_cast<uint32_t>(k)) % kScopeN];
+    return cnt;
+}
+
+// The VST3 IEditController behind a graph node (Vst3Inst / Vst3Fx), so the audio graph can open the
+// plugin's native editor for it. Null for native / sampler / output nodes (which have no plugin GUI).
+void* session_audio_graph_node_controller(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return nullptr;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle->controller : nullptr;
+}
+
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;
@@ -1821,47 +2157,108 @@ static vivid::AudioOp* graph_node_op(Track* tr, int node_id) {   // caller holds
     const int idx = tr->agraph.node_index(node_id);
     return (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].op : nullptr;
 }
+// A VST3 graph node → its handle (whose `params`/`controller`/`param_q` back the dock param band,
+// exactly as the old linear device view did). Null for native/sampler/output nodes.
+static Vst3Handle* graph_node_handle(Track* tr, int node_id) {   // caller holds tr->gmtx
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle : nullptr;
+}
+// A CLAP graph node → its handle (params in PLAIN units; edits go via its SPSC param_q). Null otherwise.
+static ClapHandle* graph_node_clap(Track* tr, int node_id) {   // caller holds tr->gmtx
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.clap && (nb.kind == GNKind::ClapInst || nb.kind == GNKind::ClapFx)) ? nb.clap : nullptr;
+}
+// The dock param band edits a graph node's params — native op params OR a VST3 node's exposed
+// (automatable) params, in NORMALIZED 0..1 space like the old linear knob grid.
 int session_audio_graph_node_param_count(Session* s, int t, int node_id) {
     Track* tr = graph_track(s, t); if (!tr) return 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_count(op) : 0;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_count(op);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id)) return static_cast<int>(h->params.size());
+    if (ClapHandle* c = graph_node_clap(tr, node_id)) return static_cast<int>(c->params.size());
+    return 0;
 }
 const char* session_audio_graph_node_param_name(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return "";
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_name(op, p) : "";
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_name(op, p);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(h->params.size())) ? h->params[p].name.c_str() : "";
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? c->params[p].name.c_str() : "";
+    return "";
 }
 int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_hint(op, p) : 0;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_hint(op, p);
+    return 0;   // VST3 params → DEFAULT (a knob)
 }
 float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_get(op, p) : 0.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_get(op, p);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id))
+        return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
+                   ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size()))
+                   ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
+    return 0.f;
 }
 float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_min(op, p) : 0.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_min(op, p);
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].min) : 0.f;
+    return 0.f;   // VST3 params are normalized
 }
 float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 1.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    return op ? vivid::audio_op_param_max(op, p) : 1.f;
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_max(op, p);
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].max) : 1.f;
+    return 1.f;
 }
 void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
     Track* tr = graph_track(s, t); if (!tr) return;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    vivid::AudioOp* op = graph_node_op(tr, node_id);
-    if (op) vivid::audio_op_param_set(op, p, v);
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) { vivid::audio_op_param_set(op, p, v); return; }
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const ParamID id = h->params[p].id;
+        v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+        h->param_q.push(id, v);                                            // → audio thread (RT-safe SPSC)
+        if (h->controller) h->controller->setParamNormalized(id, v);       // → plugin GUI reflection
+        return;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
+        double val = std::clamp(static_cast<double>(v), c->params[p].min, c->params[p].max);
+        c->param_q.push(c->params[p].id, val);   // plain value → audio thread emits a CLAP param event
+    }
+}
+
+// Editor node position (UI thread; persisted). set is keyed by stable node id (drag / load);
+// get is by node INDEX for save/introspection iteration. Position is UI-only (not in the compiled
+// plan), so setting it needs no republish. get returns 0 when the node has never been placed.
+void session_audio_graph_node_set_pos(Session* s, int t, int node_id, float x, float y) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.set_node_pos(node_id, x, y);
+}
+int session_track_audio_graph_node_pos(Session* s, int t, int i, float* x, float* y) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (i < 0 || i >= static_cast<int>(tr->agraph.nodes().size())) return 0;
+    float gx = 0.f, gy = 0.f;
+    if (!tr->agraph.node_pos(tr->agraph.nodes()[i].id, gx, gy)) return 0;
+    if (x) *x = gx; if (y) *y = gy;
+    return 1;
 }
 
 int session_track_audio_graph_authoritative(Session* s, int t) {

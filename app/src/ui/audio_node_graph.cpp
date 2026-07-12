@@ -1,5 +1,7 @@
 #include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
+#include "ui/node_canvas.h"       // shared node-editor drawing (node_card / node_wire / node_port)
+#include "ui/node_graph.h"        // NodeGraph::source_of — the bridge mapped-state query
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "audio/vst3_host.h"
 
@@ -13,24 +15,19 @@ namespace vivid::ui {
 
 namespace {
 namespace P = vivid::session;
-constexpr float kCardW = 108.f, kCardH = 44.f, kGapX = 46.f, kGapY = 16.f, kPad = 12.f;
+constexpr float kCardW = 116.f, kCardH = 76.f, kGapX = 46.f, kGapY = 18.f, kPad = 12.f;   // taller: hosts a live waveform preview
 constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
 constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
 constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
+constexpr float kPCellW = 66.f, kPCellH = 42.f;   // param knob cell; the band wraps knobs into a grid
+constexpr int   kPMaxRows = 3;          // cap the grid at 3 rows (a VST3 node's overflow lives in its plugin editor)
 // LFO waveform names, indexed by the enum value (matches the SineSynth convention). The session
 // API exposes the value but not the enum choice labels, so the widget names them by convention.
 const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
 
-void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
-    constexpr int N = 24; float xs[N], ys[N];
-    const float dx = std::max(std::fabs(x1 - x0) * 0.5f, 22.f);
-    const float c1x = x0 + dx, c2x = x1 - dx;
-    for (int i = 0; i < N; ++i) {
-        const float t = i / float(N - 1), u = 1.f - t;
-        xs[i] = u*u*u*x0 + 3*u*u*t*c1x + 3*u*t*t*c2x + t*t*t*x1;
-        ys[i] = u*u*u*y0 + 3*u*u*t*y0  + 3*u*t*t*y1  + t*t*t*y1;
-    }
-    r.draw_polyline(xs, ys, N, 2.0f, c[0], c[1], c[2], 0.9f);
+// Forward to the shared substrate bezier so both editors draw identical wires.
+inline void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c) {
+    node_wire(r, x0, y0, x1, y1, c[0], c[1], c[2]);
 }
 }  // namespace
 
@@ -39,10 +36,17 @@ void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const float* c)
 float AudioNodeGraph::param_band_h() const {
     if (!s_ || sel_node_ < 0) return kParamBand;
     const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node_);
-    for (int i = 0; i < pc; ++i)
-        if (is_compound_widget(P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i)))
-            return kParamBandTall;
-    return kParamBand;
+    bool compound = false; int knobs = 0;
+    for (int i = 0; i < pc; ++i) {
+        const int h = P::session_audio_graph_node_param_hint(s_, track_, sel_node_, i);
+        if (is_compound_widget(h)) compound = true;
+        if (h != VIVID_DISPLAY_LFO) ++knobs;
+    }
+    if (knobs == 0) return compound ? kParamBandTall : kParamBand;
+    const int perRow = std::max(1, static_cast<int>(((x1_ - x0_) - 12.f) / kPCellW));
+    const int rows = std::min(kPMaxRows, (knobs + perRow - 1) / perRow);
+    const float top = compound ? kPreviewH : 8.f;
+    return std::max(compound ? kParamBandTall : kParamBand, top + rows * kPCellH + 8.f);
 }
 
 // The compound-widget previews to draw for the selected node (ADSR/LFO), laid out left-to-right in
@@ -105,24 +109,24 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             if (ef[e] >= 0 && et[e] >= 0) rank[et[e]] = std::max(rank[et[e]], rank[ef[e]] + 1);
     int max_rank = 0; for (int i = 0; i < n; ++i) max_rank = std::max(max_rank, rank[i]);
     for (int i = 0; i < n; ++i) if (kind[i] == 2) rank[i] = max_rank;
-    std::vector<int> fill(max_rank + 1, 0); int max_slots = 1;
-    for (int i = 0; i < n; ++i) { slot[i] = fill[rank[i]]++; max_slots = std::max(max_slots, fill[rank[i]]); }
+    std::vector<int> fill(max_rank + 1, 0);
+    for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
+    // Every node has a stored world position (region-relative; screen = region + world*zoom + pan).
+    // An unpositioned node is seeded from the auto-layout (rank = signal depth, slot = fan-out order)
+    // and stuck — so the graph opens tidy, then every node is freely draggable and the layout persists.
     const Rect g = graph_region();
-    const float world_w = max_rank * (kCardW + kGapX) + kCardW;
-    const float world_h = max_slots * kCardH + (max_slots - 1) * kGapY;
-    const float scale = std::min({ (g.w - 2 * kPad) / world_w, (g.h - 2 * kPad) / world_h, 1.0f });
-    const float ox = g.x + (g.w - world_w * scale) * 0.5f;
-    const float oy = g.y + (g.h - world_h * scale) * 0.5f;
     out.reserve(n);
     for (int i = 0; i < n; ++i) {
-        // Auto-fit base position, then the user view transform (2i): zoom around the region origin
-        // + pan. zoom 1 / pan 0 leaves the fitted layout untouched.
-        const float bx = ox + rank[i] * (kCardW + kGapX) * scale;
-        const float by = oy + slot[i] * (kCardH + kGapY) * scale;
+        float wx = 0.f, wy = 0.f;
+        if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
+            wx = kPad + rank[i] * (kCardW + kGapX);
+            wy = kPad + slot[i] * (kCardH + kGapY);
+            P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
+        }
         out.push_back({ kind[i], id[i],
-                        g.x + (bx - g.x) * zoom_ + pan_x_, g.y + (by - g.y) * zoom_ + pan_y_,
-                        kCardW * scale * zoom_, kCardH * scale * zoom_ });
+                        g.x + wx * zoom_ + pan_x_, g.y + wy * zoom_ + pan_y_,
+                        kCardW * zoom_, kCardH * zoom_ });
     }
     return out;
 }
@@ -134,22 +138,27 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     if (pc <= 0) return out;
     // The LFO enum leader is claimed by its waveform preview (no knob); every other param is a knob,
     // including the ADSR channels (their preview groups them but they stay individually draggable).
+    bool compound = false;
     std::vector<int> knobs;
-    for (int i = 0; i < pc; ++i)
-        if (P::session_audio_graph_node_param_hint(s_, track_, sel_node, i) != VIVID_DISPLAY_LFO)
-            knobs.push_back(i);
+    for (int i = 0; i < pc; ++i) {
+        const int h = P::session_audio_graph_node_param_hint(s_, track_, sel_node, i);
+        if (is_compound_widget(h)) compound = true;
+        if (h != VIVID_DISPLAY_LFO) knobs.push_back(i);
+    }
     if (knobs.empty()) return out;
     const Rect pr = param_region();
-    const bool tall = pr.h > kParamBand + 1.f;
-    const float row_y = pr.y + (tall ? kPreviewH : 4.f);   // knobs sit below the preview strip
-    const float row_h = pr.h - (tall ? kPreviewH : 0.f) - 8.f;
-    const float cellW = std::min(78.f, (pr.w - 12.f) / static_cast<float>(knobs.size()));
-    out.reserve(knobs.size());
-    for (size_t k = 0; k < knobs.size(); ++k) {
-        const float cx = pr.x + 6.f + k * cellW;
+    // Wrap the knobs into a grid (a VST3 node has many params); cap at kPMaxRows — the full plugin
+    // set stays reachable by double-clicking the node to open its native editor.
+    const int perRow = std::max(1, static_cast<int>((pr.w - 12.f) / kPCellW));
+    const int show = std::min(static_cast<int>(knobs.size()), perRow * kPMaxRows);
+    const float top = pr.y + (compound ? kPreviewH : 8.f);
+    out.reserve(show);
+    for (int k = 0; k < show; ++k) {
+        const int col = k % perRow, row = k / perRow;
+        const float cx = pr.x + 6.f + col * kPCellW, cy = top + row * kPCellH;
         AudioParamCell c;
-        c.index = knobs[k]; c.x = cx; c.y = row_y; c.w = cellW; c.h = row_h;
-        c.knob_cx = cx + cellW * 0.5f; c.knob_cy = row_y + 20.f; c.knob_r = 11.f;
+        c.index = knobs[k]; c.x = cx; c.y = cy; c.w = kPCellW; c.h = kPCellH - 4.f;
+        c.knob_cx = cx + kPCellW * 0.5f; c.knob_cy = cy + 18.f; c.knob_r = 11.f;
         out.push_back(c);
     }
     return out;
@@ -161,8 +170,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     if (x1_ - x0_ < 20.f || y1_ - y0_ < 20.f) return;
 
     if (!P::session_track_audio_graph_ok(s_, track_)) {
-        r.draw_text(x0_ + 4.f, y0_ + 6.f,
-                    "No native audio graph for this track (a VST3 or audio track runs the inline path).",
+        r.draw_text(x0_ + 4.f, y0_ + 6.f, "This track has no audio graph yet \xE2\x80\x94 add an instrument or a device.",
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
         return;
     }
@@ -193,25 +201,27 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         const AudioNodeBox& b = boxes[i];
         const float* acc = b.kind == 0 ? sty.audio : (b.kind == 1 ? sty.fx : sty.control);
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
-        r.draw_rounded_rect(b.x, b.y, b.w, b.h, sty.radius,
-                            sel ? sty.card_hi[0] : sty.card[0], sel ? sty.card_hi[1] : sty.card[1],
-                            sel ? sty.card_hi[2] : sty.card[2], 1.0f);
-        if (sel) r.draw_rect(b.x, b.y + b.h - 2.f, b.w, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f);
-        r.draw_rect(b.x, b.y, 3.f, b.h, acc[0], acc[1], acc[2], 1.0f);
+        node_card(r, b.x, b.y, b.w, b.h, acc, sel);   // shared: border/body/header/top accent + blue sel ring
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
         const char* label = (type && *type) ? type : (b.kind == 2 ? "Output" : "?");
-        r.draw_text(b.x + 10.f, b.y + 7.f, label, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+        r.draw_text(b.x + 10.f, b.y + 6.f, label, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "instrument" : (b.kind == 1 ? "effect" : "output");
-        r.draw_text(b.x + 10.f, b.y + b.h - 15.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.7f);
+        r.draw_text(b.x + 10.f, b.y + b.h - 13.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.66f);
         if (b.kind == 1) {   // effect: removable
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
         }
-        // Wire ports: an output dot (source; not on Output) and an input dot (target; not on inst).
-        if (b.kind != 2) { const Rect p = out_port_rect(b);
-            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f); }
-        if (b.kind != 0) { const Rect p = in_port_rect(b);
-            r.draw_rounded_rect(p.x + 2.f, p.y + 2.f, 8.f, 8.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f); }
+        // Live output-waveform preview — the node's real audio, in a recessed panel (shared substrate).
+        const float pvx = b.x + 6.f, pvy = b.y + 23.f, pvw = b.w - 12.f, pvh = b.h - 40.f;
+        if (pvh > 6.f) {
+            node_preview_panel(r, pvx, pvy, pvw, pvh);
+            float scope[128];
+            const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
+            if (ns > 1) node_waveform(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, scope, ns, acc[0], acc[1], acc[2]);
+        }
+        // Wire ports: an output nub (source; not on Output) and an input nub (target; not on inst).
+        if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
+        if (b.kind != 0) { const Rect p = in_port_rect(b);  node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]); }
     }
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor.
@@ -223,7 +233,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
 
     // "+ FX" affordance.
     { const Rect a = add_button_rect();
-      r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
+      r.draw_rect(a.x, a.y, a.w, a.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
       r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
 
     r.pop_clip_rect();   // end graph-area clip (2i)
@@ -264,6 +274,12 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
         knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vt, sty.audio, false);
         r.draw_text(c.x + 2.f, c.y + c.h - 10.f, nm ? nm : "", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);
+        // Bridge map dot (return path): lit teal when a source drives this node param, dim gold
+        // otherwise. Clicking it (input_graph) opens the map-source picker (emits a "gnode:" dest).
+        const Rect md = ag_param_map_dot(c);
+        const bool mapped = map_ && map_->source_of(gnode_param_dest(track_, sel_node, c.index)) != nullptr;
+        if (mapped) r.draw_rect(md.x, md.y, md.w, md.h, 0.31f, 0.80f, 0.75f, 1.0f);
+        else        r.draw_rect(md.x + 2.f, md.y + 2.f, md.w - 4.f, md.h - 4.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.55f);
     }
 }
 

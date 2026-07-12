@@ -614,6 +614,21 @@ void Renderer2D::draw_rect(float x, float y, float w, float h,
     push_quad(x, y, x + w, y + h, su0, sv0, su1, sv1, r, g, b, a);
 }
 
+void Renderer2D::draw_rect_outline(float x, float y, float w, float h, float stroke,
+                                   float r, float g, float b, float a) {
+    if (w <= 0.f || h <= 0.f || stroke <= 0.f) return;
+    const float s = std::min(stroke, std::min(w, h) * 0.5f);
+    draw_rect(x,           y,           w,     s,     r, g, b, a);   // top
+    draw_rect(x,           y + h - s,   w,     s,     r, g, b, a);   // bottom
+    draw_rect(x,           y + s,       s,     h - 2 * s, r, g, b, a);   // left
+    draw_rect(x + w - s,   y + s,       s,     h - 2 * s, r, g, b, a);   // right
+}
+
+void Renderer2D::draw_shadow(float x, float y, float w, float h) {
+    draw_rect(x + 6.f, y + 6.f, w, h, 0.f, 0.f, 0.f, 0.10f);   // diffuse layer
+    draw_rect(x + 3.f, y + 3.f, w, h, 0.f, 0.f, 0.f, 0.20f);   // near layer
+}
+
 void Renderer2D::draw_line(float x1, float y1, float x2, float y2, float thickness,
                               float r, float g, float b, float a) {
     if (vertices_.size() + 6 > kMaxVertices) { ++overflow_count_; return; }

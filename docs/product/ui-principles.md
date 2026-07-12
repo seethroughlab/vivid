@@ -57,6 +57,26 @@ explicitly (an ADR), not to quietly violate it.
 6. **Editors are floatable.** A deep view can pop out to its own OS window (second monitor, live
    performance), reusing the App/Window seam. Docked and floating are the same editor.
 
+## Visual language (the vivid-classic "serious instrument" look)
+
+The interface should read like a professional tool (Ableton / TouchDesigner), not a website. The
+visual vocabulary lives entirely in `ui_style.h` (tokens + shared helpers built on `Renderer2D`);
+keep new UI on those so the restyle stays coherent.
+
+- **Hard 90° angles.** `radius = radius_lg = 0`. No rounded cards or pills. Corners are crisp.
+- **Flat panels framed by 1px rules, not nested filled cards.** A surface is a flat fill +
+  `draw_rect_outline` (1px `border`) + edge accent bar. Structure comes from **1px separator rules
+  and negative space**, not boxes-inside-boxes. Keep container nesting shallow (≤2 layers).
+- **Dark steel palette.** Near-black cool surfaces (`bg`/`region`/`card`/`recess`), a single steel
+  `border`. Flat fills — no gradients; the only shadow is `draw_shadow` (a lo-fi 2-layer offset)
+  behind popups/menus.
+- **Domain color = identity; blue = selection.** The domain accents (audio **amber** · visual
+  **cyan** · bridge **teal**) are the strict-zone identity, shown as a thin **edge accent bar**.
+  Selection/focus is the classic blue `sel` (`#5A8CD9`) as a 1px border or 2px edge — never a
+  separate rounded ring. `gold` is reserved for queued/warn state.
+- **Framed, highlighted boxes.** Interactive items are flat boxes with a hard 1px frame; the frame
+  goes blue when selected. Highlight through the frame + fill, not padding or rounding.
+
 ## How to apply
 
 - Adding a new view? It is either a **persistent zone** (rare — needs a domain and a permanent

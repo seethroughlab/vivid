@@ -42,6 +42,18 @@ int AudioGraph::node_index(int id) const {
     return -1;
 }
 
+void AudioGraph::set_node_pos(int id, float x, float y) {
+    const int i = node_index(id);
+    if (i < 0) return;
+    nodes_[i].ui_x = x; nodes_[i].ui_y = y; nodes_[i].positioned = true;
+}
+bool AudioGraph::node_pos(int id, float& x, float& y) const {
+    const int i = node_index(id);
+    if (i < 0 || !nodes_[i].positioned) return false;
+    x = nodes_[i].ui_x; y = nodes_[i].ui_y;
+    return true;
+}
+
 int AudioGraph::add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label) {
     AudioGraphNode n;
     n.id = next_id_++;
