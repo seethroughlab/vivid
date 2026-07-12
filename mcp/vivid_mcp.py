@@ -768,10 +768,11 @@ def list_presets(track: int, filter: str = "") -> dict:
       keys / ep / piano / bell       -> tonal comping
       arp / seq / motion             -> rhythmic
     If unsure, show the user a shortlist with why each fits and let them choose.
-    (Sources: CLAP preset-discovery factory; VST3 `.vstpreset` files; and native-format adapters —
-    Arturia Pigments presets are browsable AND loadable, Xfer Serum `.SerumPreset` are browsable
-    with rich metadata but `loadable:false` — Serum's format can't be host-loaded, so recommend one
-    by its metadata and have the user load it in Serum's own UI, then save_project captures it.)"""
+    (Sources: CLAP preset-discovery factory; VST3 `.vstpreset` files; VST3 program lists (IUnitInfo
+    factory programs, loadable); and native-format adapters — Arturia Pigments presets are browsable
+    AND loadable, Xfer Serum `.SerumPreset` are browsable with rich metadata but `loadable:false` —
+    Serum's format can't be host-loaded, so recommend one by its metadata and have the user load it
+    in Serum's own UI, then save_project captures it.)"""
     return _post("list_presets", {"track": track, "filter": filter})
 
 

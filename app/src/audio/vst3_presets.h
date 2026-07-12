@@ -23,7 +23,8 @@
 // Included by vst3_host.cpp AFTER vst3_host_common.h — both live in the TU's single anonymous
 // namespace, so Vst3Handle / MemIBStream / the Steinberg using-directives are already in scope.
 
-#include "vst3_host_common.h"     // Vst3Handle, MemIBStream, kResultOk (via using namespace Steinberg)
+#include "vst3_host_common.h"     // Vst3Handle, MemIBStream, ParamQueue
+#include "pluginterfaces/vst/ivstunits.h"   // IUnitInfo / program lists (universal factory presets)
 
 #include <nlohmann/json.hpp>
 
@@ -38,6 +39,10 @@
 #include <vector>
 
 namespace {
+
+using namespace Steinberg;        // ParamID / int32 / String128 / ParameterInfo / kResultOk …
+using namespace Steinberg::Vst;   // IUnitInfo / ProgramListInfo (this block is a distinct scope from
+                                  // vst3_host_common.h's, so re-state the using-directives here)
 
 // A preset for the generic browse/load flow: the {name,id} the flow needs, plus discovery
 // metadata (category/tags) and whether it can actually be loaded on this host.
@@ -343,6 +348,67 @@ static const Vst3PresetAdapter* vst3_find_adapter(const std::string& vendor, con
     return nullptr;
 }
 
+// --- VST3 program lists (universal factory presets via IUnitInfo) ----------------------------
+// Some plugins expose factory programs through IUnitInfo + a parameter flagged kIsProgramChange
+// (rather than files). Enumeration needs the LIVE controller (main-thread). A program is selected
+// by driving that parameter — normalized = idx / stepCount — which reaches the audio processor via
+// the handle's SPSC param queue and the controller for GUI reflection (the same apply path as any
+// VST3 param edit). id = "program:<listId>:<idx>".
+
+static bool vst3_find_program_param(Vst3Handle* h, ParamID& out_id, int32& out_step) {
+    if (!h || !h->controller) return false;
+    const int32 n = h->controller->getParameterCount();
+    for (int32 i = 0; i < n; ++i) {
+        ParameterInfo info{};
+        if (h->controller->getParameterInfo(i, info) != kResultOk) continue;
+        if (info.flags & ParameterInfo::kIsProgramChange) { out_id = info.id; out_step = info.stepCount; return true; }
+    }
+    return false;
+}
+
+static void vst3_enumerate_programs(Vst3Handle* h, std::vector<PresetEntry>& out, size_t cap) {
+    if (!h || !h->controller) return;
+    IUnitInfo* units = nullptr;
+    if (h->controller->queryInterface(IUnitInfo::iid, reinterpret_cast<void**>(&units)) != kResultOk || !units)
+        return;   // the (common) case: no program lists — the library lives in an internal browser
+    // A program list is host-SELECTABLE only if the plugin also exposes a kIsProgramChange
+    // parameter to drive. Some plugins expose the list for display but manage selection
+    // internally (e.g. EZdrummer) — surface those too, but honestly marked loadable=false.
+    ParamID pp = 0; int32 pstep = 0;
+    const bool selectable = vst3_find_program_param(h, pp, pstep);
+    const int32 lists = units->getProgramListCount();
+    for (int32 li = 0; li < lists && out.size() < cap; ++li) {
+        ProgramListInfo pli{};
+        if (units->getProgramListInfo(li, pli) != kResultOk) continue;
+        const std::string list_name = vst3_tchar_to_utf8(pli.name);
+        for (int32 pi = 0; pi < pli.programCount && out.size() < cap; ++pi) {
+            String128 pname{};
+            if (units->getProgramName(pli.id, pi, pname) != kResultOk) continue;
+            PresetEntry e;
+            e.name = vst3_tchar_to_utf8(pname);
+            if (e.name.empty()) e.name = "Program " + std::to_string(pi);
+            e.category = list_name;
+            e.source = "program";
+            e.id = "program:" + std::to_string(pli.id) + ":" + std::to_string(pi);
+            e.loadable = selectable;
+            out.push_back(std::move(e));
+        }
+    }
+    units->release();
+}
+
+static bool vst3_load_program(Vst3Handle* h, const std::string& id) {
+    const size_t c1 = id.find(':'), c2 = id.find(':', c1 == std::string::npos ? 0 : c1 + 1);
+    if (c1 == std::string::npos || c2 == std::string::npos) return false;
+    const int idx = std::atoi(id.c_str() + c2 + 1);
+    ParamID pid = 0; int32 step = 0;
+    if (!vst3_find_program_param(h, pid, step)) return false;
+    const float norm = (step > 0) ? static_cast<float>(idx) / static_cast<float>(step) : 0.f;
+    h->param_q.push(pid, norm);                                        // -> audio thread (processor)
+    if (h->controller) h->controller->setParamNormalized(pid, norm);   // -> controller / GUI reflection
+    return true;
+}
+
 // --- Public entry points (called by vst3_host.cpp) -------------------------------------------
 
 // Enumerate this plugin's presets (`.vstpreset` files + a native adapter if one matches) into
@@ -354,6 +420,12 @@ static void vst3_scan_presets(Vst3Handle* h, const char* filter, std::vector<Pre
     vst3_enumerate_vstpresets(h, out, cap);
     if (const Vst3PresetAdapter* a = vst3_find_adapter(h->vendor, h->plugin_name))
         a->enumerate(out, cap);
+    // IUnitInfo program lists are a FALLBACK: only when the plugin has no file/adapter presets.
+    // Plugins with a real preset library expose it via files/adapters; those that ALSO have a
+    // generic MIDI program-change parameter (Pigments, Serum) would otherwise pollute their clean
+    // results with hundreds of unnamed "Prog N" slots. Plugins that rely solely on IUnitInfo
+    // (e.g. EZdrummer's "Factory Presets") still surface here.
+    if (out.empty()) vst3_enumerate_programs(h, out, cap);
     if (!flt.empty())
         out.erase(std::remove_if(out.begin(), out.end(),
                   [&](const PresetEntry& e) { return !vst3p::ci_contains(e.name, flt); }), out.end());
@@ -369,6 +441,7 @@ static void vst3_scan_presets(Vst3Handle* h, const char* filter, std::vector<Pre
 // only if state was actually applied (a browse-only preset returns false).
 static bool vst3_load_preset(Vst3Handle* h, const std::string& id) {
     if (!h || !h->component || id.empty()) return false;
+    if (id.rfind("program:", 0) == 0) return vst3_load_program(h, id);   // IUnitInfo factory program
     if (vst3p::ends_with(id, ".vstpreset")) {
         std::vector<uint8_t> comp, cont;
         if (!vst3_parse_vstpreset(id, comp, cont)) return false;
