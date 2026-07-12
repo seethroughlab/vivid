@@ -60,8 +60,15 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
     std::vector<DescriptorValidationIssue> issues;
     if (auto inst = reg_->create(type, issues)) {
         n.inst = std::move(*inst);
-        n.params.resize(n.inst.param_ptrs.size(), 0.f);
-        n.base.resize(n.inst.param_ptrs.size(), 0.f);
+        // Seed base + resolved params from the operator's DECLARED defaults (not 0), so a freshly
+        // added node looks the way its author intended (e.g. Shape's size/colour). Saved sessions
+        // still restore their own explicit base values, so old projects are unaffected.
+        const size_t np = n.inst.param_ptrs.size();
+        n.params.resize(np); n.base.resize(np);
+        for (size_t i = 0; i < np; ++i) {
+            const float d = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->default_value : 0.f;
+            n.base[i] = d; n.params[i] = d;
+        }
         return true;
     }
     return false;
