@@ -600,6 +600,203 @@ struct TextOp : OperatorBase, GpuProcessable, AssetShader {
     }
 };
 
+// --- Gradient: a clean 2-colour linear/radial gradient GENERATOR (0-in). A flat, non-noisy
+// source to composite shapes/text over, or to tint a chain. (Lifted from classic gradient.wgsl.) ---
+const char* kGradientWGSL = R"(
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput { return fullscreenTriangle(vi, false); }
+struct U { res: vec2f, time: f32, mode: f32, center: vec2f, angle: f32, scale: f32, colA: vec4f, colB: vec4f };
+@group(0) @binding(0) var<uniform> u: U;
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    var t: f32;
+    if (u.mode < 0.5) {                                  // linear
+        let a = u.angle * 6.2831853;
+        t = dot(inp.uv - u.center, vec2f(cos(a), sin(a))) * (0.5 + u.scale * 2.0) + 0.5;
+    } else {                                             // radial
+        let d = (inp.uv - u.center) * vec2f(u.res.x / max(u.res.y, 1.0), 1.0);
+        t = length(d) * (0.7 + u.scale * 3.0);
+    }
+    return vec4f(mix(u.colA.rgb, u.colB.rgb, clamp(t, 0.0, 1.0)), 1.0);
+}
+)";
+struct GradientOp : OperatorBase, GpuProcessable {
+    static constexpr const char* kDisplayName = "Gradient";
+    static constexpr const char* kSummary = "A clean 2-colour linear/radial gradient (a flat source, not a field).";
+    static constexpr std::array<const char*, 3> kKeywords = {"generator", "gradient", "color"};
+    Param<float> mode{"mode", 0.f, 0.f, 1.f};                 // <0.5 linear, else radial
+    Param<float> cx{"cx", 0.5f, 0.f, 1.f}, cy{"cy", 0.5f, 0.f, 1.f};
+    Param<float> angle{"angle", 0.f, 0.f, 1.f}, scale{"scale", 0.5f, 0.f, 1.f};
+    Param<float> ar{"ar", 0.1f, 0.f, 1.f}, ag{"ag", 0.1f, 0.f, 1.f}, ab{"ab", 0.35f, 0.f, 1.f};
+    Param<float> br{"br", 0.9f, 0.f, 1.f}, bg{"bg", 0.2f, 0.f, 1.f}, bb{"bb", 0.6f, 0.f, 1.f};
+    bool tried_ = false;
+    WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
+    WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
+    ~GradientOp() override {
+        if (bg_) wgpuBindGroupRelease(bg_); if (ubo_) wgpuBufferRelease(ubo_);
+        if (pipe_) wgpuRenderPipelineRelease(pipe_); if (pl_) wgpuPipelineLayoutRelease(pl_);
+        if (bgl_) wgpuBindGroupLayoutRelease(bgl_); if (sh_) wgpuShaderModuleRelease(sh_);
+    }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        ar.display_hint = VIVID_DISPLAY_COLOR; br.display_hint = VIVID_DISPLAY_COLOR;
+        o.push_back(&mode); o.push_back(&cx); o.push_back(&cy); o.push_back(&angle); o.push_back(&scale);
+        o.push_back(&ar); o.push_back(&ag); o.push_back(&ab); o.push_back(&br); o.push_back(&bg); o.push_back(&bb);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
+    bool lazy_init(const VividGpuContext* c) {
+        std::string err; sh_ = gpu::create_shader_checked(c->device, kGradientWGSL, "Gradient", err);
+        if (!sh_ || !err.empty()) return false;
+        ubo_ = gpu::create_uniform_buffer(c->device, 64, "Gradient U");
+        WGPUBindGroupLayoutEntry e{}; e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 64;
+        WGPUBindGroupLayoutDescriptor ld{}; ld.entryCount = 1; ld.entries = &e;
+        bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
+        WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
+        pl_ = wgpuDeviceCreatePipelineLayout(c->device, &pld);
+        pipe_ = gpu::create_pipeline(c->device, sh_, pl_, c->output_format, "Gradient Pipeline");
+        WGPUBindGroupEntry be{}; be.binding = 0; be.buffer = ubo_; be.size = 64;
+        WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 1; bd.entries = &be;
+        bg_ = wgpuDeviceCreateBindGroup(c->device, &bd);
+        return pipe_ != nullptr;
+    }
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; lazy_init(c); }
+        if (!pipe_) return;
+        const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
+        float u[16] = { float(c->output_width), float(c->output_height), float(c->time), pv(0, mode.value),
+                        pv(1, cx.value), pv(2, cy.value), pv(3, angle.value), pv(4, scale.value),
+                        pv(5, ar.value), pv(6, ag.value), pv(7, ab.value), 1.f,
+                        pv(8, br.value), pv(9, bg.value), pv(10, bb.value), 1.f };
+        wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
+        gpu::run_pass(c->command_encoder, pipe_, bg_, c->output_texture_view, "Gradient");
+    }
+};
+
+// --- Transform: a 1-in/1-out UV warp (zoom / rotate / translate / tile). Near-identity at its
+// defaults so inserting it is safe. (Lifted from classic transform.wgsl.) ---
+const char* kTransformWGSL = R"(
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput { return fullscreenTriangle(vi, false); }
+struct U { res: vec2f, time: f32, tx: f32, ty: f32, rot: f32, scale: f32, tile: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var in_tex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    var p = inp.uv - vec2f(0.5, 0.5);
+    let zoom = 0.25 + u.scale * 3.75;                    // scale 0..1 -> 0.25..4x  (~0.2 = 1x)
+    p = p / zoom;
+    let a = u.rot * 6.2831853;
+    p = vec2f(p.x * cos(a) - p.y * sin(a), p.x * sin(a) + p.y * cos(a));
+    p = p - (vec2f(u.tx, u.ty) - vec2f(0.5, 0.5));
+    var uv2 = p + vec2f(0.5, 0.5);
+    let tiles = 1.0 + floor(u.tile * 8.0);               // tile 0 -> 1 (no repeat)
+    uv2 = fract(uv2 * tiles);
+    return textureSample(in_tex, samp, uv2);
+}
+)";
+// --- Kaleidoscope: a 1-in/1-out radial-symmetry fold (mirror wedges). Classic mirror.wgsl. ---
+const char* kKaleidoWGSL = R"(
+@vertex fn vs_main(@builtin(vertex_index) vi: u32) -> FullscreenOutput { return fullscreenTriangle(vi, false); }
+struct U { res: vec2f, time: f32, segments: f32, cx: f32, cy: f32, angle: f32, zoom: f32 };
+@group(0) @binding(0) var<uniform> u: U;
+@group(0) @binding(1) var in_tex: texture_2d<f32>;
+@group(0) @binding(2) var samp: sampler;
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    let ar = u.res.x / max(u.res.y, 1.0);
+    var p = (inp.uv - vec2f(u.cx, u.cy)) * vec2f(ar, 1.0);
+    let seg = 2.0 + floor(u.segments * 14.0);            // 2..16 wedges
+    let wedge = 6.2831853 / seg;
+    var ang = atan2(p.y, p.x) + u.angle * 6.2831853;
+    ang = ang - wedge * floor(ang / wedge);
+    ang = abs(ang - wedge * 0.5);                        // mirror within the wedge
+    let r = length(p) * (0.6 + u.zoom * 0.8);
+    var uv2 = vec2f(cos(ang), sin(ang)) * r / vec2f(ar, 1.0) + vec2f(u.cx, u.cy);
+    uv2 = clamp(uv2, vec2f(0.0), vec2f(1.0));
+    return textureSample(in_tex, samp, uv2);
+}
+)";
+// Shared body for a 1-in/1-out WGSL UV filter with a small uniform (Transform / Kaleidoscope).
+template <int NPARAM, int UBYTES>
+struct UvFilterOp : OperatorBase, GpuProcessable {
+    const char* wgsl_; const char* label_;
+    UvFilterOp(const char* wgsl, const char* label) : wgsl_(wgsl), label_(label) {}
+    bool tried_ = false;
+    WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
+    WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUSampler samp_ = nullptr; WGPUBindGroup bg_ = nullptr;
+    ~UvFilterOp() override {
+        if (bg_) wgpuBindGroupRelease(bg_); if (samp_) wgpuSamplerRelease(samp_); if (ubo_) wgpuBufferRelease(ubo_);
+        if (pipe_) wgpuRenderPipelineRelease(pipe_); if (pl_) wgpuPipelineLayoutRelease(pl_);
+        if (bgl_) wgpuBindGroupLayoutRelease(bgl_); if (sh_) wgpuShaderModuleRelease(sh_);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(tex_port("input", VIVID_PORT_INPUT)); o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+    }
+    bool lazy_init(const VividGpuContext* c) {
+        std::string err; sh_ = gpu::create_shader_checked(c->device, wgsl_, label_, err);
+        if (!sh_ || !err.empty()) return false;
+        ubo_ = gpu::create_uniform_buffer(c->device, UBYTES, label_);
+        WGPUBindGroupLayoutEntry e[3]{};
+        e[0].binding = 0; e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        e[0].buffer.type = WGPUBufferBindingType_Uniform; e[0].buffer.minBindingSize = UBYTES;
+        e[1].binding = 1; e[1].visibility = WGPUShaderStage_Fragment;
+        e[1].texture.sampleType = WGPUTextureSampleType_Float; e[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+        e[2].binding = 2; e[2].visibility = WGPUShaderStage_Fragment; e[2].sampler.type = WGPUSamplerBindingType_Filtering;
+        WGPUBindGroupLayoutDescriptor ld{}; ld.entryCount = 3; ld.entries = e;
+        bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
+        WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
+        pl_ = wgpuDeviceCreatePipelineLayout(c->device, &pld);
+        pipe_ = gpu::create_pipeline(c->device, sh_, pl_, c->output_format, label_);
+        WGPUSamplerDescriptor sd{}; sd.magFilter = WGPUFilterMode_Linear; sd.minFilter = WGPUFilterMode_Linear;
+        sd.addressModeU = WGPUAddressMode_ClampToEdge; sd.addressModeV = WGPUAddressMode_ClampToEdge; sd.maxAnisotropy = 1;
+        samp_ = wgpuDeviceCreateSampler(c->device, &sd);
+        return pipe_ != nullptr;
+    }
+    // Subclass fills u[] (res/time already in [0],[1],[2]).
+    virtual void fill(const VividGpuContext* c, const float* p, float* u) = 0;
+    void process_gpu(const VividGpuContext* c) override {
+        if (!tried_) { tried_ = true; lazy_init(c); }
+        if (!pipe_) return;
+        float u[UBYTES / 4]{}; u[0] = float(c->output_width); u[1] = float(c->output_height); u[2] = float(c->time);
+        fill(c, c->param_values, u);
+        wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, UBYTES);
+        const WGPUTextureView in = (c->input_texture_count > 0) ? c->input_texture_views[0] : c->output_texture_view;
+        if (bg_) { wgpuBindGroupRelease(bg_); bg_ = nullptr; }
+        WGPUBindGroupEntry be[3]{};
+        be[0].binding = 0; be[0].buffer = ubo_; be[0].size = UBYTES;
+        be[1].binding = 1; be[1].textureView = in; be[2].binding = 2; be[2].sampler = samp_;
+        WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 3; bd.entries = be;
+        bg_ = wgpuDeviceCreateBindGroup(c->device, &bd);
+        gpu::run_pass(c->command_encoder, pipe_, bg_, c->output_texture_view, label_);
+    }
+};
+struct TransformOp : UvFilterOp<5, 32> {
+    static constexpr const char* kDisplayName = "Transform";
+    static constexpr const char* kSummary = "Zoom / rotate / translate / tile the input (near-identity at defaults).";
+    static constexpr std::array<const char*, 3> kKeywords = {"effect", "transform", "tile"};
+    Param<float> tx{"tx", 0.5f, 0.f, 1.f}, ty{"ty", 0.5f, 0.f, 1.f}, rot{"rot", 0.f, 0.f, 1.f};
+    Param<float> scale{"scale", 0.2f, 0.f, 1.f}, tile{"tile", 0.f, 0.f, 1.f};
+    TransformOp() : UvFilterOp(kTransformWGSL, "Transform") {}
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&tx); o.push_back(&ty); o.push_back(&rot); o.push_back(&scale); o.push_back(&tile);
+    }
+    void fill(const VividGpuContext*, const float* p, float* u) override {
+        auto pv = [&](int i, float d) { return p ? p[i] : d; };
+        u[3] = pv(0, tx.value); u[4] = pv(1, ty.value); u[5] = pv(2, rot.value); u[6] = pv(3, scale.value); u[7] = pv(4, tile.value);
+    }
+};
+struct KaleidoscopeOp : UvFilterOp<5, 32> {
+    static constexpr const char* kDisplayName = "Kaleidoscope";
+    static constexpr const char* kSummary = "Radial mirror-symmetry (kaleidoscope) fold of the input.";
+    static constexpr std::array<const char*, 3> kKeywords = {"effect", "kaleidoscope", "mirror"};
+    Param<float> segments{"segments", 0.3f, 0.f, 1.f}, cx{"cx", 0.5f, 0.f, 1.f}, cy{"cy", 0.5f, 0.f, 1.f};
+    Param<float> angle{"angle", 0.f, 0.f, 1.f}, zoom{"zoom", 0.5f, 0.f, 1.f};
+    KaleidoscopeOp() : UvFilterOp(kKaleidoWGSL, "Kaleidoscope") {}
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&segments); o.push_back(&cx); o.push_back(&cy); o.push_back(&angle); o.push_back(&zoom);
+    }
+    void fill(const VividGpuContext*, const float* p, float* u) override {
+        auto pv = [&](int i, float d) { return p ? p[i] : d; };
+        u[3] = pv(0, segments.value); u[4] = pv(1, cx.value); u[5] = pv(2, cy.value); u[6] = pv(3, angle.value); u[7] = pv(4, zoom.value);
+    }
+};
+
 // --- CustomShader: data-driven GLSL generator loaded from a project .glsl ---
 // Mirrors PlasmaOp but the fragment source comes from a file (the node's `asset`,
 // resolved to an absolute path by VisualGraph and pushed via AssetShader) instead of
@@ -656,6 +853,9 @@ void register_builtin_ops(OpRegistry& reg) {
     register_op<TintOp>    (reg, "Tint");           // WGSL example
     register_op<ShapeOp>   (reg, "Shape");          // SDF primitive (circle/polygon) overlay
     register_op<TextOp>    (reg, "Text");           // typography (string from a .txt asset)
+    register_op<GradientOp>(reg, "Gradient");       // 2-colour linear/radial gradient source
+    register_op<TransformOp>(reg, "Transform");     // zoom/rotate/translate/tile
+    register_op<KaleidoscopeOp>(reg, "Kaleidoscope"); // radial mirror fold
     register_op<CustomShaderOp>(reg, "CustomShader");  // data-driven .glsl generator
 }
 
