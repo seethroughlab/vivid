@@ -215,6 +215,18 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     return j;
 }
 
+// True if the track's saved authoritative graph has a VST3 instrument source node (a source node,
+// kind 0, whose binding family "src" is 1 = vst3). Such a track must load its VST3 synchronously on
+// reload (there is no async VST3 loader) so rebind can bind the handle into the Vst3Inst placeholder.
+static bool graph_source_is_vst3(const json& jt) {
+    if (!jt.contains("audio_graph")) return false;
+    const auto& g = jt["audio_graph"];
+    if (!g.contains("nodes")) return false;
+    for (const auto& jn : g["nodes"])
+        if (jn.value("kind", 1) == 0 && jn.value("src", 0) == 1) return true;
+    return false;
+}
+
 // v2: the document owns the track SET. Replace the live tracks with the document's, so
 // the existing per-track restore loop (below) then fills state onto them by index. An
 // instrument that won't load on this machine falls back to an audio placeholder, keeping
@@ -227,6 +239,17 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
         int added;
         if (kind == "audio") {
             added = vivid::session::session_add_audio_track(s);
+        } else if (jt.contains("audio_graph") && graph_source_is_vst3(jt)) {
+            // A rewired (authoritative) track whose source is a VST3 instrument. VST3 has no async
+            // loader, so load it synchronously as the track's instrument (matches session startup);
+            // the audio_graph block below rebuilds the authoritative topology and rebind binds the
+            // handle into the Vst3Inst source node. Its preset is restored by the `state` block below.
+            const std::string inst = jt.value("instrument", jt.value("name", std::string()));
+            added = vivid::session::session_add_instrument_track(s, inst.c_str());
+            if (added < 0) {   // plugin missing on this machine: keep the topology, source stays silent
+                std::fprintf(stderr, "[vivid] load: VST3 source '%s' unavailable — bare graph track (silent source)\n", inst.c_str());
+                added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
+            }
         } else if (jt.contains("audio_graph") || jt.contains("clap_instrument")) {
             // A rewired (authoritative) track OR a bare CLAP-instrument track: create a bare native
             // graph track. The authoritative graph block below (if any) rebuilds the topology; the
