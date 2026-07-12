@@ -904,7 +904,7 @@ const char* kVectorTextWGSL = R"(
 struct U { res: vec2f, time: f32, size: f32, posx: f32, posy: f32, pad0: f32, pad1: f32, fill: vec4f };
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs_fan(@location(0) p: vec2f) -> @builtin(position) vec4f {
-    var q = vec2f(p.x, -p.y) * (u.size * 1.6);            // glyph outline is y-up; flip y for the screen
+    var q = vec2f(p.x, p.y) * (u.size * 1.6);             // glyph outline is y-up; NDC +y is screen-up after the Output blit
     q.x = q.x / 1.7778;                                   // 16:9 display aspect
     q = q + vec2f((u.posx - 0.5) * 2.0, (u.posy - 0.5) * 2.0);
     return vec4f(q, 0.0, 1.0);
