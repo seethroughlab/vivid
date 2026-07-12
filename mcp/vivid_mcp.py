@@ -346,6 +346,33 @@ def set_track_audio_instrument(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def set_track_clap_instrument(track: int, path: str) -> dict:
+    """Assign a CLAP plugin (a `.clap` bundle path from list_plugins) as a track's instrument.
+    Loading is ASYNC — a slow plugin ctor never blocks the server — so this returns immediately
+    with {loading: true} (or clears synchronously when path=""). Poll plugin_load_status until
+    pending==0 before using the instrument (list_presets / params). Free/open CLAP synths like
+    Surge XT are the reliable audible instruments here."""
+    return _post("set_track_clap_instrument", {"track": track, "path": path})
+
+
+@mcp.tool
+def add_track_clap_effect(track: int, path: str) -> dict:
+    """Append a CLAP plugin (a `.clap` bundle path from list_plugins) as a track effect. Loads
+    ASYNC like set_track_clap_instrument — returns {loading: true}; poll plugin_load_status until
+    pending==0. (e.g. Surge XT Effects for reverb/delay.)"""
+    return _post("add_track_clap_effect", {"track": track, "path": path})
+
+
+@mcp.tool
+def plugin_load_status() -> dict:
+    """Poll the async CLAP loader: {pending: <in-flight loads>, error: "<last failure or ''>"}.
+    After set_track_clap_instrument / add_track_clap_effect (or load_project restoring CLAP
+    plugins), wait until pending==0 before driving the plugin; a non-empty error reports a
+    failed load."""
+    return _post("plugin_load_status")
+
+
+@mcp.tool
 def add_audio_effect(track: int, op: str) -> dict:
     """Append a native audio effect (an effect operator name from list_audio_operators) to a
     track's chain. Returns its effect index."""
