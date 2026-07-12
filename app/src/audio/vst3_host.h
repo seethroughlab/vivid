@@ -212,6 +212,12 @@ int         session_track_preset_scan(Session*, int track, const char* filter); 
 int         session_track_preset_count(Session*, int track);
 const char* session_track_preset_name(Session*, int track, int index);
 const char* session_track_preset_id(Session*, int track, int index);
+// Discovery metadata for a scanned preset (empty/0 when absent): bank/folder/type, whether it can
+// be loaded on this host (some native formats are browse-only), and taxonomy tags.
+const char* session_track_preset_category(Session*, int track, int index);
+int         session_track_preset_loadable(Session*, int track, int index);
+int         session_track_preset_tag_count(Session*, int track, int index);
+const char* session_track_preset_tag(Session*, int track, int index, int tag);
 bool        session_track_preset_load(Session*, int track, const char* id);
 int         session_audio_op_param_count(Session*, int track, int index);
 const char* session_audio_op_param_name(Session*, int track, int index, int param);

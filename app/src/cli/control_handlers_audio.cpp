@@ -310,9 +310,18 @@ void register_audio_handlers(Handlers& handlers_) {
         const std::string filter = b.value("filter", std::string());   // narrow by name substring
         const int n = P::session_track_preset_scan(c.session, track, filter.c_str());
         json arr = json::array();
-        for (int i = 0; i < n; ++i)
-            arr.push_back({ {"name", P::session_track_preset_name(c.session, track, i)},
-                            {"id",   P::session_track_preset_id(c.session, track, i)} });
+        for (int i = 0; i < n; ++i) {
+            json p = { {"name", P::session_track_preset_name(c.session, track, i)},
+                       {"id",   P::session_track_preset_id(c.session, track, i)} };
+            const char* cat = P::session_track_preset_category(c.session, track, i);
+            if (cat && *cat) p["category"] = cat;
+            const int tn = P::session_track_preset_tag_count(c.session, track, i);
+            if (tn > 0) { json tags = json::array();
+                for (int k = 0; k < tn; ++k) tags.push_back(P::session_track_preset_tag(c.session, track, i, k));
+                p["tags"] = std::move(tags); }
+            p["loadable"] = P::session_track_preset_loadable(c.session, track, i) != 0;  // false = browse-only
+            arr.push_back(std::move(p));
+        }
         json r = ok(); r["count"] = n; r["presets"] = arr; return r;
     };
     handlers_["load_preset"] = [](const ControlCtx& c, const json& b) {

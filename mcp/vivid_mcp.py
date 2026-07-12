@@ -755,9 +755,10 @@ def list_instruments() -> dict:
 @mcp.tool
 def list_presets(track: int, filter: str = "") -> dict:
     """Browse the presets/patches of a track's instrument — GENERIC (no per-plugin code).
-    Returns [{name, id}]. `filter` narrows by a case-insensitive name substring; USE IT — a
-    synth can ship thousands of patches (Surge ~5k). Pick by matching the name to the SOUND you
-    want and pass its `id` to load_preset.
+    Returns [{name, id, loadable, category?, tags?}]. `filter` narrows by a case-insensitive name
+    substring; USE IT — a synth can ship thousands of patches (Serum ~626, Pigments ~1651, Surge
+    ~5k). Pick by matching name/category/tags to the SOUND you want and pass its `id` to
+    load_preset. `loadable:false` means browse-only (see below) — don't call load_preset on those.
 
     Sonic guidance (the point of this flow): you know the musical intent; you choose the patch.
     State the target in plain terms, then filter/scan for a matching name:
@@ -767,9 +768,10 @@ def list_presets(track: int, filter: str = "") -> dict:
       keys / ep / piano / bell       -> tonal comping
       arp / seq / motion             -> rhythmic
     If unsure, show the user a shortlist with why each fits and let them choose.
-    (Works for CLAP instruments via their preset-discovery factory, and for VST3 instruments via
-    the standard `.vstpreset` files in the plugin's preset folders. A plugin with a proprietary
-    preset format and no `.vstpreset` files returns none.)"""
+    (Sources: CLAP preset-discovery factory; VST3 `.vstpreset` files; and native-format adapters —
+    Arturia Pigments presets are browsable AND loadable, Xfer Serum `.SerumPreset` are browsable
+    with rich metadata but `loadable:false` — Serum's format can't be host-loaded, so recommend one
+    by its metadata and have the user load it in Serum's own UI, then save_project captures it.)"""
     return _post("list_presets", {"track": track, "filter": filter})
 
 
