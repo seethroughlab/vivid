@@ -9,6 +9,15 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/poc-to-product.md).
 - **`visual_graph.{h,cpp}`** — the `VisualGraph`: the rewireable op chain
   (`VOp` Plasma/Video/Feedback/Blur/Output), per-node params (`base + modulation`),
   input edges, the active output, and live node thumbnails (`node_view`).
+  `run_chain()` renders every node into its own RT; `present_to()` blits the output into
+  a surface (the floating preview / the pop-out window), letterboxed per the fit mode —
+  the two steps are separate so the preview can be drawn *over* the graph (ADR-0014).
+- **`output_format.h`** — the output's FORMAT (pure, unit-tested): the aspect/size preset
+  tables + `blit_fit()` (the Fit/Fill/Stretch UV window). The **Output node's params** own
+  the output's identity — its `aspect`/`height` size every render target, its `fit` decides
+  how it fills a surface, and `preview`/`launch`/`display` decide where it is shown.
+  Operators must derive aspect from their real target dims (`ctx->output_width/height`,
+  `u.res`) — never a hard-coded display aspect.
 - **`op_runtime.*`** — the in-process `OpRegistry` (name→factory) + `OpInstance` +
   `build_descriptor`/`sync_params` (operator-based visuals; wgpu-free, headless).
 - **`operator_loader.*` / `loaded_operator.*` / `operator_scan.*`** — the loadable-op
