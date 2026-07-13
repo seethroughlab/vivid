@@ -29,6 +29,7 @@ struct VisualNode {
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
+    std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
 };
 

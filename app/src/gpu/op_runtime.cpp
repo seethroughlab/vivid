@@ -41,6 +41,21 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
         for (const auto& s : out.m_choice_storage[i]) out.m_choice_ptrs[i].push_back(s.c_str());
         pd.choice_labels = out.m_choice_ptrs[i].data();
     }
+    // Own the FILE/TEXT default strings (str_value on the derived Param), so default_string
+    // isn't null (descriptor validation) and outlives the temporary op that built this.
+    out.m_file_default_storage.assign(out.params.size(), {});
+    for (size_t i = 0; i < out.params.size(); ++i) {
+        VividParamDescriptor& pd = out.params[i];
+        if (pd.type == VIVID_PARAM_FILE) {
+            out.m_file_default_storage[i] = static_cast<const Param<FilePath>*>(param_ptrs[i])->str_value;
+            pd.default_string = out.m_file_default_storage[i].c_str();
+        } else if (pd.type == VIVID_PARAM_TEXT) {
+            out.m_file_default_storage[i] = static_cast<const Param<TextValue>*>(param_ptrs[i])->str_value;
+            pd.default_string = out.m_file_default_storage[i].c_str();
+        } else {
+            pd.default_string = nullptr;
+        }
+    }
     out.ports = ports;
 
     VividOperatorDescriptor& d = out.desc;

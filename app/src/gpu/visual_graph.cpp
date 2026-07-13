@@ -65,7 +65,7 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
         // added node looks the way its author intended (e.g. Shape's size/colour). Saved sessions
         // still restore their own explicit base values, so old projects are unaffected.
         const size_t np = n.inst.param_ptrs.size();
-        n.params.resize(np); n.base.resize(np);
+        n.params.resize(np); n.base.resize(np); n.file_params.resize(np);
         for (size_t i = 0; i < np; ++i) {
             const float d = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->default_value : 0.f;
             n.base[i] = d; n.params[i] = d;
@@ -218,6 +218,25 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         ctx.output_width = rtW_; ctx.output_height = rtH_; ctx.output_format = fmt_;
         ctx.input_texture_views = (nin > 0) ? inputs : nullptr;
         ctx.input_texture_count = nin;
+
+        // FILE/TEXT params: hand the op a dense array of its file-param strings (in param
+        // order), project-resolved for FILE params. Storage lives for the process_gpu call.
+        std::vector<std::string> fpv_storage;
+        std::vector<const char*> fpv;
+        for (size_t l = 0; l < n.inst.param_ptrs.size(); ++l) {
+            const auto* pb = n.inst.param_ptrs[l];
+            if (!pb || (pb->type != VIVID_PARAM_FILE && pb->type != VIVID_PARAM_TEXT)) continue;
+            std::string v = (l < n.file_params.size()) ? n.file_params[l] : std::string();
+            if (pb->type == VIVID_PARAM_FILE && !v.empty()) {
+                std::filesystem::path ap(v);
+                if (ap.is_relative() && !asset_dir_.empty()) ap = std::filesystem::path(asset_dir_) / ap;
+                v = ap.string();
+            }
+            fpv_storage.push_back(std::move(v));
+        }
+        for (auto& s : fpv_storage) fpv.push_back(s.c_str());
+        ctx.file_param_values = fpv.empty() ? nullptr : fpv.data();
+        ctx.file_param_count  = static_cast<uint32_t>(fpv.size());
 
         sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
                     static_cast<int>(n.params.size()));

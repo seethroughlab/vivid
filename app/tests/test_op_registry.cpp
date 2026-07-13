@@ -50,6 +50,18 @@ struct Fx2StandIn : vivid::OperatorBase, vivid::GpuProcessable {
     void process_gpu(const VividGpuContext*) override {}
 };
 
+// A generator with a FILE param (Image-shaped): default_string must be populated by
+// build_descriptor so descriptor validation doesn't flag param_missing_default_string.
+struct FileStandIn : vivid::OperatorBase, vivid::GpuProcessable {
+    vivid::Param<vivid::FilePath> path{"file", "seed.png"};
+    void collect_params(std::vector<vivid::ParamBase*>& out) override { out.push_back(&path); }
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        VividPortDescriptor o{}; o.name = "texture"; o.type = VIVID_PORT_TEXTURE; o.direction = VIVID_PORT_OUTPUT;
+        out.push_back(o);
+    }
+    void process_gpu(const VividGpuContext*) override {}
+};
+
 }  // namespace
 
 int main() {
@@ -57,10 +69,11 @@ int main() {
     reg.register_type("Gen", [] { return std::make_unique<GenStandIn>(); });
     reg.register_type("Fx",  [] { return std::make_unique<FxStandIn>(); });
     reg.register_type("Fx2", [] { return std::make_unique<Fx2StandIn>(); });
+    reg.register_type("Filey", [] { return std::make_unique<FileStandIn>(); });
 
     // Registry surface: names in registration order; has().
     auto names = reg.type_names();
-    CHECK(names.size() == 3 && names[0] == "Gen" && names[1] == "Fx" && names[2] == "Fx2");
+    CHECK(names.size() == 4 && names[0] == "Gen" && names[1] == "Fx" && names[2] == "Fx2" && names[3] == "Filey");
     CHECK(reg.has("Gen") && !reg.has("Bogus"));
 
     std::vector<vivid::DescriptorValidationIssue> issues;
@@ -92,8 +105,18 @@ int main() {
     CHECK(f2.has_value() && issues.empty());
     CHECK(f2->input_port_count == 2 && f2->output_port_count == 1);
 
-    // Registry now lists three types in registration order.
-    CHECK(reg.type_names().size() == 3);
+    // Filey: a FILE param must carry a non-null default_string (== declared default) and
+    // pass validation (no param_missing_default_string).
+    auto fy = reg.create("Filey", issues);
+    CHECK(fy.has_value() && issues.empty());
+    const VividOperatorDescriptor* fd = reg.descriptor_for("Filey");
+    CHECK(fd != nullptr && fd->param_count == 1);
+    CHECK(fd->params[0].type == VIVID_PARAM_FILE);
+    CHECK(fd->params[0].default_string != nullptr &&
+          std::string(fd->params[0].default_string) == "seed.png");
+
+    // Registry now lists four types in registration order.
+    CHECK(reg.type_names().size() == 4);
 
     // Unknown type → no instance.
     CHECK(!reg.create("Bogus", issues).has_value());

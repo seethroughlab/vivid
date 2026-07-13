@@ -96,6 +96,19 @@ void register_visuals_handlers(Handlers& handlers_) {
         c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
         return ok();
     };
+    // Set a FILE/TEXT param's string value (e.g. an Image node's file path).
+    handlers_["set_node_file_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const std::string name = b.value("name", std::string());
+        int local = -1;
+        for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+            if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+        if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
+        c.graph->set_op_file_param_at(idx, local, b.value("value", std::string()));
+        json r = ok(); r["value"] = c.graph->op_file_param_at(idx, local); return r;
+    };
     handlers_["add_data_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.graph) return err(code::kNoGraph, "no graph");
         const std::string src = b.value("source", std::string());

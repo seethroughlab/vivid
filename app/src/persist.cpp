@@ -206,6 +206,11 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // 2-in ops (Composite)
         const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
         if (!asset.empty()) jn["asset"] = asset;
+        json file_params = json::object();   // FILE/TEXT params (e.g. Image path), by name
+        for (int p = 0; p < g.op_param_count_at(i); ++p)
+            if (const char* fv = g.op_file_param_at(i, p); fv && fv[0])
+                file_params[g.op_param_label_at(i, p)] = fv;
+        if (!file_params.empty()) jn["file_params"] = file_params;
         chain.push_back(jn);
     }
     jg["chain"] = chain;
@@ -461,6 +466,12 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 g.chain_load_set_input_b(i, ch[i].value("in_b", -1));   // 2-in ops (Composite)
                 if (ch[i].contains("asset"))   // CustomShader .glsl reference (project-relative)
                     g.set_op_asset_at(i, ch[i]["asset"].get<std::string>());
+                if (ch[i].contains("file_params") && ch[i]["file_params"].is_object())   // FILE/TEXT params (Image path)
+                    for (int l = 0; l < g.op_param_count_at(i); ++l) {
+                        const char* name = g.op_param_label_at(i, l);
+                        if (ch[i]["file_params"].contains(name))
+                            g.set_op_file_param_at(i, l, ch[i]["file_params"][name].get<std::string>());
+                    }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);

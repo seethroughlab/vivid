@@ -85,6 +85,8 @@ public:
     float op_param_base_at(int i, int local) const;
     void  set_op_param_base_at(int i, int local, float v);
     float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
+    const char* op_file_param_at(int i, int local) const;         // FILE/TEXT param string ("" if none)
+    void  set_op_file_param_at(int i, int local, const std::string& v);
     bool  op_param_wired_at(int i, int local) const;     // a data source drives it
     // Param metadata (from the operator descriptor) so the dock can pick a widget.
     int   op_param_type_at(int i, int local) const;         // VividParamType (FLOAT/INT/BOOL/...)

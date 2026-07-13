@@ -366,6 +366,16 @@ const char* NodeGraph::op_param_choice_label_at(int i, int local, int choice) co
 float NodeGraph::op_param_value_at(int i, int local) const {
     return (op_node_valid(vg_, i) && local >= 0 && local < int(vg_->nodes()[i].params.size())) ? vg_->nodes()[i].params[local] : 0.f;
 }
+const char* NodeGraph::op_file_param_at(int i, int local) const {
+    if (!op_node_valid(vg_, i) || local < 0 || local >= int(vg_->nodes()[i].file_params.size())) return "";
+    return vg_->nodes()[i].file_params[local].c_str();
+}
+void NodeGraph::set_op_file_param_at(int i, int local, const std::string& v) {
+    if (!op_node_valid(vg_, i) || local < 0) return;
+    auto& fp = vg_->nodes()[i].file_params;
+    if (local >= int(fp.size())) fp.resize(local + 1);
+    fp[local] = v;
+}
 // UI-4b: an op's custom editor is reachable only if its instance is a loaded dylib (LoadedOperator)
 // that exported the editor ABI. Built-in ops never have one.
 static vivid::LoadedOperator* node_loaded_op(const vivid::VisualGraph* vg, int i) {

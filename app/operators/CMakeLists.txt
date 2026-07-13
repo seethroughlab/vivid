@@ -19,7 +19,7 @@ endif()
 function(add_vivid_operator name)
     add_library(${name} MODULE ${ARGN})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../deps/stb)
     target_link_libraries(${name} PRIVATE webgpu)
     if(APPLE)
         # wgpu symbols import from @rpath/libwgpu_native.dylib (already loaded by the
@@ -51,3 +51,4 @@ add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a cus
 # core-visuals: the auto-discovered core visual nodes (migrating off builtin_ops.cpp).
 add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
 add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
+add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
