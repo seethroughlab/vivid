@@ -26,7 +26,6 @@
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
-#include "gpu/builtin_ops.h"
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
@@ -86,9 +85,8 @@ int main() {
     // the window being frontmost.
     vivid::disable_app_nap("Vivid control server / agent-driven rendering");
 
-    // Register the built-in visual operators + validate their descriptors. A loud
-    // startup check keeps the operator-based visuals model honest (named codes).
-    vivid::register_builtin_ops(app.op_registry);
+    // Register the native audio operators (visual operators are all auto-discovered
+    // package dylibs — see the PlugIns/ scan just below).
     vivid::register_builtin_audio_ops(app.op_registry);   // AO-1: native audio operators
     // P2.1: also load operator dylibs dropped in the bundle PlugIns/ (or the dev
     // override $VIVID_OPERATORS_DIR). Loaded ops register by descriptor name and

@@ -11,8 +11,8 @@
 
 namespace vivid {
 
-// Final-present blit (the node feeding Output -> the on-screen viewer). The op
-// shaders (plasma/feedback/blur/blit) now live in gpu/builtin_ops.cpp.
+// Final-present blit (the node feeding Output -> the on-screen viewer). This is the
+// host's own present pass; all visual operators are auto-discovered package dylibs.
 static const char* kBlitGLSL = R"(#version 450
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 o_color;

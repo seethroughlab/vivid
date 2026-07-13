@@ -206,7 +206,6 @@ add_executable(vivid MACOSX_BUNDLE
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/gpu/op_runtime.cpp
-    src/gpu/builtin_ops.cpp
     src/gpu/operator_loader.cpp
     src/gpu/loaded_operator.cpp
     src/gpu/operator_scan.cpp
