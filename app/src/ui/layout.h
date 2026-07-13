@@ -88,8 +88,9 @@ constexpr int kNumChars = 5;
 // Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
 inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
 
-// Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
-constexpr float kViewW = 720.f, kViewH = 300.f;
+// (The visuals render-target size is NOT here any more: the Output node owns it — see
+// gpu/output_format.h + ADR-0014. It used to be a fixed 720x300 FBO stretched to the panel, which
+// is why several ops hard-coded a /1.7778 aspect correction.)
 
 // --- Window-relative geometry (explicit args; no globals). ---
 inline float dock_top(int win_h, float dock_h) { return win_h - dock_h; }   // y where the dock begins

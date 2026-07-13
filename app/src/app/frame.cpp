@@ -174,17 +174,13 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     // (width only; the height follows the output's aspect). Kept loosely inside the visuals column so
     // it can't be lost off-screen.
     if (win.preview_drag || win.preview_resize) {
-        const Rect g = win.visuals_panel();
         if (win.preview_resize) {
-            win.preview_w = std::clamp(static_cast<float>(mx - win.preview_grab_x),
-                                       ui::kPreviewMinW, std::min(ui::kPreviewMaxW, g.w));
+            win.preview_w = static_cast<float>(mx - win.preview_grab_x);
         } else {
             win.preview_x = static_cast<float>(mx - win.preview_grab_x);
             win.preview_y = static_cast<float>(my - win.preview_grab_y);
         }
-        const Rect p = win.preview_panel();
-        win.preview_x = std::clamp(win.preview_x, g.x - p.w * 0.5f, g.x + g.w - 40.f);
-        win.preview_y = std::clamp(win.preview_y, g.y, g.y + g.h - ui::kPanelHdH);
+        win.clamp_preview();   // one authority for "the preview stays inside the column"
     }
     if (app.graph) app.graph->on_move(mx, my);
     if (win.editor && win.editor->is_open()) {
@@ -393,7 +389,7 @@ void run_frame_loop(App& app, Window& win) {
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             vgraph.run_chain(frame.encoder, tsec, srcTex.view);
             win.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
-            win.place_preview_if_needed();
+            win.clamp_preview();                   // ...so a new aspect can resize it out of bounds
 
             draw_ui(ui, win, beats, mx, my);
             // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
@@ -429,7 +425,9 @@ void run_frame_loop(App& app, Window& win) {
             if (win.preview_show) {
                 const Rect vp = win.viewer_rect();
                 vgraph.present_to(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi,
-                                  vp.w * win.dpi, vp.h * win.dpi, tsec, /*clear*/false);
+                                  vp.w * win.dpi, vp.h * win.dpi,
+                                  static_cast<float>(win.fb_w), static_cast<float>(win.fb_h),
+                                  tsec, /*clear*/false);
             }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
             if (win.preview_show) draw_output_preview(ui, win, mx, my);
@@ -461,8 +459,10 @@ void run_frame_loop(App& app, Window& win) {
                     }
                     FrameState f2;
                     if (gpu.begin_secondary(f2)) {
-                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f, static_cast<float>(fbw),
-                                          static_cast<float>(fbh), tsec, /*clear*/true);
+                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f,
+                                          static_cast<float>(fbw), static_cast<float>(fbh),
+                                          static_cast<float>(fbw), static_cast<float>(fbh),
+                                          tsec, /*clear*/true);
                         gpu.end_secondary(f2);
                     }
                 }

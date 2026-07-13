@@ -49,6 +49,10 @@ target_link_libraries(test_audio_clip PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_clip_dsp)       # A2 warp engine smoke (signalsmith stretch path)
 target_link_libraries(test_clip_dsp PRIVATE signalsmith_stretch nlohmann_json::nlohmann_json)
 vivid_add_test(test_control_parse)
+
+# ADR-0014: the visual output's format — the aspect/size preset tables + the Fit/Fill/Stretch UV
+# window that letterboxes the output into a surface of a different shape (gpu/output_format.h).
+vivid_add_test(test_output_format)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)

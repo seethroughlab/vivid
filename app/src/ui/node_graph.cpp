@@ -272,11 +272,19 @@ void NodeGraph::apply_params() {
     auto& nodes = vg_->nodes();
     for (auto& n : nodes) {
         const int pc = int(n.inst.param_ptrs.size());  // operator-declared params
+        const int had = int(n.base.size());
         n.params.resize(pc, 0.f);
         n.base.resize(pc, 0.f);
+        for (int l = had; l < pc; ++l) n.base[l] = n.inst.param_ptrs[l]->default_value;   // seed new slots
         for (int l = 0; l < pc; ++l) {
-            const float mod = reg_.dest_value(node_param_dest(n.id, n.inst.param_ptrs[l]->name));
-            n.params[l] = std::clamp(n.base[l] + mod, 0.f, 1.f);  // manual base + live modulation
+            const vivid::ParamBase* pb = n.inst.param_ptrs[l];
+            // Resolve against the param's DECLARED range, not a hard-coded [0,1]. Modulation is a
+            // normalized 0..1 signal, so it scales by the range — for a 0..1 param that is exactly
+            // the old behavior, but an int/enum param (an aspect preset, an octave count) is no
+            // longer silently pinned to 1.
+            const float lo = pb->min_value, hi = pb->max_value;
+            const float mod = reg_.dest_value(node_param_dest(n.id, pb->name));
+            n.params[l] = std::clamp(n.base[l] + mod * (hi - lo), lo, hi);   // manual base + live modulation
         }
     }
     // Back-compat return-path sources: the canonical six viz.<name>, taken from the
@@ -332,7 +340,10 @@ void NodeGraph::set_op_param_base_at(int i, int local, float v) {
     if (op_node_valid(vg_, i) && local >= 0) {
         auto& base = vg_->nodes()[i].base;
         if (local >= int(base.size())) base.resize(local + 1, 0.f);
-        base[local] = std::clamp(v, 0.f, 1.f);
+        // Clamp to the param's DECLARED range (both the inspector and the control server's
+        // set_node_param land here). A hard [0,1] used to pin every int/enum param to 1.
+        const vivid::ParamBase* pb = node_pb(vg_, i, local);
+        base[local] = pb ? std::clamp(v, pb->min_value, pb->max_value) : std::clamp(v, 0.f, 1.f);
     }
 }
 int NodeGraph::op_param_type_at(int i, int local) const {

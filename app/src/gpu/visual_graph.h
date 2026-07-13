@@ -3,6 +3,7 @@
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
 #include "gpu/op_runtime.h"
+#include "gpu/output_format.h"   // FitMode + the output size presets (owned by the Output node)
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -93,8 +94,11 @@ public:
     // Blit the already-rendered output FBO (from the last run_chain()) into a view at a rect —
     // the floating preview, or a pop-out window's surface. Letterboxes per the Output node's fit
     // mode, so every surface shows the output's true aspect. Does NOT re-run the graph.
+    // surf_w/surf_h are the TARGET's pixel size: the rect is clamped to them, because wgpu aborts
+    // the process (not just the draw) on a viewport/scissor that escapes the render target.
     void present_to(WGPUCommandEncoder enc, WGPUTextureView view,
-                    float vx, float vy, float vw, float vh, float time, bool clear);
+                    float vx, float vy, float vw, float vh,
+                    float surf_w, float surf_h, float time, bool clear);
 
     WGPUTextureView node_view(int idx) const {
         if (idx < 0 || idx >= static_cast<int>(rts_.size())) return nullptr;
@@ -104,10 +108,18 @@ public:
     float    rt_aspect() const { return rtH_ ? static_cast<float>(rtW_) / static_cast<float>(rtH_) : 1.f; }
     uint32_t rt_w() const { return rtW_; }
     uint32_t rt_h() const { return rtH_; }
+    FitMode  fit_mode() const { return fit_; }
+    // Resize every node's render target. Idempotent (a no-op when unchanged). Only safe between
+    // frames / at the top of run_chain(), before anything in the encoder references an RT.
+    void set_rt_size(uint32_t w, uint32_t h);
 
 private:
     void ensure_resources(size_t n);
     bool make_instance(VisualNode& n, const std::string& type);  // create + record inst
+    // Pull the output's format (size + fit) off the ACTIVE Output node's params. Run once per
+    // frame, first thing in run_chain().
+    void apply_output_settings();
+    FitMode fit_ = FitMode::Fit;   // derived from the Output node's `fit` param — never a param slot
 
     WGPUDevice        dev_ = nullptr;
     WGPUQueue         q_   = nullptr;

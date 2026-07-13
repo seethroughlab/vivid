@@ -224,7 +224,10 @@ struct MeshOp : vivid::OperatorBase, vivid::GpuProcessable {
         Mat4 model = mul(rot_y(t * spd), rot_x(tilt_a + t * spd * 0.37f));
         Mat4 modelS = mul(model, Mat4{scale,0,0,0, 0,scale,0,0, 0,0,scale,0, 0,0,0,1});   // scale then rotate
         Mat4 view = translate(0.f, 0.f, -3.2f);
-        Mat4 proj = perspective(0.7854f, 1.7778f, 0.1f, 100.f);   // 45deg fov, 16:9 display aspect (gotcha)
+        // 45deg fov, projected at the REAL target aspect (was hard-coded 16:9 to compensate for a
+        // fixed 2.4:1 FBO that got stretched on present; the output now has a true aspect).
+        Mat4 proj = perspective(0.7854f, float(c->output_width) / std::max(1.f, float(c->output_height)),
+                                0.1f, 100.f);
         Mat4 mvp = mul(proj, mul(view, modelS));
         float u[40]{};
         for (int i = 0; i < 16; ++i) u[i] = mvp[i];            // mvp        (0..63)

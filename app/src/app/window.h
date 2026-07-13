@@ -157,14 +157,26 @@ struct Window {
     ui::Rect     preview_header()   const { return ui::preview_header_rect(preview_x, preview_y, preview_w); }
     ui::Rect     preview_close()    const { return ui::preview_close_rect(preview_x, preview_y, preview_w); }
     ui::Rect     preview_grip()     const { return ui::preview_grip_rect(preview_x, preview_y, preview_w, out_aspect); }
-    // Park the preview in the visuals column's bottom-right if it has never been placed.
-    void place_preview_if_needed() {
-        if (preview_x >= 0.f) return;
+    // Keep the preview inside the visuals column. MUST run every frame, not just on placement: the
+    // panel's height is derived from the output aspect, so switching the Output node to (say) 9:16
+    // makes a fixed-width preview much TALLER. Left unbounded that pushed the blit rect outside the
+    // framebuffer, and wgpu aborts the process on an out-of-bounds scissor.
+    void clamp_preview() {
         const ui::Rect g = visuals_panel();
-        preview_w = std::min(preview_w, std::max(ui::kPreviewMinW, g.w - 24.f));
+        if (g.w <= 0.f || g.h <= 0.f) return;
+        const float max_w = std::max(ui::kPreviewMinW, g.w - 2.f * ui::kPanePad);
+        const float max_h = std::max(ui::kPanelHdH + 40.f, g.h - 2.f * ui::kPanePad);
+        preview_w = std::clamp(preview_w, ui::kPreviewMinW, std::min(ui::kPreviewMaxW, max_w));
+        // Height follows the aspect — if that overflows the column, give width back until it fits.
+        if (ui::kPanelHdH + ui::preview_body_h(preview_w, out_aspect) > max_h)
+            preview_w = std::max(ui::kPreviewMinW, (max_h - ui::kPanelHdH) * out_aspect);
         const ui::Rect p = ui::preview_panel(0.f, 0.f, preview_w, out_aspect);
-        preview_x = g.x + g.w - p.w - 12.f;
-        preview_y = g.y + g.h - p.h - 12.f;
+        if (preview_x < 0.f) {   // never placed: park it bottom-right of the column
+            preview_x = g.x + g.w - p.w - ui::kPanePad;
+            preview_y = g.y + g.h - p.h - ui::kPanePad;
+        }
+        preview_x = std::clamp(preview_x, g.x, std::max(g.x, g.x + g.w - p.w));
+        preview_y = std::clamp(preview_y, g.y, std::max(g.y, g.y + g.h - p.h));
     }
     ui::Rect     splitter_rect()    const { return ui::splitter_rect(win_h, dock_h, split_x); }
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }

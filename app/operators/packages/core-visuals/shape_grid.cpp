@@ -28,7 +28,7 @@ struct VIn { @location(0) center: vec2f, @location(1) offset: vec2f };
     let a = u.rotation * 6.2831853;
     var o = v.offset * u.size;
     o = vec2f(o.x * cos(a) - o.y * sin(a), o.x * sin(a) + o.y * cos(a));
-    o.x = o.x / 1.7778;   // correct to a 16:9 DISPLAY (the FBO is a wide internal res)
+    o.x = o.x * (u.res.y / max(u.res.x, 1.0));   // aspect-correct against the REAL target: round stays round
     return vec4f(v.center + o, 0.0, 1.0);
 }
 @fragment fn fs_main() -> @location(0) vec4f { return u.fill; }
