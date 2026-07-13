@@ -38,18 +38,34 @@ static void popout_key_callback(GLFWwindow* w, int key, int, int action, int) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
 }
 
-// Open/close the pop-out visuals window: fullscreen on a second monitor if one is
-// present, else a large windowed view. Shares the wgpu device via a secondary surface.
-void toggle_popout(App& app, Window& win) {
-    if (!app.gpu) return;
-    if (win.popout) {   // close
-        app.gpu->close_secondary();
-        glfwDestroyWindow(win.popout);
-        win.popout = nullptr; win.popout_fb_w = win.popout_fb_h = 0;
-        return;
-    }
+// The Output node's `display` param: 0 = Current (the monitor the app is on), 1 = Primary,
+// 2 = Secondary (the first non-primary monitor). Falls back to a plain window when the requested
+// monitor doesn't exist.
+static GLFWmonitor* monitor_for_target(int target) {
     int mcount = 0; GLFWmonitor** mons = glfwGetMonitors(&mcount);
-    GLFWmonitor* mon = (mcount > 1) ? mons[1] : nullptr;   // performance screen = the 2nd monitor
+    if (mcount <= 0) return nullptr;
+    if (target == 1) return glfwGetPrimaryMonitor();
+    if (target == 2) {
+        GLFWmonitor* prim = glfwGetPrimaryMonitor();
+        for (int i = 0; i < mcount; ++i) if (mons[i] != prim) return mons[i];
+        return nullptr;   // only one screen: no performance screen to take over
+    }
+    return (mcount > 1) ? mons[1] : nullptr;   // Current/default: the 2nd screen if there is one
+}
+
+void close_popout(App& app, Window& win) {
+    if (!app.gpu || !win.popout) return;
+    app.gpu->close_secondary();
+    glfwDestroyWindow(win.popout);
+    win.popout = nullptr; win.popout_fb_w = win.popout_fb_h = 0;
+}
+
+// Open/close the pop-out visuals window on the target display. Shares the wgpu device via a
+// secondary surface.
+void open_popout(App& app, Window& win, int display_target) {
+    if (!app.gpu || win.popout) return;
+    GLFWmonitor* mon = monitor_for_target(display_target);
+    win.popout_display = display_target;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* w = mon ? [&]{ const GLFWvidmode* vm = glfwGetVideoMode(mon);
                                return glfwCreateWindow(vm->width, vm->height, "Vivid \xE2\x80\x94 Visuals", mon, nullptr); }()
@@ -390,6 +406,19 @@ void run_frame_loop(App& app, Window& win) {
             vgraph.run_chain(frame.encoder, tsec, srcTex.view);
             win.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.clamp_preview();                   // ...so a new aspect can resize it out of bounds
+            // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
+            // node's params with the actual window state each frame — the params are the truth, the
+            // UI buttons just write to them (and so do MCP / the control server, for free).
+            if (vgraph.output_index() >= 0) {
+                win.preview_show = vgraph.output_param("preview", 1.f) > 0.5f;
+                const bool want_out = vgraph.output_param("launch", 0.f) > 0.5f;
+                const int  disp = static_cast<int>(std::lround(vgraph.output_param("display", 0.f)));
+                if (want_out && !win.popout)                      open_popout(app, win, disp);
+                else if (!want_out && win.popout)                 close_popout(app, win);
+                else if (want_out && win.popout && disp != win.popout_display) {
+                    close_popout(app, win); open_popout(app, win, disp);   // moved to another screen
+                }
+            }
 
             draw_ui(ui, win, beats, mx, my);
             // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
@@ -449,7 +478,12 @@ void run_frame_loop(App& app, Window& win) {
         // Pop-out visuals window: mirror the current output onto its surface, fullscreen.
         // (The graph rendered once above; this only re-blits the output FBO.)
         if (win.popout) {
-            if (glfwWindowShouldClose(win.popout)) { toggle_popout(app, win); }
+            // Closed from the OS side (its Esc / the window manager): write `launch` back off, so
+            // the Output node never claims a window that isn't there.
+            if (glfwWindowShouldClose(win.popout)) {
+                close_popout(app, win);
+                vgraph.set_output_param("launch", 0.f);
+            }
             else if (gpu.has_secondary()) {
                 int fbw = 0, fbh = 0; glfwGetFramebufferSize(win.popout, &fbw, &fbh);
                 if (fbw > 0 && fbh > 0) {

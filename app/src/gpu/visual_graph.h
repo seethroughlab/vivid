@@ -109,6 +109,11 @@ public:
     uint32_t rt_w() const { return rtW_; }
     uint32_t rt_h() const { return rtH_; }
     FitMode  fit_mode() const { return fit_; }
+    // The ACTIVE Output node's params, by NAME (index would be brittle as params are added).
+    // These are the output's identity: size/aspect/fit + where it is shown (preview / pop-out).
+    // Reads/writes the BASE value — the manual, persisted one, not base+modulation.
+    float output_param(const char* name, float def = 0.f) const;
+    void  set_output_param(const char* name, float v);
     // Resize every node's render target. Idempotent (a no-op when unchanged). Only safe between
     // frames / at the top of run_chain(), before anything in the encoder references an RT.
     void set_rt_size(uint32_t w, uint32_t h);

@@ -13,6 +13,9 @@ void publish_bridge_sources(App& app, Window& win);
 void apply_audio_param_mappings(App& app);
 void update_drag_continuations(App& app, Window& win, double mx, double my);
 void update_visual_source_frame(App& app);
-void toggle_popout(App& app, Window& win);   // open/close the pop-out visuals window
+// The pop-out output window. Callers do NOT normally call these: the Output node's `launch` /
+// `display` params are the truth, and the frame loop reconciles the window from them (ADR-0014).
+void open_popout(App& app, Window& win, int display_target);
+void close_popout(App& app, Window& win);
 
 }  // namespace vivid

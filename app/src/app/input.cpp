@@ -11,7 +11,7 @@
 #include "ui/mapping_overview.h"  // ov_geom, ov_row
 #include "ui/node_graph.h"
 #include "audio/vst3_host.h"
-#include "app/frame.h"   // toggle_popout
+#include "app/frame.h"   // open_popout / close_popout
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
 
@@ -130,9 +130,15 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // tested BEFORE the graph gets the press (below) — otherwise dragging the preview would pan the
     // canvas underneath it.
     if (win->preview_show && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
-        if (hit(win->preview_close(), mx, my)) { win->preview_show = false; return; }
+        // The Output node's params are the truth for where the output is shown (ADR-0014), so these
+        // buttons WRITE THE PARAMS; the frame loop reconciles the actual windows from them.
+        if (hit(win->preview_close(), mx, my)) {
+            if (app->vgraph) app->vgraph->set_output_param("preview", 0.f);
+            return;
+        }
         if (hit(vivid::ui::preview_popout_rect(win->preview_x, win->preview_y, win->preview_w), mx, my)) {
-            vivid::toggle_popout(*app, *win); return;
+            if (app->vgraph) app->vgraph->set_output_param("launch", win->popout ? 0.f : 1.f);
+            return;
         }
         if (hit(win->preview_grip(), mx, my)) {
             win->preview_resize = true; win->preview_grab_x = mx - win->preview_w; return;

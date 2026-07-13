@@ -6,6 +6,7 @@
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 
@@ -137,19 +138,43 @@ void VisualGraph::set_rt_size(uint32_t w, uint32_t h) {
     // on ctx->output_width/height — so a resize costs one frame of trails. That's correct.)
 }
 
-// The Output node owns the output's identity (ADR-0014). Read it off the ACTIVE Output node's
-// BASE params, not its resolved params: resolved = base + live modulation, so a transient wired to
-// `aspect` would otherwise thrash the render-target size every frame. Resolution is a document
-// setting, not a modulatable signal.
-void VisualGraph::apply_output_settings() {
+// Index of a named param on the active Output node (-1 if absent — e.g. an Output restored from a
+// session saved before that param existed).
+static int output_param_index(const VisualNode& n, const char* name) {
+    for (int i = 0; i < static_cast<int>(n.inst.param_ptrs.size()); ++i)
+        if (n.inst.param_ptrs[i]->name && std::strcmp(n.inst.param_ptrs[i]->name, name) == 0) return i;
+    return -1;
+}
+
+float VisualGraph::output_param(const char* name, float def) const {
+    const int oi = output_index();
+    if (oi < 0) return def;
+    const VisualNode& n = nodes_[oi];
+    const int i = output_param_index(n, name);
+    return (i >= 0 && i < static_cast<int>(n.base.size())) ? n.base[i] : def;
+}
+
+void VisualGraph::set_output_param(const char* name, float v) {
     const int oi = output_index();
     if (oi < 0) return;
-    const VisualNode& n = nodes_[oi];
-    if (n.base.size() < 3) return;   // an Output from a session saved before these params existed
-    const auto enum_at = [&](int i) { return static_cast<int>(std::lround(n.base[i])); };
-    fit_ = static_cast<FitMode>(std::clamp(enum_at(0), 0, kNumFits - 1));
+    VisualNode& n = nodes_[oi];
+    const int i = output_param_index(n, name);
+    if (i >= 0 && i < static_cast<int>(n.base.size())) n.base[i] = v;
+}
+
+// The Output node owns the output's identity (ADR-0014). Read the BASE params, not the resolved
+// ones: resolved = base + live modulation, so a transient wired to `aspect` would otherwise thrash
+// the render-target size every frame. The output's format is a document setting, not a modulatable
+// signal.
+void VisualGraph::apply_output_settings() {
+    if (output_index() < 0) return;
+    const auto enum_of = [&](const char* nm, float def) {
+        return static_cast<int>(std::lround(output_param(nm, def)));
+    };
+    fit_ = static_cast<FitMode>(std::clamp(enum_of("fit", 0.f), 0, kNumFits - 1));
     uint32_t w = 0, h = 0;
-    output_size_for(enum_at(1), enum_at(2), w, h);
+    output_size_for(enum_of("aspect", static_cast<float>(kDefaultAspect)),
+                    enum_of("height", static_cast<float>(kDefaultHeight)), w, h);
     set_rt_size(w, h);
 }
 
