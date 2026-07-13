@@ -26,6 +26,10 @@ bool transport_key(Window& win, App& app, int key);   // Space / R
 bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
 bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
 void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
+// The PLUGINS search field owns the keyboard while focused (else typing "m" would toggle the
+// mapping overlay). Both return true when they consumed the event.
+bool plugins_search_key(Window& win, int key);
+bool plugins_search_char(Window& win, unsigned int cp);
 
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)

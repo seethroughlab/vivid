@@ -45,6 +45,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the chooser is up
     }
+    // The PLUGINS search field, when focused, owns the keyboard — before musical typing and the
+    // global shortcuts, or typing a plugin name would play notes and toggle overlays.
+    if (win->plugin_search_focus) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::plugins_search_key(*win, key);
+        return;
+    }
     // Musical typing (M6.2) — the ` toggle + note/octave/velocity keys. Runs before the PRESS-only
     // gate below because note-off needs the RELEASE event; unhandled keys fall through.
     if (vivid::input::typing_key(*win, *app, key, action)) return;
@@ -84,7 +90,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 
 void char_callback(GLFWwindow* w, unsigned int cp) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
-    if (win && win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
+    if (!win) return;
+    if (vivid::input::plugins_search_char(*win, cp)) return;   // the PLUGINS filter has the keyboard
+    if (win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
 }
 
 // GLFW gives no modifier state to scroll callbacks; poll the keys we care about.

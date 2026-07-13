@@ -10,6 +10,7 @@
 #include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
+#include "ui/plugin_browser.h"    // plugin_browser_rows — shared by this draw + the hit-test
 #include "transport.h"
 
 #include <algorithm>
@@ -249,22 +250,59 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
         }
     }
 
-    // --- PLUGINS: every installed VST3 (double-click a row to add it) ---
+    // --- PLUGINS: the installed catalog (search, scroll; double-click a row to add it) ---
+    // The list is ~30 deep and only ~12 rows fit, so it MUST show a search field and a scrollbar:
+    // without them the rest is culled silently and installed plugins look like they're missing.
+    namespace S = vivid::session;
     const Rect pp = sidebar_plugins_panel(w.sidebar_w, w.win_h, w.dock_h);
-    char phdr[24]; std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d", vivid::session::plugin_count());
+    const std::vector<int> rows = plugin_browser_rows(w.plugin_filter);
+    const int nrows = static_cast<int>(rows.size());
+    char phdr[40];
+    if (w.plugin_filter.empty()) std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d", S::plugin_count());
+    else                         std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d/%d", nrows, S::plugin_count());
     panel(ui, pp, phdr, sty.fx);
-    ui.push_clip_rect(pp.x + 1.f, plugins_body_top(w.sidebar_w, w.win_h, w.dock_h),
-                      pp.w - 2.f, pp.y + pp.h - plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) - 1.f);
-    const int np = vivid::session::plugin_count();
-    for (int i = 0; i < np; ++i) {
+
+    // Search field.
+    { const Rect sr = plugins_search_rect(w.sidebar_w, w.win_h, w.dock_h);
+      recess(ui, sr, w.plugin_search_focus);
+      const bool empty = w.plugin_filter.empty();
+      const std::string t = empty && !w.plugin_search_focus ? std::string("search\xE2\x80\xA6")
+                                                            : w.plugin_filter + (w.plugin_search_focus ? "_" : "");
+      ui.draw_text(sr.x + 6.f, sr.y + 4.f, fit_text(ui, t, sr.w - 12.f, sty.fs_label).c_str(),
+                   empty ? sty.dim[0] : sty.text[0], empty ? sty.dim[1] : sty.text[1],
+                   empty ? sty.dim[2] : sty.text[2], 1.0f, sty.fs_label); }
+
+    const float body_top = plugins_body_top(w.sidebar_w, w.win_h, w.dock_h);
+    ui.push_clip_rect(pp.x + 1.f, body_top, pp.w - 2.f, pp.y + pp.h - body_top - 1.f);
+    for (int i = 0; i < nrows; ++i) {
         const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
-        if (r.y + r.h < plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) || r.y > pp.y + pp.h) continue;  // offscreen
+        if (r.y + r.h < body_top || r.y > pp.y + pp.h) continue;   // offscreen (the scrollbar says so)
+        const S::PluginInfo& pi = S::plugin_at(rows[i]);
         const bool hov = hit(r, mx, my);
         if (hov) item_box(ui, r, sty.fx, true);
-        ui.draw_text(r.x + 6.f, r.y + 3.f, fit_text(ui, vivid::session::plugin_at(i).name, r.w - 12.f, sty.fs_label).c_str(),
-                     hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1], hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
+        // Class badge: instruments and effects are different things to add, so say which. An
+        // unprobed plugin says "?" rather than lying about what it is.
+        const char* badge = pi.probed ? (pi.cls == S::kClassInstrument ? "INS"
+                                       : pi.cls == S::kClassEffect     ? "FX"
+                                       : pi.cls == S::kClassNoteEffect ? "NOTE" : "\xE2\x80\x94")
+                                      : "?";
+        const float* bc = pi.cls == S::kClassInstrument ? sty.audio : sty.fx;
+        const float badge_w = 34.f;
+        ui.draw_text(r.x + 6.f, r.y + 3.f,
+                     fit_text(ui, pi.name, r.w - 16.f - badge_w, sty.fs_label).c_str(),
+                     hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1],
+                     hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
+        ui.draw_text(r.x + r.w - badge_w, r.y + 4.f, badge,
+                     pi.probed ? bc[0] : sty.dim[0], pi.probed ? bc[1] : sty.dim[1],
+                     pi.probed ? bc[2] : sty.dim[2], 1.0f, sty.fs_kicker);
     }
+    if (nrows == 0)
+        ui.draw_text(pp.x + kPanePad + 4.f, body_top + 6.f, "no match", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     ui.pop_clip_rect();
+
+    // Scrollbar: the affordance that says "there is more below".
+    { const Rect sb = plugins_scrollbar_rect(w.sidebar_w, w.win_h, w.dock_h, nrows, w.plugin_scroll);
+      if (sb.h > 0.f) ui.draw_rect(sb.x, sb.y, sb.w, sb.h, sty.border[0], sty.border[1], sty.border[2], 1.0f); }
 }
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
