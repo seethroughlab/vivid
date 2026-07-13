@@ -193,7 +193,14 @@ inline Rect graph_relayout_rect(int win_w, int win_h, float split_x, float dock_
     const Rect g = visuals_panel(win_w, win_h, split_x, dock_h);
     return { g.x + g.w - 78.f, g.y + 4.f, 74.f, kPanelHdH - 6.f };
 }
-inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH + 4.f, 6.f, dock_top(win_h, dock_h) - kTopBarH - 4.f }; }
+// The DAW|visuals splitter: a full-height grab strip running from the transport bar down to the
+// dock (no gap at the top — a divider that stops short reads as an artifact, not a handle).
+inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH, 6.f, dock_top(win_h, dock_h) - kTopBarH }; }
+// The grip: a short run of rules at the strip's vertical midpoint — the "you can drag me" mark.
+inline Rect splitter_grip_rect(int win_h, float dock_h, float split_x) {
+    const Rect s = splitter_rect(win_h, dock_h, split_x);
+    return { s.x, s.y + s.h * 0.5f - 14.f, s.w, 28.f };
+}
 inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f, dock_top(win_h, dock_h) - 3.f, static_cast<float>(win_w), 7.f }; }
 // A close (x) in the detail-region header strip — exits the current focus back to the
 // session default (the device view). Sits just left of the domain badge on the right edge.

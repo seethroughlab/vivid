@@ -619,18 +619,26 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     // The graph draws itself (frame.cpp) into this column; no enclosing panel frame — the canvas
     // is the surface. Only the column's thin cyan domain accent + its corner chrome live here.
     ui.push_clip_rect(w.split_x, kTopBarH, W - w.split_x, w.dock_top() - kTopBarH);
-    { const Rect g = w.visuals_panel();
-      ui.draw_rect(g.x, g.y, 2.f, g.h, sty.gpu[0], sty.gpu[1], sty.gpu[2], 1.0f);   // domain edge accent
-      const Rect rl = graph_relayout_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
+    // (No edge accent bar here: hard against the splitter it reads as a stray line, not identity.
+    // The visual domain announces itself through the graph's own cyan node/port coloring.)
+    { const Rect rl = graph_relayout_rect(w.win_w, w.win_h, w.split_x, w.dock_h);
       const bool rlh = hit(rl, mx, my);
       item_box(ui, rl, sty.gpu, rlh);
       ui.draw_text(rl.x + 8.f, rl.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     ui.pop_clip_rect();
 
-    // DAW | visuals splitter (on top, unclipped)
+    // DAW | visuals splitter (on top, unclipped): a full-height rule from the transport to the dock,
+    // plus a centered grip so it reads as draggable rather than as a decorative divider. Hovering
+    // (or dragging) lights the whole strip.
     const Rect sp = w.splitter_rect();
-    const bool sph = hit(sp, mx, my);
-    ui.draw_rect(sp.x, sp.y, sp.w, sp.h, sph ? sty.border[0] : sty.border_soft[0], sph ? sty.border[1] : sty.border_soft[1], sph ? sty.border[2] : sty.border_soft[2], 1.0f);
+    const bool sph = hit(sp, mx, my) || w.split_drag;
+    const float* sc = sph ? sty.gpu : sty.border_soft;
+    ui.draw_rect(sp.x + 2.f, sp.y, 2.f, sp.h, sc[0], sc[1], sc[2], 1.0f);
+    { const Rect gr = splitter_grip_rect(w.win_h, w.dock_h, w.split_x);
+      const float* gc = sph ? sty.gpu : sty.border;
+      ui.draw_rect(gr.x + 1.f, gr.y, 4.f, gr.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+      for (int i = 0; i < 3; ++i)   // three hard rules = the grip
+          ui.draw_rect(gr.x + 1.f, gr.y + gr.h * 0.5f - 5.f + i * 5.f, 4.f, 1.f, gc[0], gc[1], gc[2], 1.0f); }
 
     // ---- clip drag feedback: a screen-space overlay (can cross the sidebar↔grid boundary) ----
     if ((w.clip_drag_t >= 0 || w.clip_drag_from_pool >= 0) && w.clip_dragging) {
