@@ -63,6 +63,9 @@ add_vivid_operator(vivid_gradient packages/core-visuals/gradient.cpp)
 add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
+add_vivid_operator(vivid_plasma packages/core-visuals/plasma.cpp)
+add_vivid_operator(vivid_blur packages/core-visuals/blur.cpp)
+add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 
 # Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
 # camera frameworks (the install-time clang++ package route can't; this app-build CMake

@@ -15,6 +15,9 @@
     { "name": "Gradient", "source": "gradient.cpp", "gpu": true },
     { "name": "ShapeGrid", "source": "shape_grid.cpp", "gpu": true },
     { "name": "Lines", "source": "lines.cpp", "gpu": true },
-    { "name": "Mesh", "source": "mesh.cpp", "gpu": true }
+    { "name": "Mesh", "source": "mesh.cpp", "gpu": true },
+    { "name": "Plasma", "source": "plasma.cpp", "gpu": true },
+    { "name": "Blur", "source": "blur.cpp", "gpu": true },
+    { "name": "Feedback", "source": "feedback.cpp", "gpu": true }
   ]
 }
