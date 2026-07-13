@@ -249,7 +249,10 @@ if(APPLE)
         MACOSX_BUNDLE_GUI_IDENTIFIER "com.vivid.app"
         MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
         MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-        MACOSX_BUNDLE_ICON_FILE Vivid.icns)
+        MACOSX_BUNDLE_ICON_FILE Vivid.icns
+        # Custom Info.plist template adds NSCameraUsageDescription (Webcam node needs the
+        # camera-usage key or macOS TCC kills the app on camera access) + retina.
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/Info.plist.in")
 endif()
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)

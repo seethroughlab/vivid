@@ -53,3 +53,15 @@ add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
 add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
 add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
+
+# Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
+# camera frameworks (the install-time clang++ package route can't; this app-build CMake
+# route can, and the dylib is still auto-discovered at launch). Off-macOS it builds from
+# webcam.cpp alone and degrades to a black "No camera" source.
+if(APPLE)
+    add_vivid_operator(vivid_webcam packages/core-visuals/webcam.cpp packages/core-visuals/avf_capture.mm)
+    target_link_libraries(vivid_webcam PRIVATE
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework Foundation")
+else()
+    add_vivid_operator(vivid_webcam packages/core-visuals/webcam.cpp)
+endif()
