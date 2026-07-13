@@ -69,6 +69,13 @@ add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 add_vivid_operator(vivid_video packages/core-visuals/video.cpp)
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
 add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
+# Text/VectorText need FreeType (the app fetches it) + the bundled font path.
+foreach(_txt text vectortext)
+    add_vivid_operator(vivid_${_txt} packages/core-visuals/${_txt}.cpp)
+    target_link_libraries(vivid_${_txt} PRIVATE freetype)
+    target_compile_definitions(vivid_${_txt} PRIVATE
+        VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../assets/fonts/JetBrainsMono-Regular.ttf")
+endforeach()
 
 # Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
 # camera frameworks (the install-time clang++ package route can't; this app-build CMake
