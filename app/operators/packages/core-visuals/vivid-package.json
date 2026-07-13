@@ -8,6 +8,7 @@
     { "name": "Switch", "source": "switch.cpp", "gpu": true },
     { "name": "Webcam", "source": "webcam.cpp", "gpu": true },
     { "name": "Tint", "source": "tint.cpp", "gpu": true },
-    { "name": "Shape", "source": "shape.cpp", "gpu": true }
+    { "name": "Shape", "source": "shape.cpp", "gpu": true },
+    { "name": "Composite", "source": "composite.cpp", "gpu": true }
   ]
 }

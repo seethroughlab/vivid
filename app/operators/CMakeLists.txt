@@ -56,6 +56,7 @@ add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
 add_vivid_operator(vivid_tint packages/core-visuals/tint.cpp)
 add_vivid_operator(vivid_shape packages/core-visuals/shape.cpp)
+add_vivid_operator(vivid_composite packages/core-visuals/composite.cpp)
 
 # Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
 # camera frameworks (the install-time clang++ package route can't; this app-build CMake
