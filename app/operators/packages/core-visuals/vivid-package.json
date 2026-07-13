@@ -11,6 +11,7 @@
     { "name": "Shape", "source": "shape.cpp", "gpu": true },
     { "name": "Composite", "source": "composite.cpp", "gpu": true },
     { "name": "Transform", "source": "transform.cpp", "gpu": true },
-    { "name": "Kaleidoscope", "source": "kaleidoscope.cpp", "gpu": true }
+    { "name": "Kaleidoscope", "source": "kaleidoscope.cpp", "gpu": true },
+    { "name": "Gradient", "source": "gradient.cpp", "gpu": true }
   ]
 }
