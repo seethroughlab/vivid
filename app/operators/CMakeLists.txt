@@ -68,6 +68,7 @@ add_vivid_operator(vivid_blur packages/core-visuals/blur.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 add_vivid_operator(vivid_video packages/core-visuals/video.cpp)
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
+add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
 
 # Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
 # camera frameworks (the install-time clang++ package route can't; this app-build CMake

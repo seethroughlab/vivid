@@ -397,57 +397,12 @@ struct VectorTextOp : OperatorBase, GpuProcessable, AssetShader {
 
 
 
-// --- CustomShader: data-driven GLSL generator loaded from a project .glsl ---
-// Mirrors PlasmaOp but the fragment source comes from a file (the node's `asset`,
-// resolved to an absolute path by VisualGraph and pushed via AssetShader) instead of
-// a compile-time literal. The .glsl must follow the ShaderOp contract (v_uv/o_color +
-// the u_res/u_time/u_warp/u_hue/u_density/u_glow uniform block). Missing file or a
-// compile error degrades to a no-op node (logged once) — it never crashes the app.
-struct CustomShaderOp : OperatorBase, GpuProcessable, AssetShader {
-    static constexpr const char* kDisplayName = "Custom Shader";
-    static constexpr const char* kSummary = "Data-driven GLSL generator: renders a project .glsl file (set its `asset`).";
-    static constexpr std::array<const char*, 3> kKeywords = {"generator", "shader", "glsl"};
-    // Four generic float knobs -> the shader's u_warp/u_hue/u_density/u_glow uniforms.
-    Param<float> p0{"warp",    0.5f, 0.f, 1.f};
-    Param<float> p1{"hue",     0.0f, 0.f, 1.f};
-    Param<float> p2{"density", 0.5f, 0.f, 1.f};
-    Param<float> p3{"glow",    0.5f, 0.f, 1.f};
-    ShaderOp shader_;
-    std::string want_;      // absolute asset path requested (set_asset_path)
-    std::string loaded_;    // asset path currently compiled
-    bool        failed_ = false;   // last (re)load failed -> render nothing, don't retry
-
-    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&p0); o.push_back(&p1); o.push_back(&p2); o.push_back(&p3); }
-    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
-    void set_asset_path(const std::string& abs) override { want_ = abs; }   // called before process_gpu
-
-    void reload(const VividGpuContext* c) {
-        shader_.shutdown();
-        loaded_ = want_; failed_ = true;   // pessimistic until it compiles
-        if (want_.empty()) return;
-        std::ifstream f(want_, std::ios::binary);
-        if (!f) { std::fprintf(stderr, "[CustomShader] cannot open %s\n", want_.c_str()); return; }
-        std::string src((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        if (src.empty()) { std::fprintf(stderr, "[CustomShader] empty shader %s\n", want_.c_str()); return; }
-        shader_.init(c->device, c->queue, c->output_format, src.c_str());
-        failed_ = !shader_.ok();
-        if (failed_) std::fprintf(stderr, "[CustomShader] compile failed: %s\n", want_.c_str());
-    }
-    void process_gpu(const VividGpuContext* c) override {
-        if (want_ != loaded_) reload(c);       // (re)load on first use or asset change
-        if (failed_ || !shader_.ok()) return;  // degrade gracefully
-        shader_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
-                       float(c->output_width), float(c->output_height), float(c->time),
-                       c->param_values, /*clear*/true);
-    }
-};
 
 }  // namespace
 
 void register_builtin_ops(OpRegistry& reg) {
     register_op<TextOp>    (reg, "Text");           // typography (string from a .txt asset)
     register_op<VectorTextOp>(reg, "VectorText");   // REAL filled text geometry (FreeType outlines)
-    register_op<CustomShaderOp>(reg, "CustomShader");  // data-driven .glsl generator
 }
 
 }  // namespace vivid

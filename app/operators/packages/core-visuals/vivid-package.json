@@ -20,6 +20,7 @@
     { "name": "Blur", "source": "blur.cpp", "gpu": true },
     { "name": "Feedback", "source": "feedback.cpp", "gpu": true },
     { "name": "Video", "source": "video.cpp", "gpu": true },
-    { "name": "Output", "source": "output.cpp", "gpu": true }
+    { "name": "Output", "source": "output.cpp", "gpu": true },
+    { "name": "CustomShader", "source": "customshader.cpp", "gpu": true }
   ]
 }
