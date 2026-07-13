@@ -2,6 +2,7 @@
   "name": "core-visuals",
   "version": "0.1.0",
   "operators": [
-    { "name": "NoiseTexture", "source": "noise_texture.cpp", "gpu": true }
+    { "name": "NoiseTexture", "source": "noise_texture.cpp", "gpu": true },
+    { "name": "Displace", "source": "displace.cpp", "gpu": true }
   ]
 }

@@ -50,3 +50,4 @@ add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a cus
 
 # core-visuals: the auto-discovered core visual nodes (migrating off builtin_ops.cpp).
 add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
+add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
