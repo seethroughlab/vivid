@@ -53,6 +53,9 @@ add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
 add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
 add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
+# P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
+add_vivid_operator(vivid_tint packages/core-visuals/tint.cpp)
+add_vivid_operator(vivid_shape packages/core-visuals/shape.cpp)
 
 # Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
 # camera frameworks (the install-time clang++ package route can't; this app-build CMake

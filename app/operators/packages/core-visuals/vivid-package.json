@@ -6,6 +6,8 @@
     { "name": "Displace", "source": "displace.cpp", "gpu": true },
     { "name": "Image", "source": "image.cpp", "gpu": true },
     { "name": "Switch", "source": "switch.cpp", "gpu": true },
-    { "name": "Webcam", "source": "webcam.cpp", "gpu": true }
+    { "name": "Webcam", "source": "webcam.cpp", "gpu": true },
+    { "name": "Tint", "source": "tint.cpp", "gpu": true },
+    { "name": "Shape", "source": "shape.cpp", "gpu": true }
   ]
 }
