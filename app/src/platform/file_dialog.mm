@@ -19,6 +19,20 @@ std::string open_project_dialog() {
     return {};
 }
 
+std::string open_file_dialog(const std::string& message) {
+    @autoreleasepool {
+        NSOpenPanel* p = [NSOpenPanel openPanel];
+        [p setCanChooseFiles:YES];
+        [p setCanChooseDirectories:NO];
+        [p setAllowsMultipleSelection:NO];
+        if (!message.empty()) [p setMessage:[NSString stringWithUTF8String:message.c_str()]];
+        [p setPrompt:@"Choose"];
+        if ([p runModal] == NSModalResponseOK && p.URLs.count > 0)
+            return std::string([[p.URLs[0] path] UTF8String]);
+    }
+    return {};
+}
+
 std::string save_project_dialog(const std::string& suggested_name) {
     @autoreleasepool {
         NSSavePanel* p = [NSSavePanel savePanel];

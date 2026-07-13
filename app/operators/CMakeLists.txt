@@ -19,7 +19,7 @@ endif()
 function(add_vivid_operator name)
     add_library(${name} MODULE ${ARGN})
     set_target_properties(${name} PROPERTIES PREFIX "" SUFFIX "${VIVID_PLUGIN_SUFFIX}")
-    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
+    target_include_directories(${name} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src ${CMAKE_CURRENT_SOURCE_DIR}/../deps/stb)
     target_link_libraries(${name} PRIVATE webgpu)
     if(APPLE)
         # wgpu symbols import from @rpath/libwgpu_native.dylib (already loaded by the
@@ -47,3 +47,44 @@ endfunction()
 
 add_vivid_operator(vivid_spike_solid spike/spike_solid.cpp)
 add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a custom editor
+
+# core-visuals: the auto-discovered core visual nodes (migrating off builtin_ops.cpp).
+add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
+add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
+add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
+add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
+# P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
+add_vivid_operator(vivid_tint packages/core-visuals/tint.cpp)
+add_vivid_operator(vivid_shape packages/core-visuals/shape.cpp)
+add_vivid_operator(vivid_composite packages/core-visuals/composite.cpp)
+add_vivid_operator(vivid_transform packages/core-visuals/transform.cpp)
+add_vivid_operator(vivid_kaleidoscope packages/core-visuals/kaleidoscope.cpp)
+add_vivid_operator(vivid_gradient packages/core-visuals/gradient.cpp)
+add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
+add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
+add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
+add_vivid_operator(vivid_plasma packages/core-visuals/plasma.cpp)
+add_vivid_operator(vivid_blur packages/core-visuals/blur.cpp)
+add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
+add_vivid_operator(vivid_video packages/core-visuals/video.cpp)
+add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
+add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
+# Text/VectorText need FreeType (the app fetches it) + the bundled font path.
+foreach(_txt text vectortext)
+    add_vivid_operator(vivid_${_txt} packages/core-visuals/${_txt}.cpp)
+    target_link_libraries(vivid_${_txt} PRIVATE freetype)
+    target_compile_definitions(vivid_${_txt} PRIVATE
+        VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../assets/fonts/JetBrainsMono-Regular.ttf")
+endforeach()
+
+# Webcam: the one native operator — bundles an AVFoundation capture .mm and links the
+# camera frameworks (the install-time clang++ package route can't; this app-build CMake
+# route can, and the dylib is still auto-discovered at launch). Off-macOS it builds from
+# webcam.cpp alone and degrades to a black "No camera" source.
+if(APPLE)
+    add_vivid_operator(vivid_webcam packages/core-visuals/webcam.cpp packages/core-visuals/avf_capture.mm)
+    target_link_libraries(vivid_webcam PRIVATE
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework Foundation")
+else()
+    add_vivid_operator(vivid_webcam packages/core-visuals/webcam.cpp)
+endif()

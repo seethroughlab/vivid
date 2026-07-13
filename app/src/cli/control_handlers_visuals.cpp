@@ -57,8 +57,11 @@ void register_visuals_handlers(Handlers& handlers_) {
         const int in_id = b.value("input_id", -1);
         const int in_idx = (in_id < 0) ? -1 : op_index_by_id(c.vgraph, in_id);
         if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
-        if (b.value("port", 0) == 1) c.vgraph->set_input_b(idx, in_idx);   // second input (2-in ops)
-        else                         c.vgraph->set_input(idx, in_idx);
+        const int port = b.value("port", 0);
+        const int nports = c.vgraph->nodes()[idx].inst.input_port_count;
+        if (port < 0 || port >= nports)
+            return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
+        c.vgraph->set_input(idx, port, in_idx);   // N-input: wire src -> node's texture input `port`
         return ok();
     };
     // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl
@@ -95,6 +98,19 @@ void register_visuals_handlers(Handlers& handlers_) {
         if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
         c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
         return ok();
+    };
+    // Set a FILE/TEXT param's string value (e.g. an Image node's file path).
+    handlers_["set_node_file_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const std::string name = b.value("name", std::string());
+        int local = -1;
+        for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+            if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+        if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
+        c.graph->set_op_file_param_at(idx, local, b.value("value", std::string()));
+        json r = ok(); r["value"] = c.graph->op_file_param_at(idx, local); return r;
     };
     handlers_["add_data_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.graph) return err(code::kNoGraph, "no graph");

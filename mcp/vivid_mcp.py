@@ -200,6 +200,15 @@ def set_node_param(node_id: int, name: str, value: float) -> dict:
 
 
 @mcp.tool
+def set_node_file_param(node_id: int, name: str, value: str) -> dict:
+    """Set a visual node's FILE/TEXT param (a file path string). Used by the file-backed ops:
+    Image (name="file" -> a PNG/JPG), CustomShader (name="file" -> a .glsl), and Text/VectorText
+    (name="file" -> a .txt whose contents are the rendered string). The op reloads on change and
+    degrades to a no-op / fallback if the file is missing or fails. Persisted with save_project."""
+    return _post("set_node_file_param", {"node_id": node_id, "name": name, "value": value})
+
+
+@mcp.tool
 def add_data_node(source: str) -> dict:
     """Place an audio-source node in the graph (cosmetic; mappings work without it). source =
     'master.<kind>' or 'track_<n>.<kind>', kind in level|transient|low|mid|high."""

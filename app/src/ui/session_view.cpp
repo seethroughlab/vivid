@@ -361,6 +361,14 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
                     knob(ui, wr.x + 14.f, wr.y + wr.h * 0.5f, 11.f, base, nullptr, vt, sty.gpu, wired);
                     break;
                 }
+                case NodeWidget::File: {   // path field: show the basename, click to choose
+                    const char* fp = g->op_file_param_at(selop, i);
+                    std::string bn = (fp && fp[0]) ? std::string(fp) : std::string();
+                    if (auto slash = bn.find_last_of("/\\"); slash != std::string::npos) bn = bn.substr(slash + 1);
+                    dropdown_field(ui, wr.x, wr.y + 1.f, wr.w, wr.h - 2.f,
+                                   bn.empty() ? "(choose file…)" : bn.c_str(), sty.gpu, hit(wr, mx, my));
+                    break;
+                }
                 default: {  // Slider
                     const float mn = g->op_param_min_at(selop, i), mx2 = g->op_param_max_at(selop, i);
                     char vt[12]; std::snprintf(vt, sizeof vt, "%.2f", mn + base * (mx2 - mn));

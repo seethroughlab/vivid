@@ -68,6 +68,8 @@ public:
     void chain_load_set_input(int i, int input);
     void chain_load_set_input_b(int i, int input);   // second input (2-in ops)
     int  op_input_b_at(int i) const;                 // -1 if none
+    std::vector<int> op_inputs_at(int i) const;      // all texture input edges (trailing -1 trimmed) — persist
+    void set_op_input_at(int i, int port, int src);  // wire src -> node i's texture input `port`
     std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
     void        set_op_asset_at(int i, const std::string& asset);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none
@@ -85,6 +87,8 @@ public:
     float op_param_base_at(int i, int local) const;
     void  set_op_param_base_at(int i, int local, float v);
     float op_param_value_at(int i, int local) const;     // resolved (base + modulation)
+    const char* op_file_param_at(int i, int local) const;         // FILE/TEXT param string ("" if none)
+    void  set_op_file_param_at(int i, int local, const std::string& v);
     bool  op_param_wired_at(int i, int local) const;     // a data source drives it
     // Param metadata (from the operator descriptor) so the dock can pick a widget.
     int   op_param_type_at(int i, int local) const;         // VividParamType (FLOAT/INT/BOOL/...)
@@ -164,13 +168,14 @@ private:
 
     void sync_op_pos();
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
-    bool op_in_port(int i, float& px, float& py) const;   // false if op has no input
+    bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
+    void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(vivid::VOp op) const;              // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
-    int  nearest_op_in(double x, double y, double maxd) const; // node index, -1
+    int  nearest_op_in(double x, double y, double maxd, int& port) const; // node index (-1 none) + which input port
     int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
     void draw_op_palette(Renderer2D& r);
     int  palette_hit(double x, double y) const;           // VOp to add, or -1

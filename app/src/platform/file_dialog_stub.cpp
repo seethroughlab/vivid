@@ -7,6 +7,7 @@ namespace vivid::platform {
 
 std::string open_project_dialog() { return {}; }
 std::string save_project_dialog(const std::string&) { return {}; }
+std::string open_file_dialog(const std::string&) { return {}; }
 
 }  // namespace vivid::platform
 

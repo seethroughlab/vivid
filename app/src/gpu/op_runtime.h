@@ -52,6 +52,7 @@ struct OpDescriptor {
     // temporary op build_descriptor ran on, so the cache owns copies + repoints choice_labels.
     std::vector<std::vector<std::string>> m_choice_storage;   // [param_index][choice]
     std::vector<std::vector<const char*>> m_choice_ptrs;      // [param_index] -> choice_labels
+    std::vector<std::string>              m_file_default_storage;  // [param_index] FILE/TEXT default_string
     VividOperatorDescriptor            desc{};
 };
 

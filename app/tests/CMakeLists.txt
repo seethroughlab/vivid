@@ -71,6 +71,9 @@ target_sources(test_op_registry PRIVATE
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
 
+# Visuals executor topological order + cycle handling (gpu/graph_topo.h; header-only, wgpu-free).
+vivid_add_test(test_graph_topo)
+
 # Launch window sizing policy: compute_launch_rect (pure) + a prefs save/load round-trip.
 vivid_add_test(test_window_prefs)
 target_sources(test_window_prefs PRIVATE

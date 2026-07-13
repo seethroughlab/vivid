@@ -11,6 +11,7 @@
 #include "ui/node_graph.h"       // add_data_node / add_mapping / disconnect_dest
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_open/close + Steinberg::Vst::IEditController
+#include "platform/file_dialog.h"       // open_file_dialog (Image node path picker)
 
 #include <algorithm>
 #include <cmath>
@@ -162,6 +163,11 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
             case NodeWidget::Enum: {
                 const int cc = g->op_param_choice_count_at(selop, i);
                 if (cc > 1) { int idx = (int(std::lround(base * (cc - 1))) + 1) % cc; g->set_op_param_base_at(selop, i, float(idx) / (cc - 1)); }
+                break;
+            }
+            case NodeWidget::File: {   // open a native file chooser; set the path on the node
+                const std::string path = vivid::platform::open_file_dialog("Choose a file");
+                if (!path.empty()) g->set_op_file_param_at(selop, i, path);
                 break;
             }
             case NodeWidget::Slider:
