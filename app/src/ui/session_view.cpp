@@ -10,7 +10,6 @@
 #include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"
-#include "ui/plugin_browser.h"    // plugin_browser_rows — shared by this draw + the hit-test
 #include "transport.h"
 
 #include <algorithm>
@@ -250,59 +249,6 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
         }
     }
 
-    // --- PLUGINS: the installed catalog (search, scroll; double-click a row to add it) ---
-    // The list is ~30 deep and only ~12 rows fit, so it MUST show a search field and a scrollbar:
-    // without them the rest is culled silently and installed plugins look like they're missing.
-    namespace S = vivid::session;
-    const Rect pp = sidebar_plugins_panel(w.sidebar_w, w.win_h, w.dock_h);
-    const std::vector<int> rows = plugin_browser_rows(w.plugin_filter);
-    const int nrows = static_cast<int>(rows.size());
-    char phdr[40];
-    if (w.plugin_filter.empty()) std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d", S::plugin_count());
-    else                         std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d/%d", nrows, S::plugin_count());
-    panel(ui, pp, phdr, sty.fx);
-
-    // Search field.
-    { const Rect sr = plugins_search_rect(w.sidebar_w, w.win_h, w.dock_h);
-      recess(ui, sr, w.plugin_search_focus);
-      const bool empty = w.plugin_filter.empty();
-      const std::string t = empty && !w.plugin_search_focus ? std::string("search\xE2\x80\xA6")
-                                                            : w.plugin_filter + (w.plugin_search_focus ? "_" : "");
-      ui.draw_text(sr.x + 6.f, sr.y + 4.f, fit_text(ui, t, sr.w - 12.f, sty.fs_label).c_str(),
-                   empty ? sty.dim[0] : sty.text[0], empty ? sty.dim[1] : sty.text[1],
-                   empty ? sty.dim[2] : sty.text[2], 1.0f, sty.fs_label); }
-
-    const float body_top = plugins_body_top(w.sidebar_w, w.win_h, w.dock_h);
-    ui.push_clip_rect(pp.x + 1.f, body_top, pp.w - 2.f, pp.y + pp.h - body_top - 1.f);
-    for (int i = 0; i < nrows; ++i) {
-        const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
-        if (r.y + r.h < body_top || r.y > pp.y + pp.h) continue;   // offscreen (the scrollbar says so)
-        const S::PluginInfo& pi = S::plugin_at(rows[i]);
-        const bool hov = hit(r, mx, my);
-        if (hov) item_box(ui, r, sty.fx, true);
-        // Class badge: instruments and effects are different things to add, so say which. An
-        // unprobed plugin says "?" rather than lying about what it is.
-        const char* badge = pi.probed ? (pi.cls == S::kClassInstrument ? "INS"
-                                       : pi.cls == S::kClassEffect     ? "FX"
-                                       : pi.cls == S::kClassNoteEffect ? "NOTE" : "\xE2\x80\x94")
-                                      : "?";
-        const float* bc = pi.cls == S::kClassInstrument ? sty.audio : sty.fx;
-        const float badge_w = 34.f;
-        ui.draw_text(r.x + 6.f, r.y + 3.f,
-                     fit_text(ui, pi.name, r.w - 16.f - badge_w, sty.fs_label).c_str(),
-                     hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1],
-                     hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
-        ui.draw_text(r.x + r.w - badge_w, r.y + 4.f, badge,
-                     pi.probed ? bc[0] : sty.dim[0], pi.probed ? bc[1] : sty.dim[1],
-                     pi.probed ? bc[2] : sty.dim[2], 1.0f, sty.fs_kicker);
-    }
-    if (nrows == 0)
-        ui.draw_text(pp.x + kPanePad + 4.f, body_top + 6.f, "no match", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
-    ui.pop_clip_rect();
-
-    // Scrollbar: the affordance that says "there is more below".
-    { const Rect sb = plugins_scrollbar_rect(w.sidebar_w, w.win_h, w.dock_h, nrows, w.plugin_scroll);
-      if (sb.h > 0.f) ui.draw_rect(sb.x, sb.y, sb.w, sb.h, sty.border[0], sty.border[1], sty.border[2], 1.0f); }
 }
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
@@ -717,36 +663,6 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
     }
 
-    // ---- plugin drag feedback: highlight the drop target (a track = effect, +Track = instrument) ----
-    if (w.plugin_drag_i >= 0 && w.plugin_dragging) {
-        const float dmx = static_cast<float>(mx) - SW;   // DAW-pane x (grid shifted by the sidebar)
-        int tgt = -1;   // -2 = +Track slot (new instrument); >=0 = track (effect)
-        if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) tgt = -2;
-        else {
-            for (int t = 0; t < tracks && tgt < 0; ++t)
-                if (hit(track_header_rect(t), dmx, my) ||
-                    (dmx >= track_x(t) && dmx < track_x(t) + kTrackW && my >= kHeaderY && my < w.dock_top())) tgt = t;
-            if (tgt < 0 && my >= w.dock_top()) tgt = std::min(std::max(w.sel_track, 0), tracks - 1);
-        }
-        auto outline = [&](Rect r, const float* c) {
-            const float rx = r.x + SW;
-            ui.draw_rect(rx, r.y, r.w, 2.f, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx, r.y + r.h - 2.f, r.w, 2.f, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx + r.w - 2.f, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
-        };
-        if (tgt == -2) outline(track_add_rect(tracks), sty.audio);                                   // new instrument
-        else if (tgt >= 0) outline({ track_x(tgt), kHeaderY, kTrackW, w.dock_top() - kPaneMargin - kHeaderY }, sty.fx);  // effect on this track
-
-        const std::string& pn = vivid::session::plugin_at(w.plugin_drag_i).name;
-        const bool inst = (tgt == -2);
-        const float gw = 156.f, gh = 20.f, gx = static_cast<float>(mx) + 10.f, gy = static_cast<float>(my) + 6.f;
-        ui.draw_rect(gx, gy, gw, gh, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.95f);
-        const float* bar = inst ? sty.audio : sty.fx;
-        ui.draw_rect(gx, gy, 3.f, gh, bar[0], bar[1], bar[2], 1.0f);
-        char pt[40]; std::snprintf(pt, sizeof pt, "%s %.24s", inst ? "\xE2\x86\x92 track:" : "\xE2\x86\x92 fx:", pn.c_str());
-        ui.draw_text(gx + 8.f, gy + 3.f, fit_text(ui, pt, gw - 14.f, sty.fs_label).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-    }
 }
 
 // The "map this param from a source" picker (the return path).

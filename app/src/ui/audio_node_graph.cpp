@@ -270,13 +270,10 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                 wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
     }
 
-    // "+ FX" / "+ Src" affordances (add an effect / a parallel instrument source).
-    { const Rect a = add_button_rect();
-      r.draw_rect(a.x, a.y, a.w, a.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-      r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
-    { const Rect a = source_add_button_rect();
-      r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-      r.draw_text(a.x + 5.f, a.y + 1.f, "+ Src", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
+    // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). The old "+ FX" / "+ Src"
+    // buttons are gone — they could only ever offer native ops, so they quietly hid half the catalog.
+    { const Rect g = graph_region();
+      r.draw_text(g.x + g.w - 108.f, g.y + 4.f, "TAB to add", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker); }
 
     r.pop_clip_rect();   // end graph-area clip (2i)
 

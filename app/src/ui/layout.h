@@ -99,16 +99,11 @@ inline Rect sidebar_panel(float sidebar_w, int win_h, float dock_h) {
     const float top = kTopBarH + kPaneMargin;
     return { kPaneMargin, top, sidebar_w - 2.f * kPaneMargin, dock_top(win_h, dock_h) - kPaneMargin - top };
 }
-// The sidebar stacks a CLIPS pool panel (top) over a PLUGINS browser panel (bottom).
-constexpr float kSidebarClipsFrac = 0.42f;   // CLIPS gets the top ~42%, PLUGINS the rest
+// The sidebar is the CLIPS pool. (The PLUGINS browser panel is gone: adding a node is Tab in the
+// graph, over the unified catalog — a browser that could only ever list plugins, never native ops,
+// was half a catalog behind a second add gesture.)
 inline Rect sidebar_clips_panel(float sidebar_w, int win_h, float dock_h) {
-    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
-    return { f.x, f.y, f.w, f.h * kSidebarClipsFrac };
-}
-inline Rect sidebar_plugins_panel(float sidebar_w, int win_h, float dock_h) {
-    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
-    const float ch = f.h * kSidebarClipsFrac;
-    return { f.x, f.y + ch + kPaneMargin, f.w, f.h - ch - kPaneMargin };
+    return sidebar_panel(sidebar_w, win_h, dock_h);
 }
 
 // Clip-pool items — a vertical list inside the sidebar's CLIPS panel.
@@ -125,56 +120,6 @@ inline bool pool_item_visible(int i, float sidebar_w, int win_h, float dock_h) {
     return pool_item_rect(i, sidebar_w).y + kPoolItemH <= c.y + c.h - kPanePad;
 }
 
-// Plugin rows — a scrollable, searchable list inside the sidebar's PLUGINS panel. The list is
-// taller than the panel (30+ plugins, ~12 rows visible), so it needs BOTH a search box and a
-// scrollbar: without them the list silently truncates and installed plugins look missing.
-constexpr float kPluginRowH   = 22.f;
-constexpr float kPluginSearchH = 20.f;   // the filter field under the header
-constexpr float kPluginScrollW = 5.f;    // the scrollbar gutter on the right edge
-
-// The search field, pinned under the panel header.
-inline Rect plugins_search_rect(float sidebar_w, int win_h, float dock_h) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    return { p.x + kPanePad, p.y + kPanelHdH + 4.f, p.w - 2.f * kPanePad, kPluginSearchH };
-}
-// Rows begin below the search field.
-inline float plugins_body_top(float sidebar_w, int win_h, float dock_h) {
-    const Rect s = plugins_search_rect(sidebar_w, win_h, dock_h);
-    return s.y + s.h + 4.f;
-}
-inline Rect plugin_row_rect(int i, float sidebar_w, int win_h, float dock_h, float scroll) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    return { p.x + kPanePad, plugins_body_top(sidebar_w, win_h, dock_h) + i * kPluginRowH - scroll,
-             p.w - 2.f * kPanePad - kPluginScrollW, kPluginRowH - 2.f };
-}
-// The visible row band (below the search field, above the panel's bottom edge).
-inline float plugins_body_h(float sidebar_w, int win_h, float dock_h) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    return std::max(0.f, p.y + p.h - kPanePad - plugins_body_top(sidebar_w, win_h, dock_h));
-}
-// Index into the DISPLAYED (filtered) row list, or -1.
-inline int plugin_row_at(float sidebar_w, int win_h, float dock_h, float scroll, int count, double mx, double my) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    if (my < plugins_body_top(sidebar_w, win_h, dock_h) || my >= p.y + p.h) return -1;   // clip to the body
-    for (int i = 0; i < count; ++i) if (hit(plugin_row_rect(i, sidebar_w, win_h, dock_h, scroll), mx, my)) return i;
-    return -1;
-}
-// Max scroll so the list can't over-scroll past the last row.
-inline float plugins_scroll_max(float sidebar_w, int win_h, float dock_h, int count) {
-    return std::max(0.f, count * kPluginRowH - plugins_body_h(sidebar_w, win_h, dock_h));
-}
-// The scrollbar thumb: proportional to how much of the list is visible. Empty when it all fits.
-inline Rect plugins_scrollbar_rect(float sidebar_w, int win_h, float dock_h, int count, float scroll) {
-    const Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    const float body = plugins_body_h(sidebar_w, win_h, dock_h);
-    const float total = count * kPluginRowH;
-    if (total <= body || body <= 0.f) return { 0.f, 0.f, 0.f, 0.f };
-    const float top = plugins_body_top(sidebar_w, win_h, dock_h);
-    const float th = std::max(24.f, body * (body / total));
-    const float smax = std::max(1.f, total - body);
-    const float ty = top + (body - th) * std::min(1.f, std::max(0.f, scroll / smax));
-    return { p.x + p.w - kPanePad - kPluginScrollW + 1.f, ty, kPluginScrollW - 1.f, th };
-}
 inline Rect pool_item_x_rect(int i, float sidebar_w) { Rect r = pool_item_rect(i, sidebar_w); return { r.x + r.w - 15.f, r.y + 3.f, 13.f, 13.f }; }
 inline int pool_item_at(float sidebar_w, int count, double mx, double my) {
     for (int i = 0; i < count; ++i) if (hit(pool_item_rect(i, sidebar_w), mx, my)) return i;

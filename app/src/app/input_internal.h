@@ -23,13 +23,13 @@ bool transport_mouse(Window& win, App& app, int button, int action, double mx, d
 bool transport_key(Window& win, App& app, int key);   // Space / R
 
 // ---- plugin browser drag/drop (input_plugins.cpp) ----
-bool plugins_scroll(Window& win, App& app, double yoff, double mx, double my);
-bool plugins_release(Window& win, App& app, double mx, double my);      // drop a dragged plugin
-void plugins_sidebar_press(Window& win, App& app, double mx, double my);  // PLUGINS-panel press (inside sidebar guard)
-// The PLUGINS search field owns the keyboard while focused (else typing "m" would toggle the
-// mapping overlay). Both return true when they consumed the event.
-bool plugins_search_key(Window& win, int key);
-bool plugins_search_char(Window& win, unsigned int cp);
+// A3: the audio graph's Tab chooser (the ONE way to add an audio node — native op / VST3 / CLAP).
+// All return true when they consumed the event.
+bool audio_chooser_open_at(Window& win, App& app, double mx, double my);
+void audio_chooser_open_new_track(Window& win, App& app, double mx, double my);   // "+ Track"
+bool audio_chooser_key(Window& win, App& app, int key);
+bool audio_chooser_char(Window& win, unsigned int cp);
+bool audio_chooser_click(Window& win, App& app, double mx, double my);
 
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)

@@ -462,7 +462,8 @@ void run_frame_loop(App& app, Window& win) {
             }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
             if (win.preview_show) draw_output_preview(ui, win, mx, my);
-            graph.draw_overlays(ui);  // operator chooser
+            graph.draw_overlays(ui);      // the visuals Tab chooser
+            win.audio_chooser.draw(ui);   // the audio Tab chooser (A3) — same widget, one catalog
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));

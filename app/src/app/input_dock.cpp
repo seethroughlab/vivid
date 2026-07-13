@@ -81,19 +81,6 @@ bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
         win.fx_menu.open = false;
         return true;
     }
-    if (win.track_menu.open) {
-        const int n = S::session_available_instrument_count();
-        for (int j = 0; j <= n; ++j) {
-            const Rect r = { win.track_menu.x, win.track_menu.y + j * 24.f, 150.f, 24.f };
-            if (hit(r, mx, my)) {
-                if (j == n) S::session_add_audio_track(app.session);
-                else        S::session_add_instrument_track(app.session, S::session_available_instrument_name(j));
-                break;
-            }
-        }
-        win.track_menu.open = false;
-        return true;
-    }
     if (win.map_menu.open) {
         const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
         const DevSlot seldev = dock_resolve(app.session, seltr, std::max(0, win.sel_device));

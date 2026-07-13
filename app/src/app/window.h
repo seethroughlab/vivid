@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>          // std::min / std::max (preview placement)
-#include <string>             // plugin_filter
+#include <string>
+#include "ui/chooser.h"       // the shared Tab palette (the audio graph's lives here)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
 
@@ -133,11 +134,12 @@ struct Window {
     int     popout_fb_w = 0, popout_fb_h = 0;   // its framebuffer size (drives the 2nd surface)
     int     popout_display = 0;     // the `display` target it was opened on (reopen if it changes)
     float   plugin_scroll = 0.f;               // PLUGINS list scroll offset (px)
-    // PLUGINS search: the catalog is ~30 deep and the panel shows ~12 rows, so the list needs a
-    // filter to be usable at all. `plugin_search_focus` = the field has the keyboard (typed chars
-    // go to the filter, not to the global shortcuts).
-    std::string plugin_filter;
-    bool        plugin_search_focus = false;
+    // A3: the audio graph's Tab chooser — the ONE way to add an audio node (native op, VST3 or
+    // CLAP, from the unified catalog). Lives here because AudioNodeGraph is rebuilt each frame,
+    // so it can't hold state. The visuals graph's chooser lives on NodeGraph (which persists).
+    ui::Chooser audio_chooser;
+    // "+ Track" opens the same chooser filtered to instruments; the pick creates the track first.
+    bool audio_chooser_new_track = false;
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).
     int     plugin_drag_i = -1; bool plugin_dragging = false;
