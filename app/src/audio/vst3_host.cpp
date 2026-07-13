@@ -9,6 +9,7 @@
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
 #include "audio/clap_host.h"                           // CLAP plugin hosting (ClapHandle, clap_run, clap_load_plugin)
+#include "audio/plugin_catalog.h"                     // A2: PluginFormat (kFmtVST3 / kFmtCLAP)
 #include "audio/vst3_presets.h"                         // VST3 preset discovery/load (.vstpreset + Serum/Pigments adapters)
 #include "pluginterfaces/vst/ivstnoteexpression.h"   // kTuningTypeID / kBrightnessTypeID
 
@@ -92,6 +93,11 @@ struct GNodeBind {
     Vst3Handle* handle = nullptr;
     ClapHandle* clap = nullptr;
     uint8_t key_lo = 0, key_hi = 127;
+    // A2: which per-track PluginSlot owns this node's plugin handle (-1 = none / a native op / a
+    // legacy chain-derived node). This is what lets a plugin node live ANYWHERE in the graph: the
+    // old rebind re-attached handles to nodes by kind+ORDER, which only works while the graph is a
+    // faithful copy of the linear chain. A user-spawned plugin node breaks that coupling.
+    int32_t pslot = -1;
 };
 // The audio thread swaps gbinds under a try_lock as a plain copy (reserved capacity, no move) —
 // that is only RT-safe while the bind is trivially copyable. Adding a non-POD member here would
@@ -169,6 +175,22 @@ struct Track {
     ClapHandle*              clap_inst = nullptr;
     std::vector<ClapHandle*> clap_effects;
     std::vector<ClapHandle*> clap_retired;
+    // A2: plugin nodes the USER spawned into the graph (as opposed to those derived from the linear
+    // chain). Each slot owns one plugin handle and is addressed by a stable index that is never
+    // recycled, so a node keeps its handle no matter where it sits or what is added/removed around
+    // it. UI thread only, under gmtx; the audio thread only ever sees the resolved raw pointers
+    // copied into gbinds. A dead slot keeps its entry (the array is append-only) so a late async
+    // completion can tell "this node is gone" from "this slot is someone else's now".
+    struct PluginSlot {
+        int         format = 0;          // PluginFormat (kFmtVST3 / kFmtCLAP)
+        bool        is_source = false;   // instrument (fan-in) vs effect (splice)
+        std::string path, uid;
+        Vst3Handle* vst3 = nullptr;      // owned; null while an async load is in flight, or on failure
+        ClapHandle* clap = nullptr;      // owned
+        bool        pending = false;     // an async load is in flight for this slot
+        bool        dead = false;        // its node was removed; the handle is retired, not freed
+    };
+    std::vector<PluginSlot> pslots;
     // Preset browse cache (UI thread only): the track instrument's presets (name/id + discovery
     // metadata), filled by session_track_preset_scan and read by the count/name/id/... accessors.
     std::vector<PresetEntry> preset_cache;
@@ -273,8 +295,10 @@ struct Session {
     // finished handles on the main thread (all Track/graph edits stay UI-thread). ---
     // track_id is the STABLE per-track id (not the slot index) — a load can finish after tracks are
     // reordered/removed (e.g. opening another project), so the completion must re-resolve identity.
-    struct ClapLoadReq  { int track_id; bool is_instrument; std::string path; double sr; std::string state; };
-    struct ClapLoadDone { int track_id; bool is_instrument; std::string path; ClapHandle* handle; std::string state; };
+    // `slot` >= 0 addresses a per-track PluginSlot (a graph node the user spawned); -1 means the
+    // legacy destination (the track's clap_inst / clap_effects chain slots).
+    struct ClapLoadReq  { int track_id; bool is_instrument; std::string path; double sr; std::string state; int slot = -1; };
+    struct ClapLoadDone { int track_id; bool is_instrument; std::string path; ClapHandle* handle; std::string state; int slot = -1; };
     std::thread              clap_worker;
     std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
     std::condition_variable  clap_load_cv;
@@ -374,6 +398,19 @@ static bool republish_track_graph(Track* t) {
 static void rebind_authoritative_plugins(Track* t) {
     size_t vfx = 0, cfx = 0;                          // next VST3/CLAP effect to bind (node order)
     for (GNodeBind& nb : t->agnodes) {
+        // A2: a node that owns a plugin SLOT binds from it directly — position-independent, so the
+        // node can sit anywhere in the graph. A null handle here is a plugin still loading (CLAP is
+        // async) and is already safe: run_track_graph gates on handle/clap being non-null, so the
+        // node passes audio through (effect) or is silent (instrument) until it binds.
+        if (nb.pslot >= 0 && nb.pslot < static_cast<int>(t->pslots.size())) {
+            const Track::PluginSlot& ps = t->pslots[static_cast<size_t>(nb.pslot)];
+            nb.handle = ps.vst3;
+            nb.clap   = ps.clap;
+            continue;
+        }
+        // Legacy: nodes derived from the linear device chain, and projects saved before slots
+        // existed. Their handles are matched by kind + order, which is only sound because such a
+        // graph IS the chain, in chain order.
         switch (nb.kind) {
             case GNKind::Vst3Inst: nb.handle = t->handle;    break;   // single source per track
             case GNKind::ClapInst: nb.clap   = t->clap_inst; break;
@@ -1882,6 +1919,10 @@ void session_destroy(Session* s) {
         delete t->clap_inst;                                    // CLAP instrument + FX + retired
         for (ClapHandle* c : t->clap_effects) delete c;
         for (ClapHandle* c : t->clap_retired) delete c;
+        for (Track::PluginSlot& ps : t->pslots) {               // A2: user-spawned plugin NODES
+            if (ps.vst3) destroy_handle(ps.vst3);
+            if (ps.clap) delete ps.clap;
+        }
     };
     for (auto& tp : s->tracks)         teardown(tp.get());
     for (auto& tp : s->tracks_retired) teardown(tp.get());   // tracks removed during the run
@@ -1904,6 +1945,12 @@ void* session_effect_controller(Session* s, int t, int e) {
 }
 bool session_add_effect(Session* s, int t, const char* bundle) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !bundle) return false;
+    // A2 bug fix: on an AUTHORITATIVE track the linear chain is no longer the source of truth, and
+    // rebuild_track_graph only re-binds handles into pre-existing nodes — so an effect pushed onto
+    // the chain here never became a graph node at all. It was silently inaudible AND invisible.
+    // Forward to the graph, so every caller (the browser drop, MCP, a project load) gets a node.
+    if (t < static_cast<int>(s->tracks.size()) && s->tracks[t]->graph_authoritative)
+        return session_audio_graph_add_plugin(s, t, bundle, kFmtVST3, /*is_source*/0, "") >= 0;
     Vst3Handle* fx = load_effect(bundle, s->sample_rate, &s->host);  // load outside the lock (slow)
     if (!fx) return false;
     Track& tr = *s->tracks[t];
@@ -2000,21 +2047,22 @@ static void clap_worker_main(Session* s) {
         ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
         {
             std::lock_guard<std::mutex> lk(s->clap_load_mtx);
-            s->clap_done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state) });
+            s->clap_done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state), req.slot });
         }
     }
 }
 static void ensure_clap_worker(Session* s) {
     if (!s->clap_worker.joinable()) s->clap_worker = std::thread(clap_worker_main, s);
 }
-static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path, const char* state) {
+static int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path,
+                            const char* state, int slot = -1) {
     ensure_clap_worker(s);
     const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
     const int tid = s->tracks[t]->id;   // capture the STABLE id (callers validated t in range)
     {
         std::lock_guard<std::mutex> lk(s->clap_load_mtx);
         s->clap_last_error.clear();
-        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "" });
+        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "", slot });
     }
     s->clap_pending.fetch_add(1, std::memory_order_release);
     s->clap_load_cv.notify_one();
@@ -2035,6 +2083,10 @@ int session_request_track_clap_instrument_state(Session* s, int t, const char* c
 }
 int session_request_track_clap_effect_state(Session* s, int t, const char* clap_path, const char* state) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !clap_path || !*clap_path) return 0;
+    // Same drop-loss fix as session_add_effect: on an authoritative track a chain-slot CLAP effect
+    // would never become a node. Spawn it as one instead.
+    if (s->tracks[t]->graph_authoritative)
+        return session_audio_graph_add_plugin(s, t, clap_path, kFmtCLAP, /*is_source*/0, "") >= 0 ? 1 : 0;
     return enqueue_clap_load(s, t, /*is_instrument*/false, clap_path, state);
 }
 int session_request_track_clap_instrument(Session* s, int t, const char* clap_path) {
@@ -2059,6 +2111,37 @@ void session_poll_plugin_loads(Session* s) {
         ClapHandle* h = d.handle;
         Track* trp = nullptr;                                // resolve the STABLE id to the current slot
         for (auto& tp : s->tracks) if (tp->id == d.track_id) { trp = tp.get(); break; }
+        // A2: a slot-addressed load — a CLAP the user spawned as a graph NODE. Bind it into its
+        // slot; the node has existed (passing audio through / silent) since the moment it was added.
+        if (d.slot >= 0) {
+            bool bound = false;
+            if (trp && h) {
+                std::lock_guard<std::mutex> lk(trp->gmtx);
+                const size_t si = static_cast<size_t>(d.slot);
+                // The node may have been deleted while this was loading — the slot is then `dead`
+                // and the handle has nowhere to go. (The slot itself is never recycled, so we can
+                // always tell "gone" from "someone else's now".)
+                if (si < trp->pslots.size() && !trp->pslots[si].dead) {
+                    trp->pslots[si].clap = h;
+                    trp->pslots[si].pending = false;
+                    bound = true;
+                }
+            }
+            if (!bound) {
+                delete h;                                    // node deleted, track gone, or load failed
+                if (!h) s->clap_last_error = d.path + ": failed to load CLAP plugin";
+                if (trp) {                                   // mark the slot failed so the UI stops waiting
+                    std::lock_guard<std::mutex> lk(trp->gmtx);
+                    const size_t si = static_cast<size_t>(d.slot);
+                    if (si < trp->pslots.size()) trp->pslots[si].pending = false;
+                }
+            } else {
+                if (!d.state.empty()) clap_load_state(h, d.state);   // restore the saved patch
+                rebuild_track_graph(trp);   // takes gmtx itself — MUST be called with the lock dropped
+            }
+            s->clap_pending.fetch_sub(1, std::memory_order_release);
+            continue;
+        }
         if (trp) {
             Track& tr = *trp;
             if (d.is_instrument) {
@@ -2243,6 +2326,15 @@ int session_track_audio_graph_edge_to(Session* s, int t, int e) {
 // republishes to the audio thread via republish_track_graph. All hold t->gmtx while mutating
 // agraph/agnodes; op lifetime follows the existing own/retire model (freed at shutdown).
 
+// Create the Output sink for a bare graph, keeping the host's parallel bind array (agnodes) in
+// step with the graph's node list. Passed to AudioGraph::fan_in_to_output as its make_output hook.
+static int make_output_node(void* user) {
+    Track* tr = static_cast<Track*>(user);
+    const int out = tr->agraph.add_node(false, true, nullptr, nullptr, "out");
+    tr->agnodes.push_back({ GNKind::Output, nullptr });
+    return out;
+}
+
 // Add a native effect as a new node, inserted just before Output (every P->Output becomes
 // P->new, then new->Output) so it lands at the end of the signal path and is immediately
 // audible. Returns the new node id, or -1 (unknown op / source op / node cap / no track).
@@ -2257,14 +2349,7 @@ int session_audio_graph_add_op(Session* s, int t, const char* op_type) {
     tr->op_fx_gen.fetch_add(1, std::memory_order_release);
     const int nid = tr->agraph.add_node(false, false, nullptr, nullptr, op_type ? op_type : "fx");
     tr->agnodes.push_back({ GNKind::NativeFx, op });   // keep agnodes parallel to nodes()
-    const int out = tr->agraph.output_id();
-    if (out >= 0) {
-        std::vector<int> preds;
-        for (const vivid::audio::AudioGraphEdge& e : tr->agraph.edges())
-            if (e.to_id == out) preds.push_back(e.from_id);
-        for (int p : preds) { tr->agraph.disconnect(p, out); tr->agraph.connect(p, nid); }
-        tr->agraph.connect(nid, out);
-    }
+    tr->agraph.splice_before_output(nid);              // shared wiring policy (audio_graph.cpp)
     tr->graph_authoritative = true;
     republish_track_graph(tr);
     return nid;
@@ -2286,16 +2371,135 @@ int session_audio_graph_add_source(Session* s, int t, const char* op_type) {
     tr->op_fx_gen.fetch_add(1, std::memory_order_release);
     const int nid = tr->agraph.add_node(true, false, nullptr, nullptr, op_type ? op_type : "src");
     tr->agnodes.push_back({ GNKind::NativeInst, op });   // full range by default; set via key_range_set
-    int out = tr->agraph.output_id();
-    if (out < 0) {   // bare graph (no source yet): materialize the Output sink so the source is heard
-        out = tr->agraph.add_node(false, true, nullptr, nullptr, "out");
-        tr->agnodes.push_back({ GNKind::Output, nullptr });
-        tr->agraph.set_output_id(out);
-    }
-    tr->agraph.connect(nid, out);                        // fan-in to Output (parallel with existing sources)
+    // Shared wiring policy (audio_graph.cpp). The Output node, if it has to be created, must also
+    // get its entry in the host's parallel bind array — hence the hook.
+    tr->agraph.fan_in_to_output(nid, &make_output_node, tr);
     tr->graph_authoritative = true;
     republish_track_graph(tr);
     return nid;
+}
+
+// A2: add a VST3/CLAP plugin as a first-class graph NODE — the thing that was impossible before
+// (the graph could only ever *represent* plugin nodes derived from the linear chain, so no add path
+// could put one anywhere). An instrument fans in to Output (parallel source → key-splits, layers);
+// an effect splices in before Output.
+//
+// The node id comes back IMMEDIATELY, even for CLAP, whose load is async and slow (Surge XT takes
+// ~90s). A not-yet-bound node is already RT-safe: run_track_graph gates on the handle being
+// non-null, so it passes audio through (effect) or stays silent (instrument) until the handle
+// lands. That is the existing placeholder behavior — no new audio-thread code.
+int session_audio_graph_add_plugin(Session* s, int t, const char* path, int format,
+                                   int is_source, const char* uid) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !path || !*path) return -1;
+    const bool clap = (format == kFmtCLAP);
+    const bool src  = (is_source != 0);
+
+    // VST3 loads synchronously (what session_add_effect already does); CLAP must not — its ctor can
+    // block the main thread for a minute or more.
+    Vst3Handle* vh = nullptr;
+    if (!clap) {
+        // `uid` (the class cid the probe recorded) makes the loader pick the EXACT class rather
+        // than guessing "first instrument class, else class 0" in a multi-class bundle.
+        vh = vst3_load_plugin(path, uid ? uid : "", s->sample_rate, std::string(), &s->host,
+                              /*as_effect*/ !src);   // slow: outside the lock
+        if (!vh) return -1;
+        if (vh->processor->setProcessing(true) != kResultOk) {}
+        vh->processing = true;
+    }
+
+    int slot = -1, nid = -1;
+    {
+        std::lock_guard<std::mutex> lk(tr->gmtx);
+        if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) {
+            if (vh) destroy_handle(vh);
+            return -1;
+        }
+        Track::PluginSlot ps;
+        ps.format = format;
+        ps.is_source = src;
+        ps.path = path;
+        ps.uid = uid ? uid : "";
+        ps.vst3 = vh;
+        ps.pending = clap;               // a CLAP node exists first and binds later
+        tr->pslots.push_back(std::move(ps));
+        slot = static_cast<int>(tr->pslots.size()) - 1;
+
+        const GNKind kind = clap ? (src ? GNKind::ClapInst : GNKind::ClapFx)
+                                 : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
+        nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
+                                                                    : (src ? "vst3" : "vfx"));
+        GNodeBind nb;
+        nb.kind = kind;
+        nb.handle = vh;
+        nb.pslot = slot;
+        tr->agnodes.push_back(nb);
+
+        if (src) tr->agraph.fan_in_to_output(nid, &make_output_node, tr);   // parallel source
+        else     tr->agraph.splice_before_output(nid);                      // end of the signal path
+        tr->graph_authoritative = true;
+        republish_track_graph(tr);
+    }
+    // Kick the async CLAP load AFTER the node exists, so its completion has a slot to land in.
+    if (clap) enqueue_clap_load(s, t, src, path, "", slot);
+    return nid;
+}
+
+// 1 = the node's plugin is loaded and bound; 0 = still loading (CLAP); -1 = no such plugin node.
+int session_audio_graph_node_plugin_ready(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return -1;
+    const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+    if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return -1;
+    const Track::PluginSlot& ps = tr->pslots[static_cast<size_t>(slot)];
+    if (ps.pending) return 0;
+    return (ps.vst3 || ps.clap) ? 1 : -1;
+}
+
+// The bundle a plugin node hosts ("" if it isn't a plugin node) — for persistence + the UI label.
+const char* session_audio_graph_node_plugin_path(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return "";
+    const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+    if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return "";
+    return tr->pslots[static_cast<size_t>(slot)].path.c_str();
+}
+
+// A plugin node's patch/preset (base64), so a user-spawned plugin keeps its sound across a save +
+// load. "" when the node isn't a plugin node, or its plugin hasn't finished loading.
+std::string session_audio_graph_node_get_state(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return {};
+    Vst3Handle* vh = nullptr; ClapHandle* ch = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return {};
+      const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+      if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return {};
+      vh = tr->pslots[static_cast<size_t>(slot)].vst3;
+      ch = tr->pslots[static_cast<size_t>(slot)].clap; }
+    // Query the plugin OUTSIDE the graph lock: getState() can be slow, and holding gmtx would stall
+    // the next republish (see the VST3 save_state stutter note in docs/thread-safety.md).
+    if (ch) return clap_save_state(ch);
+    if (vh) return vst3_save_state(vh);
+    return {};
+}
+void session_audio_graph_node_set_state(Session* s, int t, int node_id, const std::string& state) {
+    if (state.empty()) return;
+    Track* tr = graph_track(s, t); if (!tr) return;
+    Vst3Handle* vh = nullptr; ClapHandle* ch = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return;
+      const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+      if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return;
+      vh = tr->pslots[static_cast<size_t>(slot)].vst3;
+      ch = tr->pslots[static_cast<size_t>(slot)].clap; }
+    if (ch) clap_load_state(ch, state);
+    else if (vh) vst3_load_state(vh, state);
 }
 
 // Set / get a source node's MIDI key range [lo,hi] (0..127). The audio thread then hands that
@@ -2328,8 +2532,23 @@ int session_audio_graph_remove_node(Session* s, int t, int node_id) {
     { std::lock_guard<std::mutex> lk(tr->gmtx);
       const int idx = tr->agraph.node_index(node_id);
       if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return 0;
-      if (tr->agnodes[idx].kind != GNKind::NativeFx) return 0;    // only effects removable
-      retire = tr->agnodes[idx].op;
+      const GNodeBind& nb = tr->agnodes[idx];
+      const int pslot = nb.pslot;
+      // Removable: a native effect, or ANY node the user spawned from a plugin slot (instrument or
+      // effect). A chain-derived plugin node is still off limits — the linear chain owns it.
+      if (nb.kind != GNKind::NativeFx && pslot < 0) return 0;
+      retire = nb.op;
+      if (pslot >= 0 && pslot < static_cast<int>(tr->pslots.size())) {
+          Track::PluginSlot& ps = tr->pslots[static_cast<size_t>(pslot)];
+          // RETIRE, never free: the audio thread may still hold this pointer in its gbinds copy for
+          // up to one block after the republish below. (The house pattern — fx_retired/clap_retired
+          // are drained at shutdown.) The slot is marked dead but KEPT, so an async load still in
+          // flight lands on "this node is gone" rather than binding into a recycled slot.
+          if (ps.vst3) { tr->fx_retired.push_back(ps.vst3);   ps.vst3 = nullptr; }
+          if (ps.clap) { tr->clap_retired.push_back(ps.clap); ps.clap = nullptr; }
+          ps.dead = true;
+          ps.pending = false;
+      }
       tr->agraph.remove_node_bridged(node_id);
       tr->agnodes.erase(tr->agnodes.begin() + idx);               // mirror the node erase (parallel)
       tr->graph_authoritative = true;
@@ -2545,6 +2764,73 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
     tr->agnodes.push_back({ gk, op });
     return nid;
 }
+// A2: restore a plugin node the user spawned (it carries its own bundle path, so it does NOT come
+// from the track's linear chain). Mirrors session_audio_graph_load_node: NO auto-wiring — the edges
+// are replayed from the file. The node exists immediately; a CLAP binds when its async load lands,
+// and its saved patch is applied at that point (that's what the state arg on the request is for).
+int session_audio_graph_load_plugin_node(Session* s, int t, int node_id, const char* path,
+                                         int format, int is_source, const char* uid,
+                                         const char* state) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !path || !*path) return -1;
+    (void)node_id;   // ids are re-issued in load order, exactly as session_audio_graph_load_node does
+    const bool clap = (format == kFmtCLAP);
+    const bool src  = (is_source != 0);
+
+    Vst3Handle* vh = nullptr;
+    if (!clap) {
+        vh = vst3_load_plugin(path, uid ? uid : "", s->sample_rate, std::string(), &s->host, !src);
+        if (vh) {
+            if (vh->processor->setProcessing(true) != kResultOk) {}
+            vh->processing = true;
+            if (state && *state) vst3_load_state(vh, state);   // restore the saved patch
+        }
+        // A missing/failed plugin still gets its NODE (with a null handle): the topology and the
+        // user's wiring survive, and the node is an audible no-op rather than silently vanishing.
+    }
+
+    int slot = -1, nid = -1;
+    {
+        std::lock_guard<std::mutex> lk(tr->gmtx);
+        if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) {
+            if (vh) destroy_handle(vh);
+            return -1;
+        }
+        Track::PluginSlot ps;
+        ps.format = format;
+        ps.is_source = src;
+        ps.path = path;
+        ps.uid = uid ? uid : "";
+        ps.vst3 = vh;
+        ps.pending = clap;
+        tr->pslots.push_back(std::move(ps));
+        slot = static_cast<int>(tr->pslots.size()) - 1;
+
+        const GNKind gk = clap ? (src ? GNKind::ClapInst : GNKind::ClapFx)
+                               : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
+        nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
+                                                                    : (src ? "vst3" : "vfx"));
+        GNodeBind nb;
+        nb.kind = gk;
+        nb.handle = vh;
+        nb.pslot = slot;
+        tr->agnodes.push_back(nb);
+        tr->graph_authoritative = true;
+    }
+    if (clap) enqueue_clap_load(s, t, src, path, state ? state : "", slot);
+    return nid;
+}
+
+const char* session_audio_graph_node_plugin_uid(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return "";
+    const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+    if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return "";
+    return tr->pslots[static_cast<size_t>(slot)].uid.c_str();
+}
+
 void session_audio_graph_load_edge(Session* s, int t, int from_id, int to_id) {
     Track* tr = graph_track(s, t); if (!tr) return;
     std::lock_guard<std::mutex> lk(tr->gmtx);

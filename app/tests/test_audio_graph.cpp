@@ -11,6 +11,13 @@
 #include <new>
 #include <vector>
 
+// Does the graph hold this edge? (Used by the wiring-policy cases below.)
+static bool has_edge(const vivid::audio::AudioGraph& g, int from, int to) {
+    for (const vivid::audio::AudioGraphEdge& e : g.edges())
+        if (e.from_id == from && e.to_id == to) return true;
+    return false;
+}
+
 static std::atomic<long> g_allocs{ 0 };
 static bool g_count = false;
 
@@ -176,6 +183,76 @@ int main() {
         CHECK(std::fabs(x - 12.5f) < 1e-6f && std::fabs(y + 3.f) < 1e-6f);
         CHECK(!g.node_pos(b, x, y));                       // sibling still unpositioned
         CHECK(!g.node_pos(999, x, y));                     // absent id → false, no crash
+    }
+
+    // --- 9. splice_before_output: an added EFFECT lands at the end of the signal path ---
+    // Every predecessor of Output must be re-routed through the new node — not just one. With two
+    // sources feeding Output (a key-split), missing that means half the signal bypasses the effect.
+    {
+        AudioGraph g;
+        const int s1 = g.add_node(true,  false, nullptr, nullptr, "s1");
+        const int s2 = g.add_node(true,  false, nullptr, nullptr, "s2");
+        const int out = g.add_node(false, true, nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(s1, out);
+        g.connect(s2, out);
+
+        const int fx = g.add_node(false, false, nullptr, nullptr, "fx");
+        g.splice_before_output(fx);
+
+        CHECK(has_edge(g, s1, fx));
+        CHECK(has_edge(g, s2, fx));      // BOTH sources re-routed
+        CHECK(has_edge(g, fx, out));
+        CHECK(!has_edge(g, s1, out));    // ...and neither bypasses it any more
+        CHECK(!has_edge(g, s2, out));
+        CHECK(g.edges().size() == 3);
+
+        // A second effect stacks after the first (it splices before Output, so fx -> fx2 -> out).
+        const int fx2 = g.add_node(false, false, nullptr, nullptr, "fx2");
+        g.splice_before_output(fx2);
+        CHECK(has_edge(g, fx, fx2));
+        CHECK(has_edge(g, fx2, out));
+        CHECK(!has_edge(g, fx, out));
+    }
+
+    // --- 10. fan_in_to_output: an added SOURCE runs in parallel; a bare graph grows a sink ---
+    {
+        AudioGraph g;
+        const int s1 = g.add_node(true, false, nullptr, nullptr, "s1");
+        CHECK(g.output_id() < 0);                       // bare: no sink yet
+        const int out = g.fan_in_to_output(s1, nullptr);
+        CHECK(out >= 0);
+        CHECK(g.output_id() == out);                    // ...materialized, or the source is silent
+        CHECK(has_edge(g, s1, out));
+
+        const int s2 = g.add_node(true, false, nullptr, nullptr, "s2");
+        CHECK(g.fan_in_to_output(s2, nullptr) == out);  // reuses the existing sink
+        CHECK(has_edge(g, s2, out));                    // parallel with s1 (Output sums = key-split)
+        CHECK(has_edge(g, s1, out));
+
+        // An absent node is a no-op, not a crash or a stray edge.
+        CHECK(g.fan_in_to_output(999, nullptr) == -1);
+        CHECK(g.edges().size() == 2);
+    }
+
+    // --- 11. remove_node_bridged on a middle node keeps the signal flowing ---
+    // (A user-spawned plugin node deleted from the middle of a chain must not orphan the tail.)
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(src, out);
+        const int a = g.add_node(false, false, nullptr, nullptr, "a");
+        g.splice_before_output(a);
+        const int b = g.add_node(false, false, nullptr, nullptr, "b");
+        g.splice_before_output(b);
+        CHECK(has_edge(g, src, a) && has_edge(g, a, b) && has_edge(g, b, out));
+
+        g.remove_node_bridged(a);                       // pull the middle node out
+        CHECK(g.node_index(a) < 0);
+        CHECK(has_edge(g, src, b));                     // src now feeds b directly
+        CHECK(has_edge(g, b, out));
     }
 
     return vivid::test::summary("test_audio_graph");

@@ -111,6 +111,20 @@ public:
     // index in nodes_. Steps are emitted in topological order.
     bool compile(CompiledAudioGraph& out) const;
 
+    // --- the two ways a newly added node gets wired (shared by every add path: the native ops,
+    // the plugin nodes, the chooser, a browser drop) ---
+    //
+    // An EFFECT is spliced in just before Output: every P->Output becomes P->new->Output, so it
+    // lands at the end of the signal path and is immediately audible.
+    void splice_before_output(int id);
+    // A SOURCE fans in to Output, in parallel with any existing source (two sources with disjoint
+    // key ranges = a key-split). Materializes the Output node if the graph is bare, since a source
+    // with nowhere to go is silent. Returns the Output node's id (it may have just been created),
+    // or -1 if `id` is not a real node. `make_output` supplies the Output node when one is needed
+    // (the host must keep its own per-node bind array in step) — pass nullptr to let the graph
+    // create a bare one.
+    int fan_in_to_output(int id, int (*make_output)(void* user), void* user = nullptr);
+
 private:
     std::vector<AudioGraphNode> nodes_;
     std::vector<AudioGraphEdge> edges_;

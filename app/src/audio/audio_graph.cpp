@@ -105,6 +105,34 @@ void AudioGraph::set_node_processor(int id, ProcessFn fn, void* ctx) {
     if (idx >= 0) { nodes_[idx].process = fn; nodes_[idx].ctx = ctx; }
 }
 
+// An effect lands at the END of the signal path: everything that fed Output now feeds the new
+// node instead, and the new node feeds Output. (A node added with no wiring is inaudible, which
+// reads as "the app ignored me".)
+void AudioGraph::splice_before_output(int id) {
+    if (node_index(id) < 0) return;
+    const int out = output_id_;
+    if (out < 0 || out == id) return;
+    std::vector<int> preds;
+    for (const AudioGraphEdge& e : edges_)
+        if (e.to_id == out && e.from_id != id) preds.push_back(e.from_id);
+    for (int p : preds) { disconnect(p, out); connect(p, id); }
+    connect(id, out);
+}
+
+// A source is a parallel head of the graph: it fans in to Output alongside any existing source
+// (Output sums its inputs — that's the primitive key-splits and layers are built from).
+int AudioGraph::fan_in_to_output(int id, int (*make_output)(void* user), void* user) {
+    if (node_index(id) < 0) return -1;
+    int out = output_id_;
+    if (out < 0) {   // a bare graph: without a sink the source would be silent
+        out = make_output ? make_output(user) : add_node(false, true, nullptr, nullptr, "out");
+        if (out < 0) return -1;
+        output_id_ = out;
+    }
+    connect(id, out);
+    return out;
+}
+
 void AudioGraph::clear() { nodes_.clear(); edges_.clear(); output_id_ = -1; }   // keeps next_id_
 void AudioGraph::reset() { nodes_.clear(); edges_.clear(); output_id_ = -1; next_id_ = 0; }
 

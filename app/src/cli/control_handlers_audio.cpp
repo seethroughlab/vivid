@@ -406,6 +406,27 @@ void register_audio_handlers(Handlers& handlers_) {
         if (nid < 0) return err(code::kBadArg, "could not add audio effect node: '" + op + "'");
         json r = ok(); r["node"] = nid; return r;
     };
+    // A2: spawn a VST3/CLAP plugin as a graph NODE (the peer of audio_graph_add_op, which is
+    // native-only). `path` = the bundle; `source` = instrument (fan-in) vs effect (splice). The
+    // node id comes back immediately — a CLAP binds when its async load lands, so poll
+    // get_audio_graph / plugin_loads_pending to know when it's live.
+    handlers_["audio_graph_add_plugin"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "path required (a .vst3 / .clap bundle)");
+        const bool clap = path.size() > 5 && path.compare(path.size() - 5, 5, ".clap") == 0;
+        const int fmt = b.contains("format") ? b.value("format", 0)
+                                             : (clap ? P::kFmtCLAP : P::kFmtVST3);
+        const int src = b.value("source", 0) ? 1 : 0;
+        const std::string uid = b.value("uid", std::string());
+        const int nid = P::session_audio_graph_add_plugin(c.session, track, path.c_str(), fmt, src, uid.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add plugin node: '" + path + "'");
+        json r = ok(); r["node"] = nid;
+        r["ready"] = P::session_audio_graph_node_plugin_ready(c.session, track, nid);   // 0 = still loading
+        return r;
+    };
     handlers_["audio_graph_add_source"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);

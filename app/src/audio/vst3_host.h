@@ -264,6 +264,25 @@ int         session_track_audio_graph_edge_to(Session*, int track, int e);
 // and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
 int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
 int         session_audio_graph_add_source(Session*, int track, const char* op_type);   // instrument source node, fan-in to Output
+// A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
+// `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
+// vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a
+// CLAP synth may declare audio inputs). `uid` = a VST3 class cid hex, "" to let the loader pick.
+// Returns the new node id IMMEDIATELY; a CLAP's handle binds when its async load lands (the node is
+// audibly a no-op until then, which is already RT-safe).
+int         session_audio_graph_add_plugin(Session*, int track, const char* path, int format,
+                                           int is_source, const char* uid);
+int         session_audio_graph_node_plugin_ready(Session*, int track, int node_id);   // 1 bound / 0 loading / -1 not a plugin node
+const char* session_audio_graph_node_plugin_path(Session*, int track, int node_id);    // "" if not a plugin node
+const char* session_audio_graph_node_plugin_uid(Session*, int track, int node_id);     // VST3 class cid hex ("" if none)
+// A plugin node's patch (base64) — so a user-spawned plugin keeps its sound across save + load.
+std::string session_audio_graph_node_get_state(Session*, int track, int node_id);
+void        session_audio_graph_node_set_state(Session*, int track, int node_id, const std::string& state);
+// Load-time twin of add_plugin: recreate a persisted plugin node with its SAVED id and no auto-wiring
+// (the edges come from the file). `state` is applied once the plugin is bound (CLAP binds async).
+int         session_audio_graph_load_plugin_node(Session*, int track, int node_id, const char* path,
+                                                 int format, int is_source, const char* uid,
+                                                 const char* state);
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
