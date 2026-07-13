@@ -52,3 +52,4 @@ add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a cus
 add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
 add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
+add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)

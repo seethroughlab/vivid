@@ -4,6 +4,7 @@
   "operators": [
     { "name": "NoiseTexture", "source": "noise_texture.cpp", "gpu": true },
     { "name": "Displace", "source": "displace.cpp", "gpu": true },
-    { "name": "Image", "source": "image.cpp", "gpu": true }
+    { "name": "Image", "source": "image.cpp", "gpu": true },
+    { "name": "Switch", "source": "switch.cpp", "gpu": true }
   ]
 }
