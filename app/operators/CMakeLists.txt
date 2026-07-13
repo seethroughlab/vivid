@@ -47,3 +47,6 @@ endfunction()
 
 add_vivid_operator(vivid_spike_solid spike/spike_solid.cpp)
 add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a custom editor
+
+# core-visuals: the auto-discovered core visual nodes (migrating off builtin_ops.cpp).
+add_vivid_operator(vivid_noise_texture packages/core-visuals/noise_texture.cpp)
