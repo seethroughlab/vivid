@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
@@ -27,6 +28,8 @@
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
+#include "audio/plugin_scan.h"         // background plugin classifier (instrument vs effect)
+#include "audio/plugin_probe.h"        // --probe-plugin subprocess entry point
 #include "audio/audio_callback.h"
 #include "ui/mapping_overview.h"
 #include "ui/session_view.h"
@@ -55,7 +58,20 @@
 
 namespace { using namespace vivid::ui; }  // layout constants (ui/layout.h)
 
-int main() {
+int main(int argc, char** argv) {
+    // Probe subprocess: `vivid --probe-plugin <bundle> --format <n>` opens ONE plugin, prints what
+    // it is as JSON, and exits. The app re-execs itself this way (audio/plugin_scan.cpp) so a
+    // plugin that segfaults or hangs while being opened kills a throwaway child instead of Vivid.
+    // Must run before ANY window/audio/GPU init — this process is not a UI.
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--probe-plugin") != 0 || i + 1 >= argc) continue;
+        const std::string path = argv[i + 1];
+        int format = 0;
+        for (int j = 1; j + 1 < argc; ++j)
+            if (std::strcmp(argv[j], "--format") == 0) format = std::atoi(argv[j + 1]);
+        return vivid::session::run_probe_subprocess_main(path, format);
+    }
+
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // WebGPU owns the surface
     GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
@@ -225,6 +241,10 @@ int main() {
         app.session = vivid::session::session_create(device.sampleRate);
         vivid::session::session_set_load_progress(nullptr, nullptr);
         vivid::session::session_set_op_registry(app.session, &app.op_registry);   // AO-1: native audio ops
+        // Classify the installed plugins (instrument vs effect) in the background: cached verdicts
+        // apply instantly, only new/changed plugins are probed. Kicked explicitly HERE and not from
+        // the catalog's lazy first query — that one happens inside a draw call.
+        vivid::session::plugin_scan_start();
         vivid::session::session_build_split_showcase(app.session);   // node-graph demo tracks (needs the registry)
         std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
                      app.session ? vivid::session::session_track_count(app.session) : 0,
@@ -270,6 +290,7 @@ int main() {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);
+    vivid::session::plugin_scan_stop();   // join the classifier worker before anything it touches dies
     if (app.session) vivid::session::session_destroy(app.session);
     if (app.video) { video_close(app.video); app.video = nullptr; }
     vgraph.shutdown();

@@ -17,6 +17,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"
+#include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
@@ -354,6 +355,7 @@ void run_frame_loop(App& app, Window& win) {
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
         if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
+        vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
