@@ -165,6 +165,7 @@ void register_introspection_handlers(Handlers& handlers_) {
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
                                    {"value", g.op_param_value_at(i, l)}, {"wired", g.op_param_wired_at(i, l)} });
             nodes.push_back({ {"id", id}, {"op", g.op_kind_name(i)}, {"input", in},
+                              {"inputs", g.op_inputs_at(i)},   // all texture input edges (port order)
                               {"x", x}, {"y", y}, {"params", params} });
         }
         json dnodes = json::array();

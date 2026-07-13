@@ -120,10 +120,9 @@ void NodeGraph::layout_nodes() {
     std::vector<int> rank(n, 0);
     for (int pass = 0; pass < n; ++pass) {
         bool changed = false;
-        for (int i = 0; i < n; ++i) {
-            const int in = vg_->nodes()[i].input;
-            if (in >= 0 && in < n && in != i && rank[in] + 1 > rank[i]) { rank[i] = rank[in] + 1; changed = true; }
-        }
+        for (int i = 0; i < n; ++i)
+            for (int in : vg_->nodes()[i].inputs)   // rank past the deepest of ALL input ports
+                if (in >= 0 && in < n && in != i && rank[in] + 1 > rank[i]) { rank[i] = rank[in] + 1; changed = true; }
         if (!changed) break;
     }
     int maxRank = 0;
@@ -140,12 +139,12 @@ void NodeGraph::layout_nodes() {
     // 3. Column by column (left->right): order by input barycenter, then stack centered.
     for (int c = 0; c <= maxRank; ++c) {
         auto& col = cols[c];
-        std::stable_sort(col.begin(), col.end(), [&](int a, int b) {
-            const int ia = vg_->nodes()[a].input, ib = vg_->nodes()[b].input;
-            const float pa = (ia >= 0 && ia < n) ? cy[ia] : mid;
-            const float pb = (ib >= 0 && ib < n) ? cy[ib] : mid;
-            return pa < pb;
-        });
+        auto bary = [&](int node) {   // barycenter over all connected input ports
+            float sum = 0.f; int cnt = 0;
+            for (int in : vg_->nodes()[node].inputs) if (in >= 0 && in < n) { sum += cy[in]; ++cnt; }
+            return cnt ? sum / cnt : mid;
+        };
+        std::stable_sort(col.begin(), col.end(), [&](int a, int b) { return bary(a) < bary(b); });
         std::vector<float> hs(col.size());
         float total = 0.f;
         for (size_t k = 0; k < col.size(); ++k) { float x, y, w, h; op_node_rect(col[k], x, y, w, h); hs[k] = h; total += h; }
@@ -238,9 +237,7 @@ int NodeGraph::nearest_op_in(double x, double y, double maxd, int& port) const {
 // Set texture input `port` of `node` to source node `src` (-1 clears). Ports beyond
 // the current 2-edge model (port>=2) are ignored until N-input support lands (Phase 5).
 void NodeGraph::set_op_input_port(int node, int port, int src) {
-    if (!vg_) return;
-    if (port == 1) vg_->set_input_b(node, src);
-    else if (port == 0) vg_->set_input(node, src);
+    if (vg_) vg_->set_input(node, port, src);   // any port (N-input)
 }
 int NodeGraph::nearest_op_out(double x, double y, double maxd) const {
     int best = -1; double bd = maxd;
@@ -306,7 +303,7 @@ int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
 void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
     op = static_cast<int>(vg_->nodes()[i].op);
-    input = vg_->nodes()[i].input;
+    input = vg_->nodes()[i].in(0);
     id = vg_->nodes()[i].id;
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
     y = (i < int(op_pos_.size())) ? op_pos_[i].second : 0.f;
@@ -407,8 +404,16 @@ void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, floa
 void NodeGraph::chain_load_set_input(int i, int input) { if (vg_) vg_->set_input(i, input); }
 void NodeGraph::chain_load_set_input_b(int i, int input) { if (vg_) vg_->set_input_b(i, input); }
 int  NodeGraph::op_input_b_at(int i) const {
-    return (vg_ && i >= 0 && i < static_cast<int>(vg_->nodes().size())) ? vg_->nodes()[i].input_b : -1;
+    return op_node_valid(vg_, i) ? vg_->nodes()[i].in(1) : -1;
 }
+// N-input persistence: the full edge vector (trailing -1 trimmed) and a per-port setter.
+std::vector<int> NodeGraph::op_inputs_at(int i) const {
+    if (!op_node_valid(vg_, i)) return {};
+    std::vector<int> e = vg_->nodes()[i].inputs;
+    while (!e.empty() && e.back() < 0) e.pop_back();
+    return e;
+}
+void NodeGraph::set_op_input_at(int i, int port, int src) { if (vg_) vg_->set_input(i, port, src); }
 std::string NodeGraph::op_asset_at(int i) const {
     return op_node_valid(vg_, i) ? vg_->nodes()[i].asset : std::string();
 }
@@ -489,15 +494,15 @@ void NodeGraph::draw(Renderer2D& r) {
       node_grid(r, v, bx0_ - 6.f, by0_ - 6.f, bx1_ + 6.f, by1_ + 6.f); }
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
-    // chain wires (op output -> op input); one per texture input port (A + B).
+    // chain wires (op output -> op input); one per connected texture input port.
     for (int i = 0; i < n; ++i) {
-        float ox, oy, ix, iy;
-        const int inA = vg_->nodes()[i].input;
-        if (inA >= 0 && inA < n && op_out_port(inA, ox, oy) && op_in_port(i, 0, ix, iy))
-            node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
-        const int inB = vg_->nodes()[i].input_b;
-        if (inB >= 0 && inB < n && op_out_port(inB, ox, oy) && op_in_port(i, 1, ix, iy))
-            node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);
+        const auto& ins = vg_->nodes()[i].inputs;
+        for (int p = 0; p < int(ins.size()); ++p) {
+            const int src = ins[p];
+            float ox, oy, ix, iy;
+            if (src >= 0 && src < n && op_out_port(src, ox, oy) && op_in_port(i, p, ix, iy))
+                node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
+        }
     }
     // param wires (data node -> per-node param port)
     for (int i = 0; i < n; ++i) {

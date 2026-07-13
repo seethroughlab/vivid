@@ -57,8 +57,11 @@ void register_visuals_handlers(Handlers& handlers_) {
         const int in_id = b.value("input_id", -1);
         const int in_idx = (in_id < 0) ? -1 : op_index_by_id(c.vgraph, in_id);
         if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
-        if (b.value("port", 0) == 1) c.vgraph->set_input_b(idx, in_idx);   // second input (2-in ops)
-        else                         c.vgraph->set_input(idx, in_idx);
+        const int port = b.value("port", 0);
+        const int nports = c.vgraph->nodes()[idx].inst.input_port_count;
+        if (port < 0 || port >= nports)
+            return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
+        c.vgraph->set_input(idx, port, in_idx);   // N-input: wire src -> node's texture input `port`
         return ok();
     };
     // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl

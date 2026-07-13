@@ -847,8 +847,8 @@ struct CompositeOp : OperatorBase, GpuProcessable {
     }
     void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&mode); o.push_back(&opacity); }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        o.push_back(tex_port("A", VIVID_PORT_INPUT));       // port A (base) = node.input
-        o.push_back(tex_port("B", VIVID_PORT_INPUT));       // port B (over) = node.input_b
+        o.push_back(tex_port("A", VIVID_PORT_INPUT));       // port A (base) = input port 0
+        o.push_back(tex_port("B", VIVID_PORT_INPUT));       // port B (over) = input port 1
         o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
     }
     bool lazy_init(const VividGpuContext* c) {

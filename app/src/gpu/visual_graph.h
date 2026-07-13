@@ -24,13 +24,20 @@ struct VisualNode {
     std::string op_type;        // registry key — the source of truth
     OpInstance  inst;           // the hosted operator (move-only)
     VOp   op = VOp::Plasma;     // legacy mirror of op_type
-    int   input = -1;           // primary texture input (port A)
-    int   input_b = -1;         // second input (port B) — used by 2-in ops (Composite); -1 otherwise
+    std::vector<int> inputs;    // texture input edges by port (-1 = unconnected); inputs[0]=A, [1]=B, ...
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
+
+    // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
+    int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
+    void set_in(int port, int src) {
+        if (port < 0) return;
+        if (port >= static_cast<int>(inputs.size())) inputs.resize(port + 1, -1);
+        inputs[port] = src;
+    }
 };
 
 // The composable visuals graph: nodes connected by texture edges, terminating in
@@ -52,8 +59,9 @@ public:
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
     void reset_to_default();                   // the out-of-box Plasma->Feedback->Blur->Output chain
-    void set_input(int node, int input);       // wire input's output -> node's texture input (port A)
-    void set_input_b(int node, int input);     // wire the SECOND input (port B; for 2-in ops)
+    void set_input(int node, int port, int src);   // wire src's output -> node's texture input `port`
+    void set_input(int node, int src)   { set_input(node, 0, src); }   // back-compat: primary input (port A)
+    void set_input_b(int node, int src) { set_input(node, 1, src); }   // back-compat: second input (port B)
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
     void set_active_output(int idx);
     int  active_output_id() const { return active_output_id_; }

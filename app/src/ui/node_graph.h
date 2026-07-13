@@ -68,6 +68,8 @@ public:
     void chain_load_set_input(int i, int input);
     void chain_load_set_input_b(int i, int input);   // second input (2-in ops)
     int  op_input_b_at(int i) const;                 // -1 if none
+    std::vector<int> op_inputs_at(int i) const;      // all texture input edges (trailing -1 trimmed) — persist
+    void set_op_input_at(int i, int port, int src);  // wire src -> node i's texture input `port`
     std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
     void        set_op_asset_at(int i, const std::string& asset);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none

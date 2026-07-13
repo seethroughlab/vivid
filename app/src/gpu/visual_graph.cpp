@@ -2,6 +2,7 @@
 
 #include "operator_api/gpu_operator.h"
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
+#include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
@@ -100,7 +101,7 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
 void VisualGraph::reset_to_default() {
     nodes_.clear(); next_id_ = 0;
     add_node("Plasma"); add_node("Feedback"); add_node("Blur"); add_node("Output");
-    nodes_[1].input = 0; nodes_[2].input = 1; nodes_[3].input = 2;
+    nodes_[1].set_in(0, 0); nodes_[2].set_in(0, 1); nodes_[3].set_in(0, 2);
     active_output_id_ = nodes_[3].id;
     ensure_resources(nodes_.size());
 }
@@ -113,7 +114,7 @@ void VisualGraph::ensure_resources(size_t n) {
 int VisualGraph::add_node(const std::string& type) {
     nodes_.emplace_back();
     VisualNode& n = nodes_.back();
-    n.id = next_id_++; n.input = -1;
+    n.id = next_id_++;
     make_instance(n, type);
     ensure_resources(nodes_.size());
     return static_cast<int>(nodes_.size()) - 1;
@@ -121,7 +122,7 @@ int VisualGraph::add_node(const std::string& type) {
 void VisualGraph::load_node(const std::string& type, int id) {
     nodes_.emplace_back();
     VisualNode& n = nodes_.back();
-    n.id = id; n.input = -1;
+    n.id = id;
     if (id >= next_id_) next_id_ = id + 1;
     make_instance(n, type);
     ensure_resources(nodes_.size());
@@ -133,21 +134,16 @@ void VisualGraph::remove_node(int i) {
         if (outs <= 1) return;
     }
     nodes_.erase(nodes_.begin() + i);
-    for (auto& n : nodes_) {
-        if (n.input == i) n.input = -1;           else if (n.input   > i) --n.input;
-        if (n.input_b == i) n.input_b = -1;       else if (n.input_b > i) --n.input_b;
-    }
+    for (auto& n : nodes_)
+        for (int& e : n.inputs) {   // drop edges to the removed node; shift indices above it down
+            if (e == i) e = -1; else if (e > i) --e;
+        }
     ensure_resources(nodes_.size());
 }
-void VisualGraph::set_input(int node, int input) {
-    if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
-    if (input == node) return;                       // no self-loops
-    nodes_[node].input = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
-}
-void VisualGraph::set_input_b(int node, int input) {
-    if (node < 0 || node >= static_cast<int>(nodes_.size())) return;
-    if (input == node) return;                       // no self-loops
-    nodes_[node].input_b = (input >= 0 && input < static_cast<int>(nodes_.size())) ? input : -1;
+void VisualGraph::set_input(int node, int port, int src) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size()) || port < 0) return;
+    if (src == node) return;                          // no self-loops
+    nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1);
 }
 int VisualGraph::output_index() const {
     int first = -1;
@@ -179,35 +175,28 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
     const int outIdx = output_index();
     if (outIdx < 0) return;
-    const int feed = nodes_[outIdx].input;
+    const int feed = nodes_[outIdx].in(0);
 
-    // Topological order via a post-order DFS from the node feeding Output, over BOTH inputs
-    // (port A + port B). Each node lands after its inputs; a shared node renders once (both
-    // consumers read its RT). This subsumes the old linear back-walk (a single-input chain
-    // yields the identical order) and supports 2-in ops (Composite). `state`: 0 unvisited,
-    // 1 in-progress (a cycle edge is skipped), 2 done.
-    std::vector<int> order; std::vector<char> state(nodes_.size(), 0);
+    // Topological order (post-order DFS over ALL input ports, cycle-safe) — the shared,
+    // headless-testable helper. Subsumes the old linear back-walk and supports N-input ops.
     const int nnodes = static_cast<int>(nodes_.size());
-    std::function<void(int)> visit = [&](int i) {
-        if (i < 0 || i >= nnodes || state[i]) return;
-        state[i] = 1;
-        visit(nodes_[i].input);
-        visit(nodes_[i].input_b);
-        state[i] = 2;
-        order.push_back(i);
-    };
-    visit(feed);
+    std::vector<std::vector<int>> adj(nnodes);
+    for (int i = 0; i < nnodes; ++i) adj[i] = nodes_[i].inputs;
+    const std::vector<int> order = topo_order(adj, feed);
 
     for (int idx : order) {
         VisualNode& n = nodes_[idx];
         if (!n.inst.op) continue;
-        const int inA = n.input, inB = n.input_b;
-        WGPUTextureView va = (inA >= 0 && inA < nnodes) ? rts_[inA].view : fallback_.view;
-        if (n.op == VOp::Video) va = video_tex;             // external source feeds the generator
-        if (!va) va = fallback_.view;
-        WGPUTextureView vb = (inB >= 0 && inB < nnodes) ? rts_[inB].view : fallback_.view;
-        WGPUTextureView inputs[2] = { va, vb };
-        const uint32_t nin = static_cast<uint32_t>(std::min(n.inst.input_port_count, 2));
+        // One texture view per declared input port (fallback = black), resolved from the node's
+        // edges. Storage lives for the process_gpu call below.
+        const int nin = n.inst.input_port_count;
+        std::vector<WGPUTextureView> inview(nin > 0 ? nin : 0, fallback_.view);
+        for (int p = 0; p < nin; ++p) {
+            const int e = n.in(p);
+            WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
+            if (n.op == VOp::Video && p == 0) v = video_tex;    // external source feeds the generator's port 0
+            inview[p] = v ? v : fallback_.view;
+        }
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
@@ -216,8 +205,8 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         ctx.output_texture = rts_[idx].tex;
         ctx.output_texture_view = rts_[idx].view;
         ctx.output_width = rtW_; ctx.output_height = rtH_; ctx.output_format = fmt_;
-        ctx.input_texture_views = (nin > 0) ? inputs : nullptr;
-        ctx.input_texture_count = nin;
+        ctx.input_texture_views = inview.empty() ? nullptr : inview.data();
+        ctx.input_texture_count = static_cast<uint32_t>(nin);
 
         // FILE/TEXT params: hand the op a dense array of its file-param strings (in param
         // order), project-resolved for FILE params. Storage lives for the process_gpu call.
@@ -262,7 +251,7 @@ void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
                              float vx, float vy, float vw, float vh, float time) {
     const int outIdx = output_index();
     if (outIdx < 0) return;
-    const int feed = nodes_[outIdx].input;
+    const int feed = nodes_[outIdx].in(0);
     if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
         WGPUTextureView f[1] = { rts_[feed].view };
         blit_.render(enc, view, vx, vy, vw, vh, /*clear*/true, f, 1, time, nullptr, 0);
