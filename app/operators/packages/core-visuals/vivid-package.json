@@ -9,6 +9,8 @@
     { "name": "Webcam", "source": "webcam.cpp", "gpu": true },
     { "name": "Tint", "source": "tint.cpp", "gpu": true },
     { "name": "Shape", "source": "shape.cpp", "gpu": true },
-    { "name": "Composite", "source": "composite.cpp", "gpu": true }
+    { "name": "Composite", "source": "composite.cpp", "gpu": true },
+    { "name": "Transform", "source": "transform.cpp", "gpu": true },
+    { "name": "Kaleidoscope", "source": "kaleidoscope.cpp", "gpu": true }
   ]
 }
