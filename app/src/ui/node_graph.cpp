@@ -34,8 +34,15 @@ static std::string lower_str(std::string s) {
 // the back-compat viz.* return-path sources from the first node of each type).
 static VOp  uniform_owner(int u) { return u <= 3 ? VOp::Plasma : (u == 4 ? VOp::Feedback : VOp::Blur); }
 static int  uniform_local(int u) { return u <= 3 ? u : 0; }
-static bool op_has_input(VOp op)  { return op == VOp::Feedback || op == VOp::Blur || op == VOp::Output; }
-static bool op_has_output(VOp op) { return op != VOp::Output; }
+// Texture-port counts come from the operator DESCRIPTOR (inst.*_port_count), not a
+// hardcoded VOp table — so package ops and 2-input ops (Composite/Displace) expose the
+// right number of independently-wireable ports.
+static int op_in_count(const vivid::VisualGraph* vg, int i) {
+    return (vg && i >= 0 && i < int(vg->nodes().size())) ? vg->nodes()[i].inst.input_port_count : 0;
+}
+static bool op_has_out(const vivid::VisualGraph* vg, int i) {
+    return vg && i >= 0 && i < int(vg->nodes().size()) && vg->nodes()[i].inst.output_port_count > 0;
+}
 static const char* op_name(VOp op) {
     switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
         case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
@@ -156,10 +163,10 @@ void NodeGraph::layout_nodes() {
     float dy = by0_ + 30.f;
     for (auto& d : data_) { d.x = bx0_ + 8.f; d.y = dy; dy += d.h + 12.f; }
 }
-// Total left-edge input rows: the texture input (if any) + one per param.
+// Total left-edge input rows: one per texture input port + one per param.
 static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
-    return (op_has_input(vg->nodes()[i].op) ? 1 : 0) + node_pcount(vg, i);
+    return op_in_count(vg, i) + node_pcount(vg, i);
 }
 static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
 
@@ -184,12 +191,12 @@ static void op_accent(VOp op, float& r, float& g, float& b) {
         default:          r = 0.60f; g = 0.45f; b = 0.85f; break;                   // effect: violet
     }
 }
-bool NodeGraph::op_in_port(int i, float& px, float& py) const {  // texture input: left, row 0
-    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_input(vg_->nodes()[i].op)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = op_row_y(y, 0); return true;
+bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // texture input `port`: left edge, one row each
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || port < 0 || port >= op_in_count(vg_, i)) return false;
+    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = op_row_y(y, port); return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
-    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || !op_has_output(vg_->nodes()[i].op)) return false;
+    if (!op_has_out(vg_, i)) return false;
     float x, y, w, h; op_node_rect(i, x, y, w, h); px = x + w; py = y + h * 0.5f; return true;
 }
 int NodeGraph::first_node_of(VOp op) const {
@@ -199,10 +206,9 @@ int NodeGraph::first_node_of(VOp op) const {
 }
 bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const {  // left edge, per node
     if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
-    const VOp op = vg_->nodes()[node_idx].op;
     if (local < 0 || local >= node_pcount(vg_, node_idx)) return false;
     float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
-    const int row = (op_has_input(op) ? 1 : 0) + local;  // after the texture input
+    const int row = op_in_count(vg_, node_idx) + local;  // after the texture input port(s)
     px = x; py = op_row_y(y, row);
     return true;
 }
@@ -219,13 +225,22 @@ bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, in
     }
     return found;
 }
-int NodeGraph::nearest_op_in(double x, double y, double maxd) const {
-    int best = -1; double bd = maxd;
+int NodeGraph::nearest_op_in(double x, double y, double maxd, int& port) const {
+    int best = -1; double bd = maxd; port = 0;
     if (vg_) for (int i = 0; i < int(vg_->nodes().size()); ++i) {
-        float px, py; if (!op_in_port(i, px, py)) continue;
-        double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; }
+        for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {
+            float px, py; if (!op_in_port(i, p, px, py)) continue;
+            double d = std::hypot(x - px, y - py); if (d < bd) { bd = d; best = i; port = p; }
+        }
     }
     return best;
+}
+// Set texture input `port` of `node` to source node `src` (-1 clears). Ports beyond
+// the current 2-edge model (port>=2) are ignored until N-input support lands (Phase 5).
+void NodeGraph::set_op_input_port(int node, int port, int src) {
+    if (!vg_) return;
+    if (port == 1) vg_->set_input_b(node, src);
+    else if (port == 0) vg_->set_input(node, src);
 }
 int NodeGraph::nearest_op_out(double x, double y, double maxd) const {
     int best = -1; double bd = maxd;
@@ -464,12 +479,15 @@ void NodeGraph::draw(Renderer2D& r) {
       node_grid(r, v, bx0_ - 6.f, by0_ - 6.f, bx1_ + 6.f, by1_ + 6.f); }
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
-    // chain wires (op output -> op input)
+    // chain wires (op output -> op input); one per texture input port (A + B).
     for (int i = 0; i < n; ++i) {
-        const int in = vg_->nodes()[i].input;
         float ox, oy, ix, iy;
-        if (in >= 0 && in < n && op_out_port(in, ox, oy) && op_in_port(i, ix, iy))
+        const int inA = vg_->nodes()[i].input;
+        if (inA >= 0 && inA < n && op_out_port(inA, ox, oy) && op_in_port(i, 0, ix, iy))
             node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
+        const int inB = vg_->nodes()[i].input_b;
+        if (inB >= 0 && inB < n && op_out_port(inB, ox, oy) && op_in_port(i, 1, ix, iy))
+            node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);
     }
     // param wires (data node -> per-node param port)
     for (int i = 0; i < n; ++i) {
@@ -508,9 +526,11 @@ void NodeGraph::draw(Renderer2D& r) {
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
-        if (op_in_port(i, px, py)) {  // texture input
+        for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per texture input port
+            if (!op_in_port(i, p, px, py)) continue;
             node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
-            r.draw_text(px + 10.f, py - 5.f, "in", 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
+            const char* lbl = (np <= 1) ? "in" : (p == 0 ? "A" : "B");
+            r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
         }
         if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
         if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
@@ -594,8 +614,8 @@ bool NodeGraph::on_down(double x, double y) {
     const double hr = 13.0 / view_scale_, pr = 12.0 / view_scale_;
 
     // disconnect an op input or a param port
-    int oi = nearest_op_in(wx, wy, hr);
-    if (oi >= 0) { vg_->set_input(oi, -1); return true; }
+    int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
+    if (oi >= 0) { set_op_input_port(oi, oiPort, -1); return true; }
     int pni, pl;
     if (nearest_param(wx, wy, pr, pni, pl)) {
         reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
@@ -669,8 +689,8 @@ void NodeGraph::on_up(double x, double y) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int target = nearest_op_in(wx, wy, 18.0 / view_scale_);
-        if (target >= 0 && vg_) vg_->set_input(target, wire_from_);
+        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_scale_, tport);
+        if (target >= 0 && vg_) set_op_input_port(target, tport, wire_from_);
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
 }

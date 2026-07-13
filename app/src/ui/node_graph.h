@@ -164,13 +164,14 @@ private:
 
     void sync_op_pos();
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
-    bool op_in_port(int i, float& px, float& py) const;   // false if op has no input
+    bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
+    void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(vivid::VOp op) const;              // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
-    int  nearest_op_in(double x, double y, double maxd) const; // node index, -1
+    int  nearest_op_in(double x, double y, double maxd, int& port) const; // node index (-1 none) + which input port
     int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
     void draw_op_palette(Renderer2D& r);
     int  palette_hit(double x, double y) const;           // VOp to add, or -1
