@@ -32,14 +32,6 @@ namespace {
 
 // --- shared GLSL owned by the built-in operator descriptors ---
 
-const char* kBlitGLSL = R"(#version 450
-layout(location = 0) in vec2 v_uv;
-layout(location = 0) out vec4 o_color;
-layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float p0; float p1; float p2; float p3; };
-layout(set = 0, binding = 1) uniform texture2D u_tex;
-layout(set = 0, binding = 2) uniform sampler   u_samp;
-void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
-)";
 
 VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
     VividPortDescriptor p{};
@@ -48,37 +40,6 @@ VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
     return p;
 }
 
-// --- Plasma: GLSL generator (4 params, 1 texture out) ---
-
-// --- A 1-input GLSL blit (Video source-in / Output sink): passes input -> output ---
-struct BlitOp : OperatorBase, GpuProcessable {
-    EffectOp fx_; bool tried_ = false;
-    void collect_params(std::vector<ParamBase*>&) override {}
-    void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        o.push_back(tex_port("input", VIVID_PORT_INPUT));
-        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
-    }
-    void process_gpu(const VividGpuContext* c) override {
-        if (!tried_) { tried_ = true; fx_.init(c->device, c->queue, c->output_format, kBlitGLSL, 1); }
-        if (!fx_.ok() || c->input_texture_count < 1) return;
-        const WGPUTextureView in = c->input_texture_views[0];
-        fx_.render(c->command_encoder, c->output_texture_view, 0.f, 0.f,
-                   float(c->output_width), float(c->output_height), /*clear*/true,
-                   &in, 1, float(c->time), nullptr, 0);
-    }
-};
-// generator fed by the app's external source texture
-struct VideoOp  : BlitOp {
-    static constexpr const char* kDisplayName = "Video";
-    static constexpr const char* kSummary = "Plays the shared image/video source texture into the chain.";
-    static constexpr std::array<const char*, 3> kKeywords = {"generator", "video", "source"};
-};
-// sink / passthrough to the viewer
-struct OutputOp : BlitOp {
-    static constexpr const char* kDisplayName = "Output";
-    static constexpr const char* kSummary = "Chain sink: feeds the connected texture to the on-screen viewer.";
-    static constexpr std::array<const char*, 3> kKeywords = {"output", "viewer", "sink"};
-};
 
 // --- Blur: 1-input GLSL effect (1 param) ---
 
@@ -484,8 +445,6 @@ struct CustomShaderOp : OperatorBase, GpuProcessable, AssetShader {
 }  // namespace
 
 void register_builtin_ops(OpRegistry& reg) {
-    register_op<VideoOp>   (reg, "Video");
-    register_op<OutputOp>  (reg, "Output");
     register_op<TextOp>    (reg, "Text");           // typography (string from a .txt asset)
     register_op<VectorTextOp>(reg, "VectorText");   // REAL filled text geometry (FreeType outlines)
     register_op<CustomShaderOp>(reg, "CustomShader");  // data-driven .glsl generator
