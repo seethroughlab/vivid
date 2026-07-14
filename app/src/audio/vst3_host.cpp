@@ -550,6 +550,22 @@ static const std::vector<NoteEvent>& graph_note_input(Track& t, const vivid::aud
     return t.nmerge;
 }
 
+static void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out);   // ADR-0015 (M3), below
+
+// ADR-0015 (M2): the notes a CLAP plugin GENERATED this block (a note effect / chord generator).
+// ClapEventScratch::ev_push captured them during clap_run; the host used to throw them away.
+static void drain_clap_notes(ClapHandle* h, std::vector<NoteEvent>& out) {
+    out.clear();
+    if (!h || !h->has_note_out) return;
+    for (uint32_t i = 0; i < h->events.out_count; ++i) {
+        if (out.size() >= kGraphMaxNotes) break;   // truncate rather than allocate
+        const clap_event_note_t& e = h->events.out_notes[i];
+        const bool on = e.header.type == CLAP_EVENT_NOTE_ON;
+        out.push_back(NoteEvent{ e.header.time, on, static_cast<int>(e.key),
+                                 static_cast<float>(e.velocity), e.note_id, 0.f });
+    }
+}
+
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
     // RT safety net: bail to silence on any inconsistency between the plan and the working
@@ -633,12 +649,19 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                     emit_vst3(t.src_vev, t.src_nev, t.src_eev);
                     render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR);
                 }
+                // ADR-0015 (M3): a plugin that GENERATES notes (a chord generator, an arpeggiator)
+                // publishes them on its note output, so they can drive another instrument.
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                    drain_vst3_notes(nb.handle, t.npool[static_cast<size_t>(s.note_out_buf)]);
             }
             else if (nb.kind == GNKind::ClapInst && nb.clap) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
                 if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR);
                 else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
                        render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
+                // ADR-0015 (M2): a CLAP that GENERATES notes publishes them on its note output.
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                    drain_clap_notes(nb.clap, t.npool[static_cast<size_t>(s.note_out_buf)]);
             }
             else if (nb.kind == GNKind::Sampler) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
@@ -1739,7 +1762,31 @@ static void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& event
     data.numSamples = static_cast<int32>(frames); data.numInputs = 0; data.numOutputs = 1;
     data.inputs = nullptr; data.outputs = &ob;
     data.inputEvents = &events; data.inputParameterChanges = &pc; data.processContext = &pctx;
+    // ADR-0015 (M3): give a note-GENERATING plugin (a chord generator / arpeggiator) somewhere to
+    // put the notes it makes. Before this the host never assigned data.outputEvents at all, so every
+    // note such a plugin produced was silently discarded.
+    if (h->has_note_out) { h->out_events.clear(); data.outputEvents = &h->out_events; }
     h->processor->process(data);
+}
+
+// Drain the notes a VST3 plugin GENERATED this block into `out` (ADR-0015 / M3). RT-safe: fixed
+// capacity, no allocation. Only note-on/off are taken — the note stream is what the graph carries.
+static void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out) {
+    out.clear();
+    if (!h || !h->has_note_out) return;
+    const int32 n = h->out_events.getEventCount();
+    for (int32 i = 0; i < n; ++i) {
+        Event e{};
+        if (h->out_events.getEvent(i, e) != kResultOk) continue;
+        if (out.size() >= kGraphMaxNotes) break;   // truncate rather than allocate
+        if (e.type == Event::kNoteOnEvent) {
+            out.push_back(NoteEvent{ static_cast<uint32_t>(e.sampleOffset), true, e.noteOn.pitch,
+                                     e.noteOn.velocity, e.noteOn.noteId, e.noteOn.tuning });
+        } else if (e.type == Event::kNoteOffEvent) {
+            out.push_back(NoteEvent{ static_cast<uint32_t>(e.sampleOffset), false, e.noteOff.pitch,
+                                     e.noteOff.velocity, e.noteOff.noteId, 0.f });
+        }
+    }
 }
 
 // VST3 effect. Transforms L/R in place, using the track's fx scratch (t.fxl/t.fxr) as the plugin's
@@ -2211,6 +2258,16 @@ void session_poll_plugin_loads(Session* s) {
                     trp->pslots[si].clap = h;
                     trp->pslots[si].pending = false;
                     bound = true;
+                    // ADR-0015 (M2): only now do we know whether this CLAP can GENERATE notes (its
+                    // note-ports extension is on the handle), so declare the node's note ports here.
+                    for (size_t ni = 0; ni < trp->agnodes.size(); ++ni) {
+                        if (trp->agnodes[ni].pslot != d.slot) continue;
+                        const auto& gn = trp->agraph.nodes();
+                        if (ni < gn.size())
+                            trp->agraph.set_note_ports(gn[ni].id, h->has_note_in || d.is_instrument,
+                                                       h->has_note_out);
+                        break;
+                    }
                 }
             }
             if (!bound) {
@@ -2319,6 +2376,19 @@ int session_track_audio_graph_node_id(Session* s, int t, int i) {
     const auto& n = tr->agraph.nodes();
     return (i >= 0 && i < static_cast<int>(n.size())) ? n[i].id : -1;
 }
+// ADR-0015: does node i take / emit NOTES? (The UI draws note ports from this; an agent needs it to
+// know whether a plugin can drive another instrument.)
+void session_track_audio_graph_node_note_ports(Session* s, int t, int i, int* note_in, int* note_out) {
+    if (note_in) *note_in = 0;
+    if (note_out) *note_out = 0;
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& ns = tr->agraph.nodes();
+    if (i < 0 || i >= static_cast<int>(ns.size())) return;
+    if (note_in) *note_in = ns[static_cast<size_t>(i)].note_in ? 1 : 0;
+    if (note_out) *note_out = ns[static_cast<size_t>(i)].note_out ? 1 : 0;
+}
+
 int session_track_audio_graph_node_kind(Session* s, int t, int i) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;
@@ -2536,7 +2606,10 @@ int session_audio_graph_add_plugin(Session* s, int t, const char* path, int form
                                  : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
         nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
                                                                     : (src ? "vst3" : "vfx"));
-        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/false);   // instruments consume notes
+        // Instruments consume notes; one that also has an event OUTPUT bus (a chord generator, an
+        // arpeggiator — the Captain suite) can also PRODUCE them, so it gets a note output too and
+        // can drive another instrument (ADR-0015 / M3).
+        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/ vh && vh->has_note_out);
         GNodeBind nb;
         nb.kind = kind;
         nb.handle = vh;
@@ -2986,7 +3059,7 @@ int session_audio_graph_load_plugin_node(Session* s, int t, int node_id, const c
                                : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
         nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
                                                                     : (src ? "vst3" : "vfx"));
-        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/false);
+        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/ vh && vh->has_note_out);
         GNodeBind nb;
         nb.kind = gk;
         nb.handle = vh;

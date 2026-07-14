@@ -257,6 +257,7 @@ int         session_track_audio_graph_node_scope(Session*, int track, int i, flo
 // the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
 void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
+void        session_track_audio_graph_node_note_ports(Session*, int track, int i, int* note_in, int* note_out);
 int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note (ADR-0015)
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);

@@ -556,8 +556,11 @@ void register_audio_handlers(Handlers& handlers_) {
         for (int i = 0; i < P::session_track_audio_graph_node_count(c.session, track); ++i) {
             const int k   = P::session_track_audio_graph_node_kind(c.session, track, i);
             const int nid = P::session_track_audio_graph_node_id(c.session, track, i);
+            int nin = 0, nout = 0;   // ADR-0015: does it take / emit notes?
+            P::session_track_audio_graph_node_note_ports(c.session, track, i, &nin, &nout);
             json jn = { {"id",   nid},
                         {"kind", (k >= 0 && k < 5) ? kKind[k] : "unknown"},
+                        {"note_in", nin != 0}, {"note_out", nout != 0},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
             if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
                 int lo = 0, hi = 127;

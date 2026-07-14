@@ -102,14 +102,14 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
         e.summary = p.vendor.empty() ? (is_inst ? "instrument" : "effect")
                                      : p.vendor + " \xC2\xB7 " + (is_inst ? "instrument" : "effect");
         if (!p.probed) e.summary = "not yet classified";
-        // ADR-0015: a note-effect (an arpeggiator, a chord generator) transforms NOTES, and notes are
-        // not yet a signal in the graph. Spawning one as an audio effect would give it no notes and
-        // write silence over the chain. Show it — hiding it would make the catalog lie about what you
-        // own — but refuse to spawn it until note edges exist.
+        // ADR-0015: a note effect (arpeggiator, chord generator) transforms NOTES. It is spawned as
+        // a SOURCE-shaped node (no audio inputs, so it can never write silence over the chain) and
+        // wired with note edges. The host drains the notes it emits (M2/M3).
         if (is_note) {
-            e.enabled = false;
-            e.disabled_note = "note effect \xE2\x80\x94 needs note routing (ADR-0015)";
+            e.tag = kAudioPluginSource;
             e.badge = "NOTE";
+            e.summary = "note effect \xE2\x80\x94 transforms notes; wire it with note edges";
+            e.accent = sty.control;
         }
         out.push_back(std::move(e));
     }
