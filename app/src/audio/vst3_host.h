@@ -255,6 +255,7 @@ int         session_track_audio_graph_node_scope(Session*, int track, int i, flo
 // the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
 void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
+int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note (ADR-0015)
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
 
@@ -284,6 +285,11 @@ int         session_audio_graph_load_plugin_node(Session*, int track, int node_i
                                                  const char* state);
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
+// ADR-0015: notes are a signal too. kind: 0 = audio (sums at the destination), 1 = note (merges).
+int         session_audio_graph_connect_kind(Session*, int track, int from_id, int to_id, int kind);
+// The track's note stream as an explicit NODE (clips + live MIDI + typing + MCP + preview). Wire
+// its note edge into an instrument (or a note effect) to route notes.
+int         session_audio_graph_add_midi_in(Session*, int track);
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
 // A source node's MIDI key range [lo,hi] (0..127 = full). Two sources with disjoint ranges = a
 // key-split; the audio thread hands each source only its in-range notes. get returns 1 on success.
@@ -312,6 +318,7 @@ int         session_track_audio_graph_authoritative(Session*, int track);
 void        session_audio_graph_clear      (Session*, int track);
 int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type);   // -> new node id
 void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
+void        session_audio_graph_load_edge_kind(Session*, int track, int from_id, int to_id, int kind);  // 0 audio / 1 note
 void        session_audio_graph_finish_load(Session*, int track, int output_id);
 
 // Slice the source audio clip into a new MIDI track driven by a native Sampler loaded

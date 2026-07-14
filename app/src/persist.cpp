@@ -158,8 +158,14 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             }
             const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
             for (int e = 0; e < ne; ++e)
-                edges.push_back({ {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
-                                  {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} });
+            {
+                json je = { {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
+                            {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} };
+                // ADR-0015: only a NOTE edge is written. An edge with no `kind` is audio, so every
+                // project saved before note edges existed loads with its meaning unchanged.
+                if (vivid::session::session_track_audio_graph_edge_kind(s, t, e) == 1) je["kind"] = "note";
+                edges.push_back(std::move(je));
+            }
             g["nodes"] = nodes; g["edges"] = edges;
             g["output"] = vivid::session::session_track_audio_graph_output_id(s, t);
             jt["audio_graph"] = g;
@@ -443,7 +449,9 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                     for (const auto& je : g["edges"]) {
                         auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
                         if (f != id_map.end() && o != id_map.end())
-                            vivid::session::session_audio_graph_load_edge(s, t, f->second, o->second);
+                            vivid::session::session_audio_graph_load_edge_kind(
+                                s, t, f->second, o->second,
+                                je.value("kind", std::string("audio")) == "note" ? 1 : 0);
                     }
                 auto out = id_map.find(g.value("output", -1));
                 vivid::session::session_audio_graph_finish_load(s, t, out != id_map.end() ? out->second : -1);

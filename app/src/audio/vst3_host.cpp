@@ -77,10 +77,16 @@ struct LiveMidi {
 // AudioGraph::compile), so bindings are addressed by out_buf.
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
+// ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that
+// somehow carried more notes than this would be truncated rather than allocate on the RT thread.
+constexpr size_t   kGraphMaxNotes = 512;
 constexpr int      kScopeN        = 128;   // per-node output-waveform ring length (UI preview)
 constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
 
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output };
+// MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
+// typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
+// the old invisible per-track broadcast.
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -200,6 +206,12 @@ struct Track {
     // edit copies never reallocates. `blk` is transient (filled each block).
     vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
     std::vector<GNodeBind>           gbinds, gbinds_edit;
+    // ADR-0015: the NOTE buffer pool — one fixed-capacity note list per note-emitting node
+    // (CompiledAudioGraph::note_buf_count). Sized + reserved on the UI thread when a plan is
+    // published, so the audio thread only ever clear()s and push_back()s within capacity: no
+    // allocation in the callback. Empty (and free) for any graph without note edges.
+    std::vector<std::vector<vivid::session::NoteEvent>> npool;
+    std::vector<vivid::session::NoteEvent> nmerge;   // scratch: >1 note edge into one node (reserved)
     std::vector<float>               gpool;            // node-buffer pool
     // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
     // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
@@ -365,6 +377,12 @@ static void reserve_track_graph(Track* t) {
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
     t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
+    // ADR-0015: the note pool — one note list per possible note-emitting node, each reserved to
+    // kGraphMaxNotes. Preallocated to the same worst case as the audio pool, so the audio thread
+    // only ever clear()s and push_back()s within capacity: no allocation in the callback.
+    t->npool.resize(kGraphMaxNodes);
+    for (auto& nb : t->npool) nb.reserve(kGraphMaxNotes);
+    t->nmerge.reserve(kGraphMaxNotes);
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -502,6 +520,36 @@ static void render_sampler_block(Track& t, double beats, double delta, uint32_t 
 // lock). Sums each node's inputs into the shared scratch buffer, dispatches the node's
 // processor by kind, writes its output buffer; finally copies the Output node's buffer into
 // L/R. `t.blk` must be filled for this block before calling.
+// ADR-0015: the note stream a node CONSUMES.
+//
+// No note edges (n_note_in == 0) => the track-wide stream, exactly as before note edges existed.
+// That fallback is what makes every existing graph bit-identical, and it is why M1 changes nothing
+// audibly: nothing wires a note edge yet.
+//
+// One note edge => that buffer, by reference (no copy). Several => merged into a reserved scratch,
+// ordered by sample offset (a plugin's event list must be in time order). RT-safe: clear + push_back
+// within reserved capacity, and std::sort is in-place (std::stable_sort would allocate).
+static const std::vector<NoteEvent>& graph_note_input(Track& t, const vivid::audio::CompiledStep& s) {
+    if (s.n_note_in <= 0) return t.nev;
+    const int n = static_cast<int>(t.npool.size());
+    if (s.n_note_in == 1) {
+        const int b0 = s.note_in_buf[0];
+        return (b0 >= 0 && b0 < n) ? t.npool[static_cast<size_t>(b0)] : t.nev;
+    }
+    t.nmerge.clear();
+    for (int k = 0; k < s.n_note_in; ++k) {
+        const int bk = s.note_in_buf[k];
+        if (bk < 0 || bk >= n) continue;
+        for (const NoteEvent& e : t.npool[static_cast<size_t>(bk)]) {
+            if (t.nmerge.size() >= kGraphMaxNotes) break;   // truncate rather than allocate
+            t.nmerge.push_back(e);
+        }
+    }
+    std::sort(t.nmerge.begin(), t.nmerge.end(),
+              [](const NoteEvent& a, const NoteEvent& b) { return a.sample_offset < b.sample_offset; });
+    return t.nmerge;
+}
+
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
     // RT safety net: bail to silence on any inconsistency between the plan and the working
@@ -527,10 +575,27 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         const GNodeBind& nb = t.gbinds[s.out_buf];
         if (s.n_in == 0) {   // source node
             const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
+            // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
+            // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
+            const std::vector<NoteEvent>& nsrc = graph_note_input(t, s);
+            // MidiIn: the track's note stream AS A NODE. It publishes those notes on its note
+            // buffer for whatever it feeds, and makes no sound of its own.
+            if (nb.kind == GNKind::MidiIn) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
+                    std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
+                    outn.clear();
+                    for (const NoteEvent& e : t.nev) {
+                        if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
+                        outn.push_back(e);
+                    }
+                }
+                continue;
+            }
             if (nb.kind == GNKind::NativeInst && nb.op) {
-                const NoteEvent* nn = b.notes; uint32_t nc = b.note_count;
+                const NoteEvent* nn = nsrc.data(); uint32_t nc = static_cast<uint32_t>(nsrc.size());
                 if (!full_range) {   // key-split: hand this source only its in-range notes
-                    filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);
+                    filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
                     nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
                 }
                 vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc);
@@ -538,10 +603,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
                 if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
-                    emit_vst3(t.vev, t.nev, t.eev);
+                    emit_vst3(t.vev, nsrc, t.eev);
                     render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR);
                 } else {            // key-split: independent filtered event list for this source
-                    filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);
+                    filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
                     filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);
                     t.src_vev.clear();
                     emit_vst3(t.src_vev, t.src_nev, t.src_eev);
@@ -550,8 +615,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             }
             else if (nb.kind == GNKind::ClapInst && nb.clap) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                if (full_range) render_clap_instrument(t, nb.clap, t.nev, frames, oL, oR);
-                else { filter_notes_by_range(t.nev, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
+                if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR);
+                else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
                        render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
             }
             else if (nb.kind == GNKind::Sampler) {
@@ -2233,6 +2298,7 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::ClapInst: case GNKind::Sampler: return 0;  // source/instrument
         case GNKind::NativeFx:   case GNKind::Vst3Fx:   case GNKind::ClapFx:   return 1;              // effect
         case GNKind::Output:     return 2;
+        case GNKind::MidiIn:     return 3;   // ADR-0015: the track's note stream as a node
     }
     return -1;
 }
@@ -2306,6 +2372,15 @@ int session_track_audio_graph_edge_count(Session* s, int t) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     return static_cast<int>(tr->agraph.edges().size());
 }
+// ADR-0015: what signal an edge carries — 0 = audio, 1 = note.
+int session_track_audio_graph_edge_kind(Session* s, int t, int e) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& es = tr->agraph.edges();
+    if (e < 0 || e >= static_cast<int>(es.size())) return 0;
+    return es[static_cast<size_t>(e)].kind == vivid::audio::EdgeKind::Note ? 1 : 0;
+}
+
 int session_track_audio_graph_edge_from(Session* s, int t, int e) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;
@@ -2370,6 +2445,7 @@ int session_audio_graph_add_source(Session* s, int t, const char* op_type) {
       else                         tr->op_sources_edit.push_back(op); }
     tr->op_fx_gen.fetch_add(1, std::memory_order_release);
     const int nid = tr->agraph.add_node(true, false, nullptr, nullptr, op_type ? op_type : "src");
+    tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/false);   // an instrument CONSUMES notes
     tr->agnodes.push_back({ GNKind::NativeInst, op });   // full range by default; set via key_range_set
     // Shared wiring policy (audio_graph.cpp). The Output node, if it has to be created, must also
     // get its entry in the host's parallel bind array — hence the hook.
@@ -2429,6 +2505,7 @@ int session_audio_graph_add_plugin(Session* s, int t, const char* path, int form
                                  : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
         nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
                                                                     : (src ? "vst3" : "vfx"));
+        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/false);   // instruments consume notes
         GNodeBind nb;
         nb.kind = kind;
         nb.handle = vh;
@@ -2566,14 +2643,36 @@ int session_audio_graph_remove_node(Session* s, int t, int node_id) {
 
 // Add an edge from_id -> to_id. Rejected (returns 0) on a bad/duplicate/self edge, or if the
 // edge would create a cycle (the graph is reverted and the last good plan keeps playing).
-int session_audio_graph_connect(Session* s, int t, int from_id, int to_id) {
+int session_audio_graph_connect_kind(Session* s, int t, int from_id, int to_id, int kind) {
     Track* tr = graph_track(s, t);
     if (!tr) return 0;
+    const auto ek = (kind == 1) ? vivid::audio::EdgeKind::Note : vivid::audio::EdgeKind::Audio;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    if (!tr->agraph.connect(from_id, to_id)) return 0;                 // dup / self-loop / bad id
-    if (!republish_track_graph(tr)) { tr->agraph.disconnect(from_id, to_id); return 0; }  // cycle: revert
+    if (!tr->agraph.connect(from_id, to_id, ek)) return 0;             // dup / self-loop / bad id
+    if (!republish_track_graph(tr)) { tr->agraph.disconnect(from_id, to_id, ek); return 0; }  // cycle: revert
     tr->graph_authoritative = true;
     return 1;
+}
+int session_audio_graph_connect(Session* s, int t, int from_id, int to_id) {
+    return session_audio_graph_connect_kind(s, t, from_id, to_id, 0);   // audio (the default signal)
+}
+
+// ADR-0015: add the track's note stream AS A NODE — clips + live MIDI + typing + MCP + preview.
+// It emits notes on a note edge; wire it to an instrument (or to a note effect) to route them.
+// Returns the new node id, or -1.
+int session_audio_graph_add_midi_in(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
+    const int nid = tr->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
+    tr->agraph.set_note_ports(nid, /*note_in*/false, /*note_out*/true);
+    GNodeBind nb;
+    nb.kind = GNKind::MidiIn;
+    tr->agnodes.push_back(nb);
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+    return nid;
 }
 
 // Remove an edge (no-op if absent). Disconnecting can never create a cycle, so it always
@@ -2728,6 +2827,13 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
     if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
     vivid::AudioOp* op = nullptr;
     GNKind gk = GNKind::Output; bool is_src = false, is_out = false;
+    if (kind == 3) {   // ADR-0015: the MidiIn node (the track's note stream)
+        const int nid_mi = tr->agraph.add_node(true, false, nullptr, nullptr, "midi");
+        tr->agraph.set_note_ports(nid_mi, false, true);
+        GNodeBind nbm; nbm.kind = GNKind::MidiIn;
+        tr->agnodes.push_back(nbm);
+        return nid_mi;
+    }
     if (kind == 2) { is_out = true; }   // output sink: no op
     else if (plugin_kind != 0) {
         // Plugin source/effect (VST3/CLAP) or the audio-loop Sampler: no native op. Create the
@@ -2810,6 +2916,7 @@ int session_audio_graph_load_plugin_node(Session* s, int t, int node_id, const c
                                : (src ? GNKind::Vst3Inst : GNKind::Vst3Fx);
         nid = tr->agraph.add_node(src, false, nullptr, nullptr, clap ? (src ? "clap" : "cfx")
                                                                     : (src ? "vst3" : "vfx"));
+        if (src) tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/false);
         GNodeBind nb;
         nb.kind = gk;
         nb.handle = vh;
@@ -2831,10 +2938,14 @@ const char* session_audio_graph_node_plugin_uid(Session* s, int t, int node_id) 
     return tr->pslots[static_cast<size_t>(slot)].uid.c_str();
 }
 
-void session_audio_graph_load_edge(Session* s, int t, int from_id, int to_id) {
+void session_audio_graph_load_edge_kind(Session* s, int t, int from_id, int to_id, int kind) {
     Track* tr = graph_track(s, t); if (!tr) return;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    tr->agraph.connect(from_id, to_id);
+    tr->agraph.connect(from_id, to_id,
+                       kind == 1 ? vivid::audio::EdgeKind::Note : vivid::audio::EdgeKind::Audio);
+}
+void session_audio_graph_load_edge(Session* s, int t, int from_id, int to_id) {
+    session_audio_graph_load_edge_kind(s, t, from_id, to_id, 0);   // audio (pre-ADR-0015 default)
 }
 void session_audio_graph_finish_load(Session* s, int t, int output_id) {
     Track* tr = graph_track(s, t); if (!tr) return;

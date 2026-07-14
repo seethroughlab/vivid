@@ -465,13 +465,27 @@ void register_audio_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "node not removable (unknown, or an instrument/output)");
         return ok();
     };
+    // ADR-0015: `kind` picks the signal the edge carries — "audio" (default; sums at the
+    // destination) or "note" (merges). A note edge is how an instrument gets its notes once the
+    // graph, rather than an invisible per-track broadcast, is doing the routing.
     handlers_["audio_graph_connect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
         json e; if (!need_track(c.session, track, e)) return e;
-        if (!P::session_audio_graph_connect(c.session, track, from, to))
+        const std::string kind = b.value("kind", std::string("audio"));
+        if (kind != "audio" && kind != "note") return err(code::kBadArg, "kind must be 'audio' or 'note'");
+        if (!P::session_audio_graph_connect_kind(c.session, track, from, to, kind == "note" ? 1 : 0))
             return err(code::kBadArg, "edge rejected (duplicate, self-loop, unknown node, or would create a cycle)");
         return ok();
+    };
+    // The track's note stream as a NODE (ADR-0015). Wire its note edge into an instrument.
+    handlers_["audio_graph_add_midi_in"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const int nid = P::session_audio_graph_add_midi_in(c.session, track);
+        if (nid < 0) return err(code::kInternal, "could not add a MidiIn node");
+        json r = ok(); r["node"] = nid; return r;
     };
     handlers_["audio_graph_disconnect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -523,7 +537,7 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
-        static const char* kKind[] = { "instrument", "effect", "output" };
+        static const char* kKind[] = { "instrument", "effect", "output", "midi_in" };   // 3 = ADR-0015 MidiIn
         json r = ok();
         r["graph_ok"]   = P::session_track_audio_graph_ok(c.session, track) != 0;
         r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
@@ -532,7 +546,7 @@ void register_audio_handlers(Handlers& handlers_) {
             const int k   = P::session_track_audio_graph_node_kind(c.session, track, i);
             const int nid = P::session_track_audio_graph_node_id(c.session, track, i);
             json jn = { {"id",   nid},
-                        {"kind", (k >= 0 && k < 3) ? kKind[k] : "unknown"},
+                        {"kind", (k >= 0 && k < 4) ? kKind[k] : "unknown"},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
             if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
                 int lo = 0, hi = 127;
@@ -546,7 +560,11 @@ void register_audio_handlers(Handlers& handlers_) {
         json edges = json::array();
         for (int i = 0; i < P::session_track_audio_graph_edge_count(c.session, track); ++i)
             edges.push_back({ {"from", P::session_track_audio_graph_edge_from(c.session, track, i)},
-                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)} });
+                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)},
+                              // Which SIGNAL the wire carries. Without this an agent can't tell a
+                              // note edge from an audio one, and the two mean very different things.
+                              {"kind", P::session_track_audio_graph_edge_kind(c.session, track, i) == 1
+                                           ? "note" : "audio"} });
         r["edges"] = edges;
         return r;
     };
