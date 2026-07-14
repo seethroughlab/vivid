@@ -215,7 +215,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     jg["mappings"] = maps;
     json chain = json::array();
     for (int i = 0; i < g.op_count(); ++i) {
-        int op = 0, in = -1, id = 0; float x = 0.f, y = 0.f; g.get_op(i, op, in, id, x, y);
+        int in = -1, id = 0; float x = 0.f, y = 0.f; g.get_op(i, in, id, x, y);
         float base[4]; g.get_op_base(i, base);
         json params = json::object();
         for (int p = 0; p < g.op_param_count_at(i); ++p)

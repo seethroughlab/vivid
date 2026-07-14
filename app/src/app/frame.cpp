@@ -311,7 +311,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
 
 void update_visual_source_frame(App& app) {
     if (!app.vgraph || !app.gpu || !app.srcTex) return;
-    app.visual_source = (app.vgraph->generator() == VOp::Video) ? 1 : 0;
+    app.visual_source = (app.vgraph->generator() == "Video") ? 1 : 0;
     if (app.video) video_play(app.video, app.visual_source == 1);
     if (app.visual_source == 1 && app.video) {
         const uint8_t* px = nullptr; uint32_t vw = 0, vh = 0;

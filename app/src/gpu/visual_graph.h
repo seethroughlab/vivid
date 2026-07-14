@@ -10,27 +10,38 @@
 
 namespace vivid {
 
-enum class VOp { Plasma, Video, Feedback, Blur, Output };
-
-// op_type <-> the legacy VOp enum. New node identity comes from operator names;
-// the enum remains only where older UI/persistence code still classifies built-ins.
-const char* vop_name(VOp op);
-VOp         vop_from_name(const std::string& name);
-
 // A node in the rewireable visuals chain. Each node hosts an operator instance
-// (the lifted ABI); `op_type` is its registry name. `input` is the index of the
-// node whose output texture feeds it (-1 = unconnected). The legacy `op` mirror remains
-// only for built-in type classification; parameter storage is descriptor-sized.
+// (the lifted ABI); `op_type` is its registry name — the ONLY identity a node has.
+// `inputs` are the indices of the nodes whose output textures feed its ports (-1 = unconnected);
+// parameter storage is descriptor-sized.
+//
+// ADR-0016 / S2: a node classifies itself from FACTS — its descriptor and its type name.
+// The old `VOp` enum mirror is gone: it mapped every unrecognized op name to Plasma, so
+// Kaleidoscope, Tint and Displace were all silently "generators", and that classification
+// drove generator detection, set_generator() and the seeded master.level -> glow mapping.
+// An enum cannot classify an open catalog; a shader library would have inherited the bug.
 struct VisualNode {
     std::string op_type;        // registry key — the source of truth
     OpInstance  inst;           // the hosted operator (move-only)
-    VOp   op = VOp::Plasma;     // legacy mirror of op_type
     std::vector<int> inputs;    // texture input edges by port (-1 = unconnected); inputs[0]=A, [1]=B, ...
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
+
+    // The two ops the host itself must recognize: the chain's sink, and the one node whose
+    // texture comes from outside the graph (the decoded video frame the host injects into its
+    // port 0 — see run_chain). Both are host CONTRACTS, not classification, which is why these
+    // two names appear here and no others do.
+    bool is_output() const { return op_type == "Output"; }
+    bool is_video()  const { return op_type == "Video"; }
+
+    // A SOURCE heads a chain: it makes an image rather than transforming one. Read off the
+    // node's own descriptor — no texture inputs to transform — so it is automatically true of
+    // a package op, a shader file, or anything else the catalog grows. Video is a source too,
+    // despite its one port: that port is not a graph edge but the host's frame injection.
+    bool is_source() const { return is_video() || (inst.op && inst.input_port_count == 0); }
 
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
@@ -54,9 +65,7 @@ public:
     std::vector<VisualNode>&       nodes()       { return nodes_; }
     const std::vector<VisualNode>& nodes() const { return nodes_; }
     int  add_node(const std::string& type);   // returns new node index (fresh id)
-    int  add_node(VOp op) { return add_node(vop_name(op)); }
     void load_node(const std::string& type, int id);   // append with a persisted id
-    void load_node(VOp op, int id) { load_node(vop_name(op), id); }
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
     void reset_to_default();                   // the out-of-box Plasma->Feedback->Blur->Output chain
@@ -67,8 +76,13 @@ public:
     void set_active_output(int idx);
     int  active_output_id() const { return active_output_id_; }
 
-    void set_generator(VOp g);                 // toggle first generator Plasma<->Video
-    VOp  generator() const;
+    // Would a node of this type be a source? (Asked of the REGISTRY, before instantiating.)
+    bool type_is_source(const std::string& type) const;
+    // Re-instantiate the first SOURCE node (the head of the chain — see VisualNode::is_source)
+    // as `type`. False if there is no source node, or `type` is not itself a source type —
+    // swapping the chain's head for a filter would leave the graph with nothing to filter.
+    bool set_generator(const std::string& type);
+    std::string generator() const;             // the first source's op type, "" if none
     OpRegistry* registry() const { return reg_; }   // the op catalog (for the Tab chooser)
 
     // Base directory that a node's relative `asset` (e.g. a CustomShader .glsl) resolves
@@ -102,7 +116,7 @@ public:
 
     WGPUTextureView node_view(int idx) const {
         if (idx < 0 || idx >= static_cast<int>(rts_.size())) return nullptr;
-        if (idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output) return nullptr;
+        if (idx < static_cast<int>(nodes_.size()) && nodes_[idx].is_output()) return nullptr;
         return rts_[idx].view;
     }
     float    rt_aspect() const { return rtH_ ? static_cast<float>(rtW_) / static_cast<float>(rtH_) : 1.f; }

@@ -6,9 +6,12 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/poc-to-product.md).
 - **`gpu_context.{h,cpp}`** — wgpu instance/adapter/device/queue + the swapchain
   surface; `begin_frame`/`end_frame`/`resize`. Configured at **framebuffer
   (physical)** size (retina-correct).
-- **`visual_graph.{h,cpp}`** — the `VisualGraph`: the rewireable op chain
-  (`VOp` Plasma/Video/Feedback/Blur/Output), per-node params (`base + modulation`),
-  input edges, the active output, and live node thumbnails (`node_view`).
+- **`visual_graph.{h,cpp}`** — the `VisualGraph`: the rewireable op chain, per-node params
+  (`base + modulation`), input edges, the active output, and live node thumbnails (`node_view`).
+  A node's only identity is its **op type name**; it classifies itself from FACTS
+  (`VisualNode::is_generator()` = the descriptor declares no texture inputs; `is_output()` /
+  `is_video()` = the two host contracts). There is no op enum — one used to exist and mapped
+  every unrecognized name to Plasma (ADR-0016 / S2).
   `run_chain()` renders every node into its own RT; `present_to()` blits the output into
   a surface (the floating preview / the pop-out window), letterboxed per the fit mode —
   the two steps are separate so the preview can be drawn *over* the graph (ADR-0014).

@@ -12,16 +12,6 @@
 namespace vivid {
 namespace {
 
-bool parse_vop(const std::string& s, VOp& out) {
-    if (s == "Plasma") out = VOp::Plasma;
-    else if (s == "Video") out = VOp::Video;
-    else if (s == "Feedback") out = VOp::Feedback;
-    else if (s == "Blur") out = VOp::Blur;
-    else if (s == "Output") out = VOp::Output;
-    else return false;
-    return true;
-}
-// vop_name now comes from gpu/visual_graph.h (vivid::vop_name).
 int op_index_by_id(VisualGraph* vg, int id) {
     if (!vg) return -1;
     auto& ns = vg->nodes();
@@ -76,8 +66,15 @@ void register_visuals_handlers(Handlers& handlers_) {
     };
     handlers_["set_generator"] = [](const ControlCtx& c, const json& b) {
         if (!c.vgraph) return err(code::kNoVgraph, "no vgraph");
-        VOp op; if (!parse_vop(b.value("op", std::string()), op)) return err(code::kBadArg, "bad op");
-        c.vgraph->set_generator(op);
+        const std::string op = b.value("op", std::string());
+        // Any registered SOURCE op is a valid answer now — not a hardcoded five-name enum.
+        if (!c.vgraph->registry() || !c.vgraph->registry()->has(op))
+            return err(code::kBadArg, "unknown operator '" + op + "'");
+        if (!c.vgraph->type_is_source(op))
+            return err(code::kBadArg, "'" + op + "' is not a source operator (it declares texture inputs, "
+                                      "so it cannot head the chain)");
+        if (!c.vgraph->set_generator(op))
+            return err(code::kNotFound, "the graph has no source node to replace");
         return ok();
     };
     handlers_["set_active_output"] = [](const ControlCtx& c, const json& b) {

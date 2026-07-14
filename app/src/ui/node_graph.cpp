@@ -10,7 +10,6 @@
 
 namespace vivid::ui {
 
-using vivid::VOp;
 
 // ---- data-source identity + uniform routing ----
 static const char* kKindName[5] = { "level", "transient", "low", "mid", "high" };
@@ -32,20 +31,16 @@ static std::string lower_str(std::string s) {
 }
 // Canonical op-type / local-index for the 6 named uniforms (used only to publish
 // the back-compat viz.* return-path sources from the first node of each type).
-static VOp  uniform_owner(int u) { return u <= 3 ? VOp::Plasma : (u == 4 ? VOp::Feedback : VOp::Blur); }
+static const char* uniform_owner(int u) { return u <= 3 ? "Plasma" : (u == 4 ? "Feedback" : "Blur"); }
 static int  uniform_local(int u) { return u <= 3 ? u : 0; }
 // Texture-port counts come from the operator DESCRIPTOR (inst.*_port_count), not a
-// hardcoded VOp table — so package ops and 2-input ops (Composite/Displace) expose the
+// hardcoded op table — so package ops and 2-input ops (Composite/Displace) expose the
 // right number of independently-wireable ports.
 static int op_in_count(const vivid::VisualGraph* vg, int i) {
     return (vg && i >= 0 && i < int(vg->nodes().size())) ? vg->nodes()[i].inst.input_port_count : 0;
 }
 static bool op_has_out(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && vg->nodes()[i].inst.output_port_count > 0;
-}
-static const char* op_name(VOp op) {
-    switch (op) { case VOp::Plasma: return "Plasma"; case VOp::Video: return "Video";
-        case VOp::Feedback: return "Feedback"; case VOp::Blur: return "Blur"; default: return "Output"; }
 }
 // Per-node param identity, operator-driven: param count + names come from the
 // node's hosted operator descriptor (inst.param_ptrs), so new ops' params appear
@@ -77,7 +72,7 @@ NodeGraph::NodeGraph() {
 void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
     vg_ = vg;
     if (vg_ && reg_.mappings().empty()) {  // seed glow <- master level on the first Plasma
-        const int ni = first_node_of(VOp::Plasma);
+        const int ni = first_node_of("Plasma");
         if (ni >= 0) reg_.connect("master.level", node_param_dest(vg_->nodes()[ni].id, "glow"));
     }
 }
@@ -171,24 +166,26 @@ static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // ce
 
 static constexpr float kCardW  = 156.f;
 static constexpr float kThumbH = 46.f;                 // live-output thumbnail strip
-static bool op_has_thumb(VOp op) { return op != VOp::Output; }
+// Every node but the sink renders an image, so every node but the sink gets a thumbnail.
+static bool op_has_thumb(const vivid::VisualGraph* vg, int i) {
+    return vg && i >= 0 && i < int(vg->nodes().size()) && !vg->nodes()[i].is_output();
+}
 
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
     w = kCardW;
-    const VOp op = (vg_ && i >= 0 && i < int(vg_->nodes().size())) ? vg_->nodes()[i].op : VOp::Plasma;
-    h = 30.f + std::max(1, op_input_rows_at(vg_, i)) * 18.f + (op_has_thumb(op) ? kThumbH + 8.f : 6.f);
+    h = 30.f + std::max(1, op_input_rows_at(vg_, i)) * 18.f + (op_has_thumb(vg_, i) ? kThumbH + 8.f : 6.f);
 }
 
 
-// classic-style type accent (r,g,b) for an op.
-static void op_accent(VOp op, float& r, float& g, float& b) {
-    switch (op) {
-        case VOp::Plasma: case VOp::Video: r = 0.35f; g = 0.55f; b = 0.95f; break;  // generator: blue
-        case VOp::Output: r = 0.93f; g = 0.78f; b = 0.38f; break;                   // output: amber
-        default:          r = 0.60f; g = 0.45f; b = 0.85f; break;                   // effect: violet
-    }
+// classic-style accent (r,g,b) for a node, from what the node IS — the sink, an op that
+// makes an image, or an op that transforms one. No enum, so a shader file or any other
+// new op gets the right colour without being named anywhere.
+static void op_accent(const vivid::VisualNode& n, float& r, float& g, float& b) {
+    if (n.is_output())      { r = 0.93f; g = 0.78f; b = 0.38f; }   // the sink: amber
+    else if (n.is_source()) { r = 0.35f; g = 0.55f; b = 0.95f; }   // makes an image: blue
+    else                    { r = 0.60f; g = 0.45f; b = 0.85f; }   // transforms one: violet
 }
 bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // texture input `port`: left edge, one row each
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || port < 0 || port >= op_in_count(vg_, i)) return false;
@@ -198,9 +195,9 @@ bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: rig
     if (!op_has_out(vg_, i)) return false;
     float x, y, w, h; op_node_rect(i, x, y, w, h); px = x + w; py = y + h * 0.5f; return true;
 }
-int NodeGraph::first_node_of(VOp op) const {
+int NodeGraph::first_node_of(const std::string& op_type) const {
     if (!vg_) return -1;
-    for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op == op) return i;
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op_type == op_type) return i;
     return -1;
 }
 bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const {  // left edge, per node
@@ -308,9 +305,8 @@ void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& t
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); }
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
-void NodeGraph::get_op(int i, int& op, int& input, int& id, float& x, float& y) const {
+void NodeGraph::get_op(int i, int& input, int& id, float& x, float& y) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
-    op = static_cast<int>(vg_->nodes()[i].op);
     input = vg_->nodes()[i].in(0);
     id = vg_->nodes()[i].id;
     x = (i < int(op_pos_.size())) ? op_pos_[i].first : 0.f;
@@ -329,7 +325,6 @@ void NodeGraph::get_op_base(int i, float out[4]) const {
 static bool op_node_valid(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size());
 }
-int NodeGraph::op_kind(int i) const { return op_node_valid(vg_, i) ? int(vg_->nodes()[i].op) : -1; }
 const char* NodeGraph::op_kind_name(int i) const { return op_node_valid(vg_, i) ? vg_->nodes()[i].op_type.c_str() : ""; }
 int NodeGraph::op_param_count_at(int i) const { return node_pcount(vg_, i); }
 const char* NodeGraph::op_param_label_at(int i, int local) const { return node_plabel(vg_, i, local); }
@@ -514,11 +509,11 @@ void NodeGraph::draw(Renderer2D& r) {
     const int active_out_idx = vg_ ? vg_->output_index() : -1;
     if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (node removed/reloaded)
     for (int i = 0; i < n; ++i) {
-        const VOp op = vg_->nodes()[i].op;
+        const vivid::VisualNode& node = vg_->nodes()[i];
         float x, y, w, h; op_node_rect(i, x, y, w, h);
-        const bool out = (op == VOp::Output);
+        const bool out = node.is_output();
         const bool active_out = out && i == active_out_idx;   // drives the viewer
-        float ar, ag, ab; op_accent(op, ar, ag, ab);
+        float ar, ag, ab; op_accent(node, ar, ag, ab);
         const float acc[3] = { ar, ag, ab };
         if (i != sel_op_ && active_out)  // active-output ring (accent) when not the inspector selection
             r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, ar, ag, ab, 1.0f);
@@ -538,7 +533,7 @@ void NodeGraph::draw(Renderer2D& r) {
         // thumbnail: a recessed panel with the node's live output drawn on top via
         // Renderer2D's textured-quad path (scales/pans with the view, clipped to the
         // pane by the active clip-rect, letterboxed to the source aspect).
-        if (op_has_thumb(op)) {
+        if (op_has_thumb(vg_, i)) {
             const int rows = std::max(1, op_input_rows_at(vg_, i));
             const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
             node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
@@ -679,11 +674,11 @@ bool NodeGraph::on_down(double x, double y) {
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
-        if (vg_->nodes()[i].op != VOp::Output && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
+        if (!vg_->nodes()[i].is_output() && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
             vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); return true;
         }
         if (in_rect(ox, oy, ow, oh, wx, wy)) {
-            if (vg_->nodes()[i].op == VOp::Output) vg_->set_active_output(i);  // clicking selects the viewer source
+            if (vg_->nodes()[i].is_output()) vg_->set_active_output(i);  // clicking selects the viewer source
             sel_op_ = i;  // select for the inspector (dock)
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
         }

@@ -58,7 +58,7 @@ public:
     void  disconnect_dest(const std::string& dest) { reg_.disconnect(dest); }
     // Chain (op type + input edge + id + position + base params) persistence.
     int  op_count() const;
-    void get_op(int i, int& op, int& input, int& id, float& x, float& y) const;
+    void get_op(int i, int& input, int& id, float& x, float& y) const;   // op TYPE: op_kind_name(i)
     std::string op_type_at(int i) const;   // the node's operator name (persist key)
     void get_op_base(int i, float out[4]) const;
     void chain_load_begin();
@@ -78,7 +78,6 @@ public:
     // base param values (the resolved value = clamp(base + live modulation)).
     int  selected_op() const { return sel_op_; }
     void select_op(int i) { sel_op_ = i; }
-    int  op_kind(int i) const;                            // VOp as int, -1 if invalid
     const char* op_kind_name(int i) const;               // "Plasma" / "Feedback" / ...
     int  op_param_count_at(int i) const;
     const char* op_param_label_at(int i, int local) const;
@@ -162,7 +161,7 @@ private:
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
-    int  first_node_of(vivid::VOp op) const;              // -1 if none
+    int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;

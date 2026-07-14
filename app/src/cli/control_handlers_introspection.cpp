@@ -159,7 +159,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         auto& g = *c.graph;
         json nodes = json::array();
         for (int i = 0; i < g.op_count(); ++i) {
-            int op = 0, in = -1, id = 0; float x = 0, y = 0; g.get_op(i, op, in, id, x, y);
+            int in = -1, id = 0; float x = 0, y = 0; g.get_op(i, in, id, x, y);
             json params = json::array();
             for (int l = 0; l < g.op_param_count_at(i); ++l)
                 params.push_back({ {"name", g.op_param_label_at(i, l)}, {"base", g.op_param_base_at(i, l)},
@@ -176,7 +176,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["nodes"] = nodes;
         r["data_nodes"] = dnodes;
-        if (c.vgraph) { r["active_output"] = c.vgraph->active_output_id(); r["generator"] = vop_name(c.vgraph->generator()); }
+        if (c.vgraph) { r["active_output"] = c.vgraph->active_output_id(); r["generator"] = c.vgraph->generator(); }
         return r;
     };
     // Auto-arrange the op nodes into a tidy layered layout (the "Re-layout" button).
