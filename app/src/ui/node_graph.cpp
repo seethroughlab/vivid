@@ -272,11 +272,19 @@ void NodeGraph::apply_params() {
     auto& nodes = vg_->nodes();
     for (auto& n : nodes) {
         const int pc = int(n.inst.param_ptrs.size());  // operator-declared params
+        const int had = int(n.base.size());
         n.params.resize(pc, 0.f);
         n.base.resize(pc, 0.f);
+        for (int l = had; l < pc; ++l) n.base[l] = n.inst.param_ptrs[l]->default_value;   // seed new slots
         for (int l = 0; l < pc; ++l) {
-            const float mod = reg_.dest_value(node_param_dest(n.id, n.inst.param_ptrs[l]->name));
-            n.params[l] = std::clamp(n.base[l] + mod, 0.f, 1.f);  // manual base + live modulation
+            const vivid::ParamBase* pb = n.inst.param_ptrs[l];
+            // Resolve against the param's DECLARED range, not a hard-coded [0,1]. Modulation is a
+            // normalized 0..1 signal, so it scales by the range — for a 0..1 param that is exactly
+            // the old behavior, but an int/enum param (an aspect preset, an octave count) is no
+            // longer silently pinned to 1.
+            const float lo = pb->min_value, hi = pb->max_value;
+            const float mod = reg_.dest_value(node_param_dest(n.id, pb->name));
+            n.params[l] = std::clamp(n.base[l] + mod * (hi - lo), lo, hi);   // manual base + live modulation
         }
     }
     // Back-compat return-path sources: the canonical six viz.<name>, taken from the
@@ -332,7 +340,10 @@ void NodeGraph::set_op_param_base_at(int i, int local, float v) {
     if (op_node_valid(vg_, i) && local >= 0) {
         auto& base = vg_->nodes()[i].base;
         if (local >= int(base.size())) base.resize(local + 1, 0.f);
-        base[local] = std::clamp(v, 0.f, 1.f);
+        // Clamp to the param's DECLARED range (both the inspector and the control server's
+        // set_node_param land here). A hard [0,1] used to pin every int/enum param to 1.
+        const vivid::ParamBase* pb = node_pb(vg_, i, local);
+        base[local] = pb ? std::clamp(v, pb->min_value, pb->max_value) : std::clamp(v, 0.f, 1.f);
     }
 }
 int NodeGraph::op_param_type_at(int i, int local) const {
@@ -456,31 +467,6 @@ bool NodeGraph::in_rect(float rx, float ry, float rw, float rh, double x, double
 }
 
 
-// ---- op palette (add nodes) ----
-static const VOp kPalette[4] = { VOp::Plasma, VOp::Video, VOp::Feedback, VOp::Blur };
-int NodeGraph::palette_hit(double x, double y) const {
-    for (int j = 0; j < 4; ++j) {
-        const float rx = bx0_ + j * 84.f, ry = by1_ - 22.f;
-        if (in_rect(rx, ry, 80.f, 18.f, x, y)) return j;
-    }
-    return -1;
-}
-void NodeGraph::draw_op_palette(Renderer2D& r) {
-    const Style& sty = style();
-    r.draw_text(bx0_, by1_ - 38.f, "ADD OP", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker);
-    for (int j = 0; j < 4; ++j) {
-        const float rx = bx0_ + j * 84.f, ry = by1_ - 22.f;
-        item_box(r, { rx, ry, 80.f, 18.f }, sty.gpu);
-        char b[20]; std::snprintf(b, sizeof b, "+ %s", op_name(kPalette[j]));
-        r.draw_text(rx + 9.f, ry + 3.f, b, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
-    }
-    // Re-layout (auto-arrange) — right-aligned in the palette row.
-    const float rlx = bx1_ - 96.f, rly = by1_ - 22.f;
-    item_box(r, { rlx, rly, 88.f, 18.f }, sty.gold);
-    r.draw_text(rlx + 9.f, rly + 3.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
-}
-bool NodeGraph::relayout_hit(double x, double y) const { return in_rect(bx1_ - 96.f, by1_ - 22.f, 88.f, 18.f, x, y); }
-
 void NodeGraph::draw(Renderer2D& r) {
     const Style& sty = style();
     sync_op_pos();
@@ -598,7 +584,6 @@ void NodeGraph::draw(Renderer2D& r) {
     }
 
     r.set_transform(0.f, 0.f, 1.f);   // back to identity for chrome
-    draw_op_palette(r);
     r.pop_clip_rect();
 }
 
@@ -609,13 +594,11 @@ void NodeGraph::draw_overlays(Renderer2D& r) { draw_chooser(r); }
 bool NodeGraph::on_down(double x, double y) {
     cx_ = x; cy_ = y;
     if (chooser_open_) {  // click a row to spawn it, click anywhere else to dismiss
-        const float w = 264.f, rowh = 20.f, hdr = 26.f;
+        float px, py, w, h; int vis, first;
+        chooser_geom(px, py, w, h, vis, first);   // same geometry the draw uses
         const int total = int(chooser_hits_.size());
-        const int vis = std::max(1, std::min(total, 9));
-        const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
-        const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
-        if (x >= px && x < px + w && y >= py + hdr && y < py + hdr + vis * rowh) {
-            const int hi = first + int((y - (py + hdr)) / rowh);
+        if (x >= px && x < px + w && y >= py + kChooserHdrH && y < py + kChooserHdrH + vis * kChooserRowH) {
+            const int hi = first + int((y - (py + kChooserHdrH)) / kChooserRowH);
             if (hi >= 0 && hi < total) { chooser_sel_ = hi; chooser_confirm(); return true; }
         }
         chooser_hide(); return true;
@@ -658,11 +641,9 @@ bool NodeGraph::on_down(double x, double y) {
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
         }
     }
-    // palette -> add an op (chrome: screen coords)
-    int pj = palette_hit(x, y);
-    if (pj >= 0 && vg_) { vg_->add_node(kPalette[pj]); sync_op_pos(); return true; }
-    // Re-layout button (chrome: screen coords)
-    if (relayout_hit(x, y)) { layout_nodes(); return true; }
+    // (Adding an op is Tab-only now — the registry-driven chooser, spawned at the cursor. The old
+    // hard-coded 4-item "ADD OP" strip couldn't even reach the newer ops. Re-layout moved to the
+    // visuals column's corner chrome, handled in app/input.cpp.)
 
     // data-node body drag
     for (int i = 0; i < int(data_.size()); ++i)
@@ -710,21 +691,54 @@ void NodeGraph::on_up(double x, double y) {
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
 }
 
-// ---- Tab chooser ----
+// ---- Tab chooser: the ONE way to add a node (ADR-0014) ----
+
+// Tiered relevance score, so an exact/prefix hit always outranks an incidental substring match
+// ("mesh" must not be buried under something whose summary merely mentions meshes). < 0 = filtered
+// out. Lifted from vivid-classic's score_match_v2 (ui/graph/node_graph_util.h).
+static int chooser_score(const ChooserEntry& e, const std::string& f) {
+    if (f.empty()) return 1;                                    // no filter: everything, catalog order
+    const std::string lbl = lower_str(e.label);
+    if (lbl == f) return 1000;                                  // exact name
+    if (lbl.rfind(f, 0) == 0) return 700;                       // name prefix
+    const size_t at = lbl.find(f);
+    if (at != std::string::npos) return 400 - static_cast<int>(at);   // name substring (earlier wins)
+    if (e.hay.find(f) != std::string::npos) return 200;         // keyword / summary hit
+    return -1;
+}
+
 void NodeGraph::chooser_build_catalog() {
     chooser_catalog_.clear();
-    if (vg_ && vg_->registry())                       // spawnable ops, straight from the registry
-        for (const auto& nm : vg_->registry()->type_names())
-            chooser_catalog_.push_back({ nm, true, nm, -1, 0 });
-    for (const auto& s : kSources)                     // audio data sources
-        chooser_catalog_.push_back({ s.label, false, std::string(), s.char_id, 1 });
+    if (vg_ && vg_->registry()) {                     // spawnable ops, straight from the registry
+        for (const auto& nm : vg_->registry()->type_names()) {
+            ChooserEntry e{ nm, true, nm, -1, 0, std::string(), std::string() };
+            // Descriptor metadata (v3+): a one-line summary + search keywords. Both optional.
+            if (const auto* d = vg_->registry()->descriptor_for(nm)) {
+                if (d->summary) e.summary = d->summary;
+                for (uint32_t k = 0; k < d->keyword_count; ++k)
+                    if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
+            }
+            e.hay = lower_str(e.hay + e.label + " " + e.summary);
+            chooser_catalog_.push_back(std::move(e));
+        }
+    }
+    for (const auto& s : kSources)                     // audio data sources (the bridge)
+        chooser_catalog_.push_back({ s.label, false, std::string(), s.char_id, 1,
+                                     "audio characteristic", lower_str(std::string(s.label)) });
 }
 void NodeGraph::chooser_rebuild() {
     chooser_hits_.clear();
     const std::string f = lower_str(chooser_filter_);
-    for (int i = 0; i < int(chooser_catalog_.size()); ++i)
-        if (f.empty() || lower_str(chooser_catalog_[i].label).find(f) != std::string::npos)
-            chooser_hits_.push_back(i);
+    std::vector<std::pair<int, int>> scored;   // (score, catalog index)
+    for (int i = 0; i < int(chooser_catalog_.size()); ++i) {
+        const int sc = chooser_score(chooser_catalog_[i], f);
+        if (sc >= 0) scored.push_back({ sc, i });
+    }
+    std::stable_sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
+        if (a.first != b.first) return a.first > b.first;                       // best score first
+        return chooser_catalog_[a.second].label < chooser_catalog_[b.second].label;   // then A-Z
+    });
+    for (const auto& s : scored) chooser_hits_.push_back(s.second);
     chooser_sel_ = std::clamp(chooser_sel_, 0, std::max(0, int(chooser_hits_.size()) - 1));
 }
 void NodeGraph::chooser_show(double sx, double sy) {
@@ -758,29 +772,39 @@ void NodeGraph::chooser_confirm() {
     chooser_hide();
 }
 
-// Centred drop-down panel; layout shared with the click hit-test in on_down().
+// Where the chooser panel sits: anchored at the cursor (the node spawns there too, so the palette
+// appears where the work is), nudged back inside the graph bounds when it would overhang.
+void NodeGraph::chooser_geom(float& px, float& py, float& w, float& h, int& vis, int& first) const {
+    w = kChooserW;
+    const int total = int(chooser_hits_.size());
+    vis   = std::max(1, std::min(total, kChooserMaxRows));
+    first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
+    h  = kChooserHdrH + vis * kChooserRowH + 6.f;
+    px = std::clamp(chooser_sx_ + 8.f, bx0_, std::max(bx0_, bx1_ - w));
+    py = std::clamp(chooser_sy_ + 8.f, by0_, std::max(by0_, by1_ - h));
+}
+
 void NodeGraph::draw_chooser(Renderer2D& r) {
     if (!chooser_open_) return;
-    const float w = 264.f, rowh = 20.f, hdr = 26.f;
+    float px, py, w, h; int vis, first;
+    chooser_geom(px, py, w, h, vis, first);
     const int total = int(chooser_hits_.size());
-    const int vis = std::max(1, std::min(total, 9));
-    const int first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
-    const float px = (bx0_ + bx1_) * 0.5f - w * 0.5f, py = by0_ + 22.f;
-    const float h = hdr + vis * rowh + 6.f;
     overlay_panel(r, { px, py, w, h }, nullptr, style().gpu);
     const bool empty = chooser_filter_.empty();
     const std::string f = empty ? std::string("type to filter\xE2\x80\xA6") : (chooser_filter_ + "_");
     r.draw_text(px + 10.f, py + 7.f, f.c_str(), empty ? 0.45f : 0.9f, empty ? 0.47f : 0.92f, empty ? 0.5f : 0.95f, 1.0f, 0.92f);
-    if (total == 0) { r.draw_text(px + 10.f, py + hdr + 4.f, "no match", 0.55f, 0.45f, 0.45f, 1.0f, 0.86f); return; }
+    if (total == 0) { r.draw_text(px + 10.f, py + kChooserHdrH + 4.f, "no match", 0.55f, 0.45f, 0.45f, 1.0f, 0.86f); return; }
     for (int vi = 0; vi < vis; ++vi) {
         const int hi = first + vi; if (hi >= total) break;
         const ChooserEntry& e = chooser_catalog_[chooser_hits_[hi]];
-        const float iy = py + hdr + vi * rowh;
-        if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, rowh, 0.20f, 0.28f, 0.40f, 0.9f);
+        const float iy = py + kChooserHdrH + vi * kChooserRowH;
+        if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, kChooserRowH, 0.20f, 0.28f, 0.40f, 0.9f);
         const float dr = e.env == 0 ? 0.55f : 0.35f, dg = e.env == 0 ? 0.55f : 0.78f, db = e.env == 0 ? 0.95f : 0.55f;
-        r.draw_rect(px + 12.f, iy + rowh * 0.5f - 3.f, 6.f, 6.f, dr, dg, db, 1.0f);
-        r.draw_text(px + 26.f, iy + 4.f, e.label.c_str(), 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
-        r.draw_text(px + w - 42.f, iy + 4.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
+        r.draw_rect(px + 12.f, iy + 9.f, 6.f, 6.f, dr, dg, db, 1.0f);
+        r.draw_text(px + 26.f, iy + 3.f, e.label.c_str(), 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
+        r.draw_text(px + w - 42.f, iy + 3.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
+        if (!e.summary.empty())   // the descriptor's one-liner: say what the op DOES, not just its name
+            r.draw_text(px + 26.f, iy + 16.f, e.summary.c_str(), 0.48f, 0.50f, 0.54f, 1.0f, 0.72f);
     }
 }
 

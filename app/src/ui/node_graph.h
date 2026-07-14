@@ -12,7 +12,10 @@ namespace vivid::ui {
 
 // One Tab-chooser row: a spawnable visuals op (op_type from the registry) or an
 // audio data-source (char_id). env: 0 = gpu op, 1 = audio source.
-struct ChooserEntry { std::string label; bool is_op; std::string op_type; int char_id; int env; };
+// `summary` is the operator's one-line descriptor blurb (shown as a subtitle); `hay` is the
+// pre-lowercased search haystack (label + keywords + summary) the ranker scores against.
+struct ChooserEntry { std::string label; bool is_op; std::string op_type; int char_id; int env;
+                      std::string summary; std::string hay; };
 
 // A minimal node editor on Renderer2D. Left: audio data-source nodes (each a live
 // characteristic). Right: the rewireable visuals chain — op-nodes (Plasma/Video/
@@ -149,6 +152,12 @@ private:
         wx = (sx - view_ox_) / view_scale_; wy = (sy - view_oy_) / view_scale_;
     }
 
+    // Tab chooser geometry — shared by draw + hit-test (they must agree). Rows are two-line:
+    // the op name over its descriptor summary.
+    static constexpr float kChooserW = 296.f, kChooserRowH = 30.f, kChooserHdrH = 26.f;
+    static constexpr int   kChooserMaxRows = 9;
+    void chooser_geom(float& px, float& py, float& w, float& h, int& vis, int& first) const;
+
     // Tab chooser state.
     bool        chooser_open_ = false;
     std::string chooser_filter_;
@@ -177,9 +186,6 @@ private:
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;
     int  nearest_op_in(double x, double y, double maxd, int& port) const; // node index (-1 none) + which input port
     int  nearest_op_out(double x, double y, double maxd) const;// node index, -1
-    void draw_op_palette(Renderer2D& r);
-    int  palette_hit(double x, double y) const;           // VOp to add, or -1
-    bool relayout_hit(double x, double y) const;          // the "Re-layout" button
 };
 
 }  // namespace vivid::ui

@@ -88,8 +88,9 @@ constexpr int kNumChars = 5;
 // Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
 inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
 
-// Visuals FBO internal resolution (fixed; the on-screen viewer scales to it).
-constexpr float kViewW = 720.f, kViewH = 300.f;
+// (The visuals render-target size is NOT here any more: the Output node owns it — see
+// gpu/output_format.h + ADR-0014. It used to be a fixed 720x300 FBO stretched to the panel, which
+// is why several ops hard-coded a /1.7778 aspect correction.)
 
 // --- Window-relative geometry (explicit args; no globals). ---
 inline float dock_top(int win_h, float dock_h) { return win_h - dock_h; }   // y where the dock begins
@@ -155,32 +156,52 @@ inline int pool_item_at(float sidebar_w, int count, double mx, double my) {
 inline bool in_sidebar(float sidebar_w, int win_h, float dock_h, double mx, double my) {
     return sidebar_w > 0.f && mx >= 0 && mx < sidebar_w && my >= kTopBarH && my < dock_top(win_h, dock_h);
 }
-// Visuals pane: an Output region (the viewer) above a Signal region (the node graph).
-inline Rect output_panel(int win_w, float split_x) {
-    return { split_x + kPaneMargin, kTopBarH + kPaneMargin,
-             static_cast<float>(win_w) - split_x - 2.f * kPaneMargin, 300.f };
+// --- The visuals zone (ADR-0014): the node graph IS the zone; the output floats over it. ---
+// The graph owns the whole right column (transport -> dock). No enclosing panel frame: the
+// graph canvas is the surface, so structure comes from the column itself, not a nested box.
+inline Rect visuals_panel(int win_w, int win_h, float split_x, float dock_h) {
+    const float top = kTopBarH + kPaneMargin;
+    return { split_x + kPaneMargin, top,
+             static_cast<float>(win_w) - split_x - 2.f * kPaneMargin,
+             dock_top(win_h, dock_h) - kPaneMargin - top };
 }
-// A small button in the OUTPUT panel header: pop the visuals out to a separate window.
-inline Rect popout_button_rect(int win_w, float split_x) {
-    Rect p = output_panel(win_w, split_x);
-    return { p.x + p.w - 82.f, p.y + 4.f, 78.f, kPanelHdH - 7.f };
+
+// The floating OUTPUT preview: a movable/resizable panel drawn over the graph. Its position +
+// width are per-window state; its HEIGHT is derived from the output's aspect ratio, so the
+// preview always shows the true shape of the output (Output-node params own that aspect).
+constexpr float kPreviewMinW = 160.f, kPreviewMaxW = 1600.f;
+inline float preview_body_h(float w, float aspect) { return w / (aspect > 0.01f ? aspect : 1.f); }
+inline Rect preview_panel(float px, float py, float pw, float aspect) {
+    return { px, py, pw, kPanelHdH + preview_body_h(pw, aspect) };
 }
-// OUTPUT-header toggle to reveal/hide the visuals node graph (a deep view under the
-// output). Sits just left of the pop-out button.
-inline Rect graph_button_rect(int win_w, float split_x) {
-    Rect p = output_panel(win_w, split_x);
-    return { p.x + p.w - 82.f - 62.f, p.y + 4.f, 58.f, kPanelHdH - 7.f };
+// The viewer = the panel body under the header. This is the rect the VisualGraph blits into,
+// so it matches the output's aspect exactly (Fit/Fill only matter inside it once the surface
+// aspect and the output aspect can differ — e.g. the pop-out window).
+inline Rect preview_viewer_rect(float px, float py, float pw, float aspect) {
+    return { px, py + kPanelHdH, pw, preview_body_h(pw, aspect) };
 }
-inline Rect viewer_rect(int win_w, float split_x) {
-    Rect p = output_panel(win_w, split_x);
-    return { p.x + kPanePad, p.y + kPanelHdH + kPanePad, p.w - 2.f * kPanePad, p.h - kPanelHdH - 2.f * kPanePad };
+inline Rect preview_header_rect(float px, float py, float pw) { return { px, py, pw, kPanelHdH }; }
+inline Rect preview_close_rect(float px, float py, float pw)  { return { px + pw - 16.f, py + 4.f, 13.f, 13.f }; }
+// Pop the output out to its own window (second display / performance screen).
+inline Rect preview_popout_rect(float px, float py, float pw) { return { px + pw - 84.f, py + 4.f, 64.f, kPanelHdH - 7.f }; }
+// Bottom-right resize grip (drag to scale the preview; the aspect drives the height).
+inline Rect preview_grip_rect(float px, float py, float pw, float aspect) {
+    const Rect p = preview_panel(px, py, pw, aspect);
+    return { p.x + p.w - 14.f, p.y + p.h - 14.f, 14.f, 14.f };
 }
-inline Rect signal_panel(int win_w, int win_h, float split_x, float dock_h) {
-    Rect o = output_panel(win_w, split_x);
-    const float top = o.y + o.h + kPaneMargin;
-    return { o.x, top, o.w, dock_top(win_h, dock_h) - kPaneMargin - top };
+// Graph chrome, pinned to the visuals column's top-right corner (screen space, not canvas space).
+inline Rect graph_relayout_rect(int win_w, int win_h, float split_x, float dock_h) {
+    const Rect g = visuals_panel(win_w, win_h, split_x, dock_h);
+    return { g.x + g.w - 78.f, g.y + 4.f, 74.f, kPanelHdH - 6.f };
 }
-inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH + 4.f, 6.f, dock_top(win_h, dock_h) - kTopBarH - 4.f }; }
+// The DAW|visuals splitter: a full-height grab strip running from the transport bar down to the
+// dock (no gap at the top — a divider that stops short reads as an artifact, not a handle).
+inline Rect splitter_rect(int win_h, float dock_h, float split_x) { return { split_x - 3.f, kTopBarH, 6.f, dock_top(win_h, dock_h) - kTopBarH }; }
+// The grip: a short run of rules at the strip's vertical midpoint — the "you can drag me" mark.
+inline Rect splitter_grip_rect(int win_h, float dock_h, float split_x) {
+    const Rect s = splitter_rect(win_h, dock_h, split_x);
+    return { s.x, s.y + s.h * 0.5f - 14.f, s.w, 28.f };
+}
 inline Rect dock_resize_rect(int win_w, int win_h, float dock_h) { return { 0.f, dock_top(win_h, dock_h) - 3.f, static_cast<float>(win_w), 7.f }; }
 // A close (x) in the detail-region header strip — exits the current focus back to the
 // session default (the device view). Sits just left of the domain badge on the right edge.

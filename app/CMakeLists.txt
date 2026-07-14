@@ -262,6 +262,20 @@ set(_wgpu_root "")
 if(_wgpu_dist)
     list(GET _wgpu_dist 0 _wgpu_root)
 endif()
+# Fail loudly rather than baking in a "/include" that only shows up as a runtime clang error
+# inside the package compiler (that silent failure is exactly what broke test_operator_clone
+# on a fresh configure).
+if(NOT _wgpu_root)
+    message(FATAL_ERROR "wgpu dist not found under ${CMAKE_BINARY_DIR}/_deps — the package compiler "
+                        "needs its include/lib dirs. Is FetchContent_MakeAvailable(webgpu) above this?")
+endif()
+# test_operator_clone drives the same package compiler, so it needs the same wgpu dirs. They are
+# set HERE (not in tests/CMakeLists) because tests/ is added before webgpu is fetched.
+if(VIVID_BUILD_TESTS AND TARGET test_operator_clone)
+    target_compile_definitions(test_operator_clone PRIVATE
+        VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
+        VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib")
+endif()
 target_compile_definitions(vivid PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf"
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"

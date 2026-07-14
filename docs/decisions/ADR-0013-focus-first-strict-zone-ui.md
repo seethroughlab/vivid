@@ -1,6 +1,11 @@
 # ADR-0013: Focus-First, Strict-Zone UI — Session Home, Deep-View Editors, Explicit Focus
 
-Status: proposed
+Status: accepted, **partially amended by
+[ADR-0014](ADR-0014-visual-graph-is-home.md)** (2026-07-12) — points **3** ("the visual output is
+always on") and **5** ("the visual output is the always-on canvas; the graph is its depth"), and the
+**UI-2** phase below, are superseded: in the visual domain the **graph** is the persistent zone and
+the **output** is a floatable surface configured by params on the Output node. Everything else here
+(strict domain zones, the explicit focus context, editors ≠ inspectors, float-out) stands.
 
 Date: 2026-07-06
 

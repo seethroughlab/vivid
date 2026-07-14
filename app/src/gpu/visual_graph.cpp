@@ -6,20 +6,31 @@
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 
 namespace vivid {
 
-// Final-present blit (the node feeding Output -> the on-screen viewer). This is the
-// host's own present pass; all visual operators are auto-discovered package dylibs.
+// Final-present blit (the node feeding Output -> a surface: the floating preview, or the pop-out
+// window). This is the host's own present pass; all visual operators are auto-discovered package
+// dylibs.
+//
+// p0..p3 carry the UV window (scale + offset) that letterboxes the output into a surface of a
+// different aspect (ADR-0014 / blit_fit in gpu/output_format.h). Fit widens the window past the
+// source, so samples outside [0,1] are painted black — the bars. (An explicit test is required:
+// the sampler clamps to edge, which would smear the border pixels instead.)
 static const char* kBlitGLSL = R"(#version 450
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 o_color;
-layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float p0; float p1; float p2; float p3; };
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_su; float u_sv; float u_ou; float u_ov; };
 layout(set = 0, binding = 1) uniform texture2D u_tex;
 layout(set = 0, binding = 2) uniform sampler   u_samp;
-void main() { o_color = texture(sampler2D(u_tex, u_samp), v_uv); }
+void main() {
+    vec2 uv = v_uv * vec2(u_su, u_sv) + vec2(u_ou, u_ov);
+    if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) o_color = vec4(0.0, 0.0, 0.0, 1.0);
+    else o_color = texture(sampler2D(u_tex, u_samp), uv);
+}
 )";
 
 const char* vop_name(VOp op) {
@@ -111,6 +122,62 @@ void VisualGraph::ensure_resources(size_t n) {
     while (rts_.size() < n) { rts_.emplace_back(); rts_.back().init(dev_, rtW_, rtH_, fmt_); }
 }
 
+void VisualGraph::set_rt_size(uint32_t w, uint32_t h) {
+    w = std::clamp(w, 16u, 7680u);
+    h = std::clamp(h, 16u, 4320u);
+    if (w == rtW_ && h == rtH_) return;   // steady state: no-op
+    rtW_ = w; rtH_ = h;
+    // Reallocate every node's target + the fallback. Safe here (run_chain calls this before it has
+    // recorded anything into the encoder that references an RT): the previous frame's command
+    // buffer was already submitted, and wgpu holds its own references to the resources it uses,
+    // so releasing ours doesn't pull the rug out from under in-flight work.
+    for (auto& r : rts_) { r.release(); r.init(dev_, rtW_, rtH_, fmt_); }
+    fallback_.release(); fallback_.init(dev_, rtW_, rtH_, fmt_);
+    fb_cleared_ = false;   // the new fallback texture is uninitialized -> re-clear it this frame
+    // (Feedback/ping-pong ops rebuild their own history textures when the size changes — they key
+    // on ctx->output_width/height — so a resize costs one frame of trails. That's correct.)
+}
+
+// Index of a named param on the active Output node (-1 if absent — e.g. an Output restored from a
+// session saved before that param existed).
+static int output_param_index(const VisualNode& n, const char* name) {
+    for (int i = 0; i < static_cast<int>(n.inst.param_ptrs.size()); ++i)
+        if (n.inst.param_ptrs[i]->name && std::strcmp(n.inst.param_ptrs[i]->name, name) == 0) return i;
+    return -1;
+}
+
+float VisualGraph::output_param(const char* name, float def) const {
+    const int oi = output_index();
+    if (oi < 0) return def;
+    const VisualNode& n = nodes_[oi];
+    const int i = output_param_index(n, name);
+    return (i >= 0 && i < static_cast<int>(n.base.size())) ? n.base[i] : def;
+}
+
+void VisualGraph::set_output_param(const char* name, float v) {
+    const int oi = output_index();
+    if (oi < 0) return;
+    VisualNode& n = nodes_[oi];
+    const int i = output_param_index(n, name);
+    if (i >= 0 && i < static_cast<int>(n.base.size())) n.base[i] = v;
+}
+
+// The Output node owns the output's identity (ADR-0014). Read the BASE params, not the resolved
+// ones: resolved = base + live modulation, so a transient wired to `aspect` would otherwise thrash
+// the render-target size every frame. The output's format is a document setting, not a modulatable
+// signal.
+void VisualGraph::apply_output_settings() {
+    if (output_index() < 0) return;
+    const auto enum_of = [&](const char* nm, float def) {
+        return static_cast<int>(std::lround(output_param(nm, def)));
+    };
+    fit_ = static_cast<FitMode>(std::clamp(enum_of("fit", 0.f), 0, kNumFits - 1));
+    uint32_t w = 0, h = 0;
+    output_size_for(enum_of("aspect", static_cast<float>(kDefaultAspect)),
+                    enum_of("height", static_cast<float>(kDefaultHeight)), w, h);
+    set_rt_size(w, h);
+}
+
 int VisualGraph::add_node(const std::string& type) {
     nodes_.emplace_back();
     VisualNode& n = nodes_.back();
@@ -168,9 +235,8 @@ VOp VisualGraph::generator() const {
     return VOp::Plasma;
 }
 
-void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
-                         float vx, float vy, float vw, float vh, float time,
-                         WGPUTextureView video_tex) {
+void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex) {
+    apply_output_settings();   // FIRST: may resize every RT, before the encoder references any
     ensure_resources(nodes_.size());
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
     const int outIdx = output_index();
@@ -240,21 +306,31 @@ void VisualGraph::render(WGPUCommandEncoder enc, WGPUTextureView screen,
         if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
     }
     ++frame_;
-
-    if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
-        WGPUTextureView f[1] = { rts_[feed].view };
-        blit_.render(enc, screen, vx, vy, vw, vh, /*clear*/false, f, 1, time, nullptr, 0);
-    }
 }
 
 void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
-                             float vx, float vy, float vw, float vh, float time) {
+                             float vx, float vy, float vw, float vh,
+                             float surf_w, float surf_h, float time, bool clear) {
     const int outIdx = output_index();
     if (outIdx < 0) return;
+    // Clamp the destination rect into the target. A rect that escapes the render target is a
+    // process abort in wgpu (a validation panic in the submit), not a dropped draw — so this is a
+    // hard backstop under whatever geometry the caller computed.
+    if (surf_w > 0.f && surf_h > 0.f) {
+        const float x0 = std::clamp(vx, 0.f, surf_w), y0 = std::clamp(vy, 0.f, surf_h);
+        const float x1 = std::clamp(vx + vw, 0.f, surf_w), y1 = std::clamp(vy + vh, 0.f, surf_h);
+        vx = x0; vy = y0; vw = x1 - x0; vh = y1 - y0;
+    }
+    if (vw < 1.f || vh < 1.f) return;   // fully off-surface / degenerate: nothing to present
     const int feed = nodes_[outIdx].in(0);
     if (feed >= 0 && feed < static_cast<int>(nodes_.size())) {
-        WGPUTextureView f[1] = { rts_[feed].view };
-        blit_.render(enc, view, vx, vy, vw, vh, /*clear*/true, f, 1, time, nullptr, 0);
+        // Letterbox/crop/stretch the output into this surface per the Output node's fit mode. Both
+        // surfaces (the floating preview + the pop-out window) go through here, so they agree.
+        const float dst_a = (vh > 0.f) ? vw / vh : 1.f;
+        const BlitFit f = blit_fit(rt_aspect(), dst_a, fit_);
+        const float p[4] = { f.su, f.sv, f.ou, f.ov };
+        WGPUTextureView t[1] = { rts_[feed].view };
+        blit_.render(enc, view, vx, vy, vw, vh, clear, t, 1, time, p, 4);
     }
 }
 

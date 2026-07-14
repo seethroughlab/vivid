@@ -38,18 +38,34 @@ static void popout_key_callback(GLFWwindow* w, int key, int, int action, int) {
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) glfwSetWindowShouldClose(w, GLFW_TRUE);
 }
 
-// Open/close the pop-out visuals window: fullscreen on a second monitor if one is
-// present, else a large windowed view. Shares the wgpu device via a secondary surface.
-void toggle_popout(App& app, Window& win) {
-    if (!app.gpu) return;
-    if (win.popout) {   // close
-        app.gpu->close_secondary();
-        glfwDestroyWindow(win.popout);
-        win.popout = nullptr; win.popout_fb_w = win.popout_fb_h = 0;
-        return;
-    }
+// The Output node's `display` param: 0 = Current (the monitor the app is on), 1 = Primary,
+// 2 = Secondary (the first non-primary monitor). Falls back to a plain window when the requested
+// monitor doesn't exist.
+static GLFWmonitor* monitor_for_target(int target) {
     int mcount = 0; GLFWmonitor** mons = glfwGetMonitors(&mcount);
-    GLFWmonitor* mon = (mcount > 1) ? mons[1] : nullptr;   // performance screen = the 2nd monitor
+    if (mcount <= 0) return nullptr;
+    if (target == 1) return glfwGetPrimaryMonitor();
+    if (target == 2) {
+        GLFWmonitor* prim = glfwGetPrimaryMonitor();
+        for (int i = 0; i < mcount; ++i) if (mons[i] != prim) return mons[i];
+        return nullptr;   // only one screen: no performance screen to take over
+    }
+    return (mcount > 1) ? mons[1] : nullptr;   // Current/default: the 2nd screen if there is one
+}
+
+void close_popout(App& app, Window& win) {
+    if (!app.gpu || !win.popout) return;
+    app.gpu->close_secondary();
+    glfwDestroyWindow(win.popout);
+    win.popout = nullptr; win.popout_fb_w = win.popout_fb_h = 0;
+}
+
+// Open/close the pop-out visuals window on the target display. Shares the wgpu device via a
+// secondary surface.
+void open_popout(App& app, Window& win, int display_target) {
+    if (!app.gpu || win.popout) return;
+    GLFWmonitor* mon = monitor_for_target(display_target);
+    win.popout_display = display_target;
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* w = mon ? [&]{ const GLFWvidmode* vm = glfwGetVideoMode(mon);
                                return glfwCreateWindow(vm->width, vm->height, "Vivid \xE2\x80\x94 Visuals", mon, nullptr); }()
@@ -170,6 +186,18 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         win.split_x = std::clamp(static_cast<float>(mx), 40.f, static_cast<float>(win.win_w) - 40.f);
     if (win.dock_drag)
         win.dock_h = std::clamp(static_cast<float>(win.win_h) - static_cast<float>(my), 120.f, win.win_h * 0.5f);
+    // ADR-0014: the floating output preview — drag the header to move it, the corner grip to size it
+    // (width only; the height follows the output's aspect). Kept loosely inside the visuals column so
+    // it can't be lost off-screen.
+    if (win.preview_drag || win.preview_resize) {
+        if (win.preview_resize) {
+            win.preview_w = static_cast<float>(mx - win.preview_grab_x);
+        } else {
+            win.preview_x = static_cast<float>(mx - win.preview_grab_x);
+            win.preview_y = static_cast<float>(my - win.preview_grab_y);
+        }
+        win.clamp_preview();   // one authority for "the preview stays inside the column"
+    }
     if (app.graph) app.graph->on_move(mx, my);
     if (win.editor && win.editor->is_open()) {
         win.editor->on_move(mx, my);
@@ -371,22 +399,33 @@ void run_frame_loop(App& app, Window& win) {
         FrameState frame;
         if (gpu.begin_frame(frame)) {
             update_visual_source_frame(app);
-            // composable visuals chain -> viewer (per-node params, set by apply_params)
+            // ADR-0014: run the chain into the node RTs FIRST (so this frame's node thumbnails are
+            // current), but do NOT present yet — the output is blitted over the graph further down,
+            // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
-            const Rect vp = win.viewer_rect();
-            vgraph.render(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi, vp.w * win.dpi, vp.h * win.dpi, tsec, srcTex.view);
+            vgraph.run_chain(frame.encoder, tsec, srcTex.view);
+            win.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
+            win.clamp_preview();                   // ...so a new aspect can resize it out of bounds
+            // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
+            // node's params with the actual window state each frame — the params are the truth, the
+            // UI buttons just write to them (and so do MCP / the control server, for free).
+            if (vgraph.output_index() >= 0) {
+                win.preview_show = vgraph.output_param("preview", 1.f) > 0.5f;
+                const bool want_out = vgraph.output_param("launch", 0.f) > 0.5f;
+                const int  disp = static_cast<int>(std::lround(vgraph.output_param("display", 0.f)));
+                if (want_out && !win.popout)                      open_popout(app, win, disp);
+                else if (!want_out && win.popout)                 close_popout(app, win);
+                else if (want_out && win.popout && disp != win.popout_display) {
+                    close_popout(app, win); open_popout(app, win, disp);   // moved to another screen
+                }
+            }
 
             draw_ui(ui, win, beats, mx, my);
-            // UI-2: the visuals node graph is a deep view under the output — drawn only when
-            // revealed (win.show_graph). When hidden, the output fills the visual zone and the
-            // graph has no hit area (bounds zeroed) so it never consumes clicks.
-            if (win.show_graph) {
-                const Rect sig = win.signal_panel();   // node graph renders inside the SIGNAL region
-                graph.set_bounds(sig.x + 8.f, sig.y + 26.f, sig.x + sig.w - 8.f, sig.y + sig.h - 8.f);
-                graph.draw(ui);   // includes live node thumbnails via draw_texture
-            } else {
-                graph.set_bounds(0.f, 0.f, 0.f, 0.f);
-            }
+            // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
+            // always drawn, no reveal toggle.
+            { const Rect g = win.visuals_panel();
+              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);
+              graph.draw(ui); }   // includes live node thumbnails via draw_texture
             // UI-1: recompute the detail region's explicit focus — the single source of truth
             // for what the bottom region shows + its domain — replacing the old implicit race
             // where draw and input each re-derived the mode from the current selection.
@@ -410,8 +449,18 @@ void run_frame_loop(App& app, Window& win) {
             if (win.focus.kind != FocusContext::Kind::ClipEditor) draw_device_dock(ui, win, mx, my);
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
+            // The floating OUTPUT preview: blitted OVER the graph canvas (a GPU pass recorded after
+            // pass 1's, so it lands on top), with its chrome drawn above it in pass 2.
+            if (win.preview_show) {
+                const Rect vp = win.viewer_rect();
+                vgraph.present_to(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi,
+                                  vp.w * win.dpi, vp.h * win.dpi,
+                                  static_cast<float>(win.fb_w), static_cast<float>(win.fb_h),
+                                  tsec, /*clear*/false);
+            }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
-            if (win.show_graph) graph.draw_overlays(ui);  // operator chooser (graph deep view only)
+            if (win.preview_show) draw_output_preview(ui, win, mx, my);
+            graph.draw_overlays(ui);  // operator chooser
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
@@ -429,7 +478,12 @@ void run_frame_loop(App& app, Window& win) {
         // Pop-out visuals window: mirror the current output onto its surface, fullscreen.
         // (The graph rendered once above; this only re-blits the output FBO.)
         if (win.popout) {
-            if (glfwWindowShouldClose(win.popout)) { toggle_popout(app, win); }
+            // Closed from the OS side (its Esc / the window manager): write `launch` back off, so
+            // the Output node never claims a window that isn't there.
+            if (glfwWindowShouldClose(win.popout)) {
+                close_popout(app, win);
+                vgraph.set_output_param("launch", 0.f);
+            }
             else if (gpu.has_secondary()) {
                 int fbw = 0, fbh = 0; glfwGetFramebufferSize(win.popout, &fbw, &fbh);
                 if (fbw > 0 && fbh > 0) {
@@ -439,7 +493,10 @@ void run_frame_loop(App& app, Window& win) {
                     }
                     FrameState f2;
                     if (gpu.begin_secondary(f2)) {
-                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f, static_cast<float>(fbw), static_cast<float>(fbh), tsec);
+                        vgraph.present_to(f2.encoder, f2.view, 0.f, 0.f,
+                                          static_cast<float>(fbw), static_cast<float>(fbh),
+                                          static_cast<float>(fbw), static_cast<float>(fbh),
+                                          tsec, /*clear*/true);
                         gpu.end_secondary(f2);
                     }
                 }

@@ -49,6 +49,10 @@ target_link_libraries(test_audio_clip PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_clip_dsp)       # A2 warp engine smoke (signalsmith stretch path)
 target_link_libraries(test_clip_dsp PRIVATE signalsmith_stretch nlohmann_json::nlohmann_json)
 vivid_add_test(test_control_parse)
+
+# ADR-0014: the visual output's format — the aspect/size preset tables + the Fit/Fill/Stretch UV
+# window that letterboxes the output into a surface of a different shape (gpu/output_format.h).
+vivid_add_test(test_output_format)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)
@@ -215,17 +219,14 @@ target_sources(test_operator_clone PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 target_link_libraries(test_operator_clone PRIVATE ${CMAKE_DL_LIBS} nlohmann_json::nlohmann_json)
-# The wgpu dist is globbed after tests/ is added in the parent scope, so recompute it here.
-file(GLOB _clone_wgpu_dist "${CMAKE_BINARY_DIR}/_deps/wgpu-*-src")
-set(_clone_wgpu_root "")
-if(_clone_wgpu_dist)
-    list(GET _clone_wgpu_dist 0 _clone_wgpu_root)
-endif()
+# NOTE: the wgpu dist is fetched by the PARENT *after* this subdir is processed, so the
+# _deps/wgpu-*-src dir does not exist yet at this point — globbing for it here silently yields
+# an empty path on a fresh configure (it only appeared to work in a tree that had been
+# reconfigured, where the previous configure had left _deps populated). The two webgpu
+# defines are therefore set by the parent, right after it resolves the dist root.
 target_compile_definitions(test_operator_clone PRIVATE
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
-    VIVID_PKG_WEBGPU_INCLUDE_DIR="${_clone_wgpu_root}/include"
-    VIVID_PKG_WEBGPU_LIB_DIR="${_clone_wgpu_root}/lib"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
 endif()  # VIVID_BUILD_APP (test_operator_clone needs webgpu)
 

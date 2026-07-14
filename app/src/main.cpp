@@ -53,7 +53,7 @@
 #include <algorithm>
 #include "miniaudio.h"
 
-namespace { using namespace vivid::ui; }  // kViewW/H + constants (ui/layout.h)
+namespace { using namespace vivid::ui; }  // layout constants (ui/layout.h)
 
 int main() {
     if (!glfwInit()) { std::fprintf(stderr, "glfwInit failed\n"); return 1; }
@@ -146,8 +146,11 @@ int main() {
     for (int i = 0; i < 4; ++i) glfwPollEvents();
     render_splash("Starting up...");
 
-    // Composable visuals chain (generator -> feedback -> blur -> viewer).
-    const uint32_t kRtW = static_cast<uint32_t>(kViewW), kRtH = static_cast<uint32_t>(kViewH);
+    // Composable visuals chain (generator -> feedback -> blur -> viewer). The render targets open
+    // at the Output node's default format (1280x720); the active Output node's params own the size
+    // from the first frame on (ADR-0014), so this is only the pre-first-frame value.
+    uint32_t kRtW = 0, kRtH = 0;
+    vivid::output_size_for(vivid::kDefaultAspect, vivid::kDefaultHeight, kRtW, kRtH);
     vivid::VisualGraph vgraph;
     if (!vgraph.init(gpu.device(), gpu.queue(), gpu.surface_format(), kRtW, kRtH, &app.op_registry))
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");

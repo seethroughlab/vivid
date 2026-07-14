@@ -16,6 +16,10 @@ void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc
                        const Rect& b, float ar, float ag, float ab, bool on);
 void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my);
+// ADR-0014: the floating OUTPUT preview's chrome (frame + header + pop-out/close + resize grip).
+// Drawn in the overlay pass, AFTER the output FBO has been blitted into its body, so the frame
+// sits above both the graph canvas and the rendered output.
+void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_fx_menu(Renderer2D& ui, vivid::session::Session* s, const CtxMenu& m);
 void draw_track_menu(Renderer2D& ui, const CtxMenu& m);   // "+ Track" instrument picker (+ Audio track)
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m);

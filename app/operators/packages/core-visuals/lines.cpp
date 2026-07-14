@@ -28,7 +28,7 @@ struct U { res: vec2f, time: f32, size: f32, rotation: f32, pad0: f32, pad1: vec
     let a = u.rotation * 6.2831853;
     var o = p * (0.4 + u.size * 0.7);
     o = vec2f(o.x * cos(a) - o.y * sin(a), o.x * sin(a) + o.y * cos(a));
-    o.x = o.x / 1.7778;   // correct to a 16:9 DISPLAY (the FBO is a wide internal res, not the output aspect)
+    o.x = o.x * (u.res.y / max(u.res.x, 1.0));   // aspect-correct against the REAL target
     return vec4f(o, 0.0, 1.0);
 }
 @fragment fn fs_main() -> @location(0) vec4f { return u.fill; }

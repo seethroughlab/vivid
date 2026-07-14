@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>          // std::min / std::max (preview placement)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
 
@@ -53,10 +54,18 @@ struct Window {
     float dpi = 1.0f;
     float split_x = 512.f;   // DAW|visuals splitter x
     float dock_h  = 210.f;   // bottom device-view dock height
-    // UI-2 (ADR-0013): the visuals graph is a deep view, not a permanent pane. By default the
-    // right column is the always-on OUTPUT canvas (filling the column); toggling this reveals
-    // the node graph below the output (the drill-in "edit its graph" view).
-    bool  show_graph = false;
+    // V1 (ADR-0014): the visuals GRAPH is the persistent right column, and the rendered output
+    // floats over it as a movable/resizable preview panel. `preview_show` mirrors the Output
+    // node's `preview` param (V4); the geometry is view state. preview_x < 0 = "not placed yet"
+    // (the frame loop parks it in the column's bottom-right on the first frame it draws).
+    bool  preview_show = true;
+    float preview_x = -1.f, preview_y = -1.f, preview_w = 420.f;
+    bool  preview_drag = false, preview_resize = false;
+    double preview_grab_x = 0, preview_grab_y = 0;   // cursor->panel offset while dragging
+    // The live output aspect (w/h), cached from VisualGraph::rt_aspect() each frame so the pure
+    // geometry helpers (and the input hit-tests) can derive the preview's height without this
+    // header having to know about the GPU layer. Derived state — never a param slot.
+    float out_aspect = 16.f / 9.f;
     // UI-3: drilled into the selected track's audio node graph (the detail region shows the
     // per-track audio graph deep view instead of the device chain). Toggled by the dock "Graph"
     // button; persists across frames (the focus recompute reads it).
@@ -121,6 +130,7 @@ struct Window {
     float   sidebar_w = 0.f;   // left browser column width (0 = collapsed); shifts the DAW pane
     GLFWwindow* popout = nullptr;   // pop-out visuals window (fullscreen/large view); nullptr = closed
     int     popout_fb_w = 0, popout_fb_h = 0;   // its framebuffer size (drives the 2nd surface)
+    int     popout_display = 0;     // the `display` target it was opened on (reopen if it changes)
     float   plugin_scroll = 0.f;               // PLUGINS list scroll offset (px)
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).
@@ -141,19 +151,34 @@ struct Window {
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }
-    // The OUTPUT panel fills the whole visual zone (down to the dock) when the graph is
-    // hidden (its deep-view default), or the fixed top band when the graph is revealed below.
-    ui::Rect     output_panel()     const {
-        ui::Rect p = ui::output_panel(win_w, split_x);
-        if (!show_graph) p.h = ui::dock_top(win_h, dock_h) - ui::kPaneMargin - p.y;
-        return p;
+    // ADR-0014: the graph owns the visuals column; the output preview floats over it.
+    ui::Rect     visuals_panel()    const { return ui::visuals_panel(win_w, win_h, split_x, dock_h); }
+    ui::Rect     preview_panel()    const { return ui::preview_panel(preview_x, preview_y, preview_w, out_aspect); }
+    ui::Rect     viewer_rect()      const { return ui::preview_viewer_rect(preview_x, preview_y, preview_w, out_aspect); }
+    ui::Rect     preview_header()   const { return ui::preview_header_rect(preview_x, preview_y, preview_w); }
+    ui::Rect     preview_close()    const { return ui::preview_close_rect(preview_x, preview_y, preview_w); }
+    ui::Rect     preview_grip()     const { return ui::preview_grip_rect(preview_x, preview_y, preview_w, out_aspect); }
+    // Keep the preview inside the visuals column. MUST run every frame, not just on placement: the
+    // panel's height is derived from the output aspect, so switching the Output node to (say) 9:16
+    // makes a fixed-width preview much TALLER. Left unbounded that pushed the blit rect outside the
+    // framebuffer, and wgpu aborts the process on an out-of-bounds scissor.
+    void clamp_preview() {
+        const ui::Rect g = visuals_panel();
+        if (g.w <= 0.f || g.h <= 0.f) return;
+        const float max_w = std::max(ui::kPreviewMinW, g.w - 2.f * ui::kPanePad);
+        const float max_h = std::max(ui::kPanelHdH + 40.f, g.h - 2.f * ui::kPanePad);
+        preview_w = std::clamp(preview_w, ui::kPreviewMinW, std::min(ui::kPreviewMaxW, max_w));
+        // Height follows the aspect — if that overflows the column, give width back until it fits.
+        if (ui::kPanelHdH + ui::preview_body_h(preview_w, out_aspect) > max_h)
+            preview_w = std::max(ui::kPreviewMinW, (max_h - ui::kPanelHdH) * out_aspect);
+        const ui::Rect p = ui::preview_panel(0.f, 0.f, preview_w, out_aspect);
+        if (preview_x < 0.f) {   // never placed: park it bottom-right of the column
+            preview_x = g.x + g.w - p.w - ui::kPanePad;
+            preview_y = g.y + g.h - p.h - ui::kPanePad;
+        }
+        preview_x = std::clamp(preview_x, g.x, std::max(g.x, g.x + g.w - p.w));
+        preview_y = std::clamp(preview_y, g.y, std::max(g.y, g.y + g.h - p.h));
     }
-    ui::Rect     viewer_rect()      const {
-        const ui::Rect p = output_panel();
-        return { p.x + ui::kPanePad, p.y + ui::kPanelHdH + ui::kPanePad,
-                 p.w - 2.f * ui::kPanePad, p.h - ui::kPanelHdH - 2.f * ui::kPanePad };
-    }
-    ui::Rect     signal_panel()     const { return ui::signal_panel(win_w, win_h, split_x, dock_h); }
     ui::Rect     splitter_rect()    const { return ui::splitter_rect(win_h, dock_h, split_x); }
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom()        const { return ui::dock_geom(win_w, win_h, dock_h); }
