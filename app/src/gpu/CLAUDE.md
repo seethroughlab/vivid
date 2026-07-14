@@ -30,8 +30,23 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/poc-to-product.md).
   operator is an auto-discovered package dylib** (`app/operators/packages/core-visuals/`);
   there are no compiled-in visual built-ins. Ops flow through `OpRegistry` by descriptor
   name; a built-in (audio only) wins a name clash.
-- **`shader_op.*` / `effect_op.*`** — GLSL fullscreen + FBO-effect helpers; the host uses
-  `EffectOp` for the final present blit (`visual_graph`).
+- **`shader_file_op.*` / `shader_library.*`** — **ADR-0016: a shader FILE is an operator.** A
+  `.wgsl`/`.glsl` carries a JSON header declaring its name, its 0..2 texture inputs and its params;
+  `ShaderLibrary` scans the three tiers (user > project > bundled, first wins) and registers EACH
+  FILE as a type in the same `OpRegistry` the dylibs use, so a shader reaches the Tab chooser,
+  `list_operators`, the inspector, wires, mappings and persistence with no special case anywhere.
+  `ShaderFileOp` builds its pipeline, its bind group and its uniform packing from ONE declaration
+  (`operator_api/shader_meta.h`), so the struct and the bytes cannot drift apart. Editing a file
+  hot-reloads it (a body edit recompiles in the live node; a header edit rebuilds its nodes,
+  keeping values by name); a broken edit keeps the LAST GOOD pipeline and shows the error on the
+  node card. Ten of the visual operators are these files now — see `app/shaders/` and
+  [docs/shaders.md](../../../docs/shaders.md).
+  **`ShaderDef` is never freed** while the app runs: `ParamBase::name` and the cached descriptors
+  are raw `const char*` INTO it.
+- **`shader_op.*` / `effect_op.*`** — the OLDER fixed-four-uniform GLSL pass behind the
+  `CustomShader` node (`u_warp`/`u_hue`/`u_density`/`u_glow`), plus the FBO-effect helper the host
+  uses for the final present blit (`visual_graph`). Not to be confused with `shader_file_op` above:
+  this one's uniform contract is hardcoded, which is the thing ADR-0016 exists to undo.
 - **`render_target.*`** — FBO/ping-pong targets.  **`texture_source.*`** — the shared
   image/video source texture (+ `gen_test_pattern`).
 - **`video_player.mm`** — AVFoundation clip decode (`video_open/next_frame/play/close`).

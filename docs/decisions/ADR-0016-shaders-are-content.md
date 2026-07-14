@@ -1,6 +1,6 @@
 # ADR-0016: Shaders Are Content, Not Code — a Shader File Is an Operator
 
-Status: proposed
+Status: accepted (implemented — S1..S6, 2026-07-14)
 
 Date: 2026-07-13
 

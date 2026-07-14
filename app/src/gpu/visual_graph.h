@@ -54,6 +54,12 @@ struct VisualNode {
                 stash.emplace_back(inst.param_ptrs[i]->name, base[i]);
     }
 
+    // What is wrong with this node right now, if anything — e.g. a shader file that will not
+    // compile. Empty when the node is healthy. The node keeps rendering (a source falls back to
+    // black, a filter passes its input through); this is how the UI says so instead of leaving
+    // the user staring at a black frame wondering what they broke.
+    std::string error() const;
+
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
     void set_in(int port, int src) {

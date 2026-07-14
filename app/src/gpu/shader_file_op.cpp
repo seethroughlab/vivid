@@ -3,6 +3,7 @@
 #include "operator_api/gpu_common.h"
 
 #include <cstdio>
+#include <string>
 
 namespace vivid {
 
@@ -62,6 +63,27 @@ std::string fallback_body(const ShaderMeta& m) {
                "    return vec4f(0.0, 0.0, 0.0, 1.0);\n}\n";
     return "@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {\n"
            "    return textureSample(" + m.inputs[0] + ", samp, inp.uv);\n}\n";
+}
+
+// wgpu's validation message is several lines: a generic "Validation Error", the API call, then
+// the ACTUAL diagnostic. Show the diagnostic — a node card that says "Validation Error" tells the
+// author nothing they didn't already know.
+std::string concise_error(const std::string& msg) {
+    std::string best;
+    size_t start = 0;
+    while (start <= msg.size()) {
+        const size_t nl = msg.find('\n', start);
+        std::string line = msg.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) line.erase(line.begin());
+        if (const size_t at = line.find("error: "); at != std::string::npos)
+            best = line.substr(at + 7);
+        else if (line.find("Validation Error") == std::string::npos &&
+                 line.find("In wgpu") == std::string::npos && !line.empty() && best.empty())
+            best = line;
+        if (nl == std::string::npos) break;
+        start = nl + 1;
+    }
+    return best.empty() ? msg : best;
 }
 
 }  // namespace
@@ -143,7 +165,7 @@ bool ShaderFileOp::rebuild_pipeline(const VividGpuContext* c) {
     std::string err;
     WGPURenderPipeline next = compile(c, def_->meta.body, def_->meta.name.c_str(), err);
     if (!next) {
-        error_ = err.empty() ? "shader failed to compile" : err;
+        error_ = err.empty() ? "shader failed to compile" : concise_error(err);
         std::fprintf(stderr, "[vivid] shader '%s' (%s): %s — keeping the last good version\n",
                      def_->meta.name.c_str(), def_->path.c_str(), error_.c_str());
         return false;
@@ -203,7 +225,7 @@ bool ShaderFileOp::build(const VividGpuContext* c) {
     std::string err;
     pipe_ = compile(c, d.meta.body, label, err);
     if (!pipe_) {
-        error_ = err.empty() ? "shader failed to compile" : err;
+        error_ = err.empty() ? "shader failed to compile" : concise_error(err);
         std::fprintf(stderr, "[vivid] shader '%s' (%s): %s\n", label, d.path.c_str(), error_.c_str());
         std::string ferr;
         fallback_ = compile(c, fallback_body(d.meta), label, ferr);   // black / passthrough

@@ -1,5 +1,7 @@
 #include "gpu/visual_graph.h"
 
+#include "gpu/shader_file_op.h"   // ADR-0016: a shader node reports its compile error
+
 #include "operator_api/gpu_operator.h"
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
@@ -47,6 +49,13 @@ static void clear_target(WGPUCommandEncoder enc, WGPUTextureView view) {
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(enc, &rp);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+}
+
+std::string VisualNode::error() const {
+    // Only shader nodes carry a runtime error today. When another op kind grows one, this is
+    // where it goes — the UI asks the NODE, not the shader library.
+    if (const auto* sh = dynamic_cast<const ShaderFileOp*>(inst.op.get())) return sh->error();
+    return {};
 }
 
 bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
