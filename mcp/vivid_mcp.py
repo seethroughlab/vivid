@@ -212,12 +212,9 @@ def set_active_output(id: int) -> dict:
 
 @mcp.tool
 def set_node_asset(id: int, asset: str) -> dict:
-    """Point a node at a data asset. For a CustomShader node, `asset` is a project-relative
-    .glsl filename (resolved against the loaded project folder); the node renders that shader.
-    Pass "" to clear. The shader must follow the GLSL contract (v_uv/o_color + the
-    u_res/u_time/u_warp/u_hue/u_density/u_glow uniform block — see the authoring guide). A
-    missing file or compile error degrades to a no-op node (never crashes). Save it with the
-    project (save_project) so a folder holds project.json + the .glsl together."""
+    """DEPRECATED (no-op since ADR-0016). The legacy host-side asset channel — no operator
+    implements it any more; CustomShader now takes its file through a FILE param. Use
+    set_node_file_param(id, "file", "<path>.glsl") instead. Kept only so old scripts don't error."""
     return _post("set_node_asset", {"id": id, "asset": asset})
 
 
@@ -1002,8 +999,8 @@ def get_authoring_guide() -> dict:
             "4. SOUND: list_params(track, 0, filter='cutoff') then set_param(track, 0, index, value).",
             "5. VISUALS: the default chain is Plasma->Feedback->Blur->Output. add_node / connect_nodes "
             "to extend it; set_node_param for base look; set_active_output to pick the viewer source. "
-            "Custom look? add_node('CustomShader') + set_node_asset(id,'<file>.glsl') renders a project "
-            "folder .glsl (contract in 'custom_assets' below); project-local C++ ops load on load_project.",
+            "Custom look? add_node('CustomShader') + set_node_file_param(id,'file','<file>.glsl') renders a "
+            "project folder .glsl (contract in 'custom_assets' below); project-local C++ ops load on load_project.",
             "6. BRIDGE: connect_mapping(src, dst) — e.g. src='master.transient', dst='node:<id>.warp'. "
             "Visual node ids + param names come from get_graph; dst for audio params is 'param:T:D:index'.",
             "7. RETURN PATH: src can be 'viz.<name>' to drive an audio param from a visual value.",
@@ -1035,7 +1032,7 @@ def get_authoring_guide() -> dict:
         "custom_assets": {
             "project_folder": "save_project(dir) (a path with no .json extension) makes a FOLDER project: "
                               "<dir>/project.json plus co-located assets. load_project(dir) restores it.",
-            "custom_shader": "add_node('CustomShader') + set_node_asset(id,'look.glsl') renders a .glsl in the "
+            "custom_shader": "add_node('CustomShader') + set_node_file_param(id,'file','look.glsl') renders a .glsl in the "
                              "project folder. The fragment must declare: `#version 450`, "
                              "`layout(location=0) in vec2 v_uv; layout(location=0) out vec4 o_color;` and "
                              "`layout(set=0,binding=0) uniform U { vec2 u_res; float u_time; float u_warp; "
