@@ -13,6 +13,7 @@
 #include "ui/session_view.h"
 #include "ui/audio_node_graph.h"   // AudioNodeGraph::graph_region for the node-reposition drag
 #include "ui/mapping_overview.h"
+#include "ui/shader_library_view.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
@@ -500,6 +501,7 @@ void run_frame_loop(App& app, Window& win) {
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
+            if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
         }

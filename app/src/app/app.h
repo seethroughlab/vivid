@@ -7,6 +7,7 @@
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
 #include "gpu/shader_library.h"    // ShaderLibrary (ADR-0016: a shader FILE is an operator)
+#include "gpu/file_drop_registry.h" // FileDropRegistry (ADR-0021/P3: drop a file -> the op for it)
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 #include "platform/midi_input.h"           // hardware MIDI input (M6.4)
 
@@ -42,6 +43,9 @@ struct App {
     // The shader library (ADR-0016). Owns the parsed ShaderDefs, which every shader node —
     // and every cached descriptor built from one — points into, so it lives the whole run.
     ShaderLibrary shader_library;
+    // Which operators accept which dropped file extensions (ADR-0021/P3). Rebuilt from op_loaders
+    // after the startup scan and after each live package install.
+    FileDropRegistry file_drops;
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
     platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
 

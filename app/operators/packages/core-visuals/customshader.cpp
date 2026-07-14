@@ -46,6 +46,7 @@ struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kSummary = "Data-driven GLSL generator: renders a project .glsl file (pick it in `file`).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "shader", "glsl"};
     vivid::Param<vivid::FilePath> file{"file", ""};
+    CustomShaderOp() { vivid::asset_kind(file, "glsl"); }   // ADR-0021/P3: dialog/drop filter
     vivid::Param<float> p0{"warp", 0.5f, 0.f, 1.f};
     vivid::Param<float> p1{"hue", 0.0f, 0.f, 1.f};
     vivid::Param<float> p2{"density", 0.5f, 0.f, 1.f};
@@ -124,3 +125,10 @@ struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
 };
 
 VIVID_REGISTER(CustomShaderOp)
+
+// ADR-0021/P3: drop a .glsl onto the graph -> a CustomShader node rendering it.
+static const char* const kCustomShaderDropExts[] = { ".glsl", ".frag" };
+static const VividFileDropHandlerDescriptor kCustomShaderDrop[] = {
+    { "CustomShader", kCustomShaderDropExts, 2, "file", 6, "Render as a GLSL shader" }
+};
+VIVID_FILE_DROP(kCustomShaderDrop)

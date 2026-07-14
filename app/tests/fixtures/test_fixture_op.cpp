@@ -26,3 +26,10 @@ struct FixtureOp : vivid::OperatorBase, vivid::FrameProcessable {
 };
 
 VIVID_REGISTER(FixtureOp)
+
+// ADR-0021/P3: exercise the file-drop ABI (vivid_file_drop_descriptor) through a real dylib.
+static const char* const kFixtureDropExts[] = { ".foo", ".bar" };
+static const VividFileDropHandlerDescriptor kFixtureDrop[] = {
+    { "FixtureOp", kFixtureDropExts, 2, "file", 7, "Fixture drop handler" }
+};
+VIVID_FILE_DROP(kFixtureDrop)

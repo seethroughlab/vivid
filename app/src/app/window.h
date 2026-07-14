@@ -92,6 +92,7 @@ struct Window {
 
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
+    bool    show_shader_library = false;      // ADR-0021/P1 shader library view (toggle: L)
     CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;

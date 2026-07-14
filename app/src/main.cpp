@@ -25,6 +25,7 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
@@ -118,6 +119,7 @@ int main(int argc, char** argv) {
       }
       int loaded = 0;
       for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
+      app.file_drops.rebuild(app.op_loaders);   // ADR-0021/P3: index drop handlers of the loaded ops
 
       // ADR-0016: a shader FILE is an operator. Each .wgsl/.glsl in the library declares its
       // own params in a JSON header and registers as its own type — so shaders reach the Tab
@@ -275,8 +277,13 @@ int main(int argc, char** argv) {
         ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
         ma.open_recent     = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
+        ma.open_example    = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
+        // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
+        std::vector<vivid::platform::MenuItemEntry> examples;
+        for (const auto& e : vivid::examples::discover_examples()) examples.push_back({ e.name, e.path });
+        vivid::platform::set_example_projects(examples);
     }
     std::fprintf(stderr, "[vivid] audio: %s (%u Hz)\n",
                  audio_ok ? "running" : "unavailable", audio_ok ? device.sampleRate : 0);
