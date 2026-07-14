@@ -478,6 +478,17 @@ void register_audio_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "edge rejected (duplicate, self-loop, unknown node, or would create a cycle)");
         return ok();
     };
+    // A native NOTE EFFECT (ADR-0015), e.g. "Arp": notes in -> notes out, no audio. Wire MidiIn ->
+    // it -> an instrument with NOTE edges.
+    handlers_["audio_graph_add_note_op"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int nid = P::session_audio_graph_add_note_op(c.session, track, op.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add note op '" + op + "'");
+        json r = ok(); r["node"] = nid; return r;
+    };
     // The track's note stream as a NODE (ADR-0015). Wire its note edge into an instrument.
     handlers_["audio_graph_add_midi_in"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

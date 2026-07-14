@@ -44,8 +44,13 @@ void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (singl
 // --- Audio thread (RT-safe) ---
 // Source: writes L/R (ignores input), reading `notes` if it's an instrument.
 // Effect: transforms L/R in place. `beats_elapsed` is the transport position.
+// `note_out` (ADR-0015, ABI v12): a NOTE-EFFECT operator (arpeggiator / chord / transpose) reads
+// `notes` and writes the notes it wants downstream into `note_out` (capacity `note_out_cap`),
+// setting *note_out_n. Pass nullptr/0 for ordinary instruments and effects — they ignore it.
 void audio_op_process(AudioOp*, float* L, float* R, uint32_t frames, uint32_t sample_rate,
                       float bpm, uint32_t beats_per_bar, double beats_elapsed,
-                      const session::NoteEvent* notes, uint32_t note_count);
+                      const session::NoteEvent* notes, uint32_t note_count,
+                      session::NoteEvent* note_out = nullptr, uint32_t note_out_cap = 0,
+                      uint32_t* note_out_n = nullptr);
 
 }  // namespace vivid

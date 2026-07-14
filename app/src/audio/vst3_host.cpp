@@ -86,7 +86,7 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
 // the old invisible per-track broadcast.
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn };
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -589,6 +589,27 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                         if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
                         outn.push_back(e);
                     }
+                }
+                continue;
+            }
+            // ADR-0015: a native NOTE EFFECT (Arp / chord / transpose). Notes in -> notes out; it
+            // makes no sound. Its emitted notes land in its own note buffer, which is what the
+            // instrument downstream reads.
+            if (nb.kind == GNKind::NativeNoteFx && nb.op) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+                std::vector<NoteEvent>* outn = nullptr;
+                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                    outn = &t.npool[static_cast<size_t>(s.note_out_buf)];
+                uint32_t produced = 0;
+                if (outn) {
+                    outn->resize(kGraphMaxNotes);   // within reserved capacity: no allocation
+                    vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()),
+                                            outn->data(), kGraphMaxNotes, &produced);
+                    outn->resize(produced);
+                } else {
+                    vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()));
                 }
                 continue;
             }
@@ -2655,6 +2676,29 @@ int session_audio_graph_connect_kind(Session* s, int t, int from_id, int to_id, 
 }
 int session_audio_graph_connect(Session* s, int t, int from_id, int to_id) {
     return session_audio_graph_connect_kind(s, t, from_id, to_id, 0);   // audio (the default signal)
+}
+
+// ADR-0015: add a native NOTE EFFECT (Arp / chord / transpose) as a node. It is wired with NOTE
+// edges only — it makes no sound, so it gets no audio wiring at all (an audio edge to Output would
+// just add silence). Returns the new node id, or -1 (unknown op / cap / no track).
+int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !s->op_reg) return -1;
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
+    if (!op) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) { vivid::audio_op_destroy(op); return -1; }
+    { std::lock_guard<std::mutex> olk(tr->op_fx_mtx); tr->op_effects_edit.push_back(op); }   // ownership
+    tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+    const int nid = tr->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, op_type ? op_type : "note");
+    tr->agraph.set_note_ports(nid, /*note_in*/true, /*note_out*/true);   // notes in -> notes out
+    GNodeBind nb;
+    nb.kind = GNKind::NativeNoteFx;
+    nb.op = op;
+    tr->agnodes.push_back(nb);
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+    return nid;
 }
 
 // ADR-0015: add the track's note stream AS A NODE — clips + live MIDI + typing + MCP + preview.

@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 namespace vivid {
@@ -251,6 +252,142 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable {
     }
 };
 
+
+// ---- Arp: the first NOTE EFFECT (ADR-0015 / ABI v12) --------------------------------------
+// Notes in -> notes out. It holds whatever keys are down and re-issues them as a rhythmic
+// sequence, so ONE held note becomes an arpeggio. It makes no sound of its own: it is the proof
+// that notes are a real signal in the graph, and the reason the graph needed note edges at all.
+//
+// RT-safe: fixed-size held-note table, no allocation, no locking. All timing is in samples so the
+// pattern stays phase-locked across blocks.
+struct ArpOp : OperatorBase, AudioProcessable {
+    static constexpr const char* kDisplayName = "Arp";
+    static constexpr const char* kSummary = "Note effect: holds the keys you play and re-issues them as an arpeggio.";
+    static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "arpeggiator", "midi"};
+
+    Param<int>   rate{"rate", 2, {"1/4", "1/8", "1/8T", "1/16", "1/32"}};
+    Param<int>   mode{"mode", 0, {"Up", "Down", "UpDown", "Random"}};
+    Param<int>   octaves{"octaves", 1, 1, 4};
+    Param<float> gate{"gate", 0.5f, 0.05f, 1.0f};
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&rate); o.push_back(&mode); o.push_back(&octaves); o.push_back(&gate);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        VividPortDescriptor p{};   // no AUDIO ports: this op is a pure note transform
+        p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER; p.direction = VIVID_PORT_OUTPUT;
+        p.value_type = VIVID_VALUE_FLOAT; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        o.push_back(p);
+    }
+
+    static constexpr int kMaxHeld = 16;
+    int      held[kMaxHeld] = {};
+    int      n_held = 0;
+    long long pos = 0;             // absolute sample position (keeps the pattern phase-locked)
+    long long next_step = 0;       // when the next arp step fires
+    long long off_at = -1;         // when the sounding arp note releases
+    int      step_i = 0;           // index into the pattern
+    bool     going_up = true;      // UpDown direction
+    int      sounding = -1;        // pitch currently issued by the arp (-1 = none)
+    int32_t  next_id = 900000;     // note-id namespace of our own (never collides with clip/live ids)
+    uint32_t rng = 0x1234567u;
+
+    void hold(int pitch) {
+        for (int i = 0; i < n_held; ++i) if (held[i] == pitch) return;
+        if (n_held >= kMaxHeld) return;
+        int i = n_held++;                                   // keep sorted (ascending) for Up/Down
+        while (i > 0 && held[i - 1] > pitch) { held[i] = held[i - 1]; --i; }
+        held[i] = pitch;
+    }
+    void release(int pitch) {
+        for (int i = 0; i < n_held; ++i)
+            if (held[i] == pitch) {
+                for (int k = i; k + 1 < n_held; ++k) held[k] = held[k + 1];
+                --n_held;
+                return;
+            }
+    }
+    // The pitch for step `k` over the held notes, extended across `oct` octaves.
+    int pitch_for_step(int k, int oct) {
+        const int span = n_held * (oct < 1 ? 1 : oct);
+        if (span <= 0) return -1;
+        int idx = 0;
+        switch (mode.int_value()) {
+            case 1: idx = span - 1 - (k % span); break;                       // Down
+            case 2: {                                                          // UpDown
+                const int cycle = span > 1 ? (span - 1) * 2 : 1;
+                const int c = k % cycle;
+                idx = (c < span) ? c : cycle - c;
+                break;
+            }
+            case 3:                                                            // Random
+                rng = rng * 1664525u + 1013904223u;
+                idx = static_cast<int>((rng >> 16) % static_cast<uint32_t>(span));
+                break;
+            default: idx = k % span; break;                                    // Up
+        }
+        const int base = held[idx % n_held];
+        return base + 12 * (idx / n_held);
+    }
+
+    void process_audio(const VividAudioContext* c) override {
+        // Silent: an arpeggiator makes no audio. (Its node's audio output is unused.)
+        const uint32_t frames = c->buffer_size;
+        for (uint32_t ch = 0; ch < 2 && c->output_buffers; ++ch)
+            if (c->output_buffers[0]) std::memset(c->output_buffers[0] + ch * frames, 0, frames * sizeof(float));
+
+        uint32_t out_n = 0;
+        VividNoteEvent* out = c->note_out;
+        const uint32_t cap = c->note_out_capacity;
+        const auto emit = [&](uint32_t off, bool on, int pitch, float vel, int32_t id) {
+            if (!out || out_n >= cap || pitch < 0 || pitch > 127) return;
+            out[out_n++] = VividNoteEvent{ off, static_cast<uint8_t>(on ? 1 : 0),
+                                           static_cast<int16_t>(pitch), vel, id, 0.f };
+        };
+
+        // Step length in samples, from the transport (so the arp is in time, not free-running).
+        const double bpm = c->metronome_bpm > 1.f ? c->metronome_bpm : 120.0;
+        const double spb = 60.0 * static_cast<double>(c->sample_rate) / bpm;   // samples per beat
+        static const double kBeats[5] = { 1.0, 0.5, 1.0 / 3.0, 0.25, 0.125 };  // 1/4 1/8 1/8T 1/16 1/32
+        const int ri = rate.int_value() < 0 ? 0 : (rate.int_value() > 4 ? 4 : rate.int_value());
+        const long long step = static_cast<long long>(spb * kBeats[ri]);
+        const long long step_len = step > 32 ? step : 32;                       // sanity floor
+
+        // Fold this block's incoming note-ons/offs into the held set, at their sample offsets.
+        // (Held-note edits are quantized to the block; the arp's own output is sample-accurate.)
+        for (uint32_t i = 0; i < c->note_event_count; ++i) {
+            const VividNoteEvent& e = c->note_events[i];
+            if (e.on) hold(e.pitch); else release(e.pitch);
+        }
+
+        for (uint32_t i = 0; i < frames; ++i) {
+            const long long now = pos + static_cast<long long>(i);
+            if (sounding >= 0 && off_at >= 0 && now >= off_at) {   // release the sounding step
+                emit(i, false, sounding, 0.f, next_id);
+                sounding = -1; off_at = -1;
+            }
+            if (now >= next_step) {
+                if (n_held > 0) {
+                    if (sounding >= 0) { emit(i, false, sounding, 0.f, next_id); sounding = -1; }
+                    const int p = pitch_for_step(step_i++, octaves.int_value());
+                    if (p >= 0) {
+                        ++next_id;
+                        emit(i, true, p, 0.9f, next_id);
+                        sounding = p;
+                        const float g = gate.value < 0.05f ? 0.05f : (gate.value > 1.f ? 1.f : gate.value);
+                        off_at = now + static_cast<long long>(step_len * static_cast<double>(g));
+                    }
+                } else {
+                    step_i = 0;   // nothing held: idle, and restart the pattern on the next key
+                }
+                next_step = now + step_len;
+            }
+        }
+        pos += frames;
+        if (c->note_out_count) *c->note_out_count = out_n;
+    }
+};
+
 void register_glitch_ops(OpRegistry& reg);   // audio/glitch/glitch_ops.cpp
 
 void register_builtin_audio_ops(OpRegistry& reg) {
@@ -258,6 +395,7 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<StateVariableFilterOp>(reg, "SVFilter");
     register_op<TestToneOp>(reg, "TestTone");
     register_op<SamplerOp>(reg, "Sampler");
+    register_op<ArpOp>(reg, "Arp");   // ADR-0015: the first note effect
     register_glitch_ops(reg);
 }
 

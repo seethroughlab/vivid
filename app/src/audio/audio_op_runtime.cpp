@@ -29,7 +29,8 @@ struct AudioOp {
     int                 nparams = 0;
     std::vector<float>  pscratch;                  // param_values for the context
     std::vector<float>  in_planar, out_planar;     // [2 * kMaxBlock] planar stereo
-    std::vector<VividNoteEvent> nscratch;          // preallocated note-event scratch
+    std::vector<VividNoteEvent> nscratch;          // preallocated note-event scratch (input)
+    std::vector<VividNoteEvent> noutscratch;       // preallocated note-event scratch (output, v12)
 };
 
 AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
@@ -64,6 +65,7 @@ AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
     a->in_planar.assign(2 * kMaxBlock, 0.f);
     a->out_planar.assign(2 * kMaxBlock, 0.f);
     a->nscratch.resize(kMaxNotes);
+    a->noutscratch.resize(kMaxNotes);
     return a;
 }
 
@@ -137,7 +139,8 @@ void audio_op_param_set(AudioOp* a, int i, float v) {
 
 void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t sr,
                       float bpm, uint32_t bpb, double beats,
-                      const session::NoteEvent* notes, uint32_t note_count) {
+                      const session::NoteEvent* notes, uint32_t note_count,
+                      session::NoteEvent* note_out, uint32_t note_out_cap, uint32_t* note_out_n) {
     if (!a || !a->ap || frames == 0 || frames > kMaxBlock) return;
 
     // Pull the latest UI-set param values into the op's Param<> members + the context array.
@@ -189,7 +192,27 @@ void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t 
         ctx.note_event_count = m;
     }
 
+    // Note OUTPUT (v12, ADR-0015): a note effect writes the notes it wants downstream. The host
+    // owns the buffer; the operator appends up to the capacity and sets the count.
+    uint32_t nout = 0;
+    if (note_out && note_out_cap > 0) {
+        const uint32_t cap = note_out_cap < kMaxNotes ? note_out_cap : kMaxNotes;
+        ctx.note_out = a->noutscratch.data();
+        ctx.note_out_capacity = cap;
+        ctx.note_out_count = &nout;
+    }
+
     a->ap->process_audio(&ctx);
+
+    if (note_out && note_out_cap > 0 && note_out_n) {          // hand the emitted notes back
+        const uint32_t m = nout < note_out_cap ? nout : note_out_cap;
+        for (uint32_t i = 0; i < m; ++i) {
+            const VividNoteEvent& e = a->noutscratch[i];
+            note_out[i] = session::NoteEvent{ e.sample_offset, e.on != 0, static_cast<int>(e.pitch),
+                                              e.velocity, e.note_id, e.tuning };
+        }
+        *note_out_n = m;
+    }
 
     std::memcpy(L, outp, sizeof(float) * frames);
     std::memcpy(R, outp + frames, sizeof(float) * frames);
