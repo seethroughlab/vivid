@@ -16,5 +16,20 @@ int main() {
     CHECK(std::string(legacy_vop_name(5))  == "Plasma");
     CHECK(std::string(legacy_vop_name(-1)) == "Plasma");
     CHECK(std::string(legacy_vop_name(999)) == "Plasma");
+
+    // v3 (ADR-0016 / S5c): Composite's `mode` went from a 0..1 float the shader multiplied by 4
+    // to a real enum index. A pre-v3 file's value must keep MEANING the same blend mode.
+    using vivid::migrate_param_value;
+    CHECK_NEAR(migrate_param_value(2, "Composite", "mode", 0.00f), 0.f, 1e-6);   // normal
+    CHECK_NEAR(migrate_param_value(2, "Composite", "mode", 0.25f), 1.f, 1e-6);   // add (all 4 demos)
+    CHECK_NEAR(migrate_param_value(2, "Composite", "mode", 0.50f), 2.f, 1e-6);   // multiply
+    CHECK_NEAR(migrate_param_value(1, "Composite", "mode", 0.75f), 3.f, 1e-6);   // screen
+    CHECK_NEAR(migrate_param_value(2, "Composite", "mode", 1.00f), 4.f, 1e-6);   // overlay
+    // A v3 file is already an index: leave it alone (or every load would rescale it again).
+    CHECK_NEAR(migrate_param_value(3, "Composite", "mode", 1.0f), 1.f, 1e-6);
+    // Only that one param of that one op is touched.
+    CHECK_NEAR(migrate_param_value(2, "Composite", "opacity", 0.25f), 0.25f, 1e-6);
+    CHECK_NEAR(migrate_param_value(2, "Displace",  "mode",    0.25f), 0.25f, 1e-6);
+
     return vivid::test::summary("test_persist_chain_migration");
 }

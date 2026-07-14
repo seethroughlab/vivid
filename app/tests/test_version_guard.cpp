@@ -10,8 +10,10 @@ using S = vivid::SessionVersionStatus;
 using json = nlohmann::json;
 
 int main() {
-    // The baseline this build understands (bumped to 2 for the dynamic-track set).
-    CHECK(kSessionSchemaVersion == 2);
+    // The baseline this build understands. Pinned deliberately: bumping it means old files get
+    // MIGRATED, so the bump and the migration have to be written together.
+    //   v2 the dynamic-track set · v3 Composite's `mode` became an enum index (ADR-0016 / S5c)
+    CHECK(kSessionSchemaVersion == 3);
 
     int fv = -1;
 

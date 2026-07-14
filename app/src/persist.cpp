@@ -1,4 +1,7 @@
 #include "persist.h"
+
+#include <cmath>
+#include <cstring>
 #include "audio/vst3_host.h"
 #include "audio/plugin_catalog.h"   // kFmtVST3 / kFmtCLAP (A2: user-spawned plugin graph nodes)
 #include "midi/note_json.h"
@@ -514,10 +517,13 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                             g.set_op_file_param_at(i, l, ch[i]["file_params"][name].get<std::string>());
                     }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
+                    const std::string op_type = ch[i].value("op_type", std::string());
                     for (int l = 0; l < g.op_param_count_at(i); ++l) {
                         const char* name = g.op_param_label_at(i, l);
-                        if (ch[i]["params"].contains(name))
-                            g.set_op_param_base_at(i, l, ch[i]["params"][name].get<float>());
+                        if (!ch[i]["params"].contains(name)) continue;
+                        const float v = migrate_param_value(file_ver, op_type, name,
+                                                            ch[i]["params"][name].get<float>());
+                        g.set_op_param_base_at(i, l, v);
                     }
                 }
                 if (ch[i].contains("base")) {

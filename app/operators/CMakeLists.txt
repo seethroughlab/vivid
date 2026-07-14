@@ -49,11 +49,9 @@ add_vivid_operator(vivid_spike_solid spike/spike_solid.cpp)
 add_vivid_operator(vivid_step_bars steps/step_bars.cpp)   # UI-4b: exports a custom editor
 
 # core-visuals: the auto-discovered core visual nodes (migrating off builtin_ops.cpp).
-add_vivid_operator(vivid_displace packages/core-visuals/displace.cpp)
 add_vivid_operator(vivid_image packages/core-visuals/image.cpp)
 add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
-add_vivid_operator(vivid_composite packages/core-visuals/composite.cpp)
 add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
