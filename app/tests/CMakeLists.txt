@@ -27,6 +27,11 @@ vivid_add_test(test_examples)             # ADR-0021/P2 example-project enumerat
 target_sources(test_examples PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/examples.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+vivid_add_test(test_node_presets)         # ADR-0021/P4 node-preset storage (save/list/load/remove)
+target_sources(test_node_presets PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/node_presets.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+target_link_libraries(test_node_presets PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_note_ops)       # pure MIDI note-list transforms (midi/note_ops.h)
 vivid_add_test(test_expr_curve)     # M3 per-note expression curve + scheduler emission
 vivid_add_test(test_clip_loop)      # in-clip loop region scheduler wrapping (M2-followup)

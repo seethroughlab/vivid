@@ -235,6 +235,33 @@ def set_node_file_param(node_id: int, name: str, value: str) -> dict:
 
 
 @mcp.tool
+def save_node_preset(node_id: int, name: str) -> dict:
+    """Save a visual node's current params as a named preset (ADR-0021). A node preset is a param
+    name->value snapshot (distinct from the plugin list_presets/load_preset flow, which loads opaque
+    per-instrument binary state). Stored per op type under the user data dir; recall with
+    load_node_preset. Persisted by param NAME, so a later shader-header edit that adds/removes a param
+    doesn't scramble it."""
+    return _post("save_node_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool
+def list_node_presets(node_id: int = -1, op_type: str = "") -> dict:
+    """List the presets for a node's op type — pass either a node_id or an explicit op_type. Returns
+    each preset's name and whether it's a factory (shipped, read-only) or user preset."""
+    body = {}
+    if node_id >= 0: body["node_id"] = node_id
+    if op_type: body["op_type"] = op_type
+    return _post("list_node_presets", body)
+
+
+@mcp.tool
+def load_node_preset(node_id: int, name: str) -> dict:
+    """Apply a named preset to a visual node. Sets every param the preset names that the node still
+    has (params the node no longer has are skipped). Returns the count applied."""
+    return _post("load_node_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool
 def add_data_node(source: str) -> dict:
     """Place an audio-source node in the graph (cosmetic; mappings work without it). source =
     'master.<kind>' or 'track_<n>.<kind>', kind in level|transient|low|mid|high."""

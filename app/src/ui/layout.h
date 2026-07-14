@@ -183,6 +183,8 @@ inline Rect dock_close_rect(int win_w, int win_h, float dock_h) { return { win_w
 // UI-4b: the "Editor" button in the visual-node inspector header — drills into the op's custom
 // editor (only drawn/hit when the selected op exports one). Sits left of the close ×.
 inline Rect dock_op_editor_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 148.f, dock_top(win_h, dock_h) + 3.f, 60.f, 15.f }; }
+// ADR-0021/P4: the "Presets" button in the visual-node inspector header (left of Editor/close).
+inline Rect dock_node_presets_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 224.f, dock_top(win_h, dock_h) + 3.f, 68.f, 15.f }; }
 
 // UI-5: the "Float" button on the OpEditor header — pops the editor out into its own OS window.
 // Sits left of the close ×.

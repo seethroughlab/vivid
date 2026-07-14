@@ -176,6 +176,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/project_io.cpp
     src/app/file_actions.cpp
     src/app/examples.cpp
+    src/app/node_presets.cpp
+    src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
@@ -231,6 +233,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
     src/ui/shader_library_view.cpp
+    src/ui/preset_popover.cpp
     src/ui/session_view.cpp
     src/ui/chooser.cpp
     src/ui/node_graph.cpp
