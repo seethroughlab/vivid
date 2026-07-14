@@ -22,6 +22,8 @@ enum AudioEntryTag {
     kAudioNativeSource = 1,   // session_audio_graph_add_source
     kAudioPluginEffect = 2,   // session_audio_graph_add_plugin(..., is_source=0)
     kAudioPluginSource = 3,   // session_audio_graph_add_plugin(..., is_source=1)
+    kAudioNoteOp       = 4,   // session_audio_graph_add_note_op   (ADR-0015: notes in -> notes out)
+    kAudioMidiIn       = 5,   // session_audio_graph_add_midi_in   (the track's note stream)
 };
 
 // `instruments_only` = the "+ Track" case (pick something that can START a signal).
@@ -47,6 +49,35 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.tag = want_source ? kAudioNativeSource : kAudioNativeEffect;
             e.accent = want_source ? sty.audio : sty.fx;
             e.summary = want_source ? "native instrument" : "native effect";
+            out.push_back(std::move(e));
+        }
+    }
+
+    // --- ADR-0015: notes are a signal you can wire ---
+    if (!instruments_only) {
+        {   // the track's note stream, as a node
+            ChooserEntry e;
+            e.label = "MIDI In";
+            e.id = "";
+            e.badge = "NOTE";
+            e.summary = "the track's notes (clips, keyboard, live MIDI) as a node";
+            e.hay = "midi notes input keyboard clip source";
+            e.tag = kAudioMidiIn;
+            e.accent = sty.control;
+            out.push_back(std::move(e));
+        }
+        const int nn = S::session_available_note_op_count(s);
+        for (int i = 0; i < nn; ++i) {
+            const char* nm = S::session_available_note_op_name(s, i);
+            if (!nm || !*nm) continue;
+            ChooserEntry e;
+            e.label = nm;
+            e.id = nm;
+            e.badge = "NOTE";
+            e.summary = "note effect \xE2\x80\x94 transforms notes, makes no sound";
+            e.hay = "note effect arpeggiator midi";
+            e.tag = kAudioNoteOp;
+            e.accent = sty.control;
             out.push_back(std::move(e));
         }
     }

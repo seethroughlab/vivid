@@ -17,6 +17,17 @@ before changing anything the audio callback reaches.**
   async) is already RT-safe: `run_track_graph` gates on the handle being non-null, so it
   passes audio through / stays silent until it binds. Handles are **retired, never freed**
   on removal (the audio thread may hold the pointer for one more block).
+- **NOTES ARE A SIGNAL** (ADR-0015). A track's notes used to be an invisible per-track broadcast
+  (`Track::nev`) handed to every source node. They are now a signal *in* the graph: a **`MidiIn`**
+  node emits them, edges carry a **kind** (audio | note), and a **note effect** (`GNKind::NativeNoteFx`,
+  e.g. the `Arp` operator) transforms them — notes in, notes out, no sound. `compile()` topo-sorts
+  across BOTH edge kinds, because a note effect must run before the instrument it feeds even though
+  no audio flows between them. **A graph with no note edges takes the identical path it always did**
+  (`graph_note_input` falls back to the track stream) — that is the migration guarantee, and it is
+  what every existing project relies on. The note pool is preallocated per track, so the audio
+  thread only clears and appends within capacity; a block with more notes than capacity truncates
+  rather than allocating. Operator ABI **v12** added note OUTPUT (`note_out` on the audio context) —
+  before it, an operator could receive notes but never emit them.
 - **`plugin_catalog.{h,cpp}` / `plugin_class.h` / `plugin_probe.{h,cpp}` / `plugin_cache.*` /
   `plugin_scan.*`** — the ONE catalog of installable things: every VST3 + CLAP on the machine,
   each classified instrument/effect by a **background probe that runs OUT OF PROCESS**

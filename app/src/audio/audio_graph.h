@@ -134,6 +134,10 @@ public:
     // false when the node is absent or has never been placed (→ the editor auto-lays it out).
     void set_node_pos(int id, float x, float y);
     bool node_pos(int id, float& x, float& y) const;
+    // Forget every editor position, so the next layout re-seeds the whole graph. Used when a change
+    // alters the graph's DEPTH (adding a MidiIn / note effect pushes everything downstream a column
+    // along): keeping the old columns would stack the new nodes on top of the old ones.
+    void clear_positions();
 
     // Compile into an immutable plan. Returns false on a cycle (out is left unchanged so the
     // caller keeps its last good plan). buf_count == node count; each node's out_buf == its

@@ -232,6 +232,8 @@ void        session_audio_op_param_set(Session*, int track, int index, int param
 // Native audio-operator catalog for the device-chain pickers. want_source: 1 =
 // instruments/generators (no audio input), 0 = effects (has audio input). Names are
 // stable registry keys usable with session_add_audio_effect / _set_track_audio_instrument.
+int         session_available_note_op_count(Session*);              // ADR-0015: native note effects
+const char* session_available_note_op_name(Session*, int idx);
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
 

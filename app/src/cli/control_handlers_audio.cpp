@@ -548,7 +548,7 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
-        static const char* kKind[] = { "instrument", "effect", "output", "midi_in" };   // 3 = ADR-0015 MidiIn
+        static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect" };   // 3,4 = ADR-0015
         json r = ok();
         r["graph_ok"]   = P::session_track_audio_graph_ok(c.session, track) != 0;
         r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
@@ -557,7 +557,7 @@ void register_audio_handlers(Handlers& handlers_) {
             const int k   = P::session_track_audio_graph_node_kind(c.session, track, i);
             const int nid = P::session_track_audio_graph_node_id(c.session, track, i);
             json jn = { {"id",   nid},
-                        {"kind", (k >= 0 && k < 4) ? kKind[k] : "unknown"},
+                        {"kind", (k >= 0 && k < 5) ? kKind[k] : "unknown"},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
             if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
                 int lo = 0, hi = 127;

@@ -54,6 +54,10 @@ bool AudioGraph::node_pos(int id, float& x, float& y) const {
     return true;
 }
 
+void AudioGraph::clear_positions() {
+    for (AudioGraphNode& n : nodes_) { n.positioned = false; n.ui_x = 0.f; n.ui_y = 0.f; }
+}
+
 int AudioGraph::add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label) {
     AudioGraphNode n;
     n.id = next_id_++;

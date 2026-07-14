@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <cstddef>
 #include <cstdint>
 
@@ -40,6 +41,15 @@ float       audio_op_param_get(const AudioOp*, int i);
 float       audio_op_param_min(const AudioOp*, int i);      // Param<> range (for UI normalization)
 float       audio_op_param_max(const AudioOp*, int i);
 void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (single UI producer); lock-free
+
+// ADR-0015: which registered audio operators are NOTE EFFECTS (notes in -> notes out, no sound).
+// The descriptor can't say so yet — an op declares audio ports, not note ports — so note ops mark
+// themselves at registration. Marked ops are excluded from the instrument list (they are not
+// instruments) and offered as note effects instead.
+void audio_op_mark_note_op(const std::string& name);
+bool audio_op_is_note_op(const std::string& name);
+int  audio_note_op_count(OpRegistry& reg);
+const char* audio_note_op_name(OpRegistry& reg, int idx);
 
 // --- Audio thread (RT-safe) ---
 // Source: writes L/R (ignores input), reading `notes` if it's an instrument.

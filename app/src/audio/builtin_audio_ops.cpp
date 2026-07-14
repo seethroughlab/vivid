@@ -1,6 +1,7 @@
 #include "audio/builtin_audio_ops.h"
 #include "audio/sampler_op.h"        // SamplerLoadable escape hatch
 #include "gpu/op_runtime.h"          // OpRegistry / register_op (includes operator_api)
+#include "audio/audio_op_runtime.h"  // audio_op_mark_note_op (ADR-0015)
 
 #include <algorithm>
 #include <array>
@@ -396,6 +397,7 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<TestToneOp>(reg, "TestTone");
     register_op<SamplerOp>(reg, "Sampler");
     register_op<ArpOp>(reg, "Arp");   // ADR-0015: the first note effect
+    audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out
     register_glitch_ops(reg);
 }
 

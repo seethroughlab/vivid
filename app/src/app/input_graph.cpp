@@ -80,6 +80,8 @@ static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser:
     switch (e.tag) {
         case U::kAudioNativeEffect: nid = S::session_audio_graph_add_op(app.session, tr, e.id.c_str()); break;
         case U::kAudioNativeSource: nid = S::session_audio_graph_add_source(app.session, tr, e.id.c_str()); break;
+        case U::kAudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, e.id.c_str()); break;
+        case U::kAudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
         case U::kAudioPluginEffect:
         case U::kAudioPluginSource: {
             const bool src = (e.tag == U::kAudioPluginSource);
@@ -286,11 +288,25 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         AudioNodeGraph ag; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        for (const auto& b : ag.layout())
-            if (b.kind != 0 && b.node_id != win.ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
-                S::session_audio_graph_connect(app.session, tr, win.ag_wire_from, b.node_id);
-                break;
+        // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits.
+        // A MidiIn (kind 3) and a note effect (kind 4) emit notes and nothing else, so a wire out of
+        // them is a NOTE edge; everything else is audio. (An explicit port picker can come later —
+        // this is unambiguous today because no node emits both.)
+        int from_kind = -1;
+        for (const auto& b : ag.layout()) if (b.node_id == win.ag_wire_from) { from_kind = b.kind; break; }
+        const bool note_wire = (from_kind == 3 || from_kind == 4);
+        for (const auto& b : ag.layout()) {
+            if (b.node_id == win.ag_wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
+            // A note wire may land on an instrument (kind 0) or another note effect; an audio wire
+            // may not land on a source.
+            if (note_wire) {
+                if (b.kind == 0 || b.kind == 4)
+                    S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 1);
+            } else if (b.kind != 0 && b.kind != 3 && b.kind != 4) {
+                S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 0);
             }
+            break;
+        }
         win.ag_wire_from = -1;
         return true;
     }

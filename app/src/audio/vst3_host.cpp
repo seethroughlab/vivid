@@ -2277,6 +2277,15 @@ void        session_audio_op_param_set(Session* s, int t, int index, int p, floa
 // Enumerate registered native audio operators for the device-chain pickers.
 // want_source: 1 = instruments/generators (no audio input), 0 = effects (audio input).
 // The registry inspection lives in audio_op_runtime.cpp (the TU with the full operator_api).
+// ADR-0015: the native NOTE EFFECTS (Arp, ...) — offered by the chooser as note ops, not
+// instruments (they make no sound).
+int session_available_note_op_count(Session* s) {
+    return (s && s->op_reg) ? vivid::audio_note_op_count(*s->op_reg) : 0;
+}
+const char* session_available_note_op_name(Session* s, int idx) {
+    return (s && s->op_reg) ? vivid::audio_note_op_name(*s->op_reg, idx) : "";
+}
+
 int session_available_audio_op_count(Session* s, int want_source) {
     return (s && s->op_reg) ? vivid::audio_op_registry_count(*s->op_reg, want_source != 0) : 0;
 }
@@ -2319,7 +2328,8 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::ClapInst: case GNKind::Sampler: return 0;  // source/instrument
         case GNKind::NativeFx:   case GNKind::Vst3Fx:   case GNKind::ClapFx:   return 1;              // effect
         case GNKind::Output:     return 2;
-        case GNKind::MidiIn:     return 3;   // ADR-0015: the track's note stream as a node
+        case GNKind::MidiIn:       return 3;   // ADR-0015: the track's note stream as a node
+        case GNKind::NativeNoteFx: return 4;   // ADR-0015: a note effect (Arp) — notes in, notes out
     }
     return -1;
 }
@@ -2671,6 +2681,9 @@ int session_audio_graph_connect_kind(Session* s, int t, int from_id, int to_id, 
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (!tr->agraph.connect(from_id, to_id, ek)) return 0;             // dup / self-loop / bad id
     if (!republish_track_graph(tr)) { tr->agraph.disconnect(from_id, to_id, ek); return 0; }  // cycle: revert
+    // A note edge changes the graph's DEPTH (the instrument it feeds moves a column downstream), so
+    // re-seed the layout — otherwise the note chain lands on top of the nodes it now precedes.
+    if (ek == vivid::audio::EdgeKind::Note) tr->agraph.clear_positions();
     tr->graph_authoritative = true;
     return 1;
 }
@@ -2696,6 +2709,7 @@ int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
     nb.kind = GNKind::NativeNoteFx;
     nb.op = op;
     tr->agnodes.push_back(nb);
+    tr->agraph.clear_positions();   // the note chain adds depth: re-seed so it lays out left->right
     tr->graph_authoritative = true;
     republish_track_graph(tr);
     return nid;
@@ -2714,6 +2728,7 @@ int session_audio_graph_add_midi_in(Session* s, int t) {
     GNodeBind nb;
     nb.kind = GNKind::MidiIn;
     tr->agnodes.push_back(nb);
+    tr->agraph.clear_positions();   // notes add a column upstream: re-seed so the chain reads L->R
     tr->graph_authoritative = true;
     republish_track_graph(tr);
     return nid;
@@ -2871,6 +2886,17 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
     if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
     vivid::AudioOp* op = nullptr;
     GNKind gk = GNKind::Output; bool is_src = false, is_out = false;
+    if (kind == 4) {   // ADR-0015: a native NOTE EFFECT (notes in -> notes out)
+        vivid::AudioOp* nop = vivid::audio_op_create(*s->op_reg, op_type);
+        if (!nop) return -1;
+        { std::lock_guard<std::mutex> olk(tr->op_fx_mtx); tr->op_effects_edit.push_back(nop); }
+        tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+        const int nid_nf = tr->agraph.add_node(true, false, nullptr, nullptr, op_type ? op_type : "note");
+        tr->agraph.set_note_ports(nid_nf, true, true);
+        GNodeBind nbn; nbn.kind = GNKind::NativeNoteFx; nbn.op = nop;
+        tr->agnodes.push_back(nbn);
+        return nid_nf;
+    }
     if (kind == 3) {   // ADR-0015: the MidiIn node (the track's note stream)
         const int nid_mi = tr->agraph.add_node(true, false, nullptr, nullptr, "midi");
         tr->agraph.set_note_ports(nid_mi, false, true);

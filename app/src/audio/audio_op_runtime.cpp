@@ -1,5 +1,7 @@
 #include "audio/audio_op_runtime.h"
 
+#include <set>
+
 #include "audio/sampler_op.h"        // SamplerLoadable (RTTI cross-cast target)
 #include "gpu/op_runtime.h"          // OpRegistry / OpInstance / sync (includes operator_api)
 #include "midi/midi_clip.h"          // vivid::session::NoteEvent
@@ -87,11 +89,29 @@ static bool descriptor_is_source(const VividOperatorDescriptor* d) {
         if (d->ports[i].type == VIVID_PORT_AUDIO_BUFFER && d->ports[i].direction == VIVID_PORT_INPUT) return false;
     return true;
 }
+// ADR-0015: the note-effect set (marked at registration; see audio_op_mark_note_op).
+static std::set<std::string>& note_ops() { static std::set<std::string> s; return s; }
+void audio_op_mark_note_op(const std::string& name) { note_ops().insert(name); }
+bool audio_op_is_note_op(const std::string& name) { return note_ops().count(name) != 0; }
+int audio_note_op_count(OpRegistry& reg) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) if (audio_op_is_note_op(nm)) ++n;
+    return n;
+}
+const char* audio_note_op_name(OpRegistry& reg, int idx) {
+    int n = 0;
+    for (const auto& nm : reg.type_names())
+        if (audio_op_is_note_op(nm) && n++ == idx) return nm.c_str();
+    return "";
+}
+
 int audio_op_registry_count(OpRegistry& reg, bool want_source) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
-        if (d && d->has_process_audio && descriptor_is_source(d) == want_source) ++n;
+        if (!d || !d->has_process_audio) continue;
+        if (audio_op_is_note_op(nm)) continue;   // a note effect is not an instrument
+        if (descriptor_is_source(d) == want_source) ++n;
     }
     return n;
 }
@@ -99,6 +119,7 @@ const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
     if (idx < 0) return "";
     int n = 0;
     for (const auto& nm : reg.type_names()) {
+        if (audio_op_is_note_op(nm)) continue;   // excluded: a note effect is not an instrument
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
         if (!d || !d->has_process_audio || descriptor_is_source(d) != want_source) continue;
         if (n == idx) return d->name ? d->name : "";   // descriptor name is stable (registry-owned)
