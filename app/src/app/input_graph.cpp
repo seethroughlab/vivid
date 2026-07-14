@@ -183,7 +183,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
                 const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
                 const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
-                win.map_menu = { true, fx, fy, win.sel_audio_node, true /*graph*/ };
+                win.map_menu = { true, fx, fy, win.sel_audio_node };   // src = the audio-graph node id
                 win.map_param = c.index;
                 return true;
             }

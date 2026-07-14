@@ -2917,42 +2917,44 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     return new_track;
 }
 
-// A small catalog of effects offered in the device-chain "+ FX" menu.
-static const struct { const char* label; const char* match; } kEffectCatalog[] = {
-    { "Yak Delay", "yak" }, { "CHOWTape", "chowtape" }, { "Portal", "portal" },
-    { "Infiltrator", "infiltrator" }, { "Airwindows", "airwindows" },
-};
-int session_available_effect_count() { return static_cast<int>(sizeof(kEffectCatalog) / sizeof(kEffectCatalog[0])); }
-const char* session_available_effect_name(int i) {
-    return (i >= 0 && i < session_available_effect_count()) ? kEffectCatalog[i].label : "";
-}
-bool session_add_effect_by_index(Session* s, int t, int i) {
-    if (!s || i < 0 || i >= session_available_effect_count()) return false;
-    std::vector<std::string> bundles;
-    list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
-    if (const char* home = std::getenv("HOME"))
-        list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
-    for (const auto& b : bundles)
-        if (name_has(b, kEffectCatalog[i].match)) return session_add_effect(s, t, b.c_str());
-    return false;
+// Resolve a plugin by DISPLAY NAME against the whole installed catalog (audio/plugin_catalog.h) and
+// add it as an effect. This replaces a hard-coded five-item list ("Yak Delay"/"CHOWTape"/...): the
+// catalog knows every VST3 and CLAP on the machine, so any of them resolves. Used when loading an
+// OLD project, whose per-track `fx` entries were saved by name rather than by path.
+//
+// Matching is exact-then-prefix on the bundle name, case-insensitively — a saved "CHOWTape" must
+// still find "CHOWTapeModel.vst3".
+bool session_add_effect_by_name(Session* s, int t, const char* name) {
+    if (!s || !name || !*name) return false;
+    const auto lower = [](std::string x) {
+        for (char& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return x;
+    };
+    const std::string want = lower(name);
+    int best = -1;
+    for (int i = 0; i < plugin_count(); ++i) {
+        const std::string have = lower(plugin_at(i).name);
+        if (have == want) { best = i; break; }                          // exact wins
+        if (best < 0 && have.rfind(want, 0) == 0) best = i;             // else the first prefix match
+    }
+    if (best < 0) {
+        std::fprintf(stderr, "[Session] no installed plugin named '%s' (project effect dropped)\n", name);
+        return false;
+    }
+    const PluginInfo& p = plugin_at(best);
+    if (p.format == kFmtCLAP) return session_request_track_clap_effect(s, t, p.path.c_str()) != 0;
+    return session_add_effect(s, t, p.path.c_str());
 }
 
 // --- Dynamic tracks (create/delete) ---
 
-// A small catalog of instruments offered in the "+ Track" menu.
-static const struct { const char* label; const char* match; } kInstrumentCatalog[] = {
-    { "Pigments", "pigments" }, { "Serum 2", "serum" }, { "Vital", "vital" },
-    { "EZdrummer 3", "ezdrummer" }, { "Battery", "battery" },
-};
-int session_available_instrument_count() {
-    return static_cast<int>(sizeof(kInstrumentCatalog) / sizeof(kInstrumentCatalog[0]));
-}
-const char* session_available_instrument_name(int i) {
-    return (i >= 0 && i < session_available_instrument_count()) ? kInstrumentCatalog[i].label : "";
-}
-
-// Resolve `spec` (a catalog label, a plugin-name substring, or a .vst3 path) to a loaded
-// instrument with a MIDI input. Returns nullptr if nothing matched/loaded.
+// Resolve `spec` (a .vst3 path, or a plugin name) to a loaded instrument with a MIDI input.
+// Returns nullptr if nothing matched/loaded.
+//
+// The name path resolves against the WHOLE installed catalog (audio/plugin_catalog.h), replacing a
+// hard-coded five-item label->substring table ("Serum 2" -> "serum", ...). It stays a *substring*
+// match at the end so an old project's saved name (which may be a display name, not a bundle name)
+// still finds its plugin.
 static Vst3Handle* load_instrument_spec(Session* s, const char* spec, std::string& out_name) {
     const std::string sp = spec ? spec : "";
     if (sp.size() > 5 && sp.compare(sp.size() - 5, 5, ".vst3") == 0 && std::filesystem::exists(sp)) {
@@ -2966,14 +2968,35 @@ static Vst3Handle* load_instrument_spec(Session* s, const char* spec, std::strin
         if (h) { h->destroy(); delete h; }
         return nullptr;
     }
-    const char* match = spec;   // catalog label -> its match substring; else spec is the substring
-    for (int i = 0; i < session_available_instrument_count(); ++i)
-        if (sp == kInstrumentCatalog[i].label) { match = kInstrumentCatalog[i].match; break; }
+    // By name: try the installed catalog first (exact, then prefix, case-insensitive).
+    const auto lower = [](std::string x) {
+        for (char& c : x) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return x;
+    };
+    const std::string want = lower(sp);
+    for (int pass = 0; pass < 2 && !want.empty(); ++pass) {
+        for (int i = 0; i < plugin_count(); ++i) {
+            const PluginInfo& p = plugin_at(i);
+            if (p.format != kFmtVST3) continue;                 // this path loads a VST3 handle
+            const std::string have = lower(p.name);
+            const bool m = (pass == 0) ? (have == want) : (have.rfind(want, 0) == 0);
+            if (!m) continue;
+            Vst3Handle* h = vst3_load_plugin(p.path.c_str(), "", s->sample_rate, std::string(), &s->host);
+            if (h && h->component && h->component->getBusCount(kEvent, kInput) > 0) {
+                if (h->processor->setProcessing(true) != kResultOk) {}
+                h->processing = true;
+                out_name = h->plugin_name.empty() ? p.name : h->plugin_name;
+                return h;
+            }
+            if (h) { h->destroy(); delete h; }
+        }
+    }
+    // Last resort: the old substring scan (a saved display name that isn't the bundle name).
     std::vector<std::string> bundles;
     list_vst3("/Library/Audio/Plug-Ins/VST3", bundles);
     if (const char* home = std::getenv("HOME"))
         list_vst3(std::string(home) + "/Library/Audio/Plug-Ins/VST3", bundles);
-    const char* prefer[2] = { match, nullptr };
+    const char* prefer[2] = { spec, nullptr };
     return load_role(bundles, prefer, s->sample_rate, &s->host, out_name);
 }
 

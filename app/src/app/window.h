@@ -15,10 +15,9 @@ namespace ui { class Renderer2D; class ClipEditor; }
 
 namespace vivid {
 
-// A right-click context menu of a track's audio characteristics (the bridge). `graph` marks the
-// fx picker as opened from the audio-graph deep view: native effects only, added via the graph
-// edit API (audio_graph_add_op → authoritative) rather than the linear device chain.
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; bool graph = false; bool sources = false; };  // src: -1 master, >=0 track; sources = list instruments (add a graph source)
+// A right-click context menu of a track's audio characteristics (the bridge).
+// src: -1 = master, >= 0 = track.
+struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };
 // A right-click context menu on a visuals op node (open its source / clone it).
 struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
 
@@ -31,7 +30,7 @@ struct FocusContext {
     // VisualNode). Set by the dock "Graph" toggle; `track` is the track being viewed.
     // OpEditor (UI-4b): the drilled-in custom editor an operator exports (vivid_draw_editor),
     // hosted in the detail region. Set by the visual-node "Editor" button; `node` is the op.
-    enum class Kind { Device, VisualNode, ClipEditor, AudioGraph, OpEditor };
+    enum class Kind { VisualNode, ClipEditor, AudioGraph, OpEditor };   // (Device: the linear chain, retired)
     enum class Dom  { Audio, Visual };
     Kind kind  = Kind::AudioGraph;   // a track's default detail view is its audio node graph
     Dom  dom   = Dom::Audio;
@@ -93,7 +92,7 @@ struct Window {
 
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
-    CtxMenu menu, fx_menu, map_menu, track_menu;   // track_menu = "+ Track" (File is a native OS menu)
+    CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
@@ -191,8 +190,6 @@ struct Window {
     ui::Rect     dock_resize_rect() const { return ui::dock_resize_rect(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom()        const { return ui::dock_geom(win_w, win_h, dock_h); }
     ui::DockGeom dock_geom_node()   const { return ui::dock_geom_node(win_w, win_h, dock_h); }
-    ui::Rect     dock_chip(int i)   const { return ui::dock_chip(i, win_h, dock_h); }
-    ui::Rect     dock_chip_x(int i) const { return ui::dock_chip_x(i, win_h, dock_h); }
 };
 
 }  // namespace vivid

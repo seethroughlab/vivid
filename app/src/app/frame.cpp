@@ -467,8 +467,6 @@ void run_frame_loop(App& app, Window& win) {
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
-            draw_fx_menu(ui, app.session, win.fx_menu);
-            draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
             clip_editor.set_playhead(beats);

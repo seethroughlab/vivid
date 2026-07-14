@@ -380,11 +380,10 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 int added = 0;   // positional device index of the next effect (device = added+1)
                 for (const auto& jn : jt["fx"]) {
                     const std::string name = jn.is_string() ? jn.get<std::string>() : jn.value("name", std::string());
-                    bool ok = false;
-                    for (int k = 0; k < vivid::session::session_available_effect_count(); ++k)
-                        if (name == vivid::session::session_available_effect_name(k)) {
-                            ok = vivid::session::session_add_effect_by_index(s, t, k); break;
-                        }
+                    // Resolve against the WHOLE installed catalog — an old project could name any
+                    // plugin, and the five hard-coded labels it used to be matched against could
+                    // only ever resolve five of them.
+                    const bool ok = vivid::session::session_add_effect_by_name(s, t, name.c_str());
                     if (ok && jn.is_object() && jn.contains("params"))
                         for (const auto& jp : jn["params"])
                             vivid::session::session_set_param(s, t, added + 1, jp.value("id", 0u), jp.value("v", 0.f));

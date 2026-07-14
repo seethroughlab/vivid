@@ -20,6 +20,16 @@
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and
   **Tab is the only way to add a node** — the chooser is registry-driven, opens at the
   cursor, and spawns there. Don't reintroduce a hard-coded palette.
+- **`chooser.{h,cpp}`** — the **Tab palette, shared by both graphs**: type to filter, Enter to
+  spawn, at the cursor. Generic over its entries, so each surface supplies a catalog
+  (`audio_catalog.h` for audio; the operator registry for visuals) and spawns what comes back.
+  `text_match.h` is the ranked matcher (exact > prefix > substring > metadata).
+- **`audio_catalog.h`** — the ONE audio add-catalog: native operators + every installed VST3 +
+  every installed CLAP, grouped instrument/effect, badged by format. **Tab is the only way to add
+  an audio node** — there is no plugin browser and no `+ Src`/`+ FX`; those covered disjoint halves
+  of the catalog (registry-only vs bundles-only), so neither could add everything. A CLAP
+  *note-effect* is listed but **disabled** until ADR-0015's note edges exist: spawned as an audio
+  effect it would get zero notes and write silence over the chain.
 - **`clip_editor.{h,cpp}`** — the dockable MIDI piano-roll / audio waveform editor.
 
 Renderer/UI is **kept ours** (not lifted from vivid-classic) — see ADR-0011.

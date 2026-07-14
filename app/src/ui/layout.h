@@ -224,8 +224,6 @@ inline DockGeom dock_geom(int win_w, int win_h, float dock_h) {
 inline DockGeom dock_geom_node(int win_w, int win_h, float dock_h) {
     return dock_geom_at(win_w, win_h, dock_h, dock_top(win_h, dock_h) + kDockHdH + 20.f);
 }
-inline Rect dock_chip(int i, int win_h, float dock_h)   { return { 16.f + i * 128.f, dock_top(win_h, dock_h) + kDockChipY, 118.f, 32.f }; }
-inline Rect dock_chip_x(int i, int win_h, float dock_h) { Rect b = dock_chip(i, win_h, dock_h); return { b.x + b.w - 16.f, b.y + 3.f, 13.f, 13.f }; }
 inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
     cx = 12.f + (i % d.cols) * d.cellW + d.cellW * 0.5f;
     cy = d.gridY0 + (i / d.cols) * d.cellH + d.knobOff;

@@ -45,53 +45,19 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
     return true;
 }
 
-// The three device/menu pickers, in priority order. Each: if open, dispatch the click to a row
-// then close + consume. FX menu (graph mode = native effects via the graph edit API; device mode
-// = the VST3 catalog first, then native operators — matches draw_fx_menu ordering), the +Track
-// instrument picker, and the mapping-source picker (the return path).
+// The mapping-source picker (the bridge return path) — the only dock menu left. The "+ FX"/"+ Src"
+// pickers and the "+ Track" instrument menu are gone: adding anything is the Tab chooser now.
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
-    if (win.fx_menu.open) {
-        if (win.fx_menu.sources) {   // "+ Src": add a parallel native instrument source to the graph
-            const int nsrc = S::session_available_audio_op_count(app.session, 1);
-            for (int j = 0; j < nsrc; ++j) {
-                const Rect r = { win.fx_menu.x, win.fx_menu.y + j * 24.f, 150.f, 24.f };
-                if (hit(r, mx, my)) {
-                    S::session_audio_graph_add_source(app.session, win.fx_menu.src,
-                                                      S::session_available_audio_op_name(app.session, 1, j));
-                    break;
-                }
-            }
-            win.fx_menu.open = false;
-            return true;
-        }
-        const int nvst = win.fx_menu.graph ? 0 : S::session_available_effect_count();
-        const int nnat = S::session_available_audio_op_count(app.session, 0);
-        for (int j = 0; j < nvst + nnat; ++j) {
-            const Rect r = { win.fx_menu.x, win.fx_menu.y + j * 24.f, 150.f, 24.f };
-            if (hit(r, mx, my)) {
-                if (j < nvst) S::session_add_effect_by_index(app.session, win.fx_menu.src, j);
-                else {
-                    const char* op = S::session_available_audio_op_name(app.session, 0, j - nvst);
-                    if (win.fx_menu.graph) S::session_audio_graph_add_op(app.session, win.fx_menu.src, op);
-                    else                   S::session_add_audio_effect(app.session, win.fx_menu.src, op);
-                }
-                break;
-            }
-        }
-        win.fx_menu.open = false;
-        return true;
-    }
     if (win.map_menu.open) {
         const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
         const DevSlot seldev = dock_resolve(app.session, seltr, std::max(0, win.sel_device));
         for (int j = 0; j < kNumMapSources; ++j) {
             const Rect rr = { win.map_menu.x, win.map_menu.y + j * 24.f, 168.f, 24.f };
             if (hit(rr, mx, my) && app.graph) {
-                // Graph mode (opened from an audio-graph node's map dot): address the node by its
-                // stable id via "gnode:"; else the linear device-param dest. map_menu.src = node id.
-                const std::string d = win.map_menu.graph
-                    ? gnode_param_dest(seltr, win.map_menu.src, win.map_param)
-                    : dock_param_dest(seltr, seldev, win.map_param);
+                // The map dot is only ever opened from an audio-graph node, so the dest addresses
+                // that node by its STABLE id ("gnode:"). (The linear device-param dest went away
+                // with the device chain.) map_menu.src = the node id.
+                const std::string d = gnode_param_dest(seltr, win.map_menu.src, win.map_param);
                 if (kMapSources[j].id[0] == '\0') app.graph->disconnect_dest(d);
                 else app.graph->add_mapping(kMapSources[j].id, d, 1.0f);
                 break;

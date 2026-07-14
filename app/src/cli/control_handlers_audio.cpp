@@ -252,12 +252,9 @@ void register_audio_handlers(Handlers& handlers_) {
             const bool okk = P::session_add_effect(c.session, track, name.c_str());
             return okk ? ok() : err(code::kInternal, "add failed (not an effect, or load error)");
         }
-        for (int k = 0; k < P::session_available_effect_count(); ++k)
-            if (name == P::session_available_effect_name(k)) {
-                const bool okk = P::session_add_effect_by_index(c.session, track, k);
-                return okk ? ok() : err(code::kInternal, "add failed");
-            }
-        return err(code::kNotFound, "unknown effect '" + name + "'");
+        // Any installed plugin, by name (the five hard-coded labels are gone).
+        const bool okk = P::session_add_effect_by_name(c.session, track, name.c_str());
+        return okk ? ok() : err(code::kNotFound, "no installed plugin named '" + name + "'");
     };
     // Every installed plugin (VST3 today), for the browser. A path from here works as
     // an "instrument" for add_track or a "name" for add_effect. CLAP/AU hosts TBD.
@@ -265,8 +262,14 @@ void register_audio_handlers(Handlers& handlers_) {
         json arr = json::array();
         for (int i = 0, n = P::plugin_count(); i < n; ++i) {
             const auto& p = P::plugin_at(i);
+            // `class` is what the background probe found (instrument / effect / note-effect), so an
+            // agent can pick the right one instead of guessing from the name. "unknown" = not probed
+            // yet (the first run classifies in the background).
             arr.push_back({ {"name", p.name}, {"path", p.path},
-                            {"format", p.format == P::kFmtCLAP ? "clap" : "vst3"} });
+                            {"format", P::plugin_format_name(p.format)},
+                            {"class", P::plugin_class_name(p.cls)},
+                            {"vendor", p.vendor},
+                            {"probed", p.probed} });
         }
         json r = ok(); r["plugins"] = arr; return r;
     };
@@ -343,9 +346,19 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_remove_effect(c.session, track, effect);
         return ok();
     };
-    handlers_["list_effects"] = [](const ControlCtx&, const json&) {
+    // Everything that can be added as an EFFECT: native audio operators + every installed plugin
+    // the probe classified as an effect. (It used to return five hard-coded VST3 names.)
+    handlers_["list_effects"] = [](const ControlCtx& c, const json&) {
         json arr = json::array();
-        for (int k = 0; k < P::session_available_effect_count(); ++k) arr.push_back(P::session_available_effect_name(k));
+        for (int k = 0, n = c.session ? P::session_available_audio_op_count(c.session, 0) : 0; k < n; ++k)
+            arr.push_back({ {"name", P::session_available_audio_op_name(c.session, 0, k)}, {"format", "native"} });
+        for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+            const auto& p = P::plugin_at(i);
+            if (p.cls == P::kClassInstrument || p.cls == P::kClassFailed || p.cls == P::kClassCrashed) continue;
+            arr.push_back({ {"name", p.name}, {"path", p.path},
+                            {"format", P::plugin_format_name(p.format)},
+                            {"class", P::plugin_class_name(p.cls)} });
+        }
         json r = ok(); r["effects"] = arr; return r;
     };
     // --- Native audio operators (AO-1). index -1 = instrument slot, >=0 = effect. ---
@@ -562,10 +575,19 @@ void register_audio_handlers(Handlers& handlers_) {
         return r;
     };
 
-    // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
-    handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
+    // Everything that can START a signal: native instruments + every installed plugin the probe
+    // classified as an instrument. (It used to return five hard-coded VST3 names, so a CLAP or a
+    // native instrument could not begin a track at all.)
+    handlers_["list_instruments"] = [](const ControlCtx& c, const json&) {
         json arr = json::array();
-        for (int k = 0; k < P::session_available_instrument_count(); ++k) arr.push_back(P::session_available_instrument_name(k));
+        for (int k = 0, n = c.session ? P::session_available_audio_op_count(c.session, 1) : 0; k < n; ++k)
+            arr.push_back({ {"name", P::session_available_audio_op_name(c.session, 1, k)}, {"format", "native"} });
+        for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+            const auto& p = P::plugin_at(i);
+            if (p.cls != P::kClassInstrument) continue;
+            arr.push_back({ {"name", p.name}, {"path", p.path},
+                            {"format", P::plugin_format_name(p.format)} });
+        }
         json r = ok(); r["instruments"] = arr; return r;
     };
     // Create a track. kind "instrument" (default) needs an "instrument" (catalog label or a

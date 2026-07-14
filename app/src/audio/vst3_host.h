@@ -65,8 +65,10 @@ int  session_add_audio_track(Session*);                               // a sampl
 int  session_add_graph_track(Session*, const char* name);            // bare native track for a loaded audio graph
 bool session_remove_track(Session*, int track);                       // retires the track (freed at shutdown)
 // Instrument catalog offered in the "+ Track" menu (resolved to a plugin on add).
-int         session_available_instrument_count();
-const char* session_available_instrument_name(int i);
+// (The hard-coded 5-instrument / 5-effect menus are gone: names now resolve against the WHOLE
+// installed catalog — audio/plugin_catalog.h. Adding is the Tab chooser; this is only for loading
+// an OLD project, whose effects were saved by name rather than by path.)
+bool        session_add_effect_by_name(Session*, int track, const char* name);
 
 // Per-cell state (audio-thread truth).
 int  session_active_clip(Session*, int track);   // active scene index, -1 if stopped
@@ -94,9 +96,6 @@ void*       session_effect_controller(Session*, int track, int effect);  // IEdi
 bool        session_add_effect(Session*, int track, const char* bundle);
 void        session_remove_effect(Session*, int track, int effect);
 // Catalog offered in the device-chain "+ FX" menu (resolved to a bundle on add).
-int         session_available_effect_count();
-const char* session_available_effect_name(int i);
-bool        session_add_effect_by_index(Session*, int track, int i);
 
 // Device parameters. device: 0 = instrument, 1+ = effect index+1.
 int         session_param_count(Session*, int track, int device);
