@@ -35,12 +35,24 @@ int main() {
         CHECK(L.last_error().code == "missing_required_symbols");
     }
 
-    // 4. ABI mismatch — mock the runtime's expected ABI so the (correct) fixture is rejected.
+    // 4. ABI compatibility. The runtime loads any operator in [MIN_LOADABLE, current], because the
+    //    ABI only ever grows by APPENDING fields — an older operator still finds everything it knows
+    //    at the same offset. (Demanding an exact match meant a purely additive bump orphaned every
+    //    operator dylib a user had already installed; a non-additive change bumps MIN_LOADABLE.)
     {
-        setenv("VIVID_MOCK_RUNTIME_ABI", "999", 1);
+        // A dylib NEWER than the runtime is rejected: it may expect fields we don't provide.
+        setenv("VIVID_MOCK_RUNTIME_ABI", "1", 1);
         OperatorLoader L;
         CHECK(!L.load(FIXTURE_OP_PATH));
         CHECK(L.last_error().code == "abi_mismatch");
+        unsetenv("VIVID_MOCK_RUNTIME_ABI");
+    }
+    {
+        // An OLDER dylib (the fixture, built at the current ABI) on a newer runtime still loads,
+        // so long as it is at/above MIN_LOADABLE.
+        setenv("VIVID_MOCK_RUNTIME_ABI", "999", 1);
+        OperatorLoader L;
+        CHECK(L.load(FIXTURE_OP_PATH));
         unsetenv("VIVID_MOCK_RUNTIME_ABI");
     }
 

@@ -19,6 +19,9 @@ struct PluginCacheEntry {
     int format = 0;
     int cls    = 0;               // PluginClass
     std::string name, vendor, uid;
+    // A failure this machine can never recover from (no slice for our CPU). Only such a failure is
+    // remembered; an ordinary one is retried next launch. See plugin_cache_is_stale().
+    bool permanent = false;
 };
 
 struct PluginCache {
@@ -30,11 +33,22 @@ struct PluginCache {
 };
 
 // Bump when the probe's meaning changes (new fields, a fixed classifier) — every entry re-probes.
-constexpr int kPluginCacheVersion = 1;
+// v2: the probe moved OUT OF PROCESS and gained a host-arch pre-check, so verdicts recorded by v1
+// (which included plugins wrongly marked failed by the in-process probe) must not be trusted.
+constexpr int kPluginCacheVersion = 2;
 
 // Should `path` be probed again? True when: the cache is from an older schema, we've never seen the
-// plugin, or its executable changed size/mtime. A `crashed`/`failed` verdict is NOT retried — one
-// bad plugin must not re-crash (or re-hang) the app on every launch; an explicit rescan clears it.
+// plugin, or its executable changed size/mtime.
+//
+// A verdict is only STICKY if it earned it:
+//   - `crashed` — the plugin took the probe down or hung it. Never retried on our own: retrying
+//     would burn a subprocess (and, before the subprocess, the whole app) on every launch.
+//   - a `permanent` failure — the binary has no slice for this CPU. Retrying cannot change that.
+// Every OTHER failure is retried next launch. A probe failure can be transient (a plugin mid-install,
+// a licence daemon not up yet) or our own bug — and a sticky WRONG "failed" is the worst kind of
+// wrong, because the plugin simply never appears and nothing tells the user why. Retrying costs one
+// cheap subprocess in a background worker; being permanently blind to a working plugin costs a lot
+// more. (An explicit rescan re-probes even the crashers.)
 bool plugin_cache_is_stale(const PluginCache& cache, const std::string& path,
                            std::int64_t exe_mtime, std::int64_t exe_size);
 

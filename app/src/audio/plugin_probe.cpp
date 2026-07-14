@@ -4,6 +4,10 @@
 // the factory: VST3 `createInstance` and CLAP `create_plugin` are where the cost and the danger are
 // (Surge XT's CLAP blocks ~90s inside create_plugin — reading its descriptor is milliseconds).
 #include "audio/plugin_probe.h"
+
+#include <fcntl.h>
+#include <filesystem>
+#include <fstream>
 #include "audio/plugin_catalog.h"
 #include "audio/plugin_class.h"
 #include "platform/platform.h"
@@ -200,14 +204,81 @@ int run_probe_subprocess_main(const std::string& path, int format) {
         }
     }
     j["cls"] = cls;
-    std::printf("%s\n", j.dump().c_str());
-    std::fflush(stdout);
+    // Write the verdict to our dedicated descriptor (see kProbeVerdictFd). Fall back to stdout when
+    // it isn't open — that's the manual `--probe-plugin` invocation from a terminal, where a human
+    // is reading, not a parser.
+    const std::string line = j.dump() + "\n";
+    if (::fcntl(kProbeVerdictFd, F_GETFD) != -1) {
+        ssize_t off = 0;
+        while (off < static_cast<ssize_t>(line.size())) {
+            const ssize_t n = ::write(kProbeVerdictFd, line.data() + off,
+                                      line.size() - static_cast<std::size_t>(off));
+            if (n <= 0) break;
+            off += n;
+        }
+    } else {
+        std::printf("%s", line.c_str());
+        std::fflush(stdout);
+    }
     return 0;
+}
+
+bool plugin_supports_host_arch(const std::string& bundle) {
+#if defined(__APPLE__)
+#if defined(__arm64__) || defined(__aarch64__)
+    constexpr uint32_t kHostCpu = 0x0100000cu;   // CPU_TYPE_ARM64
+#elif defined(__x86_64__)
+    constexpr uint32_t kHostCpu = 0x01000007u;   // CPU_TYPE_X86_64
+#else
+    return true;   // unknown host: don't presume
+#endif
+    namespace fs = std::filesystem;
+    const fs::path b(bundle);
+    const fs::path exe = b / "Contents" / "MacOS" / b.stem();
+    std::ifstream in(exe, std::ios::binary);
+    if (!in) return true;   // can't tell => let the probe try and report for real
+
+    auto be32 = [](const unsigned char* p) -> uint32_t {
+        return (uint32_t(p[0]) << 24) | (uint32_t(p[1]) << 16) | (uint32_t(p[2]) << 8) | uint32_t(p[3]);
+    };
+    auto le32 = [](const unsigned char* p) -> uint32_t {
+        return (uint32_t(p[3]) << 24) | (uint32_t(p[2]) << 16) | (uint32_t(p[1]) << 8) | uint32_t(p[0]);
+    };
+    unsigned char hdr[8]{};
+    if (!in.read(reinterpret_cast<char*>(hdr), 8)) return true;
+    const uint32_t magic = be32(hdr);
+    if (magic == 0xcafebabeu || magic == 0xcafebabfu) {          // FAT (universal): scan the slices
+        const uint32_t narch = be32(hdr + 4);
+        const size_t entry = (magic == 0xcafebabfu) ? 32u : 20u;  // fat_arch_64 vs fat_arch
+        for (uint32_t i = 0; i < narch && i < 64; ++i) {
+            unsigned char a[4]{};
+            in.seekg(static_cast<std::streamoff>(8 + i * entry));
+            if (!in.read(reinterpret_cast<char*>(a), 4)) break;
+            if (be32(a) == kHostCpu) return true;
+        }
+        return false;
+    }
+    // Thin Mach-O: cputype is the second word (little-endian for 0xfeedfacf/0xfeedface).
+    const uint32_t thin = le32(hdr);
+    if (thin == 0xfeedfacfu || thin == 0xfeedfaceu) return le32(hdr + 4) == kHostCpu;
+    return true;   // not a Mach-O we understand: let the probe speak
+#else
+    (void)bundle;
+    return true;
+#endif
 }
 
 ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeout_ms) {
     ProbeRun out;
     out.cls = kClassFailed;
+
+    // Answer the cheap, decisive question first — without loading anything.
+    if (!plugin_supports_host_arch(path)) {
+        out.permanent = true;
+        std::fprintf(stderr, "[vivid] plugin '%s' has no slice for this CPU (Intel-only) — skipping\n",
+                     path.c_str());
+        return out;
+    }
 
     const std::string exe = platform::executable_path();
     if (exe.empty()) { out.crashed = true; return out; }
@@ -220,10 +291,10 @@ ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeou
 
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_adddup2(&fa, fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&fa, fds[1], kProbeVerdictFd);   // the verdict channel, ours alone
     posix_spawn_file_actions_addclose(&fa, fds[0]);
-    // The child's stderr is left attached: a plugin's own noise lands in our log, which is useful
-    // and harmless.
+    // The child's stdout AND stderr stay attached to ours: whatever the plugin prints lands in our
+    // log, where it is useful and — now that the verdict has its own descriptor — harmless.
     pid_t pid = -1;
     const int rc = ::posix_spawn(&pid, exe.c_str(), &fa, nullptr,
                                  const_cast<char* const*>(argv), environ);

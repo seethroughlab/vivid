@@ -118,14 +118,23 @@ bool OperatorLoader::load(const char* path) {
         return false;
     }
     const uint32_t abi = abi_fn();
-    if (abi != expected_abi()) {
+    // Accept any ABI in [MIN_LOADABLE, current]. The ABI only grows by APPENDING fields, so an
+    // operator built against an older one still finds every field it knows at the same offset and
+    // simply ignores the rest. Demanding an exact match meant a purely additive bump (v11 -> v12,
+    // note output) silently orphaned every operator dylib a user had already installed.
+    // A NEWER-than-us dylib is still rejected: it may expect fields we don't provide.
+    if (abi < VIVID_OPERATOR_ABI_MIN_LOADABLE || abi > expected_abi()) {
         set_last_error("abi_mismatch",
-                       "plugin ABI " + std::to_string(abi) + " != runtime ABI " +
-                       std::to_string(expected_abi()));
+                       "plugin ABI " + std::to_string(abi) + " not loadable by runtime ABI " +
+                       std::to_string(expected_abi()) + " (min " +
+                       std::to_string(VIVID_OPERATOR_ABI_MIN_LOADABLE) + ")");
         std::fprintf(stderr, "[vivid] %s (%s)\n", last_error_.message.c_str(), path);
         dlclose(new_handle);
         return false;
     }
+    if (abi != expected_abi())
+        std::fprintf(stderr, "[vivid] operator built at ABI %u, running on %u (compatible) — %s\n",
+                     abi, expected_abi(), path);
 
     auto desc_fn    = reinterpret_cast<VividDescriptorFn>(dlsym(new_handle, "vivid_descriptor"));
     auto create_fn  = reinterpret_cast<VividCreateFn>(dlsym(new_handle, "vivid_create"));

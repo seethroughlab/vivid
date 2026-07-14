@@ -19,7 +19,7 @@ namespace {
 
 struct Job    { std::string path; int format; };
 struct Result { std::string path; int format; int cls; std::string name, vendor, uid;
-                std::int64_t mtime, size; };
+                std::int64_t mtime, size; bool permanent = false; };
 
 std::mutex              g_mtx;         // guards the queue + results (worker <-> UI)
 std::deque<Job>         g_queue;
@@ -80,6 +80,7 @@ void worker_main() {
         res.path = job.path;
         res.format = job.format;
         res.cls = pr.crashed ? kClassCrashed : pr.cls;
+        res.permanent = pr.permanent;
         res.name = pr.name;
         res.vendor = pr.vendor;
         res.uid = pr.uid;
@@ -161,6 +162,7 @@ void plugin_scan_poll() {
         e.path = r.path; e.exe_mtime = r.mtime; e.exe_size = r.size;
         e.format = r.format; e.cls = r.cls;
         e.name = r.name; e.vendor = r.vendor; e.uid = r.uid;
+        e.permanent = r.permanent;
         g_cache.put(e);
     }
     g_cache.version = kPluginCacheVersion;

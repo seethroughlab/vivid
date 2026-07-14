@@ -51,9 +51,10 @@ void test_crashed_is_never_retried() {
     // the user's fix. Assert the intended behavior explicitly so it can't drift silently.
     CHECK(!plugin_cache_is_stale(c, "/p/BAD.vst3", 999, 999));
 
-    // A merely FAILED probe (unreadable bundle) is a normal verdict and does re-check on reinstall.
+    // A merely FAILED probe is NOT sticky — it re-probes next launch, reinstall or not. (See
+    // test_failed_is_retried_unless_permanent for why the asymmetry with `crashed` is deliberate.)
     c.put(make_entry("/p/UGLY.vst3", kClassFailed, 100, 2000));
-    CHECK(!plugin_cache_is_stale(c, "/p/UGLY.vst3", 100, 2000));
+    CHECK(plugin_cache_is_stale(c, "/p/UGLY.vst3", 100, 2000));
     CHECK(plugin_cache_is_stale(c, "/p/UGLY.vst3", 101, 2000));
 }
 
@@ -104,11 +105,48 @@ void test_corrupt_cache_is_empty_not_fatal() {
     CHECK(m.entries.empty());
 }
 
+// A FAILED verdict is retried; a PERMANENT one is not. The asymmetry is the whole point: a probe
+// failure can be transient (or our own bug), and a sticky wrong "failed" makes a working plugin
+// invisible forever with nothing to tell the user why. An Intel-only binary, by contrast, will never
+// load into this process no matter how often we ask.
+void test_failed_is_retried_unless_permanent() {
+    PluginCache c;
+    c.version = kPluginCacheVersion;
+
+    PluginCacheEntry transient;   // e.g. a plugin that was mid-install when we looked
+    transient.path = "/p/Flaky.vst3";
+    transient.exe_mtime = 10; transient.exe_size = 20;
+    transient.cls = kClassFailed;
+    c.put(transient);
+    CHECK(plugin_cache_is_stale(c, "/p/Flaky.vst3", 10, 20));   // unchanged on disk, still re-probed
+
+    PluginCacheEntry intel_only;
+    intel_only.path = "/p/Intel.vst3";
+    intel_only.exe_mtime = 10; intel_only.exe_size = 20;
+    intel_only.cls = kClassFailed;
+    intel_only.permanent = true;
+    c.put(intel_only);
+    CHECK(!plugin_cache_is_stale(c, "/p/Intel.vst3", 10, 20));  // never retried...
+    CHECK(plugin_cache_is_stale(c, "/p/Intel.vst3", 11, 20));   // ...until it is REINSTALLED (maybe universal now)
+
+    // `permanent` must survive the round trip, or the policy silently degrades to "retry forever".
+    namespace fs = std::filesystem;
+    const fs::path path = fs::temp_directory_path() / "vivid_plugin_cache_perm.json";
+    CHECK(save_plugin_cache(path.string(), c));
+    const PluginCache r = load_plugin_cache(path.string());
+    const PluginCacheEntry* e = r.find("/p/Intel.vst3");
+    CHECK(e != nullptr);
+    if (e) CHECK(e->permanent);
+    CHECK(!plugin_cache_is_stale(r, "/p/Intel.vst3", 10, 20));
+    fs::remove(path);
+}
+
 }  // namespace
 
 int main() {
     test_staleness();
     test_crashed_is_never_retried();
+    test_failed_is_retried_unless_permanent();
     test_put_replaces_by_path();
     test_round_trip();
     test_corrupt_cache_is_empty_not_fatal();

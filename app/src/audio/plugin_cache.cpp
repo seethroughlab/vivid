@@ -29,10 +29,13 @@ bool plugin_cache_is_stale(const PluginCache& cache, const std::string& path,
     if (cache.version != kPluginCacheVersion) return true;   // the probe's meaning changed
     const PluginCacheEntry* e = cache.find(path);
     if (!e) return true;                                     // never seen
-    // A plugin that crashed or hung the probe is NEVER retried automatically — that's the whole
-    // point of recording it. Retrying would re-crash the app on every single launch.
+    // Only a verdict that earned it is sticky (see the header): a crash/hang, or a failure we know
+    // is permanent. An ordinary failure is retried — it may have been transient, or our fault.
     if (e->cls == kClassCrashed) return false;
-    return e->exe_mtime != exe_mtime || e->exe_size != exe_size;   // reinstalled / updated
+    if (e->cls == kClassFailed && !e->permanent) return true;
+    // Everything else re-probes only when the binary itself changed. That includes a PERMANENT
+    // failure: a reinstall is exactly the event that could make an Intel-only plugin universal.
+    return e->exe_mtime != exe_mtime || e->exe_size != exe_size;
 }
 
 bool plugin_executable_stat(const std::string& bundle, std::int64_t& mtime, std::int64_t& size) {
@@ -78,6 +81,7 @@ PluginCache load_plugin_cache(const std::string& path) {
             e.name      = je.value("name", std::string());
             e.vendor    = je.value("vendor", std::string());
             e.uid       = je.value("uid", std::string());
+            e.permanent = je.value("permanent", false);
             if (!e.path.empty()) c.entries.push_back(std::move(e));
         }
     }
@@ -92,7 +96,8 @@ bool save_plugin_cache(const std::string& path, const PluginCache& c) {
     for (const PluginCacheEntry& e : c.entries) {
         arr.push_back({ {"path", e.path}, {"exe_mtime", e.exe_mtime}, {"exe_size", e.exe_size},
                         {"format", e.format}, {"cls", e.cls},
-                        {"name", e.name}, {"vendor", e.vendor}, {"uid", e.uid} });
+                        {"name", e.name}, {"vendor", e.vendor}, {"uid", e.uid},
+                        {"permanent", e.permanent} });
     }
     j["entries"] = std::move(arr);
     // Atomic: write a temp file and rename over the real one. The probe rewrites the cache after

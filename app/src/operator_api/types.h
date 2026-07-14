@@ -17,6 +17,15 @@ extern "C" {
    behaves exactly as it did at v11. */
 #define VIVID_OPERATOR_ABI_VERSION 12u
 
+/* The OLDEST operator ABI this runtime can still load.
+   An operator built at an older ABI is safe to run iff every change since then was purely
+   ADDITIVE — new fields appended to the END of the context structs, so every field the old
+   operator reads is still at the same offset, and the fields it doesn't know about are simply
+   ignored. v11 -> v12 (note output) is such a change: a v11 operator never touches note_out.
+   Bump this to VIVID_OPERATOR_ABI_VERSION whenever a change is NOT additive (a field is removed,
+   reordered, or resized) — otherwise an old dylib would read garbage. */
+#define VIVID_OPERATOR_ABI_MIN_LOADABLE 11u
+
 // ---------------------------------------------------------------------------
 // Enums
 // ---------------------------------------------------------------------------

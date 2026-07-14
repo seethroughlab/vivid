@@ -43,8 +43,23 @@ struct ProbeRun {
     int cls = 0;                  // PluginClass
     std::string name, vendor, uid;
     bool crashed = false;         // the child died on a signal, or blew the timeout
+    // A failure we KNOW will never succeed on this machine (today: the binary has no slice for our
+    // CPU). Only a permanent failure is cached forever; every other failure is retried, because a
+    // sticky WRONG verdict is invisible and unfixable — the plugin just silently isn't there.
+    bool permanent = false;
 };
 ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeout_ms = 30000);
+
+// Does this bundle's executable even contain a slice for the CPU we're running on? An Intel-only
+// plugin (still common) cannot be loaded into an arm64 process at all — no amount of retrying helps,
+// and "failed" is a useless thing to tell a user we can explain to.
+bool plugin_supports_host_arch(const std::string& bundle);
+
+// The file descriptor the child writes its verdict to. NOT stdout: a plugin's own code runs in the
+// child and is free to print whatever it likes there — Kontakt's logger writes two banner lines to
+// stdout at load, which is enough to corrupt a JSON-on-stdout channel and misreport a perfectly good
+// plugin as "failed". The verdict gets its own descriptor so third-party noise cannot touch it.
+constexpr int kProbeVerdictFd = 3;
 
 // The child side: run the probe, print one JSON line to stdout, and exit. Called from main() before
 // any window/audio/GPU init when --probe-plugin is present. Returns the process exit code.
