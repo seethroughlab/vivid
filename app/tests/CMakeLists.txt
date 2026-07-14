@@ -249,7 +249,22 @@ target_compile_definitions(test_operator_clone PRIVATE
     VIVID_PKG_CXX="${CMAKE_CXX_COMPILER}"
     VIVID_PKG_SRC_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../src"
     VIVID_PKG_ARCH="${CMAKE_OSX_ARCHITECTURES}")
-endif()  # VIVID_BUILD_APP (test_operator_clone needs webgpu)
+
+# ADR-0016 / S3: the shader library — a .wgsl in a folder becomes a registry TYPE whose params
+# reach the operator ABI. App-only for the same reason as above: ShaderFileOp holds WGPU handles
+# (it never touches a device, so the test itself stays headless).
+vivid_add_test(test_shader_library)
+target_sources(test_shader_library PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/shader_library.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/shader_file_op.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/shader_meta.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_shader_library PRIVATE nlohmann_json::nlohmann_json)
+# NOTE: `webgpu` (the target that carries the wgpu include/lib dirs) is fetched by the PARENT
+# *after* this subdir is processed, so it cannot be linked here — the parent does it.
+endif()  # VIVID_BUILD_APP (test_operator_clone + test_shader_library need webgpu)
 
 # P2.4: hot-reload infrastructure — classify_hot_reload + FileWatcher + HotReloader.
 vivid_add_test(test_hot_reload)

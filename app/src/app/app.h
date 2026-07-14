@@ -6,6 +6,7 @@
 #include "app/project_state.h"
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
+#include "gpu/shader_library.h"    // ShaderLibrary (ADR-0016: a shader FILE is an operator)
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 #include "platform/midi_input.h"           // hardware MIDI input (M6.4)
 
@@ -38,6 +39,9 @@ struct App {
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).
     std::vector<std::unique_ptr<OperatorLoader>> op_loaders;
+    // The shader library (ADR-0016). Owns the parsed ShaderDefs, which every shader node —
+    // and every cached descriptor built from one — points into, so it lives the whole run.
+    ShaderLibrary shader_library;
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
     platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
 
