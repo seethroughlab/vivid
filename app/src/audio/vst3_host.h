@@ -65,8 +65,10 @@ int  session_add_audio_track(Session*);                               // a sampl
 int  session_add_graph_track(Session*, const char* name);            // bare native track for a loaded audio graph
 bool session_remove_track(Session*, int track);                       // retires the track (freed at shutdown)
 // Instrument catalog offered in the "+ Track" menu (resolved to a plugin on add).
-int         session_available_instrument_count();
-const char* session_available_instrument_name(int i);
+// (The hard-coded 5-instrument / 5-effect menus are gone: names now resolve against the WHOLE
+// installed catalog — audio/plugin_catalog.h. Adding is the Tab chooser; this is only for loading
+// an OLD project, whose effects were saved by name rather than by path.)
+bool        session_add_effect_by_name(Session*, int track, const char* name);
 
 // Per-cell state (audio-thread truth).
 int  session_active_clip(Session*, int track);   // active scene index, -1 if stopped
@@ -94,9 +96,6 @@ void*       session_effect_controller(Session*, int track, int effect);  // IEdi
 bool        session_add_effect(Session*, int track, const char* bundle);
 void        session_remove_effect(Session*, int track, int effect);
 // Catalog offered in the device-chain "+ FX" menu (resolved to a bundle on add).
-int         session_available_effect_count();
-const char* session_available_effect_name(int i);
-bool        session_add_effect_by_index(Session*, int track, int i);
 
 // Device parameters. device: 0 = instrument, 1+ = effect index+1.
 int         session_param_count(Session*, int track, int device);
@@ -233,6 +232,8 @@ void        session_audio_op_param_set(Session*, int track, int index, int param
 // Native audio-operator catalog for the device-chain pickers. want_source: 1 =
 // instruments/generators (no audio input), 0 = effects (has audio input). Names are
 // stable registry keys usable with session_add_audio_effect / _set_track_audio_instrument.
+int         session_available_note_op_count(Session*);              // ADR-0015: native note effects
+const char* session_available_note_op_name(Session*, int idx);
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
 
@@ -256,6 +257,8 @@ int         session_track_audio_graph_node_scope(Session*, int track, int i, flo
 // the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
 void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
+void        session_track_audio_graph_node_note_ports(Session*, int track, int i, int* note_in, int* note_out);
+int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note (ADR-0015)
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
 
@@ -264,8 +267,34 @@ int         session_track_audio_graph_edge_to(Session*, int track, int e);
 // and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
 int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
 int         session_audio_graph_add_source(Session*, int track, const char* op_type);   // instrument source node, fan-in to Output
+// A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
+// `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
+// vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a
+// CLAP synth may declare audio inputs). `uid` = a VST3 class cid hex, "" to let the loader pick.
+// Returns the new node id IMMEDIATELY; a CLAP's handle binds when its async load lands (the node is
+// audibly a no-op until then, which is already RT-safe).
+int         session_audio_graph_add_plugin(Session*, int track, const char* path, int format,
+                                           int is_source, const char* uid);
+int         session_audio_graph_node_plugin_ready(Session*, int track, int node_id);   // 1 bound / 0 loading / -1 not a plugin node
+const char* session_audio_graph_node_plugin_path(Session*, int track, int node_id);    // "" if not a plugin node
+const char* session_audio_graph_node_plugin_uid(Session*, int track, int node_id);     // VST3 class cid hex ("" if none)
+// A plugin node's patch (base64) — so a user-spawned plugin keeps its sound across save + load.
+std::string session_audio_graph_node_get_state(Session*, int track, int node_id);
+void        session_audio_graph_node_set_state(Session*, int track, int node_id, const std::string& state);
+// Load-time twin of add_plugin: recreate a persisted plugin node with its SAVED id and no auto-wiring
+// (the edges come from the file). `state` is applied once the plugin is bound (CLAP binds async).
+int         session_audio_graph_load_plugin_node(Session*, int track, int node_id, const char* path,
+                                                 int format, int is_source, const char* uid,
+                                                 const char* state);
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
+// ADR-0015: notes are a signal too. kind: 0 = audio (sums at the destination), 1 = note (merges).
+int         session_audio_graph_connect_kind(Session*, int track, int from_id, int to_id, int kind);
+// The track's note stream as an explicit NODE (clips + live MIDI + typing + MCP + preview). Wire
+// its note edge into an instrument (or a note effect) to route notes.
+int         session_audio_graph_add_midi_in(Session*, int track);
+// A native NOTE EFFECT (e.g. "Arp"): notes in -> notes out, no audio. Wire it with note edges.
+int         session_audio_graph_add_note_op(Session*, int track, const char* op_type);
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
 // A source node's MIDI key range [lo,hi] (0..127 = full). Two sources with disjoint ranges = a
 // key-split; the audio thread hands each source only its in-range notes. get returns 1 on success.
@@ -294,6 +323,7 @@ int         session_track_audio_graph_authoritative(Session*, int track);
 void        session_audio_graph_clear      (Session*, int track);
 int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type);   // -> new node id
 void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
+void        session_audio_graph_load_edge_kind(Session*, int track, int from_id, int to_id, int kind);  // 0 audio / 1 note
 void        session_audio_graph_finish_load(Session*, int track, int output_id);
 
 // Slice the source audio clip into a new MIDI track driven by a native Sampler loaded

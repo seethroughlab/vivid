@@ -111,60 +111,8 @@ std::string dock_param_dest(int track, const DevSlot& d, int i) {
     return param_dest(track, d.api_index, i);
 }
 
-// The "+ FX" effect picker for the device chain. Rows: VST3 effects first (accent
-// sty.fx), then native audio operators (accent sty.audio). Row j in [0,nvst) adds a
-// VST3 effect; j in [nvst, nvst+nnat) adds the native audio op (j-nvst). The input
-// handler in input.cpp mirrors this ordering.
-void draw_fx_menu(Renderer2D& ui, vivid::session::Session* s, const CtxMenu& m) {
-    if (!m.open) return;
-    const Style& sty = style();
-    const float w = 150.f;
-    // Source mode (from "+ Src" in the audio-graph deep view) lists native INSTRUMENTS. Graph FX
-    // mode is native effects only; the device chain lists the VST3 catalog first, then native ops.
-    if (m.sources) {
-        const int nsrc = s ? vivid::session::session_available_audio_op_count(s, 1) : 0;   // 1 = sources
-        ui.draw_rect(m.x, m.y - 22.f, w, 22.f, sty.panel[0], sty.panel[1], sty.panel[2], 1.0f);
-        ui.draw_text(m.x + 10.f, m.y - 18.f, "+ source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
-        for (int j = 0; j < nsrc; ++j) {
-            const float iy = m.y + j * 24.f;
-            ui.draw_rect(m.x, iy, w, 24.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-            ui.draw_rect(m.x, iy, 3.f, 24.f, sty.audio[0], sty.audio[1], sty.audio[2], 1.0f);
-            ui.draw_text(m.x + 12.f, iy + 5.f, vivid::session::session_available_audio_op_name(s, 1, j),
-                         sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
-        }
-        return;
-    }
-    const int nvst = m.graph ? 0 : vivid::session::session_available_effect_count();
-    const int nnat = s ? vivid::session::session_available_audio_op_count(s, 0) : 0;   // 0 = effects
-    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + (nvst + nnat) * 24.f }, "+ effect", sty.fx);
-    for (int j = 0; j < nvst + nnat; ++j) {
-        const bool nat = (j >= nvst);
-        const float iy = m.y + j * 24.f;
-        const float* acc = nat ? sty.audio : sty.fx;
-        const char* nm = nat ? vivid::session::session_available_audio_op_name(s, 0, j - nvst)
-                             : vivid::session::session_available_effect_name(j);
-        item_box(ui, { m.x, iy, w, 24.f }, acc);
-        ui.draw_text(m.x + 12.f, iy + 5.f, nm, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
-    }
-}
-
-// The "+ Track" picker: the instrument catalog, then an "Audio track" entry last.
-// Row j in [0,n) adds instrument j; row n adds an audio (sampler) track.
-void draw_track_menu(Renderer2D& ui, const CtxMenu& m) {
-    if (!m.open) return;
-    const Style& sty = style();
-    const float w = 150.f;
-    const int n = vivid::session::session_available_instrument_count();
-    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + (n + 1) * 24.f }, "+ track", sty.audio);
-    for (int j = 0; j <= n; ++j) {   // n instrument rows + one "Audio track" row
-        const float iy = m.y + j * 24.f;
-        const bool isAudio = (j == n);
-        const float* acc = isAudio ? sty.audio : sty.fx;
-        item_box(ui, { m.x, iy, w, 24.f }, acc);
-        ui.draw_text(m.x + 12.f, iy + 5.f, isAudio ? "Audio track" : vivid::session::session_available_instrument_name(j),
-                     sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.9f);
-    }
-}
+// (The "+ FX" and "+ Track" pickers are gone. They could only ever offer a NATIVE op or one of five
+// hard-coded VST3 names; adding anything is now the Tab chooser over the unified catalog.)
 
 // (The File menu is a native OS menu now — platform/menu_bar.*.)
 
@@ -249,22 +197,6 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
         }
     }
 
-    // --- PLUGINS: every installed VST3 (double-click a row to add it) ---
-    const Rect pp = sidebar_plugins_panel(w.sidebar_w, w.win_h, w.dock_h);
-    char phdr[24]; std::snprintf(phdr, sizeof phdr, "PLUGINS \xC2\xB7 %d", vivid::session::plugin_count());
-    panel(ui, pp, phdr, sty.fx);
-    ui.push_clip_rect(pp.x + 1.f, plugins_body_top(w.sidebar_w, w.win_h, w.dock_h),
-                      pp.w - 2.f, pp.y + pp.h - plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) - 1.f);
-    const int np = vivid::session::plugin_count();
-    for (int i = 0; i < np; ++i) {
-        const Rect r = plugin_row_rect(i, w.sidebar_w, w.win_h, w.dock_h, w.plugin_scroll);
-        if (r.y + r.h < plugins_body_top(w.sidebar_w, w.win_h, w.dock_h) || r.y > pp.y + pp.h) continue;  // offscreen
-        const bool hov = hit(r, mx, my);
-        if (hov) item_box(ui, r, sty.fx, true);
-        ui.draw_text(r.x + 6.f, r.y + 3.f, fit_text(ui, vivid::session::plugin_at(i).name, r.w - 12.f, sty.fs_label).c_str(),
-                     hov ? sty.text[0] : sty.body[0], hov ? sty.text[1] : sty.body[1], hov ? sty.text[2] : sty.body[2], 1.0f, sty.fs_label);
-    }
-    ui.pop_clip_rect();
 }
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
@@ -679,36 +611,6 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
     }
 
-    // ---- plugin drag feedback: highlight the drop target (a track = effect, +Track = instrument) ----
-    if (w.plugin_drag_i >= 0 && w.plugin_dragging) {
-        const float dmx = static_cast<float>(mx) - SW;   // DAW-pane x (grid shifted by the sidebar)
-        int tgt = -1;   // -2 = +Track slot (new instrument); >=0 = track (effect)
-        if (tracks < vivid::session::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) tgt = -2;
-        else {
-            for (int t = 0; t < tracks && tgt < 0; ++t)
-                if (hit(track_header_rect(t), dmx, my) ||
-                    (dmx >= track_x(t) && dmx < track_x(t) + kTrackW && my >= kHeaderY && my < w.dock_top())) tgt = t;
-            if (tgt < 0 && my >= w.dock_top()) tgt = std::min(std::max(w.sel_track, 0), tracks - 1);
-        }
-        auto outline = [&](Rect r, const float* c) {
-            const float rx = r.x + SW;
-            ui.draw_rect(rx, r.y, r.w, 2.f, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx, r.y + r.h - 2.f, r.w, 2.f, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
-            ui.draw_rect(rx + r.w - 2.f, r.y, 2.f, r.h, c[0], c[1], c[2], 1.0f);
-        };
-        if (tgt == -2) outline(track_add_rect(tracks), sty.audio);                                   // new instrument
-        else if (tgt >= 0) outline({ track_x(tgt), kHeaderY, kTrackW, w.dock_top() - kPaneMargin - kHeaderY }, sty.fx);  // effect on this track
-
-        const std::string& pn = vivid::session::plugin_at(w.plugin_drag_i).name;
-        const bool inst = (tgt == -2);
-        const float gw = 156.f, gh = 20.f, gx = static_cast<float>(mx) + 10.f, gy = static_cast<float>(my) + 6.f;
-        ui.draw_rect(gx, gy, gw, gh, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 0.95f);
-        const float* bar = inst ? sty.audio : sty.fx;
-        ui.draw_rect(gx, gy, 3.f, gh, bar[0], bar[1], bar[2], 1.0f);
-        char pt[40]; std::snprintf(pt, sizeof pt, "%s %.24s", inst ? "\xE2\x86\x92 track:" : "\xE2\x86\x92 fx:", pn.c_str());
-        ui.draw_text(gx + 8.f, gy + 3.f, fit_text(ui, pt, gw - 14.f, sty.fs_label).c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-    }
 }
 
 // The "map this param from a source" picker (the return path).

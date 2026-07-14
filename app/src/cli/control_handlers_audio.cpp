@@ -252,12 +252,9 @@ void register_audio_handlers(Handlers& handlers_) {
             const bool okk = P::session_add_effect(c.session, track, name.c_str());
             return okk ? ok() : err(code::kInternal, "add failed (not an effect, or load error)");
         }
-        for (int k = 0; k < P::session_available_effect_count(); ++k)
-            if (name == P::session_available_effect_name(k)) {
-                const bool okk = P::session_add_effect_by_index(c.session, track, k);
-                return okk ? ok() : err(code::kInternal, "add failed");
-            }
-        return err(code::kNotFound, "unknown effect '" + name + "'");
+        // Any installed plugin, by name (the five hard-coded labels are gone).
+        const bool okk = P::session_add_effect_by_name(c.session, track, name.c_str());
+        return okk ? ok() : err(code::kNotFound, "no installed plugin named '" + name + "'");
     };
     // Every installed plugin (VST3 today), for the browser. A path from here works as
     // an "instrument" for add_track or a "name" for add_effect. CLAP/AU hosts TBD.
@@ -265,8 +262,14 @@ void register_audio_handlers(Handlers& handlers_) {
         json arr = json::array();
         for (int i = 0, n = P::plugin_count(); i < n; ++i) {
             const auto& p = P::plugin_at(i);
+            // `class` is what the background probe found (instrument / effect / note-effect), so an
+            // agent can pick the right one instead of guessing from the name. "unknown" = not probed
+            // yet (the first run classifies in the background).
             arr.push_back({ {"name", p.name}, {"path", p.path},
-                            {"format", p.format == P::kFmtCLAP ? "clap" : "vst3"} });
+                            {"format", P::plugin_format_name(p.format)},
+                            {"class", P::plugin_class_name(p.cls)},
+                            {"vendor", p.vendor},
+                            {"probed", p.probed} });
         }
         json r = ok(); r["plugins"] = arr; return r;
     };
@@ -343,9 +346,19 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_remove_effect(c.session, track, effect);
         return ok();
     };
-    handlers_["list_effects"] = [](const ControlCtx&, const json&) {
+    // Everything that can be added as an EFFECT: native audio operators + every installed plugin
+    // the probe classified as an effect. (It used to return five hard-coded VST3 names.)
+    handlers_["list_effects"] = [](const ControlCtx& c, const json&) {
         json arr = json::array();
-        for (int k = 0; k < P::session_available_effect_count(); ++k) arr.push_back(P::session_available_effect_name(k));
+        for (int k = 0, n = c.session ? P::session_available_audio_op_count(c.session, 0) : 0; k < n; ++k)
+            arr.push_back({ {"name", P::session_available_audio_op_name(c.session, 0, k)}, {"format", "native"} });
+        for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+            const auto& p = P::plugin_at(i);
+            if (p.cls == P::kClassInstrument || p.cls == P::kClassFailed || p.cls == P::kClassCrashed) continue;
+            arr.push_back({ {"name", p.name}, {"path", p.path},
+                            {"format", P::plugin_format_name(p.format)},
+                            {"class", P::plugin_class_name(p.cls)} });
+        }
         json r = ok(); r["effects"] = arr; return r;
     };
     // --- Native audio operators (AO-1). index -1 = instrument slot, >=0 = effect. ---
@@ -406,6 +419,27 @@ void register_audio_handlers(Handlers& handlers_) {
         if (nid < 0) return err(code::kBadArg, "could not add audio effect node: '" + op + "'");
         json r = ok(); r["node"] = nid; return r;
     };
+    // A2: spawn a VST3/CLAP plugin as a graph NODE (the peer of audio_graph_add_op, which is
+    // native-only). `path` = the bundle; `source` = instrument (fan-in) vs effect (splice). The
+    // node id comes back immediately — a CLAP binds when its async load lands, so poll
+    // get_audio_graph / plugin_loads_pending to know when it's live.
+    handlers_["audio_graph_add_plugin"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "path required (a .vst3 / .clap bundle)");
+        const bool clap = path.size() > 5 && path.compare(path.size() - 5, 5, ".clap") == 0;
+        const int fmt = b.contains("format") ? b.value("format", 0)
+                                             : (clap ? P::kFmtCLAP : P::kFmtVST3);
+        const int src = b.value("source", 0) ? 1 : 0;
+        const std::string uid = b.value("uid", std::string());
+        const int nid = P::session_audio_graph_add_plugin(c.session, track, path.c_str(), fmt, src, uid.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add plugin node: '" + path + "'");
+        json r = ok(); r["node"] = nid;
+        r["ready"] = P::session_audio_graph_node_plugin_ready(c.session, track, nid);   // 0 = still loading
+        return r;
+    };
     handlers_["audio_graph_add_source"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
@@ -431,13 +465,38 @@ void register_audio_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "node not removable (unknown, or an instrument/output)");
         return ok();
     };
+    // ADR-0015: `kind` picks the signal the edge carries — "audio" (default; sums at the
+    // destination) or "note" (merges). A note edge is how an instrument gets its notes once the
+    // graph, rather than an invisible per-track broadcast, is doing the routing.
     handlers_["audio_graph_connect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
         json e; if (!need_track(c.session, track, e)) return e;
-        if (!P::session_audio_graph_connect(c.session, track, from, to))
+        const std::string kind = b.value("kind", std::string("audio"));
+        if (kind != "audio" && kind != "note") return err(code::kBadArg, "kind must be 'audio' or 'note'");
+        if (!P::session_audio_graph_connect_kind(c.session, track, from, to, kind == "note" ? 1 : 0))
             return err(code::kBadArg, "edge rejected (duplicate, self-loop, unknown node, or would create a cycle)");
         return ok();
+    };
+    // A native NOTE EFFECT (ADR-0015), e.g. "Arp": notes in -> notes out, no audio. Wire MidiIn ->
+    // it -> an instrument with NOTE edges.
+    handlers_["audio_graph_add_note_op"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int nid = P::session_audio_graph_add_note_op(c.session, track, op.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add note op '" + op + "'");
+        json r = ok(); r["node"] = nid; return r;
+    };
+    // The track's note stream as a NODE (ADR-0015). Wire its note edge into an instrument.
+    handlers_["audio_graph_add_midi_in"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const int nid = P::session_audio_graph_add_midi_in(c.session, track);
+        if (nid < 0) return err(code::kInternal, "could not add a MidiIn node");
+        json r = ok(); r["node"] = nid; return r;
     };
     handlers_["audio_graph_disconnect"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -489,7 +548,7 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
-        static const char* kKind[] = { "instrument", "effect", "output" };
+        static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect" };   // 3,4 = ADR-0015
         json r = ok();
         r["graph_ok"]   = P::session_track_audio_graph_ok(c.session, track) != 0;
         r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
@@ -497,8 +556,11 @@ void register_audio_handlers(Handlers& handlers_) {
         for (int i = 0; i < P::session_track_audio_graph_node_count(c.session, track); ++i) {
             const int k   = P::session_track_audio_graph_node_kind(c.session, track, i);
             const int nid = P::session_track_audio_graph_node_id(c.session, track, i);
+            int nin = 0, nout = 0;   // ADR-0015: does it take / emit notes?
+            P::session_track_audio_graph_node_note_ports(c.session, track, i, &nin, &nout);
             json jn = { {"id",   nid},
-                        {"kind", (k >= 0 && k < 3) ? kKind[k] : "unknown"},
+                        {"kind", (k >= 0 && k < 5) ? kKind[k] : "unknown"},
+                        {"note_in", nin != 0}, {"note_out", nout != 0},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
             if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
                 int lo = 0, hi = 127;
@@ -512,7 +574,11 @@ void register_audio_handlers(Handlers& handlers_) {
         json edges = json::array();
         for (int i = 0; i < P::session_track_audio_graph_edge_count(c.session, track); ++i)
             edges.push_back({ {"from", P::session_track_audio_graph_edge_from(c.session, track, i)},
-                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)} });
+                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)},
+                              // Which SIGNAL the wire carries. Without this an agent can't tell a
+                              // note edge from an audio one, and the two mean very different things.
+                              {"kind", P::session_track_audio_graph_edge_kind(c.session, track, i) == 1
+                                           ? "note" : "audio"} });
         r["edges"] = edges;
         return r;
     };
@@ -541,10 +607,19 @@ void register_audio_handlers(Handlers& handlers_) {
         return r;
     };
 
-    // The instrument catalog offered when creating a track (a label or a .vst3 path on add).
-    handlers_["list_instruments"] = [](const ControlCtx&, const json&) {
+    // Everything that can START a signal: native instruments + every installed plugin the probe
+    // classified as an instrument. (It used to return five hard-coded VST3 names, so a CLAP or a
+    // native instrument could not begin a track at all.)
+    handlers_["list_instruments"] = [](const ControlCtx& c, const json&) {
         json arr = json::array();
-        for (int k = 0; k < P::session_available_instrument_count(); ++k) arr.push_back(P::session_available_instrument_name(k));
+        for (int k = 0, n = c.session ? P::session_available_audio_op_count(c.session, 1) : 0; k < n; ++k)
+            arr.push_back({ {"name", P::session_available_audio_op_name(c.session, 1, k)}, {"format", "native"} });
+        for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+            const auto& p = P::plugin_at(i);
+            if (p.cls != P::kClassInstrument) continue;
+            arr.push_back({ {"name", p.name}, {"path", p.path},
+                            {"format", P::plugin_format_name(p.format)} });
+        }
         json r = ok(); r["instruments"] = arr; return r;
     };
     // Create a track. kind "instrument" (default) needs an "instrument" (catalog label or a

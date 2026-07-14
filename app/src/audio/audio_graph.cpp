@@ -54,6 +54,10 @@ bool AudioGraph::node_pos(int id, float& x, float& y) const {
     return true;
 }
 
+void AudioGraph::clear_positions() {
+    for (AudioGraphNode& n : nodes_) { n.positioned = false; n.ui_x = 0.f; n.ui_y = 0.f; }
+}
+
 int AudioGraph::add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label) {
     AudioGraphNode n;
     n.id = next_id_++;
@@ -78,31 +82,77 @@ void AudioGraph::remove_node(int id) {
 }
 
 void AudioGraph::remove_node_bridged(int id) {
-    std::vector<int> preds, succs;
+    // Heal each SIGNAL separately: an audio in/out pair bridges as audio, a note in/out pair as
+    // notes. Bridging across kinds would silently turn a note wire into an audio wire (and vice
+    // versa) — a plausible-looking graph that means something else entirely.
+    std::vector<int> preds[2], succs[2];   // [0] = audio, [1] = note
     for (const AudioGraphEdge& e : edges_) {
-        if (e.to_id == id)   preds.push_back(e.from_id);
-        if (e.from_id == id) succs.push_back(e.to_id);
+        const int k = (e.kind == EdgeKind::Note) ? 1 : 0;
+        if (e.to_id == id)   preds[k].push_back(e.from_id);
+        if (e.from_id == id) succs[k].push_back(e.to_id);
     }
     remove_node(id);   // drops the node + its incident edges
-    for (int p : preds) for (int s : succs) connect(p, s);   // heal: preds -> succs (connect dedups)
+    for (int k = 0; k < 2; ++k) {
+        const EdgeKind kind = (k == 0) ? EdgeKind::Audio : EdgeKind::Note;
+        for (int p : preds[k])
+            for (int s : succs[k]) connect(p, s, kind);   // connect dedups
+    }
 }
 
-bool AudioGraph::connect(int from_id, int to_id) {
+bool AudioGraph::connect(int from_id, int to_id, EdgeKind kind) {
     if (from_id == to_id || node_index(from_id) < 0 || node_index(to_id) < 0) return false;
-    for (const AudioGraphEdge& e : edges_)
-        if (e.from_id == from_id && e.to_id == to_id) return false;   // dup
-    edges_.push_back({ from_id, to_id });
+    for (const AudioGraphEdge& e : edges_)   // dup of the SAME kind (one pair may carry both signals)
+        if (e.from_id == from_id && e.to_id == to_id && e.kind == kind) return false;
+    edges_.push_back({ from_id, to_id, kind });
     return true;
 }
 
-void AudioGraph::disconnect(int from_id, int to_id) {
+void AudioGraph::disconnect(int from_id, int to_id, EdgeKind kind) {
     for (size_t i = 0; i < edges_.size(); ++i)
-        if (edges_[i].from_id == from_id && edges_[i].to_id == to_id) { edges_.erase(edges_.begin() + i); return; }
+        if (edges_[i].from_id == from_id && edges_[i].to_id == to_id && edges_[i].kind == kind) {
+            edges_.erase(edges_.begin() + i);
+            return;
+        }
+}
+
+void AudioGraph::set_note_ports(int id, bool note_in, bool note_out) {
+    const int idx = node_index(id);
+    if (idx < 0) return;
+    nodes_[idx].note_in = note_in;
+    nodes_[idx].note_out = note_out;
 }
 
 void AudioGraph::set_node_processor(int id, ProcessFn fn, void* ctx) {
     const int idx = node_index(id);
     if (idx >= 0) { nodes_[idx].process = fn; nodes_[idx].ctx = ctx; }
+}
+
+// An effect lands at the END of the signal path: everything that fed Output now feeds the new
+// node instead, and the new node feeds Output. (A node added with no wiring is inaudible, which
+// reads as "the app ignored me".)
+void AudioGraph::splice_before_output(int id) {
+    if (node_index(id) < 0) return;
+    const int out = output_id_;
+    if (out < 0 || out == id) return;
+    std::vector<int> preds;
+    for (const AudioGraphEdge& e : edges_)   // AUDIO predecessors only: a note edge into Output is
+        if (e.kind == EdgeKind::Audio && e.to_id == out && e.from_id != id) preds.push_back(e.from_id);
+    for (int p : preds) { disconnect(p, out); connect(p, id); }
+    connect(id, out);
+}
+
+// A source is a parallel head of the graph: it fans in to Output alongside any existing source
+// (Output sums its inputs — that's the primitive key-splits and layers are built from).
+int AudioGraph::fan_in_to_output(int id, int (*make_output)(void* user), void* user) {
+    if (node_index(id) < 0) return -1;
+    int out = output_id_;
+    if (out < 0) {   // a bare graph: without a sink the source would be silent
+        out = make_output ? make_output(user) : add_node(false, true, nullptr, nullptr, "out");
+        if (out < 0) return -1;
+        output_id_ = out;
+    }
+    connect(id, out);
+    return out;
 }
 
 void AudioGraph::clear() { nodes_.clear(); edges_.clear(); output_id_ = -1; }   // keeps next_id_
@@ -117,12 +167,19 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
 
     std::vector<int> indeg(N, 0);
     // Predecessor buffers per node index (each predecessor's out_buf == its node index).
-    std::vector<std::vector<int>> preds(N);
+    std::vector<std::vector<int>> preds(N);        // AUDIO inputs (summed)
+    std::vector<std::vector<int>> note_preds(N);   // NOTE inputs (merged) — ADR-0015
     for (const AudioGraphEdge& e : edges_) {
         const int fi = node_index(e.from_id), ti = node_index(e.to_id);
         if (fi < 0 || ti < 0) continue;
+        // BOTH kinds constrain execution order: a note effect must run before the instrument it
+        // feeds, exactly as an audio effect must run before its consumer. One DAG, one topo sort.
         indeg[ti]++;
-        if (static_cast<int>(preds[ti].size()) < kMaxInputs) preds[ti].push_back(fi);
+        if (e.kind == EdgeKind::Note) {
+            if (static_cast<int>(note_preds[ti].size()) < kMaxNoteInputs) note_preds[ti].push_back(fi);
+        } else {
+            if (static_cast<int>(preds[ti].size()) < kMaxInputs) preds[ti].push_back(fi);
+        }
     }
 
     std::vector<int> order;
@@ -144,6 +201,12 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
     }
     if (static_cast<int>(order.size()) != N) return false;   // cycle — keep the caller's last good plan
 
+    // Note buffers: one per note-EMITTING node, allocated only for nodes that actually emit. A
+    // graph with no note edges gets none, so the note pool costs nothing until it is used.
+    std::vector<int> note_buf(N, -1);
+    int nnb = 0;
+    for (int i = 0; i < N; ++i) if (nodes_[i].note_out) note_buf[i] = nnb++;
+
     out.steps.clear();
     out.steps.reserve(N);
     for (int idx : order) {
@@ -153,9 +216,14 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
         s.n_in = static_cast<int>(preds[idx].size());
         for (int k = 0; k < s.n_in; ++k) s.in_buf[k] = preds[idx][k];   // predecessor out_buf == its index
         s.out_buf = idx;
+        s.note_out_buf = note_buf[idx];
+        s.n_note_in = 0;
+        for (int p : note_preds[idx])                  // only a note-emitting predecessor has a buffer
+            if (note_buf[p] >= 0 && s.n_note_in < kMaxNoteInputs) s.note_in_buf[s.n_note_in++] = note_buf[p];
         out.steps.push_back(s);
     }
     out.buf_count = N;
+    out.note_buf_count = nnb;
     out.output_buf = (output_id_ >= 0) ? node_index(output_id_) : -1;
     return true;
 }

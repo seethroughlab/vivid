@@ -448,10 +448,44 @@ def audio_graph_remove_node(track: int, node: int) -> dict:
 
 
 @mcp.tool
-def audio_graph_connect(track: int, from_node: int, to_node: int) -> dict:
-    """Add an edge between two audio-graph nodes (ids from get_audio_graph). Multiple edges into
-    a node sum (stereo). Rejected if it duplicates an edge, is a self-loop, or creates a cycle."""
-    return _post("audio_graph_connect", {"track": track, "from": from_node, "to": to_node})
+def audio_graph_connect(track: int, from_node: int, to_node: int, kind: str = "audio") -> dict:
+    """Add an edge between two audio-graph nodes (ids from get_audio_graph). `kind` is the SIGNAL
+    the wire carries: "audio" (multiple edges into a node sum, stereo) or "note" (ADR-0015: notes
+    merge). A note edge is how notes reach an instrument once you route them explicitly —
+    e.g. midi_in -> Arp -> instrument. Rejected if it duplicates an edge of that kind, is a
+    self-loop, or creates a cycle."""
+    return _post("audio_graph_connect", {"track": track, "from": from_node, "to": to_node, "kind": kind})
+
+
+@mcp.tool
+def audio_graph_add_midi_in(track: int) -> dict:
+    """Add the track's NOTE STREAM as a node (ADR-0015): its clips, the musical-typing keyboard,
+    live MIDI, and note_on/note_off all flow out of it. Wire it with a NOTE edge (audio_graph_connect
+    kind="note") into an instrument, or into a note effect first. Returns its new node id.
+
+    Without any note edges an instrument still receives the track's notes implicitly, exactly as
+    before — the MidiIn node is how you route them somewhere else."""
+    return _post("audio_graph_add_midi_in", {"track": track})
+
+
+@mcp.tool
+def audio_graph_add_note_op(track: int, op: str) -> dict:
+    """Add a NOTE EFFECT node (ADR-0015) — e.g. "Arp": notes in, notes out, no sound of its own.
+    Wire it with NOTE edges: midi_in -> note_op -> instrument. The Arp holds whatever keys are
+    down and re-issues them as a rhythmic sequence (params: rate, mode, octaves, gate), so one
+    held note becomes an arpeggio. Returns its new node id."""
+    return _post("audio_graph_add_note_op", {"track": track, "op": op})
+
+
+@mcp.tool
+def audio_graph_add_plugin(track: int, path: str, source: bool = False, uid: str = "") -> dict:
+    """Add an installed VST3/CLAP plugin (path from list_plugins) as a NODE in a track's audio
+    graph. source=True adds it as an instrument (fans in to the Output, in parallel with any other
+    source — two with disjoint key ranges = a key-split); source=False splices it in as an effect
+    at the end of the signal path. Returns its node id immediately: a CLAP loads asynchronously, so
+    `ready` may be 0 until its handle binds (poll get_audio_graph / plugin_load_status)."""
+    return _post("audio_graph_add_plugin", {"track": track, "path": path,
+                                            "source": 1 if source else 0, "uid": uid})
 
 
 @mcp.tool

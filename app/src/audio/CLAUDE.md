@@ -10,6 +10,36 @@ before changing anything the audio callback reaches.**
   false success.
 - **`vst3_host.cpp`** — the implementation; holds the generation-counter + `try_lock`
   edit pattern (`edit_mtx`/`edit_gen`, `fx_mtx`/`fx_gen`) and the SPSC param queue.
+  **Plugins are graph NODES** (A2): `session_audio_graph_add_plugin` puts a VST3/CLAP
+  instrument or effect anywhere in a track's graph. Its handle lives in a per-track
+  `PluginSlot` addressed by a stable index — *not* by its position in the chain, which is
+  what the old kind+order rebind assumed. A node whose plugin is still loading (CLAP is
+  async) is already RT-safe: `run_track_graph` gates on the handle being non-null, so it
+  passes audio through / stays silent until it binds. Handles are **retired, never freed**
+  on removal (the audio thread may hold the pointer for one more block).
+- **NOTES ARE A SIGNAL** (ADR-0015). A track's notes used to be an invisible per-track broadcast
+  (`Track::nev`) handed to every source node. They are now a signal *in* the graph: a **`MidiIn`**
+  node emits them, edges carry a **kind** (audio | note), and a **note effect** (`GNKind::NativeNoteFx`,
+  e.g. the `Arp` operator) transforms them — notes in, notes out, no sound. `compile()` topo-sorts
+  across BOTH edge kinds, because a note effect must run before the instrument it feeds even though
+  no audio flows between them. **A graph with no note edges takes the identical path it always did**
+  (`graph_note_input` falls back to the track stream) — that is the migration guarantee, and it is
+  what every existing project relies on. The note pool is preallocated per track, so the audio
+  thread only clears and appends within capacity; a block with more notes than capacity truncates
+  rather than allocating. Operator ABI **v12** added note OUTPUT (`note_out` on the audio context) —
+  before it, an operator could receive notes but never emit them.
+- **`plugin_catalog.{h,cpp}` / `plugin_class.h` / `plugin_probe.{h,cpp}` / `plugin_cache.*` /
+  `plugin_scan.*`** — the ONE catalog of installable things: every VST3 + CLAP on the machine,
+  each classified instrument/effect by a **background probe that runs OUT OF PROCESS**
+  (`--probe-plugin`). That is not paranoia: probing in-process crashed the app on two installed
+  plugins, one per launch. Verdicts are cached to `plugin_cache.json` (keyed on the bundle's
+  *executable* mtime/size — a `.vst3` is a directory, so an installer can replace the binary
+  inside it without touching the directory's mtime). A plugin that crashes or hangs the probe is
+  recorded and never opened again. Classification reads the plugin's **factory descriptor only** —
+  no instantiation, which is why Surge XT classifies in milliseconds instead of ~90 seconds.
+  **There is no hard-coded plugin list any more**; names resolve against the whole catalog
+  (`session_add_effect_by_name`), which is only used to load OLD projects (they saved effects by
+  name, not path).
 - **`vst3_host_common.h`** — anonymous-namespace host internals (header-only; that's
   why the session work lives in the `.cpp` and `main` only sees the C API).
 - **`audio_callback.{h,cpp}`** — the miniaudio RT callback; `device->pUserData` is an

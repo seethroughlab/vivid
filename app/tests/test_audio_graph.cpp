@@ -11,6 +11,13 @@
 #include <new>
 #include <vector>
 
+// Does the graph hold this edge? (Used by the wiring-policy cases below.)
+static bool has_edge(const vivid::audio::AudioGraph& g, int from, int to) {
+    for (const vivid::audio::AudioGraphEdge& e : g.edges())
+        if (e.from_id == from && e.to_id == to) return true;
+    return false;
+}
+
 static std::atomic<long> g_allocs{ 0 };
 static bool g_count = false;
 
@@ -176,6 +183,222 @@ int main() {
         CHECK(std::fabs(x - 12.5f) < 1e-6f && std::fabs(y + 3.f) < 1e-6f);
         CHECK(!g.node_pos(b, x, y));                       // sibling still unpositioned
         CHECK(!g.node_pos(999, x, y));                     // absent id → false, no crash
+    }
+
+    // --- 9. splice_before_output: an added EFFECT lands at the end of the signal path ---
+    // Every predecessor of Output must be re-routed through the new node — not just one. With two
+    // sources feeding Output (a key-split), missing that means half the signal bypasses the effect.
+    {
+        AudioGraph g;
+        const int s1 = g.add_node(true,  false, nullptr, nullptr, "s1");
+        const int s2 = g.add_node(true,  false, nullptr, nullptr, "s2");
+        const int out = g.add_node(false, true, nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(s1, out);
+        g.connect(s2, out);
+
+        const int fx = g.add_node(false, false, nullptr, nullptr, "fx");
+        g.splice_before_output(fx);
+
+        CHECK(has_edge(g, s1, fx));
+        CHECK(has_edge(g, s2, fx));      // BOTH sources re-routed
+        CHECK(has_edge(g, fx, out));
+        CHECK(!has_edge(g, s1, out));    // ...and neither bypasses it any more
+        CHECK(!has_edge(g, s2, out));
+        CHECK(g.edges().size() == 3);
+
+        // A second effect stacks after the first (it splices before Output, so fx -> fx2 -> out).
+        const int fx2 = g.add_node(false, false, nullptr, nullptr, "fx2");
+        g.splice_before_output(fx2);
+        CHECK(has_edge(g, fx, fx2));
+        CHECK(has_edge(g, fx2, out));
+        CHECK(!has_edge(g, fx, out));
+    }
+
+    // --- 10. fan_in_to_output: an added SOURCE runs in parallel; a bare graph grows a sink ---
+    {
+        AudioGraph g;
+        const int s1 = g.add_node(true, false, nullptr, nullptr, "s1");
+        CHECK(g.output_id() < 0);                       // bare: no sink yet
+        const int out = g.fan_in_to_output(s1, nullptr);
+        CHECK(out >= 0);
+        CHECK(g.output_id() == out);                    // ...materialized, or the source is silent
+        CHECK(has_edge(g, s1, out));
+
+        const int s2 = g.add_node(true, false, nullptr, nullptr, "s2");
+        CHECK(g.fan_in_to_output(s2, nullptr) == out);  // reuses the existing sink
+        CHECK(has_edge(g, s2, out));                    // parallel with s1 (Output sums = key-split)
+        CHECK(has_edge(g, s1, out));
+
+        // An absent node is a no-op, not a crash or a stray edge.
+        CHECK(g.fan_in_to_output(999, nullptr) == -1);
+        CHECK(g.edges().size() == 2);
+    }
+
+    // --- 11. remove_node_bridged on a middle node keeps the signal flowing ---
+    // (A user-spawned plugin node deleted from the middle of a chain must not orphan the tail.)
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(src, out);
+        const int a = g.add_node(false, false, nullptr, nullptr, "a");
+        g.splice_before_output(a);
+        const int b = g.add_node(false, false, nullptr, nullptr, "b");
+        g.splice_before_output(b);
+        CHECK(has_edge(g, src, a) && has_edge(g, a, b) && has_edge(g, b, out));
+
+        g.remove_node_bridged(a);                       // pull the middle node out
+        CHECK(g.node_index(a) < 0);
+        CHECK(has_edge(g, src, b));                     // src now feeds b directly
+        CHECK(has_edge(g, b, out));
+    }
+
+    // ===== ADR-0015: notes are a second signal in the graph =====
+
+    // --- 12. PARITY: a graph with no note edges compiles exactly as it always did ---
+    // This is the migration gate. If typed edges changed anything about an all-audio graph, every
+    // existing project would sound different.
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int fx  = g.add_node(false, false, nullptr, nullptr, "fx");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(src, fx);
+        g.connect(fx, out);
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.note_buf_count == 0);          // no note-emitting node => no note pool at all
+        CHECK(cg.buf_count == 3);
+        CHECK(cg.output_buf == g.node_index(out));
+        for (const CompiledStep& s : cg.steps) {
+            CHECK(s.n_note_in == 0);
+            CHECK(s.note_out_buf == -1);        // every step is note-free, exactly as before
+        }
+    }
+
+    // --- 13. Note edges constrain execution ORDER (one DAG, both signals) ---
+    // A note effect must run BEFORE the instrument it feeds — even though no AUDIO flows between
+    // them. Getting this wrong means the instrument reads last block's notes.
+    {
+        AudioGraph g;
+        const int midi = g.add_node(true,  false, nullptr, nullptr, "midi");   // MidiIn
+        const int arp  = g.add_node(true,  false, nullptr, nullptr, "arp");    // note effect
+        const int inst = g.add_node(true,  false, nullptr, nullptr, "inst");
+        const int out  = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.set_note_ports(midi, false, true);
+        g.set_note_ports(arp,  true,  true);
+        g.set_note_ports(inst, true,  false);
+        g.connect(midi, arp,  EdgeKind::Note);
+        g.connect(arp,  inst, EdgeKind::Note);
+        g.connect(inst, out,  EdgeKind::Audio);   // only the instrument makes sound
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+
+        auto step_pos = [&](int id) {   // where a node's step lands in topo order
+            const int b = g.node_index(id);
+            for (size_t i = 0; i < cg.steps.size(); ++i) if (cg.steps[i].out_buf == b) return static_cast<int>(i);
+            return -1;
+        };
+        CHECK(step_pos(midi) < step_pos(arp));
+        CHECK(step_pos(arp)  < step_pos(inst));   // the note chain is ordered...
+        CHECK(step_pos(inst) < step_pos(out));    // ...and audio still follows it
+
+        // Note buffers: one per EMITTING node (midi, arp) — the instrument only consumes.
+        CHECK(cg.note_buf_count == 2);
+        const CompiledStep& s_inst = cg.steps[static_cast<size_t>(step_pos(inst))];
+        CHECK(s_inst.n_note_in == 1);
+        CHECK(s_inst.note_out_buf == -1);
+        const CompiledStep& s_arp = cg.steps[static_cast<size_t>(step_pos(arp))];
+        CHECK(s_arp.n_note_in == 1);              // reads MidiIn
+        CHECK(s_arp.note_out_buf >= 0);           // and writes its own
+        CHECK(s_inst.note_in_buf[0] == s_arp.note_out_buf);   // ...which is what the instrument reads
+    }
+
+    // --- 14. Note fan-out + merge: one MidiIn feeds two instruments; two feed one ---
+    {
+        AudioGraph g;
+        const int midi = g.add_node(true,  false, nullptr, nullptr, "midi");
+        const int i1   = g.add_node(true,  false, nullptr, nullptr, "i1");
+        const int i2   = g.add_node(true,  false, nullptr, nullptr, "i2");
+        const int out  = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.set_note_ports(midi, false, true);
+        g.set_note_ports(i1, true, false);
+        g.set_note_ports(i2, true, false);
+        CHECK(g.connect(midi, i1, EdgeKind::Note));
+        CHECK(g.connect(midi, i2, EdgeKind::Note));   // fan-out: one stream, two consumers
+        g.connect(i1, out); g.connect(i2, out);
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.note_buf_count == 1);                // only MidiIn emits
+        CHECK(cg.steps.size() == 4);
+    }
+
+    // --- 15. The same pair may carry BOTH signals; dedup is per kind ---
+    {
+        AudioGraph g;
+        const int a = g.add_node(true,  false, nullptr, nullptr, "a");
+        const int b = g.add_node(false, false, nullptr, nullptr, "b");
+        g.set_note_ports(a, false, true);
+        g.set_note_ports(b, true, false);
+        CHECK(g.connect(a, b, EdgeKind::Audio));
+        CHECK(g.connect(a, b, EdgeKind::Note));    // NOT a duplicate: a different signal
+        CHECK(!g.connect(a, b, EdgeKind::Audio));  // ...but this one is
+        CHECK(!g.connect(a, b, EdgeKind::Note));
+        CHECK(g.edges().size() == 2);
+
+        g.disconnect(a, b, EdgeKind::Note);        // removing one kind leaves the other
+        CHECK(g.edges().size() == 1);
+        CHECK(g.edges()[0].kind == EdgeKind::Audio);
+    }
+
+    // --- 16. A cycle through NOTE edges is rejected like any other ---
+    {
+        AudioGraph g;
+        const int x = g.add_node(true, false, nullptr, nullptr, "x");
+        const int y = g.add_node(true, false, nullptr, nullptr, "y");
+        g.set_note_ports(x, true, true);
+        g.set_note_ports(y, true, true);
+        g.connect(x, y, EdgeKind::Note);
+        g.connect(y, x, EdgeKind::Note);
+        CompiledAudioGraph cg;
+        CHECK(!g.compile(cg));                     // the caller keeps its last good plan
+    }
+
+    // --- 17. remove_node_bridged heals each signal SEPARATELY ---
+    // Bridging across kinds would turn a note wire into an audio wire: a graph that looks right and
+    // means something else.
+    {
+        AudioGraph g;
+        const int midi = g.add_node(true,  false, nullptr, nullptr, "midi");
+        const int arp  = g.add_node(true,  false, nullptr, nullptr, "arp");
+        const int inst = g.add_node(true,  false, nullptr, nullptr, "inst");
+        const int out  = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.set_note_ports(midi, false, true);
+        g.set_note_ports(arp,  true,  true);
+        g.set_note_ports(inst, true,  false);
+        g.connect(midi, arp,  EdgeKind::Note);
+        g.connect(arp,  inst, EdgeKind::Note);
+        g.connect(inst, out,  EdgeKind::Audio);
+
+        g.remove_node_bridged(arp);   // pull the arpeggiator out of the note chain
+        CHECK(g.node_index(arp) < 0);
+        bool midi_to_inst_note = false, any_audio_from_midi = false;
+        for (const AudioGraphEdge& e : g.edges()) {
+            if (e.from_id == midi && e.to_id == inst && e.kind == EdgeKind::Note) midi_to_inst_note = true;
+            if (e.from_id == midi && e.kind == EdgeKind::Audio) any_audio_from_midi = true;
+        }
+        CHECK(midi_to_inst_note);     // the note chain healed...
+        CHECK(!any_audio_from_midi);  // ...and did NOT become an audio wire
+        CHECK(has_edge(g, inst, out));
     }
 
     return vivid::test::summary("test_audio_graph");

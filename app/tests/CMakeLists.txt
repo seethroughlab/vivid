@@ -41,6 +41,16 @@ target_sources(test_sampler_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+# ADR-0015 / M4: the Arp note effect — notes in, notes out. The proof that notes are a real signal
+# in the graph (M1's note edges are inaudible on their own), plus its zero-alloc RT contract.
+vivid_add_test(test_arp_op)
+target_sources(test_arp_op PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+
 vivid_add_test(test_note_tools)     # M5 musical transforms (midi/note_tools.h)
 vivid_add_test(test_audio_warp)     # A0 pure audio-warp math (audio/audio_clip_shared.h)
 target_link_libraries(test_audio_warp PRIVATE nlohmann_json::nlohmann_json)
@@ -53,6 +63,17 @@ vivid_add_test(test_control_parse)
 # ADR-0014: the visual output's format — the aspect/size preset tables + the Fit/Fill/Stretch UV
 # window that letterboxes the output into a surface of a different shape (gpu/output_format.h).
 vivid_add_test(test_output_format)
+
+# What a plugin IS, from its factory metadata (audio/plugin_class.h) — pure string logic, no SDK.
+vivid_add_test(test_plugin_class)
+
+# The plugin probe's on-disk memory (audio/plugin_cache.h): staleness + round-trip. Notably, a
+# plugin that crashed the probe must never be retried automatically.
+vivid_add_test(test_plugin_cache)
+target_sources(test_plugin_cache PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/plugin_cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+target_link_libraries(test_plugin_cache PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_project_paths)   # project-folder vs single-.json path convention
 vivid_add_test(test_control_errors)
 target_link_libraries(test_control_errors PRIVATE nlohmann_json::nlohmann_json)

@@ -1,4 +1,5 @@
 #pragma once
+#include <string>
 #include <cstddef>
 #include <cstdint>
 
@@ -41,11 +42,25 @@ float       audio_op_param_min(const AudioOp*, int i);      // Param<> range (fo
 float       audio_op_param_max(const AudioOp*, int i);
 void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (single UI producer); lock-free
 
+// ADR-0015: which registered audio operators are NOTE EFFECTS (notes in -> notes out, no sound).
+// The descriptor can't say so yet — an op declares audio ports, not note ports — so note ops mark
+// themselves at registration. Marked ops are excluded from the instrument list (they are not
+// instruments) and offered as note effects instead.
+void audio_op_mark_note_op(const std::string& name);
+bool audio_op_is_note_op(const std::string& name);
+int  audio_note_op_count(OpRegistry& reg);
+const char* audio_note_op_name(OpRegistry& reg, int idx);
+
 // --- Audio thread (RT-safe) ---
 // Source: writes L/R (ignores input), reading `notes` if it's an instrument.
 // Effect: transforms L/R in place. `beats_elapsed` is the transport position.
+// `note_out` (ADR-0015, ABI v12): a NOTE-EFFECT operator (arpeggiator / chord / transpose) reads
+// `notes` and writes the notes it wants downstream into `note_out` (capacity `note_out_cap`),
+// setting *note_out_n. Pass nullptr/0 for ordinary instruments and effects — they ignore it.
 void audio_op_process(AudioOp*, float* L, float* R, uint32_t frames, uint32_t sample_rate,
                       float bpm, uint32_t beats_per_bar, double beats_elapsed,
-                      const session::NoteEvent* notes, uint32_t note_count);
+                      const session::NoteEvent* notes, uint32_t note_count,
+                      session::NoteEvent* note_out = nullptr, uint32_t note_out_cap = 0,
+                      uint32_t* note_out_n = nullptr);
 
 }  // namespace vivid

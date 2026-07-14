@@ -134,7 +134,10 @@ bool clipgrid_track_header(Window& win, App& app, double mx, double my, int trac
         if (hit(track_header_rect(t), dmx, my)) { win.sel_track = t; if (app.graph) app.graph->select_op(-1); return true; }
     }
     if (tracks < S::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) {
-        win.track_menu = { true, static_cast<float>(mx), static_cast<float>(my), -1 };
+        // "+ Track" opens the SAME chooser, filtered to instruments — so a new track can be started
+        // by any native instrument, VST3 or CLAP, not just the five hard-coded VST3 names the old
+        // menu offered (it couldn't make a CLAP or native-instrument track at all).
+        vivid::input::audio_chooser_open_new_track(win, app, mx, my);
         return true;
     }
     return false;

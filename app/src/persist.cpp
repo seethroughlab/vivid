@@ -1,5 +1,6 @@
 #include "persist.h"
 #include "audio/vst3_host.h"
+#include "audio/plugin_catalog.h"   // kFmtVST3 / kFmtCLAP (A2: user-spawned plugin graph nodes)
 #include "midi/note_json.h"
 #include "ui/node_graph.h"
 #include "gpu/shader_uniforms.h"
@@ -128,6 +129,18 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 // is a plugin display name, not a native operator) as a placeholder instead of dropping
                 // it. 0 native (omitted) / 1 vst3 / 2 clap / 3 sampler; the handle rebinds on plugin load.
                 if (const int pk = vivid::session::session_track_audio_graph_node_plugin_kind(s, t, i)) jn["src"] = pk;
+                // A2: a node the USER spawned from a plugin carries its own bundle — the linear
+                // chain doesn't own it, so nothing else in this file records it. (Chain-derived
+                // plugin nodes have no `path` and keep restoring via the track-level fx /
+                // clap_effects arrays + order-matching, so old projects are untouched and nothing
+                // is instantiated twice.)
+                if (const char* pp = vivid::session::session_audio_graph_node_plugin_path(s, t, id); pp && *pp) {
+                    jn["path"] = pp;
+                    if (const char* pu = vivid::session::session_audio_graph_node_plugin_uid(s, t, id); pu && *pu)
+                        jn["uid"] = pu;
+                    const std::string pst = vivid::session::session_audio_graph_node_get_state(s, t, id);
+                    if (!pst.empty()) jn["state"] = pst;   // the plugin's patch, per NODE
+                }
                 float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
                 if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
                 if (kind == 0) {   // source: persist its key range (a key-split has disjoint ranges)
@@ -145,8 +158,14 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             }
             const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
             for (int e = 0; e < ne; ++e)
-                edges.push_back({ {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
-                                  {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} });
+            {
+                json je = { {"from", vivid::session::session_track_audio_graph_edge_from(s, t, e)},
+                            {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} };
+                // ADR-0015: only a NOTE edge is written. An edge with no `kind` is audio, so every
+                // project saved before note edges existed loads with its meaning unchanged.
+                if (vivid::session::session_track_audio_graph_edge_kind(s, t, e) == 1) je["kind"] = "note";
+                edges.push_back(std::move(je));
+            }
             g["nodes"] = nodes; g["edges"] = edges;
             g["output"] = vivid::session::session_track_audio_graph_output_id(s, t);
             jt["audio_graph"] = g;
@@ -367,11 +386,10 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 int added = 0;   // positional device index of the next effect (device = added+1)
                 for (const auto& jn : jt["fx"]) {
                     const std::string name = jn.is_string() ? jn.get<std::string>() : jn.value("name", std::string());
-                    bool ok = false;
-                    for (int k = 0; k < vivid::session::session_available_effect_count(); ++k)
-                        if (name == vivid::session::session_available_effect_name(k)) {
-                            ok = vivid::session::session_add_effect_by_index(s, t, k); break;
-                        }
+                    // Resolve against the WHOLE installed catalog — an old project could name any
+                    // plugin, and the five hard-coded labels it used to be matched against could
+                    // only ever resolve five of them.
+                    const bool ok = vivid::session::session_add_effect_by_name(s, t, name.c_str());
                     if (ok && jn.is_object() && jn.contains("params"))
                         for (const auto& jp : jn["params"])
                             vivid::session::session_set_param(s, t, added + 1, jp.value("id", 0u), jp.value("v", 0.f));
@@ -396,8 +414,22 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                 if (g.contains("nodes"))
                     for (const auto& jn : g["nodes"]) {
                         const int saved = jn.value("id", -1);
-                        const int nid = vivid::session::session_audio_graph_load_node(
-                            s, t, jn.value("kind", 1), jn.value("src", 0), jn.value("op", std::string()).c_str());
+                        const int kind = jn.value("kind", 1);
+                        const int src  = jn.value("src", 0);   // 0 native / 1 vst3 / 2 clap / 3 sampler
+                        const std::string ppath = jn.value("path", std::string());
+                        // A2: a node with its own bundle path is a user-spawned plugin node — restore
+                        // it (and its patch) from that. A plugin node WITHOUT a path is an old
+                        // (chain-derived) project: it still restores as a placeholder that rebinds by
+                        // kind + order, exactly as before.
+                        const int nid = !ppath.empty()
+                            ? vivid::session::session_audio_graph_load_plugin_node(
+                                  s, t, saved, ppath.c_str(),
+                                  (src == 2) ? vivid::session::kFmtCLAP : vivid::session::kFmtVST3,
+                                  /*is_source*/ (kind == 0) ? 1 : 0,
+                                  jn.value("uid", std::string()).c_str(),
+                                  jn.value("state", std::string()).c_str())
+                            : vivid::session::session_audio_graph_load_node(
+                                  s, t, kind, src, jn.value("op", std::string()).c_str());
                         if (nid < 0) continue;
                         id_map[saved] = nid;
                         if (jn.contains("x") && jn.contains("y"))   // restore the editor position
@@ -417,7 +449,9 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
                     for (const auto& je : g["edges"]) {
                         auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
                         if (f != id_map.end() && o != id_map.end())
-                            vivid::session::session_audio_graph_load_edge(s, t, f->second, o->second);
+                            vivid::session::session_audio_graph_load_edge_kind(
+                                s, t, f->second, o->second,
+                                je.value("kind", std::string("audio")) == "note" ? 1 : 0);
                     }
                 auto out = id_map.find(g.value("output", -1));
                 vivid::session::session_audio_graph_finish_load(s, t, out != id_map.end() ? out->second : -1);

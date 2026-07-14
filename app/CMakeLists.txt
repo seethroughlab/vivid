@@ -167,7 +167,6 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/input.cpp
     src/app/input_typing.cpp
     src/app/input_transport.cpp
-    src/app/input_plugins.cpp
     src/app/input_editor.cpp
     src/app/input_graph.cpp
     src/app/input_dock.cpp
@@ -189,6 +188,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/plugin_catalog.cpp
+    src/audio/plugin_cache.cpp
+    src/audio/plugin_probe.cpp
+    src/audio/plugin_scan.cpp
     src/audio/audio_callback.cpp
     src/audio/audio_op_runtime.cpp
     src/audio/audio_graph.cpp
@@ -224,6 +226,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
     src/ui/session_view.cpp
+    src/ui/chooser.cpp
     src/ui/node_graph.cpp
     src/ui/audio_node_graph.cpp
     src/ui/clip_editor.cpp)

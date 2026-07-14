@@ -223,20 +223,30 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     for (int e = 0; e < ne; ++e) {
         const AudioNodeBox* a = box_of(P::session_track_audio_graph_edge_from(s_, track_, e));
         const AudioNodeBox* b = box_of(P::session_track_audio_graph_edge_to(s_, track_, e));
-        if (a && b) wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, sty.audio);
+        if (!a || !b) continue;
+        // ADR-0015: a note wire carries a DIFFERENT signal from an audio wire, so it must not look
+        // the same. Notes are drawn in the control accent (the "this is data, not sound" color).
+        const bool note = P::session_track_audio_graph_edge_kind(s_, track_, e) == 1;
+        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, note ? sty.control : sty.audio);
     }
 
     // Cards: fill + accent + type label + kind tag (+ remove-x on effects). boxes[i] corresponds
     // to node index i, so the type name is looked up by the same index.
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
-        const float* acc = b.kind == 0 ? sty.audio : (b.kind == 1 ? sty.fx : sty.control);
+        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn (ADR-0015)
+        const float* acc = b.kind == 0 ? sty.audio
+                         : (b.kind == 1 ? sty.fx
+                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold));
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
         node_card(r, b.x, b.y, b.w, b.h, acc, sel);   // shared: border/body/header/top accent + blue sel ring
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
-        const char* label = (type && *type) ? type : (b.kind == 2 ? "Output" : "?");
+        const char* label = (type && *type) ? type
+                          : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
         r.draw_text(b.x + 10.f, b.y + 6.f, label, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-        const char* tag = b.kind == 0 ? "instrument" : (b.kind == 1 ? "effect" : "output");
+        const char* tag = b.kind == 0 ? "instrument"
+                        : (b.kind == 1 ? "effect"
+                        : (b.kind == 3 ? "notes" : (b.kind == 4 ? "note effect" : "output")));
         r.draw_text(b.x + 10.f, b.y + b.h - 13.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.66f);
         if (b.kind == 0) {   // source: show its key range on the card when it's a key-split (non-full)
             int lo = 0, hi = 127;
@@ -270,13 +280,10 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                 wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
     }
 
-    // "+ FX" / "+ Src" affordances (add an effect / a parallel instrument source).
-    { const Rect a = add_button_rect();
-      r.draw_rect(a.x, a.y, a.w, a.h, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-      r.draw_text(a.x + 7.f, a.y + 1.f, "+ FX", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
-    { const Rect a = source_add_button_rect();
-      r.draw_rounded_rect(a.x, a.y, a.w, a.h, 4.f, sty.card[0], sty.card[1], sty.card[2], 1.0f);
-      r.draw_text(a.x + 5.f, a.y + 1.f, "+ Src", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_label); }
+    // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). The old "+ FX" / "+ Src"
+    // buttons are gone — they could only ever offer native ops, so they quietly hid half the catalog.
+    { const Rect g = graph_region();
+      r.draw_text(g.x + g.w - 108.f, g.y + 4.f, "TAB to add", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker); }
 
     r.pop_clip_rect();   // end graph-area clip (2i)
 

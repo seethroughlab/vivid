@@ -17,6 +17,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"
+#include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
 #include "gpu/texture_source.h"
 #include "gpu/video_player.h"
@@ -354,6 +355,7 @@ void run_frame_loop(App& app, Window& win) {
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
         if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
+        vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
@@ -460,12 +462,11 @@ void run_frame_loop(App& app, Window& win) {
             }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
             if (win.preview_show) draw_output_preview(ui, win, mx, my);
-            graph.draw_overlays(ui);  // operator chooser
+            graph.draw_overlays(ui);      // the visuals Tab chooser
+            win.audio_chooser.draw(ui);   // the audio Tab chooser (A3) — same widget, one catalog
             draw_menu(ui, win.menu,
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
-            draw_fx_menu(ui, app.session, win.fx_menu);
-            draw_track_menu(ui, win.track_menu);
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
             clip_editor.set_playhead(beats);

@@ -12,7 +12,19 @@ extern "C" {
    package whose declared `abi` mismatches (this catches stale dylibs during hot-reload — it is
    NOT a cross-version compatibility promise). The per-version history lives in
    docs/operator-api/abi-changelog.md. */
-#define VIVID_OPERATOR_ABI_VERSION 11u
+/* v12 (ADR-0015): note OUTPUT for note-effect operators (arpeggiator / chord / transpose).
+   Purely additive — new fields at the end of VividAudioContext; an operator that ignores them
+   behaves exactly as it did at v11. */
+#define VIVID_OPERATOR_ABI_VERSION 12u
+
+/* The OLDEST operator ABI this runtime can still load.
+   An operator built at an older ABI is safe to run iff every change since then was purely
+   ADDITIVE — new fields appended to the END of the context structs, so every field the old
+   operator reads is still at the same offset, and the fields it doesn't know about are simply
+   ignored. v11 -> v12 (note output) is such a change: a v11 operator never touches note_out.
+   Bump this to VIVID_OPERATOR_ABI_VERSION whenever a change is NOT additive (a field is removed,
+   reordered, or resized) — otherwise an old dylib would read garbage. */
+#define VIVID_OPERATOR_ABI_MIN_LOADABLE 11u
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -387,6 +399,16 @@ typedef struct VividAudioContext {
     // generators. An instrument operator reads these and renders audio to output_buffers.
     const VividNoteEvent* note_events;
     uint32_t              note_event_count;
+
+    // ---- Note OUTPUT for note-effect operators (v12, ADR-0015) ----
+    // A note effect (arpeggiator, chord, transpose, humanize) reads note_events and WRITES the
+    // notes it wants downstream here: append up to note_out_capacity events and set *note_out_count.
+    // The host owns the buffer (preallocated; never realloc'd on the audio thread), so an operator
+    // must respect the capacity — events past it are the operator's to drop.
+    // NULL/0 when the node has no note output wired: an operator must check before writing.
+    VividNoteEvent* note_out;
+    uint32_t        note_out_capacity;
+    uint32_t*       note_out_count;     /* the operator sets this (host zeroes it first) */
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------

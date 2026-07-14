@@ -589,19 +589,66 @@ void NodeGraph::draw(Renderer2D& r) {
 
 // Floating overlays that must sit ABOVE the thumbnail blit pass — drawn by main
 // in a second UI flush after thumbnails.
-void NodeGraph::draw_overlays(Renderer2D& r) { draw_chooser(r); }
+// ---- Tab chooser (ADR-0014: the ONE way to add a node) ----
+// The widget is shared with the audio graph (ui/chooser.{h,cpp}); this only builds the catalog and
+// spawns whatever comes back.
+
+void NodeGraph::chooser_show(double sx, double sy) {
+    std::vector<Chooser::Entry> entries;
+    if (vg_ && vg_->registry()) {                     // spawnable ops, straight from the registry
+        for (const auto& nm : vg_->registry()->type_names()) {
+            Chooser::Entry e;
+            e.label = nm;
+            e.id = nm;
+            e.badge = "op";
+            e.tag = 0;                                // 0 = a visuals operator
+            e.accent = style().gpu;
+            if (const auto* d = vg_->registry()->descriptor_for(nm)) {   // v3+ metadata (both optional)
+                if (d->summary) e.summary = d->summary;
+                for (uint32_t k = 0; k < d->keyword_count; ++k)
+                    if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
+            }
+            entries.push_back(std::move(e));
+        }
+    }
+    for (const auto& s : kSources) {                  // audio data sources (the bridge)
+        Chooser::Entry e;
+        e.label = s.label;
+        e.summary = "audio characteristic";
+        e.badge = "src";
+        e.tag = 1;                                    // 1 = a bridge data node
+        e.id = std::to_string(s.char_id);
+        e.accent = style().audio;
+        entries.push_back(std::move(e));
+    }
+    chooser_.set_entries(std::move(entries));
+    chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);
+}
+
+void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
+    if (e.tag == 0 && vg_) {                          // an operator
+        const int ni = vg_->add_node(e.id);
+        sync_op_pos();                                // grow op_pos_ for the new node...
+        if (ni >= 0 && ni < int(op_pos_.size()))      // ...then place it where the chooser was opened
+            op_pos_[ni] = { chooser_.spawn_x() - kCardW * 0.5f, chooser_.spawn_y() - 15.f };
+    } else if (e.tag == 1) {                          // a bridge data node
+        add_data_node(e.label, std::atoi(e.id.c_str()));
+        if (!data_.empty()) { data_.back().x = chooser_.spawn_x() - 84.f; data_.back().y = chooser_.spawn_y() - 36.f; }
+    }
+}
+
+void NodeGraph::chooser_confirm() {
+    if (const Chooser::Entry* e = chooser_.confirm()) chooser_spawn(*e);
+}
+
+void NodeGraph::draw_overlays(Renderer2D& r) { chooser_.draw(r); }
 
 bool NodeGraph::on_down(double x, double y) {
     cx_ = x; cy_ = y;
-    if (chooser_open_) {  // click a row to spawn it, click anywhere else to dismiss
-        float px, py, w, h; int vis, first;
-        chooser_geom(px, py, w, h, vis, first);   // same geometry the draw uses
-        const int total = int(chooser_hits_.size());
-        if (x >= px && x < px + w && y >= py + kChooserHdrH && y < py + kChooserHdrH + vis * kChooserRowH) {
-            const int hi = first + int((y - (py + kChooserHdrH)) / kChooserRowH);
-            if (hi >= 0 && hi < total) { chooser_sel_ = hi; chooser_confirm(); return true; }
-        }
-        chooser_hide(); return true;
+    if (chooser_.open()) {   // click a row to spawn it, click anywhere else to dismiss
+        bool dismissed = false;
+        if (const Chooser::Entry* e = chooser_.click(x, y, dismissed)) chooser_spawn(*e);
+        return true;   // the chooser owns the click either way
     }
     sync_op_pos();
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
@@ -689,123 +736,6 @@ void NodeGraph::on_up(double x, double y) {
         if (target >= 0 && vg_) set_op_input_port(target, tport, wire_from_);
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
-}
-
-// ---- Tab chooser: the ONE way to add a node (ADR-0014) ----
-
-// Tiered relevance score, so an exact/prefix hit always outranks an incidental substring match
-// ("mesh" must not be buried under something whose summary merely mentions meshes). < 0 = filtered
-// out. Lifted from vivid-classic's score_match_v2 (ui/graph/node_graph_util.h).
-static int chooser_score(const ChooserEntry& e, const std::string& f) {
-    if (f.empty()) return 1;                                    // no filter: everything, catalog order
-    const std::string lbl = lower_str(e.label);
-    if (lbl == f) return 1000;                                  // exact name
-    if (lbl.rfind(f, 0) == 0) return 700;                       // name prefix
-    const size_t at = lbl.find(f);
-    if (at != std::string::npos) return 400 - static_cast<int>(at);   // name substring (earlier wins)
-    if (e.hay.find(f) != std::string::npos) return 200;         // keyword / summary hit
-    return -1;
-}
-
-void NodeGraph::chooser_build_catalog() {
-    chooser_catalog_.clear();
-    if (vg_ && vg_->registry()) {                     // spawnable ops, straight from the registry
-        for (const auto& nm : vg_->registry()->type_names()) {
-            ChooserEntry e{ nm, true, nm, -1, 0, std::string(), std::string() };
-            // Descriptor metadata (v3+): a one-line summary + search keywords. Both optional.
-            if (const auto* d = vg_->registry()->descriptor_for(nm)) {
-                if (d->summary) e.summary = d->summary;
-                for (uint32_t k = 0; k < d->keyword_count; ++k)
-                    if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
-            }
-            e.hay = lower_str(e.hay + e.label + " " + e.summary);
-            chooser_catalog_.push_back(std::move(e));
-        }
-    }
-    for (const auto& s : kSources)                     // audio data sources (the bridge)
-        chooser_catalog_.push_back({ s.label, false, std::string(), s.char_id, 1,
-                                     "audio characteristic", lower_str(std::string(s.label)) });
-}
-void NodeGraph::chooser_rebuild() {
-    chooser_hits_.clear();
-    const std::string f = lower_str(chooser_filter_);
-    std::vector<std::pair<int, int>> scored;   // (score, catalog index)
-    for (int i = 0; i < int(chooser_catalog_.size()); ++i) {
-        const int sc = chooser_score(chooser_catalog_[i], f);
-        if (sc >= 0) scored.push_back({ sc, i });
-    }
-    std::stable_sort(scored.begin(), scored.end(), [&](const auto& a, const auto& b) {
-        if (a.first != b.first) return a.first > b.first;                       // best score first
-        return chooser_catalog_[a.second].label < chooser_catalog_[b.second].label;   // then A-Z
-    });
-    for (const auto& s : scored) chooser_hits_.push_back(s.second);
-    chooser_sel_ = std::clamp(chooser_sel_, 0, std::max(0, int(chooser_hits_.size()) - 1));
-}
-void NodeGraph::chooser_show(double sx, double sy) {
-    chooser_open_ = true; chooser_filter_.clear(); chooser_sel_ = 0;
-    chooser_sx_ = float(sx); chooser_sy_ = float(sy);
-    chooser_build_catalog();
-    chooser_rebuild();
-}
-void NodeGraph::chooser_move(int dir) {
-    if (chooser_hits_.empty()) return;
-    const int n = int(chooser_hits_.size());
-    chooser_sel_ = (chooser_sel_ + dir % n + n) % n;
-}
-void NodeGraph::chooser_backspace() {
-    if (!chooser_filter_.empty()) { chooser_filter_.pop_back(); chooser_rebuild(); }
-}
-void NodeGraph::chooser_char(unsigned int c) {
-    if (c >= 32 && c < 127) { chooser_filter_.push_back(char(c)); chooser_rebuild(); }
-}
-void NodeGraph::chooser_confirm() {
-    if (chooser_sel_ < 0 || chooser_sel_ >= int(chooser_hits_.size())) { chooser_hide(); return; }
-    const ChooserEntry& e = chooser_catalog_[chooser_hits_[chooser_sel_]];
-    if (e.is_op && vg_) {
-        const int ni = vg_->add_node(e.op_type);   // spawn by name (registry)
-        sync_op_pos();  // grow op_pos_ for the new node, then place it at the cursor
-        if (ni >= 0 && ni < int(op_pos_.size())) op_pos_[ni] = { chooser_sx_ - kCardW * 0.5f, chooser_sy_ - 15.f };
-    } else if (!e.is_op) {
-        add_data_node(e.label, e.char_id);
-        if (!data_.empty()) { data_.back().x = chooser_sx_ - 84.f; data_.back().y = chooser_sy_ - 36.f; }
-    }
-    chooser_hide();
-}
-
-// Where the chooser panel sits: anchored at the cursor (the node spawns there too, so the palette
-// appears where the work is), nudged back inside the graph bounds when it would overhang.
-void NodeGraph::chooser_geom(float& px, float& py, float& w, float& h, int& vis, int& first) const {
-    w = kChooserW;
-    const int total = int(chooser_hits_.size());
-    vis   = std::max(1, std::min(total, kChooserMaxRows));
-    first = chooser_sel_ >= vis ? chooser_sel_ - vis + 1 : 0;
-    h  = kChooserHdrH + vis * kChooserRowH + 6.f;
-    px = std::clamp(chooser_sx_ + 8.f, bx0_, std::max(bx0_, bx1_ - w));
-    py = std::clamp(chooser_sy_ + 8.f, by0_, std::max(by0_, by1_ - h));
-}
-
-void NodeGraph::draw_chooser(Renderer2D& r) {
-    if (!chooser_open_) return;
-    float px, py, w, h; int vis, first;
-    chooser_geom(px, py, w, h, vis, first);
-    const int total = int(chooser_hits_.size());
-    overlay_panel(r, { px, py, w, h }, nullptr, style().gpu);
-    const bool empty = chooser_filter_.empty();
-    const std::string f = empty ? std::string("type to filter\xE2\x80\xA6") : (chooser_filter_ + "_");
-    r.draw_text(px + 10.f, py + 7.f, f.c_str(), empty ? 0.45f : 0.9f, empty ? 0.47f : 0.92f, empty ? 0.5f : 0.95f, 1.0f, 0.92f);
-    if (total == 0) { r.draw_text(px + 10.f, py + kChooserHdrH + 4.f, "no match", 0.55f, 0.45f, 0.45f, 1.0f, 0.86f); return; }
-    for (int vi = 0; vi < vis; ++vi) {
-        const int hi = first + vi; if (hi >= total) break;
-        const ChooserEntry& e = chooser_catalog_[chooser_hits_[hi]];
-        const float iy = py + kChooserHdrH + vi * kChooserRowH;
-        if (hi == chooser_sel_) r.draw_rect(px + 2.f, iy, w - 4.f, kChooserRowH, 0.20f, 0.28f, 0.40f, 0.9f);
-        const float dr = e.env == 0 ? 0.55f : 0.35f, dg = e.env == 0 ? 0.55f : 0.78f, db = e.env == 0 ? 0.95f : 0.55f;
-        r.draw_rect(px + 12.f, iy + 9.f, 6.f, 6.f, dr, dg, db, 1.0f);
-        r.draw_text(px + 26.f, iy + 3.f, e.label.c_str(), 0.88f, 0.90f, 0.93f, 1.0f, 0.9f);
-        r.draw_text(px + w - 42.f, iy + 3.f, e.is_op ? "op" : "src", 0.45f, 0.48f, 0.52f, 1.0f, 0.7f);
-        if (!e.summary.empty())   // the descriptor's one-liner: say what the op DOES, not just its name
-            r.draw_text(px + 26.f, iy + 16.f, e.summary.c_str(), 0.48f, 0.50f, 0.54f, 1.0f, 0.72f);
-    }
 }
 
 }  // namespace vivid::ui

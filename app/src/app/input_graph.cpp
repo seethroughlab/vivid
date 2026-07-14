@@ -8,6 +8,7 @@
 #include "ui/layout.h"
 #include "ui/node_graph.h"          // NodeGraph::zoom_at
 #include "ui/audio_node_graph.h"
+#include "ui/audio_catalog.h"       // A3: the unified add catalog (native ops + VST3 + CLAP)
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
@@ -26,6 +27,102 @@ namespace S = vivid::session;
 }
 
 namespace vivid::input {
+
+// ---- A3: the audio graph's Tab chooser — the ONE way to add an audio node ----
+// It offers the UNIFIED catalog (native operators + every installed VST3 + every installed CLAP);
+// the old "+ Src"/"+ FX" menus could only ever list native ops, and the plugin browser could only
+// ever list plugins, so neither could add everything.
+
+// The track whose graph is on screen (the detail region shows exactly one).
+static int audio_graph_track(const Window& win, App& app) {
+    if (!app.session) return -1;
+    const int n = S::session_track_count(app.session);
+    if (n <= 0) return -1;
+    return std::min(std::max(win.sel_track, 0), n - 1);
+}
+
+bool audio_chooser_open_at(Window& win, App& app, double mx, double my) {
+    if (win.focus.kind != vivid::FocusContext::Kind::AudioGraph || my < win.dock_top()) return false;
+    if (audio_graph_track(win, app) < 0) return false;
+    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    win.audio_chooser_new_track = false;
+    win.audio_chooser.set_entries(vivid::ui::audio_catalog(app.session));
+    // Keep the panel inside the window (the dock is short, so it opens UPWARD from the dock top).
+    win.audio_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
+                           static_cast<float>(win.win_w) - 8.f, gp.y + gp.h);
+    return true;
+}
+
+// "+ Track": the same chooser, filtered to things that can START a signal (native instruments,
+// VST3 + CLAP instruments). Picking one creates the track and puts it in.
+void audio_chooser_open_new_track(Window& win, App& app, double mx, double my) {
+    if (!app.session) return;
+    win.audio_chooser_new_track = true;
+    win.audio_chooser.set_entries(vivid::ui::audio_catalog(app.session, /*instruments_only*/true));
+    win.audio_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
+                           static_cast<float>(win.win_w) - 8.f,
+                           static_cast<float>(win.win_h) - 8.f);
+}
+
+// Spawn what the chooser handed back. Every path lands in the authoritative graph.
+static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser::Entry& e) {
+    int tr = audio_graph_track(win, app);
+    if (win.audio_chooser_new_track) {   // "+ Track": make the track, then put the instrument in it
+        win.audio_chooser_new_track = false;
+        tr = S::session_add_graph_track(app.session, "");   // a bare track; the chooser supplies the source
+        if (tr < 0) return;
+        win.sel_track = tr;
+        if (app.graph) app.graph->select_op(-1);            // focus the new track's audio graph
+    }
+    if (tr < 0) return;
+    namespace U = vivid::ui;
+    int nid = -1;
+    switch (e.tag) {
+        case U::kAudioNativeEffect: nid = S::session_audio_graph_add_op(app.session, tr, e.id.c_str()); break;
+        case U::kAudioNativeSource: nid = S::session_audio_graph_add_source(app.session, tr, e.id.c_str()); break;
+        case U::kAudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, e.id.c_str()); break;
+        case U::kAudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
+        case U::kAudioPluginEffect:
+        case U::kAudioPluginSource: {
+            const bool src = (e.tag == U::kAudioPluginSource);
+            const bool clap = e.badge == "CLAP";
+            nid = S::session_audio_graph_add_plugin(app.session, tr, e.id.c_str(),
+                                                    clap ? S::kFmtCLAP : S::kFmtVST3, src ? 1 : 0, "");
+            break;
+        }
+        default: break;
+    }
+    if (nid >= 0) win.sel_audio_node = nid;   // select what you just made
+    else std::fprintf(stderr, "[vivid] could not add '%s' to track %d\n", e.label.c_str(), tr);
+}
+
+// Keys while the audio chooser owns the keyboard. Returns true when consumed.
+bool audio_chooser_key(Window& win, App& app, int key) {
+    if (!win.audio_chooser.open()) return false;
+    if (key == GLFW_KEY_ESCAPE) { win.audio_chooser.hide(); return true; }
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (const auto* e = win.audio_chooser.confirm()) audio_chooser_spawn(win, app, *e);
+        return true;
+    }
+    if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) { win.audio_chooser.move(+1); return true; }
+    if (key == GLFW_KEY_UP)        { win.audio_chooser.move(-1); return true; }
+    if (key == GLFW_KEY_BACKSPACE) { win.audio_chooser.backspace(); return true; }
+    return true;   // swallow everything else while it's up
+}
+
+bool audio_chooser_char(Window& win, unsigned int cp) {
+    if (!win.audio_chooser.open()) return false;
+    win.audio_chooser.type(cp);
+    return true;
+}
+
+// A click while the chooser is up: pick a row, or dismiss. Consumes either way.
+bool audio_chooser_click(Window& win, App& app, double mx, double my) {
+    if (!win.audio_chooser.open()) return false;
+    bool dismissed = false;
+    if (const auto* e = win.audio_chooser.click(mx, my, dismissed)) audio_chooser_spawn(win, app, *e);
+    return true;
+}
 
 // Scroll-wheel zoom for whichever graph is under the cursor: the visuals node graph (when the
 // graph deep-view is revealed, right of the splitter) and/or the audio-graph deep-view (2i, zoom
@@ -65,29 +162,9 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
     ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
-    if (hit(ag.add_button_rect(), mx, my)) {   // + FX: the NATIVE-effect picker (graph mode)
-        // Graph editing is native-only + authoritative, so the menu lists just native effects and
-        // selecting one calls audio_graph_add_op. The button is pinned top-right, so anchor the
-        // 150px menu at the click but clamp its box inside the window (no right/bottom spill).
-        const int rows = S::session_available_audio_op_count(app.session, 0);   // native effects only
-        const float menu_w = 150.f, item_h = 24.f, marg = 8.f;
-        float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
-        float fy = static_cast<float>(my);
-        if (fy + rows * item_h > win.win_h - marg)
-            fy = std::max(marg + 22.f, win.win_h - rows * item_h - marg);
-        win.fx_menu = { true, fx, fy, tr, true /*graph*/, false /*effects*/ };
-        return true;
-    }
-    if (hit(ag.source_add_button_rect(), mx, my)) {   // + Src: the native-INSTRUMENT picker (add a parallel source)
-        const int rows = S::session_available_audio_op_count(app.session, 1);   // sources only
-        const float menu_w = 150.f, item_h = 24.f, marg = 8.f;
-        float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
-        float fy = static_cast<float>(my);
-        if (fy + rows * item_h > win.win_h - marg)
-            fy = std::max(marg + 22.f, win.win_h - rows * item_h - marg);
-        win.fx_menu = { true, fx, fy, tr, true /*graph*/, true /*sources*/ };
-        return true;
-    }
+    // (The "+ Src" / "+ FX" buttons are gone: they could only ever offer NATIVE ops — plugins were
+    // structurally excluded — so no surface could add everything. Tab is now the one add path, over
+    // the unified catalog. See audio_chooser_open_at below.)
     if (win.sel_audio_node >= 0 && ag.sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
         int lo = 0, hi = 127;
         S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
@@ -108,7 +185,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
                 const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
                 const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
-                win.map_menu = { true, fx, fy, win.sel_audio_node, true /*graph*/ };
+                win.map_menu = { true, fx, fy, win.sel_audio_node };   // src = the audio-graph node id
                 win.map_param = c.index;
                 return true;
             }
@@ -211,11 +288,25 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         AudioNodeGraph ag; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        for (const auto& b : ag.layout())
-            if (b.kind != 0 && b.node_id != win.ag_wire_from && hit(ag.in_port_rect(b), mx, my)) {
-                S::session_audio_graph_connect(app.session, tr, win.ag_wire_from, b.node_id);
-                break;
+        // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits.
+        // A MidiIn (kind 3) and a note effect (kind 4) emit notes and nothing else, so a wire out of
+        // them is a NOTE edge; everything else is audio. (An explicit port picker can come later —
+        // this is unambiguous today because no node emits both.)
+        int from_kind = -1;
+        for (const auto& b : ag.layout()) if (b.node_id == win.ag_wire_from) { from_kind = b.kind; break; }
+        const bool note_wire = (from_kind == 3 || from_kind == 4);
+        for (const auto& b : ag.layout()) {
+            if (b.node_id == win.ag_wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
+            // A note wire may land on an instrument (kind 0) or another note effect; an audio wire
+            // may not land on a source.
+            if (note_wire) {
+                if (b.kind == 0 || b.kind == 4)
+                    S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 1);
+            } else if (b.kind != 0 && b.kind != 3 && b.kind != 4) {
+                S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 0);
             }
+            break;
+        }
         win.ag_wire_from = -1;
         return true;
     }

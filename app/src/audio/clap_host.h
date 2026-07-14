@@ -75,10 +75,21 @@ struct ClapEventScratch {
         auto* s = static_cast<const ClapEventScratch*>(l->ctx);
         return &s->evts[i].note.header;
     }
-    static bool CLAP_ABI ev_push(const clap_output_events_t*, const clap_event_header_t*) {
-        return true;   // ignore plugin-emitted events for now
+    // ADR-0015 (M2): a plugin's OWN events. A note effect (arpeggiator / chord generator) writes
+    // its notes here — the host used to discard them, which is why a CLAP note effect could not
+    // work at all. Only note-on/off are kept: they are what a note edge carries. Fixed capacity;
+    // the audio thread never allocates.
+    static bool CLAP_ABI ev_push(const clap_output_events_t* l, const clap_event_header_t* h) {
+        auto* s = static_cast<ClapEventScratch*>(l->ctx);
+        if (!s || !h || s->out_count >= N) return true;
+        if (h->space_id != CLAP_CORE_EVENT_SPACE_ID) return true;
+        if (h->type != CLAP_EVENT_NOTE_ON && h->type != CLAP_EVENT_NOTE_OFF) return true;
+        s->out_notes[s->out_count++] = *reinterpret_cast<const clap_event_note_t*>(h);
+        return true;
     }
-    void clear() { count = 0; }
+    clap_event_note_t out_notes[N]{};   // notes the PLUGIN produced this block (not `out`: that is the CLAP sink)
+    uint32_t          out_count = 0;
+    void clear() { count = 0; out_count = 0; }
     void add_note(bool on, int key, double vel, int32_t note_id, uint32_t time) {
         if (count >= N) return;
         clap_event_note_t& e = evts[count++].note;
@@ -131,7 +142,7 @@ struct ClapHandle {
     const clap_plugin_note_ports_t*  ext_note_ports = nullptr;
     const clap_plugin_preset_load_t* ext_preset_load = nullptr;
 
-    bool   activated = false, processing = false, has_note_in = false;
+    bool   activated = false, processing = false, has_note_in = false, has_note_out = false;
     uint32_t audio_in = 0, audio_out = 2, max_block = 0;
     double sample_rate = 48000.0;
     std::string name;
@@ -240,8 +251,12 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     if (!h->ext_preset_load)
         h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
 
-    if (h->ext_note_ports)
-        h->has_note_in = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
+    if (h->ext_note_ports) {
+        h->has_note_in  = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
+        // ADR-0015 (M2): a note OUTPUT port means the plugin can generate notes (an arpeggiator,
+        // a chord generator) — the host now drains them onto the node's note edge.
+        h->has_note_out = h->ext_note_ports->count(h->plugin, /*is_input*/ false) > 0;
+    }
     if (h->ext_audio_ports) {
         if (h->ext_audio_ports->count(h->plugin, /*is_input*/ true) > 0) {
             clap_audio_port_info_t info{};

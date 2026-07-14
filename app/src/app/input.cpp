@@ -45,6 +45,12 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         }
         return;  // swallow all keys while the chooser is up
     }
+    // The audio graph's Tab chooser, while open, owns the keyboard — before musical typing and the
+    // global shortcuts, or typing an op name would play notes and toggle overlays.
+    if (win->audio_chooser.open()) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::audio_chooser_key(*win, *app, key);
+        return;
+    }
     // Musical typing (M6.2) — the ` toggle + note/octave/velocity keys. Runs before the PRESS-only
     // gate below because note-off needs the RELEASE event; unhandled keys fall through.
     if (vivid::input::typing_key(*win, *app, key, action)) return;
@@ -56,13 +62,15 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)
-    // Tab -> open the operator chooser at the cursor. The graph now owns the whole visuals column
-    // (ADR-0014), so this is the ONE way to add an op: anywhere over the column, above the dock.
-    if (key == GLFW_KEY_TAB && app->graph) {
+    // Tab -> open the chooser at the cursor. It is the ONE way to add a node, in BOTH graphs:
+    //   over the visuals column  -> the visuals operator chooser (ADR-0014)
+    //   over the audio graph     -> the unified audio catalog (native ops + VST3 + CLAP)
+    if (key == GLFW_KEY_TAB) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
-        if (mx >= win->split_x && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+        if (app->graph && mx >= win->split_x && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
             app->graph->chooser_show(mx, my); return;
         }
+        if (vivid::input::audio_chooser_open_at(*win, *app, mx, my)) return;
     }
 
     // File shortcuts (⌘N/⌘O/⌘S/⇧⌘S) are owned by the native File menu (AppKit intercepts
@@ -84,7 +92,9 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 
 void char_callback(GLFWwindow* w, unsigned int cp) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
-    if (win && win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
+    if (!win) return;
+    if (vivid::input::audio_chooser_char(*win, cp)) return;    // the audio chooser has the keyboard
+    if (win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
 }
 
 // GLFW gives no modifier state to scroll callbacks; poll the keys we care about.
@@ -101,8 +111,6 @@ void scroll_callback(GLFWwindow* w, double xoff, double yoff) {
     if (!win) return;
     double mx, my; glfwGetCursorPos(w, &mx, &my);
     if (vivid::input::editor_scroll(*win, xoff, yoff, scroll_mods(w), mx, my)) return;
-    // Scroll over the sidebar's PLUGINS panel scrolls the plugin list.
-    if (vivid::input::plugins_scroll(*win, *win->app, yoff, mx, my)) return;
     // Zoom whichever node graph is under the cursor (visuals node graph / audio-graph deep view).
     vivid::input::graph_scroll(*win, *win->app, yoff, mx, my);
 }
@@ -119,6 +127,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     const int tracks = app->session ? vivid::session::session_track_count(app->session) : 0;
     const int scenes = app->session ? vivid::session::session_scene_count(app->session) : 0;
 
+    // The audio Tab chooser, while open, is modal: it owns the next click (pick a row / dismiss).
+    if (win->audio_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (vivid::input::audio_chooser_click(*win, *app, mx, my)) return;
+    }
     // Top transport bar: play/pause + record + metronome (M6).
     if (vivid::input::transport_mouse(*win, *app, button, action, mx, my)) return;
     // Browser sidebar toggle.
@@ -216,20 +228,17 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->preview_drag = false; win->preview_resize = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
-        if (vivid::input::plugins_release(*win, *app, mx, my)) return;   // plugin drop (browser -> track / +Track)
         vivid::input::clipgrid_release(*win, *app, mx, my, mods, tracks, scenes);   // clip drop (grid/pool); no-op if no drag
         if (app->graph) app->graph->on_up(mx, my);
         return;
     }
     if (action != GLFW_PRESS) return;
 
-    // Browser sidebar (left column): remove / drag a pool clip; consume clicks so they don't
-    // fall through to the shifted DAW pane behind it.
+    // Browser sidebar (left column) — the CLIPS pool. (The PLUGINS panel is gone: adding a node is
+    // Tab in the graph, one path, over the unified catalog. A browser that could only ever offer
+    // plugins — never native ops — was half a catalog behind a second add gesture.)
     if (win->sidebar_w > 0.f && mx < win->sidebar_w && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
-        // CLIPS panel: remove (×) or arm a drag of a pool clip.
-        if (vivid::input::clipgrid_pool_press(*win, *app, mx, my)) return;
-        // PLUGINS panel: double-click a row to add (auto-route), or drag a row onto a track/+Track.
-        vivid::input::plugins_sidebar_press(*win, *app, mx, my);
+        vivid::input::clipgrid_pool_press(*win, *app, mx, my);   // remove (x) / drag a pool clip
         return;   // consume all clicks over the sidebar
     }
 

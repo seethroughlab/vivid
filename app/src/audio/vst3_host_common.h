@@ -507,6 +507,10 @@ struct Vst3Handle {
     IPluginFactory*    factory               = nullptr;
     IComponent*        component             = nullptr;
     IAudioProcessor*   processor             = nullptr;
+    // ADR-0015 (M3): the plugin has an event OUTPUT bus, i.e. it can GENERATE notes (a chord
+    // generator / arpeggiator). Set at load; drives whether the host drains its output events.
+    bool               has_note_out          = false;
+    Vst3EventList      out_events;           // the host-owned list the plugin writes notes into
     // Plugin identity, captured at load — used to resolve the standard preset
     // directory (<root>/<vendor>/<plugin_name>) and match preset adapters.
     std::string        vendor;               // PFactoryInfo.vendor
@@ -963,6 +967,18 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
         component->activateBus(kEvent, kInput, 0, true) != kResultOk)
         fprintf(stderr, "[Vst3] activateBus(kEvent, kInput, 0) failed\n");
 
+    // ADR-0015 (M3): activate the event OUTPUT bus. A plugin that GENERATES notes (a chord
+    // generator, an arpeggiator, the Captain suite) writes them to this bus — and the host never
+    // even asked for it before, so every note such a plugin produced was thrown away.
+    // Only plugins that have one expose it; skip silently otherwise.
+    bool has_note_out_bus = false;
+    if (component->getBusCount(kEvent, kOutput) > 0) {
+        if (component->activateBus(kEvent, kOutput, 0, true) != kResultOk)
+            fprintf(stderr, "[Vst3] activateBus(kEvent, kOutput, 0) failed\n");
+        else
+            has_note_out_bus = true;
+    }
+
     // Effects process audio in -> out, so activate their audio input bus too.
     if (as_effect && component->getBusCount(kAudio, kInput) > 0 &&
         component->activateBus(kAudio, kInput, 0, true) != kResultOk)
@@ -1054,6 +1070,7 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     }
 
     auto* h = new Vst3Handle();
+    h->has_note_out = has_note_out_bus;   // ADR-0015 (M3): it can generate notes
 #ifdef __APPLE__
     h->bundle               = bundle;
     h->bundle_exit          = bundle_exit;

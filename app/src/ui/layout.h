@@ -99,16 +99,11 @@ inline Rect sidebar_panel(float sidebar_w, int win_h, float dock_h) {
     const float top = kTopBarH + kPaneMargin;
     return { kPaneMargin, top, sidebar_w - 2.f * kPaneMargin, dock_top(win_h, dock_h) - kPaneMargin - top };
 }
-// The sidebar stacks a CLIPS pool panel (top) over a PLUGINS browser panel (bottom).
-constexpr float kSidebarClipsFrac = 0.42f;   // CLIPS gets the top ~42%, PLUGINS the rest
+// The sidebar is the CLIPS pool. (The PLUGINS browser panel is gone: adding a node is Tab in the
+// graph, over the unified catalog — a browser that could only ever list plugins, never native ops,
+// was half a catalog behind a second add gesture.)
 inline Rect sidebar_clips_panel(float sidebar_w, int win_h, float dock_h) {
-    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
-    return { f.x, f.y, f.w, f.h * kSidebarClipsFrac };
-}
-inline Rect sidebar_plugins_panel(float sidebar_w, int win_h, float dock_h) {
-    Rect f = sidebar_panel(sidebar_w, win_h, dock_h);
-    const float ch = f.h * kSidebarClipsFrac;
-    return { f.x, f.y + ch + kPaneMargin, f.w, f.h - ch - kPaneMargin };
+    return sidebar_panel(sidebar_w, win_h, dock_h);
 }
 
 // Clip-pool items — a vertical list inside the sidebar's CLIPS panel.
@@ -125,28 +120,6 @@ inline bool pool_item_visible(int i, float sidebar_w, int win_h, float dock_h) {
     return pool_item_rect(i, sidebar_w).y + kPoolItemH <= c.y + c.h - kPanePad;
 }
 
-// Plugin rows — a scrollable list inside the sidebar's PLUGINS panel.
-constexpr float kPluginRowH = 22.f;
-inline float plugins_body_top(float sidebar_w, int win_h, float dock_h) {
-    return sidebar_plugins_panel(sidebar_w, win_h, dock_h).y + kPanelHdH;   // below the header strip
-}
-inline Rect plugin_row_rect(int i, float sidebar_w, int win_h, float dock_h, float scroll) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    return { p.x + kPanePad, plugins_body_top(sidebar_w, win_h, dock_h) + kPanePad + i * kPluginRowH - scroll,
-             p.w - 2.f * kPanePad, kPluginRowH - 2.f };
-}
-inline int plugin_row_at(float sidebar_w, int win_h, float dock_h, float scroll, int count, double mx, double my) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    if (my < plugins_body_top(sidebar_w, win_h, dock_h) || my >= p.y + p.h) return -1;   // clip to the body
-    for (int i = 0; i < count; ++i) if (hit(plugin_row_rect(i, sidebar_w, win_h, dock_h, scroll), mx, my)) return i;
-    return -1;
-}
-// Max scroll so the list can't over-scroll past the last row.
-inline float plugins_scroll_max(float sidebar_w, int win_h, float dock_h, int count) {
-    Rect p = sidebar_plugins_panel(sidebar_w, win_h, dock_h);
-    const float body_h = p.y + p.h - (plugins_body_top(sidebar_w, win_h, dock_h) + kPanePad);
-    return std::max(0.f, count * kPluginRowH - body_h);
-}
 inline Rect pool_item_x_rect(int i, float sidebar_w) { Rect r = pool_item_rect(i, sidebar_w); return { r.x + r.w - 15.f, r.y + 3.f, 13.f, 13.f }; }
 inline int pool_item_at(float sidebar_w, int count, double mx, double my) {
     for (int i = 0; i < count; ++i) if (hit(pool_item_rect(i, sidebar_w), mx, my)) return i;
@@ -251,8 +224,6 @@ inline DockGeom dock_geom(int win_w, int win_h, float dock_h) {
 inline DockGeom dock_geom_node(int win_w, int win_h, float dock_h) {
     return dock_geom_at(win_w, win_h, dock_h, dock_top(win_h, dock_h) + kDockHdH + 20.f);
 }
-inline Rect dock_chip(int i, int win_h, float dock_h)   { return { 16.f + i * 128.f, dock_top(win_h, dock_h) + kDockChipY, 118.f, 32.f }; }
-inline Rect dock_chip_x(int i, int win_h, float dock_h) { Rect b = dock_chip(i, win_h, dock_h); return { b.x + b.w - 16.f, b.y + 3.f, 13.f, 13.f }; }
 inline void dock_knob(int i, const DockGeom& d, float& cx, float& cy) {
     cx = 12.f + (i % d.cols) * d.cellW + d.cellW * 0.5f;
     cy = d.gridY0 + (i / d.cols) * d.cellH + d.knobOff;

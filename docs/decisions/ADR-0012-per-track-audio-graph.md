@@ -1,6 +1,10 @@
 # ADR-0012: Per-Track Audio Signal Graph — Rewireable Routing (a DAG), not a Linear Chain
 
-Status: proposed
+Status: accepted, **extended by [ADR-0015](ADR-0015-notes-in-the-audio-graph.md)** (2026-07-13).
+This ADR models the graph as audio processors joined by stereo-summing edges and is **silent on
+notes** — MIDI reaches instruments through an invisible per-track broadcast, outside the graph.
+ADR-0015 makes notes a signal *in* the graph (a `MidiIn` node + typed Audio/Note edges), so note
+effects become possible and note routing becomes a wire. Everything below still holds for audio.
 
 Date: 2026-07-05
 

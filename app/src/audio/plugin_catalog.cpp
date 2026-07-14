@@ -1,14 +1,17 @@
-// Plugin discovery: enumerate installed plugin bundles (VST3 today) without loading
-// any dylib. Category (instrument vs effect) is intentionally NOT guessed here —
-// VST3 moduleinfo.json is present on a minority of plugins and non-strict (comments +
-// trailing commas), so it's unreliable. Instead the loader decides at add time
-// (session_add_instrument_track validates a MIDI-in bus; otherwise it's an effect).
+// Plugin discovery: enumerate installed plugin bundles (VST3 + CLAP) without loading any dylib.
+// The scan is deliberately dumb and fast — a plugin's CLASS (instrument vs effect) comes from the
+// background probe (audio/plugin_probe.h), the only thing allowed to open a plugin.
+//
+// (The old comment here said the category was "intentionally not guessed" and left to the loader at
+// add time. That's why nothing could group or filter the catalog. The probe reads the plugin's
+// factory descriptor — no instantiation — which is both cheap and authoritative.)
 #include "audio/plugin_catalog.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
 #include <dirent.h>
+#include <sys/stat.h>
 #include <vector>
 
 namespace vivid::session {
@@ -24,15 +27,33 @@ std::string bundle_display_name(const std::string& file, const char* ext) {
     return b;
 }
 
-void scan_dir(const std::string& dir, const char* ext, int format, std::vector<PluginInfo>& out) {
+bool is_dir(const std::string& p) {
+    struct stat st{};
+    return ::stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// Enumerate `dir` for `ext` bundles. Vendors may nest one level down —
+// /Library/Audio/Plug-Ins/VST3/<Vendor>/Thing.vst3 is a legal layout (Newfangled Audio ships that
+// way, which is why `Generate` used to be invisible) — so a plain directory is descended into.
+// `depth` bounds that: we never walk into a plugin bundle's own guts.
+void scan_dir(const std::string& dir, const char* ext, int format, int depth,
+              std::vector<PluginInfo>& out) {
     DIR* d = opendir(dir.c_str());
     if (!d) return;
     const std::size_t elen = std::string(ext).size();
     while (struct dirent* e = readdir(d)) {
         if (e->d_name[0] == '.') continue;
-        std::string n = e->d_name;
-        if (n.size() > elen && n.compare(n.size() - elen, elen, ext) == 0)
-            out.push_back({ dir + "/" + n, bundle_display_name(n, ext), format });
+        const std::string n = e->d_name;
+        const std::string full = dir + "/" + n;
+        if (n.size() > elen && n.compare(n.size() - elen, elen, ext) == 0) {
+            PluginInfo pi;
+            pi.path = full;
+            pi.name = bundle_display_name(n, ext);
+            pi.format = format;
+            out.push_back(std::move(pi));
+        } else if (depth > 0 && is_dir(full)) {
+            scan_dir(full, ext, format, depth - 1, out);   // a vendor folder
+        }
     }
     closedir(d);
 }
@@ -49,16 +70,37 @@ bool less_ci(const PluginInfo& a, const PluginInfo& b) {
 
 void ensure_scanned() { if (!g_scanned) rescan_plugins(); }
 
+constexpr int kVendorDepth = 1;   // descend one level: <root>/<Vendor>/Thing.vst3
+
 }  // namespace
+
+const char* plugin_class_name(int cls) {
+    switch (cls) {
+        case kClassInstrument: return "instrument";
+        case kClassEffect:     return "effect";
+        case kClassNoteEffect: return "note-effect";
+        case kClassFailed:     return "failed";
+        case kClassCrashed:    return "crashed";
+        default:               return "unknown";
+    }
+}
+
+const char* plugin_format_name(int fmt) {
+    switch (fmt) {
+        case kFmtCLAP: return "CLAP";
+        case kFmtVST3: return "VST3";
+        default:       return "?";
+    }
+}
 
 void rescan_plugins() {
     std::vector<PluginInfo> found;
-    scan_dir("/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, found);
-    scan_dir("/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, found);
+    scan_dir("/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, kVendorDepth, found);
+    scan_dir("/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, kVendorDepth, found);
     if (const char* home = std::getenv("HOME")) {
         const std::string h = home;
-        scan_dir(h + "/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, found);
-        scan_dir(h + "/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, found);
+        scan_dir(h + "/Library/Audio/Plug-Ins/VST3", ".vst3", kFmtVST3, kVendorDepth, found);
+        scan_dir(h + "/Library/Audio/Plug-Ins/CLAP", ".clap", kFmtCLAP, kVendorDepth, found);
     }
     std::sort(found.begin(), found.end(), less_ci);
     g_plugins.swap(found);
@@ -71,6 +113,23 @@ const PluginInfo& plugin_at(int i) {
     ensure_scanned();
     static const PluginInfo empty{};
     return (i >= 0 && i < static_cast<int>(g_plugins.size())) ? g_plugins[i] : empty;
+}
+
+bool plugin_set_probe_result(const std::string& path, const std::string& name,
+                             const std::string& vendor, const std::string& uid, int cls) {
+    for (PluginInfo& p : g_plugins) {
+        if (p.path != path) continue;
+        // NOTE: `name` (the plugin's own) is deliberately NOT written over the bundle stem. The
+        // list is sorted by name and the UI addresses rows by index, so renaming a row as its
+        // probe lands would re-sort the list under the user's cursor mid-scroll/mid-drag.
+        (void)name;
+        p.vendor = vendor;
+        p.uid    = uid;
+        p.cls    = cls;
+        p.probed = true;
+        return true;
+    }
+    return false;
 }
 
 }  // namespace vivid::session

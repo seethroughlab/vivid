@@ -4,18 +4,13 @@
 #include "gpu/visual_graph.h"
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
+#include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
 #include <vector>
 #include <string>
 #include <utility>
 
 namespace vivid::ui {
 
-// One Tab-chooser row: a spawnable visuals op (op_type from the registry) or an
-// audio data-source (char_id). env: 0 = gpu op, 1 = audio source.
-// `summary` is the operator's one-line descriptor blurb (shown as a subtitle); `hay` is the
-// pre-lowercased search haystack (label + keywords + summary) the ranker scores against.
-struct ChooserEntry { std::string label; bool is_op; std::string op_type; int char_id; int env;
-                      std::string summary; std::string hay; };
 
 // A minimal node editor on Renderer2D. Left: audio data-source nodes (each a live
 // characteristic). Right: the rewireable visuals chain — op-nodes (Plasma/Video/
@@ -117,13 +112,14 @@ public:
     void get_view(float& ox, float& oy, float& scale) const { ox = view_ox_; oy = view_oy_; scale = view_scale_; }
     void set_view(float ox, float oy, float scale) { view_ox_ = ox; view_oy_ = oy; view_scale_ = scale; }
 
-    // Operator chooser (Tab): a filtered palette that spawns a node at the cursor.
-    bool chooser_open() const { return chooser_open_; }
+    // Operator chooser (Tab): a filtered palette that spawns a node at the cursor. The widget is
+    // shared with the audio graph (ui/chooser.h); this class supplies the catalog + the spawn.
+    bool chooser_open() const { return chooser_.open(); }
     void chooser_show(double sx, double sy);  // open at the cursor
-    void chooser_hide() { chooser_open_ = false; }
-    void chooser_move(int dir);               // move selection (+1 down / -1 up)
-    void chooser_backspace();
-    void chooser_char(unsigned int c);        // typed filter character
+    void chooser_hide() { chooser_.hide(); }
+    void chooser_move(int dir) { chooser_.move(dir); }
+    void chooser_backspace()   { chooser_.backspace(); }
+    void chooser_char(unsigned int c) { chooser_.type(c); }
     void chooser_confirm();                   // spawn the selected entry
 
 private:
@@ -152,22 +148,8 @@ private:
         wx = (sx - view_ox_) / view_scale_; wy = (sy - view_oy_) / view_scale_;
     }
 
-    // Tab chooser geometry — shared by draw + hit-test (they must agree). Rows are two-line:
-    // the op name over its descriptor summary.
-    static constexpr float kChooserW = 296.f, kChooserRowH = 30.f, kChooserHdrH = 26.f;
-    static constexpr int   kChooserMaxRows = 9;
-    void chooser_geom(float& px, float& py, float& w, float& h, int& vis, int& first) const;
-
-    // Tab chooser state.
-    bool        chooser_open_ = false;
-    std::string chooser_filter_;
-    int         chooser_sel_ = 0;                     // index into chooser_hits_
-    float       chooser_sx_ = 0.f, chooser_sy_ = 0.f; // cursor at open (spawn anchor)
-    std::vector<ChooserEntry> chooser_catalog_;       // registry ops + audio sources (built on open)
-    std::vector<int> chooser_hits_;                   // catalog indices matching the filter
-    void chooser_rebuild();
-    void chooser_build_catalog();
-    void draw_chooser(Renderer2D& r);
+    Chooser chooser_;                  // the shared Tab palette (ui/chooser.h)
+    void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
 
     vivid::VisualGraph* vg_ = nullptr;
 
