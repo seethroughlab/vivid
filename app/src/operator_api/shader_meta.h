@@ -52,6 +52,11 @@ struct ShaderParam {
     std::string label;                  // display label (empty => use name)
     std::string description;            // inspector tooltip
     std::string group;                  // inspector group (empty => ungrouped)
+    // Optional semantic metadata — what the param MEANS, so tools and agents can pick it by
+    // intent rather than by guessing at its name (the same fields a C++ operator declares).
+    std::string semantic_tag;           // e.g. "phase_01", "frequency_hz"
+    std::string semantic_intent;        // e.g. "domain warp amount"
+    std::string semantic_unit;          // e.g. "Hz", "s", "dB"
     ShaderParamType type = ShaderParamType::Float;
     float def[3] = {0.f, 0.f, 0.f};     // per-component default (only [0] unless vector)
     float min = 0.f;
@@ -80,6 +85,7 @@ struct ShaderHostParam {
     std::string label;
     std::string description;
     std::string group;
+    std::string semantic_tag, semantic_intent, semantic_unit;
     VividParamType type = VIVID_PARAM_FLOAT;
     float def = 0.f, min = 0.f, max = 1.f;
     VividDisplayHint display = VIVID_DISPLAY_DEFAULT;

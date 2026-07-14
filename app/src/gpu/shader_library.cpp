@@ -125,7 +125,13 @@ bool ShaderLibrary::add_file(const std::string& path, const std::string& tier, O
     entry.summary = def->meta.summary;
 
     if (reg.has(def->meta.name)) {
+        // Loudly. A stale compiled operator left over from an older build silently winning the
+        // name of a shipped shader is exactly how a migration ends up "not taking" — the user
+        // keeps the old behaviour and nothing anywhere says why.
         entry.error = "shadowed by an already-registered operator named '" + def->meta.name + "'";
+        std::fprintf(stderr, "[vivid] shader '%s' (%s) is SHADOWED by an already-registered "
+                     "operator of the same name — the file is not in use\n",
+                     def->meta.name.c_str(), fs::path(path).filename().string().c_str());
         entries_.push_back(std::move(entry));
         return false;
     }

@@ -31,6 +31,8 @@ bool ShaderDef::same_interface(const ShaderDef& o) const {
         if (a.def != b.def || a.min != b.min || a.max != b.max) return false;
         if (a.choices != b.choices || a.label != b.label || a.description != b.description) return false;
         if (a.group != b.group) return false;
+        if (a.semantic_tag != b.semantic_tag || a.semantic_intent != b.semantic_intent ||
+            a.semantic_unit != b.semantic_unit) return false;
     }
     return layout.size == o.layout.size;
 }
@@ -83,6 +85,9 @@ ShaderFileOp::ShaderFileOp(std::shared_ptr<ShaderSlot> slot)
         p.display_hint = hp.display;
         if (!hp.group.empty())       p.group = hp.group.c_str();
         if (!hp.description.empty()) p.description = hp.description.c_str();
+        if (!hp.semantic_tag.empty())    p.semantic_tag = hp.semantic_tag.c_str();
+        if (!hp.semantic_intent.empty()) p.semantic_intent = hp.semantic_intent.c_str();
+        if (!hp.semantic_unit.empty())   p.semantic_unit = hp.semantic_unit.c_str();
         if (!d.choice_ptrs[i].empty()) {
             p.choice_labels = const_cast<const char**>(d.choice_ptrs[i].data());
             p.choice_count = static_cast<uint32_t>(d.choice_ptrs[i].size());

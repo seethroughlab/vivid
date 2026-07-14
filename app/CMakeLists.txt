@@ -269,12 +269,18 @@ if(APPLE)
 else()
     set(_shader_dest "$<TARGET_FILE_DIR:vivid>/shaders")
 endif()
-add_custom_command(TARGET vivid POST_BUILD
+# Its OWN target, not a POST_BUILD on `vivid`: a POST_BUILD step only runs when the app target
+# actually relinks, so editing a .wgsl and rebuilding would leave the STALE shader in the bundle
+# and you would be debugging the last version of your file. (That is exactly what happened once.)
+file(GLOB VIVID_SHADER_FILES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.glsl")
+add_custom_target(vivid_shader_library ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory "${_shader_dest}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/shaders" "${_shader_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${VIVID_SHADER_FILES} "${_shader_dest}"
+    DEPENDS ${VIVID_SHADER_FILES}
     COMMENT "Copying the bundled shader library into the app"
     VERBATIM)
+add_dependencies(vivid_shader_library vivid)   # the bundle dir has to exist first
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it

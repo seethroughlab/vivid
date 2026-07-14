@@ -205,6 +205,9 @@ bool parse_one_param(const json& jp, ShaderParam& p, std::string& error) {
     if (auto it = jp.find("label"); it != jp.end() && it->is_string()) p.label = it->get<std::string>();
     if (auto it = jp.find("description"); it != jp.end() && it->is_string()) p.description = it->get<std::string>();
     if (auto it = jp.find("group"); it != jp.end() && it->is_string()) p.group = it->get<std::string>();
+    if (auto it = jp.find("semantic_tag");    it != jp.end() && it->is_string()) p.semantic_tag = it->get<std::string>();
+    if (auto it = jp.find("semantic_intent"); it != jp.end() && it->is_string()) p.semantic_intent = it->get<std::string>();
+    if (auto it = jp.find("semantic_unit");   it != jp.end() && it->is_string()) p.semantic_unit = it->get<std::string>();
 
     p.display = default_display(p.type);
     if (auto it = jp.find("display"); it != jp.end()) {
@@ -344,6 +347,9 @@ std::vector<ShaderHostParam> host_params(const ShaderMeta& meta) {
                                                              : p.label + component_suffix(p.type, c));
             h.description = c == 0 ? p.description : std::string();
             h.group = p.group;
+            h.semantic_tag = p.semantic_tag;
+            h.semantic_intent = p.semantic_intent;
+            h.semantic_unit = p.semantic_unit;
             h.type = host_type(p.type);
             h.def = p.def[c];
             h.min = p.min;
