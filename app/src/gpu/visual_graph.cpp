@@ -64,6 +64,16 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
             const float d = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->default_value : 0.f;
             n.base[i] = d; n.params[i] = d;
         }
+        // A rebuild (hot-reload) restores what the node was set to, matched BY NAME — the new
+        // operator may have added, removed or reordered its params, so the old index means
+        // nothing. Params the new version doesn't have are dropped; new ones keep their default.
+        for (size_t i = 0; i < np && !n.stash.empty(); ++i) {
+            const char* nm = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->name : nullptr;
+            if (!nm) continue;
+            for (const auto& [k, v] : n.stash)
+                if (k == nm) { n.base[i] = v; n.params[i] = v; break; }
+        }
+        n.stash.clear();
         return true;
     }
     return false;
@@ -71,13 +81,21 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
 
 int VisualGraph::release_op_instances(const std::string& type) {
     int n = 0;
-    for (auto& nd : nodes_) if (nd.op_type == type) { nd.inst = OpInstance{}; ++n; }
+    for (auto& nd : nodes_) if (nd.op_type == type) {
+        nd.stash_params();          // the names live on the instance we are about to drop
+        nd.inst = OpInstance{};
+        ++n;
+    }
     return n;
 }
 
 int VisualGraph::rebuild_op_instances(const std::string& type) {
     int n = 0;
-    for (auto& nd : nodes_) if (nd.op_type == type) { make_instance(nd, type); ++n; }
+    for (auto& nd : nodes_) if (nd.op_type == type) {
+        if (nd.inst.op) nd.stash_params();   // still live (a shader reload doesn't release first)
+        make_instance(nd, type);
+        ++n;
+    }
     return n;
 }
 

@@ -29,6 +29,10 @@ struct VisualNode {
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
+    // Base values captured BY PARAM NAME across a rebuild (an operator hot-reload, or a shader
+    // whose header changed). Indices move when a reload adds, removes or reorders a param, so a
+    // name is the only thing worth carrying over. Consumed by make_instance(), then cleared.
+    std::vector<std::pair<std::string, float>> stash;
 
     // The two ops the host itself must recognize: the chain's sink, and the one node whose
     // texture comes from outside the graph (the decoded video frame the host injects into its
@@ -42,6 +46,13 @@ struct VisualNode {
     // a package op, a shader file, or anything else the catalog grows. Video is a source too,
     // despite its one port: that port is not a graph edge but the host's frame injection.
     bool is_source() const { return is_video() || (inst.op && inst.input_port_count == 0); }
+
+    void stash_params() {   // call BEFORE dropping the instance: param_ptrs holds the names
+        stash.clear();
+        for (size_t i = 0; i < inst.param_ptrs.size() && i < base.size(); ++i)
+            if (inst.param_ptrs[i] && inst.param_ptrs[i]->name)
+                stash.emplace_back(inst.param_ptrs[i]->name, base[i]);
+    }
 
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }

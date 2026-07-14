@@ -5,6 +5,7 @@
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
+#include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
 #include <string>
 #include <utility>
@@ -114,6 +115,9 @@ public:
     // Operator chooser (Tab): a filtered palette that spawns a node at the cursor. The widget is
     // shared with the audio graph (ui/chooser.h); this class supplies the catalog + the spawn.
     bool chooser_open() const { return chooser_.open(); }
+    // ADR-0016: so the chooser can badge a row SHADER (a file you can open and edit) rather
+    // than OP (a compiled dylib). Optional — null just means every row reads as an op.
+    void set_shader_library(const vivid::ShaderLibrary* lib) { shaders_ = lib; }
     void chooser_show(double sx, double sy);  // open at the cursor
     void chooser_hide() { chooser_.hide(); }
     void chooser_move(int dir) { chooser_.move(dir); }
@@ -151,6 +155,7 @@ private:
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
 
     vivid::VisualGraph* vg_ = nullptr;
+    const vivid::ShaderLibrary* shaders_ = nullptr;   // ADR-0016 (optional; chooser badge)
 
     static void data_out(const DataNode& n, float& px, float& py);
     static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);

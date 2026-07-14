@@ -5,6 +5,7 @@
 #include "gpu/visual_graph.h"           // op registry / descriptors
 #include "ui/node_graph.h"              // graph queries + mappings
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
+#include "gpu/shader_library.h"         // ADR-0016: the shader library (list/reload/fork)
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                    // op_registry + op_loaders + health
 #include "app/runtime_health.h"         // collect_health
@@ -73,6 +74,49 @@ void register_introspection_handlers(Handlers& handlers_) {
             arr.push_back(jo);
         }
         json r = ok(); r["operators"] = arr; return r;
+    };
+    // ADR-0016: the shader library. Every .wgsl/.glsl the app found, registered or not — a
+    // malformed file appears here WITH its error rather than vanishing, so an agent (or a user)
+    // can see why their shader is missing. The registered ones are ordinary operators, so their
+    // params/ports are in list_operators like everything else.
+    handlers_["list_shaders"] = [](const ControlCtx& c, const json&) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        json arr = json::array();
+        for (const auto& e : c.app->shader_library.entries()) {
+            json je = { {"name", e.name}, {"path", e.path}, {"tier", e.tier},
+                        {"summary", e.summary}, {"registered", e.registered} };
+            if (!e.error.empty()) je["error"] = e.error;
+            arr.push_back(std::move(je));
+        }
+        json r = ok();
+        r["shaders"] = arr;
+        for (const auto& [dir, tier] : shader_search_path()) r["search_path"].push_back({{"dir", dir}, {"tier", tier}});
+        return r;
+    };
+    // Re-walk the search path for shader files the app has not seen yet. (Edits to files it
+    // already knows about are picked up automatically — this is for new files, when you would
+    // rather not wait for the folder's mtime to land.)
+    handlers_["reload_shaders"] = [](const ControlCtx& c, const json&) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        const int added = c.app->shader_library.rescan(c.app->op_registry);
+        json r = ok();
+        r["added"] = added;
+        r["count"] = static_cast<int>(c.app->shader_library.entries().size());
+        return r;
+    };
+    // Fork-to-edit: copy a shader into the user tier under a new name and register it live, so
+    // it is immediately spawnable and editable (edits hot-reload). Mirrors clone_operator for
+    // compiled ops — except that here there is nothing to compile.
+    handlers_["fork_shader"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        const std::string src = b.value("op", std::string());
+        const std::string name = b.value("new_name", std::string());
+        if (src.empty() || name.empty())
+            return err(code::kBadArg, "fork_shader needs \"op\" (the shader to fork) and \"new_name\"");
+        std::string error;
+        const std::string path = c.app->shader_library.fork(src, name, c.app->op_registry, error);
+        if (path.empty()) return err(code::kBadArg, error);
+        json r = ok(); r["op"] = name; r["path"] = path; return r;
     };
     // Install an operator package from a directory (its vivid-package.json + sources):
     // compile each operator to a .dylib (managed dir) and register it LIVE — the new

@@ -19,6 +19,22 @@ void ShaderDef::finalize() {
             choice_ptrs[i].push_back(c.c_str());
 }
 
+// The INTERFACE is the ports and the params — what the graph, the inspector, wires, mappings
+// and the saved project all see. Two defs that agree on it are interchangeable under a live
+// node (a body edit); two that don't need the node instances rebuilt.
+bool ShaderDef::same_interface(const ShaderDef& o) const {
+    if (meta.name != o.meta.name || meta.inputs != o.meta.inputs) return false;
+    if (params.size() != o.params.size()) return false;
+    for (size_t i = 0; i < params.size(); ++i) {
+        const ShaderHostParam &a = params[i], &b = o.params[i];
+        if (a.name != b.name || a.type != b.type || a.display != b.display) return false;
+        if (a.def != b.def || a.min != b.min || a.max != b.max) return false;
+        if (a.choices != b.choices || a.label != b.label || a.description != b.description) return false;
+        if (a.group != b.group) return false;
+    }
+    return layout.size == o.layout.size;
+}
+
 // ---------------------------------------------------------------------------
 // ShaderFileOp
 // ---------------------------------------------------------------------------
@@ -48,7 +64,8 @@ std::string fallback_body(const ShaderMeta& m) {
 
 }  // namespace
 
-ShaderFileOp::ShaderFileOp(std::shared_ptr<const ShaderDef> def) : def_(std::move(def)) {
+ShaderFileOp::ShaderFileOp(std::shared_ptr<ShaderSlot> slot)
+    : slot_(std::move(slot)), def_(slot_->def), gen_(slot_->generation) {
     const ShaderDef& d = *def_;
 
     params_.reserve(d.params.size());   // reserved: collect_params() hands out stable pointers
@@ -114,6 +131,25 @@ WGPURenderPipeline ShaderFileOp::compile(const VividGpuContext* c, const std::st
     return p;
 }
 
+// A body edit: recompile against the SAME bindings and uniform layout (the interface is
+// unchanged by construction — see ShaderDef::same_interface). A failed recompile keeps the
+// last-good pipeline: saving a syntax error mid-performance must never black out a live output.
+bool ShaderFileOp::rebuild_pipeline(const VividGpuContext* c) {
+    std::string err;
+    WGPURenderPipeline next = compile(c, def_->meta.body, def_->meta.name.c_str(), err);
+    if (!next) {
+        error_ = err.empty() ? "shader failed to compile" : err;
+        std::fprintf(stderr, "[vivid] shader '%s' (%s): %s — keeping the last good version\n",
+                     def_->meta.name.c_str(), def_->path.c_str(), error_.c_str());
+        return false;
+    }
+    if (pipe_) wgpuRenderPipelineRelease(pipe_);
+    pipe_ = next;
+    error_.clear();
+    std::fprintf(stderr, "[vivid] shader '%s' reloaded\n", def_->meta.name.c_str());
+    return true;
+}
+
 bool ShaderFileOp::build(const VividGpuContext* c) {
     const ShaderDef& d = *def_;
     const uint32_t nin = static_cast<uint32_t>(d.meta.inputs.size());
@@ -173,6 +209,19 @@ bool ShaderFileOp::build(const VividGpuContext* c) {
 
 void ShaderFileOp::process_gpu(const VividGpuContext* c) {
     if (!tried_) { tried_ = true; build(c); }
+
+    // The file changed under us. Adopt the new version only if it declares the SAME interface;
+    // if it doesn't, the library is rebuilding this node from scratch anyway, and adopting a
+    // def whose param count no longer matches our ParamBase storage would corrupt the packing.
+    if (slot_->generation != gen_) {
+        gen_ = slot_->generation;
+        std::shared_ptr<const ShaderDef> next = slot_->def;
+        if (next && def_ && next->same_interface(*def_)) {
+            def_ = std::move(next);
+            rebuild_pipeline(c);
+        }
+    }
+
     WGPURenderPipeline pipe = pipe_ ? pipe_ : fallback_;
     if (!pipe) return;
 

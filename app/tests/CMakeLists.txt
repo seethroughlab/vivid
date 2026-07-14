@@ -256,6 +256,7 @@ target_compile_definitions(test_operator_clone PRIVATE
 vivid_add_test(test_shader_library)
 target_sources(test_shader_library PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/shader_library.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/file_watcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/shader_file_op.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp

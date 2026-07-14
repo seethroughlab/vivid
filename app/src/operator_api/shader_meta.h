@@ -119,6 +119,11 @@ UniformLayout uniform_layout(const ShaderMeta& meta);
 // the fullscreen vertex stage.
 std::string generate_prelude(const ShaderMeta& meta);
 
+// Rewrite the `name` in a shader source's JSON header, leaving every other byte — comments,
+// key order, formatting — exactly as the author wrote it. Used by fork-to-edit. Returns false
+// (and leaves `out` untouched) when there is no header to rewrite.
+bool set_shader_name(const std::string& source, const std::string& new_name, std::string& out);
+
 // Pack host param VALUES (one float per ShaderHostParam, in host_params() order) into
 // `out`, which must be at least uniform_layout(meta).size bytes. Ints and bools are
 // converted to i32; `out` is zeroed first, so the padding is deterministic.

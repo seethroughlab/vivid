@@ -222,6 +222,7 @@ int main(int argc, char** argv) {
 
     vivid::ui::NodeGraph graph;
     graph.set_visual_graph(&vgraph);   // show the op-chain; generator node toggles Plasma/Video
+    graph.set_shader_library(&app.shader_library);   // ADR-0016: badge shader rows in the Tab chooser
     app.graph = &graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;

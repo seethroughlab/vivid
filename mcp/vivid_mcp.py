@@ -90,6 +90,35 @@ def list_operators() -> dict:
 
 
 @mcp.tool
+def list_shaders() -> dict:
+    """The shader library: every .wgsl/.glsl file the app found. A shader FILE *is* an
+    operator (ADR-0016) — its JSON header declares its params — so a registered shader also
+    appears in list_operators with its full schema and is spawned with add_node like any
+    other op. Use THIS tool to see the files themselves: {name, path, tier (user/project/
+    bundled), summary, registered} plus, for a file that failed to parse, the error that
+    kept it out of the catalog. Also returns the search_path the app scans."""
+    return _post("list_shaders")
+
+
+@mcp.tool
+def reload_shaders() -> dict:
+    """Re-walk the shader search path for files the app has not seen yet. Edits to shaders it
+    already knows about are picked up automatically (a body edit recompiles in place; a header
+    edit rebuilds that op's nodes, keeping their param values), so this is only for brand-new
+    files you would rather not wait for. Returns {added, count}."""
+    return _post("reload_shaders")
+
+
+@mcp.tool
+def fork_shader(op: str, new_name: str) -> dict:
+    """Fork a shader into the user's shader folder under a new name and register it LIVE —
+    immediately spawnable with add_node, and editable: saving the file hot-reloads it into
+    every node using it. This is how you customize a shipped shader without touching it (the
+    original stays; the fork is a separate operator). Returns {op, path} — edit that path."""
+    return _post("fork_shader", {"op": op, "new_name": new_name})
+
+
+@mcp.tool
 def install_operator_package(path: str) -> dict:
     """Install an operator package from a directory (a vivid-package.json + operator .cpp
     sources). Compiles each operator to a loadable .dylib on this machine and registers it

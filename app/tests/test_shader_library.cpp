@@ -9,12 +9,15 @@
 // Needs webgpu headers (ShaderFileOp holds WGPU handles) but touches no device — it never
 // renders, so it stays a headless test.
 #include "gpu/op_runtime.h"
+#include "gpu/shader_file_op.h"   // ShaderSlot (generation bumps on reload)
 #include "gpu/shader_library.h"
 #include "test_helpers.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 
 using namespace vivid;
@@ -128,6 +131,117 @@ int main() {
         CHECK(d->param_count == 4);
         CHECK(std::string(d->name) == "TestTint");
         if (d->param_count == 4) CHECK(std::string(d->params[1].name) == "tint_r");
+    }
+
+    // ---- S4: reload ----------------------------------------------------------------------
+    // The watcher keys on mtime, so make the rewrites land in a later tick than the scan did.
+    auto touch_later = [&](const fs::path& p, const std::string& body) {
+        write_file(p, body);
+        fs::last_write_time(p, fs::last_write_time(p, ec) + std::chrono::seconds(2), ec);
+    };
+
+    ShaderSlot* slot = good ? good->slot.get() : nullptr;
+    CHECK(slot != nullptr);
+    const uint64_t gen0 = slot ? slot->generation : 0;
+
+    // A BODY edit: same declared interface, so the live nodes just recompile. No rebuild.
+    touch_later(dir / "tinter.wgsl", R"(/*{
+      "name": "TestTint",
+      "summary": "Tints its input.",
+      "keywords": ["effect", "color"],
+      "inputs": ["input"],
+      "params": [
+        {"name": "amount", "type": "float", "default": 0.6, "min": 0, "max": 2, "display": "knob"},
+        {"name": "tint",   "type": "color", "default": [1.0, 0.5, 0.25]}
+      ]
+    }*/
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    return textureSample(input, samp, inp.uv) * vec4f(u.tint, 1.0) * 0.5;   // a different body
+})");
+    {
+        auto reloads = lib.poll(reg);
+        CHECK(reloads.size() == 1);
+        if (!reloads.empty()) {
+            CHECK(reloads[0].name == "TestTint");
+            CHECK(reloads[0].change == ShaderChange::Body);
+        }
+        CHECK(slot && slot->generation == gen0 + 1);   // live nodes see the new def next frame
+    }
+
+    // An INTERFACE edit (a param added): the caller must rebuild that op's nodes, and the
+    // registry's cached descriptor must be refreshed — a stale one would misreport the params.
+    touch_later(dir / "tinter.wgsl", R"(/*{
+      "name": "TestTint",
+      "inputs": ["input"],
+      "params": [
+        {"name": "amount", "type": "float", "default": 0.6, "min": 0, "max": 2, "display": "knob"},
+        {"name": "tint",   "type": "color", "default": [1.0, 0.5, 0.25]},
+        {"name": "gamma",  "type": "float", "default": 1.0, "min": 0.1, "max": 4.0}
+      ]
+    }*/
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    return textureSample(input, samp, inp.uv);
+})");
+    {
+        auto reloads = lib.poll(reg);
+        CHECK(reloads.size() == 1);
+        if (!reloads.empty()) CHECK(reloads[0].change == ShaderChange::Interface);
+
+        const VividOperatorDescriptor* d2 = reg.descriptor_for("TestTint");
+        CHECK(d2 != nullptr);
+        if (d2) {
+            CHECK(d2->param_count == 5);                                  // + gamma
+            CHECK(std::string(d2->params[4].name) == "gamma");
+        }
+        auto i2 = reg.create("TestTint", issues);
+        CHECK(i2 && i2->param_ptrs.size() == 5);
+    }
+
+    // A BROKEN edit: reported, and the last good version keeps running (the slot does NOT move).
+    const uint64_t gen_before_break = slot ? slot->generation : 0;
+    touch_later(dir / "tinter.wgsl", "/*{ \"name\": \"TestTint\", }*/\nbody\n");
+    {
+        auto reloads = lib.poll(reg);
+        CHECK(reloads.size() == 1);
+        if (!reloads.empty()) {
+            CHECK(reloads[0].change == ShaderChange::Failed);
+            CHECK(!reloads[0].error.empty());
+        }
+        CHECK(slot && slot->generation == gen_before_break);   // nothing swapped under the nodes
+        CHECK(reg.has("TestTint"));                            // and the type is still there
+    }
+
+    // ---- S4: a NEW file appears (no restart, no command) ----------------------------------
+    write_file(dir / "arrival.wgsl", "/*{ \"name\": \"Arrival\", \"inputs\": [] }*/\n"
+                                     "@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f "
+                                     "{ return vec4f(u.time); }\n");
+    fs::last_write_time(dir, fs::last_write_time(dir, ec) + std::chrono::seconds(2), ec);
+    {
+        auto reloads = lib.poll(reg);
+        bool added = false;
+        for (const auto& r : reloads) if (r.change == ShaderChange::Added && r.name == "Arrival") added = true;
+        CHECK(added);
+        CHECK(reg.has("Arrival"));
+    }
+
+    // ---- S4: fork-to-edit -----------------------------------------------------------------
+    {
+        std::string error;
+        const std::string forked = lib.fork("Arrival", "ArrivalFork", reg, error);
+        CHECK(!forked.empty());
+        CHECK(error.empty());
+        CHECK(reg.has("ArrivalFork"));               // spawnable immediately
+        CHECK(lib.is_shader("ArrivalFork"));
+        // The fork is a real file, and only its NAME changed — the body is the author's.
+        const std::string src = [&]{ std::ifstream in(forked); std::ostringstream ss; ss << in.rdbuf(); return ss.str(); }();
+        CHECK(src.find("\"ArrivalFork\"") != std::string::npos);
+        CHECK(src.find("\"Arrival\"") == std::string::npos);
+        CHECK(src.find("u.time") != std::string::npos);
+
+        std::string err2;
+        CHECK(lib.fork("Arrival", "ArrivalFork", reg, err2).empty());   // the name is taken now
+        CHECK(!err2.empty());
+        CHECK(lib.fork("NotAShader", "X", reg, err2).empty());
     }
 
     fs::remove_all(dir, ec);

@@ -440,6 +440,34 @@ std::string generate_prelude(const ShaderMeta& meta) {
 }
 
 // ---------------------------------------------------------------------------
+// set_shader_name — a surgical edit, not a re-serialization
+// ---------------------------------------------------------------------------
+
+bool set_shader_name(const std::string& source, const std::string& new_name, std::string& out) {
+    size_t json_start = 0, json_end = 0, block_end = 0;
+    if (!find_header_block(source, json_start, json_end, block_end)) return false;
+
+    // Find the "name" KEY inside the header, then the string literal that follows its colon.
+    // (Rewriting the text rather than re-emitting the JSON keeps the author's comments, key
+    // order and formatting intact — a forked shader is a file someone is about to edit.)
+    const size_t key = source.find("\"name\"", json_start);
+    if (key == std::string::npos || key >= json_end) return false;
+    size_t colon = source.find(':', key + 6);
+    if (colon == std::string::npos || colon >= json_end) return false;
+    size_t open_q = source.find('"', colon + 1);
+    if (open_q == std::string::npos || open_q >= json_end) return false;
+    size_t close_q = open_q + 1;
+    while (close_q < json_end && source[close_q] != '"') {
+        if (source[close_q] == '\\') ++close_q;   // skip an escaped char
+        ++close_q;
+    }
+    if (close_q >= json_end) return false;
+
+    out = source.substr(0, open_q + 1) + new_name + source.substr(close_q);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // pack_uniforms
 // ---------------------------------------------------------------------------
 

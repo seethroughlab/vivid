@@ -595,9 +595,11 @@ void NodeGraph::chooser_show(double sx, double sy) {
             Chooser::Entry e;
             e.label = nm;
             e.id = nm;
-            e.badge = "op";
+            // A shader row says SHADER: same catalog, same spawn, but it is a FILE you can open,
+            // edit and fork — the one distinction worth drawing (ADR-0016).
+            e.badge = (shaders_ && shaders_->is_shader(nm)) ? "shader" : "op";
             e.tag = 0;                                // 0 = a visuals operator
-            e.accent = style().gpu;
+            e.accent = style().gpu;                   // both are visual ops: one zone, one accent
             if (const auto* d = vg_->registry()->descriptor_for(nm)) {   // v3+ metadata (both optional)
                 if (d->summary) e.summary = d->summary;
                 for (uint32_t k = 0; k < d->keyword_count; ++k)
