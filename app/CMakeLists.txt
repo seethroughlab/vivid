@@ -207,6 +207,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/midi_input_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
+    src/operator_api/shader_meta.cpp
     src/gpu/op_runtime.cpp
     src/gpu/operator_loader.cpp
     src/gpu/loaded_operator.cpp

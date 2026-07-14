@@ -259,3 +259,10 @@ target_sources(test_hot_reload PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/file_watcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/hot_reload.cpp)
 target_link_libraries(test_hot_reload PRIVATE ${CMAKE_DL_LIBS} Threads::Threads)
+
+# ADR-0016 / S1: the shader-file format — header parser, host-param expansion, the generated
+# prelude and the uniform layout. Pure (no GPU, no filesystem), so it runs in headless CI.
+vivid_add_test(test_shader_meta)
+target_sources(test_shader_meta PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/shader_meta.cpp)
+target_link_libraries(test_shader_meta PRIVATE nlohmann_json::nlohmann_json)
