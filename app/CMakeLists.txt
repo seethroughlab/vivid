@@ -185,6 +185,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
+    src/gpu/shader_file_op.cpp
+    src/gpu/shader_library.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/plugin_catalog.cpp
@@ -207,6 +209,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/midi_input_stub.cpp
     src/persist.cpp
     src/operator_api/operator_descriptor_validation.cpp
+    src/operator_api/shader_meta.cpp
     src/gpu/op_runtime.cpp
     src/gpu/operator_loader.cpp
     src/gpu/loaded_operator.cpp
@@ -256,6 +259,28 @@ if(APPLE)
         # camera-usage key or macOS TCC kills the app on camera access) + retina.
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/platform/macos/Info.plist.in")
 endif()
+
+# ADR-0016: the SHIPPED shader library. Every .wgsl/.glsl in app/shaders/ is an operator
+# (its JSON header declares its params); the startup scan registers each as a type. They go
+# beside the operator dylibs' PlugIns/ copy, in Resources/shaders — a non-bundle build reads
+# <exe_dir>/shaders instead, and $VIVID_SHADERS_DIR overrides the user tier for development.
+if(APPLE)
+    set(_shader_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/shaders")
+else()
+    set(_shader_dest "$<TARGET_FILE_DIR:vivid>/shaders")
+endif()
+# Its OWN target, not a POST_BUILD on `vivid`: a POST_BUILD step only runs when the app target
+# actually relinks, so editing a .wgsl and rebuilding would leave the STALE shader in the bundle
+# and you would be debugging the last version of your file. (That is exactly what happened once.)
+file(GLOB VIVID_SHADER_FILES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl" "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.glsl")
+add_custom_target(vivid_shader_library ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_shader_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${VIVID_SHADER_FILES} "${_shader_dest}"
+    DEPENDS ${VIVID_SHADER_FILES}
+    COMMENT "Copying the bundled shader library into the app"
+    VERBATIM)
+add_dependencies(vivid_shader_library vivid)   # the bundle dir has to exist first
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it
@@ -278,6 +303,11 @@ if(VIVID_BUILD_TESTS AND TARGET test_operator_clone)
     target_compile_definitions(test_operator_clone PRIVATE
         VIVID_PKG_WEBGPU_INCLUDE_DIR="${_wgpu_root}/include"
         VIVID_PKG_WEBGPU_LIB_DIR="${_wgpu_root}/lib")
+endif()
+# Same reason (tests/ is added before webgpu is fetched): test_shader_library compiles
+# ShaderFileOp, which holds WGPU handles, so it needs the webgpu target's includes + lib.
+if(VIVID_BUILD_TESTS AND TARGET test_shader_library)
+    target_link_libraries(test_shader_library PRIVATE webgpu)
 endif()
 target_compile_definitions(vivid PRIVATE
     VIVID_FONT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/JetBrainsMono-Regular.ttf"

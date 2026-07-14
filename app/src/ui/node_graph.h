@@ -5,6 +5,7 @@
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
+#include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
 #include <string>
 #include <utility>
@@ -58,7 +59,7 @@ public:
     void  disconnect_dest(const std::string& dest) { reg_.disconnect(dest); }
     // Chain (op type + input edge + id + position + base params) persistence.
     int  op_count() const;
-    void get_op(int i, int& op, int& input, int& id, float& x, float& y) const;
+    void get_op(int i, int& input, int& id, float& x, float& y) const;   // op TYPE: op_kind_name(i)
     std::string op_type_at(int i) const;   // the node's operator name (persist key)
     void get_op_base(int i, float out[4]) const;
     void chain_load_begin();
@@ -78,7 +79,6 @@ public:
     // base param values (the resolved value = clamp(base + live modulation)).
     int  selected_op() const { return sel_op_; }
     void select_op(int i) { sel_op_ = i; }
-    int  op_kind(int i) const;                            // VOp as int, -1 if invalid
     const char* op_kind_name(int i) const;               // "Plasma" / "Feedback" / ...
     int  op_param_count_at(int i) const;
     const char* op_param_label_at(int i, int local) const;
@@ -115,6 +115,9 @@ public:
     // Operator chooser (Tab): a filtered palette that spawns a node at the cursor. The widget is
     // shared with the audio graph (ui/chooser.h); this class supplies the catalog + the spawn.
     bool chooser_open() const { return chooser_.open(); }
+    // ADR-0016: so the chooser can badge a row SHADER (a file you can open and edit) rather
+    // than OP (a compiled dylib). Optional — null just means every row reads as an op.
+    void set_shader_library(const vivid::ShaderLibrary* lib) { shaders_ = lib; }
     void chooser_show(double sx, double sy);  // open at the cursor
     void chooser_hide() { chooser_.hide(); }
     void chooser_move(int dir) { chooser_.move(dir); }
@@ -152,6 +155,7 @@ private:
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
 
     vivid::VisualGraph* vg_ = nullptr;
+    const vivid::ShaderLibrary* shaders_ = nullptr;   // ADR-0016 (optional; chooser badge)
 
     static void data_out(const DataNode& n, float& px, float& py);
     static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);
@@ -162,7 +166,7 @@ private:
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
-    int  first_node_of(vivid::VOp op) const;              // -1 if none
+    int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.
     bool param_port(int node_idx, int local, float& px, float& py) const;
     bool nearest_param(double x, double y, double maxd, int& node_idx, int& local) const;

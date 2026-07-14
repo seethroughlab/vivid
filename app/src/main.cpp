@@ -119,6 +119,17 @@ int main(int argc, char** argv) {
       int loaded = 0;
       for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
 
+      // ADR-0016: a shader FILE is an operator. Each .wgsl/.glsl in the library declares its
+      // own params in a JSON header and registers as its own type — so shaders reach the Tab
+      // chooser, list_operators, mappings and persistence through exactly the same door as a
+      // compiled op, with no separate machinery.
+      const int shaders = app.shader_library.scan(app.op_registry);
+      int shader_errors = 0;
+      for (const auto& e : app.shader_library.entries()) if (!e.error.empty()) ++shader_errors;
+      std::fprintf(stderr, "[vivid] %d shader ops (%zu files scanned%s)\n", shaders,
+                   app.shader_library.entries().size(),
+                   shader_errors ? ", SOME WITH ERRORS" : "");
+
       // Validate every op (built-in + loaded) loudly at startup (named codes).
       int bad = 0;
       for (const auto& nm : app.op_registry.type_names()) {
@@ -211,6 +222,7 @@ int main(int argc, char** argv) {
 
     vivid::ui::NodeGraph graph;
     graph.set_visual_graph(&vgraph);   // show the op-chain; generator node toggles Plasma/Video
+    graph.set_shader_library(&app.shader_library);   // ADR-0016: badge shader rows in the Tab chooser
     app.graph = &graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;

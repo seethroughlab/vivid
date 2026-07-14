@@ -1,5 +1,7 @@
 #include "gpu/visual_graph.h"
 
+#include "gpu/shader_file_op.h"   // ADR-0016: a shader node reports its compile error
+
 #include "operator_api/gpu_operator.h"
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
@@ -33,23 +35,6 @@ void main() {
 }
 )";
 
-const char* vop_name(VOp op) {
-    switch (op) {
-        case VOp::Plasma:   return "Plasma";
-        case VOp::Video:    return "Video";
-        case VOp::Feedback: return "Feedback";
-        case VOp::Blur:     return "Blur";
-        default:            return "Output";
-    }
-}
-VOp vop_from_name(const std::string& n) {
-    if (n == "Video")    return VOp::Video;
-    if (n == "Feedback") return VOp::Feedback;
-    if (n == "Blur")     return VOp::Blur;
-    if (n == "Output")   return VOp::Output;
-    return VOp::Plasma;
-}
-
 // Clear `view` to opaque black (one render pass).
 static void clear_target(WGPUCommandEncoder enc, WGPUTextureView view) {
     WGPURenderPassColorAttachment color{};
@@ -66,9 +51,15 @@ static void clear_target(WGPUCommandEncoder enc, WGPUTextureView view) {
     wgpuRenderPassEncoderRelease(pass);
 }
 
+std::string VisualNode::error() const {
+    // Only shader nodes carry a runtime error today. When another op kind grows one, this is
+    // where it goes — the UI asks the NODE, not the shader library.
+    if (const auto* sh = dynamic_cast<const ShaderFileOp*>(inst.op.get())) return sh->error();
+    return {};
+}
+
 bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
     n.op_type = type;
-    n.op = vop_from_name(type);
     if (!reg_) return false;
     std::vector<DescriptorValidationIssue> issues;
     if (auto inst = reg_->create(type, issues)) {
@@ -82,6 +73,16 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
             const float d = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->default_value : 0.f;
             n.base[i] = d; n.params[i] = d;
         }
+        // A rebuild (hot-reload) restores what the node was set to, matched BY NAME — the new
+        // operator may have added, removed or reordered its params, so the old index means
+        // nothing. Params the new version doesn't have are dropped; new ones keep their default.
+        for (size_t i = 0; i < np && !n.stash.empty(); ++i) {
+            const char* nm = n.inst.param_ptrs[i] ? n.inst.param_ptrs[i]->name : nullptr;
+            if (!nm) continue;
+            for (const auto& [k, v] : n.stash)
+                if (k == nm) { n.base[i] = v; n.params[i] = v; break; }
+        }
+        n.stash.clear();
         return true;
     }
     return false;
@@ -89,13 +90,21 @@ bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {
 
 int VisualGraph::release_op_instances(const std::string& type) {
     int n = 0;
-    for (auto& nd : nodes_) if (nd.op_type == type) { nd.inst = OpInstance{}; ++n; }
+    for (auto& nd : nodes_) if (nd.op_type == type) {
+        nd.stash_params();          // the names live on the instance we are about to drop
+        nd.inst = OpInstance{};
+        ++n;
+    }
     return n;
 }
 
 int VisualGraph::rebuild_op_instances(const std::string& type) {
     int n = 0;
-    for (auto& nd : nodes_) if (nd.op_type == type) { make_instance(nd, type); ++n; }
+    for (auto& nd : nodes_) if (nd.op_type == type) {
+        if (nd.inst.op) nd.stash_params();   // still live (a shader reload doesn't release first)
+        make_instance(nd, type);
+        ++n;
+    }
     return n;
 }
 
@@ -196,8 +205,8 @@ void VisualGraph::load_node(const std::string& type, int id) {
 }
 void VisualGraph::remove_node(int i) {
     if (i < 0 || i >= static_cast<int>(nodes_.size())) return;
-    if (nodes_[i].op == VOp::Output) {               // keep at least one Output
-        int outs = 0; for (auto& n : nodes_) if (n.op == VOp::Output) ++outs;
+    if (nodes_[i].is_output()) {                    // keep at least one Output
+        int outs = 0; for (auto& n : nodes_) if (n.is_output()) ++outs;
         if (outs <= 1) return;
     }
     nodes_.erase(nodes_.begin() + i);
@@ -214,25 +223,34 @@ void VisualGraph::set_input(int node, int port, int src) {
 }
 int VisualGraph::output_index() const {
     int first = -1;
-    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op == VOp::Output) {
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].is_output()) {
         if (first < 0) first = i;
         if (nodes_[i].id == active_output_id_) return i;
     }
     return first;
 }
 void VisualGraph::set_active_output(int idx) {
-    if (idx >= 0 && idx < static_cast<int>(nodes_.size()) && nodes_[idx].op == VOp::Output)
+    if (idx >= 0 && idx < static_cast<int>(nodes_.size()) && nodes_[idx].is_output())
         active_output_id_ = nodes_[idx].id;
 }
-void VisualGraph::set_generator(VOp g) {
-    for (auto& n : nodes_) if (n.op == VOp::Plasma || n.op == VOp::Video) {
-        if (n.op != g) make_instance(n, vop_name(g));   // swap the operator instance
-        return;
-    }
+bool VisualGraph::type_is_source(const std::string& type) const {
+    if (type == "Video") return true;              // fed by the host's decoded frame, not by an edge
+    const VividOperatorDescriptor* d = reg_ ? reg_->descriptor_for(type) : nullptr;
+    if (!d) return false;                          // unknown type: not instantiable, so not a source
+    for (uint32_t i = 0; i < d->port_count; ++i)
+        if (d->ports[i].direction != VIVID_PORT_OUTPUT) return false;
+    return true;
 }
-VOp VisualGraph::generator() const {
-    for (const auto& n : nodes_) if (n.op == VOp::Plasma || n.op == VOp::Video) return n.op;
-    return VOp::Plasma;
+bool VisualGraph::set_generator(const std::string& type) {
+    if (!type_is_source(type)) return false;       // a filter at the head would starve the chain
+    for (auto& n : nodes_) if (n.is_source()) {
+        return (n.op_type == type) ? true : make_instance(n, type);   // swap the operator instance
+    }
+    return false;
+}
+std::string VisualGraph::generator() const {
+    for (const auto& n : nodes_) if (n.is_source()) return n.op_type;
+    return {};
 }
 
 void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex) {
@@ -260,7 +278,7 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView 
         for (int p = 0; p < nin; ++p) {
             const int e = n.in(p);
             WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
-            if (n.op == VOp::Video && p == 0) v = video_tex;    // external source feeds the generator's port 0
+            if (n.is_video() && p == 0) v = video_tex;          // external source feeds the generator's port 0
             inview[p] = v ? v : fallback_.view;
         }
 

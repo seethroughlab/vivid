@@ -309,9 +309,36 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     }
 }
 
+// ADR-0016 / S4 — the shader library's hot-reload, applied on the main thread.
+//
+// The library absorbs a BODY edit itself (every live node recompiles its pipeline in place,
+// keeping the last good one if the edit doesn't compile). An INTERFACE edit — a param added,
+// removed, retyped or re-ranged — is the one the graph has to hear about: the nodes' param
+// storage no longer matches the file, so they are rebuilt, and their values are carried over
+// BY NAME (VisualGraph::rebuild_op_instances -> VisualNode::stash).
+void apply_shader_reloads(App& app) {
+    if (!app.vgraph) return;
+    for (const ShaderReload& r : app.shader_library.poll(app.op_registry)) {
+        switch (r.change) {
+            case ShaderChange::Interface: {
+                const int n = app.vgraph->rebuild_op_instances(r.name);
+                std::fprintf(stderr, "[vivid] shader '%s' header changed — %d node(s) rebuilt "
+                             "(param values kept by name)\n", r.name.c_str(), n);
+                break;
+            }
+            case ShaderChange::Added:
+                std::fprintf(stderr, "[vivid] shader '%s' added — press Tab to spawn it\n",
+                             r.name.c_str());
+                break;
+            case ShaderChange::Body:    break;   // the node already recompiled itself
+            case ShaderChange::Failed:  break;   // already reported, last good version still runs
+        }
+    }
+}
+
 void update_visual_source_frame(App& app) {
     if (!app.vgraph || !app.gpu || !app.srcTex) return;
-    app.visual_source = (app.vgraph->generator() == VOp::Video) ? 1 : 0;
+    app.visual_source = (app.vgraph->generator() == "Video") ? 1 : 0;
     if (app.video) video_play(app.video, app.visual_source == 1);
     if (app.visual_source == 1 && app.video) {
         const uint8_t* px = nullptr; uint32_t vw = 0, vh = 0;
@@ -357,6 +384,7 @@ void run_frame_loop(App& app, Window& win) {
         if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
         vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
+        apply_shader_reloads(app);       // ADR-0016: pick up edits to shader FILES (main thread)
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).

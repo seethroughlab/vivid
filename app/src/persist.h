@@ -1,4 +1,8 @@
 #pragma once
+
+#include <cmath>
+#include <cstring>
+#include <string>
 #include <string>
 #include <nlohmann/json.hpp>
 
@@ -17,7 +21,11 @@ namespace vivid {
 // v2 (dynamic tracks): the track SET became part of the document (each track carries its
 // kind + instrument), so load rebuilds the tracks; a v1 file restores onto the pre-built
 // role set by index (migration).
-constexpr int kSessionSchemaVersion = 2;
+// v3 (ADR-0016 / S5c): Composite's `mode` became a REAL ENUM (an int 0..4). It used to be a
+// bare float 0..1 that the shader multiplied by 4 — so a pre-v3 file's 0.25 means "add", not
+// "normal". Loading one rescales that value (see session_from_json); without this, every project
+// that ever picked a blend mode would silently render a different one.
+constexpr int kSessionSchemaVersion = 3;
 
 enum class SessionVersionStatus { Ok, Migrated, TooNew };
 
@@ -38,6 +46,20 @@ inline SessionVersionStatus classify_session_version(const nlohmann::json& j,
 inline const char* legacy_vop_name(int op) {
     static const char* kNames[] = { "Plasma", "Video", "Feedback", "Blur", "Output" };
     return kNames[(op >= 0 && op < 5) ? op : 0];
+}
+
+// A saved param VALUE whose MEANING changed between schema versions. Pure, so the rule is
+// testable on its own (like legacy_vop_name above) rather than buried in the load path.
+//
+// v3 (ADR-0016 / S5c): Composite's `mode` used to be a bare float 0..1 that the shader scaled
+// by 4 to pick one of five blend modes; it is now a real enum index (0..4). A pre-v3 file's
+// 0.25 therefore means "add" — read as an index it would be 0, "normal", and every project
+// that ever chose a blend mode would quietly render a different one.
+inline float migrate_param_value(int file_ver, const std::string& op_type, const char* name,
+                                 float v) {
+    if (file_ver < 3 && op_type == "Composite" && name && std::strcmp(name, "mode") == 0)
+        return std::round(v * 4.f);
+    return v;
 }
 
 // In-memory session <-> JSON: window + splitter/dock, per-track gain/active +
