@@ -2911,6 +2911,58 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
         c->param_q.push(c->params[p].id, val);   // plain value → audio thread emits a CLAP param event
     }
 }
+// --- Richer param metadata (widget-by-type + curated inspector). VST3-complete; others fall back. ---
+// A VST3 param's discreteness is its step count: 0 = continuous (→ slider/knob), 1 = a 2-state
+// switch (→ bool/toggle), >1 = a named list (→ enum/dropdown with step_count+1 values). Enum labels
+// and the human display value come from the controller's own getParamStringByValue.
+int session_audio_graph_node_param_type(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0 /*VIVID_PARAM_FLOAT*/;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const int sc = h->params[p].step_count;
+        if (sc == 1) return 2 /*VIVID_PARAM_BOOL*/;
+        if (sc  > 1) return 1 /*VIVID_PARAM_INT (enum)*/;
+    }
+    return 0 /*VIVID_PARAM_FLOAT*/;   // native ops / CLAP / continuous VST3
+}
+int session_audio_graph_node_param_choice_count(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const int sc = h->params[p].step_count;
+        return sc > 1 ? sc + 1 : 0;   // a discrete list of sc+1 named values
+    }
+    return 0;
+}
+const char* session_audio_graph_node_param_choice_label(Session* s, int t, int node_id, int p, int choice) {
+    static thread_local std::string buf; buf.clear();
+    Track* tr = graph_track(s, t); if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && h->controller && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const int sc = h->params[p].step_count;
+        if (sc > 1 && choice >= 0 && choice <= sc) {
+            String128 str{};
+            const double norm = static_cast<double>(choice) / static_cast<double>(sc);
+            if (h->controller->getParamStringByValue(h->params[p].id, norm, str) == kResultOk)
+                buf = vst3_tchar_to_utf8(str);
+        }
+    }
+    return buf.c_str();
+}
+const char* session_audio_graph_node_param_display(Session* s, int t, int node_id, int p) {
+    static thread_local std::string buf; buf.clear();
+    Track* tr = graph_track(s, t); if (!tr) return "";
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && h->controller && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const ParamID id = h->params[p].id;
+        String128 str{};
+        if (h->controller->getParamStringByValue(id, h->controller->getParamNormalized(id), str) == kResultOk) {
+            buf = vst3_tchar_to_utf8(str);
+            if (!h->params[p].units.empty()) { buf += ' '; buf += h->params[p].units; }
+        }
+    }
+    return buf.c_str();   // "" for native/CLAP → caller keeps its numeric fallback
+}
 
 // Editor node position (UI thread; persisted). set is keyed by stable node id (drag / load);
 // get is by node INDEX for save/introspection iteration. Position is UI-only (not in the compiled

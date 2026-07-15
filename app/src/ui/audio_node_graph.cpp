@@ -334,9 +334,15 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         const float mn = P::session_audio_graph_node_param_min(s_, track_, sel_node, c.index);
         const float mx = P::session_audio_graph_node_param_max(s_, track_, sel_node, c.index);
         const float norm = (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f;
+        // Prefer the plugin's own formatted value ("1.2 kHz", "On", "Lowpass") over a raw number;
+        // fall back to %.2f for native ops / CLAP that don't provide one.
+        const char* disp = P::session_audio_graph_node_param_display(s_, track_, sel_node, c.index);
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
-        knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vt, sty.audio, false);
-        r.draw_text(c.x + 2.f, c.y + c.h - 10.f, nm ? nm : "", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);
+        const std::string vtxt = fit_text(r, (disp && *disp) ? disp : vt, c.w - 2.f, 0.66f);
+        knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vtxt.c_str(), sty.audio, false);
+        // Ellipsize the label to the cell so long plugin param names don't collide with neighbours.
+        r.draw_text(c.x + 2.f, c.y + c.h - 10.f, fit_text(r, nm ? nm : "", c.w - 4.f, 0.65f).c_str(),
+                    sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);
         // Bridge map dot (return path): lit teal when a source drives this node param, dim gold
         // otherwise. Clicking it (input_graph) opens the map-source picker (emits a "gnode:" dest).
         const Rect md = ag_param_map_dot(c);
