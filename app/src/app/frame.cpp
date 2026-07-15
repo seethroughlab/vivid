@@ -289,7 +289,11 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const int nid = win.sel_audio_node;   // node id (not chain index)
         const float mn = S::session_audio_graph_node_param_min(app.session, tr, nid, win.ag_param_drag);
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
-        const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
+        // Curated inspector slider rows drag HORIZONTALLY (absolute mx→[rx,rx+rw]); the native knob
+        // strip drags vertically (delta from the grab point).
+        const float norm = win.ag_param_horiz
+            ? std::clamp(static_cast<float>(mx - win.ag_param_rx) / win.ag_param_rw, 0.f, 1.f)
+            : std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
         if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
     }
@@ -468,7 +472,13 @@ void run_frame_loop(App& app, Window& win) {
             // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
             // always drawn, no reveal toggle.
             { const Rect g = win.visuals_panel();
-              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);
+              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);  // inset node-layout bounds
+              // Grid + clip fill the whole right column edge-to-edge. visuals_panel is inset by
+              // kPaneMargin on every side, so expand back out to the true column (transport->dock,
+              // split->window edge). The left stops just clear of the splitter strip (split_x+3) so
+              // the grid doesn't paint over the divider — the graph draws after the splitter.
+              const float m = ui::kPaneMargin;
+              graph.set_frame(g.x - m + 3.f, g.y - m, g.x + g.w + m, g.y + g.h + m);
               graph.draw(ui); }   // includes live node thumbnails via draw_texture
             // UI-1: recompute the detail region's explicit focus — the single source of truth
             // for what the bottom region shows + its domain — replacing the old implicit race
@@ -511,6 +521,7 @@ void run_frame_loop(App& app, Window& win) {
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
+            win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);

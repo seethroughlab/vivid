@@ -157,6 +157,12 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     ps[vivid::session::session_audio_graph_node_param_name(s, t, id, p)] =
                         vivid::session::session_audio_graph_node_param_get(s, t, id, p);
                 jn["params"] = ps;
+                // Curated inspector: the pinned param subset, by index, in add order.
+                if (const int npc = vivid::session::session_audio_graph_node_param_pinned_count(s, t, id); npc > 0) {
+                    json pins = json::array();
+                    for (int k = 0; k < npc; ++k) pins.push_back(vivid::session::session_audio_graph_node_param_pinned_at(s, t, id, k));
+                    jn["pinned"] = pins;
+                }
                 nodes.push_back(jn);
             }
             const int ne = vivid::session::session_track_audio_graph_edge_count(s, t);
@@ -528,6 +534,9 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         id_map[saved] = nid;
                         if (jn.contains("x") && jn.contains("y"))   // restore the editor position
                             vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
+                        if (jn.contains("pinned"))   // restore the curated inspector param subset
+                            for (const auto& pp : jn["pinned"])
+                                vivid::session::session_audio_graph_node_param_pin(s, t, nid, pp.get<int>());
                         if (jn.value("kind", 1) == 0 && (jn.contains("key_lo") || jn.contains("key_hi")))
                             vivid::session::session_audio_graph_node_key_range_set(
                                 s, t, nid, jn.value("key_lo", 0), jn.value("key_hi", 127));

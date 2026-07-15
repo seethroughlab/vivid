@@ -1,5 +1,6 @@
 #include "audio/audio_graph.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace vivid::audio {
@@ -56,6 +57,29 @@ bool AudioGraph::node_pos(int id, float& x, float& y) const {
 
 void AudioGraph::clear_positions() {
     for (AudioGraphNode& n : nodes_) { n.positioned = false; n.ui_x = 0.f; n.ui_y = 0.f; }
+}
+
+void AudioGraph::pin_param(int id, int p) {
+    const int i = node_index(id);
+    if (i < 0 || p < 0) return;
+    auto& v = nodes_[i].pinned_params;
+    if (std::find(v.begin(), v.end(), p) == v.end()) v.push_back(p);   // idempotent, add order
+}
+void AudioGraph::unpin_param(int id, int p) {
+    const int i = node_index(id);
+    if (i < 0) return;
+    auto& v = nodes_[i].pinned_params;
+    v.erase(std::remove(v.begin(), v.end(), p), v.end());
+}
+bool AudioGraph::is_param_pinned(int id, int p) const {
+    const int i = node_index(id);
+    if (i < 0) return false;
+    const auto& v = nodes_[i].pinned_params;
+    return std::find(v.begin(), v.end(), p) != v.end();
+}
+const std::vector<int>* AudioGraph::node_pinned(int id) const {
+    const int i = node_index(id);
+    return i < 0 ? nullptr : &nodes_[i].pinned_params;
 }
 
 int AudioGraph::add_node(bool is_source, bool is_output, ProcessFn fn, void* ctx, std::string label) {

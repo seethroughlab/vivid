@@ -30,6 +30,7 @@ public:
     void add_data_node(const std::string& title, int char_id);
 
     void set_bounds(float x0, float y0, float x1, float y1);
+    void set_frame(float x0, float y0, float x1, float y1);   // full visuals-column rect (grid + clip)
     void set_visual_graph(vivid::VisualGraph* vg);   // also seeds the default mapping
 
     // Persistence + inspection.
@@ -143,7 +144,8 @@ private:
     std::vector<DataNode> data_;
     vivid::MappingRegistry reg_;
     float sx_ = 900.f, sy_ = 488.f;   // persisted shader-node position (get_shader/set_shader)
-    float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;
+    float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;  // node-layout / hit-test bounds (inset)
+    float fx0_ = 512.f, fy0_ = 440.f, fx1_ = 1280.f, fy1_ = 800.f;  // full visuals-column rect (clip + grid)
     bool  bounds_init_ = false;
 
     // Op-node layout (parallel to vg_->nodes()); the chain lives in VisualGraph.

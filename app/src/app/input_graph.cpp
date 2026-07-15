@@ -11,6 +11,7 @@
 #include "ui/audio_node_graph.h"
 #include "ui/audio_catalog.h"       // A3: the unified add catalog (native ops + VST3 + CLAP)
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
+#include "ui/param_widget.h"        // Phase 2b: NodeWidget (curated inspector row widgets)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
@@ -126,6 +127,100 @@ bool audio_chooser_click(Window& win, App& app, double mx, double my) {
     return true;
 }
 
+// --- Phase 2c: the curated inspector's "+ Add param" palette (the Tab chooser, reused). Its entries
+// are the selected plugin node's UNPINNED params; each carries its param index in `tag`. ---
+static void param_chooser_show_at(Window& win, App& app, double mx, double my) {
+    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    win.param_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
+                           static_cast<float>(win.win_w) - 8.f, gp.y + gp.h);
+}
+
+// Action 0: pick an UNPINNED param to add to the curated inspector (entry tag = param index).
+void param_chooser_open(Window& win, App& app, int node, double mx, double my) {
+    const int tr = audio_graph_track(win, app);
+    if (tr < 0 || node < 0) return;
+    std::vector<vivid::ui::ChooserEntry> entries;
+    const int pc = S::session_audio_graph_node_param_count(app.session, tr, node);
+    for (int p = 0; p < pc; ++p) {
+        if (S::session_audio_graph_node_param_is_pinned(app.session, tr, node, p)) continue;
+        vivid::ui::ChooserEntry e;
+        e.label = S::session_audio_graph_node_param_name(app.session, tr, node, p);
+        e.tag   = p;
+        if (const char* d = S::session_audio_graph_node_param_display(app.session, tr, node, p); d && *d) e.summary = d;
+        entries.push_back(std::move(e));
+    }
+    win.param_chooser_node = node; win.param_chooser_action = 0;
+    win.param_chooser.set_entries(std::move(entries));
+    param_chooser_show_at(win, app, mx, my);
+}
+
+// Action 1: pick a value for an enum param (entry tag = choice index) — a real dropdown list in
+// place of click-cycle. Same palette (type-to-filter/scroll), which handles long enums.
+void param_enum_chooser_open(Window& win, App& app, int node, int param, double mx, double my) {
+    const int tr = audio_graph_track(win, app);
+    if (tr < 0 || node < 0) return;
+    const int cc = S::session_audio_graph_node_param_count(app.session, tr, node) ?
+                   S::session_audio_graph_node_param_choice_count(app.session, tr, node, param) : 0;
+    if (cc <= 0) return;
+    std::vector<vivid::ui::ChooserEntry> entries;
+    for (int k = 0; k < cc; ++k) {
+        vivid::ui::ChooserEntry e;
+        const char* lbl = S::session_audio_graph_node_param_choice_label(app.session, tr, node, param, k);
+        e.label = (lbl && *lbl) ? lbl : std::to_string(k);
+        e.tag   = k;
+        entries.push_back(std::move(e));
+    }
+    win.param_chooser_node = node; win.param_chooser_param = param; win.param_chooser_action = 1;
+    win.param_chooser.set_entries(std::move(entries));
+    param_chooser_show_at(win, app, mx, my);
+}
+
+// Apply the confirmed entry per the current action, then close (reopen to pick again).
+static void param_chooser_confirm(Window& win, App& app, const vivid::ui::ChooserEntry& e) {
+    const int tr = audio_graph_track(win, app);
+    if (tr >= 0) {
+        if (win.param_chooser_action == 1) {   // set the enum param to choice e.tag's value
+            const int cc = S::session_audio_graph_node_param_choice_count(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float mx = S::session_audio_graph_node_param_max(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float v = (cc > 1) ? mn + static_cast<float>(e.tag) / static_cast<float>(cc - 1) * (mx - mn) : mn;
+            S::session_audio_graph_node_param_set(app.session, tr, win.param_chooser_node, win.param_chooser_param, v);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "");   // ADR-0017/G3
+        } else {                                // add (pin) param e.tag
+            S::session_audio_graph_node_param_pin(app.session, tr, win.param_chooser_node, e.tag);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Pin Param", "");   // ADR-0017/G3
+        }
+    }
+    win.param_chooser.hide();
+}
+
+bool param_chooser_key(Window& win, App& app, int key) {
+    if (!win.param_chooser.open()) return false;
+    if (key == GLFW_KEY_ESCAPE) { win.param_chooser.hide(); return true; }
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (const auto* e = win.param_chooser.confirm()) param_chooser_confirm(win, app, *e);
+        return true;
+    }
+    if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) { win.param_chooser.move(+1); return true; }
+    if (key == GLFW_KEY_UP)        { win.param_chooser.move(-1); return true; }
+    if (key == GLFW_KEY_BACKSPACE) { win.param_chooser.backspace(); return true; }
+    return true;
+}
+
+bool param_chooser_char(Window& win, unsigned int cp) {
+    if (!win.param_chooser.open()) return false;
+    win.param_chooser.type(cp);
+    return true;
+}
+
+bool param_chooser_click(Window& win, App& app, double mx, double my) {
+    if (!win.param_chooser.open()) return false;
+    bool dismissed = false;
+    if (const auto* e = win.param_chooser.click(mx, my, dismissed)) param_chooser_confirm(win, app, *e);
+    else if (dismissed) win.param_chooser.hide();
+    return true;
+}
+
 // Scroll-wheel zoom for whichever graph is under the cursor: the visuals node graph (when the
 // graph deep-view is revealed, right of the splitter) and/or the audio-graph deep-view (2i, zoom
 // around the cursor). Neither "consumes" the scroll (matches the original fall-through order), so
@@ -164,6 +259,17 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
     ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
+    // "Editor" button in the dock header → open the selected VST3 node's native plugin window (its
+    // full param surface). Mirrors the node double-click open path; shown only when it has a controller.
+    if (win.sel_audio_node >= 0
+        && hit(vivid::ui::dock_audio_editor_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+        if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                S::session_audio_graph_node_controller(app.session, tr, win.sel_audio_node))) {
+            int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
+            if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
+        }
+        return true;
+    }
     // (The "+ Src" / "+ FX" buttons are gone: they could only ever offer NATIVE ops — plugins were
     // structurally excluded — so no surface could add everything. Tab is now the one add path, over
     // the unified catalog. See audio_chooser_open_at below.)
@@ -173,7 +279,53 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         if (hit(ag.key_lo_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 0; win.ag_key_v0 = lo; win.ag_key_y0 = my; return true; }
         if (hit(ag.key_hi_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 1; win.ag_key_v0 = hi; win.ag_key_y0 = my; return true; }
     }
-    if (win.sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
+    // Curated inspector (Phase 2b): a plugin node's pinned params are vertical rows, not a knob grid.
+    if (win.sel_audio_node >= 0 && ag.is_plugin_node(win.sel_audio_node)) {
+        if (hit(ag.add_param_button_rect(win.sel_audio_node), mx, my)) {   // open the searchable "+ Add param" palette
+            param_chooser_open(win, app, win.sel_audio_node, mx, my);
+            return true;
+        }
+        for (const auto& row : ag.pinned_rows(win.sel_audio_node)) {
+            // bridge map dot (same picker as the knob strip) — opened above the dock
+            if (hit(Rect{ row.mapdot.x - 4.f, row.mapdot.y - 2.f, row.mapdot.w + 8.f, row.mapdot.h + 8.f }, mx, my)) {
+                const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
+                const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+                const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
+                win.map_menu = { true, fx, fy, win.sel_audio_node };
+                win.map_param = row.index;
+                return true;
+            }
+            if (hit(row.remove, mx, my)) {   // × → unpin (remove from the curated set)
+                S::session_audio_graph_node_param_unpin(app.session, tr, win.sel_audio_node, row.index);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Unpin Param", "");   // ADR-0017/G3
+                return true;
+            }
+            if (hit(row.row, mx, my)) {
+                const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, row.index);
+                const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, row.index);
+                const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, row.index);
+                const vivid::ui::NodeWidget wk = static_cast<vivid::ui::NodeWidget>(row.widget);
+                if (wk == vivid::ui::NodeWidget::Toggle) {   // click flips
+                    const float mid = mn + (mxx - mn) * 0.5f;
+                    S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, v > mid ? mn : mxx);
+                    if (app.edit_gateway) app.edit_gateway->note_edit("Toggle Param", "");   // ADR-0017/G3
+                    return true;
+                }
+                if (wk == vivid::ui::NodeWidget::Enum) {   // open the choice list (a real dropdown, not click-cycle)
+                    param_enum_chooser_open(win, app, win.sel_audio_node, row.index, mx, my);
+                    return true;
+                }
+                // slider: start a HORIZONTAL drag and apply immediately at the click x
+                win.ag_param_drag = row.index; win.ag_param_horiz = true;
+                win.ag_param_rx = row.widget_rect.x; win.ag_param_rw = row.widget_rect.w;
+                const float norm = std::clamp(static_cast<float>(mx - row.widget_rect.x) / row.widget_rect.w, 0.f, 1.f);
+                S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, mn + norm * (mxx - mn));
+                return true;
+            }
+        }
+        // a click in the band that hit no row falls through to node select (the band is below the nodes)
+    }
+    if (win.sel_audio_node >= 0 && !ag.is_plugin_node(win.sel_audio_node)) {   // native knob strip (by node id)
         for (const auto& c : ag.param_cells(win.sel_audio_node)) {
             // The map dot (top-right of the cell) takes priority over the knob rect it sits inside:
             // open the bridge map-source picker for this node param (dock_menus emits a "gnode:" dest).
@@ -208,6 +360,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
             const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, cp.index);
             const float next = (v >= mxx - 0.5f) ? mn : v + 1.f;   // integer enum step, wrap at max
             S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, cp.index, next);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "");   // ADR-0017/G3
             return true;
         }
     }

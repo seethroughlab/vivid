@@ -294,15 +294,22 @@ inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selecte
 inline Rect detail_dock(Renderer2D& r, Rect b, const float* accent, bool resize_hot = false) {
     const Style& s = style();
     r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
-    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f,
-                resize_hot ? s.control[0] : s.border[0],
-                resize_hot ? s.control[1] : s.border[1],
-                resize_hot ? s.control[2] : s.border[2], 1.0f);
+    // The top edge doubles as the horizontal resize splitter — styled to match the vertical
+    // DAW|visuals splitter (gpu when hot, border_soft idle) + a centered grip, so the two
+    // dividers read identically. See the vertical splitter in session_view.cpp.
+    const float* rc = resize_hot ? s.gpu : s.border_soft;
+    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f, rc[0], rc[1], rc[2], 1.0f);
     const float hh = 20.f;
     r.draw_rect(b.x, b.y, b.w, hh, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
     r.draw_rect(b.x, b.y + hh, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
     if (accent)
         r.draw_rect(b.x, b.y, 4.f, hh, accent[0], accent[1], accent[2], 1.0f);
+    // Centered grip = the "you can drag me" mark (mirror of the vertical splitter's grip).
+    { const float gw = 28.f, gx = b.x + b.w * 0.5f - gw * 0.5f;
+      const float* gc = resize_hot ? s.gpu : s.border;
+      r.draw_rect(gx, b.y - 2.f, gw, 4.f, s.recess[0], s.recess[1], s.recess[2], 1.0f);   // recessed well
+      for (int i = 0; i < 3; ++i)   // three hard rules = the grip
+          r.draw_rect(gx + gw * 0.5f - 5.f + i * 5.f, b.y - 2.f, 1.f, 4.f, gc[0], gc[1], gc[2], 1.0f); }
     return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
 }
 
@@ -363,18 +370,23 @@ inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,
     }
 }
 
-// A horizontal slider: recessed track + accent fill + a handle; name at the left,
-// value at the right. v01 is the normalized 0..1 position. `mapped` tints toward teal.
+// A horizontal slider: a framed recessed groove + inset accent fill + a real grabbable handle;
+// name at the left, value at the right. v01 is the normalized 0..1 position. `mapped` tints the
+// fill toward teal; `hot` brightens the handle on hover.
 inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
-                   const char* label, const char* valtext, const float* accent, bool mapped = false) {
+                   const char* label, const char* valtext, const float* accent, bool mapped = false, bool hot = false) {
     v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
     const Style& s = style();
-    const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
+    const float th = 6.f, ty = y + h - 9.f;                 // a chunkier groove near the row bottom
     r.draw_rect(x, ty, w, th, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    r.draw_rect_outline(x, ty, w, th, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);   // 1px frame -> reads as a groove
     const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
-    if (v01 > 0.001f) r.draw_rect(x, ty, w * v01, th, fr, fg, fb, 1.0f);
-    const float hx = x + w * v01;
-    r.draw_rect(hx - 2.f, ty - 3.f, 4.f, th + 6.f, s.text[0], s.text[1], s.text[2], 1.0f);  // hard handle
+    if (v01 > 0.001f) r.draw_rect(x + 1.f, ty + 1.f, (w - 2.f) * v01, th - 2.f, fr, fg, fb, 1.0f);   // fill inside the frame
+    // a real grabbable handle: a bright bordered block, kept inside the track; brighter on hover
+    const float hw = 8.f, hh = th + 6.f, hx = x + (w - hw) * v01, hy = ty - 3.f;
+    const float hb = hot ? 1.0f : 0.86f;
+    r.draw_rect(hx, hy, hw, hh, s.text[0] * hb, s.text[1] * hb, s.text[2] * hb, 1.0f);
+    r.draw_rect_outline(hx, hy, hw, hh, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
     if (valtext) {
         const float tw = r.text_width(valtext, s.fs_label);

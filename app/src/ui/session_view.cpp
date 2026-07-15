@@ -211,7 +211,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
     const DockGeom d = w.dock_geom();
     const float y0 = d.y0;
-    const bool rhov = hit(w.dock_resize_rect(), mx, my);
+    const bool rhov = hit(w.dock_resize_rect(), mx, my) || w.dock_drag;   // light while hovering OR dragging (parity with the vertical splitter)
     // UI-1: the detail region always declares its domain (strict-zones principle) — an accent
     // edge + a badge, driven by the explicit focus, so audio vs visual is never ambiguous.
     const bool vis = (w.focus.dom == FocusContext::Dom::Visual);
@@ -272,7 +272,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
                         const Rect wr = node_param_widget_rect(i + k, w.win_w, w.win_h, w.dock_h);
                         const float b = g->op_param_base_at(selop, i + k);
                         char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", b);
-                        slider(ui, wr.x, wr.y, wr.w, wr.h, b, ch[k], vt, sty.gpu, false);
+                        slider(ui, wr.x, wr.y, wr.w, wr.h, b, ch[k], vt, sty.gpu, false, hit(wr, mx, my));
                     }
                 }
                 i += span - 1;
@@ -300,8 +300,12 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
                     break;
                 }
                 case NodeWidget::Knob: {
+                    // Value goes INLINE to the right, not below the knob: knob()'s built-in value sits
+                    // at cy+rad+3, which in a 26px row lands on the next row's knob (they overlapped).
                     char vt[8]; std::snprintf(vt, sizeof vt, "%.2f", base);
-                    knob(ui, wr.x + 14.f, wr.y + wr.h * 0.5f, 11.f, base, nullptr, vt, sty.gpu, wired);
+                    const float kcy = wr.y + wr.h * 0.5f;
+                    knob(ui, wr.x + 12.f, kcy, 9.f, base, nullptr, nullptr, sty.gpu, wired);
+                    ui.draw_text(wr.x + 28.f, kcy - 5.f, vt, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
                     break;
                 }
                 case NodeWidget::File: {   // path field: show the basename, click to choose
@@ -315,7 +319,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
                 default: {  // Slider
                     const float mn = g->op_param_min_at(selop, i), mx2 = g->op_param_max_at(selop, i);
                     char vt[12]; std::snprintf(vt, sizeof vt, "%.2f", mn + base * (mx2 - mn));
-                    slider(ui, wr.x, wr.y, wr.w, wr.h, base, nullptr, vt, sty.gpu, wired);
+                    slider(ui, wr.x, wr.y, wr.w, wr.h, base, nullptr, vt, sty.gpu, wired, hit(wr, mx, my));
                     break;
                 }
             }
@@ -367,6 +371,15 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
         char ah[80]; std::snprintf(ah, sizeof ah, "AUDIO GRAPH \xC2\xB7 %.40s", vivid::session::session_track_name(s, tr));
         section_header(ui, 12.f, y0 + 7.f, ah, sty.audio);
+        // "Editor" button: opens the selected VST3 node's own native plugin window (its full param
+        // surface). Shown only when the node exposes a plugin editor controller. Double-click still works.
+        if (w.sel_audio_node >= 0
+            && vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node)) {
+            const Rect eb = dock_audio_editor_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool eh = hit(eb, mx, my);
+            item_box(ui, eb, sty.audio, eh);
+            ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);
+        }
         AudioNodeGraph ag;
         ag.set_source(s, tr);
         const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);

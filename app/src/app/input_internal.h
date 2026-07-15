@@ -30,6 +30,11 @@ void audio_chooser_open_new_track(Window& win, App& app, double mx, double my); 
 bool audio_chooser_key(Window& win, App& app, int key);
 bool audio_chooser_char(Window& win, unsigned int cp);
 bool audio_chooser_click(Window& win, App& app, double mx, double my);
+// Phase 2c: the curated inspector's "+ Add param" palette (the same chooser, reused for params).
+void param_chooser_open(Window& win, App& app, int node, double mx, double my);
+bool param_chooser_key(Window& win, App& app, int key);
+bool param_chooser_char(Window& win, unsigned int cp);
+bool param_chooser_click(Window& win, App& app, double mx, double my);
 
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
