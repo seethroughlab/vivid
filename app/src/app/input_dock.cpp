@@ -121,10 +121,11 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
                 if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Set Param", "");
                 break;
             }
-            case NodeWidget::File: {   // open a native file chooser; set the path on the node
-                const std::string path = vivid::platform::open_file_dialog("Choose a file");
+            case NodeWidget::File: {   // open a native file chooser (filtered to the op's types); set the path
+                const auto exts = win.app->file_drops.extensions_for_op(g->op_type_at(selop));  // ADR-0021/P3
+                const std::string path = vivid::platform::open_file_dialog("Choose a file", exts);
                 if (!path.empty()) { g->set_op_file_param_at(selop, i, path);
-                    if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Set File", ""); }
+                    if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Set File", ""); }  // ADR-0017/G3
                 break;
             }
             case NodeWidget::Slider:

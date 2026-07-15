@@ -1,15 +1,32 @@
 # ADR-0021: Content Is Browsable
 
-Status: proposed
+Status: accepted (amended 2026-07-14 during implementation — see "Correction" below)
 
 Date: 2026-07-14
 
 Amends: [ADR-0016](ADR-0016-shaders-are-content.md) — which declares that a shader file is content,
 and then gives the user no way to *see* the content.
 
-Decided: shaders, media, examples, and presets become **first-class browsable content** behind one
-asset library, generalized from the shader library that already exists. **Drag-and-drop onto a
-graph** is the fast path in: drop a file, get the node that handles it.
+Decided: shaders, media, examples, and presets become **first-class browsable content**, with
+**drag-and-drop onto a graph** as the fast path in — drop a file, get the node that handles it.
+
+> ### Correction (2026-07-14, during implementation)
+>
+> The original decision said "behind **one asset library, generalized from the shader library**."
+> Exploration of the merged ADR-0016 code showed that is a **category error**, and it is withdrawn:
+>
+> - `ShaderLibrary` is an **operator-type source** — it scans `.wgsl` and calls `reg.register_type()`
+>   on each, so a shader *becomes a spawnable op*.
+> - An image/video/audio file is **data for a file param** (`Param<FilePath>` → `ctx.file_param_values`)
+>   and never becomes an operator.
+>
+> They share only a tiered search path. Merging them yields a `kind` enum where one kind registers
+> operators and the rest don't — a leaky abstraction. So: **`ShaderLibrary` stays intact**; only the
+> tier-scan helper is extracted and shared. And none of the shipped phases need a media index at all —
+> file-drop rides the ABI's `VividFileDropHandlerDescriptor`, and the native dialog is filtered by the
+> already-plumbed-but-unused `ParamBase::asset_kind`. **`AssetLibrary` is therefore deferred, not
+> built** (no speculative abstraction). The phase names below are relabelled P1–P4 accordingly; the
+> old C1 "generalize ShaderLibrary → AssetLibrary" is struck.
 
 ## Context
 
@@ -121,42 +138,50 @@ two kinds and a filter, and let real usage ask for the rest.
 
 ## Implementation
 
-### C1 — Generalize `ShaderLibrary` → `AssetLibrary`
+Phases relabelled P1–P4 per the Correction above. The old **C1 ("generalize `ShaderLibrary` →
+`AssetLibrary`") is struck** — it is withdrawn, not implemented. Only the tier-scan helper
+(`shader_search_path`) is extracted into `app/src/content/search_path.h` and shared.
 
-A pure refactor: kinds, an index, scoped search paths. `ShaderLibrary` becomes the shader *kind*
-over the generic layer. No new behavior.
+### P1 — Shader library view (was part of C2)
 
-*Verify:* `app/tests/test_shader_library.cpp` must pass **unchanged**. Run the app and confirm the
-shipped shaders still register as operator types exactly as they do today. This gate is the whole
-safety of the refactor — if the existing test needs editing, the refactor changed behavior and is
-wrong.
+An overlay panel over `ShaderLibrary::entries()` showing **all** rows — crucially the ones that
+failed to parse or were shadowed, which are `registered=false`, absent from `OpRegistry`, and thus
+invisible in the Tab chooser today. A failed row shows its `error` in place of the summary. Per-row
+Fork (`ShaderLibrary::fork()`, which already exists with no UI caller). Built on the
+`mapping_overview` centered-modal pattern; first caller of `overlay_panel(scrim=true)`.
 
-### C2 — Browser dialog + chooser integration
+*Verify:* drop a `.wgsl` with a broken JSON header into the user shader dir. It must appear in the
+view **with its parse error** while staying out of the Tab chooser (correct — it isn't a valid op).
+Fix the header → appears in both. Fork a shipped shader → the copy lands in the user tier and spawns.
 
-Kind/tag filter, thumbnails. Reachable from the chooser and from `asset_kind` file params.
+### P2 — Examples picker (was C4)
 
-*Verify:* run the app — press Tab, confirm shader operators still appear and rank as before; open the
-browser, filter by kind, confirm every shipped shader is listed **including ones with parse errors,
-showing why** (the `ShaderLibraryEntry::error` contract).
+File → Open Example over the `examples/**/project.json` folder-projects (already loadable via
+`project_io::load`), bundled into `Resources/examples/` by CMake, opened through the existing
+`file_actions::open_recent` (open-by-path, no dialog). Native submenu modelled on `set_recent_projects`.
 
-### C3 — File drop
+*Verify:* from the built `.app`, open each of the four demos (pulse/drift/neon/grid); each loads and
+renders.
 
-Drop registry; operators declare handled extensions; drop on the canvas → offer/create.
+### P3 — File drop (was C3)
 
-*Verify:* run the app — drag an `.mp4` onto the visual graph and confirm the video node is created
-with its file param set. Drag an unhandled extension and confirm a clear "nothing handles this"
-message (ADR-0019's toast), not silence.
+The ABI half already exists — `VividFileDropHandlerDescriptor` + the `VIVID_FILE_DROP` export macro,
+with **no operator using it and no host registry reading it**. This phase writes the host registry
+(`dlsym` the descriptor on operator load), declares handlers on the file-taking ops (Image, Text,
+VectorText, CustomShader — and sets their long-dead `asset_kind`), adds the first-ever
+`glfwSetDropCallback`, and filters the native File-param dialog by extension.
 
-### C4 — Examples browser
+*Verify:* drag a `.png` onto the visual graph → an Image node appears with its `file` param set and
+rendering. Drag an unhandled extension → an explicit message, not silence. The File-param dialog now
+filters to the right types.
 
-File → Open Example over `examples/`, using the existing recents/file-actions machinery.
+### P4 — Node presets (was C5)
 
-*Verify:* run the app, open each of the four shipped demos from the picker, confirm each loads and
-plays.
-
-### C5 — Node presets
-
-Save/recall named param sets per node; factory presets shipped with an operator.
+Save/recall named param sets per node — **its own mechanism, not the plugin `list_presets`/`load_preset`
+flow**, which is opaque per-track-instrument binary state and unrelated. A node preset is a param
+name→value (+ file-param) JSON, persisted by param *name* (as `persist.cpp` already stores
+`file_params`), so a shader header edit that adds a param doesn't scramble it. New MCP methods
+`save_node_preset` / `list_node_presets` / `load_node_preset`.
 
 *Verify:* save a preset on a shader node, change its params, recall the preset, confirm the params
 return. Confirm the preset survives a session save/load round-trip, and that it appears over MCP

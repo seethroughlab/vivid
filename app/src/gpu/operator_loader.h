@@ -62,6 +62,13 @@ public:
     VividEditorMetadata editor_metadata() const { return editor_meta_fn_ ? editor_meta_fn_() : VividEditorMetadata{}; }
     void draw_editor(void* instance, VividEditorContext* ctx) const { if (draw_editor_fn_ && instance) draw_editor_fn_(instance, ctx); }
 
+    // ADR-0021/P3: optional file-drop handlers (vivid_file_drop_descriptor, dlsym'd if present).
+    // Returns the operator's handler array + its count, or nullptr when the op exports none.
+    const VividFileDropHandlerDescriptor* file_drop_handlers(uint32_t* count) const {
+        if (count) *count = 0;
+        return drop_fn_ ? drop_fn_(count) : nullptr;
+    }
+
     const std::string& registration_mode() const { return registration_mode_; }
     bool is_loaded() const { return handle_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
@@ -84,6 +91,7 @@ private:
     VividProcessGpuFn    process_gpu_fn_    = nullptr;
     VividEditorMetadataFn editor_meta_fn_   = nullptr;   // UI-4b: optional custom-editor ABI
     VividDrawEditorFn    draw_editor_fn_    = nullptr;
+    VividFileDropDescriptorFn drop_fn_      = nullptr;   // ADR-0021/P3: optional file-drop handlers
     std::string          registration_mode_ = "unknown";
     bool                 reload_required_recompile_ = false;
     LastError            last_error_{};

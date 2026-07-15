@@ -48,6 +48,8 @@ struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> bg_r{"bg_r", 0.05f, 0.f, 1.f}, bg_g{"bg_g", 0.06f, 0.f, 1.f}, bg_b{"bg_b", 0.1f, 0.f, 1.f};
     vivid::Param<vivid::FilePath> file{"file", ""};   // .txt whose contents are the string
 
+    VectorTextOp() { vivid::asset_kind(file, "text"); }   // ADR-0021/P3: dialog/drop filter
+
     vivid::FtFont font_; bool font_tried_ = false;
     std::string loaded_path_ = "\x01", text_, baked_text_ = "\x01";
     bool tried_ = false;
@@ -187,3 +189,10 @@ struct VectorTextOp : vivid::OperatorBase, vivid::GpuProcessable {
 };
 
 VIVID_REGISTER(VectorTextOp)
+
+// ADR-0021/P3: a .txt can also become vector-outlined text — offered below Text (lower priority).
+static const char* const kVectorTextDropExts[] = { ".txt" };
+static const VividFileDropHandlerDescriptor kVectorTextDrop[] = {
+    { "VectorText", kVectorTextDropExts, 1, "file", 4, "Render as vector text" }
+};
+VIVID_FILE_DROP(kVectorTextDrop)

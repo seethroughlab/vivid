@@ -242,6 +242,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
             item_box(ui, eb, sty.gpu, eh);
             ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.gpu[0], sty.gpu[1], sty.gpu[2], eh ? 1.0f : 0.85f, sty.fs_label);
         }
+        // ADR-0021/P4: "Presets" — open the node-preset popover (save / recall / delete).
+        {
+            const Rect pb = dock_node_presets_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool ph = hit(pb, mx, my);
+            item_box(ui, pb, sty.gpu, ph);
+            ui.draw_text(pb.x + 7.f, pb.y + 2.f, "Presets", sty.gpu[0], sty.gpu[1], sty.gpu[2], ph ? 1.0f : 0.85f, sty.fs_label);
+        }
         auto* g = w.app->graph;
         const int pc = g->op_param_count_at(selop);
         for (int i = 0; i < pc; ++i) {

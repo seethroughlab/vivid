@@ -5,7 +5,7 @@
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                     // op_registry + op_loaders
-#include "app/edit_gateway.h"            // ADR-0017 note_edit (G1: set_node_param)
+#include "app/node_presets.h"            // ADR-0021/P4: node presets
 
 #include <string>
 #include <vector>
@@ -109,6 +109,47 @@ void register_visuals_handlers(Handlers& handlers_) {
         if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
         c.graph->set_op_file_param_at(idx, local, b.value("value", std::string()));
         json r = ok(); r["value"] = c.graph->op_file_param_at(idx, local); return r;
+    };
+    // ADR-0021/P4 — node presets: named param snapshots per node, distinct from the plugin
+    // list_presets/load_preset flow (that one loads opaque per-instrument binary state).
+    handlers_["save_node_preset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const std::string name = b.value("name", std::string());
+        if (name.empty()) return err(code::kBadArg, "save_node_preset needs a \"name\"");
+        const std::string op_type = c.graph->op_type_at(idx);
+        std::string e2;
+        const std::string path = node_presets::save(op_type, name,
+                                                    node_presets::capture(*c.graph, idx), e2);
+        if (path.empty()) return err(code::kBadArg, e2);
+        json r = ok(); r["op_type"] = op_type; r["name"] = name; r["path"] = path; return r;
+    };
+    handlers_["list_node_presets"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        // Accept either a node_id (use its op type) or an explicit op_type.
+        std::string op_type = b.value("op_type", std::string());
+        if (op_type.empty()) {
+            const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+            if (idx < 0) return err(code::kBadArg, "list_node_presets needs \"op_type\" or a valid \"node_id\"");
+            op_type = c.graph->op_type_at(idx);
+        }
+        json arr = json::array();
+        for (const auto& p : node_presets::list(op_type))
+            arr.push_back({ {"name", p.name}, {"factory", p.factory} });
+        json r = ok(); r["op_type"] = op_type; r["presets"] = arr; return r;
+    };
+    handlers_["load_node_preset"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph || !c.vgraph) return err(code::kNoGraph, "no graph");
+        const int idx = op_index_by_id(c.vgraph, b.value("node_id", -1));
+        if (idx < 0) return err(code::kNotFound, "no node with that node_id");
+        const std::string name = b.value("name", std::string());
+        if (name.empty()) return err(code::kBadArg, "load_node_preset needs a \"name\"");
+        const std::string op_type = c.graph->op_type_at(idx);
+        const json preset = node_presets::load(op_type, name);
+        if (preset.is_null()) return err(code::kNotFound, "no preset '" + name + "' for " + op_type);
+        const int applied = node_presets::apply(*c.graph, idx, preset);
+        json r = ok(); r["applied"] = applied; r["name"] = name; return r;
     };
     handlers_["add_data_node"] = [](const ControlCtx& c, const json& b) {
         if (!c.graph) return err(code::kNoGraph, "no graph");

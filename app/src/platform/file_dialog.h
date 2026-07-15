@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 // Native file chooser (macOS NSOpenPanel/NSSavePanel; a no-op stub returns "" elsewhere).
 // A Vivid project is a folder (or a legacy .json); the open panel allows either. Returns the
@@ -12,6 +13,9 @@ std::string save_project_dialog(const std::string& suggested_name);
 
 // Choose a single existing file (e.g. an image for an Image node). `message` labels the
 // panel. Returns the chosen absolute path, or "" if cancelled / no native dialog.
-std::string open_file_dialog(const std::string& message);
+// `extensions` (lowercased, no dot — e.g. {"png","jpg"}) filters the panel to those types; empty
+// allows any file. (ADR-0021/P3.)
+std::string open_file_dialog(const std::string& message,
+                             const std::vector<std::string>& extensions = {});
 
 }  // namespace vivid::platform

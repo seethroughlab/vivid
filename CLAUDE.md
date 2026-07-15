@@ -13,9 +13,17 @@ track an instrument + FX chain) and a rewireable visuals node-graph — joined b
   - `app/src/cli/control_server.{h,cpp}` — loopback HTTP control server (the MCP backend).
   - `app/src/mapping.h` — the `MappingRegistry` (the bridge); `app/src/persist.*` — session JSON.
 - **`mcp/`** — `vivid_mcp.py`, a FastMCP (stdio) bridge proxying tools to the control server. See `mcp/README.md`.
-- **`docs/decisions/`** — ADRs. Current: **ADR-0010** (PoC promoted to the product seed, accepted) →
-  **ADR-0011** (productization target + the trunk decision).
-- **`docs/roadmap/poc-to-product.md`** — the PoC→product assessment + phased roadmap (P0–P4).
+- **`docs/decisions/`** — ADRs. Strategy: **ADR-0010** (PoC promoted to the product seed) →
+  **ADR-0011** (productization target + the trunk decision). Product surfaces: **ADR-0014** (the
+  visual graph is home), **ADR-0016** (a shader file is an operator). The **platform-gap set**
+  (proposed, 2026-07-14): **ADR-0017** every edit is reversible · **ADR-0018** a bad operator must not
+  cost you your work · **ADR-0019** nothing fails silently · **ADR-0020** the inner loop is visible ·
+  **ADR-0021** content is browsable.
+- **`docs/roadmap/poc-to-product.md`** — the PoC→product assessment + phased roadmap (P0–P4, largely
+  landed).
+- **`docs/roadmap/classic-platform-gap.md`** — the remaining classic→trunk gap: the **product** lift
+  (undo, resilience, error surfaces, the authoring loop, content browsing). The finding: *the trunk
+  has excellent plumbing and almost no presentation.* Read before picking up any of ADR-0017..0021.
 - **`vivid-classic`** (git branch) — the mature predecessor; the engineering benchmark (operator/ABI
   model, codegen, packages, tests/CI, production gate, docs culture). Read via `git show vivid-classic:<path>`.
 

@@ -130,6 +130,12 @@ public:
     void chooser_char(unsigned int c) { chooser_.type(c); }
     void chooser_confirm();                   // spawn the selected entry
 
+    // ADR-0021/P3: create an op node at a screen position (as the chooser does) and, if given,
+    // set the named FILE param to `file_value` (falls back to the node's first FILE param when
+    // `file_param` is empty). Returns the new node index, or -1. Used by the file-drop handler.
+    int drop_spawn(const std::string& op_type, double sx, double sy,
+                   const std::string& file_param, const std::string& file_value);
+
 private:
     static constexpr int kHistN = 64;   // data-node value history (rolling sparkline)
     struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash;

@@ -658,6 +658,25 @@ void NodeGraph::chooser_confirm() {
     if (const Chooser::Entry* e = chooser_.confirm()) chooser_spawn(*e);
 }
 
+int NodeGraph::drop_spawn(const std::string& op_type, double sx, double sy,
+                          const std::string& file_param, const std::string& file_value) {
+    if (!vg_) return -1;
+    const int ni = vg_->add_node(op_type);
+    if (ni < 0) return -1;
+    sync_op_pos();                                // grow op_pos_ for the new node...
+    if (ni < int(op_pos_.size()))                 // ...then place it where the file was dropped
+        op_pos_[ni] = { static_cast<float>(sx) - kCardW * 0.5f, static_cast<float>(sy) - 15.f };
+    // Set the target FILE param by name; if none was named, use the node's first FILE param.
+    int local = -1;
+    for (int l = 0; l < op_param_count_at(ni); ++l) {
+        const char* lbl = op_param_label_at(ni, l);
+        if (!file_param.empty()) { if (lbl && file_param == lbl) { local = l; break; } }
+        else if (op_param_type_at(ni, l) == VIVID_PARAM_FILE) { local = l; break; }
+    }
+    if (local >= 0) set_op_file_param_at(ni, local, file_value);
+    return ni;
+}
+
 void NodeGraph::draw_overlays(Renderer2D& r) { chooser_.draw(r); }
 
 bool NodeGraph::on_down(double x, double y) {
