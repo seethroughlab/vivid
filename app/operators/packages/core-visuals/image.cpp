@@ -60,7 +60,10 @@ struct ImageOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     vivid::Param<vivid::FilePath> path{"file", ""};
 
-    ImageOp() { vivid::description(path, "Image file to load (PNG/JPG/BMP/…)"); }
+    ImageOp() {
+        vivid::description(path, "Image file to load (PNG/JPG/BMP/…)");
+        vivid::asset_kind(path, "image");   // ADR-0021/P3: filters the file dialog / drop targets
+    }
     void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&path); }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
@@ -154,3 +157,10 @@ private:
 };
 
 VIVID_REGISTER(ImageOp)
+
+// ADR-0021/P3: drop a still image onto the graph -> an Image node with its "file" param set.
+static const char* const kImageDropExts[] = { ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".psd" };
+static const VividFileDropHandlerDescriptor kImageDrop[] = {
+    { "Image", kImageDropExts, 7, "file", 10, "Load as an image" }
+};
+VIVID_FILE_DROP(kImageDrop)

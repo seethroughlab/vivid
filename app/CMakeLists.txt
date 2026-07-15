@@ -175,6 +175,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/editor_window.cpp
     src/app/project_io.cpp
     src/app/file_actions.cpp
+    src/app/examples.cpp
+    src/app/node_presets.cpp
+    src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
@@ -187,6 +190,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/shader_op.cpp
     src/gpu/shader_file_op.cpp
     src/gpu/shader_library.cpp
+    src/gpu/file_drop_registry.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/plugin_catalog.cpp
@@ -228,6 +232,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_project.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
+    src/ui/shader_library_view.cpp
+    src/ui/preset_popover.cpp
     src/ui/session_view.cpp
     src/ui/chooser.cpp
     src/ui/node_graph.cpp
@@ -281,6 +287,22 @@ add_custom_target(vivid_shader_library ALL
     COMMENT "Copying the bundled shader library into the app"
     VERBATIM)
 add_dependencies(vivid_shader_library vivid)   # the bundle dir has to exist first
+
+# ADR-0021/P2: the bundled EXAMPLE projects. Each examples/demos/projects/<name>/ is a folder
+# project (project.json + its .glsl); copy the tree into Resources/examples so File > Open Example
+# can list them. Same bundle/non-bundle destination convention as the shader library above.
+if(APPLE)
+    set(_examples_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/examples")
+else()
+    set(_examples_dest "$<TARGET_FILE_DIR:vivid>/examples")
+endif()
+add_custom_target(vivid_examples ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects" "${_examples_dest}"
+    COMMENT "Copying the bundled example projects into the app"
+    VERBATIM)
+add_dependencies(vivid_examples vivid)   # the bundle dir has to exist first
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it

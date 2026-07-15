@@ -9,7 +9,12 @@
 #include "ui/layout.h"
 #include "ui/session_view.h"      // meter_hit
 #include "ui/mapping_overview.h"  // ov_geom, ov_row
+#include "ui/shader_library_view.h"  // shader_view_geom, shader_view_row (ADR-0021/P1)
+#include "ui/preset_popover.h"       // preset_geom + rows (ADR-0021/P4)
 #include "ui/node_graph.h"
+#include "gpu/shader_library.h"     // ShaderLibrary::entries/fork
+#include "app/node_presets.h"       // ADR-0021/P4: capture/save/list/load/remove
+#include "platform/platform.h"      // open_in_editor
 #include "audio/vst3_host.h"
 #include "app/frame.h"   // open_popout / close_popout
 #include "transport.h"   // Transport play/stop (toggle_playing)
@@ -60,7 +65,10 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (vivid::input::editor_key(*win, key, mods)) return;
     if (action != GLFW_PRESS) return;
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
+    if (key == GLFW_KEY_ESCAPE && win->show_shader_library) { win->show_shader_library = false; return; }
+    if (key == GLFW_KEY_ESCAPE && win->show_presets) { win->show_presets = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
+    if (key == GLFW_KEY_L) { win->show_shader_library = !win->show_shader_library; return; }  // shader library (ADR-0021)
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)
     // Tab -> open the chooser at the cursor. It is the ONE way to add a node, in BOTH graphs:
     //   over the visuals column  -> the visuals operator chooser (ADR-0014)
@@ -197,6 +205,72 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->show_mappings = false; return;  // click outside: close
     }
 
+    // Shader library view is modal while open: per-row Open (in editor) / Fork (into the user
+    // tier); click-away closes. (ADR-0021/P1)
+    if (win->show_shader_library && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        const auto& entries = app->shader_library.entries();
+        const auto o = vivid::ui::shader_view_geom(static_cast<int>(entries.size()), win->win_w);
+        if (mx >= o.px && mx < o.px + o.w && my >= o.py && my < o.py + o.h) {
+            for (int i = 0; i < o.vis; ++i) {
+                const float ry = o.py + o.hdr + i * o.rowh;
+                if (my < ry || my >= ry + o.rowh) continue;
+                const auto rc = vivid::ui::shader_view_row(o.px, o.w, ry);
+                const auto& e = entries[i];
+                if (hit(rc.open, mx, my)) { if (!e.path.empty()) vivid::platform::open_in_editor(e.path); return; }
+                if (hit(rc.fork, mx, my) && e.registered && app->vgraph) {
+                    auto& reg = app->op_registry;
+                    const std::string nn = vivid::ui::shader_fork_name(
+                        e.name, [&](const std::string& c) { return reg.has(c); });
+                    std::string err;
+                    if (app->shader_library.fork(e.name, nn, reg, err).empty())
+                        std::fprintf(stderr, "[vivid] fork shader '%s' failed: %s\n", e.name.c_str(), err.c_str());
+                    return;
+                }
+                break;
+            }
+            return;  // click inside the panel: consume
+        }
+        win->show_shader_library = false; return;  // click outside: close
+    }
+
+    // Node-preset popover is modal while open: Save current / recall a row / delete a user preset;
+    // click-away closes. (ADR-0021/P4)
+    if (win->show_presets && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph) {
+        const int node = win->presets_node;
+        if (node < 0) { win->show_presets = false; return; }
+        const std::string op_type = app->graph->op_type_at(node);
+        auto presets = vivid::node_presets::list(op_type);
+        const auto o = vivid::ui::preset_geom(static_cast<int>(presets.size()), win->win_w);
+        if (mx >= o.px && mx < o.px + o.w && my >= o.py && my < o.py + o.h) {
+            // Save current params under the next free "preset N".
+            const Rect sv = vivid::ui::preset_save_row(o.px, o.py, o.w, o.hdr, o.rowh);
+            if (hit(sv, mx, my)) {
+                int k = 1; std::string name;
+                do { name = "preset " + std::to_string(k++); }
+                while (std::any_of(presets.begin(), presets.end(),
+                                   [&](const vivid::node_presets::PresetInfo& p) { return p.name == name; }));
+                std::string err;
+                if (vivid::node_presets::save(op_type, name,
+                                              vivid::node_presets::capture(*app->graph, node), err).empty())
+                    std::fprintf(stderr, "[vivid] save preset failed: %s\n", err.c_str());
+                return;
+            }
+            for (int i = 0; i < o.vis; ++i) {
+                const Rect row = vivid::ui::preset_list_row(o.px, o.py, o.w, o.hdr, o.rowh, i);
+                if (my < row.y || my >= row.y + row.h) continue;
+                const auto& p = presets[i];
+                if (!p.factory && hit(vivid::ui::preset_del_rect(row), mx, my)) {
+                    vivid::node_presets::remove(op_type, p.name); return;   // delete a user preset
+                }
+                const auto preset = vivid::node_presets::load(op_type, p.name);   // recall
+                if (!preset.is_null()) vivid::node_presets::apply(*app->graph, node, preset);
+                return;
+            }
+            return;  // click inside the panel: consume
+        }
+        win->show_presets = false; return;  // click outside: close
+    }
+
     // Clip editor (non-modal): presses inside route to it; a release ends any editor drag.
     if (vivid::input::editor_mouse(*win, button, action, mx, my, mods)) return;
 
@@ -268,6 +342,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
             && hit(vivid::ui::dock_op_editor_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
             win->show_op_editor = true; return;
         }
+        // ADR-0021/P4: "Presets" button → open the node-preset popover for this node.
+        if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS
+            && hit(vivid::ui::dock_node_presets_button_rect(win->win_w, win->win_h, win->dock_h), mx, my)) {
+            win->show_presets = true; win->presets_node = win->focus.node; return;
+        }
     }
     // UI-4b: the operator editor owns the dock while drilled in. Close × returns to the node
     // inspector; every other press is consumed here (the editor self-edits from the live mouse
@@ -296,10 +375,44 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 }  // namespace
 
 namespace vivid {
+// ADR-0021/P3: OS file drop. Dropping a file onto the visuals graph creates the operator that
+// handles its extension (highest-priority match) with its FILE param set to the dropped path.
+// The app installed no drop callback before this.
+void drop_callback(GLFWwindow* w, int count, const char** paths) {
+    auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
+    if (!win || !win->app || !win->app->graph || count <= 0 || !paths) return;
+    App* app = win->app;
+    double mx, my; glfwGetCursorPos(w, &mx, &my);
+    // Only over the visuals column (same region the Tab chooser uses); ignore drops on the DAW.
+    if (!(mx >= win->split_x && my >= vivid::ui::kTopBarH && my < win->dock_top())) return;
+
+    int placed = 0, unhandled = 0;
+    for (int i = 0; i < count; ++i) {
+        const std::string path = paths[i] ? paths[i] : "";
+        if (path.empty()) continue;
+        auto matches = app->file_drops.matches_for_path(path);
+        if (matches.empty()) {
+            ++unhandled;
+            std::fprintf(stderr, "[vivid] drop: nothing handles '%s'\n", path.c_str());
+            continue;
+        }
+        // v1: create the highest-priority handler. (Offering the lower-priority alternatives via
+        // the Tab chooser is a deferred refinement — noted, not silently dropped.)
+        const auto& m = matches.front();
+        app->graph->drop_spawn(m.op_type, mx + placed * 24.0, my + placed * 24.0, m.file_param, path);
+        if (matches.size() > 1)
+            std::fprintf(stderr, "[vivid] drop '%s' -> %s (also handled by %zu other op(s))\n",
+                         path.c_str(), m.op_type.c_str(), matches.size() - 1);
+        ++placed;
+    }
+    (void)unhandled;
+}
+
 void install_input_callbacks(GLFWwindow* w) {
     glfwSetKeyCallback(w, key_callback);
     glfwSetCharCallback(w, char_callback);
     glfwSetMouseButtonCallback(w, mouse_button_callback);
     glfwSetScrollCallback(w, scroll_callback);
+    glfwSetDropCallback(w, drop_callback);
 }
 }  // namespace vivid

@@ -55,6 +55,8 @@ struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> r{"r", 1.f, 0.f, 1.f}, g{"g", 1.f, 0.f, 1.f}, b{"b", 1.f, 0.f, 1.f}, a{"a", 1.f, 0.f, 1.f};
     vivid::Param<vivid::FilePath> file{"file", ""};   // .txt whose contents are the string
 
+    TextOp() { vivid::asset_kind(file, "text"); }   // ADR-0021/P3: dialog/drop filter
+
     std::string loaded_path_ = "\x01", text_, baked_text_ = "\x01";
     vivid::FtFont font_; bool font_tried_ = false;
     bool tried_ = false;
@@ -195,3 +197,10 @@ struct TextOp : vivid::OperatorBase, vivid::GpuProcessable {
 };
 
 VIVID_REGISTER(TextOp)
+
+// ADR-0021/P3: drop a .txt onto the graph -> a Text node reading it.
+static const char* const kTextDropExts[] = { ".txt" };
+static const VividFileDropHandlerDescriptor kTextDrop[] = {
+    { "Text", kTextDropExts, 1, "file", 5, "Render as text" }
+};
+VIVID_FILE_DROP(kTextDrop)
