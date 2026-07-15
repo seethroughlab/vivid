@@ -276,6 +276,9 @@ int main(int argc, char** argv) {
         ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
         ma.open_recent     = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
+        // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
+        ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
+        ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
     }

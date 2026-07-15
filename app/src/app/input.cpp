@@ -60,6 +60,16 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     // / tool). Unhandled keys fall through to the global shortcuts below.
     if (vivid::input::editor_key(*win, key, mods)) return;
     if (action != GLFW_PRESS) return;
+    // ADR-0017/G4: app-level undo/redo. editor_key ran first, so a focused clip editor keeps its own
+    // note-undo; otherwise Cmd+Z undoes the document. Cmd+Shift+Z (mac) / Cmd+Y (win-style) redo.
+    if ((mods & GLFW_MOD_SUPER) && key == GLFW_KEY_Z) {
+        if (app->edit_gateway) { if (mods & GLFW_MOD_SHIFT) app->edit_gateway->redo(); else app->edit_gateway->undo(); }
+        return;
+    }
+    if ((mods & GLFW_MOD_SUPER) && key == GLFW_KEY_Y) {
+        if (app->edit_gateway) app->edit_gateway->redo();
+        return;
+    }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)

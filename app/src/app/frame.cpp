@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
+#include "platform/menu_bar.h"  // ADR-0017/G4 set_edit_labels
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
@@ -380,6 +381,7 @@ void run_frame_loop(App& app, Window& win) {
         return !glfwWindowShouldClose(window);
     };
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
+    unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
@@ -569,6 +571,12 @@ void run_frame_loop(App& app, Window& win) {
             if (!win.mouse_left_down) app.edit_gateway->close_open_group();
             app.edit_gateway->commit_frame();   // take the frame's deferred snapshot, post-draw/settle
             app.edit_gateway->end_frame_audit();
+            // G4: keep the Edit > Undo/Redo titles + enabled state in sync with the history.
+            if (app.edit_gateway->revision() != last_undo_rev) {
+                last_undo_rev = app.edit_gateway->revision();
+                vivid::platform::set_edit_labels(app.edit_gateway->undo_label(), app.edit_gateway->redo_label(),
+                                                 app.edit_gateway->can_undo(), app.edit_gateway->can_redo());
+            }
         }
         return true;
     };

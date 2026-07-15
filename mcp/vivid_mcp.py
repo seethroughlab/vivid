@@ -144,6 +144,20 @@ def layout_graph() -> dict:
 
 
 @mcp.tool
+def undo() -> dict:
+    """Undo the last document edit (ADR-0017). One app-wide history covers the visual graph + the
+    mapping bridge (audio-session edits land in a later phase); performance actions (play/launch/arm)
+    are not undoable. Returns {did, can_undo, can_redo, undo_label, redo_label}."""
+    return _post("undo")
+
+
+@mcp.tool
+def redo() -> dict:
+    """Redo the edit most recently undone. Returns {did, can_undo, can_redo, undo_label, redo_label}."""
+    return _post("redo")
+
+
+@mcp.tool
 def get_mappings() -> dict:
     """All bridge mappings: [{src, dst, amount, curve, invert, lo, hi}]."""
     return _post("get_mappings")
