@@ -507,7 +507,7 @@ void run_frame_loop(App& app, Window& win) {
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
-            draw_add_param_menu(ui, win);   // Phase 2b: curated-inspector "+ Add param" picker
+            win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);

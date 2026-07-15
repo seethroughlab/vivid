@@ -23,8 +23,6 @@ void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
 void draw_node_menu(Renderer2D& ui, const Window& w);   // right-click op-node menu (open source / clone)
-void draw_add_param_menu(Renderer2D& ui, const Window& w);   // Phase 2b: curated-inspector "+ Add param" picker
-int  add_param_menu_pick(const Window& w, double mx, double my);   // the param index clicked in that picker, or -1
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
 int meter_hit(int tracks, int scenes, double mx, double my);

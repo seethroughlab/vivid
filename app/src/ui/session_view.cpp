@@ -635,54 +635,6 @@ void draw_map_menu(Renderer2D& ui, const CtxMenu& m) {
     }
 }
 
-// Curated inspector (Phase 2b): the "+ Add param" picker — a popup list of the selected plugin
-// node's UNPINNED params. Draw + hit-test share the geometry below so their rows always match.
-// (Phase 2c adds a search field over this same list.)
-namespace {
-constexpr float kAddMenuW = 232.f, kAddMenuRowH = 22.f;
-constexpr int   kAddMenuMaxRows = 12;
-std::vector<int> add_param_items(const Window& w) {
-    std::vector<int> items;
-    if (!w.app || !w.app->session || w.add_param_menu.node < 0) return items;
-    const int tr = std::min(std::max(w.sel_track, 0), vivid::session::session_track_count(w.app->session) - 1);
-    const int pc = vivid::session::session_audio_graph_node_param_count(w.app->session, tr, w.add_param_menu.node);
-    for (int p = 0; p < pc && static_cast<int>(items.size()) < kAddMenuMaxRows; ++p)
-        if (!vivid::session::session_audio_graph_node_param_is_pinned(w.app->session, tr, w.add_param_menu.node, p))
-            items.push_back(p);
-    return items;
-}
-}  // namespace
-
-void draw_add_param_menu(Renderer2D& ui, const Window& w) {
-    const auto& m = w.add_param_menu;
-    if (!m.open || !w.app || !w.app->session) return;
-    const Style& sty = style();
-    const int tr = std::min(std::max(w.sel_track, 0), vivid::session::session_track_count(w.app->session) - 1);
-    const std::vector<int> items = add_param_items(w);
-    const int n = static_cast<int>(items.size());
-    overlay_panel(ui, { m.x, m.y - 22.f, kAddMenuW, 22.f + std::max(1, n) * kAddMenuRowH }, "add param:", sty.audio);
-    if (n == 0) {
-        ui.draw_text(m.x + 10.f, m.y + 5.f, "all params pinned", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.8f);
-        return;
-    }
-    for (int j = 0; j < n; ++j) {
-        const float iy = m.y + j * kAddMenuRowH;
-        item_box(ui, { m.x, iy, kAddMenuW, kAddMenuRowH }, sty.audio);
-        const char* nm = vivid::session::session_audio_graph_node_param_name(w.app->session, tr, m.node, items[j]);
-        ui.draw_text(m.x + 10.f, iy + 4.f, fit_text(ui, nm ? nm : "", kAddMenuW - 20.f, sty.fs_label).c_str(),
-                     sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-    }
-}
-
-int add_param_menu_pick(const Window& w, double mx, double my) {
-    if (!w.add_param_menu.open) return -1;
-    const std::vector<int> items = add_param_items(w);
-    for (int j = 0; j < static_cast<int>(items.size()); ++j)
-        if (hit(Rect{ w.add_param_menu.x, w.add_param_menu.y + j * kAddMenuRowH, kAddMenuW, kAddMenuRowH }, mx, my))
-            return items[j];
-    return -1;
-}
-
 // The characteristic context menu (the bridge entry point).
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track) {
     if (!m.open) return;

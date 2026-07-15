@@ -106,10 +106,6 @@ struct Window {
     // Curated inspector (Phase 2b): a pinned slider row drags HORIZONTALLY (absolute position),
     // vs the knob strip's vertical delta. When set, the drag maps mx into [rx, rx+rw].
     bool    ag_param_horiz = false; float ag_param_rx = 0.f, ag_param_rw = 1.f;
-    // The "+ Add param" picker for the curated inspector: a popup list of the node's unpinned
-    // params. `node` = the audio node it curates; `query` (Phase 2c) filters the list.
-    struct AddParamMenu { bool open = false; float x = 0.f, y = 0.f; int node = -1; };
-    AddParamMenu add_param_menu;
     // Dragging a source node's key-range handle (a key-split): 0 = lo, 1 = hi, -1 = none.
     int     ag_key_drag    = -1;
     int     ag_key_v0      = 0; double ag_key_y0 = 0.0;
@@ -146,6 +142,11 @@ struct Window {
     ui::Chooser audio_chooser;
     // "+ Track" opens the same chooser filtered to instruments; the pick creates the track first.
     bool audio_chooser_new_track = false;
+    // Phase 2c: the curated inspector's "+ Add param" picker — the same palette (type-to-filter +
+    // scroll) as Tab-to-add, its entries = the selected plugin node's UNPINNED params. On confirm it
+    // pins the chosen param. `param_chooser_node` is which node it curates.
+    ui::Chooser param_chooser;
+    int  param_chooser_node = -1;
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).
     int     plugin_drag_i = -1; bool plugin_dragging = false;

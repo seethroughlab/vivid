@@ -125,6 +125,62 @@ bool audio_chooser_click(Window& win, App& app, double mx, double my) {
     return true;
 }
 
+// --- Phase 2c: the curated inspector's "+ Add param" palette (the Tab chooser, reused). Its entries
+// are the selected plugin node's UNPINNED params; each carries its param index in `tag`. ---
+void param_chooser_open(Window& win, App& app, int node, double mx, double my) {
+    const int tr = audio_graph_track(win, app);
+    if (tr < 0 || node < 0) return;
+    std::vector<vivid::ui::ChooserEntry> entries;
+    const int pc = S::session_audio_graph_node_param_count(app.session, tr, node);
+    for (int p = 0; p < pc; ++p) {
+        if (S::session_audio_graph_node_param_is_pinned(app.session, tr, node, p)) continue;
+        vivid::ui::ChooserEntry e;
+        e.label = S::session_audio_graph_node_param_name(app.session, tr, node, p);
+        e.tag   = p;   // the param index — read back on confirm to pin it
+        if (const char* d = S::session_audio_graph_node_param_display(app.session, tr, node, p); d && *d) e.summary = d;
+        entries.push_back(std::move(e));
+    }
+    win.param_chooser_node = node;
+    win.param_chooser.set_entries(std::move(entries));
+    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    win.param_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
+                           static_cast<float>(win.win_w) - 8.f, gp.y + gp.h);
+}
+
+// Pin the chosen param, then close (reopen the palette to add another).
+static void param_chooser_pin(Window& win, App& app, const vivid::ui::ChooserEntry& e) {
+    const int tr = audio_graph_track(win, app);
+    if (tr >= 0) S::session_audio_graph_node_param_pin(app.session, tr, win.param_chooser_node, e.tag);
+    win.param_chooser.hide();
+}
+
+bool param_chooser_key(Window& win, App& app, int key) {
+    if (!win.param_chooser.open()) return false;
+    if (key == GLFW_KEY_ESCAPE) { win.param_chooser.hide(); return true; }
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (const auto* e = win.param_chooser.confirm()) param_chooser_pin(win, app, *e);
+        return true;
+    }
+    if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) { win.param_chooser.move(+1); return true; }
+    if (key == GLFW_KEY_UP)        { win.param_chooser.move(-1); return true; }
+    if (key == GLFW_KEY_BACKSPACE) { win.param_chooser.backspace(); return true; }
+    return true;
+}
+
+bool param_chooser_char(Window& win, unsigned int cp) {
+    if (!win.param_chooser.open()) return false;
+    win.param_chooser.type(cp);
+    return true;
+}
+
+bool param_chooser_click(Window& win, App& app, double mx, double my) {
+    if (!win.param_chooser.open()) return false;
+    bool dismissed = false;
+    if (const auto* e = win.param_chooser.click(mx, my, dismissed)) param_chooser_pin(win, app, *e);
+    else if (dismissed) win.param_chooser.hide();
+    return true;
+}
+
 // Scroll-wheel zoom for whichever graph is under the cursor: the visuals node graph (when the
 // graph deep-view is revealed, right of the splitter) and/or the audio-graph deep-view (2i, zoom
 // around the cursor). Neither "consumes" the scroll (matches the original fall-through order), so
@@ -185,19 +241,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     }
     // Curated inspector (Phase 2b): a plugin node's pinned params are vertical rows, not a knob grid.
     if (win.sel_audio_node >= 0 && ag.is_plugin_node(win.sel_audio_node)) {
-        if (hit(ag.add_param_button_rect(win.sel_audio_node), mx, my)) {   // open the "+ Add param" picker
-            // The button sits at the dock's bottom edge, so the picker opens UPWARD (grows above the
-            // click) and is clamped fully on-screen — the same treatment as the map-source picker.
-            const float menu_w = 232.f, row_h = 22.f, marg = 8.f;
-            const int pc = S::session_audio_graph_node_param_count(app.session, tr, win.sel_audio_node);
-            int unp = 0;
-            for (int p = 0; p < pc && unp < 12; ++p)
-                if (!S::session_audio_graph_node_param_is_pinned(app.session, tr, win.sel_audio_node, p)) ++unp;
-            const float menu_rows = static_cast<float>(std::max(1, unp)) * row_h;
-            const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
-            const float fy = std::clamp(static_cast<float>(my) - menu_rows - 8.f,
-                                        marg + 22.f, win.win_h - menu_rows - marg);
-            win.add_param_menu = { true, fx, fy, win.sel_audio_node };
+        if (hit(ag.add_param_button_rect(win.sel_audio_node), mx, my)) {   // open the searchable "+ Add param" palette
+            param_chooser_open(win, app, win.sel_audio_node, mx, my);
             return true;
         }
         for (const auto& row : ag.pinned_rows(win.sel_audio_node)) {

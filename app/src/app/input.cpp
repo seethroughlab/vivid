@@ -51,6 +51,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::audio_chooser_key(*win, *app, key);
         return;
     }
+    // Phase 2c: the curated inspector's "+ Add param" palette owns the keyboard while open.
+    if (win->param_chooser.open()) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::param_chooser_key(*win, *app, key);
+        return;
+    }
     // Musical typing (M6.2) — the ` toggle + note/octave/velocity keys. Runs before the PRESS-only
     // gate below because note-off needs the RELEASE event; unhandled keys fall through.
     if (vivid::input::typing_key(*win, *app, key, action)) return;
@@ -94,6 +99,7 @@ void char_callback(GLFWwindow* w, unsigned int cp) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     if (vivid::input::audio_chooser_char(*win, cp)) return;    // the audio chooser has the keyboard
+    if (vivid::input::param_chooser_char(*win, cp)) return;    // ...or the "+ Add param" palette (Phase 2c)
     if (win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
 }
 
@@ -130,6 +136,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // The audio Tab chooser, while open, is modal: it owns the next click (pick a row / dismiss).
     if (win->audio_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         if (vivid::input::audio_chooser_click(*win, *app, mx, my)) return;
+    }
+    // The "+ Add param" palette is modal the same way (Phase 2c).
+    if (win->param_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (vivid::input::param_chooser_click(*win, *app, mx, my)) return;
     }
     // Top transport bar: play/pause + record + metronome (M6).
     if (vivid::input::transport_mouse(*win, *app, button, action, mx, my)) return;

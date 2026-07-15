@@ -48,13 +48,6 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
 // The mapping-source picker (the bridge return path) — the only dock menu left. The "+ FX"/"+ Src"
 // pickers and the "+ Track" instrument menu are gone: adding anything is the Tab chooser now.
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
-    if (win.add_param_menu.open) {   // Phase 2b: "+ Add param" picker — pin the clicked param, then close
-        const int tr = std::min(std::max(win.sel_track, 0), tracks - 1);
-        const int p = add_param_menu_pick(win, mx, my);
-        if (p >= 0) S::session_audio_graph_node_param_pin(app.session, tr, win.add_param_menu.node, p);
-        win.add_param_menu.open = false;
-        return true;
-    }
     if (win.map_menu.open) {
         const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
         const DevSlot seldev = dock_resolve(app.session, seltr, std::max(0, win.sel_device));
