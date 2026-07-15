@@ -356,6 +356,15 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
         char ah[80]; std::snprintf(ah, sizeof ah, "AUDIO GRAPH \xC2\xB7 %.40s", vivid::session::session_track_name(s, tr));
         section_header(ui, 12.f, y0 + 7.f, ah, sty.audio);
+        // "Editor" button: opens the selected VST3 node's own native plugin window (its full param
+        // surface). Shown only when the node exposes a plugin editor controller. Double-click still works.
+        if (w.sel_audio_node >= 0
+            && vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node)) {
+            const Rect eb = dock_audio_editor_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool eh = hit(eb, mx, my);
+            item_box(ui, eb, sty.audio, eh);
+            ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);
+        }
         AudioNodeGraph ag;
         ag.set_source(s, tr);
         const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);

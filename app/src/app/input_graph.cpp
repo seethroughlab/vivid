@@ -162,6 +162,17 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
     ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
+    // "Editor" button in the dock header → open the selected VST3 node's native plugin window (its
+    // full param surface). Mirrors the node double-click open path; shown only when it has a controller.
+    if (win.sel_audio_node >= 0
+        && hit(vivid::ui::dock_audio_editor_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+        if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                S::session_audio_graph_node_controller(app.session, tr, win.sel_audio_node))) {
+            int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
+            if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
+        }
+        return true;
+    }
     // (The "+ Src" / "+ FX" buttons are gone: they could only ever offer NATIVE ops — plugins were
     // structurally excluded — so no surface could add everything. Tab is now the one add path, over
     // the unified catalog. See audio_chooser_open_at below.)
