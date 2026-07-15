@@ -1,6 +1,7 @@
 #include "app/frame.h"
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
@@ -377,6 +378,7 @@ void run_frame_loop(App& app, Window& win) {
         glfwPollEvents();
         return !glfwWindowShouldClose(window);
     };
+    bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
@@ -555,6 +557,13 @@ void run_frame_loop(App& app, Window& win) {
         }
         if (win.editor_win) {
             if (!win.editor_win->render(app)) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }
+        }
+        // ADR-0017: seed the undo baseline at the end of the FIRST tick, once the graph has laid out
+        // (a pre-loop baseline would capture pre-layout node positions). Then the end-of-frame audit
+        // (a no-op unless built with VIVID_UNDO_AUDIT) checks nothing bypassed the gateway.
+        if (app.edit_gateway) {
+            if (!undo_baseline_seeded) { app.edit_gateway->reset_baseline(); undo_baseline_seeded = true; }
+            app.edit_gateway->end_frame_audit();
         }
         return true;
     };

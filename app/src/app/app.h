@@ -15,6 +15,7 @@ class GpuContext;
 class VisualGraph;
 class ControlServer;
 class TextureSource;
+class EditGateway;
 namespace ui { class NodeGraph; }
 }
 namespace vivid::session { struct Session; }
@@ -34,6 +35,7 @@ struct App {
     vivid::session::Session* session   = nullptr;   // audio session (or null -> test tone)
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server
+    EditGateway*        edit_gateway = nullptr; // ADR-0017 undo/redo command sink (a main.cpp local)
     TextureSource*      srcTex    = nullptr;   // shared visuals source texture
     OpRegistry          op_registry;           // built-in + loaded operators
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the

@@ -309,6 +309,12 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
 
 bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h) {
+    return session_from_json_scoped(j, s, g, win_w, win_h, split_x, dock_h, RestoreAudio::Full);
+}
+
+bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
+                              int& win_w, int& win_h, float& split_x, float& dock_h,
+                              RestoreAudio audio) {
     if (!s) return false;
 
     // Version guard: refuse a session written by a NEWER Vivid rather than silently
@@ -320,9 +326,14 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
         return false;
     }
 
+    // ADR-0017: an undo whose target has the SAME audio tracks as the current state passes
+    // RestoreAudio::Skip — we rebuild only the visual graph/mappings/pool below and never touch
+    // the (plugin-instantiating) track path. (ParamsOnly is treated as Full until G3.)
+    const bool restore_audio = (audio != RestoreAudio::Skip);
+
     // v2+: rebuild the track set from the document before restoring per-track state.
     // (v1 files keep the pre-built role set and restore onto it by index — migration.)
-    if (file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
+    if (restore_audio && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
         rebuild_tracks_from_doc(s, j["tracks"]);
 
     if (j.contains("window")) {
@@ -332,7 +343,7 @@ bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::Nod
         dock_h  = j["window"].value("dock", dock_h);
     }
 
-    if (j.contains("tracks")) {
+    if (restore_audio && j.contains("tracks")) {
         const int nt = vivid::session::session_track_count(s);
         const json& T = j["tracks"];
         for (int t = 0; t < nt && t < static_cast<int>(T.size()); ++t) {

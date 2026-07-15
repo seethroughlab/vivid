@@ -22,6 +22,9 @@ option(VIVID_BUILD_APP   "Build the GUI/GPU/audio app (heavy deps; macOS)" ON)
 option(VIVID_BUILD_TESTS "Build the headless test suite (cheap, portable)"  ON)
 option(VIVID_SANITIZE        "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 option(VIVID_SANITIZE_THREAD "Enable ThreadSanitizer (mutually exclusive with VIVID_SANITIZE)" OFF)
+# ADR-0017: the undo completeness guard — asserts (each frame) that no document edit bypassed the
+# EditGateway. On for dev/CI audit builds; off in release (it re-serializes the session per frame).
+option(VIVID_UNDO_AUDIT      "Assert every document mutation routes through the edit gateway" OFF)
 
 if(VIVID_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls)
@@ -30,6 +33,9 @@ endif()
 if(VIVID_SANITIZE_THREAD)
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
     add_link_options(-fsanitize=thread)
+endif()
+if(VIVID_UNDO_AUDIT)
+    add_compile_definitions(VIVID_UNDO_AUDIT)
 endif()
 
 # nlohmann/json is header-only and shared by the app AND the headless tests
@@ -164,6 +170,8 @@ FetchContent_MakeAvailable(freetype)
 add_executable(vivid MACOSX_BUNDLE
     src/main.cpp
     src/app/app.cpp
+    src/app/undo_manager.cpp
+    src/app/edit_gateway.cpp
     src/app/input.cpp
     src/app/input_typing.cpp
     src/app/input_transport.cpp
@@ -208,6 +216,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/menu_bar_stub.cpp
     src/platform/midi_input_stub.cpp
     src/persist.cpp
+    src/persist_undo.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/operator_api/shader_meta.cpp
     src/gpu/op_runtime.cpp
@@ -226,6 +235,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_visuals.cpp
     src/cli/control_handlers_audio.cpp
     src/cli/control_handlers_project.cpp
+    src/cli/control_handlers_edit.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
     src/ui/session_view.cpp

@@ -5,6 +5,7 @@
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                     // op_registry + op_loaders
+#include "app/edit_gateway.h"            // ADR-0017 note_edit (G1: set_node_param)
 
 #include <string>
 #include <vector>
@@ -94,6 +95,11 @@ void register_visuals_handlers(Handlers& handlers_) {
             if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
         if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
         c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
+        // ADR-0017/G1: route this edit through the gateway (the first wired path). Coalesce a rapid
+        // run of sets to the SAME node param into one undo entry.
+        if (c.app && c.app->edit_gateway)
+            c.app->edit_gateway->note_edit("Change " + name,
+                                           "param:" + std::to_string(b.value("node_id", -1)) + "/" + name);
         return ok();
     };
     // Set a FILE/TEXT param's string value (e.g. an Image node's file path).

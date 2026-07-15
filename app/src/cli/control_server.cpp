@@ -89,6 +89,8 @@ void ControlServer::register_handlers() {
     register_audio_handlers(handlers_);   // ---- audio authoring + clip pool + native ops + graph ----
 
     register_project_handlers(handlers_);   // ---- session author / persist + project workflow ----
+
+    register_edit_handlers(handlers_);   // ---- ADR-0017 undo/redo ----
 }
 
 }  // namespace vivid

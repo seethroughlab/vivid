@@ -21,6 +21,13 @@ function(vivid_add_test name)
 endfunction()
 
 vivid_add_test(test_mapping)
+vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
+target_sources(test_undo_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/undo_manager.cpp)
+vivid_add_test(test_undo_projection)  # ADR-0017/G1 canonical projection + audio tiering (pure)
+target_sources(test_undo_projection PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/persist_undo.cpp)
+target_link_libraries(test_undo_projection PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enum -> widget)
 vivid_add_test(test_note_ops)       # pure MIDI note-list transforms (midi/note_ops.h)
 vivid_add_test(test_expr_curve)     # M3 per-note expression curve + scheduler emission
