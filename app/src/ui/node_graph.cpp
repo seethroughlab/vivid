@@ -246,14 +246,15 @@ int NodeGraph::nearest_op_out(double x, double y, double maxd) const {
 }
 
 void NodeGraph::set_bounds(float x0, float y0, float x1, float y1) {
-    if (bounds_init_) {
-        const float ddx = x0 - bx0_;
-        if (ddx != 0.f) { for (auto& n : data_) n.x += ddx; for (auto& p : op_pos_) p.first += ddx; }
-    }
     bx0_ = x0; by0_ = y0; bx1_ = x1; by1_ = y1; bounds_init_ = true;
-    // No per-node clamp (pannable canvas); the splitter shift above keeps nodes
-    // following the pane's left edge, and the clip-rect contains the drawing.
+    // Bounds only record the node-layout / hit-test region — they never move nodes.
+    // Nodes live in world space (pannable canvas) and the clip-rect contains the drawing,
+    // so resizing the splitter changes the visible pane without dragging the graph content.
     sync_op_pos();
+}
+
+void NodeGraph::set_frame(float x0, float y0, float x1, float y1) {
+    fx0_ = x0; fy0_ = y0; fx1_ = x1; fy1_ = y1;   // the full visuals-column rect (grid + clip reach the edges)
 }
 
 void NodeGraph::set_value(int char_id, float v) {
@@ -465,14 +466,14 @@ bool NodeGraph::in_rect(float rx, float ry, float rw, float rh, double x, double
 void NodeGraph::draw(Renderer2D& r) {
     const Style& sty = style();
     sync_op_pos();
-    r.push_clip_rect(bx0_ - 6.f, by0_ - 8.f, (bx1_ - bx0_) + 12.f, (by1_ - by0_) + 18.f);
+    r.push_clip_rect(fx0_, fy0_, fx1_ - fx0_, fy1_ - fy0_);   // clip to the full visuals column
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
     r.set_transform(view_ox_, view_oy_, view_scale_);
-    // grid: cover the visible world region (shared substrate)
+    // grid: cover the full visuals column (shared substrate), edge to edge
     { const NodeView v{ view_ox_, view_oy_, view_scale_ };
-      node_grid(r, v, bx0_ - 6.f, by0_ - 6.f, bx1_ + 6.f, by1_ + 6.f); }
+      node_grid(r, v, fx0_, fy0_, fx1_, fy1_); }
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input); one per connected texture input port.

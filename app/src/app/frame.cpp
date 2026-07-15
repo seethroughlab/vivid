@@ -454,7 +454,13 @@ void run_frame_loop(App& app, Window& win) {
             // ADR-0014: the visuals node graph IS the visual zone — it owns the whole right column,
             // always drawn, no reveal toggle.
             { const Rect g = win.visuals_panel();
-              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);
+              graph.set_bounds(g.x + 8.f, g.y + 26.f, g.x + g.w - 8.f, g.y + g.h - 8.f);  // inset node-layout bounds
+              // Grid + clip fill the whole right column edge-to-edge. visuals_panel is inset by
+              // kPaneMargin on every side, so expand back out to the true column (transport->dock,
+              // split->window edge). The left stops just clear of the splitter strip (split_x+3) so
+              // the grid doesn't paint over the divider — the graph draws after the splitter.
+              const float m = ui::kPaneMargin;
+              graph.set_frame(g.x - m + 3.f, g.y - m, g.x + g.w + m, g.y + g.h + m);
               graph.draw(ui); }   // includes live node thumbnails via draw_texture
             // UI-1: recompute the detail region's explicit focus — the single source of truth
             // for what the bottom region shows + its domain — replacing the old implicit race
