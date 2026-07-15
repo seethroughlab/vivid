@@ -185,8 +185,10 @@ static void param_chooser_confirm(Window& win, App& app, const vivid::ui::Choose
             const float mx = S::session_audio_graph_node_param_max(app.session, tr, win.param_chooser_node, win.param_chooser_param);
             const float v = (cc > 1) ? mn + static_cast<float>(e.tag) / static_cast<float>(cc - 1) * (mx - mn) : mn;
             S::session_audio_graph_node_param_set(app.session, tr, win.param_chooser_node, win.param_chooser_param, v);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "");   // ADR-0017/G3
         } else {                                // add (pin) param e.tag
             S::session_audio_graph_node_param_pin(app.session, tr, win.param_chooser_node, e.tag);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Pin Param", "");   // ADR-0017/G3
         }
     }
     win.param_chooser.hide();
@@ -295,6 +297,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
             }
             if (hit(row.remove, mx, my)) {   // × → unpin (remove from the curated set)
                 S::session_audio_graph_node_param_unpin(app.session, tr, win.sel_audio_node, row.index);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Unpin Param", "");   // ADR-0017/G3
                 return true;
             }
             if (hit(row.row, mx, my)) {
@@ -305,6 +308,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 if (wk == vivid::ui::NodeWidget::Toggle) {   // click flips
                     const float mid = mn + (mxx - mn) * 0.5f;
                     S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, v > mid ? mn : mxx);
+                    if (app.edit_gateway) app.edit_gateway->note_edit("Toggle Param", "");   // ADR-0017/G3
                     return true;
                 }
                 if (wk == vivid::ui::NodeWidget::Enum) {   // open the choice list (a real dropdown, not click-cycle)
@@ -356,6 +360,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
             const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, cp.index);
             const float next = (v >= mxx - 0.5f) ? mn : v + 1.f;   // integer enum step, wrap at max
             S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, cp.index, next);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "");   // ADR-0017/G3
             return true;
         }
     }
