@@ -54,6 +54,9 @@ struct AudioGraphNode {
     // is false until the user drags it / a session restores it — until then the editor auto-lays out.
     float       ui_x = 0.f, ui_y = 0.f;
     bool        positioned = false;
+    // Curated inspector (pure curation): the UI-chosen subset of this node's params to surface,
+    // by param index, in add order. UI thread only; persisted. Empty = nothing pinned yet.
+    std::vector<int> pinned_params;
 };
 
 struct AudioGraphEdge {
@@ -134,6 +137,12 @@ public:
     // false when the node is absent or has never been placed (→ the editor auto-lays it out).
     void set_node_pos(int id, float x, float y);
     bool node_pos(int id, float& x, float& y) const;
+    // Curated inspector param set (pure curation; UI thread; persisted). pin is idempotent and
+    // preserves add order; node_pinned returns nullptr when the node is absent.
+    void pin_param(int id, int p);
+    void unpin_param(int id, int p);
+    bool is_param_pinned(int id, int p) const;
+    const std::vector<int>* node_pinned(int id) const;
     // Forget every editor position, so the next layout re-seeds the whole graph. Used when a change
     // alters the graph's DEPTH (adding a MidiIn / note effect pushes everything downstream a column
     // along): keeping the old columns would stack the new nodes on top of the old ones.

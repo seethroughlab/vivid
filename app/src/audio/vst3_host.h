@@ -316,6 +316,13 @@ int         session_audio_graph_node_param_type        (Session*, int track, int
 int         session_audio_graph_node_param_choice_count (Session*, int track, int node_id, int p);   // >0 for a discrete/enum param (the number of named values)
 const char* session_audio_graph_node_param_choice_label (Session*, int track, int node_id, int p, int choice);  // plugin's label for choice; "" otherwise
 const char* session_audio_graph_node_param_display      (Session*, int track, int node_id, int p);   // plugin-formatted current value + units ("1.2 kHz", "On", "Lowpass")
+// Curated inspector (pure curation): the UI-chosen subset of params to surface for a node, by param
+// index, in add order. UI thread; persisted with the session. pin is idempotent.
+void        session_audio_graph_node_param_pin          (Session*, int track, int node_id, int p);
+void        session_audio_graph_node_param_unpin        (Session*, int track, int node_id, int p);
+int         session_audio_graph_node_param_is_pinned    (Session*, int track, int node_id, int p);   // 1 if pinned
+int         session_audio_graph_node_param_pinned_count  (Session*, int track, int node_id);
+int         session_audio_graph_node_param_pinned_at     (Session*, int track, int node_id, int i);   // the i-th pinned param index, or -1
 // Editor node position (UI thread; persisted). set by stable node id (drag/load); get by node index
 // (save/introspection) → 1 if the node has a stored position, else 0 (editor auto-lays it out).
 void        session_audio_graph_node_set_pos(Session*, int track, int node_id, float x, float y);

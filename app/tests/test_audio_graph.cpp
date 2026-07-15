@@ -401,5 +401,28 @@ int main() {
         CHECK(has_edge(g, inst, out));
     }
 
+    // --- 18. Curated inspector: pinned param set (pure curation; add order; idempotent) ---
+    {
+        AudioGraph g;
+        const int a = g.add_node(false, false, nullptr, nullptr, "a");
+        const int b = g.add_node(false, true,  nullptr, nullptr, "b");
+        CHECK(g.node_pinned(a) && g.node_pinned(a)->empty());   // nothing pinned yet
+        g.pin_param(a, 5);
+        g.pin_param(a, 2);
+        g.pin_param(a, 5);                                       // idempotent — no duplicate
+        CHECK(g.is_param_pinned(a, 5) && g.is_param_pinned(a, 2));
+        CHECK(!g.is_param_pinned(a, 9));
+        const std::vector<int>* v = g.node_pinned(a);
+        CHECK(v && v->size() == 2);
+        CHECK((*v)[0] == 5 && (*v)[1] == 2);                    // add order preserved
+        g.unpin_param(a, 5);
+        CHECK(!g.is_param_pinned(a, 5));
+        CHECK(g.node_pinned(a)->size() == 1 && (*g.node_pinned(a))[0] == 2);
+        CHECK(g.node_pinned(b)->empty());                       // sibling is independent
+        CHECK(g.node_pinned(999) == nullptr);                   // absent node → nullptr, no crash
+        g.pin_param(a, -1);                                     // invalid index ignored
+        CHECK(g.node_pinned(a)->size() == 1);
+    }
+
     return vivid::test::summary("test_audio_graph");
 }

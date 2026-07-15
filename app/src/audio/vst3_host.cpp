@@ -2963,6 +2963,34 @@ const char* session_audio_graph_node_param_display(Session* s, int t, int node_i
     }
     return buf.c_str();   // "" for native/CLAP → caller keeps its numeric fallback
 }
+// Curated inspector param set (pure curation). Stored on the AudioGraphNode (UI thread; persisted).
+void session_audio_graph_node_param_pin(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.pin_param(node_id, p);
+}
+void session_audio_graph_node_param_unpin(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.unpin_param(node_id, p);
+}
+int session_audio_graph_node_param_is_pinned(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return tr->agraph.is_param_pinned(node_id, p) ? 1 : 0;
+}
+int session_audio_graph_node_param_pinned_count(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const std::vector<int>* v = tr->agraph.node_pinned(node_id);
+    return v ? static_cast<int>(v->size()) : 0;
+}
+int session_audio_graph_node_param_pinned_at(Session* s, int t, int node_id, int i) {
+    Track* tr = graph_track(s, t); if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const std::vector<int>* v = tr->agraph.node_pinned(node_id);
+    return (v && i >= 0 && i < static_cast<int>(v->size())) ? (*v)[i] : -1;
+}
 
 // Editor node position (UI thread; persisted). set is keyed by stable node id (drag / load);
 // get is by node INDEX for save/introspection iteration. Position is UI-only (not in the compiled
