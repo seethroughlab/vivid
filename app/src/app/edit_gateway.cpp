@@ -115,10 +115,13 @@ bool EditGateway::redo() {
 
 void EditGateway::restore(const nlohmann::json& target) {
     if (!app_.session || !app_.graph) return;
-    // Skip the (plugin-instantiating) audio path when the tracks block is unchanged; otherwise Full.
-    // (ParamsOnly is added in G3; until then a track-topology change pays the Full rebuild.)
+    // Pick the cheapest correct audio-restore tier: Skip if the tracks are identical; ParamsOnly if
+    // only values differ (same topology) — so a gain/param undo never re-instantiates a plugin;
+    // Full only when the topology actually changed (add/remove track, fx, plugin node).
     const json current = canonical_projection_now();
-    const RestoreAudio tier = audio_block_equal(target, current) ? RestoreAudio::Skip : RestoreAudio::Full;
+    const RestoreAudio tier = audio_block_equal(target, current)    ? RestoreAudio::Skip
+                            : audio_topology_equal(target, current) ? RestoreAudio::ParamsOnly
+                                                                    : RestoreAudio::Full;
     int ww = 0, wh = 0; float sx = 0.f, dh = 0.f;
     session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier);
     cached_ = target;

@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017/G3 note_edit
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/node_graph.h"          // NodeGraph::zoom_at
@@ -92,8 +93,9 @@ static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser:
         }
         default: break;
     }
-    if (nid >= 0) win.sel_audio_node = nid;   // select what you just made
-    else std::fprintf(stderr, "[vivid] could not add '%s' to track %d\n", e.label.c_str(), tr);
+    if (nid >= 0) { win.sel_audio_node = nid;   // select what you just made
+        if (app.edit_gateway) app.edit_gateway->note_edit("Add Audio Node", "");   // ADR-0017/G3
+    } else std::fprintf(stderr, "[vivid] could not add '%s' to track %d\n", e.label.c_str(), tr);
 }
 
 // Keys while the audio chooser owns the keyboard. Returns true when consumed.
@@ -216,6 +218,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
             S::session_audio_graph_remove_node(app.session, tr, b.node_id);
             if (win.sel_audio_node == b.node_id) win.sel_audio_node = vivid::Window::kNoAudioNode;
+            if (app.edit_gateway) app.edit_gateway->note_edit("Remove Audio Node", "");   // ADR-0017/G3
             return true;
         }
         if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
@@ -251,6 +254,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         const float px = ax + t * dx, py = ay + t * dy;
         if ((mx - px) * (mx - px) + (my - py) * (my - py) < 36.f) {   // within ~6px of the edge
             S::session_audio_graph_disconnect(app.session, tr, a->node_id, b->node_id);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Disconnect Audio", "");   // ADR-0017/G3
             return true;
         }
     }
@@ -300,10 +304,13 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
             // A note wire may land on an instrument (kind 0) or another note effect; an audio wire
             // may not land on a source.
             if (note_wire) {
-                if (b.kind == 0 || b.kind == 4)
+                if (b.kind == 0 || b.kind == 4) {
                     S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 1);
+                    if (app.edit_gateway) app.edit_gateway->note_edit("Connect Audio", "");   // ADR-0017/G3
+                }
             } else if (b.kind != 0 && b.kind != 3 && b.kind != 4) {
                 S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 0);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Connect Audio", "");
             }
             break;
         }

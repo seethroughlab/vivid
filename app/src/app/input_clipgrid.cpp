@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017/G3 note_edit
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/session_view.h"     // meter_hit
@@ -36,6 +37,7 @@ void move_clip(vivid::App& app, int st, int ss, int tt, int ts, bool copy) {
     const double len = S::session_clip_length(s, st, ss);
     S::session_set_clip(s, tt, ts, buf, n, len);
     if (!copy) S::session_set_clip(s, st, ss, nullptr, 0, len);   // clear the source
+    if (app.edit_gateway) app.edit_gateway->note_edit(copy ? "Copy Clip" : "Move Clip", "");   // ADR-0017/G3
 }
 // Whether a pooled clip can be placed on a track (audio clip <-> audio track only).
 bool pool_clip_fits(vivid::App& app, int pool_i, int tt) {
@@ -46,10 +48,12 @@ bool pool_clip_fits(vivid::App& app, int pool_i, int tt) {
 void place_pool_clip(vivid::App& app, int pool_i, int tt, int ts) {
     auto* s = app.session;
     if (!s || !pool_clip_fits(app, pool_i, tt)) return;
-    if (S::session_pool_is_audio(s, pool_i)) { S::session_pool_place_audio(s, pool_i, tt, ts); return; }
+    if (S::session_pool_is_audio(s, pool_i)) { S::session_pool_place_audio(s, pool_i, tt, ts);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Place Clip", ""); return; }
     S::ClipNote buf[512];
     const int n = S::session_pool_get(s, pool_i, buf, 512);
     S::session_set_clip(s, tt, ts, buf, n, S::session_pool_length(s, pool_i));
+    if (app.edit_gateway) app.edit_gateway->note_edit("Place Clip", "");   // ADR-0017/G3
 }
 // Stash a grid clip into the pool: MOVE it out of the session (the source cell is cleared).
 // Handles both MIDI (instrument) and audio (sampler) tracks.
@@ -57,13 +61,15 @@ void stash_clip(vivid::App& app, int st, int ss) {
     auto* s = app.session;
     if (!s) return;
     char nm[28]; std::snprintf(nm, sizeof nm, "%.12s %c", S::session_track_name(s, st), 'A' + ss);
-    if (S::session_track_is_audio(s, st)) { S::session_pool_stash_audio(s, st, ss, nm); return; }
+    if (S::session_track_is_audio(s, st)) { S::session_pool_stash_audio(s, st, ss, nm);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Stash Clip", ""); return; }
     S::ClipNote buf[512];
     const int n = S::session_get_clip(s, st, ss, buf, 512);
     if (n <= 0) return;
     const double len = S::session_clip_length(s, st, ss);
     S::session_pool_add(s, buf, n, len, nm);
     S::session_set_clip(s, st, ss, nullptr, 0, len);   // take it out of the grid
+    if (app.edit_gateway) app.edit_gateway->note_edit("Stash Clip", "");   // ADR-0017/G3
 }
 }  // namespace
 
@@ -128,6 +134,7 @@ bool clipgrid_track_header(Window& win, App& app, double mx, double my, int trac
                 if (app.graph) app.graph->drop_track_sources(rid);   // drop this track's mappings (id-based)
                 const int nt = S::session_track_count(app.session);
                 if (win.sel_track >= nt) win.sel_track = std::max(0, nt - 1);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Delete Track", "");   // ADR-0017/G3
             }
             return true;
         }

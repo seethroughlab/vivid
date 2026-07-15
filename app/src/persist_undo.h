@@ -26,4 +26,11 @@ nlohmann::json canonical_document_projection(const nlohmann::json& session);
 // not touch audio at all (no track rebuild, no plugin re-instantiation) — the "Skip" restore tier.
 bool audio_block_equal(const nlohmann::json& a, const nlohmann::json& b);
 
+// Do two projections have the same audio TOPOLOGY (same tracks/fx/plugin-nodes/edges/ids), differing
+// only in VALUES (gain, clip notes, plugin/op/node params, warp/trim)? True => the "ParamsOnly"
+// restore tier: apply the values onto the existing structure WITHOUT rebuilding tracks or
+// re-instantiating plugins (so a gain-drag undo never reloads Surge). Conservative — any structural
+// difference (or an unrecognized field) returns false, falling back to the safe Full rebuild.
+bool audio_topology_equal(const nlohmann::json& a, const nlohmann::json& b);
+
 }  // namespace vivid

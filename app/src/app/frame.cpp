@@ -213,16 +213,19 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                 vivid::session::session_set_clip(app.session, win.editor->track(), win.editor->scene(),
                                             nv.data(), static_cast<int>(nv.size()), win.editor->length());
             }
+            if (app.edit_gateway) app.edit_gateway->note_edit("Edit Clip", "clip-edit");   // ADR-0017/G3
         }
         if (!win.editor->is_audio() && app.session && win.editor->take_loop_dirty()) {   // in-clip loop edit
             double ls, le; win.editor->loop_range(ls, le);
             vivid::session::session_set_clip_loop(app.session, win.editor->track(), win.editor->scene(), ls, le);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Loop", "clip-loop");
         }
         // A5: apply audio warp/pitch/auto-warp requests from the editor header, then refresh
         // the editor's marker + shape display from the engine.
         if (win.editor->is_audio() && app.session) {
             const int req = win.editor->take_audio_req();   // 1 shaping, 2 auto, 4 warp-pts, 8 slice
             if (req) {
+                if (app.edit_gateway) app.edit_gateway->note_edit("Warp Clip", "clip-warp");   // ADR-0017/G3
                 namespace S = vivid::session;
                 const int tk = win.editor->track(), scn = win.editor->scene();
                 if (req & 2) S::session_audio_auto_warp(app.session, tk, scn, 0.5f);
@@ -253,6 +256,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const Rect gr = track_gain_rect(win.gain_drag, vivid::session::session_scene_count(app.session));
         vivid::session::session_set_track_gain(app.session, win.gain_drag,
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Gain", "gain-drag");   // ADR-0017/G3
     }
     if (win.param_drag >= 0) {
         if (app.edit_gateway) app.edit_gateway->note_edit("Adjust Param", "param-drag");  // folds into the gesture
@@ -285,6 +289,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
         const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
     }
     // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
     // region-relative world units (screen = region_origin + world*zoom + pan); invert that here.
@@ -299,6 +304,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float wx = (static_cast<float>(mx) - gr.x - win.ag_pan_x) / win.ag_zoom - win.ag_node_dx;
         const float wy = (static_cast<float>(my) - gr.y - win.ag_pan_y) / win.ag_zoom - win.ag_node_dy;
         S::session_audio_graph_node_set_pos(app.session, tr, win.ag_node_drag, wx, wy);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3
     }
     // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
     if (win.ag_key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
@@ -309,6 +315,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const int nv = std::clamp(win.ag_key_v0 + static_cast<int>((win.ag_key_y0 - my) * 0.25), 0, 127);
         if (win.ag_key_drag == 0) lo = std::min(nv, hi); else hi = std::max(nv, lo);
         S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Key Range", "ag-key-drag");   // ADR-0017/G3
     }
 }
 

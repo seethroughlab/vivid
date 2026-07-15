@@ -307,6 +307,84 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
     }
 }
 
+// ADR-0017/G3 — the ParamsOnly restore: apply a track's VALUE fields onto the EXISTING structure,
+// re-instantiating nothing. Chosen when audio_topology_equal is true, so an undo of a gain/param/
+// clip/warp edit is instant (no rebuild_tracks_from_doc, no plugin load). The field set here must
+// match the strip set in persist_undo.cpp's track_topology(). Node params go by id — which, when the
+// topology is unchanged, is the live id (session_to_json serialized the current ids).
+static void apply_track_values(vivid::session::Session* s, int t, const json& jt) {
+    using namespace vivid::session;
+    session_set_track_gain(s, t, jt.value("gain", 0.8f));
+    if (session_track_is_audio(s, t)) {
+        if (jt.contains("trims"))
+            for (int sc = 0; sc < static_cast<int>(jt["trims"].size()); ++sc)
+                if (jt["trims"][sc].size() >= 2)
+                    session_set_audio_trim(s, t, sc, jt["trims"][sc][0].get<float>(), jt["trims"][sc][1].get<float>());
+        if (jt.contains("audio_clips"))
+            for (int sc = 0; sc < static_cast<int>(jt["audio_clips"].size()); ++sc) {
+                const json& ac = jt["audio_clips"][sc];
+                session_set_audio_gain(s, t, sc, ac.value("gain", 1.0f));
+                session_set_audio_pitch(s, t, sc, ac.value("pitch", 0.0f));
+                session_set_audio_reverse(s, t, sc, ac.value("reverse", false) ? 1 : 0);
+                session_set_audio_fades(s, t, sc, ac.value("fade_in_ms", 0.0f),
+                                        ac.value("fade_out_ms", 0.0f), ac.value("loop_xfade_ms", 0.0f));
+                const int warp = ac.value("warp", -1);
+                if (warp >= 0) session_set_audio_warp(s, t, sc, 1, warp);
+            }
+    } else if (jt.contains("clips")) {
+        for (int sc = 0; sc < static_cast<int>(jt["clips"].size()); ++sc) {
+            const json& jc = jt["clips"][sc];
+            std::vector<ClipNote> notes;
+            if (jc.contains("notes"))
+                for (const auto& jn : jc["notes"]) {
+                    ClipNote cn{ jn.value("p", 60), jn.value("s", 0.0), jn.value("d", 0.25), jn.value("v", 0.8f), {} };
+                    expr_from_json(jn, cn);
+                    notes.push_back(std::move(cn));
+                }
+            session_set_clip(s, t, sc, notes.data(), static_cast<int>(notes.size()), jc.value("length", 4.0));
+            if (jc.contains("loop_end"))
+                session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
+        }
+    }
+    if (jt.contains("fx")) {   // set params on the existing effect devices (device = position+1)
+        int i = 0;
+        for (const auto& jn : jt["fx"]) {
+            if (jn.is_object() && jn.contains("params"))
+                for (const auto& jp : jn["params"])
+                    session_set_param(s, t, i + 1, jp.value("id", 0u), jp.value("v", 0.f));
+            ++i;
+        }
+    }
+    auto apply_audio_params = [&](int index, const json& params) {
+        for (auto it = params.begin(); it != params.end(); ++it)
+            for (int p = 0; p < session_audio_op_param_count(s, t, index); ++p)
+                if (it.key() == session_audio_op_param_name(s, t, index, p)) {
+                    session_audio_op_param_set(s, t, index, p, it.value().get<float>()); break;
+                }
+    };
+    if (jt.contains("audio_instrument") && jt["audio_instrument"].contains("params"))
+        apply_audio_params(-1, jt["audio_instrument"]["params"]);
+    if (jt.contains("audio_fx")) {
+        int idx = 0;
+        for (const auto& jn : jt["audio_fx"]) { if (jn.contains("params")) apply_audio_params(idx, jn["params"]); ++idx; }
+    }
+    if (jt.contains("audio_graph") && jt["audio_graph"].contains("nodes"))
+        for (const auto& jn : jt["audio_graph"]["nodes"]) {
+            const int id = jn.value("id", -1);
+            if (id < 0) continue;
+            if (jn.contains("x") && jn.contains("y"))
+                session_audio_graph_node_set_pos(s, t, id, jn["x"].get<float>(), jn["y"].get<float>());
+            if (jn.contains("key_lo") || jn.contains("key_hi"))
+                session_audio_graph_node_key_range_set(s, t, id, jn.value("key_lo", 0), jn.value("key_hi", 127));
+            if (jn.contains("params"))
+                for (auto it = jn["params"].begin(); it != jn["params"].end(); ++it)
+                    for (int p = 0; p < session_audio_graph_node_param_count(s, t, id); ++p)
+                        if (it.key() == session_audio_graph_node_param_name(s, t, id, p)) {
+                            session_audio_graph_node_param_set(s, t, id, p, it.value().get<float>()); break;
+                        }
+        }
+}
+
 bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h) {
     return session_from_json_scoped(j, s, g, win_w, win_h, split_x, dock_h, RestoreAudio::Full);
@@ -326,14 +404,15 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
         return false;
     }
 
-    // ADR-0017: an undo whose target has the SAME audio tracks as the current state passes
-    // RestoreAudio::Skip — we rebuild only the visual graph/mappings/pool below and never touch
-    // the (plugin-instantiating) track path. (ParamsOnly is treated as Full until G3.)
+    // ADR-0017: how much of the audio session to restore. Skip => visual/mappings/pool only (never
+    // touch the plugin-instantiating track path). ParamsOnly => apply values onto the existing
+    // structure (no rebuild). Full => the whole rebuild.
     const bool restore_audio = (audio != RestoreAudio::Skip);
+    const bool params_only   = (audio == RestoreAudio::ParamsOnly);
 
-    // v2+: rebuild the track set from the document before restoring per-track state.
-    // (v1 files keep the pre-built role set and restore onto it by index — migration.)
-    if (restore_audio && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
+    // v2+: rebuild the track set from the document before restoring per-track state. ParamsOnly
+    // keeps the existing tracks (topology is unchanged), so it skips the rebuild.
+    if (restore_audio && !params_only && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
         rebuild_tracks_from_doc(s, j["tracks"]);
 
     if (j.contains("window")) {
@@ -348,6 +427,7 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
         const json& T = j["tracks"];
         for (int t = 0; t < nt && t < static_cast<int>(T.size()); ++t) {
             const json& jt = T[t];
+            if (params_only) { apply_track_values(s, t, jt); continue; }   // values only, no rebuild
             vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
             if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];

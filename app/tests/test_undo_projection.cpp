@@ -84,6 +84,31 @@ void test_projection_ignores_pure_performance_and_view_changes() {
     CHECK(canonical_document_projection(a) != canonical_document_projection(c));
 }
 
+void test_audio_topology_equal() {
+    // Same tracks, only a VALUE differs (gain / a plugin param / a clip note) -> ParamsOnly tier.
+    json base = {
+        {"tracks", json::array({
+            {{"kind","instrument"}, {"id",1}, {"gain",0.8},
+             {"fx", json::array({ {{"name","Reverb"}, {"params", json::array({ {{"id",3},{"v",0.5}} })}} })},
+             {"audio_graph", {{"nodes", json::array({ {{"id",7},{"kind",0},{"op","Osc"},{"params",{{"cutoff",0.4}}}} })}}}},
+        })},
+    };
+    json values = base;   // change only values
+    values["tracks"][0]["gain"] = 0.2;
+    values["tracks"][0]["fx"][0]["params"][0]["v"] = 0.9;
+    values["tracks"][0]["audio_graph"]["nodes"][0]["params"]["cutoff"] = 0.1;
+    CHECK(audio_topology_equal(base, values));          // structure identical -> ParamsOnly
+    CHECK(!audio_block_equal(base, values));            // but the block differs -> not Skip
+
+    // A structural change (an added track, a different fx, a new node) -> NOT topology-equal -> Full.
+    json add_track = base; add_track["tracks"].push_back({{"kind","audio"},{"id",2}});
+    CHECK(!audio_topology_equal(base, add_track));
+    json diff_fx = base; diff_fx["tracks"][0]["fx"][0]["name"] = "Delay";
+    CHECK(!audio_topology_equal(base, diff_fx));
+    json add_node = base; add_node["tracks"][0]["audio_graph"]["nodes"].push_back({{"id",8},{"kind",1},{"op","Gain"}});
+    CHECK(!audio_topology_equal(base, add_node));
+}
+
 void test_audio_block_equal() {
     const json a = canonical_document_projection(sample_session());
     // A visual-only edit leaves tracks identical -> Skip tier.
@@ -108,5 +133,6 @@ int main() {
     test_projection_idempotent();
     test_projection_ignores_pure_performance_and_view_changes();
     test_audio_block_equal();
+    test_audio_topology_equal();
     return vivid::test::summary("undo_projection");
 }
