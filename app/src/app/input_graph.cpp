@@ -127,6 +127,13 @@ bool audio_chooser_click(Window& win, App& app, double mx, double my) {
 
 // --- Phase 2c: the curated inspector's "+ Add param" palette (the Tab chooser, reused). Its entries
 // are the selected plugin node's UNPINNED params; each carries its param index in `tag`. ---
+static void param_chooser_show_at(Window& win, App& app, double mx, double my) {
+    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    win.param_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
+                           static_cast<float>(win.win_w) - 8.f, gp.y + gp.h);
+}
+
+// Action 0: pick an UNPINNED param to add to the curated inspector (entry tag = param index).
 void param_chooser_open(Window& win, App& app, int node, double mx, double my) {
     const int tr = audio_graph_track(win, app);
     if (tr < 0 || node < 0) return;
@@ -136,21 +143,50 @@ void param_chooser_open(Window& win, App& app, int node, double mx, double my) {
         if (S::session_audio_graph_node_param_is_pinned(app.session, tr, node, p)) continue;
         vivid::ui::ChooserEntry e;
         e.label = S::session_audio_graph_node_param_name(app.session, tr, node, p);
-        e.tag   = p;   // the param index — read back on confirm to pin it
+        e.tag   = p;
         if (const char* d = S::session_audio_graph_node_param_display(app.session, tr, node, p); d && *d) e.summary = d;
         entries.push_back(std::move(e));
     }
-    win.param_chooser_node = node;
+    win.param_chooser_node = node; win.param_chooser_action = 0;
     win.param_chooser.set_entries(std::move(entries));
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    win.param_chooser.show(mx, my, 8.f, vivid::ui::kTopBarH + 8.f,
-                           static_cast<float>(win.win_w) - 8.f, gp.y + gp.h);
+    param_chooser_show_at(win, app, mx, my);
 }
 
-// Pin the chosen param, then close (reopen the palette to add another).
-static void param_chooser_pin(Window& win, App& app, const vivid::ui::ChooserEntry& e) {
+// Action 1: pick a value for an enum param (entry tag = choice index) — a real dropdown list in
+// place of click-cycle. Same palette (type-to-filter/scroll), which handles long enums.
+void param_enum_chooser_open(Window& win, App& app, int node, int param, double mx, double my) {
     const int tr = audio_graph_track(win, app);
-    if (tr >= 0) S::session_audio_graph_node_param_pin(app.session, tr, win.param_chooser_node, e.tag);
+    if (tr < 0 || node < 0) return;
+    const int cc = S::session_audio_graph_node_param_count(app.session, tr, node) ?
+                   S::session_audio_graph_node_param_choice_count(app.session, tr, node, param) : 0;
+    if (cc <= 0) return;
+    std::vector<vivid::ui::ChooserEntry> entries;
+    for (int k = 0; k < cc; ++k) {
+        vivid::ui::ChooserEntry e;
+        const char* lbl = S::session_audio_graph_node_param_choice_label(app.session, tr, node, param, k);
+        e.label = (lbl && *lbl) ? lbl : std::to_string(k);
+        e.tag   = k;
+        entries.push_back(std::move(e));
+    }
+    win.param_chooser_node = node; win.param_chooser_param = param; win.param_chooser_action = 1;
+    win.param_chooser.set_entries(std::move(entries));
+    param_chooser_show_at(win, app, mx, my);
+}
+
+// Apply the confirmed entry per the current action, then close (reopen to pick again).
+static void param_chooser_confirm(Window& win, App& app, const vivid::ui::ChooserEntry& e) {
+    const int tr = audio_graph_track(win, app);
+    if (tr >= 0) {
+        if (win.param_chooser_action == 1) {   // set the enum param to choice e.tag's value
+            const int cc = S::session_audio_graph_node_param_choice_count(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float mx = S::session_audio_graph_node_param_max(app.session, tr, win.param_chooser_node, win.param_chooser_param);
+            const float v = (cc > 1) ? mn + static_cast<float>(e.tag) / static_cast<float>(cc - 1) * (mx - mn) : mn;
+            S::session_audio_graph_node_param_set(app.session, tr, win.param_chooser_node, win.param_chooser_param, v);
+        } else {                                // add (pin) param e.tag
+            S::session_audio_graph_node_param_pin(app.session, tr, win.param_chooser_node, e.tag);
+        }
+    }
     win.param_chooser.hide();
 }
 
@@ -158,7 +194,7 @@ bool param_chooser_key(Window& win, App& app, int key) {
     if (!win.param_chooser.open()) return false;
     if (key == GLFW_KEY_ESCAPE) { win.param_chooser.hide(); return true; }
     if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
-        if (const auto* e = win.param_chooser.confirm()) param_chooser_pin(win, app, *e);
+        if (const auto* e = win.param_chooser.confirm()) param_chooser_confirm(win, app, *e);
         return true;
     }
     if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) { win.param_chooser.move(+1); return true; }
@@ -176,7 +212,7 @@ bool param_chooser_char(Window& win, unsigned int cp) {
 bool param_chooser_click(Window& win, App& app, double mx, double my) {
     if (!win.param_chooser.open()) return false;
     bool dismissed = false;
-    if (const auto* e = win.param_chooser.click(mx, my, dismissed)) param_chooser_pin(win, app, *e);
+    if (const auto* e = win.param_chooser.click(mx, my, dismissed)) param_chooser_confirm(win, app, *e);
     else if (dismissed) win.param_chooser.hide();
     return true;
 }
@@ -269,12 +305,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                     S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, v > mid ? mn : mxx);
                     return true;
                 }
-                if (wk == vivid::ui::NodeWidget::Enum) {   // click cycles to the next choice (wraps)
-                    const int cc = std::max(2, S::session_audio_graph_node_param_choice_count(app.session, tr, win.sel_audio_node, row.index));
-                    const float norm = (mxx > mn) ? (v - mn) / (mxx - mn) : 0.f;
-                    const int nxt = (static_cast<int>(std::lround(norm * (cc - 1))) + 1) % cc;
-                    S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index,
-                                                          mn + static_cast<float>(nxt) / static_cast<float>(cc - 1) * (mxx - mn));
+                if (wk == vivid::ui::NodeWidget::Enum) {   // open the choice list (a real dropdown, not click-cycle)
+                    param_enum_chooser_open(win, app, win.sel_audio_node, row.index, mx, my);
                     return true;
                 }
                 // slider: start a HORIZONTAL drag and apply immediately at the click x

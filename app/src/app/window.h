@@ -147,6 +147,11 @@ struct Window {
     // pins the chosen param. `param_chooser_node` is which node it curates.
     ui::Chooser param_chooser;
     int  param_chooser_node = -1;
+    // The same palette also serves as a real enum dropdown (pick a choice) — action selects what
+    // confirming does. 0 = add a param (entry tag = param index); 1 = set an enum param
+    // (`param_chooser_param`) to the chosen choice (entry tag = choice index).
+    int  param_chooser_action = 0;
+    int  param_chooser_param  = -1;
     double  last_plugin_t = -1; int last_plugin_i = -1;   // plugin-row double-click tracking
     // Drag a plugin from the browser onto a track (effect) or the +Track slot (instrument).
     int     plugin_drag_i = -1; bool plugin_dragging = false;
