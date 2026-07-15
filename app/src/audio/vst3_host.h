@@ -316,6 +316,7 @@ int         session_audio_graph_node_param_type        (Session*, int track, int
 int         session_audio_graph_node_param_choice_count (Session*, int track, int node_id, int p);   // >0 for a discrete/enum param (the number of named values)
 const char* session_audio_graph_node_param_choice_label (Session*, int track, int node_id, int p, int choice);  // plugin's label for choice; "" otherwise
 const char* session_audio_graph_node_param_display      (Session*, int track, int node_id, int p);   // plugin-formatted current value + units ("1.2 kHz", "On", "Lowpass")
+int         session_audio_graph_node_is_plugin          (Session*, int track, int node_id);   // 1 if the node is a VST3 or CLAP plugin (→ the curated inspector)
 // Curated inspector (pure curation): the UI-chosen subset of params to surface for a node, by param
 // index, in add order. UI thread; persisted with the session. pin is idempotent.
 void        session_audio_graph_node_param_pin          (Session*, int track, int node_id, int p);

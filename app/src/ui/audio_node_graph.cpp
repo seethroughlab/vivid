@@ -90,7 +90,7 @@ Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); retu
 // A plugin node (VST3, i.e. it exposes an IEditController) uses the curated vertical inspector;
 // native ops keep the compound/knob strip. CLAP is treated as native for now (no metadata yet).
 bool AudioNodeGraph::is_plugin_node(int sel_node) const {
-    return s_ && sel_node >= 0 && P::session_audio_graph_node_controller(s_, track_, sel_node) != nullptr;
+    return s_ && sel_node >= 0 && P::session_audio_graph_node_is_plugin(s_, track_, sel_node) != 0;
 }
 
 // The pinned params of a plugin node laid out as full-width vertical rows. Shared by draw + input.

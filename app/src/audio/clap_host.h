@@ -149,7 +149,7 @@ struct ClapHandle {
     std::vector<float> silence;   // max_block*2 zeros: silent input fed to instruments that
                                   // declare an audio-input port (CLAP wants the port present)
 
-    struct ParamEntry { clap_id id; double min, max, def; std::string name, module; };
+    struct ParamEntry { clap_id id; double min, max, def; std::string name, module; uint32_t flags = 0; };
     std::vector<ParamEntry> params;
     ClapParamQueue param_q;      // UI -> audio
     ClapEventScratch events;     // audio-thread scratch (built each block)
@@ -274,7 +274,7 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
         for (uint32_t i = 0; i < n; ++i) {
             clap_param_info_t pi{};
             if (!h->ext_params->get_info(h->plugin, i, &pi)) continue;
-            h->params.push_back({ pi.id, pi.min_value, pi.max_value, pi.default_value, pi.name, pi.module });
+            h->params.push_back({ pi.id, pi.min_value, pi.max_value, pi.default_value, pi.name, pi.module, pi.flags });
         }
     }
 
