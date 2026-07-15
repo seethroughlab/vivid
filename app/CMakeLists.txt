@@ -22,6 +22,9 @@ option(VIVID_BUILD_APP   "Build the GUI/GPU/audio app (heavy deps; macOS)" ON)
 option(VIVID_BUILD_TESTS "Build the headless test suite (cheap, portable)"  ON)
 option(VIVID_SANITIZE        "Enable AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 option(VIVID_SANITIZE_THREAD "Enable ThreadSanitizer (mutually exclusive with VIVID_SANITIZE)" OFF)
+# ADR-0017: the undo completeness guard — asserts (each frame) that no document edit bypassed the
+# EditGateway. On for dev/CI audit builds; off in release (it re-serializes the session per frame).
+option(VIVID_UNDO_AUDIT      "Assert every document mutation routes through the edit gateway" OFF)
 
 if(VIVID_SANITIZE)
     add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -fno-optimize-sibling-calls)
@@ -30,6 +33,9 @@ endif()
 if(VIVID_SANITIZE_THREAD)
     add_compile_options(-fsanitize=thread -fno-omit-frame-pointer)
     add_link_options(-fsanitize=thread)
+endif()
+if(VIVID_UNDO_AUDIT)
+    add_compile_definitions(VIVID_UNDO_AUDIT)
 endif()
 
 # nlohmann/json is header-only and shared by the app AND the headless tests
@@ -164,6 +170,8 @@ FetchContent_MakeAvailable(freetype)
 add_executable(vivid MACOSX_BUNDLE
     src/main.cpp
     src/app/app.cpp
+    src/app/undo_manager.cpp
+    src/app/edit_gateway.cpp
     src/app/input.cpp
     src/app/input_typing.cpp
     src/app/input_transport.cpp
@@ -175,6 +183,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/editor_window.cpp
     src/app/project_io.cpp
     src/app/file_actions.cpp
+    src/app/examples.cpp
+    src/app/node_presets.cpp
+    src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
@@ -187,6 +198,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/shader_op.cpp
     src/gpu/shader_file_op.cpp
     src/gpu/shader_library.cpp
+    src/gpu/file_drop_registry.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
     src/audio/plugin_catalog.cpp
@@ -208,6 +220,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/menu_bar_stub.cpp
     src/platform/midi_input_stub.cpp
     src/persist.cpp
+    src/persist_undo.cpp
     src/operator_api/operator_descriptor_validation.cpp
     src/operator_api/shader_meta.cpp
     src/gpu/op_runtime.cpp
@@ -226,8 +239,12 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_visuals.cpp
     src/cli/control_handlers_audio.cpp
     src/cli/control_handlers_project.cpp
+    src/cli/control_handlers_edit.cpp
+    src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
+    src/ui/shader_library_view.cpp
+    src/ui/preset_popover.cpp
     src/ui/session_view.cpp
     src/ui/chooser.cpp
     src/ui/node_graph.cpp
@@ -281,6 +298,22 @@ add_custom_target(vivid_shader_library ALL
     COMMENT "Copying the bundled shader library into the app"
     VERBATIM)
 add_dependencies(vivid_shader_library vivid)   # the bundle dir has to exist first
+
+# ADR-0021/P2: the bundled EXAMPLE projects. Each examples/demos/projects/<name>/ is a folder
+# project (project.json + its .glsl); copy the tree into Resources/examples so File > Open Example
+# can list them. Same bundle/non-bundle destination convention as the shader library above.
+if(APPLE)
+    set(_examples_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/examples")
+else()
+    set(_examples_dest "$<TARGET_FILE_DIR:vivid>/examples")
+endif()
+add_custom_target(vivid_examples ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects" "${_examples_dest}"
+    COMMENT "Copying the bundled example projects into the app"
+    VERBATIM)
+add_dependencies(vivid_examples vivid)   # the bundle dir has to exist first
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)
 # Package compiler (P2.3) compiles operator sources at runtime via clang++; pass it

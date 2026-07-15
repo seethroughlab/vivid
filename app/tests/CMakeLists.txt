@@ -21,7 +21,24 @@ function(vivid_add_test name)
 endfunction()
 
 vivid_add_test(test_mapping)
+vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
+target_sources(test_undo_manager PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/undo_manager.cpp)
+vivid_add_test(test_undo_projection)  # ADR-0017/G1 canonical projection + audio tiering (pure)
+target_sources(test_undo_projection PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/persist_undo.cpp)
+target_link_libraries(test_undo_projection PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enum -> widget)
+vivid_add_test(test_shader_library_view)  # ADR-0021/P1 shader-view geometry + fork-name helpers
+vivid_add_test(test_examples)             # ADR-0021/P2 example-project enumerator
+target_sources(test_examples PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/examples.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+vivid_add_test(test_node_presets)         # ADR-0021/P4 node-preset storage (save/list/load/remove)
+target_sources(test_node_presets PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/node_presets.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+target_link_libraries(test_node_presets PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_note_ops)       # pure MIDI note-list transforms (midi/note_ops.h)
 vivid_add_test(test_expr_curve)     # M3 per-note expression curve + scheduler emission
 vivid_add_test(test_clip_loop)      # in-clip loop region scheduler wrapping (M2-followup)
@@ -147,6 +164,17 @@ add_dependencies(test_operator_loader test_fixture_op test_fixture_bad)
 target_compile_definitions(test_operator_loader PRIVATE
     FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>"
     FIXTURE_BAD_PATH="$<TARGET_FILE:test_fixture_bad>")
+
+# ADR-0021/P3: the file-drop registry, against a real fixture dylib that declares a drop handler.
+vivid_add_test(test_file_drop_registry)
+target_sources(test_file_drop_registry PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/file_drop_registry.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+target_link_libraries(test_file_drop_registry PRIVATE ${CMAKE_DL_LIBS})
+add_dependencies(test_file_drop_registry test_fixture_op)
+target_compile_definitions(test_file_drop_registry PRIVATE
+    FIXTURE_OP_PATH="$<TARGET_FILE:test_fixture_op>")
 
 # Adapter: LoadedOperator mirrors a dylib descriptor through OpRegistry losslessly.
 vivid_add_test(test_loaded_operator)

@@ -23,10 +23,20 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
     if (p && vivid::platform::g_actions.open_recent)
         vivid::platform::g_actions.open_recent(std::string([p UTF8String]));
 }
+- (void)openExample:(NSMenuItem*)sender {
+    NSString* p = [sender representedObject];
+    if (p && vivid::platform::g_actions.open_example)
+        vivid::platform::g_actions.open_example(std::string([p UTF8String]));
+}
+- (void)doUndo:(id)sender { (void)sender; if (vivid::platform::g_actions.undo) vivid::platform::g_actions.undo(); }
+- (void)doRedo:(id)sender { (void)sender; if (vivid::platform::g_actions.redo) vivid::platform::g_actions.redo(); }
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
 static NSMenu*          g_recentMenu = nil;  // the Open Recent submenu (retained by its item)
+static NSMenu*          g_exampleMenu = nil; // the Open Example submenu (retained by its item)
+static NSMenuItem*      g_undoItem = nil;    // Edit > Undo (title updated by set_edit_labels)
+static NSMenuItem*      g_redoItem = nil;    // Edit > Redo
 
 namespace vivid { namespace platform {
 
@@ -55,6 +65,14 @@ void install_menu_bar(const MenuActions& actions) {
         [fileMenu addItem:recentItem];
         [recentItem release]; [g_recentMenu release];   // both retained by the menu hierarchy
 
+        // Open Example submenu (populated by set_example_projects).
+        g_exampleMenu = [[NSMenu alloc] initWithTitle:@"Open Example"];
+        [g_exampleMenu setAutoenablesItems:NO];
+        NSMenuItem* exampleItem = [[NSMenuItem alloc] initWithTitle:@"Open Example" action:nil keyEquivalent:@""];
+        [exampleItem setSubmenu:g_exampleMenu];
+        [fileMenu addItem:exampleItem];
+        [exampleItem release]; [g_exampleMenu release];   // retained by the menu hierarchy
+
         [fileMenu addItem:[NSMenuItem separatorItem]];
         it = [[NSMenuItem alloc] initWithTitle:@"Save" action:@selector(saveProject:) keyEquivalent:@"s"];
         [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
@@ -67,6 +85,34 @@ void install_menu_bar(const MenuActions& actions) {
         NSInteger insertAt = ([mainMenu numberOfItems] > 0) ? 1 : 0;  // after the app menu
         [mainMenu insertItem:fileItem atIndex:insertAt];
         [fileItem release]; [fileMenu release];   // retained by mainMenu
+
+        // Edit menu (ADR-0017/G4). Undo/Redo are LABEL-ONLY (no ⌘Z key-equivalent): the keyboard is
+        // handled in input.cpp so a focused clip editor keeps its own note-undo; a ⌘Z here would let
+        // AppKit swallow the key first. Titles + enabled state are refreshed by set_edit_labels.
+        NSMenu* editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+        [editMenu setAutoenablesItems:NO];
+        g_undoItem = [[NSMenuItem alloc] initWithTitle:@"Undo" action:@selector(doUndo:) keyEquivalent:@""];
+        [g_undoItem setTarget:g_target]; [g_undoItem setEnabled:NO]; [editMenu addItem:g_undoItem]; [g_undoItem release];
+        g_redoItem = [[NSMenuItem alloc] initWithTitle:@"Redo" action:@selector(doRedo:) keyEquivalent:@""];
+        [g_redoItem setTarget:g_target]; [g_redoItem setEnabled:NO]; [editMenu addItem:g_redoItem]; [g_redoItem release];
+        NSMenuItem* editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+        [editItem setSubmenu:editMenu];
+        [mainMenu insertItem:editItem atIndex:insertAt + 1];   // right after File
+        [editItem release]; [editMenu release];   // retained by mainMenu (items retained by editMenu)
+    }
+}
+
+void set_edit_labels(const std::string& undo_label, const std::string& redo_label,
+                     bool can_undo, bool can_redo) {
+    @autoreleasepool {
+        if (g_undoItem) {
+            NSString* t = undo_label.empty() ? @"Undo" : [NSString stringWithUTF8String:("Undo " + undo_label).c_str()];
+            [g_undoItem setTitle:t]; [g_undoItem setEnabled:can_undo];
+        }
+        if (g_redoItem) {
+            NSString* t = redo_label.empty() ? @"Redo" : [NSString stringWithUTF8String:("Redo " + redo_label).c_str()];
+            [g_redoItem setTitle:t]; [g_redoItem setEnabled:can_redo];
+        }
     }
 }
 
@@ -87,6 +133,27 @@ void set_recent_projects(const std::vector<std::string>& paths) {
             [it setTarget:g_target];
             [it setRepresentedObject:full];
             [g_recentMenu addItem:it]; [it release];
+        }
+    }
+}
+
+void set_example_projects(const std::vector<MenuItemEntry>& examples) {
+    if (!g_exampleMenu) return;
+    @autoreleasepool {
+        [g_exampleMenu removeAllItems];
+        if (examples.empty()) {
+            NSMenuItem* none = [[NSMenuItem alloc] initWithTitle:@"No Examples Found" action:nil keyEquivalent:@""];
+            [none setEnabled:NO];
+            [g_exampleMenu addItem:none]; [none release];
+            return;
+        }
+        for (const auto& e : examples) {
+            NSString* title = [NSString stringWithUTF8String:e.label.c_str()];
+            NSString* full  = [NSString stringWithUTF8String:e.path.c_str()];
+            NSMenuItem* it = [[NSMenuItem alloc] initWithTitle:title action:@selector(openExample:) keyEquivalent:@""];
+            [it setTarget:g_target];
+            [it setRepresentedObject:full];
+            [g_exampleMenu addItem:it]; [it release];
         }
     }
 }

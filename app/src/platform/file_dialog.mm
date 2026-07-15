@@ -19,7 +19,7 @@ std::string open_project_dialog() {
     return {};
 }
 
-std::string open_file_dialog(const std::string& message) {
+std::string open_file_dialog(const std::string& message, const std::vector<std::string>& extensions) {
     @autoreleasepool {
         NSOpenPanel* p = [NSOpenPanel openPanel];
         [p setCanChooseFiles:YES];
@@ -27,6 +27,11 @@ std::string open_file_dialog(const std::string& message) {
         [p setAllowsMultipleSelection:NO];
         if (!message.empty()) [p setMessage:[NSString stringWithUTF8String:message.c_str()]];
         [p setPrompt:@"Choose"];
+        if (!extensions.empty()) {   // filter to the given extensions (deprecated API, but works 10.13+)
+            NSMutableArray* types = [NSMutableArray arrayWithCapacity:extensions.size()];
+            for (const auto& e : extensions) [types addObject:[NSString stringWithUTF8String:e.c_str()]];
+            [p setAllowedFileTypes:types];
+        }
         if ([p runModal] == NSModalResponseOK && p.URLs.count > 0)
             return std::string([[p.URLs[0] path] UTF8String]);
     }

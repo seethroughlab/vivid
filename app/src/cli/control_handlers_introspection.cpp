@@ -143,6 +143,7 @@ void register_introspection_handlers(Handlers& handlers_) {
             }
             ops.push_back(jo);
         }
+        if (registered > 0) c.app->file_drops.rebuild(c.app->op_loaders);  // pick up any new drop handlers
         json r = ok(); r["package"] = ir.name; r["registered"] = registered; r["operators"] = ops;
         return r;
     };

@@ -144,6 +144,20 @@ def layout_graph() -> dict:
 
 
 @mcp.tool
+def undo() -> dict:
+    """Undo the last document edit (ADR-0017). One app-wide history covers the visual graph + the
+    mapping bridge (audio-session edits land in a later phase); performance actions (play/launch/arm)
+    are not undoable. Returns {did, can_undo, can_redo, undo_label, redo_label}."""
+    return _post("undo")
+
+
+@mcp.tool
+def redo() -> dict:
+    """Redo the edit most recently undone. Returns {did, can_undo, can_redo, undo_label, redo_label}."""
+    return _post("redo")
+
+
+@mcp.tool
 def get_mappings() -> dict:
     """All bridge mappings: [{src, dst, amount, curve, invert, lo, hi}]."""
     return _post("get_mappings")
@@ -212,12 +226,9 @@ def set_active_output(id: int) -> dict:
 
 @mcp.tool
 def set_node_asset(id: int, asset: str) -> dict:
-    """Point a node at a data asset. For a CustomShader node, `asset` is a project-relative
-    .glsl filename (resolved against the loaded project folder); the node renders that shader.
-    Pass "" to clear. The shader must follow the GLSL contract (v_uv/o_color + the
-    u_res/u_time/u_warp/u_hue/u_density/u_glow uniform block — see the authoring guide). A
-    missing file or compile error degrades to a no-op node (never crashes). Save it with the
-    project (save_project) so a folder holds project.json + the .glsl together."""
+    """DEPRECATED (no-op since ADR-0016). The legacy host-side asset channel — no operator
+    implements it any more; CustomShader now takes its file through a FILE param. Use
+    set_node_file_param(id, "file", "<path>.glsl") instead. Kept only so old scripts don't error."""
     return _post("set_node_asset", {"id": id, "asset": asset})
 
 
@@ -235,6 +246,33 @@ def set_node_file_param(node_id: int, name: str, value: str) -> dict:
     (name="file" -> a .txt whose contents are the rendered string). The op reloads on change and
     degrades to a no-op / fallback if the file is missing or fails. Persisted with save_project."""
     return _post("set_node_file_param", {"node_id": node_id, "name": name, "value": value})
+
+
+@mcp.tool
+def save_node_preset(node_id: int, name: str) -> dict:
+    """Save a visual node's current params as a named preset (ADR-0021). A node preset is a param
+    name->value snapshot (distinct from the plugin list_presets/load_preset flow, which loads opaque
+    per-instrument binary state). Stored per op type under the user data dir; recall with
+    load_node_preset. Persisted by param NAME, so a later shader-header edit that adds/removes a param
+    doesn't scramble it."""
+    return _post("save_node_preset", {"node_id": node_id, "name": name})
+
+
+@mcp.tool
+def list_node_presets(node_id: int = -1, op_type: str = "") -> dict:
+    """List the presets for a node's op type — pass either a node_id or an explicit op_type. Returns
+    each preset's name and whether it's a factory (shipped, read-only) or user preset."""
+    body = {}
+    if node_id >= 0: body["node_id"] = node_id
+    if op_type: body["op_type"] = op_type
+    return _post("list_node_presets", body)
+
+
+@mcp.tool
+def load_node_preset(node_id: int, name: str) -> dict:
+    """Apply a named preset to a visual node. Sets every param the preset names that the node still
+    has (params the node no longer has are skipped). Returns the count applied."""
+    return _post("load_node_preset", {"node_id": node_id, "name": name})
 
 
 @mcp.tool
@@ -1002,8 +1040,8 @@ def get_authoring_guide() -> dict:
             "4. SOUND: list_params(track, 0, filter='cutoff') then set_param(track, 0, index, value).",
             "5. VISUALS: the default chain is Plasma->Feedback->Blur->Output. add_node / connect_nodes "
             "to extend it; set_node_param for base look; set_active_output to pick the viewer source. "
-            "Custom look? add_node('CustomShader') + set_node_asset(id,'<file>.glsl') renders a project "
-            "folder .glsl (contract in 'custom_assets' below); project-local C++ ops load on load_project.",
+            "Custom look? add_node('CustomShader') + set_node_file_param(id,'file','<file>.glsl') renders a "
+            "project folder .glsl (contract in 'custom_assets' below); project-local C++ ops load on load_project.",
             "6. BRIDGE: connect_mapping(src, dst) — e.g. src='master.transient', dst='node:<id>.warp'. "
             "Visual node ids + param names come from get_graph; dst for audio params is 'param:T:D:index'.",
             "7. RETURN PATH: src can be 'viz.<name>' to drive an audio param from a visual value.",
@@ -1035,7 +1073,7 @@ def get_authoring_guide() -> dict:
         "custom_assets": {
             "project_folder": "save_project(dir) (a path with no .json extension) makes a FOLDER project: "
                               "<dir>/project.json plus co-located assets. load_project(dir) restores it.",
-            "custom_shader": "add_node('CustomShader') + set_node_asset(id,'look.glsl') renders a .glsl in the "
+            "custom_shader": "add_node('CustomShader') + set_node_file_param(id,'file','look.glsl') renders a .glsl in the "
                              "project folder. The fragment must declare: `#version 450`, "
                              "`layout(location=0) in vec2 v_uv; layout(location=0) out vec4 o_color;` and "
                              "`layout(set=0,binding=0) uniform U { vec2 u_res; float u_time; float u_warp; "

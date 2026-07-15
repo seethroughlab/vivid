@@ -44,7 +44,11 @@ void editor_set_param(void* o, const char* name, float v) {
     if (!c || !c->g || !name) return;
     const int pc = c->g->op_param_count_at(c->node);
     for (int l = 0; l < pc; ++l)
-        if (std::strcmp(c->g->op_param_label_at(c->node, l), name) == 0) { c->g->set_op_param_base_at(c->node, l, v); return; }
+        if (std::strcmp(c->g->op_param_label_at(c->node, l), name) == 0) {
+            c->g->set_op_param_base_at(c->node, l, v);
+            c->g->note_edit("Adjust Param", "editor-param");   // ADR-0017 (folds into the dock gesture)
+            return;
+        }
 }
 }  // namespace
 
@@ -237,6 +241,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
             const bool eh = hit(eb, mx, my);
             item_box(ui, eb, sty.gpu, eh);
             ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.gpu[0], sty.gpu[1], sty.gpu[2], eh ? 1.0f : 0.85f, sty.fs_label);
+        }
+        // ADR-0021/P4: "Presets" — open the node-preset popover (save / recall / delete).
+        {
+            const Rect pb = dock_node_presets_button_rect(w.win_w, w.win_h, w.dock_h);
+            const bool ph = hit(pb, mx, my);
+            item_box(ui, pb, sty.gpu, ph);
+            ui.draw_text(pb.x + 7.f, pb.y + 2.f, "Presets", sty.gpu[0], sty.gpu[1], sty.gpu[2], ph ? 1.0f : 0.85f, sty.fs_label);
         }
         auto* g = w.app->graph;
         const int pc = g->op_param_count_at(selop);
