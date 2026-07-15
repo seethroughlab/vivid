@@ -3,6 +3,7 @@
 #include "ui/node_canvas.h"       // shared node-editor drawing (node_card / node_wire / node_port)
 #include "ui/node_graph.h"        // NodeGraph::source_of — the bridge mapped-state query
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
+#include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
 #include "audio/vst3_host.h"
 
 #include <algorithm>
@@ -21,6 +22,12 @@ constexpr float kParamBandTall = 118.f; // grown to host a compound-widget previ
 constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
 constexpr float kPCellW = 66.f, kPCellH = 42.f;   // param knob cell; the band wraps knobs into a grid
 constexpr int   kPMaxRows = 3;          // cap the grid at 3 rows (a VST3 node's overflow lives in its plugin editor)
+// Curated inspector (Phase 2b): the vertical pinned-param rows for a plugin node.
+constexpr float kPinRowH   = 24.f;      // one pinned-param row
+constexpr float kPinLabelW = 118.f;     // label column width (left of the widget)
+constexpr float kPinValueW = 78.f;      // right-aligned value column
+constexpr float kAddBtnH   = 18.f;      // the "+ Add param" button
+constexpr int   kPinMaxVisible = 8;     // rows shown before overflow (scroll deferred; use the editor)
 // LFO waveform names, indexed by the enum value (matches the SineSynth convention). The session
 // API exposes the value but not the enum choice labels, so the widget names them by convention.
 const char* kLfoWaveNames[4] = { "sine", "triangle", "square", "saw" };
@@ -41,6 +48,10 @@ inline void wire(Renderer2D& r, float x0, float y0, float x1, float y1, const fl
 // the preview strip has room. Scans the selection's param hints (draw + input agree via sel_node_).
 float AudioNodeGraph::param_band_h() const {
     if (!s_ || sel_node_ < 0) return kParamBand;
+    if (is_plugin_node(sel_node_)) {   // curated vertical inspector: rows + the add button
+        const int np = std::min(P::session_audio_graph_node_param_pinned_count(s_, track_, sel_node_), kPinMaxVisible);
+        return std::max(kParamBand, 8.f + np * kPinRowH + 8.f + kAddBtnH + 8.f);
+    }
     const int pc = P::session_audio_graph_node_param_count(s_, track_, sel_node_);
     bool compound = false; int knobs = 0;
     for (int i = 0; i < pc; ++i) {
@@ -75,6 +86,49 @@ std::vector<AudioCompoundPreview> AudioNodeGraph::compound_previews() const {
 
 Rect AudioNodeGraph::param_region() const { const float b = param_band_h(); return { x0_, y1_ - b, x1_ - x0_, b }; }
 Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); return { x0_, y0_, x1_ - x0_, (y1_ - b) - y0_ }; }
+
+// A plugin node (VST3, i.e. it exposes an IEditController) uses the curated vertical inspector;
+// native ops keep the compound/knob strip. CLAP is treated as native for now (no metadata yet).
+bool AudioNodeGraph::is_plugin_node(int sel_node) const {
+    return s_ && sel_node >= 0 && P::session_audio_graph_node_controller(s_, track_, sel_node) != nullptr;
+}
+
+// The pinned params of a plugin node laid out as full-width vertical rows. Shared by draw + input.
+std::vector<AudioPinRow> AudioNodeGraph::pinned_rows(int sel_node) const {
+    std::vector<AudioPinRow> out;
+    if (!is_plugin_node(sel_node)) return out;
+    const Rect pr = param_region();
+    const int np = std::min(P::session_audio_graph_node_param_pinned_count(s_, track_, sel_node), kPinMaxVisible);
+    const float rx = pr.x + 8.f, rw = pr.w - 16.f;
+    out.reserve(np);
+    for (int i = 0; i < np; ++i) {
+        const int idx = P::session_audio_graph_node_param_pinned_at(s_, track_, sel_node, i);
+        if (idx < 0) continue;
+        const int ptype = P::session_audio_graph_node_param_type(s_, track_, sel_node, idx);
+        const int hint  = P::session_audio_graph_node_param_hint(s_, track_, sel_node, idx);
+        const int cc    = P::session_audio_graph_node_param_choice_count(s_, track_, sel_node, idx);
+        AudioPinRow r;
+        r.index  = idx;
+        r.widget = static_cast<int>(node_widget_kind(ptype, hint, cc));
+        const float top = pr.y + 8.f + i * kPinRowH;
+        r.row    = { rx, top, rw, kPinRowH - 4.f };
+        r.remove = { rx + rw - 15.f, top + 3.f, 13.f, 13.f };
+        r.label  = { rx, top, kPinLabelW - 16.f, kPinRowH - 4.f };
+        r.mapdot = { rx + kPinLabelW - 13.f, top + 6.f, 9.f, 9.f };
+        const float vx = r.remove.x - 6.f - kPinValueW;
+        r.value  = { vx, top, kPinValueW, kPinRowH - 4.f };
+        r.widget_rect = { rx + kPinLabelW, top + 4.f, std::max(20.f, vx - (rx + kPinLabelW) - 8.f), kPinRowH - 10.f };
+        out.push_back(r);
+    }
+    return out;
+}
+
+Rect AudioNodeGraph::add_param_button_rect(int sel_node) const {
+    if (!is_plugin_node(sel_node)) return { 0.f, 0.f, 0.f, 0.f };
+    const Rect pr = param_region();
+    const int np = std::min(P::session_audio_graph_node_param_pinned_count(s_, track_, sel_node), kPinMaxVisible);
+    return { pr.x + 8.f, pr.y + 8.f + np * kPinRowH + 2.f, 120.f, kAddBtnH };
+}
 
 Rect AudioNodeGraph::add_button_rect() const {
     const Rect g = graph_region();
@@ -290,6 +344,52 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
     // Inline param strip for the selected node (drawn unclipped, in its fixed bottom band).
     const Rect pr = param_region();
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+
+    // Curated inspector (Phase 2b): a plugin node shows its PINNED params as vertical rows —
+    // [ label · widget · value · × ] — plus a "+ Add param" button. Its full param surface lives
+    // in the native plugin editor (the "Editor" button); here you keep only what you reach for.
+    if (is_plugin_node(sel_node)) {
+        const std::vector<AudioPinRow> rows = pinned_rows(sel_node);
+        if (rows.empty())
+            r.draw_text(pr.x + 8.f, pr.y + 13.f, "No params pinned \xE2\x80\x94 add the ones you want to control",
+                        sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
+        for (const AudioPinRow& row : rows) {
+            const char* nm  = P::session_audio_graph_node_param_name(s_, track_, sel_node, row.index);
+            const char* disp = P::session_audio_graph_node_param_display(s_, track_, sel_node, row.index);
+            const float v  = P::session_audio_graph_node_param_get(s_, track_, sel_node, row.index);
+            const float mn = P::session_audio_graph_node_param_min(s_, track_, sel_node, row.index);
+            const float mx = P::session_audio_graph_node_param_max(s_, track_, sel_node, row.index);
+            const float norm = (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f;
+            const bool mapped = map_ && map_->source_of(gnode_param_dest(track_, sel_node, row.index)) != nullptr;
+            // label
+            r.draw_text(row.label.x, row.label.y + 6.f, fit_text(r, nm ? nm : "", row.label.w, 0.72f).c_str(),
+                        sty.body[0], sty.body[1], sty.body[2], 1.0f, 0.72f);
+            // bridge map dot (return path): teal when a source drives this param
+            if (mapped) r.draw_rect(row.mapdot.x, row.mapdot.y, row.mapdot.w, row.mapdot.h, 0.31f, 0.80f, 0.75f, 1.0f);
+            else        r.draw_rect(row.mapdot.x, row.mapdot.y, row.mapdot.w, row.mapdot.h, sty.recess[0], sty.recess[1], sty.recess[2], 1.0f);
+            // widget by type
+            const NodeWidget wk = static_cast<NodeWidget>(row.widget);
+            if (wk == NodeWidget::Toggle) {
+                toggle(r, row.widget_rect.x, row.widget_rect.y, 30.f, row.widget_rect.h, norm > 0.5f, sty.audio);
+            } else if (wk == NodeWidget::Enum) {
+                dropdown_field(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h,
+                               (disp && *disp) ? disp : "", sty.audio, false);
+            } else {
+                slider(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, norm, nullptr, nullptr, sty.audio, mapped);
+            }
+            // value (right-aligned) — the enum shows its label in the field, so skip it there
+            if (wk != NodeWidget::Enum)
+                draw_text_r(r, row.value.x + row.value.w, row.value.y + 6.f, (disp && *disp) ? disp : "",
+                            sty.text, 1.0f, 0.7f);
+            // remove (×)
+            const bool rh = hit(row.remove, cx, cy);
+            r.draw_text(row.remove.x + 2.f, row.remove.y - 1.f, "\xC3\x97", 0.72f, 0.45f, 0.45f, rh ? 1.0f : 0.75f, 0.95f);
+        }
+        const Rect ab = add_param_button_rect(sel_node);
+        item_box(r, ab, sty.audio, hit(ab, cx, cy));
+        r.draw_text(ab.x + 8.f, ab.y + 3.f, "+ Add param", sty.audio[0], sty.audio[1], sty.audio[2], 0.9f, sty.fs_label);
+        return;
+    }
     // UI-4a: compound-widget previews (ADSR envelope / LFO waveform) in the top strip. The channel
     // params still render as knobs below (the preview groups them); the LFO enum is preview-only.
     for (const auto& cp : compound_previews()) {

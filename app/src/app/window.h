@@ -103,6 +103,13 @@ struct Window {
     int     sel_audio_node = kNoAudioNode;
     int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
     float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
+    // Curated inspector (Phase 2b): a pinned slider row drags HORIZONTALLY (absolute position),
+    // vs the knob strip's vertical delta. When set, the drag maps mx into [rx, rx+rw].
+    bool    ag_param_horiz = false; float ag_param_rx = 0.f, ag_param_rw = 1.f;
+    // The "+ Add param" picker for the curated inspector: a popup list of the node's unpinned
+    // params. `node` = the audio node it curates; `query` (Phase 2c) filters the list.
+    struct AddParamMenu { bool open = false; float x = 0.f, y = 0.f; int node = -1; };
+    AddParamMenu add_param_menu;
     // Dragging a source node's key-range handle (a key-split): 0 = lo, 1 = hi, -1 = none.
     int     ag_key_drag    = -1;
     int     ag_key_v0      = 0; double ag_key_y0 = 0.0;

@@ -10,6 +10,7 @@
 #include "ui/audio_node_graph.h"
 #include "ui/audio_catalog.h"       // A3: the unified add catalog (native ops + VST3 + CLAP)
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
+#include "ui/param_widget.h"        // Phase 2b: NodeWidget (curated inspector row widgets)
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
@@ -182,7 +183,66 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
         if (hit(ag.key_lo_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 0; win.ag_key_v0 = lo; win.ag_key_y0 = my; return true; }
         if (hit(ag.key_hi_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 1; win.ag_key_v0 = hi; win.ag_key_y0 = my; return true; }
     }
-    if (win.sel_audio_node >= 0) {   // param knob drag on the selected node (by node id)
+    // Curated inspector (Phase 2b): a plugin node's pinned params are vertical rows, not a knob grid.
+    if (win.sel_audio_node >= 0 && ag.is_plugin_node(win.sel_audio_node)) {
+        if (hit(ag.add_param_button_rect(win.sel_audio_node), mx, my)) {   // open the "+ Add param" picker
+            // The button sits at the dock's bottom edge, so the picker opens UPWARD (grows above the
+            // click) and is clamped fully on-screen — the same treatment as the map-source picker.
+            const float menu_w = 232.f, row_h = 22.f, marg = 8.f;
+            const int pc = S::session_audio_graph_node_param_count(app.session, tr, win.sel_audio_node);
+            int unp = 0;
+            for (int p = 0; p < pc && unp < 12; ++p)
+                if (!S::session_audio_graph_node_param_is_pinned(app.session, tr, win.sel_audio_node, p)) ++unp;
+            const float menu_rows = static_cast<float>(std::max(1, unp)) * row_h;
+            const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+            const float fy = std::clamp(static_cast<float>(my) - menu_rows - 8.f,
+                                        marg + 22.f, win.win_h - menu_rows - marg);
+            win.add_param_menu = { true, fx, fy, win.sel_audio_node };
+            return true;
+        }
+        for (const auto& row : ag.pinned_rows(win.sel_audio_node)) {
+            // bridge map dot (same picker as the knob strip) — opened above the dock
+            if (hit(Rect{ row.mapdot.x - 4.f, row.mapdot.y - 2.f, row.mapdot.w + 8.f, row.mapdot.h + 8.f }, mx, my)) {
+                const float menu_w = 168.f, item_h = 24.f, marg = 8.f, menu_h = kNumMapSources * item_h;
+                const float fx = std::min(static_cast<float>(mx), win.win_w - menu_w - marg);
+                const float fy = std::max(marg + 22.f, std::min(static_cast<float>(my), win.dock_top() - menu_h - marg));
+                win.map_menu = { true, fx, fy, win.sel_audio_node };
+                win.map_param = row.index;
+                return true;
+            }
+            if (hit(row.remove, mx, my)) {   // × → unpin (remove from the curated set)
+                S::session_audio_graph_node_param_unpin(app.session, tr, win.sel_audio_node, row.index);
+                return true;
+            }
+            if (hit(row.row, mx, my)) {
+                const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, row.index);
+                const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, row.index);
+                const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, row.index);
+                const vivid::ui::NodeWidget wk = static_cast<vivid::ui::NodeWidget>(row.widget);
+                if (wk == vivid::ui::NodeWidget::Toggle) {   // click flips
+                    const float mid = mn + (mxx - mn) * 0.5f;
+                    S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, v > mid ? mn : mxx);
+                    return true;
+                }
+                if (wk == vivid::ui::NodeWidget::Enum) {   // click cycles to the next choice (wraps)
+                    const int cc = std::max(2, S::session_audio_graph_node_param_choice_count(app.session, tr, win.sel_audio_node, row.index));
+                    const float norm = (mxx > mn) ? (v - mn) / (mxx - mn) : 0.f;
+                    const int nxt = (static_cast<int>(std::lround(norm * (cc - 1))) + 1) % cc;
+                    S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index,
+                                                          mn + static_cast<float>(nxt) / static_cast<float>(cc - 1) * (mxx - mn));
+                    return true;
+                }
+                // slider: start a HORIZONTAL drag and apply immediately at the click x
+                win.ag_param_drag = row.index; win.ag_param_horiz = true;
+                win.ag_param_rx = row.widget_rect.x; win.ag_param_rw = row.widget_rect.w;
+                const float norm = std::clamp(static_cast<float>(mx - row.widget_rect.x) / row.widget_rect.w, 0.f, 1.f);
+                S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, mn + norm * (mxx - mn));
+                return true;
+            }
+        }
+        // a click in the band that hit no row falls through to node select (the band is below the nodes)
+    }
+    if (win.sel_audio_node >= 0 && !ag.is_plugin_node(win.sel_audio_node)) {   // native knob strip (by node id)
         for (const auto& c : ag.param_cells(win.sel_audio_node)) {
             // The map dot (top-right of the cell) takes priority over the knob rect it sits inside:
             // open the bridge map-source picker for this node param (dock_menus emits a "gnode:" dest).

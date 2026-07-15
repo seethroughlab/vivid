@@ -280,7 +280,11 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const int nid = win.sel_audio_node;   // node id (not chain index)
         const float mn = S::session_audio_graph_node_param_min(app.session, tr, nid, win.ag_param_drag);
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
-        const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
+        // Curated inspector slider rows drag HORIZONTALLY (absolute mx→[rx,rx+rw]); the native knob
+        // strip drags vertically (delta from the grab point).
+        const float norm = win.ag_param_horiz
+            ? std::clamp(static_cast<float>(mx - win.ag_param_rx) / win.ag_param_rw, 0.f, 1.f)
+            : std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
     }
     // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
@@ -503,6 +507,7 @@ void run_frame_loop(App& app, Window& win) {
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
             draw_map_menu(ui, win.map_menu);
             draw_node_menu(ui, win);
+            draw_add_param_menu(ui, win);   // Phase 2b: curated-inspector "+ Add param" picker
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);

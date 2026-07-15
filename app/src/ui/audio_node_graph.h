@@ -39,6 +39,15 @@ struct AudioParamCell {
 // picker for that node param. Shared by draw + input so the hit-rect matches the drawn dot.
 inline Rect ag_param_map_dot(const AudioParamCell& c) { return { c.x + c.w - 13.f, c.y + 1.f, 10.f, 10.f }; }
 
+// Curated inspector (Phase 2b): one pinned param drawn as a full-width vertical row —
+// [ label | widget (slider/toggle/enum) | value | × remove ], plus a map dot. `widget` is a
+// vivid::ui::NodeWidget. Shared by draw + input so the hit-rects match what's drawn.
+struct AudioPinRow {
+    int  index = 0;      // param index
+    int  widget = 0;     // NodeWidget kind (slider/toggle/enum/knob)
+    Rect row, label, widget_rect, value, remove, mapdot;
+};
+
 // A compound-widget preview (UI-4a): an ADSR envelope or LFO waveform drawn above the knob row.
 // `index` is the group-leader param; `rect` is its slot in the top preview strip.
 struct AudioCompoundPreview {
@@ -83,6 +92,13 @@ public:
     std::vector<AudioParamCell> param_cells(int sel_node) const;
     // Compound-widget previews (ADSR/LFO) for the selected node — shared by draw + input hit-test.
     std::vector<AudioCompoundPreview> compound_previews() const;
+    // Curated inspector (Phase 2b): true when the selected node is a plugin (VST3) that uses the
+    // vertical pinned-param inspector instead of the native knob strip.
+    bool is_plugin_node(int sel_node) const;
+    // The pinned params of the selected node as vertical rows; empty for a non-plugin node. Shared
+    // by draw + input. `add_param_button_rect` is the "+ Add param" affordance below the rows.
+    std::vector<AudioPinRow> pinned_rows(int sel_node) const;
+    Rect add_param_button_rect(int sel_node) const;
 
     // Render: the graph + (if a node is selected) its highlight + inline param strip. When
     // wire_from >= 0 a rewire drag is in progress: draw a ghost wire from that node's output port
