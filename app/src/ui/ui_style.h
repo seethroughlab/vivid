@@ -370,18 +370,23 @@ inline void knob(Renderer2D& r, float cx, float cy, float rad, float v01,
     }
 }
 
-// A horizontal slider: recessed track + accent fill + a handle; name at the left,
-// value at the right. v01 is the normalized 0..1 position. `mapped` tints toward teal.
+// A horizontal slider: a framed recessed groove + inset accent fill + a real grabbable handle;
+// name at the left, value at the right. v01 is the normalized 0..1 position. `mapped` tints the
+// fill toward teal; `hot` brightens the handle on hover.
 inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
-                   const char* label, const char* valtext, const float* accent, bool mapped = false) {
+                   const char* label, const char* valtext, const float* accent, bool mapped = false, bool hot = false) {
     v01 = v01 < 0.f ? 0.f : (v01 > 1.f ? 1.f : v01);
     const Style& s = style();
-    const float ty = y + h - 6.f, th = 4.f;                 // track sits at the row's bottom
+    const float th = 6.f, ty = y + h - 9.f;                 // a chunkier groove near the row bottom
     r.draw_rect(x, ty, w, th, s.recess[0], s.recess[1], s.recess[2], 1.0f);
+    r.draw_rect_outline(x, ty, w, th, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);   // 1px frame -> reads as a groove
     const float fr = mapped ? s.teal[0] : accent[0], fg = mapped ? s.teal[1] : accent[1], fb = mapped ? s.teal[2] : accent[2];
-    if (v01 > 0.001f) r.draw_rect(x, ty, w * v01, th, fr, fg, fb, 1.0f);
-    const float hx = x + w * v01;
-    r.draw_rect(hx - 2.f, ty - 3.f, 4.f, th + 6.f, s.text[0], s.text[1], s.text[2], 1.0f);  // hard handle
+    if (v01 > 0.001f) r.draw_rect(x + 1.f, ty + 1.f, (w - 2.f) * v01, th - 2.f, fr, fg, fb, 1.0f);   // fill inside the frame
+    // a real grabbable handle: a bright bordered block, kept inside the track; brighter on hover
+    const float hw = 8.f, hh = th + 6.f, hx = x + (w - hw) * v01, hy = ty - 3.f;
+    const float hb = hot ? 1.0f : 0.86f;
+    r.draw_rect(hx, hy, hw, hh, s.text[0] * hb, s.text[1] * hb, s.text[2] * hb, 1.0f);
+    r.draw_rect_outline(hx, hy, hw, hh, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
     if (label) r.draw_text(x, y, label, s.dim[0], s.dim[1], s.dim[2], 1.0f, s.fs_label);
     if (valtext) {
         const float tw = r.text_width(valtext, s.fs_label);

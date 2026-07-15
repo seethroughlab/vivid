@@ -375,7 +375,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                 dropdown_field(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h,
                                (disp && *disp) ? disp : "", sty.audio, false);
             } else {
-                slider(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, norm, nullptr, nullptr, sty.audio, mapped);
+                slider(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, norm, nullptr, nullptr, sty.audio, mapped, hit(row.widget_rect, cx, cy));
             }
             // value (right-aligned) — the enum shows its label in the field, so skip it there
             if (wk != NodeWidget::Enum)
