@@ -1,6 +1,7 @@
 # ADR-0017: Every Edit Is Reversible
 
-Status: proposed
+Status: accepted — undo/redo implemented (see "As built" below). Multi-select/copy/paste split to a
+follow-up.
 
 Date: 2026-07-14
 
@@ -12,6 +13,29 @@ Decided: the application gains **one undo stack**, shared by both graphs and the
 (`begin_undo_group` / `end_undo_group`), not a wall-clock timer. And node selection stops being a
 single `int` and becomes a **set** — which is what unlocks marquee, group-drag, copy, paste, and
 duplicate on both canvases at once.
+
+> ### As built (2026-07-14, `feature/undo-redo`, 5 commits G1–G4)
+>
+> Undo/redo shipped; the mechanism was chosen during implementation to be the *architecturally right*
+> one rather than the literal sketch above:
+> - **A command sink (`EditGateway`), not per-site `mutate()` hooks.** Every document edit — MCP and
+>   UI — routes through one gateway that captures a labeled snapshot. MCP is captured by a table at the
+>   dispatch chokepoint (`cli/edit_methods`); UI by gesture bracketing + `note_edit` at each site.
+>   The trunk had no single command path, so this *is* the model vivid-classic's `RuntimeCommandSink`
+>   proved. The per-site alternative was rejected: a missed site among ~75 handlers is a silent bug.
+> - **A completeness audit** (`VIVID_UNDO_AUDIT`) turns any un-routed edit into a failing assertion —
+>   the de-risk for the sink's "did the rerouting miss a site?" question. It caught two real bugs during
+>   bring-up (plugin `getState()` churn; pre-layout baseline).
+> - **Deferred, end-of-frame capture** (not immediate): the audit showed draw-time settling (node
+>   auto-positioning) must be in the snapshot.
+> - **Snapshot = a canonical document projection** stripping performance/view state (window, pan/zoom,
+>   launched clip) and opaque plugin state; **smart restore** tiers audio as Skip / ParamsOnly / Full so
+>   a value undo (e.g. a gain drag) never re-instantiates a plugin (verified 0.065s, no reload).
+> - **Surfaces**: Cmd+Z / Cmd+Shift+Z / Cmd+Y, a native Edit menu with live labels, MCP `undo`/`redo`.
+>
+> **Deferred to a follow-up PR**: multi-select + copy/paste/duplicate (the "selection is a set" half).
+> In vivid-classic these were an independent subsystem from undo, and undo shipped without them. The
+> remaining verification is the interactive `VIVID_UNDO_AUDIT` click-through of the UI edit sites.
 
 ## Context
 
