@@ -15,6 +15,9 @@
   `const Window&`; reaches shared state via `win.app->`.
 - **`mapping_overview.{h,cpp}`** — the P28 bridge overview (geometry inline in the
   header so the modal input handler agrees with the draw).
+- **`shader_library_view.{h,cpp}`** — the ADR-0021 content browser: lists the shaders
+  in the shader library (each row carries its compile `error` when it failed), for
+  browsing/forking shipped shaders.
 - **`node_graph.{h,cpp}`** — the visuals node editor: op chain, data nodes, the
   `MappingRegistry` (the bridge), the Tab operator chooser, live thumbnails.
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and

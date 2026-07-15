@@ -8,6 +8,12 @@ whole-trunk swap to classic. See §1d for the entanglement audit that decided th
 Date: 2026-06-29 · Scope: `app/` (branch `poc-cpp-prototype`), benchmarked against the `vivid-classic`
 branch.
 
+> **Status (2026-07-15).** This is the original PoC→product assessment; its P0–P4 roadmap has **largely
+> landed** and the phase text below reads in the future tense of its writing. For the *current* gap and
+> what's next, see [`classic-platform-gap.md`](classic-platform-gap.md) — the product lift beyond P0–P4
+> (undo ✅ ADR-0017, content browsing ✅ ADR-0021; resilience/error-surfaces/inner-loop still ahead).
+> Keep this file as the historical assessment.
+
 ---
 
 ## 1. Assessment

@@ -39,6 +39,13 @@ curl -s -XPOST localhost:9876/connect_mapping -d '{"src":"master.transient","dst
 
 Then ask the agent to `get_authoring_guide()` and build a reactive scene.
 
+## Editing & content tools
+
+Beyond the graph/session/mapping methods, the bridge exposes **`undo`** / **`redo`** (whole-document,
+ADR-0017 — a single reversible history across visual graph, mappings, and audio) and the node-preset
+tools (`save_node_preset` / `list_node_presets` / `load_node_preset`, ADR-0021). This README is not an
+exhaustive tool inventory — `get_authoring_guide()` and the tool list in `vivid_mcp.py` are current.
+
 ## Music-theory tools
 
 `theory.py` (zero-dependency, pure) powers chord/scale/rhythm/analysis tools —

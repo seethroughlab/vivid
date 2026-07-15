@@ -17,6 +17,10 @@ else (GPU/wgpu, audio/miniaudio, input/GLFW) is already cross-platform via its l
   plugin-GUI hosting off macOS).
 - **`app_nap.h`** — `disable_app_nap(reason)`: `macos_app_nap.mm` (NSProcessInfo
   activity) vs `app_nap_stub.cpp` (noop).
+- **`menu_bar.{h,mm}`** — the native macOS menu bar: File (New/Open/Save + Open Recent /
+  Open Example) and the **Edit menu** (ADR-0017 Undo/Redo, dynamically relabeled; no ⌘Z
+  key-equivalent so AppKit doesn't steal it from the clip editor). `menu_bar_stub.cpp` is
+  the no-op off macOS.
 
 Heavy macOS-only features stub elsewhere (same signatures, feature disabled):
 `gpu/video_player.mm` (AVFoundation) ↔ `gpu/video_player_stub.cpp`;

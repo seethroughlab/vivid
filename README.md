@@ -8,7 +8,10 @@ author sessions, patch the graph, and wire audio↔visual mappings over a contro
 
 The application lives under [`app/`](app/) (GLFW + wgpu-native/Metal + miniaudio + VST3). The agent
 bridge lives under [`mcp/`](mcp/). This is the product trunk; the Session View DAW, the visuals
-graph, and the bridge are all **implemented and running today** — not a future target.
+graph, and the bridge are all **implemented and running today** — not a future target. Recent
+product-layer work has landed too: **whole-document undo/redo** (Cmd+Z across the graph, mappings,
+and audio), **content browsing** (a shader library, examples picker, file drop, node presets), and a
+curated VST3/CLAP param inspector.
 
 ## Build & run (macOS)
 
@@ -30,7 +33,8 @@ without the window frontmost (see [`app/README.md`](app/README.md)).
 - **[`mcp/README.md`](mcp/README.md)** — the agent tool surface.
 - **[`docs/decisions/`](docs/decisions/)** — the ADRs. Recent load-bearing ones: ADR-0009
   (two surfaces + bridge), ADR-0011 (productization target), ADR-0012 (per-track audio graph),
-  ADR-0013 (focus-first UI).
+  ADR-0013 (focus-first UI), ADR-0016 (a shader file is an operator), ADR-0017 (every edit is
+  reversible — whole-document undo/redo), ADR-0021 (content is browsable).
 
 ## History & references
 
