@@ -207,7 +207,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
     const DockGeom d = w.dock_geom();
     const float y0 = d.y0;
-    const bool rhov = hit(w.dock_resize_rect(), mx, my);
+    const bool rhov = hit(w.dock_resize_rect(), mx, my) || w.dock_drag;   // light while hovering OR dragging (parity with the vertical splitter)
     // UI-1: the detail region always declares its domain (strict-zones principle) — an accent
     // edge + a badge, driven by the explicit focus, so audio vs visual is never ambiguous.
     const bool vis = (w.focus.dom == FocusContext::Dom::Visual);

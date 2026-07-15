@@ -294,15 +294,22 @@ inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selecte
 inline Rect detail_dock(Renderer2D& r, Rect b, const float* accent, bool resize_hot = false) {
     const Style& s = style();
     r.draw_rect(b.x, b.y, b.w, b.h, s.panel[0], s.panel[1], s.panel[2], 1.0f);
-    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f,
-                resize_hot ? s.control[0] : s.border[0],
-                resize_hot ? s.control[1] : s.border[1],
-                resize_hot ? s.control[2] : s.border[2], 1.0f);
+    // The top edge doubles as the horizontal resize splitter — styled to match the vertical
+    // DAW|visuals splitter (gpu when hot, border_soft idle) + a centered grip, so the two
+    // dividers read identically. See the vertical splitter in session_view.cpp.
+    const float* rc = resize_hot ? s.gpu : s.border_soft;
+    r.draw_rect(b.x, b.y - 1.f, b.w, 2.f, rc[0], rc[1], rc[2], 1.0f);
     const float hh = 20.f;
     r.draw_rect(b.x, b.y, b.w, hh, s.region_hd[0], s.region_hd[1], s.region_hd[2], 1.0f);
     r.draw_rect(b.x, b.y + hh, b.w, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 1.0f);
     if (accent)
         r.draw_rect(b.x, b.y, 4.f, hh, accent[0], accent[1], accent[2], 1.0f);
+    // Centered grip = the "you can drag me" mark (mirror of the vertical splitter's grip).
+    { const float gw = 28.f, gx = b.x + b.w * 0.5f - gw * 0.5f;
+      const float* gc = resize_hot ? s.gpu : s.border;
+      r.draw_rect(gx, b.y - 2.f, gw, 4.f, s.recess[0], s.recess[1], s.recess[2], 1.0f);   // recessed well
+      for (int i = 0; i < 3; ++i)   // three hard rules = the grip
+          r.draw_rect(gx + gw * 0.5f - 5.f + i * 5.f, b.y - 2.f, 1.f, 4.f, gc[0], gc[1], gc[2], 1.0f); }
     return { b.x + s.s4, b.y + hh + s.s3, b.w - 2.f * s.s4, b.h - hh - 2.f * s.s3 };
 }
 
