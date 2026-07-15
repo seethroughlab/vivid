@@ -1,4 +1,5 @@
 #include "ui/node_graph.h"
+#include "app/edit_gateway.h"   // ADR-0017: capture UI graph edits
 #include "ui/node_canvas.h"   // shared card/wire/port/grid + NodeView
 #include "ui/ui_style.h"   // design tokens (region colours, borders, type ramp)
 #include "gpu/visual_graph.h"    // VisualNode / nodes()
@@ -297,6 +298,7 @@ void NodeGraph::add_data_node(const std::string& title, int char_id) {
     float y = by0_ + 150.f + data_.size() * 84.f;
     if (y > by1_ - 72.f) y = by1_ - 72.f;
     data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, char_id, 0.f, 90 });
+    note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
 void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& title) const {
     if (i < 0 || i >= int(data_.size())) return;
@@ -449,7 +451,7 @@ std::string NodeGraph::op_source_path(int i) const {
 bool NodeGraph::swap_op_type(int i, const std::string& type) {
     if (!vg_) return false;
     const bool ok = vg_->set_node_op_type(i, type);   // keeps id + input edge + position
-    if (ok) sel_op_ = i;
+    if (ok) { sel_op_ = i; note_edit_("Swap Operator"); }
     return ok;
 }
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
@@ -635,13 +637,18 @@ void NodeGraph::chooser_show(double sx, double sy) {
     chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);
 }
 
+void NodeGraph::note_edit_(const char* label, const char* key) {
+    if (edit_gateway_) edit_gateway_->note_edit(label, key ? key : "");
+}
+
 void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
     if (e.tag == 0 && vg_) {                          // an operator
         const int ni = vg_->add_node(e.id);
         sync_op_pos();                                // grow op_pos_ for the new node...
         if (ni >= 0 && ni < int(op_pos_.size()))      // ...then place it where the chooser was opened
             op_pos_[ni] = { chooser_.spawn_x() - kCardW * 0.5f, chooser_.spawn_y() - 15.f };
-    } else if (e.tag == 1) {                          // a bridge data node
+        note_edit_("Add Node");
+    } else if (e.tag == 1) {                          // a bridge data node (add_data_node notes the edit)
         add_data_node(e.label, std::atoi(e.id.c_str()));
         if (!data_.empty()) { data_.back().x = chooser_.spawn_x() - 84.f; data_.back().y = chooser_.spawn_y() - 36.f; }
     }
@@ -670,10 +677,11 @@ bool NodeGraph::on_down(double x, double y) {
 
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
-    if (oi >= 0) { set_op_input_port(oi, oiPort, -1); return true; }
+    if (oi >= 0) { set_op_input_port(oi, oiPort, -1); note_edit_("Disconnect"); return true; }
     int pni, pl;
     if (nearest_param(wx, wy, pr, pni, pl)) {
         reg_.disconnect(node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
+        note_edit_("Disconnect Mapping");
         return true;
     }
 
@@ -690,10 +698,10 @@ bool NodeGraph::on_down(double x, double y) {
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
         if (!vg_->nodes()[i].is_output() && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
-            vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); return true;
+            vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); note_edit_("Delete Node"); return true;
         }
         if (in_rect(ox, oy, ow, oh, wx, wy)) {
-            if (vg_->nodes()[i].is_output()) vg_->set_active_output(i);  // clicking selects the viewer source
+            if (vg_->nodes()[i].is_output()) { vg_->set_active_output(i); note_edit_("Set Output"); }  // clicking selects the viewer source
             sel_op_ = i;  // select for the inspector (dock)
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
         }
@@ -719,8 +727,10 @@ void NodeGraph::on_move(double x, double y) {
     cx_ = wx; cy_ = wy;  // world cursor (drag-preview wires draw under the transform)
     if (drag_mode_ == 1 && drag_idx_ >= 0 && drag_idx_ < int(data_.size())) {
         data_[drag_idx_].x = float(wx - dx_); data_[drag_idx_].y = float(wy - dy_);
+        note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 2 && drag_idx_ >= 0 && drag_idx_ < int(op_pos_.size())) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
+        note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
         view_ox_ += float(x) - pan_last_x_; view_oy_ += float(y) - pan_last_y_;
         pan_last_x_ = float(x); pan_last_y_ = float(y);
@@ -738,12 +748,14 @@ void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl))
+        if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl)) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
+            note_edit_("Connect Mapping");
+        }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_scale_, tport);
-        if (target >= 0 && vg_) set_op_input_port(target, tport, wire_from_);
+        if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
 }

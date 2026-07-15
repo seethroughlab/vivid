@@ -95,12 +95,7 @@ void register_visuals_handlers(Handlers& handlers_) {
             if (name == c.graph->op_param_label_at(idx, l)) { local = l; break; }
         if (local < 0) return err(code::kNotFound, "no param '" + name + "' on that node");
         c.graph->set_op_param_base_at(idx, local, b.value("value", 0.f));
-        // ADR-0017/G1: route this edit through the gateway (the first wired path). Coalesce a rapid
-        // run of sets to the SAME node param into one undo entry.
-        if (c.app && c.app->edit_gateway)
-            c.app->edit_gateway->note_edit("Change " + name,
-                                           "param:" + std::to_string(b.value("node_id", -1)) + "/" + name);
-        return ok();
+        return ok();   // undo capture happens centrally at the dispatch table (ADR-0017/G2)
     };
     // Set a FILE/TEXT param's string value (e.g. an Image node's file path).
     handlers_["set_node_file_param"] = [](const ControlCtx& c, const json& b) {

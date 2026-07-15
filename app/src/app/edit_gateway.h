@@ -36,6 +36,15 @@ public:
     // once when the outermost group ends, and only if some note_edit dirtied it.
     void begin_group(const std::string& label);
     void end_group();
+    // Reconcile a leaked group (a gesture whose end_group was lost, e.g. a release delivered to
+    // another window): commit it if dirty and reset depth to 0. Called on the next press and by the
+    // frame watchdog when the mouse is up, so a lost release can't permanently wedge undo.
+    void close_open_group() { if (group_depth_ > 0) force_close_group(); }
+    bool group_open() const { return group_depth_ > 0; }
+
+    // Take the deferred snapshot for any edit noted this frame. Call at the END of the tick (after
+    // draw, so draw-time settling like node auto-positioning is included), before end_frame_audit().
+    void commit_frame();
 
     bool undo();
     bool redo();
@@ -65,6 +74,11 @@ private:
     nlohmann::json cached_;          // last canonical projection (for the audit + baseline)
     bool        edited_this_frame_ = false;
     unsigned    revision_ = 0;
+
+    // deferred capture (snapshot taken at commit_frame(), post-settle)
+    bool        pending_ = false;
+    std::string pending_label_;
+    std::string pending_key_;
 
     // grouping
     int         group_depth_ = 0;

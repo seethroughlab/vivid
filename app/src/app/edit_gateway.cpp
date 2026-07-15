@@ -25,6 +25,7 @@ void EditGateway::reset_baseline() {
     edited_this_frame_ = true;                // this frame's document change is intentional
     last_key_.clear();
     group_depth_ = 0; group_dirty_ = false; group_label_.clear();
+    pending_ = false;
     ++revision_;
 }
 
@@ -39,26 +40,21 @@ void EditGateway::note_edit(const std::string& label, const std::string& coalesc
 
     if (group_depth_ > 0) {
         if (coalesce_key.empty()) {
-            // A structural edit reached us mid-group: close the group as its own clean boundary
-            // (its post-state already includes this edit, since capture is post-state).
+            // A structural edit reached us mid-group: close the group as its own clean boundary.
             force_close_group();
         } else {
-            // A fine-grained edit inside an open group: fold in; the snapshot is taken at end_group.
+            // A fine-grained edit inside an open group: fold in; committed at end_group.
             group_dirty_ = true;
             if (group_label_.empty()) group_label_ = label;
         }
         return;
     }
-
-    const auto now = std::chrono::steady_clock::now();
-    bool replace_top = false;
-    if (!coalesce_key.empty() && coalesce_key == last_key_) {
-        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time_).count();
-        replace_top = (ms <= 300);
-    }
-    push_snapshot(canonical_projection_now(), replace_top, label);
-    if (coalesce_key.empty()) { last_key_.clear(); }
-    else { last_key_ = coalesce_key; last_time_ = now; }
+    // Defer the snapshot to commit_frame() at end of tick — the actual edit has run, but draw-time
+    // settling (e.g. NodeGraph::sync_op_pos assigning a new node's position) hasn't yet, so a snapshot
+    // taken NOW would capture a pre-settle document. Last note in a frame wins the label/key.
+    pending_ = true;
+    pending_label_ = label;
+    pending_key_ = coalesce_key;
 }
 
 void EditGateway::begin_group(const std::string& label) {
@@ -72,21 +68,31 @@ void EditGateway::begin_group(const std::string& label) {
 
 void EditGateway::end_group() {
     if (group_depth_ == 0) return;   // unbalanced end — ignore
-    if (--group_depth_ == 0 && group_dirty_) {
-        last_key_.clear();
-        push_snapshot(canonical_projection_now(), false, group_label_);
+    if (--group_depth_ == 0) {
+        if (group_dirty_) { pending_ = true; pending_label_ = group_label_; pending_key_.clear(); }
+        group_label_.clear(); group_dirty_ = false;
     }
-    if (group_depth_ == 0) { group_label_.clear(); group_dirty_ = false; }
 }
 
 void EditGateway::force_close_group() {
-    group_depth_ = 0;
-    if (group_dirty_) {
-        last_key_.clear();
-        push_snapshot(canonical_projection_now(), false, group_label_);
+    if (group_dirty_) { pending_ = true; pending_label_ = group_label_; pending_key_.clear(); }
+    group_depth_ = 0; group_label_.clear(); group_dirty_ = false;
+}
+
+void EditGateway::commit_frame() {
+    // Take the deferred snapshot at end of tick (post-draw, post-settle). Nothing to do while a group
+    // is still open (mid-gesture) or when no edit was noted this frame.
+    if (group_depth_ > 0 || !pending_) return;
+    const auto now = std::chrono::steady_clock::now();
+    bool replace_top = false;
+    if (!pending_key_.empty() && pending_key_ == last_key_) {
+        const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_time_).count();
+        replace_top = (ms <= 300);
     }
-    group_label_.clear();
-    group_dirty_ = false;
+    push_snapshot(canonical_projection_now(), replace_top, pending_label_);
+    if (pending_key_.empty()) last_key_.clear();
+    else { last_key_ = pending_key_; last_time_ = now; }
+    pending_ = false;
 }
 
 bool EditGateway::undo() {
@@ -117,6 +123,7 @@ void EditGateway::restore(const nlohmann::json& target) {
     session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier);
     cached_ = target;
     edited_this_frame_ = true;
+    pending_ = false;   // an undo/redo supersedes any edit noted earlier this frame
     ++revision_;
 }
 

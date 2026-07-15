@@ -4,6 +4,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017 note_edit (one-shot param widgets)
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/compound_widget.h"  // UI-4a: is_compound_widget / compound_span / xy_from_cursor
@@ -112,15 +113,18 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
         switch (node_widget_kind(g->op_param_type_at(selop, i), hint, g->op_param_choice_count_at(selop, i))) {
             case NodeWidget::Toggle:
                 g->set_op_param_base_at(selop, i, base >= 0.5f ? 0.f : 1.f);
+                if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Toggle Param", "");
                 break;
             case NodeWidget::Enum: {
                 const int cc = g->op_param_choice_count_at(selop, i);
                 if (cc > 1) { int idx = (int(std::lround(base * (cc - 1))) + 1) % cc; g->set_op_param_base_at(selop, i, float(idx) / (cc - 1)); }
+                if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Set Param", "");
                 break;
             }
             case NodeWidget::File: {   // open a native file chooser; set the path on the node
                 const std::string path = vivid::platform::open_file_dialog("Choose a file");
-                if (!path.empty()) g->set_op_file_param_at(selop, i, path);
+                if (!path.empty()) { g->set_op_file_param_at(selop, i, path);
+                    if (win.app->edit_gateway) win.app->edit_gateway->note_edit("Set File", ""); }
                 break;
             }
             case NodeWidget::Slider:

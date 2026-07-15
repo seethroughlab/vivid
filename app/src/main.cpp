@@ -297,6 +297,7 @@ int main(int argc, char** argv) {
     // the first undo jerk every node to its pre-layout position).
     vivid::EditGateway gateway(app);
     app.edit_gateway = &gateway;
+    graph.set_edit_gateway(&gateway);   // ADR-0017/G2: capture UI graph edits
 
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
 

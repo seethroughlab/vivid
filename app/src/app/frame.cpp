@@ -254,6 +254,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
     }
     if (win.param_drag >= 0) {
+        if (app.edit_gateway) app.edit_gateway->note_edit("Adjust Param", "param-drag");  // folds into the gesture
         if (win.param_xy && app.graph) {   // UI-4a: XY-pad — both axes track the cursor in the pad rect
             const int span = vivid::ui::compound_span(VIVID_DISPLAY_XY_PAD);
             const vivid::ui::Rect cr = vivid::ui::node_param_compound_rect(win.param_drag, span, win.win_w, win.win_h, win.dock_h);
@@ -563,6 +564,10 @@ void run_frame_loop(App& app, Window& win) {
         // (a no-op unless built with VIVID_UNDO_AUDIT) checks nothing bypassed the gateway.
         if (app.edit_gateway) {
             if (!undo_baseline_seeded) { app.edit_gateway->reset_baseline(); undo_baseline_seeded = true; }
+            // Watchdog: recover a gesture group leaked by a lost release (release delivered to another
+            // window / consumed by an early handler). Safe — a normal drag holds the button down.
+            if (!win.mouse_left_down) app.edit_gateway->close_open_group();
+            app.edit_gateway->commit_frame();   // take the frame's deferred snapshot, post-draw/settle
             app.edit_gateway->end_frame_audit();
         }
         return true;

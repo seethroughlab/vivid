@@ -42,7 +42,11 @@ void editor_set_param(void* o, const char* name, float v) {
     if (!c || !c->g || !name) return;
     const int pc = c->g->op_param_count_at(c->node);
     for (int l = 0; l < pc; ++l)
-        if (std::string(c->g->op_param_label_at(c->node, l)) == name) { c->g->set_op_param_base_at(c->node, l, v); return; }
+        if (std::string(c->g->op_param_label_at(c->node, l)) == name) {
+            c->g->set_op_param_base_at(c->node, l, v);
+            c->g->note_edit("Adjust Param", "editor-param");   // ADR-0017 (floated op editor)
+            return;
+        }
 }
 
 void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float g, float b) {
