@@ -4,6 +4,9 @@
 #include "cli/control_server.h"
 #include "cli/control_handlers.h"   // register_*_handlers()
 #include "cli/control_errors.h"     // err/code (the HTTP layer + dispatch report errors)
+#include "cli/edit_methods.h"       // ADR-0017/G2: edit_method_info (which methods are undoable)
+#include "app/app.h"                // ctx.app->edit_gateway
+#include "app/edit_gateway.h"
 
 #include <httplib.h>
 
@@ -76,6 +79,11 @@ void ControlServer::process_pending(const ControlCtx& ctx) {
             catch (const std::exception& e) { reply = err(code::kInternal, e.what()); }
             catch (...) { reply = err(code::kInternal, "handler exception"); }
         }
+        // ADR-0017/G2: capture the edit for undo — one place for every MCP mutation. Only on
+        // success, and only for methods the edit-method table marks as document edits.
+        if (ctx.app && ctx.app->edit_gateway && reply.is_object() && reply.value("ok", false))
+            if (const EditMethodInfo* e = edit_method_info(p.method))
+                ctx.app->edit_gateway->note_edit(e->label, e->coalesces ? p.method : std::string());
         p.reply.set_value(std::move(reply));
     }
 }
@@ -89,6 +97,8 @@ void ControlServer::register_handlers() {
     register_audio_handlers(handlers_);   // ---- audio authoring + clip pool + native ops + graph ----
 
     register_project_handlers(handlers_);   // ---- session author / persist + project workflow ----
+
+    register_edit_handlers(handlers_);   // ---- ADR-0017 undo/redo ----
 }
 
 }  // namespace vivid

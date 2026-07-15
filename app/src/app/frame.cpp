@@ -1,6 +1,8 @@
 #include "app/frame.h"
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
+#include "platform/menu_bar.h"  // ADR-0017/G4 set_edit_labels
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
@@ -213,16 +215,19 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                 vivid::session::session_set_clip(app.session, win.editor->track(), win.editor->scene(),
                                             nv.data(), static_cast<int>(nv.size()), win.editor->length());
             }
+            if (app.edit_gateway) app.edit_gateway->note_edit("Edit Clip", "clip-edit");   // ADR-0017/G3
         }
         if (!win.editor->is_audio() && app.session && win.editor->take_loop_dirty()) {   // in-clip loop edit
             double ls, le; win.editor->loop_range(ls, le);
             vivid::session::session_set_clip_loop(app.session, win.editor->track(), win.editor->scene(), ls, le);
+            if (app.edit_gateway) app.edit_gateway->note_edit("Set Loop", "clip-loop");
         }
         // A5: apply audio warp/pitch/auto-warp requests from the editor header, then refresh
         // the editor's marker + shape display from the engine.
         if (win.editor->is_audio() && app.session) {
             const int req = win.editor->take_audio_req();   // 1 shaping, 2 auto, 4 warp-pts, 8 slice
             if (req) {
+                if (app.edit_gateway) app.edit_gateway->note_edit("Warp Clip", "clip-warp");   // ADR-0017/G3
                 namespace S = vivid::session;
                 const int tk = win.editor->track(), scn = win.editor->scene();
                 if (req & 2) S::session_audio_auto_warp(app.session, tk, scn, 0.5f);
@@ -253,8 +258,10 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const Rect gr = track_gain_rect(win.gain_drag, vivid::session::session_scene_count(app.session));
         vivid::session::session_set_track_gain(app.session, win.gain_drag,
                                           std::min(1.0, std::max(0.0, (mx - win.sidebar_w - gr.x) / gr.w)));
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Gain", "gain-drag");   // ADR-0017/G3
     }
     if (win.param_drag >= 0) {
+        if (app.edit_gateway) app.edit_gateway->note_edit("Adjust Param", "param-drag");  // folds into the gesture
         if (win.param_xy && app.graph) {   // UI-4a: XY-pad — both axes track the cursor in the pad rect
             const int span = vivid::ui::compound_span(VIVID_DISPLAY_XY_PAD);
             const vivid::ui::Rect cr = vivid::ui::node_param_compound_rect(win.param_drag, span, win.win_w, win.win_h, win.dock_h);
@@ -284,6 +291,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, win.ag_param_drag);
         const float norm = std::clamp(win.ag_param_v0 + static_cast<float>(win.ag_param_y0 - my) * 0.006f, 0.f, 1.f);
         S::session_audio_graph_node_param_set(app.session, tr, nid, win.ag_param_drag, mn + norm * (mxx - mn));
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
     }
     // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
     // region-relative world units (screen = region_origin + world*zoom + pan); invert that here.
@@ -298,6 +306,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const float wx = (static_cast<float>(mx) - gr.x - win.ag_pan_x) / win.ag_zoom - win.ag_node_dx;
         const float wy = (static_cast<float>(my) - gr.y - win.ag_pan_y) / win.ag_zoom - win.ag_node_dy;
         S::session_audio_graph_node_set_pos(app.session, tr, win.ag_node_drag, wx, wy);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3
     }
     // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
     if (win.ag_key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
@@ -308,6 +317,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         const int nv = std::clamp(win.ag_key_v0 + static_cast<int>((win.ag_key_y0 - my) * 0.25), 0, 127);
         if (win.ag_key_drag == 0) lo = std::min(nv, hi); else hi = std::max(nv, lo);
         S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Key Range", "ag-key-drag");   // ADR-0017/G3
     }
 }
 
@@ -379,6 +389,8 @@ void run_frame_loop(App& app, Window& win) {
         glfwPollEvents();
         return !glfwWindowShouldClose(window);
     };
+    bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
+    unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
@@ -559,6 +571,23 @@ void run_frame_loop(App& app, Window& win) {
         }
         if (win.editor_win) {
             if (!win.editor_win->render(app)) { win.editor_win->close(app); delete win.editor_win; win.editor_win = nullptr; }
+        }
+        // ADR-0017: seed the undo baseline at the end of the FIRST tick, once the graph has laid out
+        // (a pre-loop baseline would capture pre-layout node positions). Then the end-of-frame audit
+        // (a no-op unless built with VIVID_UNDO_AUDIT) checks nothing bypassed the gateway.
+        if (app.edit_gateway) {
+            if (!undo_baseline_seeded) { app.edit_gateway->reset_baseline(); undo_baseline_seeded = true; }
+            // Watchdog: recover a gesture group leaked by a lost release (release delivered to another
+            // window / consumed by an early handler). Safe — a normal drag holds the button down.
+            if (!win.mouse_left_down) app.edit_gateway->close_open_group();
+            app.edit_gateway->commit_frame();   // take the frame's deferred snapshot, post-draw/settle
+            app.edit_gateway->end_frame_audit();
+            // G4: keep the Edit > Undo/Redo titles + enabled state in sync with the history.
+            if (app.edit_gateway->revision() != last_undo_rev) {
+                last_undo_rev = app.edit_gateway->revision();
+                vivid::platform::set_edit_labels(app.edit_gateway->undo_label(), app.edit_gateway->redo_label(),
+                                                 app.edit_gateway->can_undo(), app.edit_gateway->can_redo());
+            }
         }
         return true;
     };

@@ -21,6 +21,7 @@
 #include "ui/ui_style.h"
 #include "ui/layout.h"
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017 undo/redo command sink
 #include "app/window.h"
 #include "app/input.h"
 #include "app/frame.h"
@@ -278,6 +279,9 @@ int main(int argc, char** argv) {
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
         ma.open_recent     = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
         ma.open_example    = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
+        // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
+        ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
+        ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
@@ -296,6 +300,14 @@ int main(int argc, char** argv) {
 
     if (app.midi_in.start())   // hardware MIDI input -> armed track (M6.4)
         std::fprintf(stderr, "[vivid] MIDI input: %d source(s) connected\n", app.midi_in.source_count());
+
+    // ADR-0017 undo/redo: the edit gateway (a local, like `control` above). The baseline (undo
+    // entry 0) is seeded from inside the frame loop, at the end of the FIRST tick — after the graph
+    // has laid out its nodes, so entry 0 holds the settled document (a pre-layout baseline would make
+    // the first undo jerk every node to its pre-layout position).
+    vivid::EditGateway gateway(app);
+    app.edit_gateway = &gateway;
+    graph.set_edit_gateway(&gateway);   // ADR-0017/G2: capture UI graph edits
 
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
 

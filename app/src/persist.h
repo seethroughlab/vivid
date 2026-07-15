@@ -73,6 +73,15 @@ nlohmann::json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph&
 bool session_from_json(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h);
 
+// ADR-0017 — how much of the audio session a restore rebuilds. Undo/redo restore the visual graph +
+// mappings + pool unconditionally (cheap), but tier the expensive track/plugin work:
+//   Skip       — the tracks block is unchanged; touch nothing audio (no plugin re-instantiation).
+//   ParamsOnly — same track topology, only values differ; apply values without a rebuild (G3).
+//   Full       — track topology differs; the full rebuild_tracks_from_doc path (the default).
+enum class RestoreAudio { Skip, ParamsOnly, Full };
+bool session_from_json_scoped(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
+                              int& win_w, int& win_h, float& split_x, float& dock_h, RestoreAudio audio);
+
 // File wrappers over the above.
 bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int win_w, int win_h, float split_x, float dock_h);

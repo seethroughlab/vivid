@@ -5,6 +5,7 @@
 #include <GLFW/glfw3.h>
 
 #include "app/app.h"
+#include "app/edit_gateway.h"   // ADR-0017 gesture brackets
 #include "app/window.h"
 #include "ui/layout.h"
 #include "ui/session_view.h"      // meter_hit
@@ -64,6 +65,16 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     // / tool). Unhandled keys fall through to the global shortcuts below.
     if (vivid::input::editor_key(*win, key, mods)) return;
     if (action != GLFW_PRESS) return;
+    // ADR-0017/G4: app-level undo/redo. editor_key ran first, so a focused clip editor keeps its own
+    // note-undo; otherwise Cmd+Z undoes the document. Cmd+Shift+Z (mac) / Cmd+Y (win-style) redo.
+    if ((mods & GLFW_MOD_SUPER) && key == GLFW_KEY_Z) {
+        if (app->edit_gateway) { if (mods & GLFW_MOD_SHIFT) app->edit_gateway->redo(); else app->edit_gateway->undo(); }
+        return;
+    }
+    if ((mods & GLFW_MOD_SUPER) && key == GLFW_KEY_Y) {
+        if (app->edit_gateway) app->edit_gateway->redo();
+        return;
+    }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_shader_library) { win->show_shader_library = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_presets) { win->show_presets = false; return; }
@@ -85,6 +96,7 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     // them before GLFW), so they're not handled here.
     if (key == GLFW_KEY_V && app->vgraph) {  // toggle the visuals generator (also via the generator node)
         app->vgraph->set_generator(app->vgraph->generator() == "Video" ? "Plasma" : "Video");
+        if (app->edit_gateway) app->edit_gateway->note_edit("Set Generator", "");
         return;
     }
     if (key == GLFW_KEY_N) { app->load_video_at(app->video_idx + 1); return; }  // next clip
@@ -174,6 +186,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
         && hit(vivid::ui::graph_relayout_rect(win->win_w, win->win_h, win->split_x, win->dock_h), mx, my)) {
         app->graph->layout_nodes();
+        if (app->edit_gateway) app->edit_gateway->note_edit("Auto-Layout", "");
         return;
     }
     // (The File menu is now a native OS menu — see platform/menu_bar.*.)
@@ -188,16 +201,17 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
                 if (my < ry || my >= ry + o.rowh) continue;
                 const OvRow rc = ov_row(o.px, o.w, ry);
                 const std::string& d = maps[i].dest;
-                if (hit(rc.inv, mx, my))      { app->graph->toggle_mapping_invert(d); return; }
-                if (hit(rc.amtMinus, mx, my)) { app->graph->set_mapping_amount(d, std::max(0.f, maps[i].amount - 0.1f)); return; }
-                if (hit(rc.amtPlus, mx, my))  { app->graph->set_mapping_amount(d, std::min(4.f, maps[i].amount + 0.1f)); return; }
-                if (hit(rc.curMinus, mx, my)) { app->graph->set_mapping_curve(d, std::max(-1.f, maps[i].curve - 0.25f)); return; }
-                if (hit(rc.curPlus, mx, my))  { app->graph->set_mapping_curve(d, std::min(1.f, maps[i].curve + 0.25f)); return; }
-                if (hit(rc.loMinus, mx, my))  { app->graph->set_mapping_lo(d, std::max(0.f, maps[i].out_lo - 0.1f)); return; }
-                if (hit(rc.loPlus, mx, my))   { app->graph->set_mapping_lo(d, std::min(1.f, maps[i].out_lo + 0.1f)); return; }
-                if (hit(rc.hiMinus, mx, my))  { app->graph->set_mapping_hi(d, std::max(0.f, maps[i].out_hi - 0.1f)); return; }
-                if (hit(rc.hiPlus, mx, my))   { app->graph->set_mapping_hi(d, std::min(1.f, maps[i].out_hi + 0.1f)); return; }
-                if (hit(rc.clear, mx, my))    { app->graph->disconnect_dest(d); return; }
+                auto mnote = [&](const char* label, const char* key) { if (app->edit_gateway) app->edit_gateway->note_edit(label, key); };
+                if (hit(rc.inv, mx, my))      { app->graph->toggle_mapping_invert(d); mnote("Invert Mapping", ""); return; }
+                if (hit(rc.amtMinus, mx, my)) { app->graph->set_mapping_amount(d, std::max(0.f, maps[i].amount - 0.1f)); mnote("Mapping Amount", "map-amt"); return; }
+                if (hit(rc.amtPlus, mx, my))  { app->graph->set_mapping_amount(d, std::min(4.f, maps[i].amount + 0.1f)); mnote("Mapping Amount", "map-amt"); return; }
+                if (hit(rc.curMinus, mx, my)) { app->graph->set_mapping_curve(d, std::max(-1.f, maps[i].curve - 0.25f)); mnote("Mapping Curve", "map-cur"); return; }
+                if (hit(rc.curPlus, mx, my))  { app->graph->set_mapping_curve(d, std::min(1.f, maps[i].curve + 0.25f)); mnote("Mapping Curve", "map-cur"); return; }
+                if (hit(rc.loMinus, mx, my))  { app->graph->set_mapping_lo(d, std::max(0.f, maps[i].out_lo - 0.1f)); mnote("Mapping Range", "map-lo"); return; }
+                if (hit(rc.loPlus, mx, my))   { app->graph->set_mapping_lo(d, std::min(1.f, maps[i].out_lo + 0.1f)); mnote("Mapping Range", "map-lo"); return; }
+                if (hit(rc.hiMinus, mx, my))  { app->graph->set_mapping_hi(d, std::max(0.f, maps[i].out_hi - 0.1f)); mnote("Mapping Range", "map-hi"); return; }
+                if (hit(rc.hiPlus, mx, my))   { app->graph->set_mapping_hi(d, std::min(1.f, maps[i].out_hi + 0.1f)); mnote("Mapping Range", "map-hi"); return; }
+                if (hit(rc.clear, mx, my))    { app->graph->disconnect_dest(d); mnote("Clear Mapping", ""); return; }
                 break;
             }
             return;  // click inside the panel: consume
@@ -301,12 +315,17 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false;
         win->preview_drag = false; win->preview_resize = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
-        if (vivid::input::graph_rewire_release(*win, *app, mx, my)) return;
+        if (vivid::input::graph_rewire_release(*win, *app, mx, my)) { if (app->edit_gateway) app->edit_gateway->end_group(); return; }
         vivid::input::clipgrid_release(*win, *app, mx, my, mods, tracks, scenes);   // clip drop (grid/pool); no-op if no drag
         if (app->graph) app->graph->on_up(mx, my);
+        // ADR-0017: close the gesture opened on press — one undo entry per drag (commits if dirtied).
+        if (app->edit_gateway) app->edit_gateway->end_group();
         return;
     }
     if (action != GLFW_PRESS) return;
+    // ADR-0017: bracket the whole left-button gesture into one undo entry. Reconcile any leaked group
+    // first (a lost release), then open a fresh one; note_edit calls during the gesture fold in.
+    if (app->edit_gateway) { app->edit_gateway->close_open_group(); app->edit_gateway->begin_group(""); }
 
     // Browser sidebar (left column) — the CLIPS pool. (The PLUGINS panel is gone: adding a node is
     // Tab in the graph, one path, over the unified catalog. A browser that could only ever offer

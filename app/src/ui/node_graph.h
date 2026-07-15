@@ -10,6 +10,8 @@
 #include <string>
 #include <utility>
 
+namespace vivid { class EditGateway; }
+
 namespace vivid::ui {
 
 
@@ -118,6 +120,9 @@ public:
     // ADR-0016: so the chooser can badge a row SHADER (a file you can open and edit) rather
     // than OP (a compiled dylib). Optional — null just means every row reads as an op.
     void set_shader_library(const vivid::ShaderLibrary* lib) { shaders_ = lib; }
+    // ADR-0017: the undo command sink, so UI graph edits are captured (nullptr = no undo, e.g. tests).
+    void set_edit_gateway(vivid::EditGateway* g) { edit_gateway_ = g; }
+    void note_edit(const char* label, const char* key = "") { note_edit_(label, key); }   // for op-editor callbacks
     void chooser_show(double sx, double sy);  // open at the cursor
     void chooser_hide() { chooser_.hide(); }
     void chooser_move(int dir) { chooser_.move(dir); }
@@ -162,6 +167,8 @@ private:
 
     vivid::VisualGraph* vg_ = nullptr;
     const vivid::ShaderLibrary* shaders_ = nullptr;   // ADR-0016 (optional; chooser badge)
+    vivid::EditGateway* edit_gateway_ = nullptr;      // ADR-0017 (optional; UI edit capture)
+    void note_edit_(const char* label, const char* key = "");   // fold a graph edit into the gesture
 
     static void data_out(const DataNode& n, float& px, float& py);
     static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);

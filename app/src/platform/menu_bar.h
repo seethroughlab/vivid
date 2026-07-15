@@ -16,14 +16,17 @@ struct MenuActions {
     std::function<void()> save_project_as;  // File > Save As…   (runs the save dialog)
     std::function<void(const std::string&)> open_recent;  // File > Open Recent > <path>
     std::function<void(const std::string&)> open_example; // File > Open Example > <path> (ADR-0021/P2)
+    std::function<void()> undo;   // Edit > Undo (ADR-0017/G4)
+    std::function<void()> redo;   // Edit > Redo
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
 struct MenuItemEntry { std::string label; std::string path; };
 
-// Insert a native "File" menu into the app's menu bar. macOS: builds an NSMenu with the
-// standard ⌘N/⌘O/⌘S/⇧⌘S key equivalents. Other platforms: a no-op. Call once after the
-// window exists (so NSApp + its menu bar are up).
+// Insert native "File" + "Edit" menus into the app's menu bar. macOS: File gets the standard
+// ⌘N/⌘O/⌘S/⇧⌘S key equivalents; Edit's Undo/Redo are label-only (no ⌘Z key-equivalent, so AppKit
+// doesn't steal ⌘Z from the clip editor's own GLFW note-undo — the keyboard is handled in input.cpp).
+// Other platforms: a no-op. Call once after the window exists (so NSApp + its menu bar are up).
 void install_menu_bar(const MenuActions& actions);
 
 // (Re)populate the File > Open Recent submenu. Call after the recent list changes.
@@ -31,5 +34,10 @@ void set_recent_projects(const std::vector<std::string>& paths);
 
 // Populate the File > Open Example submenu (label -> path). Call once after discovery. (ADR-0021/P2)
 void set_example_projects(const std::vector<MenuItemEntry>& examples);
+
+// Update the Edit > Undo/Redo item titles ("Undo Delete Node") + enabled state. Call when the undo
+// history changes (the frame loop watches EditGateway::revision()). (ADR-0017/G4)
+void set_edit_labels(const std::string& undo_label, const std::string& redo_label,
+                     bool can_undo, bool can_redo);
 
 }  // namespace vivid::platform
