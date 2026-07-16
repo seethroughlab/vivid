@@ -26,15 +26,15 @@ void load_path(GLFWwindow* w, Window& win, App& app, const std::string& path) {
     // Restore the per-project internal layout (splitter/dock) but NOT the window size —
     // window size is app-level (see app/window_prefs.h), so opening a project won't resize.
     (void)w; (void)ww; (void)wh;
-    if (lr.ok) { win.split_x = sxx; win.dock_h = dh; refresh_recents(app); }
-    std::fprintf(stderr, "[vivid] open %s: %s\n", path.c_str(), lr.ok ? "ok" : lr.error.c_str());
+    if (lr.ok) { win.split_x = sxx; win.dock_h = dh; refresh_recents(app); VLOG_INFO(app, "opened %s", path.c_str()); }
+    else VLOG_ERR(app, "open failed: %s \xE2\x80\x94 %s", path.c_str(), lr.error.c_str());   // ADR-0019: toasts + logs
 }
 
 void save_path(Window& win, App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
     auto sr = project_io::save(app, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h, path);
-    if (sr.ok) refresh_recents(app);
-    std::fprintf(stderr, "[vivid] save %s: %s\n", path.c_str(), sr.ok ? "ok" : sr.error.c_str());
+    if (sr.ok) { refresh_recents(app); VLOG_INFO(app, "saved %s", path.c_str()); }
+    else VLOG_ERR(app, "save failed: %s \xE2\x80\x94 %s", path.c_str(), sr.error.c_str());   // ADR-0019: toasts + logs
 }
 
 }  // namespace

@@ -524,9 +524,11 @@ void NodeGraph::draw(Renderer2D& r) {
         // line of the error. A shader whose file will not compile still renders (black, or its
         // input passed through) — without this the user just sees a black frame and no reason.
         const std::string node_err = node.error();
-        if (!node_err.empty()) r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, 0.85f, 0.30f, 0.30f, 1.0f);
+        if (!node_err.empty()) node_error_border(r, x, y, w, h);   // ADR-0019: a broken node LOOKS broken
         node_card(r, x, y, w, h, acc, i == sel_op_);   // shared: blue ring if selected + border/body/header/accent
-        r.draw_text(x + 10.f, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        if (!node_err.empty()) node_error_badge(r, x, y);          // clickable "!" chip (input_graph reveals the message)
+        const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
+        r.draw_text(label_x, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
@@ -553,12 +555,7 @@ void NodeGraph::draw(Renderer2D& r) {
             }
             // The error goes OVER the thumbnail (the node is still rendering — that is the
             // point of the last-good pipeline — so the picture alone would say nothing is wrong).
-            if (!node_err.empty()) {
-                std::string first = node_err.substr(0, node_err.find('\n'));
-                if (first.size() > 24) first = first.substr(0, 23) + "\xE2\x80\xA6";
-                r.draw_rect(tx, ty + th - 14.f, tw, 14.f, 0.15f, 0.05f, 0.05f, 0.92f);
-                r.draw_text(tx + 4.f, ty + th - 12.f, first.c_str(), 0.98f, 0.55f, 0.55f, 1.0f, 0.62f);
-            }
+            if (!node_err.empty()) node_error_note(r, tx, ty, tw, th, node_err);
         }
     }
     // param input ports + labels (down each node's left edge)

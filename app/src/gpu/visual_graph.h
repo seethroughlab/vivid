@@ -41,6 +41,12 @@ struct VisualNode {
     bool is_output() const { return op_type == "Output"; }
     bool is_video()  const { return op_type == "Video"; }
 
+    // BROKEN: the node's op type never resolved to a real operator, so it renders nothing and
+    // drops out of the chain. The two host-contract nodes (Output, Video) legitimately carry no
+    // operator, so they are never "missing". The single source of truth for both the node badge
+    // (error()) and the health rollup (VisualGraph::missing_op_count) — ADR-0019.
+    bool op_missing() const { return !inst.op && !is_output() && !is_video(); }
+
     // A SOURCE heads a chain: it makes an image rather than transforming one. Read off the
     // node's own descriptor — no texture inputs to transform — so it is automatically true of
     // a package op, a shader file, or anything else the catalog grows. Video is a source too,
@@ -81,6 +87,8 @@ public:
 
     std::vector<VisualNode>&       nodes()       { return nodes_; }
     const std::vector<VisualNode>& nodes() const { return nodes_; }
+    int  missing_op_count() const;             // nodes whose op type isn't a real operator (ADR-0019)
+    std::vector<int> missing_op_node_indices() const;   // indices of those broken nodes (diagnostics panel)
     int  add_node(const std::string& type);   // returns new node index (fresh id)
     void load_node(const std::string& type, int id);   // append with a persisted id
     void remove_node(int i);                   // (Output cannot be removed)

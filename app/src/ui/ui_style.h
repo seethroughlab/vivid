@@ -37,6 +37,7 @@ struct Style {
     float sel[3]     = { 0.353f, 0.549f, 0.851f };   // selection / focus frame (#5A8CD9, classic blue)
     float gold[3]    = { 0.95f, 0.78f, 0.30f };      // queued / warn
     float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
+    float red[3]     = { 0.90f, 0.24f, 0.28f };      // error / broken (dot, node border, record disc)
     // --- spacing scale (logical px) ---
     float s1 = 2.f, s2 = 4.f, s3 = 6.f, s4 = 8.f, s5 = 12.f, s6 = 16.f, s7 = 24.f;
     // --- type ramp (scale factor on the 15px base font) ---

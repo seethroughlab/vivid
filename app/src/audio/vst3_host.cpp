@@ -2639,6 +2639,19 @@ int session_audio_graph_node_plugin_ready(Session* s, int t, int node_id) {
     return (ps.vst3 || ps.clap) ? 1 : -1;
 }
 
+int session_audio_graph_node_plugin_failed(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return 0;
+    const int slot = tr->agnodes[static_cast<size_t>(idx)].pslot;
+    if (slot < 0 || slot >= static_cast<int>(tr->pslots.size())) return 0;
+    const Track::PluginSlot& ps = tr->pslots[static_cast<size_t>(slot)];
+    // A plugin node (non-empty path) that finished loading (not pending) with no bound handle:
+    // the load failed. A node still pending, or one that never had a plugin path, is not "failed".
+    return (!ps.pending && !ps.vst3 && !ps.clap && !ps.path.empty()) ? 1 : 0;
+}
+
 // The bundle a plugin node hosts ("" if it isn't a plugin node) — for persistence + the UI label.
 const char* session_audio_graph_node_plugin_path(Session* s, int t, int node_id) {
     Track* tr = graph_track(s, t); if (!tr) return "";

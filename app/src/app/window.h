@@ -4,6 +4,9 @@
 #include "ui/chooser.h"       // the shared Tab palette (the audio graph's lives here)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
+#include "app/runtime_health.h" // ADR-0019: HealthSnapshot cached per-frame (drives the status dot + panel)
+#include "ui/toasts.h"        // ADR-0019: transient failure notifications
+#include <vector>
 
 struct GLFWwindow;
 struct Vst3PluginWindow;
@@ -93,8 +96,13 @@ struct Window {
     // Interaction / selection (view-local).
     bool    show_mappings = false;            // P28 mapping-overview overlay (toggle: M)
     bool    show_shader_library = false;      // ADR-0021/P1 shader library view (toggle: L)
+    bool    show_diagnostics = false;         // ADR-0019 diagnostics panel (toggle: health dot / H)
+    bool    show_log = false;                 // ADR-0019 in-app log view (toggle: J)
     bool    show_presets = false;             // ADR-0021/P4 node-preset popover
     int     presets_node = -1;                // the node the preset popover targets
+    HealthSnapshot health;                    // ADR-0019: refreshed once per frame; read by the dot + panel
+    std::vector<ui::Toast> toasts;            // ADR-0019: live transient notifications (bottom-right)
+    uint64_t last_toast_id = 0;               // highest log id already turned into a toast (gate)
     CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
     int     map_param = -1;

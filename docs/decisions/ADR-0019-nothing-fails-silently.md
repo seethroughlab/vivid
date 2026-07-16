@@ -1,8 +1,36 @@
 # ADR-0019: Nothing Fails Silently
 
-Status: proposed
+Status: accepted (implemented — E1..E4, 2026-07-15)
 
 Date: 2026-07-14
+
+## As built (2026-07-15)
+
+All four surfaces landed:
+
+- **E1 — node error badges** in the shared `app/src/ui/node_canvas.h` (`node_error_border` /
+  `node_error_badge` / `node_error_note`), so **both** graphs badge a broken node from one
+  implementation. The visuals graph sources the message from `VisualNode::error()`, broadened to
+  report an unregistered op type (`op_missing()`); the audio graph badges a plugin node whose load
+  **terminally failed** via a new truthful accessor `session_audio_graph_node_plugin_failed()` — a
+  still-*loading* plugin is deliberately **not** badged (that would lie).
+- **E2 — health status dot** in the transport bar (`session_view.cpp`, `health_dot_rect`), coloured
+  by `severity()` via `severity_color()`; click (or `H`) opens the panel. Fixing a latent bug was a
+  prerequisite: `collect_health` counted the `Output`/`Video` host-contract nodes as `missing_ops`,
+  so `severity()` was *Error in every session* — masked only because nothing rendered it. Now the
+  visual graph is the authority (`VisualGraph::missing_op_count()`), excluding host contracts.
+- **E3 — diagnostics panel** (`app/src/ui/diagnostics_panel.{h,cpp}`): pure presentation of the same
+  `HealthSnapshot` MCP `get_health` serialises (one source, two views), with the missing-op nodes as
+  clickable rows that select the node.
+- **E4 — leveled logger + toasts + log view** (`app/src/app/log.{h,cpp}`, `app/src/ui/toasts.{h,cpp}`,
+  `draw_log_view`): a level + message + capped ring with a **lock-free SPSC ring for the audio thread**
+  (`rt_log`, mirroring `platform/midi_input.h`), pass-through to stderr preserved. Toasts are gated on
+  `Error` (Warning stays the passive dot); the log view is `J`. A handful of genuine user-facing
+  failures (project open/save, MCP `load_project`) now route through the logger.
+
+Verified end-to-end: healthy session → green dot / `severity ok`; a project referencing a deleted
+operator → red border + "not registered" on the node, `missing_ops` in the panel, red dot; a failed
+load → a toast **and** a log entry **and** the stderr line. All 46 headless tests pass.
 
 Amends: [ADR-0013](ADR-0013-focus-first-strict-zone-ui.md) (the strict-zone UI), which specifies
 where things live but never says where *failure* lives.

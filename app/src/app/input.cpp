@@ -11,6 +11,7 @@
 #include "ui/session_view.h"      // meter_hit
 #include "ui/mapping_overview.h"  // ov_geom, ov_row
 #include "ui/shader_library_view.h"  // shader_view_geom, shader_view_row (ADR-0021/P1)
+#include "ui/diagnostics_panel.h"    // diag_geom, diag_missing_row_rect (ADR-0019/E3)
 #include "ui/preset_popover.h"       // preset_geom + rows (ADR-0021/P4)
 #include "ui/node_graph.h"
 #include "gpu/shader_library.h"     // ShaderLibrary::entries/fork
@@ -82,9 +83,13 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_shader_library) { win->show_shader_library = false; return; }
+    if (key == GLFW_KEY_ESCAPE && win->show_diagnostics) { win->show_diagnostics = false; return; }
+    if (key == GLFW_KEY_ESCAPE && win->show_log) { win->show_log = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_presets) { win->show_presets = false; return; }
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (key == GLFW_KEY_L) { win->show_shader_library = !win->show_shader_library; return; }  // shader library (ADR-0021)
+    if (key == GLFW_KEY_H) { win->show_diagnostics = !win->show_diagnostics; return; }  // diagnostics (ADR-0019)
+    if (key == GLFW_KEY_J) { win->show_log = !win->show_log; return; }  // log view (ADR-0019)
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)
     // Tab -> open the chooser at the cursor. It is the ONE way to add a node, in BOTH graphs:
     //   over the visuals column  -> the visuals operator chooser (ADR-0014)
@@ -166,6 +171,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // Browser sidebar toggle.
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::sidebar_toggle_rect(), mx, my)) {
         win->sidebar_w = (win->sidebar_w > 0.f) ? 0.f : vivid::ui::kSidebarW;
+        return;
+    }
+    // ADR-0019: the health rollup dot (transport bar, right) opens/closes the diagnostics panel.
+    if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && hit(vivid::ui::health_dot_rect(win->win_w), mx, my)) {
+        win->show_diagnostics = !win->show_diagnostics;
         return;
     }
     // ADR-0014: the floating OUTPUT preview. It sits ON TOP of the graph canvas, so its handles are
@@ -256,6 +266,27 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         }
         win->show_shader_library = false; return;  // click outside: close
     }
+
+    // Diagnostics panel is modal while open: click a missing-op row to select that node in the
+    // graph; click-away closes. (ADR-0019/E3)
+    if (win->show_diagnostics && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        const std::vector<int> missing = app->vgraph ? app->vgraph->missing_op_node_indices() : std::vector<int>{};
+        const auto o = vivid::ui::diag_geom(static_cast<int>(missing.size()), win->win_w);
+        if (mx >= o.px && mx < o.px + o.w && my >= o.py && my < o.py + o.h) {
+            for (int i = 0; i < static_cast<int>(missing.size()); ++i) {
+                if (hit(vivid::ui::diag_missing_row_rect(o, i), mx, my)) {
+                    if (app->graph) app->graph->select_op(missing[i]);
+                    win->show_diagnostics = false;
+                    return;
+                }
+            }
+            return;  // click inside the panel: consume
+        }
+        win->show_diagnostics = false; return;  // click outside: close
+    }
+
+    // Log view is a read-only overlay: any click dismisses it. (ADR-0019/E4)
+    if (win->show_log && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) { win->show_log = false; return; }
 
     // Node-preset popover is modal while open: Save current / recall a row / delete a user preset;
     // click-away closes. (ADR-0021/P4)
