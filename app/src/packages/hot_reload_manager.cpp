@@ -50,6 +50,12 @@ watched:
     else std::fprintf(stderr, "[vivid] hot-reload watching '%s' (%s)\n", op_name.c_str(), source_path.c_str());
 }
 
+std::string HotReloadManager::source_for(const std::string& op_name) {
+    std::lock_guard<std::mutex> lk(mtx_);
+    for (const auto& w : watched_) if (w.op_name == op_name) return w.source_path;
+    return {};
+}
+
 void HotReloadManager::watch_manifest(const std::vector<std::unique_ptr<OperatorLoader>>& loaders,
                                       const PackageManifest& mf) {
     if (!mf.ok) return;
@@ -96,6 +102,7 @@ void HotReloadManager::tick() {
             } else {
                 std::fprintf(stderr, "[vivid] hot-reload compile failed for '%s':\n%s\n", r.target.c_str(), r.error.c_str());
             }
+            registry_->set_reload_error(r.target, first_line(r.error));   // ADR-0020 V2: badge the node
             continue;
         }
         OperatorLoader* loader = nullptr;
@@ -115,23 +122,27 @@ void HotReloadManager::tick() {
                                   + " (kept previous, unchanged)";
             if (log_) log_->log(LogLevel::Error, "%s", msg.c_str());
             else std::fprintf(stderr, "[vivid] hot-reload %s\n", msg.c_str());
+            registry_->set_reload_error(r.target, loader->last_error().message);   // ADR-0020 V2: badge the node
             continue;
         }
-        const int released = vgraph_->release_op_instances(r.target);
+        vgraph_->release_op_instances(r.target);
         const bool ok = loader->load(r.dylib_path.c_str());   // just validated — expected to succeed
+        // Drop the cached descriptor BEFORE rebuilding. It was built from the old dylib, which load()
+        // has now unloaded, so its char* fields (param names, choice labels) dangle — rebuild ->
+        // create -> validate_descriptor would read freed memory (a use-after-unload SIGSEGV). The
+        // next descriptor_for() rebuilds it from the new dylib.
+        if (ok) registry_->invalidate_descriptor(r.target);
         const int rebuilt = vgraph_->rebuild_op_instances(r.target);
         if (ok) {
-            registry_->invalidate_descriptor(r.target);
+            registry_->set_reload_error(r.target, "");   // ADR-0020 V2: clear the node badge on success
             if (log_) log_->log(LogLevel::Info, "reloaded '%s' (%d node(s) swapped)", r.target.c_str(), rebuilt);
             else std::fprintf(stderr, "[vivid] hot-reloaded '%s' (%d node(s) swapped)\n", r.target.c_str(), rebuilt);
         } else {
             // Should be unreachable (validate passed); instances rebuilt from the unchanged old dylib.
             if (log_) log_->log(LogLevel::Error, "reload of '%s' failed post-validate: %s",
                                 r.target.c_str(), loader->last_error().message.c_str());
-            else std::fprintf(stderr, "[vivid] hot-reload of '%s' load failed post-validate: %s "
-                              "(released %d / rebuilt %d)\n", r.target.c_str(),
-                              loader->last_error().message.c_str(), released, rebuilt);
-            (void)released;
+            else std::fprintf(stderr, "[vivid] hot-reload of '%s' load failed post-validate: %s (rebuilt %d)\n",
+                              r.target.c_str(), loader->last_error().message.c_str(), rebuilt);
         }
     }
 }

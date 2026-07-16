@@ -41,6 +41,10 @@ public:
     void watch_manifest(const std::vector<std::unique_ptr<OperatorLoader>>& loaders,
                         const PackageManifest& mf);
 
+    // ADR-0020: the watched source file for an op type ("" if not watched) — lets the node menu
+    // offer "Edit source" for a cloned/user/installed C++ operator (editing it hot-reloads).
+    std::string source_for(const std::string& op_name);
+
     // Once per frame (main thread): poll the watcher, then apply any ready swaps.
     void tick();
 

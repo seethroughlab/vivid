@@ -683,13 +683,17 @@ void draw_node_menu(Renderer2D& ui, const Window& w) {
     const char* nm = (w.app && w.app->graph) ? w.app->graph->op_kind_name(m.node) : "node";
     const std::string title = fit_text(ui, nm, ww - 16.f, 0.82f);
     overlay_panel(ui, { m.x, m.y - 22.f, ww, 44.f }, title.c_str(), sty.gpu);
+    const bool enabled = m.action != NodeMenu::Action::None;
     item_box(ui, { m.x, m.y, ww, 22.f }, sty.gpu);
-    if (m.has_source)
-        ui.draw_text(m.x + 12.f, m.y + 5.f, "Open source in editor", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
-    else if (m.cloneable)
-        ui.draw_text(m.x + 12.f, m.y + 5.f, "Clone & Edit", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
-    else
-        ui.draw_text(m.x + 12.f, m.y + 5.f, "built-in \xC2\xB7 no editable source", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.82f);
+    const char* label = "built-in \xC2\xB7 no editable source";
+    switch (m.action) {
+        case NodeMenu::Action::OpenSource: label = "Open source in editor"; break;
+        case NodeMenu::Action::ForkEdit:   label = "Fork & edit";           break;   // shipped shader
+        case NodeMenu::Action::CloneEdit:  label = "Clone & Edit";          break;   // built-in operator
+        case NodeMenu::Action::None:       break;
+    }
+    const float* c = enabled ? sty.text : sty.dim;
+    ui.draw_text(m.x + 12.f, m.y + 5.f, label, c[0], c[1], c[2], 1.0f, enabled ? 0.88f : 0.82f);
 }
 
 // ADR-0014: the floating OUTPUT preview's chrome. The body is NOT filled here — the output FBO was
