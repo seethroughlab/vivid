@@ -1,8 +1,39 @@
 # ADR-0020: The Inner Loop Is Visible and Always On
 
-Status: proposed
+Status: accepted (implemented — 2026-07-15; PRs "PR A" plumbing + "PR B" UX)
 
 Date: 2026-07-14
+
+## As built (2026-07-15)
+
+Landed across two PRs, with one deliberate deviation and one bug fix:
+
+- **Watcher on by default (L1).** The `VIVID_WATCH_PACKAGE` gate is gone; at startup we discover
+  package sources in the standard user locations (`~/.../clones` from "Clone & Edit", the installed
+  operators dir) and watch each already-loaded operator (`HotReloadManager::watch_manifest`). A fresh
+  clone is watched immediately. The env var survives as an override.
+- **The toolchain is shippable (new, beyond the ADR).** The ADR assumed the C++ compile path worked;
+  it only worked from a repo checkout, because the `operator_api`/webgpu headers weren't bundled and
+  the compiler `-I`/`-L` paths were baked to the dev tree. Now the headers ship into
+  `Contents/Resources/` and `PackageCompiler` resolves them relative to the executable (falling back
+  to the baked dev paths), so **C++ operator editing is no longer dev-only** — the explicit ask.
+- **Rollback-first (L1).** A non-committing `OperatorLoader::validate()` gates the swap:
+  `HotReloadManager::tick()` only releases/rebuilds instances once the candidate is known-good, so a
+  failed reload leaves the running graph exactly as it was.
+- **Visible via the ADR-0019 logger, NOT a new build console (deviation).** Compile output routes
+  through `app.log` — a failure logs an Error summary (→ toast + log view) plus the full output at
+  Debug; a success logs "reloaded". The `L2` streaming build-console panel was **not** built: the
+  ADR predates ADR-0019's logger/log-view/toasts, and reusing them keeps one error surface. If
+  per-task streaming is ever needed, that's a future addition.
+- **Errors on the node badge (L3).** A failed C++ recompile sets an op-type→error side-table on
+  `OpRegistry` that the visuals node draw ORs into the ADR-0019 E1 badge; shaders already badged.
+- **Edit in IDE / fork-to-edit (L4).** The node right-click menu resolves one contextual action:
+  Fork & edit a shipped shader, Open source for a user/cloned source, or Clone & Edit a built-in.
+
+**Bug fixed along the way:** `tick()` rebuilt node instances before invalidating the registry's
+cached descriptor, so a successful in-graph reload read the old (unloaded) dylib's dangling `char*`
+descriptor fields — a use-after-unload SIGSEGV. Latent until watcher-on-by-default made in-graph
+reloads real; fixed by invalidating before rebuild.
 
 Amends: [ADR-0016](ADR-0016-shaders-are-content.md) (a shader file is an operator) by supplying the
 authoring loop it presupposes. Depends on [ADR-0019](ADR-0019-nothing-fails-silently.md) — the build
