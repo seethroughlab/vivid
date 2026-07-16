@@ -2,6 +2,8 @@
 
 #include "app/app.h"
 #include "app/window.h"
+#include "app/edit_gateway.h"        // ADR-0018: mark_saved() on save/load/new
+#include "app/autosave.h"            // ADR-0018: clear the autosave slot on a real save
 #include "app/project_io.h"          // folder-aware save/load (+ project-local ops)
 #include "platform/file_dialog.h"    // native open/save panels
 #include "platform/menu_bar.h"       // set_recent_projects (refresh Open Recent)
@@ -26,15 +28,22 @@ void load_path(GLFWwindow* w, Window& win, App& app, const std::string& path) {
     // Restore the per-project internal layout (splitter/dock) but NOT the window size —
     // window size is app-level (see app/window_prefs.h), so opening a project won't resize.
     (void)w; (void)ww; (void)wh;
-    if (lr.ok) { win.split_x = sxx; win.dock_h = dh; refresh_recents(app); VLOG_INFO(app, "opened %s", path.c_str()); }
-    else VLOG_ERR(app, "open failed: %s \xE2\x80\x94 %s", path.c_str(), lr.error.c_str());   // ADR-0019: toasts + logs
+    if (lr.ok) {
+        win.split_x = sxx; win.dock_h = dh; refresh_recents(app);
+        if (app.edit_gateway) app.edit_gateway->mark_saved();   // ADR-0018: a freshly opened doc is clean
+        VLOG_INFO(app, "opened %s", path.c_str());
+    } else VLOG_ERR(app, "open failed: %s \xE2\x80\x94 %s", path.c_str(), lr.error.c_str());   // ADR-0019: toasts + logs
 }
 
 void save_path(Window& win, App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
     auto sr = project_io::save(app, *app.graph, win.win_w, win.win_h, win.split_x, win.dock_h, path);
-    if (sr.ok) { refresh_recents(app); VLOG_INFO(app, "saved %s", path.c_str()); }
-    else VLOG_ERR(app, "save failed: %s \xE2\x80\x94 %s", path.c_str(), sr.error.c_str());   // ADR-0019: toasts + logs
+    if (sr.ok) {
+        refresh_recents(app);
+        if (app.edit_gateway) app.edit_gateway->mark_saved();   // ADR-0018: document is now clean
+        autosave::clear();                                      // ADR-0018: a clean doc needs no recovery
+        VLOG_INFO(app, "saved %s", path.c_str());
+    } else VLOG_ERR(app, "save failed: %s \xE2\x80\x94 %s", path.c_str(), sr.error.c_str());   // ADR-0019: toasts + logs
 }
 
 }  // namespace
@@ -51,6 +60,7 @@ void new_project(App& app) {
     app.project.current_project_path.clear();
     app.project.media_root.clear();
     app.project.missing_media.clear();
+    if (app.edit_gateway) app.edit_gateway->mark_saved();   // ADR-0018: a new doc starts clean
 }
 
 void open(GLFWwindow* w, Window& win, App& app) { load_path(w, win, app, platform::open_project_dialog()); }

@@ -63,6 +63,15 @@ public:
     // refresh the Edit-menu labels without polling strings every frame.
     unsigned revision() const { return revision_; }
 
+    // ADR-0018: the app-level document-dirty flag (there was none before — only editor-local bits).
+    // True once any real edit lands (a snapshot pushed, or an undo/redo restore); cleared on save and
+    // on load/new. Drives the macOS edited-dot, the save-confirm on New/Open/Quit, and autosave.
+    bool dirty() const { return dirty_; }
+    void mark_saved() { dirty_ = false; }
+    // ADR-0018: flag the document as having unsaved changes without pushing an undo entry — used after
+    // a launch-time autosave recovery (the recovered doc IS the baseline, but differs from disk).
+    void mark_dirty() { dirty_ = true; ++revision_; }
+
 private:
     nlohmann::json canonical_projection_now() const;   // session_to_json(0-dims) -> canonical
     void force_close_group();
@@ -73,6 +82,7 @@ private:
     UndoManager undo_;
     nlohmann::json cached_;          // last canonical projection (for the audit + baseline)
     bool        edited_this_frame_ = false;
+    bool        dirty_ = false;          // ADR-0018: unsaved document changes since load/new/save
     unsigned    revision_ = 0;
 
     // deferred capture (snapshot taken at commit_frame(), post-settle)
