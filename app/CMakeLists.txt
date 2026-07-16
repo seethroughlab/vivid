@@ -333,6 +333,28 @@ if(NOT _wgpu_root)
     message(FATAL_ERROR "wgpu dist not found under ${CMAKE_BINARY_DIR}/_deps — the package compiler "
                         "needs its include/lib dirs. Is FetchContent_MakeAvailable(webgpu) above this?")
 endif()
+
+# ADR-0020: ship the operator COMPILE toolchain so an operator can be built on an end-user's
+# machine, not only a dev checkout. PackageCompiler resolves these bundle-relative at runtime
+# (Resources/operator_api and Resources/webgpu), with the baked VIVID_PKG_* dev paths as fallback.
+# libwgpu_native.dylib is already in Contents/MacOS (target_copy_webgpu_binaries), so only the
+# HEADERS need shipping. Own target (not POST_BUILD on vivid) for the same reason as the shaders:
+# a POST_BUILD only fires when the app relinks, leaving stale headers after a header-only edit.
+if(APPLE)
+    set(_opapi_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/operator_api")
+    set(_wgpuhdr_dest "$<TARGET_BUNDLE_CONTENT_DIR:vivid>/Resources/webgpu/webgpu")
+else()
+    set(_opapi_dest "$<TARGET_FILE_DIR:vivid>/operator_api")
+    set(_wgpuhdr_dest "$<TARGET_FILE_DIR:vivid>/webgpu/webgpu")
+endif()
+add_custom_target(vivid_operator_headers ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/operator_api" "${_opapi_dest}"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${_wgpu_root}/include/webgpu" "${_wgpuhdr_dest}"
+    COMMENT "Copying the operator_api + webgpu headers into the app (ADR-0020 shippable toolchain)"
+    VERBATIM)
+add_dependencies(vivid_operator_headers vivid)   # the bundle dir has to exist first
 # test_operator_clone drives the same package compiler, so it needs the same wgpu dirs. They are
 # set HERE (not in tests/CMakeLists) because tests/ is added before webgpu is fetched.
 if(VIVID_BUILD_TESTS AND TARGET test_operator_clone)

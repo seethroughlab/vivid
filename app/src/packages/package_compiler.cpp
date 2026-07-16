@@ -56,8 +56,46 @@ int run_capture(const std::vector<std::string>& argv, std::string& out) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
-void add_inc(std::vector<std::string>& argv, const char* dir) {
-    if (dir && *dir) { argv.push_back("-I"); argv.push_back(dir); }
+void add_inc(std::vector<std::string>& argv, const std::string& dir) {
+    if (!dir.empty()) { argv.push_back("-I"); argv.push_back(dir); }
+}
+
+// ADR-0020: the compile toolchain must work on an END-USER machine, not only a dev checkout.
+// The VIVID_PKG_* defines bake in the dev repo/build paths; here we prefer bundle-relative dirs
+// resolved off the executable (the same <exe>/../Resources pattern shader_library + main use),
+// and fall back to the baked defines only when the shipped dirs aren't present (non-bundle dev).
+struct Toolchain {
+    std::string cxx;        // compiler (program name searched on PATH, or an absolute path)
+    std::string inc_src;    // -I dir containing operator_api/ (Resources, or app/src in dev)
+    std::string inc_wgpu;   // -I dir containing webgpu/ (Resources/webgpu, or wgpu include in dev)
+    std::string lib_wgpu;   // -L dir holding libwgpu_native (Contents/MacOS, or wgpu lib in dev)
+};
+
+Toolchain resolve_toolchain() {
+    namespace fs = std::filesystem;
+    Toolchain t;
+    t.inc_src  = VIVID_PKG_SRC_DIR;
+    t.inc_wgpu = VIVID_PKG_WEBGPU_INCLUDE_DIR;
+    t.lib_wgpu = VIVID_PKG_WEBGPU_LIB_DIR;
+
+    // Compiler: a baked ABSOLUTE path that doesn't exist on this machine (an installed .app carrying
+    // the dev's Xcode path) falls back to a PATH-resolved clang++ (the macOS Command Line Tools).
+    t.cxx = VIVID_PKG_CXX;
+    if (t.cxx.empty() || (t.cxx.find('/') != std::string::npos && !fs::exists(t.cxx))) t.cxx = "clang++";
+
+    const std::string exe = platform::executable_path();
+    if (!exe.empty()) {
+        const fs::path exe_dir = fs::path(exe).parent_path();
+        // Bundle: <exe>/../Resources ; non-bundle install: <exe>/ (siblings of the binary).
+        for (const fs::path base : { (exe_dir / ".." / "Resources").lexically_normal(), exe_dir }) {
+            if (fs::exists(base / "operator_api"))          t.inc_src  = base.string();
+            if (fs::exists(base / "webgpu" / "webgpu"))     t.inc_wgpu = (base / "webgpu").string();
+        }
+        // libwgpu_native lives next to the executable (Contents/MacOS), already shipped.
+        if (fs::exists(exe_dir / (std::string("libwgpu_native") + platform::plugin_suffix())))
+            t.lib_wgpu = exe_dir.string();
+    }
+    return t;
 }
 }  // namespace
 
@@ -78,28 +116,32 @@ PackageCompileResult PackageCompiler::compile_operator(const std::string& packag
     const fs::path out = fs::path(out_dir) / (op.name + platform::plugin_suffix());
     r.dylib_path = out.string();
 
-    std::vector<std::string> argv = { VIVID_PKG_CXX, "-std=c++17", "-shared", "-fPIC", "-O2" };
+    const Toolchain tc = resolve_toolchain();
+    std::vector<std::string> argv = { tc.cxx, "-std=c++17", "-shared", "-fPIC", "-O2" };
     if (std::string(VIVID_PKG_ARCH).size()) { argv.push_back("-arch"); argv.push_back(VIVID_PKG_ARCH); }
-    add_inc(argv, VIVID_PKG_SRC_DIR);          // operator_api/ headers
-    add_inc(argv, package_dir.c_str());        // package-local headers
+    add_inc(argv, tc.inc_src);                 // operator_api/ headers
+    add_inc(argv, package_dir);                // package-local headers
     if (op.gpu) {
-        add_inc(argv, VIVID_PKG_WEBGPU_INCLUDE_DIR);
-        const std::string lib = VIVID_PKG_WEBGPU_LIB_DIR;
-        if (!lib.empty()) {
-            argv.push_back("-L"); argv.push_back(lib);
+        add_inc(argv, tc.inc_wgpu);
+        if (!tc.lib_wgpu.empty()) {
+            argv.push_back("-L"); argv.push_back(tc.lib_wgpu);
             argv.push_back("-lwgpu_native");
-            argv.push_back("-Wl,-rpath," + lib);   // resolve @rpath/libwgpu_native.dylib at load
+            argv.push_back("-Wl,-rpath," + tc.lib_wgpu);   // resolve @rpath/libwgpu_native.dylib at load
         }
     }
     argv.push_back("-o"); argv.push_back(out.string());
     argv.push_back(src.string());              // compiled directly (VIVID_REGISTER provides exports)
 
-    std::fprintf(stderr, "[vivid] compiling package operator '%s' (%s)\n",
-                 op.name.c_str(), src.filename().c_str());
+    std::fprintf(stderr, "[vivid] compiling package operator '%s' (%s) with %s\n",
+                 op.name.c_str(), src.filename().c_str(), tc.cxx.c_str());
     std::string output;
     const int code = run_capture(argv, output);
     if (code != 0) {
-        r.error_output = output.empty() ? ("compiler exited " + std::to_string(code)) : output;
+        if (code == 127 && output.empty())     // execvp couldn't find/launch the compiler
+            r.error_output = "C++ compiler '" + tc.cxx + "' not found — install the Xcode "
+                             "Command Line Tools (xcode-select --install)";
+        else
+            r.error_output = output.empty() ? ("compiler exited " + std::to_string(code)) : output;
         return r;
     }
     r.success = true;

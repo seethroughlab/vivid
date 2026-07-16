@@ -336,20 +336,32 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
 // BY NAME (VisualGraph::rebuild_op_instances -> VisualNode::stash).
 void apply_shader_reloads(App& app) {
     if (!app.vgraph) return;
+    // ADR-0020: shader edits are as visible as operator edits — successes log "reloaded", a compile
+    // failure rides a toast + the log view while the last-good version keeps running.
+    auto shader_err = [&](const std::string& name) -> std::string {
+        for (const auto& e : app.shader_library.entries()) if (e.name == name) return e.error;
+        return {};
+    };
     for (const ShaderReload& r : app.shader_library.poll(app.op_registry)) {
         switch (r.change) {
             case ShaderChange::Interface: {
                 const int n = app.vgraph->rebuild_op_instances(r.name);
-                std::fprintf(stderr, "[vivid] shader '%s' header changed — %d node(s) rebuilt "
-                             "(param values kept by name)\n", r.name.c_str(), n);
+                VLOG_INFO(app, "shader '%s' header changed — %d node(s) rebuilt (values kept by name)",
+                          r.name.c_str(), n);
                 break;
             }
             case ShaderChange::Added:
-                std::fprintf(stderr, "[vivid] shader '%s' added — press Tab to spawn it\n",
-                             r.name.c_str());
+                VLOG_INFO(app, "shader '%s' added — press Tab to spawn it", r.name.c_str());
                 break;
-            case ShaderChange::Body:    break;   // the node already recompiled itself
-            case ShaderChange::Failed:  break;   // already reported, last good version still runs
+            case ShaderChange::Body:
+                VLOG_INFO(app, "shader '%s' reloaded", r.name.c_str());   // node already recompiled itself
+                break;
+            case ShaderChange::Failed: {
+                const std::string e = shader_err(r.name);
+                VLOG_ERR(app, "shader '%s' failed to compile: %s (last good still running)",
+                         r.name.c_str(), e.empty() ? "see log" : e.c_str());
+                break;
+            }
         }
     }
 }
