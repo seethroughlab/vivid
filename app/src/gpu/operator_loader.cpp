@@ -100,22 +100,38 @@ void OperatorLoader::unload() {
     registration_mode_ = "unknown";
 }
 
-bool OperatorLoader::load(const char* path) {
-    clear_last_error();
+// All the resolved state of a candidate dylib — filled by open_and_check(), then either committed
+// into the loader's members (load) or discarded (validate).
+struct OperatorLoader::Resolved {
+    void*                     handle          = nullptr;
+    VividDescriptorFn         desc_fn         = nullptr;
+    VividCreateFn             create_fn       = nullptr;
+    VividDestroyFn            destroy_fn      = nullptr;
+    VividProcessFrameFn       frame_fn        = nullptr;
+    VividProcessAudioFn       audio_fn        = nullptr;
+    VividProcessGpuFn         gpu_fn          = nullptr;
+    VividEditorMetadataFn     editor_meta_fn  = nullptr;
+    VividDrawEditorFn         draw_editor_fn  = nullptr;
+    VividFileDropDescriptorFn drop_fn         = nullptr;
+    std::string               mode;
+    bool                      reload_required_recompile = false;
+};
 
-    // Open the new handle first; a prior load stays live until we commit.
-    void* new_handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
-    if (!new_handle) {
+bool OperatorLoader::open_and_check(const char* path, Resolved& out) {
+    // Open the candidate; a prior load stays live until the CALLER commits (load) or discards it.
+    out.handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!out.handle) {
         const char* e = dlerror();
         set_last_error("dlopen_failed", e ? e : "unknown dlopen error");
         std::fprintf(stderr, "[vivid] dlopen failed: %s\n", last_error_.message.c_str());
         return false;
     }
+    void* h = out.handle;
 
-    auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(new_handle, "vivid_abi_version"));
+    auto abi_fn = reinterpret_cast<VividAbiVersionFn>(dlsym(h, "vivid_abi_version"));
     if (!abi_fn) {
         set_last_error("missing_abi_symbol", "missing symbol: vivid_abi_version");
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
     const uint32_t abi = abi_fn();
@@ -130,56 +146,56 @@ bool OperatorLoader::load(const char* path) {
                        std::to_string(expected_abi()) + " (min " +
                        std::to_string(VIVID_OPERATOR_ABI_MIN_LOADABLE) + ")");
         std::fprintf(stderr, "[vivid] %s (%s)\n", last_error_.message.c_str(), path);
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
     if (abi != expected_abi())
         std::fprintf(stderr, "[vivid] operator built at ABI %u, running on %u (compatible) — %s\n",
                      abi, expected_abi(), path);
 
-    auto desc_fn    = reinterpret_cast<VividDescriptorFn>(dlsym(new_handle, "vivid_descriptor"));
-    auto create_fn  = reinterpret_cast<VividCreateFn>(dlsym(new_handle, "vivid_create"));
-    auto destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(new_handle, "vivid_destroy"));
-    auto frame_fn   = reinterpret_cast<VividProcessFrameFn>(dlsym(new_handle, "vivid_process_frame"));
-    auto audio_fn   = reinterpret_cast<VividProcessAudioFn>(dlsym(new_handle, "vivid_process_audio"));
-    auto gpu_fn     = reinterpret_cast<VividProcessGpuFn>(dlsym(new_handle, "vivid_process_gpu"));
-    if (!desc_fn || !create_fn || !destroy_fn || (!frame_fn && !audio_fn && !gpu_fn)) {
+    out.desc_fn    = reinterpret_cast<VividDescriptorFn>(dlsym(h, "vivid_descriptor"));
+    out.create_fn  = reinterpret_cast<VividCreateFn>(dlsym(h, "vivid_create"));
+    out.destroy_fn = reinterpret_cast<VividDestroyFn>(dlsym(h, "vivid_destroy"));
+    out.frame_fn   = reinterpret_cast<VividProcessFrameFn>(dlsym(h, "vivid_process_frame"));
+    out.audio_fn   = reinterpret_cast<VividProcessAudioFn>(dlsym(h, "vivid_process_audio"));
+    out.gpu_fn     = reinterpret_cast<VividProcessGpuFn>(dlsym(h, "vivid_process_gpu"));
+    if (!out.desc_fn || !out.create_fn || !out.destroy_fn || (!out.frame_fn && !out.audio_fn && !out.gpu_fn)) {
         set_last_error("missing_required_symbols",
                        "missing one or more required entry points "
                        "(vivid_descriptor/create/destroy + a process_*)");
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
 
-    const VividOperatorDescriptor* desc = desc_fn();
+    const VividOperatorDescriptor* desc = out.desc_fn();
     if (!desc) {
         set_last_error("null_descriptor", "vivid_descriptor returned null");
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
     if (!desc->name || !*desc->name) {
         set_last_error("invalid_descriptor_name", "descriptor has a missing/empty name");
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
 
-    auto mode_fn = reinterpret_cast<VividRegistrationModeFn>(dlsym(new_handle, "vivid_registration_mode"));
+    auto mode_fn = reinterpret_cast<VividRegistrationModeFn>(dlsym(h, "vivid_registration_mode"));
     auto uniform_fn = reinterpret_cast<VividGeneratedUniformLayoutFn>(
-        dlsym(new_handle, "vivid_generated_uniform_layout"));
+        dlsym(h, "vivid_generated_uniform_layout"));
     // UI-4b: optional custom editor. Both symbols must be present to opt in; a partial
     // export (only one) is treated as no editor.
-    auto editor_meta_fn = reinterpret_cast<VividEditorMetadataFn>(dlsym(new_handle, "vivid_editor_metadata"));
-    auto draw_editor_fn = reinterpret_cast<VividDrawEditorFn>(dlsym(new_handle, "vivid_draw_editor"));
+    auto editor_meta_fn = reinterpret_cast<VividEditorMetadataFn>(dlsym(h, "vivid_editor_metadata"));
+    auto draw_editor_fn = reinterpret_cast<VividDrawEditorFn>(dlsym(h, "vivid_draw_editor"));
     // ADR-0021/P3: optional file-drop handlers.
-    auto drop_fn = reinterpret_cast<VividFileDropDescriptorFn>(dlsym(new_handle, "vivid_file_drop_descriptor"));
-    const std::string mode = (mode_fn && mode_fn() && *mode_fn()) ? mode_fn() : "legacy";
+    out.drop_fn = reinterpret_cast<VividFileDropDescriptorFn>(dlsym(h, "vivid_file_drop_descriptor"));
+    out.mode = (mode_fn && mode_fn() && *mode_fn()) ? mode_fn() : "legacy";
     const VividGeneratedUniformLayout* uniform_layout = uniform_fn ? uniform_fn() : nullptr;
 
-    auto issues = validate_descriptor(desc, mode.c_str(), uniform_layout);
+    auto issues = validate_descriptor(desc, out.mode.c_str(), uniform_layout);
     if (!issues.empty()) {
         set_last_error("invalid_descriptor", issues.front().code + ": " + issues.front().message);
         std::fprintf(stderr, "[vivid] invalid descriptor for %s: %s\n", path, last_error_.message.c_str());
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
 
@@ -190,24 +206,42 @@ bool OperatorLoader::load(const char* path) {
         set_last_error("hot_reload_incompatible",
                        "param/port/gpu layout changed; restart to load this change");
         std::fprintf(stderr, "[vivid] hot-reload rejected for %s: incompatible layout change\n", path);
-        dlclose(new_handle);
+        dlclose(h); out.handle = nullptr;
         return false;
     }
-    reload_required_recompile_ = (compat == HotReloadCompat::RecompileRequired);
+    out.reload_required_recompile = (compat == HotReloadCompat::RecompileRequired);
+    out.editor_meta_fn = (editor_meta_fn && draw_editor_fn) ? editor_meta_fn : nullptr;   // both-or-neither
+    out.draw_editor_fn = (editor_meta_fn && draw_editor_fn) ? draw_editor_fn : nullptr;
+    return true;
+}
+
+bool OperatorLoader::validate(const char* path) {
+    clear_last_error();
+    Resolved r;
+    const bool ok = open_and_check(path, r);
+    if (r.handle) dlclose(r.handle);   // never commit — the current load is untouched
+    return ok;
+}
+
+bool OperatorLoader::load(const char* path) {
+    clear_last_error();
+    Resolved r;
+    if (!open_and_check(path, r)) return false;   // candidate closed by open_and_check on failure
 
     // Commit: release any prior dylib, install the new state.
     unload();
-    handle_            = new_handle;
-    desc_fn_           = desc_fn;
-    create_fn_         = create_fn;
-    destroy_fn_        = destroy_fn;
-    process_frame_fn_  = frame_fn;
-    process_audio_fn_  = audio_fn;
-    process_gpu_fn_    = gpu_fn;
-    editor_meta_fn_    = (editor_meta_fn && draw_editor_fn) ? editor_meta_fn : nullptr;   // both-or-neither
-    draw_editor_fn_    = (editor_meta_fn && draw_editor_fn) ? draw_editor_fn : nullptr;
-    drop_fn_           = drop_fn;
-    registration_mode_ = mode;
+    handle_            = r.handle;
+    desc_fn_           = r.desc_fn;
+    create_fn_         = r.create_fn;
+    destroy_fn_        = r.destroy_fn;
+    process_frame_fn_  = r.frame_fn;
+    process_audio_fn_  = r.audio_fn;
+    process_gpu_fn_    = r.gpu_fn;
+    editor_meta_fn_    = r.editor_meta_fn;
+    draw_editor_fn_    = r.draw_editor_fn;
+    drop_fn_           = r.drop_fn;
+    registration_mode_ = r.mode;
+    reload_required_recompile_ = r.reload_required_recompile;
     return true;
 }
 

@@ -46,6 +46,14 @@ public:
     // dlopen + validate. On failure returns false and sets last_error(); a prior
     // successful load is left untouched (atomic: opens the new handle first).
     bool load(const char* path);
+
+    // ADR-0020: would load(path) succeed? Runs the identical dlopen + ABI/symbol/descriptor/
+    // hot-reload-compat checks, then closes the candidate WITHOUT committing — the current load is
+    // left entirely untouched. Lets a hot-reload validate a candidate BEFORE releasing live node
+    // instances, so a failed reload never churns the running graph (rollback-first). Sets
+    // last_error() on failure, exactly like load().
+    bool validate(const char* path);
+
     void unload();
 
     const VividOperatorDescriptor* descriptor() const { return desc_fn_ ? desc_fn_() : nullptr; }
@@ -78,6 +86,10 @@ public:
     bool reload_required_recompile() const { return reload_required_recompile_; }
 
 private:
+    struct Resolved;
+    // Shared front-half of load()/validate(): dlopen + every check. On success leaves the candidate
+    // handle open in `out`; on failure sets last_error, closes the candidate, returns false.
+    bool open_and_check(const char* path, Resolved& out);
     void set_last_error(std::string code, std::string message);
     void clear_last_error();
     void move_from(OperatorLoader&& other) noexcept;

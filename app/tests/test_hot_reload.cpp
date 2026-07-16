@@ -107,5 +107,17 @@ int main() {
         hr.stop();
     }
 
+    // ---- OperatorLoader::validate (ADR-0020 rollback-first: a non-committing pre-check) ----
+    {
+        OperatorLoader ld;
+        CHECK(!ld.is_loaded());
+        CHECK(!ld.validate("/no/such/vivid_op.dylib"));   // bad candidate → false
+        CHECK(!ld.last_error().code.empty());             // and it says why
+        CHECK(!ld.is_loaded());                           // the loader is untouched (nothing committed)
+        // A second validate of another bad path is likewise inert — no leaked handle, no state change.
+        CHECK(!ld.validate("/still/missing.dylib"));
+        CHECK(!ld.is_loaded());
+    }
+
     return vivid::test::summary("test_hot_reload");
 }

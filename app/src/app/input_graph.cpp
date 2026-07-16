@@ -16,6 +16,8 @@
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
+#include "packages/package_manifest.h"  // parse_package_manifest (ADR-0020: watch the fresh clone)
+#include <filesystem>
 #include "platform/platform.h"      // open_in_editor
 
 #include <algorithm>
@@ -484,8 +486,13 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
             if (!src.empty()) vivid::platform::open_in_editor(src);
         } else if (win.node_menu.cloneable) {
             vivid::CloneResult cr = vivid::clone_operator(app.op_registry, app.op_loaders, app.graph->op_kind_name(nn));
-            if (cr.ok) { app.graph->swap_op_type(nn, cr.name); vivid::platform::open_in_editor(cr.source_path); }
-            else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
+            if (cr.ok) {
+                app.graph->swap_op_type(nn, cr.name);
+                // ADR-0020 W2: watch the fresh clone so editing its source reloads live (no restart).
+                const std::string pkgdir = std::filesystem::path(cr.source_path).parent_path().string();
+                app.hot_reload.watch_manifest(app.op_loaders, vivid::parse_package_manifest(pkgdir));
+                vivid::platform::open_in_editor(cr.source_path);
+            } else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
         }
     }
     win.node_menu.open = false;

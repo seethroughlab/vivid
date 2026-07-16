@@ -6,6 +6,7 @@
 #include "packages/package_compiler.h"
 
 #include <atomic>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -19,10 +20,11 @@ namespace vivid {
 class OpRegistry;
 class OperatorLoader;
 class VisualGraph;
+class Logger;
 
 class HotReloadManager {
 public:
-    void start(OpRegistry* registry, VisualGraph* vgraph);
+    void start(OpRegistry* registry, VisualGraph* vgraph, Logger* log = nullptr);
     void stop();
     bool active() const { return active_; }
 
@@ -31,6 +33,13 @@ public:
     void watch_op(const std::string& op_name, const std::string& package_dir,
                   const PackageOperator& op, const std::string& source_path,
                   OperatorLoader* loader);
+
+    // ADR-0020: watch every operator in a package manifest — find each op's live loader (by
+    // descriptor name) among `loaders` and watch its source. Used at startup (auto-discovery of the
+    // clones / installed dirs) and right after a clone, so a fresh operator reloads without a restart.
+    // An op with no matching loaded loader is skipped (nothing to hot-swap yet).
+    void watch_manifest(const std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                        const PackageManifest& mf);
 
     // Once per frame (main thread): poll the watcher, then apply any ready swaps.
     void tick();
@@ -45,6 +54,7 @@ private:
 
     OpRegistry*          registry_ = nullptr;
     VisualGraph*         vgraph_   = nullptr;
+    Logger*              log_      = nullptr;   // ADR-0020: compile output → log view + toasts
     FileWatcher          watcher_;
     HotReloader          reloader_;
     PackageCompiler      compiler_;

@@ -186,31 +186,26 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");
     app.vgraph = &vgraph;
 
-    // Hot-reload (opt-in/dev): point VIVID_WATCH_PACKAGE at a package dir to install
-    // it, register its operators, and watch their sources — editing a source live-
-    // recompiles + hot-swaps the dylib (params preserved). Drives the frame loop's tick.
-    app.hot_reload.start(&app.op_registry, &vgraph);
+    // ADR-0020: the operator hot-reload watcher is ON BY DEFAULT (like the shader watcher). At
+    // startup we discover package sources in the standard user locations — anything the user cloned
+    // to edit ("Clone & Edit" scaffolds into ~/.../clones) or installed — and watch each already-
+    // loaded operator, so editing its source live-recompiles + hot-swaps the dylib (params
+    // preserved). No env var required; on an installed app with no local package sources this
+    // simply finds nothing to watch. $VIVID_WATCH_PACKAGE remains an override for a source tree
+    // outside the standard locations (below). Drives the frame loop's tick.
+    app.hot_reload.start(&app.op_registry, &vgraph, &app.log);
+    { namespace fs = std::filesystem;
+      const std::string clones = (fs::path(vivid::platform::user_data_dir()) / "clones").string();
+      for (const auto& mf : vivid::discover_packages(clones))                      app.hot_reload.watch_manifest(app.op_loaders, mf);
+      for (const auto& mf : vivid::discover_packages(vivid::user_operators_dir())) app.hot_reload.watch_manifest(app.op_loaders, mf);
+    }
     if (const char* wp = std::getenv("VIVID_WATCH_PACKAGE")) {
-        namespace fs = std::filesystem;
         const std::string pkg = wp;
         vivid::PackageInstallResult ir = vivid::install_package(pkg);
-        vivid::PackageManifest mf = vivid::parse_package_manifest(pkg);
         if (!ir.ok) std::fprintf(stderr, "[vivid] VIVID_WATCH_PACKAGE install failed: %s\n", ir.error.c_str());
-        for (size_t i = 0; i < ir.compiles.size() && i < mf.operators.size(); ++i) {
-            const auto& cr = ir.compiles[i];
-            if (!cr.success) { std::fprintf(stderr, "[vivid] watch compile failed (%s):\n%s\n",
-                                            mf.operators[i].name.c_str(), cr.error_output.c_str()); continue; }
-            // Ensure it's registered (no-op if the startup scan already loaded it),
-            // then find its live loader by descriptor name (the registry key) to watch.
-            vivid::load_and_register_operator(cr.dylib_path, app.op_registry, app.op_loaders);
-            const std::string& opname = mf.operators[i].name;
-            vivid::OperatorLoader* loader = nullptr;
-            for (auto& l : app.op_loaders)
-                if (l->descriptor() && opname == l->descriptor()->name) { loader = l.get(); break; }
-            if (loader)
-                app.hot_reload.watch_op(opname, pkg, mf.operators[i],
-                                        (fs::path(pkg) / mf.operators[i].source).string(), loader);
-        }
+        for (const auto& cr : ir.compiles)   // register the freshly-compiled dylibs so watch can find their loaders
+            if (cr.success) vivid::load_and_register_operator(cr.dylib_path, app.op_registry, app.op_loaders);
+        app.hot_reload.watch_manifest(app.op_loaders, vivid::parse_package_manifest(pkg));
     }
 
     // Texture source (image/video) — seeded with a test pattern; P19b feeds video.
