@@ -3,6 +3,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "operator_api/operator.h"
@@ -78,6 +79,13 @@ public:
     // used after a hot-reload swaps the operator's dylib (its metadata may change).
     void invalidate_descriptor(const std::string& name);
 
+    // ADR-0020: the last hot-reload COMPILE error for an op type ("" = last built clean). A C++
+    // operator that fails to recompile keeps its old dylib running (rollback-first), so the node
+    // isn't "missing" and carries no shader error — this side-table is how its node badges the
+    // failure (ADR-0019 E1). Set by HotReloadManager on a failed reload, cleared on success.
+    void set_reload_error(const std::string& name, const std::string& error);
+    std::string reload_error(const std::string& name) const;
+
 private:
     struct Entry { std::string name; Factory factory; OpMeta meta; };
     std::vector<Entry> entries_;
@@ -85,6 +93,7 @@ private:
     // lazily-built per-type descriptors (stable via unique_ptr).
     mutable std::vector<std::unique_ptr<OpDescriptor>> desc_cache_;
     OpDescriptor* ensure_descriptor(const std::string& name) const;
+    std::unordered_map<std::string, std::string> reload_errors_;   // op type -> last compile error
 };
 
 // Build a descriptor into `out` from a live operator's collected params/ports.

@@ -21,8 +21,16 @@ namespace vivid {
 // A right-click context menu of a track's audio characteristics (the bridge).
 // src: -1 = master, >= 0 = track.
 struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };
-// A right-click context menu on a visuals op node (open its source / clone it).
-struct NodeMenu { bool open = false; float x = 0, y = 0; int node = -1; bool has_source = false; bool cloneable = false; };
+// A right-click context menu on a visuals op node. ADR-0020: one contextual edit action per node —
+// Fork&edit a shipped (read-only) shader, Open the editable source of a user shader / cloned C++ op,
+// or Clone&edit a compiled built-in. `target` is the shader op-type to fork (ForkEdit) or the file
+// path to open (OpenSource).
+struct NodeMenu {
+    enum class Action { None, OpenSource, ForkEdit, CloneEdit };
+    bool open = false; float x = 0, y = 0; int node = -1;
+    Action action = Action::None;
+    std::string target;
+};
 
 // The one deep view the detail region is showing (ADR-0013, UI-1). Explicit focus is the
 // single source of truth for that region — recomputed once per frame — replacing the old

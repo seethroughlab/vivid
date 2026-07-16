@@ -523,7 +523,11 @@ void NodeGraph::draw(Renderer2D& r) {
         // A node that is broken says so ON THE CARD (ADR-0016 / S6): a red frame and the first
         // line of the error. A shader whose file will not compile still renders (black, or its
         // input passed through) — without this the user just sees a black frame and no reason.
-        const std::string node_err = node.error();
+        // ADR-0020 V2: a compiled operator that failed to hot-recompile keeps its old dylib
+        // running, so it isn't "missing" — its last compile error comes from the registry side-table.
+        std::string node_err = node.error();
+        if (node_err.empty() && vg_->registry())
+            node_err = vg_->registry()->reload_error(vg_->nodes()[i].op_type);
         if (!node_err.empty()) node_error_border(r, x, y, w, h);   // ADR-0019: a broken node LOOKS broken
         node_card(r, x, y, w, h, acc, i == sel_op_);   // shared: blue ring if selected + border/body/header/accent
         if (!node_err.empty()) node_error_badge(r, x, y);          // clickable "!" chip (input_graph reveals the message)

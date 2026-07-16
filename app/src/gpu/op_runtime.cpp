@@ -150,6 +150,15 @@ void OpRegistry::invalidate_descriptor(const std::string& name) {
         if ((*it)->name == name) { desc_cache_.erase(it); return; }
 }
 
+void OpRegistry::set_reload_error(const std::string& name, const std::string& error) {
+    if (error.empty()) reload_errors_.erase(name);
+    else               reload_errors_[name] = error;
+}
+std::string OpRegistry::reload_error(const std::string& name) const {
+    auto it = reload_errors_.find(name);
+    return it == reload_errors_.end() ? std::string() : it->second;
+}
+
 std::optional<OpInstance> OpRegistry::create(const std::string& name,
                                              std::vector<DescriptorValidationIssue>& issues) const {
     const Entry* e = find(name);

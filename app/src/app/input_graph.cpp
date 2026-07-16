@@ -17,6 +17,8 @@
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
 #include "packages/package_manifest.h"  // parse_package_manifest (ADR-0020: watch the fresh clone)
+#include "gpu/shader_library.h"         // ADR-0020: shader entries/tier + fork (fork-to-edit)
+#include "ui/shader_library_view.h"     // shader_fork_name
 #include <filesystem>
 #include "platform/platform.h"      // open_in_editor
 
@@ -429,9 +431,25 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && app.graph && mx >= win.split_x) {
         const int on = app.graph->op_at(mx, my);
         if (on >= 0) {
-            win.node_menu = { true, static_cast<float>(mx), static_cast<float>(my), on,
-                              !app.graph->op_source_path(on).empty(),
-                              vivid::operator_has_clone_template(app.graph->op_kind_name(on)) };
+            // ADR-0020: resolve ONE contextual edit action for this node.
+            const std::string op_type = app.graph->op_type_at(on);
+            NodeMenu m; m.open = true; m.x = static_cast<float>(mx); m.y = static_cast<float>(my); m.node = on;
+            std::string shader_path, shader_tier;
+            for (const auto& e : app.shader_library.entries())
+                if (e.name == op_type) { shader_path = e.path; shader_tier = e.tier; break; }
+            std::string watched, asset;
+            if (shader_tier == "bundled") {          // shipped shader is read-only → fork a copy to edit
+                m.action = NodeMenu::Action::ForkEdit; m.target = op_type;
+            } else if (!shader_tier.empty()) {       // user/project shader → open its .wgsl (watcher reloads)
+                m.action = NodeMenu::Action::OpenSource; m.target = shader_path;
+            } else if (watched = app.hot_reload.source_for(op_type), !watched.empty()) {
+                m.action = NodeMenu::Action::OpenSource; m.target = watched;   // cloned/user C++ op source
+            } else if (asset = app.graph->op_source_path(on), !asset.empty()) {
+                m.action = NodeMenu::Action::OpenSource; m.target = asset;      // CustomShader .glsl asset
+            } else if (vivid::operator_has_clone_template(app.graph->op_kind_name(on))) {
+                m.action = NodeMenu::Action::CloneEdit;                          // built-in → clone to edit
+            }
+            win.node_menu = m;
             win.menu.open = false;
             return true;
         }
@@ -481,18 +499,39 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     if (!win.node_menu.open) return false;
     const int nn = win.node_menu.node;
     if (app.graph && hit(Rect{ win.node_menu.x, win.node_menu.y, 172.f, 22.f }, mx, my)) {
-        if (win.node_menu.has_source) {
-            const std::string src = app.graph->op_source_path(nn);
-            if (!src.empty()) vivid::platform::open_in_editor(src);
-        } else if (win.node_menu.cloneable) {
-            vivid::CloneResult cr = vivid::clone_operator(app.op_registry, app.op_loaders, app.graph->op_kind_name(nn));
-            if (cr.ok) {
-                app.graph->swap_op_type(nn, cr.name);
-                // ADR-0020 W2: watch the fresh clone so editing its source reloads live (no restart).
-                const std::string pkgdir = std::filesystem::path(cr.source_path).parent_path().string();
-                app.hot_reload.watch_manifest(app.op_loaders, vivid::parse_package_manifest(pkgdir));
-                vivid::platform::open_in_editor(cr.source_path);
-            } else std::fprintf(stderr, "[vivid] clone failed: %s\n", cr.error.c_str());
+        switch (win.node_menu.action) {
+            case NodeMenu::Action::OpenSource:
+                if (!win.node_menu.target.empty()) vivid::platform::open_in_editor(win.node_menu.target);
+                break;
+            case NodeMenu::Action::ForkEdit: {
+                // ADR-0020: fork a shipped (read-only) shader into the user tier, swap the node to
+                // the copy, and open it — the always-on shader watcher live-updates saved edits.
+                const std::string& base = win.node_menu.target;
+                auto& reg = app.op_registry;
+                const std::string nn2 = vivid::ui::shader_fork_name(base, [&](const std::string& c) { return reg.has(c); });
+                std::string err;
+                const std::string forked = app.shader_library.fork(base, nn2, reg, err);
+                if (!forked.empty()) {
+                    app.graph->swap_op_type(nn, forked);
+                    for (const auto& e : app.shader_library.entries())
+                        if (e.name == forked) { vivid::platform::open_in_editor(e.path); break; }
+                    VLOG_INFO(app, "forked shader '%s' -> '%s' (editing your copy)", base.c_str(), forked.c_str());
+                } else VLOG_ERR(app, "fork shader '%s' failed: %s", base.c_str(), err.c_str());
+                break;
+            }
+            case NodeMenu::Action::CloneEdit: {
+                vivid::CloneResult cr = vivid::clone_operator(app.op_registry, app.op_loaders, app.graph->op_kind_name(nn));
+                if (cr.ok) {
+                    app.graph->swap_op_type(nn, cr.name);
+                    // ADR-0020 W2: watch the fresh clone so editing its source reloads live (no restart).
+                    const std::string pkgdir = std::filesystem::path(cr.source_path).parent_path().string();
+                    app.hot_reload.watch_manifest(app.op_loaders, vivid::parse_package_manifest(pkgdir));
+                    vivid::platform::open_in_editor(cr.source_path);
+                    VLOG_INFO(app, "cloned '%s' -> '%s' (editing your copy)", app.graph->op_kind_name(nn), cr.name.c_str());
+                } else VLOG_ERR(app, "clone failed: %s", cr.error.c_str());
+                break;
+            }
+            case NodeMenu::Action::None: break;
         }
     }
     win.node_menu.open = false;
