@@ -17,6 +17,10 @@ codes in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5.
 - **`control_parse.h`** — pure helpers (`in_range`, `kind_index`,
   `char_id_from_source` — the mapping-source wire encoding). Unit-tested headlessly
   (`tests/test_control_parse.cpp`); keep new pure parse/validation logic here.
+- **`control_handlers_*.cpp`** — the handlers, grouped by domain, register into the
+  dispatch table. `control_handlers_edit.cpp` provides `undo`/`redo` (ADR-0017), and
+  `edit_methods.{h,cpp}` is the table of which methods the `EditGateway` captures at the
+  `process_pending` chokepoint — read-only/performance methods are excluded there.
 
 Handlers validate every track/scene/device/effect index and return `out_of_range`
 rather than silently no-op'ing (the engine is also internally guarded — belt & braces).

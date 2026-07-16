@@ -144,10 +144,11 @@ We adopt the model and skip the mistake.
 ## Consequences
 
 **Good.** Exploration stops being a commitment. Multi-select makes graphs of real size buildable.
-Both graphs get all of it from one implementation in the shared canvas. The mutation hook we are
-forced to build is exactly the hook ADR-0018 needs.
+Both graphs get all of it from one implementation in the shared canvas. The command sink we are
+forced to build is exactly the sink ADR-0018 needs. (As built, this is the `EditGateway` — see the
+"As built" note above.)
 
-**Costs.** Every mutation site must be routed through the hook — that is the bulk of the work, and
+**Costs.** Every mutation site must be routed through the sink — that is the bulk of the work, and
 it is unglamorous. Any site that is missed produces a *silently* wrong undo (an edit that Cmd+Z
 skips over), which is worse than no undo, so U2 needs to be exhaustive rather than fast. Snapshot
 undo also holds ~200 full session JSONs in memory; at current session sizes this is negligible, but

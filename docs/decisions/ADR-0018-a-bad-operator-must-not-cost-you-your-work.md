@@ -16,7 +16,7 @@ autosave, and recovery of unsaved work.**
 
 The extension model is `dlopen`. Operators are third-party C++ compiled into dylibs and called on the
 frame and audio threads (`app/src/gpu/op_runtime.cpp`, `app/src/gpu/visual_graph.cpp`,
-`app/src/audio/audio_op_runtime.cpp`). ADR-0016 is about to widen that further, turning shader files
+`app/src/audio/audio_op_runtime.cpp`). ADR-0016 (shipped) widened that further, turning shader files
 into operators authored by people who are not C++ programmers.
 
 Which means: **operator code will crash.** That is not a defect in the plan; it is the plan. The
@@ -58,12 +58,12 @@ Together these turn a crash loop into a bounded, self-healing sequence: crash �
 
 Classic's crash snapshot is **diagnostic, not a document**. It tells you what died; it does not give
 you back the session you were editing. Neither does classic have autosave. That gap is ours to close,
-and it costs almost nothing extra because the mechanism is already being built: ADR-0017 installs a
-single hook through which every mutation passes. A dirty flag and a periodic autosave ride that hook
-for free.
+and it costs almost nothing extra because the mechanism already exists: ADR-0017 (shipped) installs the
+**`EditGateway` command sink** — one object every document mutation (UI *and* MCP) routes through. A
+dirty flag and a periodic autosave ride that same sink for free.
 
-This is the sole reason ADR-0017 comes first. It is not a preference about ordering; the hook is
-shared.
+That shared sink is why ADR-0017 came first — not a preference about ordering. It has landed (PR #31),
+so this dependency is already satisfied.
 
 ## Decision
 
@@ -87,7 +87,7 @@ shared.
    separate state file. Surfaced clearly — a quarantined operator says so in the chooser, which
    already supports greying a row *with a reason* (`app/src/ui/chooser.h`).
 
-5. **Never lose work.** On ADR-0017's mutation hook: an app-level `dirty` flag; `macos_set_document_edited`;
+5. **Never lose work.** On ADR-0017's `EditGateway` command sink: an app-level `dirty` flag; `macos_set_document_edited`;
    a save-confirm dialog on New / Open / Quit; and a periodic **autosave** to a sidecar file. On
    launch, if a sidecar is newer than its project, offer to recover. Reuse
    `app/src/app/file_actions.{h,cpp}` and `project_io.*` — the save/load/recents machinery is already
@@ -153,7 +153,7 @@ un-quarantining restores it.
 
 ### R4 — Dirty flag, autosave, recovery
 
-The dirty flag on ADR-0017's hook. Save-confirm on New/Open/Quit. Periodic autosave sidecar.
+The dirty flag on ADR-0017's `EditGateway` command sink. Save-confirm on New/Open/Quit. Periodic autosave sidecar.
 Recovery offer on launch.
 
 *Verify:* run the app — edit a graph, `kill -9` the process, relaunch, and confirm the edit is

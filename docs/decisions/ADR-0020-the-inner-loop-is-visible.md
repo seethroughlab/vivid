@@ -140,4 +140,5 @@ edit" action on a shipped shader node.
 
 *Verify:* run the app — right-click a shipped shader node, fork it, confirm the new `.wgsl` lands in
 the user shader dir, opens in the configured editor, and that saving an edit to it live-updates the
-node. That is the whole loop, end to end; if it works, ADR-0016 has shipped.
+node. That is the whole loop, end to end; making it work completes the authoring story ADR-0016
+(shipped) began.
