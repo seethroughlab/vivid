@@ -172,6 +172,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/app.cpp
     src/app/undo_manager.cpp
     src/app/edit_gateway.cpp
+    src/app/log.cpp
     src/app/input.cpp
     src/app/input_typing.cpp
     src/app/input_transport.cpp
@@ -244,6 +245,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
     src/ui/shader_library_view.cpp
+    src/ui/diagnostics_panel.cpp
+    src/ui/toasts.cpp
     src/ui/preset_popover.cpp
     src/ui/session_view.cpp
     src/ui/chooser.cpp

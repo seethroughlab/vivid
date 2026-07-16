@@ -4,6 +4,7 @@
 #include "app/runtime_health.h"
 #include "app/app.h"
 #include "gpu/gpu_context.h"
+#include "gpu/visual_graph.h"
 #include "ui/node_graph.h"
 #include "cli/control_server.h"
 #include "version.h"
@@ -25,12 +26,11 @@ HealthSnapshot collect_health(const App& app) {
     s.op_types        = static_cast<int>(app.op_registry.type_names().size());
     s.packages_loaded = static_cast<int>(app.op_loaders.size());
 
-    if (app.graph) {
-        s.op_nodes = app.graph->op_count();
-        for (int i = 0; i < s.op_nodes; ++i)
-            if (!app.op_registry.descriptor_for(app.graph->op_type_at(i)))
-                ++s.missing_ops;
-    }
+    if (app.graph) s.op_nodes = app.graph->op_count();
+    // BROKEN nodes: op types that never resolved to a real operator. The visual graph is the
+    // authority (it excludes the Output/Video host contracts, which carry no operator yet are not
+    // "missing" — counting them here made severity() spuriously Error in every session).
+    if (app.vgraph) s.missing_ops = app.vgraph->missing_op_count();
 
     s.control_running = app.control && app.control->running();
     return s;

@@ -65,6 +65,39 @@ inline void node_card(Renderer2D& r, float x, float y, float w, float h,
     r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, s.card_hi[0], s.card_hi[1], s.card_hi[2], 1.0f);   // header strip
 }
 
+// --- Broken-node vocabulary (ADR-0019). A node the engine knows is broken must LOOK broken, in
+// both editors, from one implementation. Each editor supplies its own error string (a shader that
+// won't compile, an op type that isn't registered, a plugin that failed to load); the drawing is
+// shared here. ---
+
+// A health-tinted error frame, drawn BEHIND node_card (same footprint as the active-output ring).
+inline void node_error_border(Renderer2D& r, float x, float y, float w, float h) {
+    const Style& s = style();
+    r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, s.red[0], s.red[1], s.red[2], 1.0f);
+}
+
+// The clickable "!" chip at the header's left edge. Its geometry is a pure function of the card
+// origin so the editor's hit-test can recompute it without threading a rect through. When a node
+// carries an error, the editor draws its type label shifted right by `node_error_label_shift` to
+// make room. Returns nothing; use node_error_badge_rect for hit-testing.
+inline Rect node_error_badge_rect(float x, float y) { return { x + 4.f, y + 5.f, 13.f, 13.f }; }
+inline constexpr float node_error_label_shift = 14.f;
+inline void node_error_badge(Renderer2D& r, float x, float y) {
+    const Style& s = style();
+    const Rect b = node_error_badge_rect(x, y);
+    r.draw_rect(b.x, b.y, b.w, b.h, s.red[0], s.red[1], s.red[2], 1.0f);
+    r.draw_text(b.x + 4.5f, b.y + 0.5f, "!", 0.10f, 0.02f, 0.03f, 1.0f, 0.82f);
+}
+
+// The first line of an error, over the preview well (the node keeps rendering its last-good output —
+// a source falls back to black, a filter passes through — so the picture alone would say nothing).
+inline void node_error_note(Renderer2D& r, float tx, float ty, float tw, float th, const std::string& msg) {
+    std::string first = msg.substr(0, msg.find('\n'));
+    if (first.size() > 24) first = first.substr(0, 23) + "\xE2\x80\xA6";
+    r.draw_rect(tx, ty + th - 14.f, tw, 14.f, 0.15f, 0.05f, 0.05f, 0.92f);
+    r.draw_text(tx + 4.f, ty + th - 12.f, first.c_str(), 0.98f, 0.55f, 0.55f, 1.0f, 0.62f);
+}
+
 // A recessed preview panel (a node thumbnail well): a 1px frame + a near-black inset. Each editor
 // fills it with its own content — the visuals graph blits a GPU texture, the audio graph draws a
 // live waveform (node_waveform), an op can draw itself.

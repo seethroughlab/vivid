@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "app/log.h"               // ADR-0019 (E4): the leveled logger (owned here)
 #include "app/project_state.h"
 #include "gpu/op_runtime.h"        // OpRegistry (operator-based visuals)
 #include "gpu/operator_loader.h"   // OperatorLoader (dlopen'd operators; owned here)
@@ -50,6 +51,7 @@ struct App {
     FileDropRegistry file_drops;
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
     platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
+    Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
 

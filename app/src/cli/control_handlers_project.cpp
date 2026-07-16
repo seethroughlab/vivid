@@ -77,7 +77,10 @@ void register_project_handlers(Handlers& handlers_) {
         if (path.empty()) return err(code::kBadArg, "need path");
         int ww = *c.win_w, wh = *c.win_h;
         auto lr = project_io::load(*c.app, *c.graph, ww, wh, *c.split_x, *c.dock_h, path);
-        if (!lr.ok) return err(code::kIoError, lr.error);
+        if (!lr.ok) {
+            VLOG_ERR(*c.app, "load failed: %s \xE2\x80\x94 %s", path.c_str(), lr.error.c_str());  // ADR-0019: surface in-app
+            return err(code::kIoError, lr.error);
+        }
         json r = ok(); r["path"] = c.app->project.current_project_path;
         if (lr.had_package) {   // report project-local operator compile/register outcomes
             json pkg = { {"name", lr.package_name}, {"registered", lr.registered} };

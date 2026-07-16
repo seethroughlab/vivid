@@ -52,10 +52,26 @@ static void clear_target(WGPUCommandEncoder enc, WGPUTextureView view) {
 }
 
 std::string VisualNode::error() const {
-    // Only shader nodes carry a runtime error today. When another op kind grows one, this is
-    // where it goes — the UI asks the NODE, not the shader library.
+    // A node whose op type never resolved to a registered operator is broken (ADR-0019): it
+    // renders nothing and silently leaves the chain. Say so instead of showing a dead node.
+    if (op_missing()) return "operator '" + op_type + "' is not registered";
+    // Shader nodes carry a compile error when their file will not build (the last-good pipeline
+    // keeps rendering, so the picture alone would say nothing is wrong). When another op kind
+    // grows a runtime error, this is where it goes — the UI asks the NODE, not the library.
     if (const auto* sh = dynamic_cast<const ShaderFileOp*>(inst.op.get())) return sh->error();
     return {};
+}
+
+int VisualGraph::missing_op_count() const {
+    int n = 0;
+    for (const auto& nd : nodes_) if (nd.op_missing()) ++n;
+    return n;
+}
+
+std::vector<int> VisualGraph::missing_op_node_indices() const {
+    std::vector<int> out;
+    for (int i = 0; i < static_cast<int>(nodes_.size()); ++i) if (nodes_[i].op_missing()) out.push_back(i);
+    return out;
 }
 
 bool VisualGraph::make_instance(VisualNode& n, const std::string& type) {

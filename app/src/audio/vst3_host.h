@@ -276,6 +276,10 @@ int         session_audio_graph_add_source(Session*, int track, const char* op_t
 int         session_audio_graph_add_plugin(Session*, int track, const char* path, int format,
                                            int is_source, const char* uid);
 int         session_audio_graph_node_plugin_ready(Session*, int track, int node_id);   // 1 bound / 0 loading / -1 not a plugin node
+// 1 if this node's plugin failed to load — a TERMINAL failure (slot present, not pending, no handle
+// bound), distinct from "still loading" (plugin_ready==0). The node is silent and won't recover
+// without a reload. ADR-0019: surface it; do NOT badge a still-loading plugin (that would lie).
+int         session_audio_graph_node_plugin_failed(Session*, int track, int node_id);
 const char* session_audio_graph_node_plugin_path(Session*, int track, int node_id);    // "" if not a plugin node
 const char* session_audio_graph_node_plugin_uid(Session*, int track, int node_id);     // VST3 class cid hex ("" if none)
 // A plugin node's patch (base64) — so a user-spawned plugin keeps its sound across save + load.

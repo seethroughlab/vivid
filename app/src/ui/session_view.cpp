@@ -6,6 +6,7 @@
 #include "ui/ui_style.h"
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"
+#include "ui/diagnostics_panel.h" // ADR-0019: severity_color for the health dot
 #include "ui/compound_widget.h"   // UI-4a: host-composed compound inspector widgets
 #include "ui/operator_draw_bridge.h"  // UI-4b: Renderer2D -> VividDrawAPI adapter
 #include "audio/vst3_host.h"
@@ -441,8 +442,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const Rect r = transport_record_rect();
         const bool hov = hit(r, mx, my);
         toolbar_button(ui, { r.x - 3.f, r.y - 3.f, r.w + 6.f, r.h + 6.f }, hov, recording);
-        const float rc[3] = { 0.90f, 0.24f, 0.28f };
-        const float* c = recording ? rc : sty.dim;
+        const float* c = recording ? sty.red : sty.dim;
         ui.draw_rect(r.x + r.w * 0.5f - 6.f, r.y + r.h * 0.5f - 6.f, 12.f, 12.f, c[0], c[1], c[2], 1.0f);   // filled disc
     }
     {
@@ -456,6 +456,15 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     if (w.typing) {
         ui.draw_rect(550.f, 12.f, 40.f, 16.f, sty.audio[0] * 0.35f, sty.audio[1] * 0.35f, sty.audio[2] * 0.35f, 1.0f);
         ui.draw_text(556.f, 14.f, "TYPE", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_kicker);
+    }
+    {   // ADR-0019: health rollup dot (green ok / amber warning / red error). Click opens diagnostics.
+        const Rect hd = health_dot_rect(w.win_w);
+        const Severity sev = severity(w.health);
+        const float* c = severity_color(sev);
+        const bool hov = hit(hd, mx, my);
+        if (hov || w.show_diagnostics)
+            ui.draw_rect(hd.x - 3.f, hd.y - 3.f, hd.w + 6.f, hd.h + 6.f, sty.card_hi[0], sty.card_hi[1], sty.card_hi[2], 1.0f);
+        ui.draw_rounded_rect(hd.x, hd.y, hd.w, hd.h, 3.f, c[0], c[1], c[2], 1.0f);
     }
 
     if (!w.app->session) return;

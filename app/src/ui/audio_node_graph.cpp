@@ -293,11 +293,17 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                          : (b.kind == 1 ? sty.fx
                          : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold));
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
+        // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
+        // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
+        const bool node_err = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
+        if (node_err) node_error_border(r, b.x, b.y, b.w, b.h);
         node_card(r, b.x, b.y, b.w, b.h, acc, sel);   // shared: border/body/header/top accent + blue sel ring
+        if (node_err) node_error_badge(r, b.x, b.y);
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
         const char* label = (type && *type) ? type
                           : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
-        r.draw_text(b.x + 10.f, b.y + 6.f, label, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
+        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, label,
+                    sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "instrument"
                         : (b.kind == 1 ? "effect"
                         : (b.kind == 3 ? "notes" : (b.kind == 4 ? "note effect" : "output")));
@@ -321,6 +327,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
             float scope[128];
             const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
             if (ns > 1) node_waveform(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, scope, ns, acc[0], acc[1], acc[2]);
+            if (node_err) node_error_note(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, "plugin unavailable — silent");
         }
         // Wire ports: an output nub (source; not on Output) and an input nub (target; not on inst).
         if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }

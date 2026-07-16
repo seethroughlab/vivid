@@ -16,6 +16,8 @@
 #include "ui/audio_node_graph.h"   // AudioNodeGraph::graph_region for the node-reposition drag
 #include "ui/mapping_overview.h"
 #include "ui/shader_library_view.h"
+#include "ui/diagnostics_panel.h"
+#include "ui/toasts.h"
 #include "ui/preset_popover.h"
 #include "ui/clip_editor.h"
 #include "transport.h"
@@ -403,6 +405,17 @@ void run_frame_loop(App& app, Window& win) {
         vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
         apply_shader_reloads(app);       // ADR-0016: pick up edits to shader FILES (main thread)
+        app.log.drain_rt();              // ADR-0019 (E4): move audio-thread log events onto the UI thread
+        // Surface new Error-level log events as toasts (severity-gated: Warning stays the passive
+        // header dot, Info/Debug go only to the log view). One toast per new Error since last frame.
+        {
+            const double tnow = glfwGetTime();
+            for (const auto& e : app.log.entries()) {
+                if (e.id <= win.last_toast_id || e.level != vivid::LogLevel::Error) continue;
+                vivid::ui::push_toast(win.toasts, e.level, e.msg, tnow);
+            }
+            win.last_toast_id = app.log.next_id() - 1;
+        }
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).
@@ -436,6 +449,7 @@ void run_frame_loop(App& app, Window& win) {
         }
 
         reap_plugin_windows(app, win);
+        win.health = collect_health(app);   // ADR-0019: one snapshot/frame; the dot + panel both read it
         const double beats = transport.beats.load(std::memory_order_relaxed);
         publish_bridge_sources(app, win);
         apply_audio_param_mappings(app);
@@ -526,6 +540,9 @@ void run_frame_loop(App& app, Window& win) {
             clip_editor.draw(ui);  // editor window on top
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
+            if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
+            if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
+            draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
