@@ -54,6 +54,7 @@ struct App {
     Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
+    bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
 
     // Minimal project workflow (UI/main thread only). The session JSON remains the
     // document format; these fields remember where it lives and where relative media starts.

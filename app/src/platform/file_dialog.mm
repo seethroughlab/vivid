@@ -51,6 +51,34 @@ std::string save_project_dialog(const std::string& suggested_name) {
     return {};
 }
 
+DiscardChoice confirm_discard_changes() {
+    @autoreleasepool {
+        NSAlert* a = [[NSAlert alloc] init];
+        [a setMessageText:@"Do you want to save the changes to this project?"];
+        [a setInformativeText:@"Your changes will be lost if you don't save them."];
+        [a setAlertStyle:NSAlertStyleWarning];
+        [a addButtonWithTitle:@"Save"];         // NSAlertFirstButtonReturn
+        [a addButtonWithTitle:@"Don't Save"];   // NSAlertSecondButtonReturn
+        [a addButtonWithTitle:@"Cancel"];       // NSAlertThirdButtonReturn
+        const NSModalResponse r = [a runModal];
+        if (r == NSAlertFirstButtonReturn)  return DiscardChoice::Save;
+        if (r == NSAlertSecondButtonReturn) return DiscardChoice::Discard;
+        return DiscardChoice::Cancel;
+    }
+}
+
+bool confirm_recover_autosave(const std::string& detail) {
+    @autoreleasepool {
+        NSAlert* a = [[NSAlert alloc] init];
+        [a setMessageText:@"Recover unsaved changes?"];
+        [a setInformativeText:[NSString stringWithUTF8String:detail.c_str()]];
+        [a setAlertStyle:NSAlertStyleInformational];
+        [a addButtonWithTitle:@"Recover"];   // NSAlertFirstButtonReturn
+        [a addButtonWithTitle:@"Discard"];   // NSAlertSecondButtonReturn
+        return [a runModal] == NSAlertFirstButtonReturn;
+    }
+}
+
 }  // namespace vivid::platform
 
 #endif  // __APPLE__

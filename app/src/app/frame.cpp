@@ -2,7 +2,11 @@
 
 #include "app/app.h"
 #include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
-#include "platform/menu_bar.h"  // ADR-0017/G4 set_edit_labels
+#include "platform/menu_bar.h"  // ADR-0017/G4 set_edit_labels; ADR-0018 set_document_edited
+#include "platform/file_dialog.h" // ADR-0018 confirm_discard_changes (quit save-confirm)
+#include "app/file_actions.h"     // ADR-0018 save() from the quit confirm
+#include "app/autosave.h"         // ADR-0018 periodic autosave
+#include <ctime>                  // ADR-0018 std::time for the autosave meta stamp
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
@@ -405,10 +409,24 @@ void run_frame_loop(App& app, Window& win) {
     // editor windows render but ignore clicks. The timer fires in tracking mode too.
     auto poll_events = [&]() -> bool {
         glfwPollEvents();
+        // ADR-0018: intercept a quit request with unsaved changes — confirm before the loop exits.
+        // Save (aborts the quit if the save dialog is cancelled) / Don't Save (quit) / Cancel (stay).
+        if (glfwWindowShouldClose(window) && app.edit_gateway && app.edit_gateway->dirty()) {
+            switch (vivid::platform::confirm_discard_changes()) {
+                case vivid::platform::DiscardChoice::Save:
+                    vivid::file_actions::save(window, win, app);
+                    if (app.edit_gateway->dirty()) glfwSetWindowShouldClose(window, GLFW_FALSE);  // save cancelled → stay
+                    break;
+                case vivid::platform::DiscardChoice::Discard: break;                              // allow quit
+                case vivid::platform::DiscardChoice::Cancel:  glfwSetWindowShouldClose(window, GLFW_FALSE); break;
+            }
+        }
         return !glfwWindowShouldClose(window);
     };
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
+    int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
+    double last_autosave = 0.0;          // ADR-0018: throttle periodic autosave (glfwGetTime seconds)
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
@@ -616,7 +634,11 @@ void run_frame_loop(App& app, Window& win) {
         // (a pre-loop baseline would capture pre-layout node positions). Then the end-of-frame audit
         // (a no-op unless built with VIVID_UNDO_AUDIT) checks nothing bypassed the gateway.
         if (app.edit_gateway) {
-            if (!undo_baseline_seeded) { app.edit_gateway->reset_baseline(); undo_baseline_seeded = true; }
+            if (!undo_baseline_seeded) {
+                app.edit_gateway->reset_baseline(); undo_baseline_seeded = true;
+                // ADR-0018: a recovered autosave is the baseline but differs from disk — start dirty.
+                if (app.recovered_unsaved) { app.edit_gateway->mark_dirty(); app.recovered_unsaved = false; }
+            }
             // Watchdog: recover a gesture group leaked by a lost release (release delivered to another
             // window / consumed by an early handler). Safe — a normal drag holds the button down.
             if (!win.mouse_left_down) app.edit_gateway->close_open_group();
@@ -627,6 +649,21 @@ void run_frame_loop(App& app, Window& win) {
                 last_undo_rev = app.edit_gateway->revision();
                 vivid::platform::set_edit_labels(app.edit_gateway->undo_label(), app.edit_gateway->redo_label(),
                                                  app.edit_gateway->can_undo(), app.edit_gateway->can_redo());
+            }
+            // ADR-0018: mirror the app-level dirty flag onto the macOS window edited-dot when it flips.
+            const int cur_dirty = app.edit_gateway->dirty() ? 1 : 0;
+            if (cur_dirty != last_dirty) {
+                last_dirty = cur_dirty;
+                vivid::platform::set_document_edited(cur_dirty != 0);
+            }
+            // ADR-0018: periodic autosave — every kAutosaveSecs while the document is dirty, so a
+            // crash or kill loses at most that interval. Cleared on a real save (file_actions).
+            constexpr double kAutosaveSecs = 15.0;
+            const double now = glfwGetTime();
+            if (cur_dirty && now - last_autosave >= kAutosaveSecs) {
+                last_autosave = now;
+                vivid::autosave::write(app, win.win_w, win.win_h, win.split_x, win.dock_h,
+                                       static_cast<long long>(std::time(nullptr)));
             }
         }
         return true;

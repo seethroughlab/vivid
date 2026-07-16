@@ -116,6 +116,15 @@ void set_edit_labels(const std::string& undo_label, const std::string& redo_labe
     }
 }
 
+void set_document_edited(bool edited) {
+    @autoreleasepool {
+        // The GLFW window is the app's main/key window; tag its close-box + proxy as modified.
+        NSWindow* w = [NSApp mainWindow] ?: [NSApp keyWindow];
+        if (!w) { NSArray<NSWindow*>* ws = [NSApp windows]; if (ws.count) w = ws[0]; }
+        [w setDocumentEdited:edited ? YES : NO];
+    }
+}
+
 void set_recent_projects(const std::vector<std::string>& paths) {
     if (!g_recentMenu) return;
     @autoreleasepool {

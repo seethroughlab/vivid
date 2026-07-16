@@ -18,4 +18,14 @@ std::string save_project_dialog(const std::string& suggested_name);
 std::string open_file_dialog(const std::string& message,
                              const std::vector<std::string>& extensions = {});
 
+// ADR-0018: a Save / Don't Save / Cancel confirmation before an action that would discard unsaved
+// changes (New, Open, Quit). Modal — UI/main thread only. Off macOS the stub returns Discard (no
+// native dialog to block on), so headless/non-mac builds never wedge.
+enum class DiscardChoice { Save, Discard, Cancel };
+DiscardChoice confirm_discard_changes();
+
+// ADR-0018: at launch, offer to recover autosaved unsaved work. `detail` describes what/when.
+// Returns true to recover, false to discard. Off macOS the stub returns false.
+bool confirm_recover_autosave(const std::string& detail);
+
 }  // namespace vivid::platform

@@ -23,6 +23,7 @@ void EditGateway::reset_baseline() {
     undo_.clear();
     undo_.push(cached_.dump(), false, {});   // entry 0 — the pre-edit baseline
     edited_this_frame_ = true;                // this frame's document change is intentional
+    dirty_ = false;                           // ADR-0018: a freshly loaded/new document is clean
     last_key_.clear();
     group_depth_ = 0; group_dirty_ = false; group_label_.clear();
     pending_ = false;
@@ -32,6 +33,7 @@ void EditGateway::reset_baseline() {
 void EditGateway::push_snapshot(const json& proj, bool replace_top, const std::string& label) {
     undo_.push(proj.dump(), replace_top, label);
     cached_ = proj;
+    dirty_ = true;                            // ADR-0018: a real edit just landed
     ++revision_;
 }
 
@@ -126,6 +128,7 @@ void EditGateway::restore(const nlohmann::json& target) {
     session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier);
     cached_ = target;
     edited_this_frame_ = true;
+    dirty_ = true;      // ADR-0018: undo/redo changes the document vs. what's on disk
     pending_ = false;   // an undo/redo supersedes any edit noted earlier this frame
     ++revision_;
 }

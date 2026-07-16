@@ -26,6 +26,8 @@
 #include "app/input.h"
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
+#include "app/autosave.h"          // ADR-0018 autosave recovery on launch
+#include "platform/file_dialog.h"  // ADR-0018 confirm_discard_changes (New/Open save-confirm)
 #include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
 #include "platform/menu_bar.h"     // install_menu_bar
@@ -268,12 +270,26 @@ int main(int argc, char** argv) {
     // main thread, so they touch the session/graph directly (app/file_actions.cpp).
     {
         vivid::platform::MenuActions ma;
-        ma.new_project     = [&] { vivid::file_actions::new_project(app); };
-        ma.open_project    = [&] { vivid::file_actions::open(window, win, app); };
+        // ADR-0018: before an action that discards the current document (New/Open), if there are
+        // unsaved changes, confirm. Save → save (aborts if the save dialog is cancelled); Cancel →
+        // abort the action. MCP load/new bypass this (no user at the machine to answer a modal).
+        auto ok_to_discard = [&]() -> bool {
+            if (!app.edit_gateway || !app.edit_gateway->dirty()) return true;
+            switch (vivid::platform::confirm_discard_changes()) {
+                case vivid::platform::DiscardChoice::Save:
+                    vivid::file_actions::save(window, win, app);
+                    return !app.edit_gateway->dirty();   // still dirty ⇒ the save dialog was cancelled ⇒ abort
+                case vivid::platform::DiscardChoice::Discard: return true;
+                case vivid::platform::DiscardChoice::Cancel:  return false;
+            }
+            return true;
+        };
+        ma.new_project     = [&] { if (ok_to_discard()) vivid::file_actions::new_project(app); };
+        ma.open_project    = [&] { if (ok_to_discard()) vivid::file_actions::open(window, win, app); };
         ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };
-        ma.open_recent     = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
-        ma.open_example    = [&](const std::string& p) { vivid::file_actions::open_recent(window, win, app, p); };
+        ma.open_recent     = [&](const std::string& p) { if (ok_to_discard()) vivid::file_actions::open_recent(window, win, app, p); };
+        ma.open_example    = [&](const std::string& p) { if (ok_to_discard()) vivid::file_actions::open_recent(window, win, app, p); };
         // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
         ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
         ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
@@ -303,6 +319,27 @@ int main(int argc, char** argv) {
     vivid::EditGateway gateway(app);
     app.edit_gateway = &gateway;
     graph.set_edit_gateway(&gateway);   // ADR-0017/G2: capture UI graph edits
+
+    // ADR-0018 (R4): offer to recover autosaved unsaved work left by a prior crash / kill. On accept,
+    // load the autosave session, re-point the project so Save targets it, and mark it dirty once the
+    // undo baseline seeds (app.recovered_unsaved, consumed in the frame loop) so quit/save prompt.
+    {
+        vivid::autosave::Recovery rec = vivid::autosave::check();
+        if (rec.available) {
+            const std::string what = rec.project_path.empty() ? "an untitled project" : rec.project_path;
+            if (vivid::platform::confirm_recover_autosave("Vivid found unsaved changes to " + what + ".")) {
+                int ww = win.win_w, wh = win.win_h; float sx = win.split_x, dh = win.dock_h;
+                if (vivid::load_session(rec.session_path, app.session, graph, ww, wh, sx, dh)) {
+                    win.split_x = sx; win.dock_h = dh;
+                    if (!rec.project_path.empty()) app.remember_project_path(rec.project_path);
+                    app.recovered_unsaved = true;
+                    VLOG_WARN(app, "recovered unsaved changes (%s)", what.c_str());
+                } else VLOG_ERR(app, "autosave recovery failed to load");
+            } else {
+                vivid::autosave::clear();   // user discarded — drop the slot
+            }
+        }
+    }
 
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
 

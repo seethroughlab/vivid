@@ -40,4 +40,8 @@ void set_example_projects(const std::vector<MenuItemEntry>& examples);
 void set_edit_labels(const std::string& undo_label, const std::string& redo_label,
                      bool can_undo, bool can_redo);
 
+// ADR-0018: the macOS window "edited" dot (the close-button gets a dot; ⌘-title shows the proxy is
+// modified) — set from the app-level dirty flag. No-op off macOS.
+void set_document_edited(bool edited);
+
 }  // namespace vivid::platform
