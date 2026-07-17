@@ -500,7 +500,7 @@ int main() {
         g.set_control_ports(lfo, false, true);
         g.set_control_ports(flt, true,  false);
         ControlShape sh;
-        sh.amount = 0.5f; sh.curve = -0.25f; sh.invert = true; sh.out_lo = 0.2f; sh.out_hi = 0.8f;
+        sh.amount = 0.5f; sh.curve = -0.25f; sh.invert = true; sh.bipolar = true;
         CHECK(g.connect_control(lfo, flt, 7, sh));
 
         CompiledAudioGraph cg;
@@ -523,8 +523,7 @@ int main() {
         CHECK(std::fabs(s_flt.control_in[0].shape.amount - 0.5f) < 1e-6f);
         CHECK(std::fabs(s_flt.control_in[0].shape.curve + 0.25f) < 1e-6f);
         CHECK(s_flt.control_in[0].shape.invert);
-        CHECK(std::fabs(s_flt.control_in[0].shape.out_lo - 0.2f) < 1e-6f);
-        CHECK(std::fabs(s_flt.control_in[0].shape.out_hi - 0.8f) < 1e-6f);
+        CHECK(s_flt.control_in[0].shape.bipolar);   // per-edge polarity rides through compile
     }
 
     // --- 22. Dedup is PER PARAM, and a selector-less control edge is impossible ---
@@ -603,7 +602,59 @@ int main() {
         CHECK(has_edge(g, flt, out));
     }
 
-    // --- 25. An empty graph clears every count (a stale one would outlive its nodes) ---
+    // --- 25. control_resolve: base + modulation, resolved live (the ADR-0022 control model) ---
+    // The base is a live argument, never baked into the shape. vivid-classic folded the base into
+    // a compile-time remap range and paid for it with a lowering-record table, three read paths
+    // that special-case a modulated param back to its authored value, and a recompile per amount
+    // drag. Keeping base a parameter of the combine is what makes that machinery unnecessary.
+    {
+        ControlShape sh;                       // amount 1.0, linear, unipolar
+        // Unipolar over a 0..1 param: 0 -> base, 1 -> base + amount*range.
+        CHECK(std::fabs(control_resolve(0.f, 0.0f, sh, 0.f, 1.f) - 0.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 1.0f, sh, 0.f, 1.f) - 1.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 0.5f, sh, 0.f, 1.f) - 0.5f) < 1e-6f);
+
+        // The BASE moves the whole range with it — this is the property the audio side lacks
+        // today (frame.cpp overwrites the param instead of adding to it).
+        sh.amount = 0.25f;
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, sh, 0.f, 1.f) - 0.50f) < 1e-6f);   // sits at base
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, sh, 0.f, 1.f) - 0.75f) < 1e-6f);   // base + amount
+
+        // Bipolar straddles the base: 0.5 IS the base — what a pitch/pan LFO needs.
+        sh.bipolar = true;
+        CHECK(std::fabs(control_resolve(0.5f, 0.5f, sh, 0.f, 1.f) - 0.50f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, sh, 0.f, 1.f) - 0.75f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, sh, 0.f, 1.f) - 0.25f) < 1e-6f);   // base - amount
+
+        // Amount scales by the param's DECLARED range, not a hard-coded [0,1]. Classic's own
+        // test used base=880 / amount=0.7 on a frequency param; the trunk once pinned every
+        // int/enum param to 1 by assuming 0..1 here.
+        ControlShape hz;  hz.amount = 0.1f; hz.bipolar = true;
+        CHECK(std::fabs(control_resolve(880.f, 0.5f, hz, 20.f, 20000.f) - 880.0f) < 1e-3f);
+        CHECK(control_resolve(880.f, 1.0f, hz, 20.f, 20000.f) > 880.f);   // swings up...
+        CHECK(control_resolve(880.f, 0.0f, hz, 20.f, 20000.f) < 880.f);   // ...and down, around base
+
+        // Clamped to the declared range. Classic passed clamp=false and let modulation push a
+        // param outside its own bounds.
+        ControlShape hot;  hot.amount = 10.f;
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, hot, 0.f, 1.f) - 1.0f) < 1e-6f);
+        hot.bipolar = true;
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, hot, 0.f, 1.f) - 0.0f) < 1e-6f);
+
+        // invert flips the SOURCE before shaping; an out-of-range source is clamped, not NaN.
+        ControlShape inv;  inv.invert = true;
+        CHECK(std::fabs(control_resolve(0.f, 0.0f, inv, 0.f, 1.f) - 1.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 2.0f, inv, 0.f, 1.f) - 0.0f) < 1e-6f);   // clamped src
+        ControlShape crv;  crv.curve = 1.0f;
+        CHECK(control_resolve(0.f, 0.5f, crv, 0.f, 1.f) < 0.5f);                      // eases in
+        CHECK(std::fabs(control_resolve(0.f, -1.f, crv, 0.f, 1.f) - 0.0f) < 1e-6f);   // no NaN
+
+        // amount 0 = a connected-but-silent edge: the param sits exactly at its base.
+        ControlShape off;  off.amount = 0.f;
+        CHECK(std::fabs(control_resolve(0.42f, 1.0f, off, 0.f, 1.f) - 0.42f) < 1e-6f);
+    }
+
+    // --- 26. An empty graph clears every count (a stale one would outlive its nodes) ---
     {
         AudioGraph g;
         const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");

@@ -21,6 +21,8 @@
 //   - CompiledAudioGraph::run() executes on the audio thread over a caller-preallocated
 //     buffer pool — NO allocation, NO locking. The host swaps a freshly compiled plan in via
 //     the usual generation-counter + try_lock edit-mirror.
+#include "signal_shape.h"   // vivid::shape_curve — the shaper control_resolve() applies
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -46,17 +48,52 @@ constexpr int kMaxControlInputs = 16;
 // edges exactly as it did before modulation — those equivalences are the migration gates.
 enum class EdgeKind : uint8_t { Audio = 0, Note = 1, Control = 2 };
 
-// ADR-0022: how a control signal is shaped between a modulator and the param it drives. These
-// fields mirror `vivid::Mapping` (app/src/mapping.h) because that shape is CORRECT — not to
-// enable a future merge. Control edges (audio-internal) and the flat MappingRegistry (the
-// audio<->visual bridge) are two right-sized models and are never folded together (ADR-0022
-// guardrail 3).
+// ADR-0022: how a control signal is shaped between a modulator and the param it drives.
+//
+// The destination range is RELATIVE TO THE PARAM'S LIVE BASE VALUE, never absolute — which is why
+// this is NOT `vivid::Mapping`'s shape (that carries an absolute out_lo/out_hi, correct for the
+// audio<->visual bridge, wrong here). See control_resolve() below for the exact combine.
+//
+// The base is READ LIVE and never baked into this shape. That is the whole point, and it is the
+// lesson vivid-classic paid for: classic folded the base into a compile-time connection remap
+// (`to_min = base - amount`), and that one representational choice is what forced its
+// `ModulationLoweringRecord` back-pointer table, three separate read paths that special-case a
+// modulated param back to its authored value, and a full recompile on every amount drag. Keeping
+// base and modulation as separate live values combined at apply time is what makes ADR-0022's
+// guardrail 3 ("no modulation-lowering") structural rather than a matter of discipline.
 struct ControlShape {
-    float amount = 1.f;
-    float curve  = 0.f;    // -1 ease-out … +1 ease-in
-    bool  invert = false;
-    float out_lo = 0.f, out_hi = 1.f;
+    float amount = 1.f;    // depth, as a FRACTION of the destination param's declared range
+    float curve  = 0.f;    // -1 ease-out … +1 ease-in (honored — see control_resolve)
+    bool  invert = false;  // polarity of the SOURCE (1 - s), before shaping
+    // Bipolar straddles the base (0 -> base-amount, 0.5 -> base, 1 -> base+amount); unipolar runs
+    // up from it (0 -> base, 1 -> base+amount). Per-EDGE, deliberately: one modulator can drive one
+    // param bipolar and another unipolar. Classic ALSO put a polarity on the source binding and
+    // then never consulted it in lowering — metadata that silently disagreed with behavior. There
+    // is exactly one polarity, and it lives here.
+    bool  bipolar = false;
 };
+
+// Resolve a modulated param's effective value for this block. Pure, branch-light, alloc-free:
+// this is the audio thread's inner combine, and the single definition of the control model.
+//
+//   `base` — the param's user-set value, read LIVE (never baked into the edge)
+//   `src`  — the modulator's raw 0..1 output for this block
+//   `lo`/`hi` — the destination param's DECLARED range (not a hard-coded [0,1]: a visuals bug
+//               once pinned every int/enum param to 1 by assuming otherwise)
+//
+// Unipolar: src 0 -> base, 1 -> base + amount*(hi-lo).
+// Bipolar:  src 0 -> base - amount*(hi-lo), 0.5 -> base, 1 -> base + amount*(hi-lo).
+//
+// Clamped to [lo, hi] — classic passed clamp=false and let modulation drive params out of their
+// declared range; a filter cutoff is a bad place to discover that.
+inline float control_resolve(float base, float src, const ControlShape& sh, float lo, float hi) {
+    float s = src < 0.f ? 0.f : (src > 1.f ? 1.f : src);
+    if (sh.invert) s = 1.f - s;
+    s = shape_curve(s, sh.curve);
+    const float signal = sh.bipolar ? (s * 2.f - 1.f) : s;
+    const float v = base + signal * sh.amount * (hi - lo);
+    return v < lo ? lo : (v > hi ? hi : v);
+}
 
 // A node in the editable graph. `id` is stable (survives reorders/removals); the host binds
 // `process`/`ctx` to the underlying VST3 handle or native AudioOp.
