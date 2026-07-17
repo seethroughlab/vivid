@@ -8,6 +8,7 @@
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
 #include <string>
+#include <set>
 #include <utility>
 
 namespace vivid { class EditGateway; }
@@ -121,6 +122,8 @@ public:
     // ADR-0016: so the chooser can badge a row SHADER (a file you can open and edit) rather
     // than OP (a compiled dylib). Optional — null just means every row reads as an op.
     void set_shader_library(const vivid::ShaderLibrary* lib) { shaders_ = lib; }
+    // ADR-0018: op types quarantined this launch — shown greyed in the Tab chooser with a reason.
+    void set_quarantined(std::set<std::string> q) { quarantined_ = std::move(q); }
     // ADR-0017: the undo command sink, so UI graph edits are captured (nullptr = no undo, e.g. tests).
     void set_edit_gateway(vivid::EditGateway* g) { edit_gateway_ = g; }
     void note_edit(const char* label, const char* key = "") { note_edit_(label, key); }   // for op-editor callbacks
@@ -169,6 +172,7 @@ private:
 
     vivid::VisualGraph* vg_ = nullptr;
     const vivid::ShaderLibrary* shaders_ = nullptr;   // ADR-0016 (optional; chooser badge)
+    std::set<std::string> quarantined_;               // ADR-0018 (disabled ops shown greyed)
     vivid::EditGateway* edit_gateway_ = nullptr;      // ADR-0017 (optional; UI edit capture)
     void note_edit_(const char* label, const char* key = "");   // fold a graph edit into the gesture
 

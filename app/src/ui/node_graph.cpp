@@ -625,6 +625,13 @@ void NodeGraph::chooser_show(double sx, double sy) {
             entries.push_back(std::move(e));
         }
     }
+    for (const auto& nm : quarantined_) {             // ADR-0018: repeat crashers — greyed, unspawnable, with a reason
+        Chooser::Entry e;
+        e.label = nm; e.id = nm; e.badge = "op"; e.tag = 0; e.accent = style().gpu;
+        e.enabled = false;
+        e.disabled_note = "quarantined: repeat crashes \xC2\xB7 clear its crash history to re-enable";
+        entries.push_back(std::move(e));
+    }
     for (const auto& s : kSources) {                  // audio data sources (the bridge)
         Chooser::Entry e;
         e.label = s.label;

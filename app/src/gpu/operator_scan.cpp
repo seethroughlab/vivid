@@ -12,7 +12,8 @@
 namespace vivid {
 
 std::string load_and_register_operator(const std::string& dylib_path, OpRegistry& reg,
-                                       std::vector<std::unique_ptr<OperatorLoader>>& loaders) {
+                                       std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                       const std::set<std::string>* quarantined) {
     auto loader = std::make_unique<OperatorLoader>();
     if (!loader->load(dylib_path.c_str())) {
         std::fprintf(stderr, "[vivid] operator load failed (%s): %s — %s\n",
@@ -23,6 +24,10 @@ std::string load_and_register_operator(const std::string& dylib_path, OpRegistry
     }
     const VividOperatorDescriptor* d = loader->descriptor();
     const std::string name = d->name;
+    if (quarantined && quarantined->count(name)) {   // ADR-0018: a repeat crasher is disabled by default
+        std::fprintf(stderr, "[vivid] operator '%s' quarantined (repeat crashes) — not registered\n", name.c_str());
+        return {};
+    }
     if (reg.has(name)) {
         std::fprintf(stderr, "[vivid] operator '%s' (%s) shadowed by an existing "
                      "registration — skipped\n", name.c_str(),
@@ -50,7 +55,8 @@ std::string load_and_register_operator(const std::string& dylib_path, OpRegistry
 }
 
 int scan_operator_dir(const std::string& dir, OpRegistry& reg,
-                      std::vector<std::unique_ptr<OperatorLoader>>& loaders) {
+                      std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                      const std::set<std::string>* quarantined) {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (dir.empty() || !fs::is_directory(dir, ec)) return 0;
@@ -59,7 +65,7 @@ int scan_operator_dir(const std::string& dir, OpRegistry& reg,
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
         if (ec) break;
         if (!entry.is_regular_file() || entry.path().extension() != platform::plugin_suffix()) continue;
-        if (!load_and_register_operator(entry.path().string(), reg, loaders).empty()) ++count;
+        if (!load_and_register_operator(entry.path().string(), reg, loaders, quarantined).empty()) ++count;
     }
     return count;
 }

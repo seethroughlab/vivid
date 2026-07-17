@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,7 @@ struct App {
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
+    std::set<std::string> quarantined_ops;   // ADR-0018: ops disabled this launch (repeat crashers / safe mode)
 
     // Minimal project workflow (UI/main thread only). The session JSON remains the
     // document format; these fields remember where it lives and where relative media starts.

@@ -9,6 +9,8 @@
 #include "packages/package_manager.h"   // install_package
 #include "app/app.h"                    // op_registry + op_loaders + health
 #include "app/runtime_health.h"         // collect_health
+#include "app/crash_recovery.h"         // ADR-0018 crash_dir()
+#include "app/quarantine.h"             // ADR-0018 scan_quarantine / clear_crash_history
 #include "transport.h"                  // status (bpm/beats/playing)
 #include "version.h"                    // VIVID_VERSION
 #include "operator_api/types.h"         // VIVID_OPERATOR_ABI_VERSION
@@ -58,6 +60,22 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["health"] = to_json(collect_health(*c.app));
         return r;
+    };
+    // ADR-0018 (R3): the operators quarantined this launch (repeat crashers, disabled by default),
+    // and a way to clear an operator's crash history so it re-enables on the next launch.
+    handlers_["list_quarantine"] = [](const ControlCtx& c, const json&) {
+        if (!c.app || !c.app->crash_recovery) return err(code::kInternal, "no crash recovery");
+        json list = json::array();
+        for (const auto& q : vivid::scan_quarantine(c.app->crash_recovery->crash_dir()))
+            list.push_back({ {"operator", q.type_name}, {"crash_count", q.crash_count}, {"last_seen", q.last_seen} });
+        json r = ok(); r["quarantined"] = list; return r;
+    };
+    handlers_["unquarantine"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app || !c.app->crash_recovery) return err(code::kInternal, "no crash recovery");
+        const std::string op = b.value("op", std::string());
+        if (op.empty()) return err(code::kBadArg, "need op");
+        const int removed = vivid::clear_crash_history(c.app->crash_recovery->crash_dir(), op);
+        json r = ok(); r["removed"] = removed; r["note"] = "restart to re-enable"; return r;
     };
     // Full operator catalog for agent discovery: every registered op (built-in AND
     // loaded dylib) with its display_name/summary/keywords + param + port schema.
