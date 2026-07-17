@@ -1,8 +1,10 @@
 # ADR-0022: The Session Audio Graph — One Rewireable DAG for the Whole Session
 
-Status: proposed
+Status: **accepted** — the ADR-0017 dependency cleared (PR #31, `14306ec2`) and implementation has
+begun. **P0 (`EdgeKind::Control` in the pure core) is landed**; P1–P4 are not started. See "As
+built" below for what the code taught us that this ADR did not know.
 
-Date: 2026-07-14
+Date: 2026-07-14 (accepted 2026-07-17)
 
 Supersedes the deferral in [ADR-0012](ADR-0012-per-track-audio-graph.md) ("a session-wide
 audio graph … Deferred: per-track graphs match the click-a-track model; cross-track routing
@@ -16,6 +18,31 @@ Decided: the per-track audio graphs become **one session-wide DAG** in a shared 
 space. A **track is defined by a Track-Out node**; the **master is a node**; **modulation is
 a first-class signal** (`EdgeKind::Control`); and **clips + generators are first-class
 nodes**. Per-track behavior is preserved as the bit-identical migration case.
+
+> ### As built — P0 (2026-07-17, `EdgeKind::Control` in the pure core)
+>
+> P0 landed as specified: a third `EdgeKind`, control ports mirroring ADR-0015's note ports, a
+> `control_out_buf` / `control_in[]` pair on `CompiledStep`, and one control buffer per emitting
+> node — `control_buf_count == 0` for any graph without a modulator, so control costs nothing
+> until used. `CompiledAudioGraph::run()` is untouched: the core resolves buffer indices and
+> nothing else. Three decisions the ADR did not anticipate, each forced by the code:
+>
+> - **`connect_control()` is a separate entry point.** `connect(from, to, kind)` has nowhere to put
+>   a param selector, and its dedup rule is `(from, to, kind)` — which would have rejected one LFO
+>   driving *two params of the same node*, the normal case. Control dedups on
+>   `(from, to, dest_param)`. `connect(..., Control)` and `disconnect(..., Control)` now refuse
+>   outright rather than create or erase an edge that `(from, to)` cannot identify.
+> - **`remove_node_bridged` DROPS control edges instead of healing them.** Bridging a removed
+>   modulator's own driver onto its targets would aim a param selector that was never meant for
+>   them — the same class of error the audio/note split already guards against.
+> - **A control edge into an upstream node is a cycle, and P0 rejects it.** Deferred/last-block
+>   modulation would need an explicit edge flag; it is a decision to take deliberately, not to
+>   fall into.
+>
+> Also fixed in passing: `compile()`'s empty-graph early return left `note_buf_count` stale from a
+> prior compile (`out` is the caller's live plan), so a count could outlive the nodes it was sized
+> for. Verified by 7 mutations of the implementation, each confirmed to fail the new tests — the
+> first pass of which caught a *vacuous* ordering assertion that passed on insertion-order luck.
 
 ## Context
 
@@ -32,11 +59,16 @@ and three capabilities the product wants have no home in the per-track model —
 - **A real master / buses / sends / sidechain.** "Track out → master" is a hardcoded
   `master += gain * trackL/R` in the audio callback (`app/src/audio/vst3_host.cpp`
   ~2008–2015). Each track has exactly one `Output` node whose buffer is copied to L/R.
-  There is no master node, no bus, no send anywhere in the model.
+  There is no master node, no bus, no send anywhere in the model. **Note for P1:** that mix
+  loop and the per-track meter / 3-band / transient publish are *the same loop*
+  (`vst3_host.cpp:2008-2030`), so making master a node has to relocate the analysis too — it
+  is not a lift of the mix alone.
 - **Clips and generators as peers.** Clips are positional `Track::clips[scene]` with no
   identity (one MIDI clip per scene; the grid is a derived immediate-mode view); an
   algorithmic generator (Arp, a `GNKind::NativeNoteFx`) can't sit beside a clip as a
-  note-source.
+  note-source. **Note for P3:** `ClipScheduler` is **one per `Track`** (`vst3_host.cpp:129`),
+  re-pointed on scene switch via `t.sched.reset(&t.clips[q])` (`:1970`) — "each clip node owns
+  its own `ClipScheduler`" is a structural change, not a relocation.
 
 The engine is ready for the lift: ADR-0012's compile→execute plan, ADR-0015's typed edges,
 the generation-counter edit-mirror, preallocated pools, and now the undo `EditGateway` as a
@@ -93,21 +125,22 @@ share.
    the `EditGateway` before publish** so one bad edit can't silence the whole session. The
    ADR-0015 note fallback is **re-scoped** to each Track-Out's note stream — a bare source
    resolves to the stream of the track-out it transitively feeds, so single-owner nodes
-   stay bit-identical and there is no per-track broadcast. `docs/thread-safety.md` is
+   stay bit-identical and there is no per-track broadcast. `app/docs/thread-safety.md` is
    updated for the pointer-swap contract.
 
 6. **Phased and parity-gated** (per ADR-0005). The undo/redo branch has merged (PR #31), so each phase
    simply routes every topology edit through the now-shipped `EditGateway`:
-   - **P0 — `EdgeKind::Control` in the pure core** (de-risk first; no host wiring).
+   - **P0 — `EdgeKind::Control` in the pure core** (de-risk first; no host wiring). ✅ **landed
+     2026-07-17** — see "As built" above.
    - **P1 — Unify structure + executor + pool + master node**, topology still per-track
      islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
-     ADR-0012; updates `docs/thread-safety.md`.)
+     ADR-0012; updates `app/docs/thread-safety.md`.)
    - **P2 — Re-scope note routing + enable cross-track Audio/Control edges**; begin
      serializing Control edges (note-default migration rule).
    - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
      compatible load by synthesizing clip nodes from old `clips[scene]` arrays.
    - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel
-     `session_graph_*` shim, migrating MCP + persistence + the 74↔74 parity guard last.
+     `session_graph_*` shim, migrating MCP + persistence + the 96↔96 parity guard last.
 
 ## Consequences
 

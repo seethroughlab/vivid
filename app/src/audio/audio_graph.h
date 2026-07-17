@@ -5,6 +5,12 @@
 // a stereo SUM of its inputs (the single primitive from which parallel chains, racks, and
 // sends fall out).
 //
+// Three signals travel this one DAG: AUDIO (sums, ADR-0012), NOTES (merge, ADR-0015), and
+// CONTROL (writes a param, ADR-0022). All three constrain execution order — a modulator runs
+// before its target exactly as a note effect runs before its instrument — but only audio is
+// summed and only notes are merged. The core resolves control BUFFERS and leaves APPLYING a
+// control value to a param to the host: there is no lowering pass (ADR-0022 guardrail 3).
+//
 // This header is the pure topology + execution core: decoupled from VST3 / native AudioOp
 // (the host binds a processor callback per node). It is header-free of any RT-unsafe deps
 // so it is fully unit-testable. Threading contract (mirrors the rest of the engine, see
@@ -30,11 +36,27 @@ using ProcessFn = void (*)(void* ctx, const float* inL, const float* inR,
 
 constexpr int kMaxInputs = 16;   // fan-in cap per node (excess inputs are dropped + logged by the host)
 constexpr int kMaxNoteInputs = 8;   // note fan-in cap per node (note inputs MERGE, as audio sums)
+// ADR-0022: control fan-in cap per node. Unlike notes, control inputs do NOT merge — each drives
+// its own param — so this bounds the step's fixed-size storage, not the semantics.
+constexpr int kMaxControlInputs = 16;
 
-// ADR-0015: an edge carries one of TWO signals. Audio edges sum (the primitive ADR-0012 chose);
-// Note edges merge. A graph with no Note edges behaves exactly as it did before notes existed —
-// that equivalence is the migration gate.
-enum class EdgeKind : uint8_t { Audio = 0, Note = 1 };
+// ADR-0015 + ADR-0022: an edge carries one of THREE signals. Audio edges sum (the primitive
+// ADR-0012 chose); Note edges merge; Control edges write a param on their destination. A graph
+// with no Note edges behaves exactly as it did before notes existed, and a graph with no Control
+// edges exactly as it did before modulation — those equivalences are the migration gates.
+enum class EdgeKind : uint8_t { Audio = 0, Note = 1, Control = 2 };
+
+// ADR-0022: how a control signal is shaped between a modulator and the param it drives. These
+// fields mirror `vivid::Mapping` (app/src/mapping.h) because that shape is CORRECT — not to
+// enable a future merge. Control edges (audio-internal) and the flat MappingRegistry (the
+// audio<->visual bridge) are two right-sized models and are never folded together (ADR-0022
+// guardrail 3).
+struct ControlShape {
+    float amount = 1.f;
+    float curve  = 0.f;    // -1 ease-out … +1 ease-in
+    bool  invert = false;
+    float out_lo = 0.f, out_hi = 1.f;
+};
 
 // A node in the editable graph. `id` is stable (survives reorders/removals); the host binds
 // `process`/`ctx` to the underlying VST3 handle or native AudioOp.
@@ -47,6 +69,11 @@ struct AudioGraphNode {
     // an invisible per-track broadcast, so the node must say which ports it has.
     bool        note_in  = false;
     bool        note_out = false;
+    // ADR-0022: what this node does with CONTROL (modulation). A modulator (LFO, envelope) emits;
+    // anything with a drivable param takes. Mirrors the note ports above — same reason: the node
+    // must say which ports it has, or the wire has nowhere honest to land.
+    bool        control_in  = false;
+    bool        control_out = false;
     ProcessFn   process = nullptr;
     void*       ctx = nullptr;
     std::string label;               // for debugging / UI
@@ -63,6 +90,19 @@ struct AudioGraphEdge {
     int      from_id = -1;
     int      to_id   = -1;
     EdgeKind kind    = EdgeKind::Audio;   // absent in old projects => Audio (unchanged behavior)
+    // ADR-0022 — Control edges only (ignored for Audio/Note, which is why the defaults are inert).
+    // `dest_param` is an OPAQUE selector: the pure core never interprets it. The host resolves it
+    // per node kind (a native field / VST3 IParameterChanges / CLAP clap_event_param_value).
+    int          dest_param = -1;
+    ControlShape shape;
+};
+
+// ADR-0022: one resolved control input on a step — which buffer to read, which param it drives,
+// and how to shape it. POD (the RT publish copies steps element-wise).
+struct ControlIn {
+    int          src_buf = -1;   // the modulator's control buffer index
+    int          param   = -1;   // opaque selector; the host resolves it
+    ControlShape shape;
 };
 
 // One executable step (built by compile(), read-only on the audio thread). Fixed-size input lists
@@ -78,6 +118,13 @@ struct CompiledStep {
     int       note_in_buf[kMaxNoteInputs];
     int       n_note_in = 0;
     int       note_out_buf = -1;
+    // ADR-0022: the control signals this step's params are driven BY, and the one it emits.
+    // -1 / 0 for every node in a graph with no control edges — i.e. the whole engine as it stands.
+    // The pure core only resolves these indices; APPLYING a control value to a param is host work
+    // (there is no lowering pass — ADR-0022 guardrail 3).
+    ControlIn control_in[kMaxControlInputs];
+    int       n_control_in = 0;
+    int       control_out_buf = -1;
 };
 
 // The immutable RT plan. `steps` are in topological order; each node owns one output buffer
@@ -90,6 +137,9 @@ struct CompiledAudioGraph {
     // ADR-0015: how many NOTE buffers the host must preallocate (one per note-emitting node).
     // 0 for every graph that has no note edges — the note pool costs nothing until it's used.
     int note_buf_count = 0;
+    // ADR-0022: how many CONTROL buffers the host must preallocate (one per control-emitting
+    // node). 0 until a modulator exists, on the same principle as the note pool above.
+    int control_buf_count = 0;
 
     // Buffers needed = (buf_count + 1). Each buffer is 2*stride floats (planar L then R).
     int pool_buffers() const { return buf_count + 1; }
@@ -108,6 +158,9 @@ public:
     // ADR-0015: declare a node's NOTE ports (an instrument takes notes; a MidiIn node emits them;
     // a note effect does both). Default: neither, which is every node in the graph as it stands.
     void set_note_ports(int id, bool note_in, bool note_out);
+    // ADR-0022: declare a node's CONTROL ports (a modulator emits; anything with a drivable param
+    // takes). Default: neither, which is every node in the graph as it stands.
+    void set_control_ports(int id, bool control_in, bool control_out);
     void remove_node(int id);                    // also drops incident edges
     // Remove a node but first "heal" the graph: reconnect each of its predecessors to each of its
     // successors, so signal keeps flowing when a middle node is deleted (delete-and-bridge).
@@ -115,8 +168,17 @@ public:
     // Connect from -> to. `kind` picks the signal (audio sums at the destination; notes merge).
     // Returns false on a self-loop or a duplicate edge OF THAT KIND (a node may feed another both
     // audio and notes — a note effect that also passes audio, say — so the pair is not unique).
+    // REJECTS EdgeKind::Control: a control edge without a param selector could never be applied,
+    // so it must go through connect_control() rather than be created silently broken.
     bool connect(int from_id, int to_id, EdgeKind kind = EdgeKind::Audio);
     void disconnect(int from_id, int to_id, EdgeKind kind = EdgeKind::Audio);
+    // ADR-0022: wire a modulator to ONE param of `to_id`, shaped by `shape`. Dedup is per
+    // (from, to, dest_param) — NOT per (from, to) like the kinds above — because one LFO driving
+    // several params of the same node is the normal case, not a duplicate. Returns false on a
+    // self-loop, an absent endpoint, a negative selector, or that exact param already driven from
+    // this source.
+    bool connect_control(int from_id, int to_id, int dest_param, ControlShape shape = {});
+    void disconnect_control(int from_id, int to_id, int dest_param);
     void set_node_processor(int id, ProcessFn fn, void* ctx);   // rebind after a device swap
     // Drop all nodes/edges but KEEP the id counter, so a rebuilt/edited graph never recycles a
     // stale id (edges saved against an old node can't silently re-bind to a new one). Use this

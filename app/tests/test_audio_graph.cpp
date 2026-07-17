@@ -424,5 +424,206 @@ int main() {
         CHECK(g.node_pinned(a)->size() == 1);
     }
 
+    // ===== ADR-0022 (P0): control is a THIRD signal in the graph =====
+
+    // --- 19. PARITY: a graph with no control edges compiles exactly as it always did ---
+    // The migration gate, and the mirror of case 12. If a third edge kind changed anything about a
+    // graph that has no modulator, every existing project would be affected by a feature it does
+    // not use.
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int fx  = g.add_node(false, false, nullptr, nullptr, "fx");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(src, fx);
+        g.connect(fx, out);
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 0);       // no modulator => no control pool at all
+        CHECK(cg.note_buf_count == 0);
+        CHECK(cg.buf_count == 3);
+        CHECK(cg.output_buf == g.node_index(out));
+        for (const CompiledStep& s : cg.steps) {
+            CHECK(s.n_control_in == 0);
+            CHECK(s.control_out_buf == -1);     // every step is control-free, exactly as before
+        }
+    }
+
+    // --- 20. Control edges constrain execution ORDER ---
+    // A modulator must run BEFORE the node whose param it drives — even though no audio and no
+    // notes flow between them. Getting this wrong means the target reads last block's value.
+    //
+    // The LFO is added LAST on purpose. Added first it would land early in the topo queue anyway
+    // (both are indegree-0 roots, emitted in insertion order), so the assertion would hold even if
+    // control edges constrained nothing — a test that passes by luck. Declared last, the ONLY
+    // thing that can pull it ahead of the filter is the control edge itself.
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int flt = g.add_node(false, false, nullptr, nullptr, "filter");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        g.set_output_id(out);
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+        g.connect(src, flt);
+        g.connect(flt, out);
+        CHECK(g.connect_control(lfo, flt, /*dest_param=*/3));
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+
+        auto step_pos = [&](int id) {
+            const int b = g.node_index(id);
+            for (size_t i = 0; i < cg.steps.size(); ++i) if (cg.steps[i].out_buf == b) return static_cast<int>(i);
+            return -1;
+        };
+        CHECK(step_pos(lfo) < step_pos(flt));   // the modulator is ordered before its target...
+        CHECK(step_pos(flt) < step_pos(out));   // ...and audio still follows
+
+        // The control edge must NOT have been summed into the filter's audio inputs: the filter
+        // takes audio from `src` alone. (An LFO that leaks into the audio sum is a DC offset.)
+        const CompiledStep& s_flt = cg.steps[static_cast<size_t>(step_pos(flt))];
+        CHECK(s_flt.n_in == 1);
+        CHECK(s_flt.in_buf[0] == g.node_index(src));
+        CHECK(s_flt.n_note_in == 0);            // ...nor merged into its notes
+    }
+
+    // --- 21. Control buffers + the shaper survive compile ---
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_output_id(flt);
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+        ControlShape sh;
+        sh.amount = 0.5f; sh.curve = -0.25f; sh.invert = true; sh.out_lo = 0.2f; sh.out_hi = 0.8f;
+        CHECK(g.connect_control(lfo, flt, 7, sh));
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1);       // only the LFO emits
+
+        auto step_of = [&](int id) -> const CompiledStep& {
+            const int b = g.node_index(id);
+            for (const CompiledStep& s : cg.steps) if (s.out_buf == b) return s;
+            return cg.steps[0];
+        };
+        const CompiledStep& s_lfo = step_of(lfo);
+        const CompiledStep& s_flt = step_of(flt);
+        CHECK(s_lfo.control_out_buf >= 0);      // the emitter writes a buffer...
+        CHECK(s_lfo.n_control_in == 0);
+        CHECK(s_flt.control_out_buf == -1);     // ...a pure consumer emits nothing
+        CHECK(s_flt.n_control_in == 1);
+        CHECK(s_flt.control_in[0].src_buf == s_lfo.control_out_buf);   // ...and reads the emitter's
+        CHECK(s_flt.control_in[0].param == 7);                          // the opaque selector rides through
+        CHECK(std::fabs(s_flt.control_in[0].shape.amount - 0.5f) < 1e-6f);
+        CHECK(std::fabs(s_flt.control_in[0].shape.curve + 0.25f) < 1e-6f);
+        CHECK(s_flt.control_in[0].shape.invert);
+        CHECK(std::fabs(s_flt.control_in[0].shape.out_lo - 0.2f) < 1e-6f);
+        CHECK(std::fabs(s_flt.control_in[0].shape.out_hi - 0.8f) < 1e-6f);
+    }
+
+    // --- 22. Dedup is PER PARAM, and a selector-less control edge is impossible ---
+    // One LFO driving two params of one node is the normal case — the (from, to, kind) rule the
+    // other signals use would have wrongly called the second one a duplicate.
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+
+        CHECK(g.connect_control(lfo, flt, 1));    // cutoff
+        CHECK(g.connect_control(lfo, flt, 2));    // resonance — same pair, different param
+        CHECK(!g.connect_control(lfo, flt, 1));   // ...but the same param twice is a duplicate
+        CHECK(!g.connect_control(lfo, lfo, 1));   // self-loop
+        CHECK(!g.connect_control(lfo, flt, -1));  // no selector
+        CHECK(!g.connect_control(lfo, 999, 1));   // absent endpoint
+        CHECK(g.edges().size() == 2);
+
+        // The kind-based entry points refuse Control outright: an edge with no selector could
+        // never be applied, so it must not be creatable.
+        CHECK(!g.connect(lfo, flt, EdgeKind::Control));
+        CHECK(g.edges().size() == 2);
+        g.disconnect(lfo, flt, EdgeKind::Control);   // no-op: (from,to) doesn't identify one
+        CHECK(g.edges().size() == 2);
+
+        g.disconnect_control(lfo, flt, 1);
+        CHECK(g.edges().size() == 1);
+        CHECK(g.edges()[0].dest_param == 2);         // the OTHER param's edge survived
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1);
+    }
+
+    // --- 23. A cycle through CONTROL edges is rejected like any other ---
+    // A modulator driven by something it drives is a cycle in the one DAG. P0 rejects it (a
+    // last-block/deferred edge would be an explicit future decision, not an accident).
+    {
+        AudioGraph g;
+        const int x = g.add_node(true, false, nullptr, nullptr, "x");
+        const int y = g.add_node(true, false, nullptr, nullptr, "y");
+        g.set_control_ports(x, true, true);
+        g.set_control_ports(y, true, true);
+        CHECK(g.connect_control(x, y, 0));
+        CHECK(g.connect_control(y, x, 0));
+        CompiledAudioGraph cg;
+        CHECK(!g.compile(cg));                     // the caller keeps its last good plan
+    }
+
+    // --- 24. remove_node_bridged DROPS control edges rather than re-pointing a selector ---
+    // Bridging the removed node's own modulator onto its targets would aim param selector 5 (the
+    // LFO's rate) at whatever param the LFO happened to drive. Dropping is the honest outcome.
+    {
+        AudioGraph g;
+        const int src  = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int lfo2 = g.add_node(true,  false, nullptr, nullptr, "lfo2");
+        const int lfo  = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt  = g.add_node(false, false, nullptr, nullptr, "filter");
+        const int out  = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.set_control_ports(lfo2, false, true);
+        g.set_control_ports(lfo,  true,  true);    // an LFO whose rate is itself modulated
+        g.set_control_ports(flt,  true,  false);
+        g.connect(src, flt);
+        g.connect(flt, out);
+        CHECK(g.connect_control(lfo2, lfo, 5));    // lfo2 -> lfo.rate
+        CHECK(g.connect_control(lfo,  flt, 3));    // lfo  -> filter.cutoff
+
+        g.remove_node_bridged(lfo);
+        CHECK(g.node_index(lfo) < 0);
+        for (const AudioGraphEdge& e : g.edges())
+            CHECK(e.kind != EdgeKind::Control);    // both control edges died with the node...
+        CHECK(has_edge(g, src, flt));              // ...while the audio path healed as ever
+        CHECK(has_edge(g, flt, out));
+    }
+
+    // --- 25. An empty graph clears every count (a stale one would outlive its nodes) ---
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_output_id(flt);
+        g.set_control_ports(lfo, false, true);
+        g.set_note_ports(lfo, false, true);
+        g.set_control_ports(flt, true, false);
+        CHECK(g.connect_control(lfo, flt, 0));
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1 && cg.note_buf_count == 1);
+
+        g.clear();                                 // recompiling the now-empty graph into the SAME plan
+        CHECK(g.compile(cg));
+        CHECK(cg.steps.empty());
+        CHECK(cg.buf_count == 0);
+        CHECK(cg.control_buf_count == 0);          // ...must not leave the old pool sizes behind
+        CHECK(cg.note_buf_count == 0);
+    }
+
     return vivid::test::summary("test_audio_graph");
 }
