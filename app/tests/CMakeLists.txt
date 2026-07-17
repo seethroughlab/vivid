@@ -310,3 +310,12 @@ vivid_add_test(test_shader_meta)
 target_sources(test_shader_meta PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/shader_meta.cpp)
 target_link_libraries(test_shader_meta PRIVATE nlohmann_json::nlohmann_json)
+
+# ADR-0018 R1/R2: crash attribution + recovery. The record model + marker→record + history are
+# App-free (crash_recovery.cpp; the App-linked warm snapshot lives in crash_recovery_snapshot.cpp).
+# The R1 half forks a child that crashes inside a CrashGuard and asserts the handler's marker names
+# the operator (skipped under sanitizers, which own the SEGV handler).
+vivid_add_test(test_crash_recovery)
+target_sources(test_crash_recovery PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/crash_recovery.cpp)
+target_link_libraries(test_crash_recovery PRIVATE nlohmann_json::nlohmann_json)

@@ -173,6 +173,8 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/undo_manager.cpp
     src/app/edit_gateway.cpp
     src/app/autosave.cpp
+    src/app/crash_recovery.cpp
+    src/app/crash_recovery_snapshot.cpp
     src/app/log.cpp
     src/app/input.cpp
     src/app/input_typing.cpp
