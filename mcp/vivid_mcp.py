@@ -52,6 +52,22 @@ def get_health() -> dict:
 
 
 @mcp.tool
+def list_quarantine() -> dict:
+    """ADR-0018: the operators quarantined this launch — repeat crashers (>=3 crashes in 24h),
+    disabled by default so they can't brick the session. Each entry has operator, crash_count,
+    last_seen. A quarantined op's graph nodes load as 'not registered' (see get_health missing_ops)."""
+    return _post("list_quarantine")
+
+
+@mcp.tool
+def unquarantine(op: str) -> dict:
+    """ADR-0018: clear an operator's crash history so it is re-enabled on the next launch (undo a
+    quarantine). `op` is the operator type name. Returns how many crash records were removed;
+    restart the app for the change to take effect."""
+    return _post("unquarantine", {"op": op})
+
+
+@mcp.tool
 def get_session() -> dict:
     """The full session as JSON (window, every track's gain/clips/FX/state, the visuals
     chain + node base params, all mappings, view). The authoritative snapshot to read state."""

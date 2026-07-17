@@ -1,8 +1,38 @@
 # ADR-0018: A Bad Operator Must Not Cost You Your Work
 
-Status: proposed
+Status: accepted (implemented — R1..R4, 2026-07-16; three PRs)
 
 Date: 2026-07-14
+
+## As built (2026-07-16)
+
+Landed as three sequential PRs, in the reverse order of the resilience chain (highest everyday value
+first):
+
+- **R4 — Never lose work (PR 1).** An app-level dirty flag on the ADR-0017 `EditGateway` (set in
+  `push_snapshot`/`restore`, cleared on save/load/new), the macOS window edited-dot, a Save/Don't
+  Save/Cancel confirm on New/Open/Quit, a periodic **autosave** to one well-known slot under
+  `user_data_dir()/autosave/` (the trunk doesn't reload the last project, so a per-project sidecar
+  wouldn't be found), and a **recovery** offer on launch that restores it.
+- **R1 — Attribute (PR 2).** `crash_guard.h`: a `CrashGuard` sets a thread-local current-operator name
+  around each `process_gpu()`/`process_audio()` call (RT-safe — a pointer store to an owned string;
+  the zero-alloc audio test stays green), and an **async-signal-safe** handler
+  (SIGSEGV/BUS/ILL/FPE/ABRT) names the operator and writes a pre-formatted marker with only
+  `open/write/close/raise`. Installed in `main.cpp`; a no-op under sanitizers.
+- **R2 — Record (PR 2).** A warm node↔operator snapshot written each frame; on launch a marker
+  reconstructs a `CrashRecord` (operator, node, signal, time) into a capped-20 history under
+  `crashes/`, surfaced via `VLOG_ERR` → the ADR-0019 auto-toast. The record/history logic is App-free
+  (headless-tested); the snapshot writer is the App-linked half (same split as `runtime_health`).
+- **R3 — Safe mode + quarantine (PR 3).** A **stateless** `quarantine.{h,cpp}`: ≥3 crashes in 24h
+  (recomputed from the history, keyed on op `type_name`) disables an operator at load — it is skipped
+  in `load_and_register_operator`, so its persisted nodes load as `op_missing()` (ADR-0019, for free)
+  and it is **greyed in the Tab chooser with a reason** (`disabled_note`). `--safe-mode` additionally
+  disables the last crasher. Visible + reversible: `list_quarantine` / `unquarantine` MCP endpoints
+  (clear an op's crash history to re-enable on restart).
+
+Boundary held: not a sandbox (operators still run in-process; crashes are attributable + survivable,
+not harmless), not crash reporting (no telemetry), no watchdog/supervisor binary (safe mode is a flag
++ the auto-quarantine, not an auto-relaunch).
 
 Amends: [ADR-0011](ADR-0011-poc-to-product-architecture.md), which made **the third-party dylib the
 unit of extension** — and did not say what happens when one of them segfaults.

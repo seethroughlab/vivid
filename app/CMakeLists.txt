@@ -175,6 +175,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/autosave.cpp
     src/app/crash_recovery.cpp
     src/app/crash_recovery_snapshot.cpp
+    src/app/quarantine.cpp
     src/app/log.cpp
     src/app/input.cpp
     src/app/input_typing.cpp

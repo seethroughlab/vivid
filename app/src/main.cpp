@@ -29,7 +29,9 @@
 #include "app/autosave.h"          // ADR-0018 autosave recovery on launch
 #include "app/crash_guard.h"       // ADR-0018 install_crash_handlers
 #include "app/crash_recovery.h"    // ADR-0018 CrashRecovery (record + warm snapshot)
+#include "app/quarantine.h"        // ADR-0018 R3 quarantine (skip repeat crashers)
 #include <optional>
+#include <set>
 #include "platform/file_dialog.h"  // ADR-0018 confirm_discard_changes (New/Open save-confirm)
 #include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
@@ -118,6 +120,23 @@ int main(int argc, char** argv) {
         VLOG_ERR(app, "Previous run crashed: %s in operator %s", prior_crash->signal_name.c_str(), where.c_str());
     }
 
+    // ADR-0018 (R3): a repeat crasher (≥3 in 24h) is DISABLED by default this launch — recomputed
+    // statelessly from the crash history. `--safe-mode` additionally disables the last crasher (so a
+    // single bad op that isn't yet quarantined can't brick the session). Disabled ops are skipped at
+    // op-load below (their persisted nodes then load as op_missing(), ADR-0019); the set is stored on
+    // App so the Tab chooser can grey them with a reason.
+    bool safe_mode = false;
+    for (int i = 1; i < argc; ++i) if (std::strcmp(argv[i], "--safe-mode") == 0) safe_mode = true;
+    std::set<std::string> disabled_ops = vivid::quarantined_types(recovery.crash_dir());
+    for (const auto& q : vivid::scan_quarantine(recovery.crash_dir()))
+        VLOG_WARN(app, "operator '%s' quarantined: crashed %d\xC3\x97 in 24h — clear its crash history to re-enable",
+                  q.type_name.c_str(), q.crash_count);
+    if (safe_mode && prior_crash && !prior_crash->operator_name.empty()) {
+        disabled_ops.insert(prior_crash->operator_name);
+        VLOG_WARN(app, "safe mode: operator '%s' (last crash) disabled this launch", prior_crash->operator_name.c_str());
+    }
+    app.quarantined_ops = disabled_ops;
+
     // Keep the frame loop (and the control-server drain it runs each tick) pumping
     // even when the app is backgrounded, so an agent can drive it over MCP without
     // the window being frontmost.
@@ -139,7 +158,7 @@ int main(int argc, char** argv) {
           dirs.push_back((exe_dir / "PlugIns").lexically_normal().string());          // non-bundle (Linux/Windows)
       }
       int loaded = 0;
-      for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders);
+      for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders, &disabled_ops);
       app.file_drops.rebuild(app.op_loaders);   // ADR-0021/P3: index drop handlers of the loaded ops
 
       // ADR-0016: a shader FILE is an operator. Each .wgsl/.glsl in the library declares its
@@ -241,6 +260,7 @@ int main(int argc, char** argv) {
     vivid::ui::NodeGraph graph;
     graph.set_visual_graph(&vgraph);   // show the op-chain; generator node toggles Plasma/Video
     graph.set_shader_library(&app.shader_library);   // ADR-0016: badge shader rows in the Tab chooser
+    graph.set_quarantined(app.quarantined_ops);       // ADR-0018: grey quarantined ops in the chooser
     app.graph = &graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;
