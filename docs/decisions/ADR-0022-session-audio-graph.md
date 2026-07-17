@@ -44,6 +44,64 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 > for. Verified by 7 mutations of the implementation, each confirmed to fail the new tests — the
 > first pass of which caught a *vacuous* ordering assertion that passed on insertion-order luck.
 
+> ### Settled — the base/resolved param API (2026-07-17)
+>
+> Modulation makes one value into two, and every surface has to say which it means. Decided once,
+> here, because the UI, MCP, persistence, and undo all read it.
+>
+> **A param has a BASE (the user's knob) and a RESOLVED value (base + live modulation).** The base
+> is authoritative and is what a native op's `pvals` holds; the resolved value is computed per
+> block at the point of use and stored nowhere. This mirrors the visuals graph, which has had the
+> split since the mapping bridge existed (`op_param_base_at` / `op_param_value_at` /
+> `op_param_wired_at`, `ui/node_graph.h:89-93`).
+>
+> | Consumer | Reads | Why |
+> |---|---|---|
+> | UI knob handle, drag origin | **base** | must stay draggable; a handle that jitters at block rate is unusable |
+> | persist | **base** | saving resolved would bake the modulator's instantaneous phase into the document |
+> | undo's canonical projection | **base** | see the hazard below |
+> | MCP | **all three** | `base`, `value` (resolved), `wired` — the same field names the visuals dump already emits (`cli/control_handlers_introspection.cpp:229`) |
+>
+> C API: `session_audio_graph_node_param_get`/`_set` keep meaning **base** (unchanged, so persist +
+> undo + the inspector need no edit), joined by `_param_resolved` and `_param_wired`. The C spelling
+> differs from the JSON (`_resolved` vs `value`) because `_get` already means base at the C level and
+> a `_param_value` beside a `_param_get` would be a coin-flip at every call site.
+>
+> **The undo hazard, stated precisely** (it is not the one you would guess): `EditGateway` does not
+> poll — `commit_frame` early-returns unless an edit set `pending_` — so a moving value cannot mark
+> the document dirty or fire ADR-0018's autosave by itself. The real risk is *snapshot poisoning*:
+> if the accessor returned resolved, the next **unrelated** edit would capture whatever phase the
+> modulator happened to be at and undo would restore that as the user's authored value. And because
+> `audio_block_equal` compares whole `tracks` arrays, a drifting param means the `Skip` restore tier
+> never hits and every undo silently upgrades to `ParamsOnly`. Base-in-`pvals` makes all of it
+> unrepresentable.
+>
+> **Known gap — plugin nodes have no base (P2 prerequisite).** `session_audio_graph_node_param_get`
+> is three accessors in a trenchcoat (`audio/vst3_host.cpp:2883-2894`): native reads `pvals` (base),
+> while VST3 reads `controller->getParamNormalized()` and CLAP reads `clap_param_value()` — both
+> **plugin-owned current**. For a plugin there is nowhere to *get* a base from. Invisible today
+> because nothing modulates a plugin param. So P2 cannot simply push control values into
+> `IParameterChanges`: state comes from the plugin's own `getState()`, so saving mid-modulation
+> would bake the modulator's phase into the patch (and `persist_undo` strips `state` for being
+> non-deterministic, but does **not** strip `audio_graph.nodes[].params`). **P2 must build a
+> host-side base for plugin params first.** P0.5 is native-only and does not have this problem.
+>
+> **Live values reach the UI as one atomic per MODULATOR, not per modulated param.** A modulator
+> publishes its current 0..1 output; the UI applies the same `control_resolve()` the audio thread
+> uses. N atomics for N LFOs rather than N×params, and no chance of the two sides drifting because
+> it is the same pure function. The modulation *range* arc needs no atomic at all — it is
+> `control_resolve` evaluated at src=0 and src=1, pure UI-thread math.
+>
+> **The bridge clobbers the base today, and it is fixed here.** `apply_audio_param_mappings`
+> (`app/frame.cpp:155-181`) drives a mapped audio param by calling `param_set` every frame — which
+> writes `pvals`. Map a visual source to an audio param and your knob is destroyed while mapped,
+> with nothing to restore on disconnect: precisely the design this ADR rejects, shipping today on
+> the bridge path. The fix keeps the bridge's value math **byte-identical** — `Mapping` is
+> deliberately ABSOLUTE (`out_lo`/`out_hi`), which is right for the bridge — and changes only the
+> delivery: an override rather than a write to the base. Switching the bridge to base+offset would
+> have been a behavior change to every existing session that maps an audio param. The two models
+> stay two models (guardrail 3); they share an apply point, not a representation.
+
 ## Context
 
 ADR-0012 made a track's audio a rewireable DAG but kept it **per-track**, and explicitly
