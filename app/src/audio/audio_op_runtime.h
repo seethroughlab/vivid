@@ -51,16 +51,48 @@ bool audio_op_is_note_op(const std::string& name);
 int  audio_note_op_count(OpRegistry& reg);
 const char* audio_note_op_name(OpRegistry& reg, int idx);
 
+// ADR-0022: which registered audio operators are MODULATORS (no audio at all — they emit a 0..1
+// control signal). Same escape hatch as note ops above, for the same reason: `audio_op_is_source`
+// classifies on "has no audio INPUT port", so a modulator would otherwise be offered as an
+// instrument and, wired to Output, be audible as a DC-ish thud. Marked ops are excluded from the
+// instrument list and offered as modulators instead.
+void audio_op_mark_mod_op(const std::string& name);
+bool audio_op_is_mod_op(const std::string& name);
+int  audio_mod_op_count(OpRegistry& reg);
+const char* audio_mod_op_name(OpRegistry& reg, int idx);
+
+// ADR-0022: one param driven by a control edge for THIS block. The host resolves the effective
+// value (control_resolve() — base + modulation, see audio/audio_graph.h) and hands it over here;
+// the op sees the modulated value while `pvals` — the param's BASE — is never written.
+//
+// That split is the whole point: the user's knob keeps its value under modulation, stays
+// draggable, and needs nothing restored on disconnect. It also means audio_op_param_get() returns
+// the BASE, not what the DSP is currently using. Today those are identical, so nothing can tell;
+// once a control edge exists they diverge, and a caller wanting "what is this op ACTUALLY doing"
+// needs its own accessor (the visuals graph has had this split for ages: op_param_base_at vs
+// op_param_value_at).
+struct AudioOpParamOverride {
+    int   param = -1;
+    float value = 0.f;   // already resolved — the runtime applies it verbatim
+};
+
 // --- Audio thread (RT-safe) ---
 // Source: writes L/R (ignores input), reading `notes` if it's an instrument.
 // Effect: transforms L/R in place. `beats_elapsed` is the transport position.
 // `note_out` (ADR-0015, ABI v12): a NOTE-EFFECT operator (arpeggiator / chord / transpose) reads
 // `notes` and writes the notes it wants downstream into `note_out` (capacity `note_out_cap`),
 // setting *note_out_n. Pass nullptr/0 for ordinary instruments and effects — they ignore it.
+// `overrides` (ADR-0022): params driven by control edges this block; applied ON TOP of the base
+// values, leaving the base untouched. Pass nullptr/0 for an unmodulated node — which is every
+// node in a graph with no control edges.
+// `control_out` (ADR-0022, ABI v13): a MODULATOR operator (LFO / envelope) writes its normalized
+// 0..1 signal here, `control_out_cap` samples. Pass nullptr/0 for everything else.
 void audio_op_process(AudioOp*, float* L, float* R, uint32_t frames, uint32_t sample_rate,
                       float bpm, uint32_t beats_per_bar, double beats_elapsed,
                       const session::NoteEvent* notes, uint32_t note_count,
                       session::NoteEvent* note_out = nullptr, uint32_t note_out_cap = 0,
-                      uint32_t* note_out_n = nullptr);
+                      uint32_t* note_out_n = nullptr,
+                      const AudioOpParamOverride* overrides = nullptr, uint32_t override_count = 0,
+                      float* control_out = nullptr, uint32_t control_out_cap = 0);
 
 }  // namespace vivid

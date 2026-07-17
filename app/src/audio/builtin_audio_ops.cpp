@@ -389,6 +389,96 @@ struct ArpOp : OperatorBase, AudioProcessable {
     }
 };
 
+// --- LFO: the first MODULATOR (ADR-0022) ---------------------------------------------
+// Emits no sound. It writes a normalized 0..1 signal to `control_out` (ABI v13), and a CONTROL
+// edge carries that to any param on any node — the audio peer of what the visuals graph has had
+// since the mapping bridge existed.
+//
+// Deliberately NOT here: amount, offset, and polarity. Those belong to the EDGE (ControlShape),
+// not the source, so one LFO can drive a cutoff bipolar and a delay-mix unipolar at different
+// depths from the same wire. vivid-classic put `amplitude`/`offset`/`polarity` on its LFO *and* a
+// polarity on the assignment, then never consulted the source's — an author could set it and get
+// nothing. One place, and it is the wire.
+//
+// RT-safe: no allocation, no locking. `phase_` and friends are plain members, never Param<> —
+// the host copies param values into Param<> members every block, so computed state living in a
+// param would be clobbered on arrival.
+struct LfoOp : OperatorBase, AudioProcessable {
+    static constexpr const char* kDisplayName = "LFO";
+    static constexpr const char* kSummary = "Modulator: a low-frequency oscillator that drives any param through a control wire.";
+    static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "lfo" };
+
+    Param<int>   waveform{ "waveform", 0, { "Sine", "Triangle", "Saw", "Square", "Random" } };
+    Param<int>   sync{ "sync", 0, { "Free", "Sync" } };
+    Param<float> rate{ "rate", 1.f, 0.01f, 20.f };                              // Hz (Free)
+    Param<int>   division{ "division", 2, { "1/1", "1/2", "1/4", "1/8", "1/16" } };   // beats (Sync)
+
+    double   phase_ = 0.0;          // 0..1, free-running; continuous ACROSS blocks
+    double   prev_ph_ = 0.0;        // wrap detection for Random (sample & hold)
+    float    sh_ = 0.5f;            // the held random value
+    uint32_t rng_ = 0x2545F49u;
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        semantic_intent(waveform, "oscillator shape");
+        semantic_intent(sync, "0 free-running (rate in Hz), 1 locked to the transport (division in beats)");
+        semantic_intent(rate, "oscillation rate in Hz when sync = Free");
+        semantic_intent(division, "cycle length in beats when sync = Sync");
+        o.push_back(&waveform); o.push_back(&sync); o.push_back(&rate); o.push_back(&division);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(aud_out());   // no audio INPUT — like Arp. It writes nothing here; the signal
+                                  // leaves via control_out, so an Audio wire off an LFO is silence.
+    }
+
+    static float beats_per_cycle(int d) {
+        switch (d) { case 0: return 4.f; case 1: return 2.f; case 2: return 1.f; case 3: return 0.5f; default: return 0.25f; }
+    }
+    float rand01() {
+        rng_ = rng_ * 1664525u + 1013904223u;                      // LCG; no allocation, no <random>
+        return static_cast<float>((rng_ >> 8) & 0xFFFFFFu) / 16777215.f;
+    }
+    float shape(int wf, double ph) {
+        switch (wf) {
+            case 0:  return 0.5f + 0.5f * static_cast<float>(std::sin(2.0 * kPi * ph));
+            case 1:  return ph < 0.5 ? static_cast<float>(ph * 2.0) : static_cast<float>(2.0 - ph * 2.0);
+            case 2:  return static_cast<float>(ph);
+            case 3:  return ph < 0.5 ? 0.f : 1.f;
+            default: return sh_;                                    // Random: held for the cycle
+        }
+    }
+
+    void process_audio(const VividAudioContext* c) override {
+        // Not wired to anything: no control output means nothing to do. (An unwired LFO must not
+        // burn a block's worth of sin() for a buffer no one reads.)
+        if (!c->control_out || c->control_out_capacity == 0) return;
+        const uint32_t N  = c->control_out_capacity;
+        const double   sr = c->sample_rate > 0 ? c->sample_rate : 48000.0;
+        const int wf   = c->param_values ? static_cast<int>(std::lround(c->param_values[0])) : waveform.int_value();
+        const int syn  = c->param_values ? static_cast<int>(std::lround(c->param_values[1])) : sync.int_value();
+        const float hz = c->param_values ? c->param_values[2] : rate.value;
+        const int div  = c->param_values ? static_cast<int>(std::lround(c->param_values[3])) : division.int_value();
+
+        // Sync reads phase straight off the transport rather than integrating, so the LFO is
+        // locked to the bar wherever playback starts and cannot drift across blocks.
+        const bool   synced = (syn == 1);
+        const double bpm    = c->metronome_bpm > 0.f ? c->metronome_bpm : 120.0;
+        const double cyc    = beats_per_cycle(div);
+        const double per_s  = synced ? (bpm / 60.0 / sr) / cyc                  // cycles per sample
+                                     : static_cast<double>(hz < 0.f ? 0.f : hz) / sr;
+        double ph = synced ? c->metronome_beats_elapsed / cyc : phase_;
+        ph -= std::floor(ph);
+
+        for (uint32_t i = 0; i < N; ++i) {
+            if (ph < prev_ph_) sh_ = rand01();     // wrapped -> hold a fresh value for this cycle
+            prev_ph_ = ph;
+            c->control_out[i] = shape(wf, ph);
+            ph += per_s;
+            if (ph >= 1.0) ph -= std::floor(ph);
+        }
+        if (!synced) phase_ = ph;                  // free-running: carry the phase to the next block
+    }
+};
+
 void register_glitch_ops(OpRegistry& reg);   // audio/glitch/glitch_ops.cpp
 
 void register_builtin_audio_ops(OpRegistry& reg) {
@@ -398,6 +488,8 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<SamplerOp>(reg, "Sampler");
     register_op<ArpOp>(reg, "Arp");   // ADR-0015: the first note effect
     audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out
+    register_op<LfoOp>(reg, "LFO");   // ADR-0022: the first modulator
+    audio_op_mark_mod_op("LFO");      // ...nor is it: no audio at all, it emits a control signal
     register_glitch_ops(reg);
 }
 

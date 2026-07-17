@@ -8,20 +8,25 @@
 extern "C" {
 #endif
 
-/* Operator-facing C ABI version. Bump on any incompatible change; the host refuses to load a
-   package whose declared `abi` mismatches (this catches stale dylibs during hot-reload — it is
-   NOT a cross-version compatibility promise). The per-version history lives in
-   docs/operator-api/abi-changelog.md. */
-/* v12 (ADR-0015): note OUTPUT for note-effect operators (arpeggiator / chord / transpose).
+/* Operator-facing C ABI version. Bump on any change to the operator-facing structs.
+   The host loads any operator declaring an ABI in [VIVID_OPERATOR_ABI_MIN_LOADABLE, this] — a
+   RANGE, not an exact match (operator_loader.cpp). Never narrow that to equality: every installed
+   dylib built at an older-but-additive ABI would be orphaned at a stroke.
+   The per-version history lives in docs/operator-api/abi-changelog.md. */
+/* v13 (ADR-0022): control OUTPUT for modulator operators (LFO / envelope / random). Purely
+   additive — new fields at the end of VividAudioContext; an operator that ignores them behaves
+   exactly as it did at v12.
+   v12 (ADR-0015): note OUTPUT for note-effect operators (arpeggiator / chord / transpose).
    Purely additive — new fields at the end of VividAudioContext; an operator that ignores them
    behaves exactly as it did at v11. */
-#define VIVID_OPERATOR_ABI_VERSION 12u
+#define VIVID_OPERATOR_ABI_VERSION 13u
 
 /* The OLDEST operator ABI this runtime can still load.
    An operator built at an older ABI is safe to run iff every change since then was purely
    ADDITIVE — new fields appended to the END of the context structs, so every field the old
    operator reads is still at the same offset, and the fields it doesn't know about are simply
-   ignored. v11 -> v12 (note output) is such a change: a v11 operator never touches note_out.
+   ignored. v11 -> v12 (note output) and v12 -> v13 (control output) are such changes: a v11
+   operator never touches note_out, and a v12 operator never touches control_out.
    Bump this to VIVID_OPERATOR_ABI_VERSION whenever a change is NOT additive (a field is removed,
    reordered, or resized) — otherwise an old dylib would read garbage. */
 #define VIVID_OPERATOR_ABI_MIN_LOADABLE 11u
@@ -409,6 +414,25 @@ typedef struct VividAudioContext {
     VividNoteEvent* note_out;
     uint32_t        note_out_capacity;
     uint32_t*       note_out_count;     /* the operator sets this (host zeroes it first) */
+
+    // ---- Control OUTPUT for modulator operators (v13, ADR-0022) ----
+    // A modulator (LFO, envelope, random) writes its signal here as NORMALIZED 0..1, one sample
+    // per frame — `control_out_capacity` == buffer_size. The host owns the buffer (preallocated;
+    // never realloc'd on the audio thread) and zeroes it first.
+    //
+    // Write the whole block even though the host currently samples control_out[0] once per block:
+    // the buffer is the real signal, so moving to audio-rate modulation later changes the host,
+    // not the operators (ADR-0022 shapes control as a buffer for exactly this reason).
+    //
+    // 0..1 is the contract, not a suggestion. Polarity is the EDGE's business, not the
+    // modulator's: a control edge decides whether 0.5 sits at the destination param's base
+    // (bipolar) or 0 does (unipolar), so one LFO can drive one param bipolar and another
+    // unipolar. An operator that emits -1..+1 here is simply out of range and will be clamped.
+    // (vivid-classic put a polarity on the source too, then never consulted it.)
+    //
+    // NULL/0 when the node has no control output wired: an operator must check before writing.
+    float*          control_out;
+    uint32_t        control_out_capacity;
 } VividAudioContext;
 
 // ---------------------------------------------------------------------------

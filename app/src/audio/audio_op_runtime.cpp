@@ -99,10 +99,37 @@ int audio_note_op_count(OpRegistry& reg) {
     for (const auto& nm : reg.type_names()) if (audio_op_is_note_op(nm)) ++n;
     return n;
 }
+// Returns the REGISTRY-OWNED name, not `nm.c_str()`: type_names() hands back a vector BY VALUE, so
+// returning a pointer into one of its strings dangles the moment this function returns. It read
+// correctly for as long as the freed bytes happened to survive — until a caller allocated between
+// the call and the read. (audio_op_registry_name below always did this correctly.)
 const char* audio_note_op_name(OpRegistry& reg, int idx) {
     int n = 0;
-    for (const auto& nm : reg.type_names())
-        if (audio_op_is_note_op(nm) && n++ == idx) return nm.c_str();
+    for (const auto& nm : reg.type_names()) {
+        if (!audio_op_is_note_op(nm) || n++ != idx) continue;
+        const VividOperatorDescriptor* d = reg.descriptor_for(nm);
+        return d && d->name ? d->name : "";
+    }
+    return "";
+}
+// ADR-0022: the modulator set (marked at registration; see audio_op_mark_mod_op). Same escape
+// hatch as note ops, for the same reason: a modulator has no audio ports at all, so
+// descriptor_is_source() calls it a source and it would be offered as an instrument.
+static std::set<std::string>& mod_ops() { static std::set<std::string> s; return s; }
+void audio_op_mark_mod_op(const std::string& name) { mod_ops().insert(name); }
+bool audio_op_is_mod_op(const std::string& name) { return mod_ops().count(name) != 0; }
+int audio_mod_op_count(OpRegistry& reg) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) if (audio_op_is_mod_op(nm)) ++n;
+    return n;
+}
+const char* audio_mod_op_name(OpRegistry& reg, int idx) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) {
+        if (!audio_op_is_mod_op(nm) || n++ != idx) continue;
+        const VividOperatorDescriptor* d = reg.descriptor_for(nm);   // registry-owned; nm dangles
+        return d && d->name ? d->name : "";
+    }
     return "";
 }
 
@@ -112,6 +139,7 @@ int audio_op_registry_count(OpRegistry& reg, bool want_source) {
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
         if (!d || !d->has_process_audio) continue;
         if (audio_op_is_note_op(nm)) continue;   // a note effect is not an instrument
+        if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
         if (descriptor_is_source(d) == want_source) ++n;
     }
     return n;
@@ -121,6 +149,7 @@ const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
         if (audio_op_is_note_op(nm)) continue;   // excluded: a note effect is not an instrument
+        if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
         if (!d || !d->has_process_audio || descriptor_is_source(d) != want_source) continue;
         if (n == idx) return d->name ? d->name : "";   // descriptor name is stable (registry-owned)
@@ -162,14 +191,28 @@ void audio_op_param_set(AudioOp* a, int i, float v) {
 void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t sr,
                       float bpm, uint32_t bpb, double beats,
                       const session::NoteEvent* notes, uint32_t note_count,
-                      session::NoteEvent* note_out, uint32_t note_out_cap, uint32_t* note_out_n) {
+                      session::NoteEvent* note_out, uint32_t note_out_cap, uint32_t* note_out_n,
+                      const AudioOpParamOverride* overrides, uint32_t override_count,
+                      float* control_out, uint32_t control_out_cap) {
     if (!a || !a->ap || frames == 0 || frames > kMaxBlock) return;
 
     // Pull the latest UI-set param values into the op's Param<> members + the context array.
+    // `pvals` is the BASE — the user's value. It is read here and never written on this thread.
     for (int i = 0; i < a->nparams; ++i) {
         const float v = a->pvals[i].load(std::memory_order_relaxed);
         a->pscratch[i] = v;
         a->inst.param_ptrs[i]->value = v;
+    }
+    // ADR-0022: lay this block's control-driven values ON TOP of the base. The host already
+    // resolved base + modulation (control_resolve); we only place the result where the op reads.
+    // Because this writes pscratch / Param<>::value and NOT pvals, the base survives untouched —
+    // which is what lets a knob stay draggable under modulation and needs nothing restored on
+    // disconnect. Empty for every node in a graph with no control edges.
+    for (uint32_t k = 0; k < override_count; ++k) {
+        const int p = overrides[k].param;
+        if (p < 0 || p >= a->nparams) continue;
+        a->pscratch[p] = overrides[k].value;
+        a->inst.param_ptrs[p]->value = overrides[k].value;
     }
 
     float* inp = a->in_planar.data();
@@ -222,6 +265,17 @@ void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t 
         ctx.note_out = a->noutscratch.data();
         ctx.note_out_capacity = cap;
         ctx.note_out_count = &nout;
+    }
+
+    // Control OUTPUT (v13, ADR-0022): a modulator writes its normalized 0..1 signal. Plain floats,
+    // so unlike notes there is no scratch/conversion hop — the operator writes the host's buffer
+    // directly. Zeroed first, so an operator that ignores it (every op built before v13, and every
+    // non-modulator) leaves silence rather than last block's signal.
+    if (control_out && control_out_cap > 0) {
+        const uint32_t cap = control_out_cap < frames ? control_out_cap : frames;
+        std::memset(control_out, 0, sizeof(float) * cap);
+        ctx.control_out = control_out;
+        ctx.control_out_capacity = cap;
     }
 
     { vivid::CrashGuard cg(a->type.c_str());   // ADR-0018: attribute a crash (RT-safe pointer store)
