@@ -1,4 +1,5 @@
 #include "audio/audio_op_runtime.h"
+#include "app/crash_guard.h"   // ADR-0018: attribute an operator crash (RT-safe)
 
 #include <set>
 
@@ -223,7 +224,8 @@ void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t 
         ctx.note_out_count = &nout;
     }
 
-    a->ap->process_audio(&ctx);
+    { vivid::CrashGuard cg(a->type.c_str());   // ADR-0018: attribute a crash (RT-safe pointer store)
+      a->ap->process_audio(&ctx); }
 
     if (note_out && note_out_cap > 0 && note_out_n) {          // hand the emitted notes back
         const uint32_t m = nout < note_out_cap ? nout : note_out_cap;

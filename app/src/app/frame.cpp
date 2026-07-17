@@ -6,6 +6,7 @@
 #include "platform/file_dialog.h" // ADR-0018 confirm_discard_changes (quit save-confirm)
 #include "app/file_actions.h"     // ADR-0018 save() from the quit confirm
 #include "app/autosave.h"         // ADR-0018 periodic autosave
+#include "app/crash_recovery.h"   // ADR-0018 warm crash-attribution snapshot
 #include <ctime>                  // ADR-0018 std::time for the autosave meta stamp
 #include "app/window.h"
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
@@ -427,6 +428,7 @@ void run_frame_loop(App& app, Window& win) {
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
     double last_autosave = 0.0;          // ADR-0018: throttle periodic autosave (glfwGetTime seconds)
+    double last_snapshot = 0.0;          // ADR-0018: throttle the crash-attribution warm snapshot
     auto tick = [&]() -> bool {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
@@ -664,6 +666,12 @@ void run_frame_loop(App& app, Window& win) {
                 last_autosave = now;
                 vivid::autosave::write(app, win.win_w, win.win_h, win.split_x, win.dock_h,
                                        static_cast<long long>(std::time(nullptr)));
+            }
+            // ADR-0018: refresh the warm crash-attribution snapshot (node id ↔ operator type) so a
+            // crash in an operator's process_*() can be pinned to a specific node on the next launch.
+            if (app.crash_recovery && now - last_snapshot >= 3.0) {
+                last_snapshot = now;
+                app.crash_recovery->write_snapshot(app);
             }
         }
         return true;

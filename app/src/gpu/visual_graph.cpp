@@ -1,4 +1,5 @@
 #include "gpu/visual_graph.h"
+#include "app/crash_guard.h"   // ADR-0018: attribute an operator crash (CrashGuard)
 
 #include "gpu/shader_file_op.h"   // ADR-0016: a shader node reports its compile error
 
@@ -337,7 +338,10 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView 
                 if (ap.is_relative() && !asset_dir_.empty()) ap = std::filesystem::path(asset_dir_) / ap;
                 as->set_asset_path(ap.string());
             }
-        if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) g->process_gpu(&ctx);
+        if (auto* g = dynamic_cast<GpuProcessable*>(n.inst.op.get())) {
+            CrashGuard cg(n.inst.type_name.c_str());   // ADR-0018: attribute a crash to this operator
+            g->process_gpu(&ctx);
+        }
     }
     ++frame_;
 }

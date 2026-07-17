@@ -27,6 +27,9 @@
 #include "app/frame.h"
 #include "app/file_actions.h"      // File-menu actions (native menu bar)
 #include "app/autosave.h"          // ADR-0018 autosave recovery on launch
+#include "app/crash_guard.h"       // ADR-0018 install_crash_handlers
+#include "app/crash_recovery.h"    // ADR-0018 CrashRecovery (record + warm snapshot)
+#include <optional>
 #include "platform/file_dialog.h"  // ADR-0018 confirm_discard_changes (New/Open save-confirm)
 #include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
@@ -99,6 +102,21 @@ int main(int argc, char** argv) {
     vivid::Window win;     // this window's view + interaction state
     win.app = &app;
     win.glfw = window;
+
+    // ADR-0018 (R1/R2): install fatal-signal handlers FIRST, then reconstruct any prior crash from
+    // its marker + warm snapshot and point the handler at our marker/snapshot files. A crash inside
+    // an operator's process_*() is now named (crash_guard.h), recorded to {config}/crashes/, and
+    // surfaced at startup. `recovery` outlives the frame loop, which writes warm snapshots through it.
+    vivid::install_crash_handlers();
+    vivid::CrashRecovery recovery((std::filesystem::path(vivid::platform::user_data_dir()) / "crashes").string());
+    std::optional<vivid::CrashRecord> prior_crash = recovery.init();
+    recovery.install_signal_paths();
+    app.crash_recovery = &recovery;
+    if (prior_crash) {   // surface it — logged before frame 1, so ADR-0019's bridge auto-toasts it
+        std::string where = prior_crash->operator_name.empty() ? std::string("(unknown)") : prior_crash->operator_name;
+        if (!prior_crash->node_id.empty()) where += " (node " + prior_crash->node_id + ")";
+        VLOG_ERR(app, "Previous run crashed: %s in operator %s", prior_crash->signal_name.c_str(), where.c_str());
+    }
 
     // Keep the frame loop (and the control-server drain it runs each tick) pumping
     // even when the app is backgrounded, so an agent can drive it over MCP without
