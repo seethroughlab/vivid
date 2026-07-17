@@ -17,6 +17,19 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+// Are we compiling under a sanitizer? (Portable across gcc/clang — __has_feature must never appear
+// in a flat #if on gcc, where it isn't defined; hence the nested guard, mirroring crash_guard.h.)
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#  define VIVID_UNDER_SANITIZER 1
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#    define VIVID_UNDER_SANITIZER 1
+#  endif
+#endif
+#ifndef VIVID_UNDER_SANITIZER
+#  define VIVID_UNDER_SANITIZER 0
+#endif
+
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -70,8 +83,7 @@ int main() {
     // ---- R1: CrashGuard + async-signal-safe handler write an ATTRIBUTED marker ----
     // Skipped under a sanitizer build: install_crash_handlers() is a no-op there (ASan owns SEGV),
     // so the child would die without writing our marker. The handler itself is unchanged.
-#if !defined(__SANITIZE_ADDRESS__) && !defined(__SANITIZE_THREAD__) \
-    && !(defined(__has_feature) && (__has_feature(address_sanitizer) || __has_feature(thread_sanitizer)))
+#if !VIVID_UNDER_SANITIZER
     {
         const std::string marker = (base / "r1.marker").string();
         const std::string snap   = (base / "r1.snapshot").string();
