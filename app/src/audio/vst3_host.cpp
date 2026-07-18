@@ -206,6 +206,15 @@ struct Track {
     // edit copies never reallocates. `blk` is transient (filled each block).
     vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
     std::vector<GNodeBind>           gbinds, gbinds_edit;
+    // ADR-0022 P1b.2: the publish HANDOFF buffer. The UI thread copies the freshly-built edit plan
+    // (gcg_edit/gbinds_edit/gok_edit) into these under gmtx (publish_track_plan); the audio thread
+    // then pointer-SWAPS them into the working plan (gcg/gbinds/gok) under a try_lock — so the
+    // callback exchanges buffers instead of copying the steps/binds vectors. The UI's authoritative
+    // *_edit copies are never swapped (UI queries still read them). Reserved to kGraphMaxNodes so
+    // both the UI copy and the audio swap stay allocation-free.
+    vivid::audio::CompiledAudioGraph gcg_ho;
+    std::vector<GNodeBind>           gbinds_ho;
+    bool                             gok_ho = false;
     // ADR-0015: the NOTE buffer pool — one fixed-capacity note list per note-emitting node
     // (CompiledAudioGraph::note_buf_count). Sized + reserved on the UI thread when a plan is
     // published, so the audio thread only ever clear()s and push_back()s within capacity: no
@@ -405,6 +414,7 @@ static void pad_aud_clips(Track* t, int scenes) {
 static void reserve_track_graph(Track* t) {
     t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
     t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
+    t->gbinds_ho.reserve(kGraphMaxNodes);    t->gcg_ho.steps.reserve(kGraphMaxNodes);   // P1b.2 publish handoff
     t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
@@ -436,11 +446,25 @@ static void reserve_track_graph(Track* t) {
 // thread (the usual ggen/gmtx mirror). Caller MUST hold t->gmtx. Returns false if the graph does
 // not compile (a cycle) — in that case gcg_edit is left untouched (AudioGraph::compile bails
 // before writing `out`), so the last good plan keeps playing; the caller reverts its edit.
+// ADR-0022 P1b.2: stage the just-built edit plan into the handoff buffer, then bump the gen. The
+// steps/binds COPY happens HERE, on the UI thread (caller holds t->gmtx); the audio thread's apply
+// only pointer-SWAPS the handoff into its working plan — no vector copy in the callback. Copies
+// exactly the fields the audio thread reads (steps + buf_count + output_buf + binds + gok), matching
+// the pre-P1b.2 in-callback copy. Reserved capacities keep this copy allocation-free.
+static void publish_track_plan(Track* t) {
+    t->gcg_ho.steps      = t->gcg_edit.steps;
+    t->gcg_ho.buf_count  = t->gcg_edit.buf_count;
+    t->gcg_ho.output_buf = t->gcg_edit.output_buf;
+    t->gbinds_ho = t->gbinds_edit;
+    t->gok_ho    = t->gok_edit;
+    t->ggen.fetch_add(1, std::memory_order_release);
+}
+
 static bool republish_track_graph(Track* t) {
     if (!t->agraph.compile(t->gcg_edit)) return false;   // cycle → published plan unchanged
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
     t->gok_edit    = true;
-    t->ggen.fetch_add(1, std::memory_order_release);
+    publish_track_plan(t);
     return true;
 }
 
@@ -499,7 +523,7 @@ static void rebuild_track_graph(Track* t) {
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
-        t->ggen.fetch_add(1, std::memory_order_release);
+        publish_track_plan(t);
         return;
     }
     int prev;
@@ -540,7 +564,7 @@ static void rebuild_track_graph(Track* t) {
     t->agraph.set_output_id(out);
     t->gbinds_edit = t->agnodes;                 // parallel to nodes(): index == out_buf
     t->gok_edit = t->agraph.compile(t->gcg_edit);
-    t->ggen.fetch_add(1, std::memory_order_release);
+    publish_track_plan(t);
 }
 
 // The per-source/effect render primitives (defined below, near session_process); forward-declared
@@ -2045,15 +2069,20 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_fx_mtx.unlock();
             }
         }
-        // AG-0: apply a pending audio-graph edit (topology plan + node bindings). Reserved
-        // working buffers => these copies never reallocate (RT-safe); no free on this thread.
+        // ADR-0022 P1b.2: apply a pending audio-graph edit by pointer-SWAPPING the handoff buffer
+        // into the working plan. The UI already copied the new plan into *_ho under gmtx
+        // (publish_track_plan), so the callback only exchanges buffers — vector::swap is an O(1)
+        // pointer swap (both sides reserved to kGraphMaxNodes: no alloc/free/copy on the audio
+        // thread). The stale plan the swap leaves in *_ho is fully overwritten by the next publish
+        // before it is ever swapped back. On try_lock contention we keep the current plan and retry
+        // next block, exactly as before.
         if (t.ggen.load(std::memory_order_acquire) != t.ggen_seen) {
             if (t.gmtx.try_lock()) {
-                t.gcg.steps  = t.gcg_edit.steps;   // POD steps; capacity reserved to kGraphMaxNodes
-                t.gcg.buf_count  = t.gcg_edit.buf_count;
-                t.gcg.output_buf = t.gcg_edit.output_buf;
-                t.gbinds     = t.gbinds_edit;      // POD binds; capacity reserved
-                t.gok        = t.gok_edit;
+                t.gcg.steps.swap(t.gcg_ho.steps);
+                std::swap(t.gcg.buf_count,  t.gcg_ho.buf_count);
+                std::swap(t.gcg.output_buf, t.gcg_ho.output_buf);
+                t.gbinds.swap(t.gbinds_ho);
+                std::swap(t.gok, t.gok_ho);
                 t.ggen_seen  = t.ggen.load(std::memory_order_acquire);
                 t.gmtx.unlock();
             }
