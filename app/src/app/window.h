@@ -138,28 +138,11 @@ struct Window {
     // node of a rewired/non-linear graph.) Plus the param knob index being dragged.
     static constexpr int kNoAudioNode = -100;
     int     sel_audio_node = kNoAudioNode;
-    int     ag_param_drag  = -1;            // param index being dragged (-1 = none)
-    float   ag_param_v0    = 0.f; double ag_param_y0 = 0.0;
-    // Curated inspector (Phase 2b): a pinned slider row drags HORIZONTALLY (absolute position),
-    // vs the knob strip's vertical delta. When set, the drag maps mx into [rx, rx+rw].
-    bool    ag_param_horiz = false; float ag_param_rx = 0.f, ag_param_rw = 1.f;
-    // Dragging a source node's key-range handle (a key-split): 0 = lo, 1 = hi, -1 = none.
-    int     ag_key_drag    = -1;
-    int     ag_key_v0      = 0; double ag_key_y0 = 0.0;
-    // UI-3 Stage 2: dragging a wire out of a node's output port to rewire the audio graph.
-    // ag_wire_from = the source node id (-1 = not dragging); release over an input port connects.
-    int     ag_wire_from   = -1;
-    // Dragging an audio-graph node's body to reposition it: the node id (-1 = none) + the grab
-    // offset in world units (cursor-to-node-origin), so the node follows the cursor under zoom.
-    int     ag_node_drag   = -1; float ag_node_dx = 0.f, ag_node_dy = 0.f;
     int     mod_ed_drag    = -1;   // ADR-0022: the mod-editor slider being dragged (0 amount / 1 curve / -1 none)
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
-    // UI-3 Stage 2 (2i): the audio-graph view transform (zoom 1 + pan 0 = the fitted view) now lives
-    // on the persistent AudioNodeGraph instance (ADR-0023 step 6b) and is persisted with the session.
-    // The pan-DRAG gesture baseline stays here (per-window interaction state; unified in step 6c).
-    bool    ag_panning = false; double ag_pan_mx0 = 0, ag_pan_my0 = 0; float ag_pan_ox0 = 0, ag_pan_oy0 = 0;
-    double  ag_last_click_t = -1;   // for double-click-to-reset the audio-graph view
-    int     ag_last_node = -1; double ag_last_node_t = -1;   // double-click a node → open its plugin editor
+    // The audio-graph view transform AND the in-flight gesture state (param/key/wire/node/pan drags,
+    // double-click timers) now live on the persistent AudioNodeGraph instance (ADR-0023 step 6b/6c),
+    // which is becoming the stateful interaction owner. The Window no longer carries any ag_* field.
     FocusContext focus;   // what the detail region is showing (recomputed each frame; UI-1)
     int     param_drag = -1; bool param_is_node = false;
     bool    param_drag_horiz = false;   // node slider = horizontal; knob/device = vertical

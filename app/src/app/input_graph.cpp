@@ -342,8 +342,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     if (win.sel_audio_node >= 0 && ag.sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
         int lo = 0, hi = 127;
         S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
-        if (hit(ag.key_lo_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 0; win.ag_key_v0 = lo; win.ag_key_y0 = my; return true; }
-        if (hit(ag.key_hi_rect(win.sel_audio_node), mx, my)) { win.ag_key_drag = 1; win.ag_key_v0 = hi; win.ag_key_y0 = my; return true; }
+        if (hit(ag.key_lo_rect(win.sel_audio_node), mx, my)) { ag.key_drag = 0; ag.key_v0 = lo; ag.key_y0 = my; return true; }
+        if (hit(ag.key_hi_rect(win.sel_audio_node), mx, my)) { ag.key_drag = 1; ag.key_v0 = hi; ag.key_y0 = my; return true; }
     }
     // Curated inspector (Phase 2b): a plugin node's pinned params are vertical rows, not a knob grid.
     if (win.sel_audio_node >= 0 && ag.is_plugin_node(win.sel_audio_node)) {
@@ -382,8 +382,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                     return true;
                 }
                 // slider: start a HORIZONTAL drag and apply immediately at the click x
-                win.ag_param_drag = row.index; win.ag_param_horiz = true;
-                win.ag_param_rx = row.widget_rect.x; win.ag_param_rw = row.widget_rect.w;
+                ag.param_drag = row.index; ag.param_horiz = true;
+                ag.param_rx = row.widget_rect.x; ag.param_rw = row.widget_rect.w;
                 const float norm = std::clamp(static_cast<float>(mx - row.widget_rect.x) / row.widget_rect.w, 0.f, 1.f);
                 S::session_audio_graph_node_param_set(app.session, tr, win.sel_audio_node, row.index, mn + norm * (mxx - mn));
                 return true;
@@ -413,9 +413,9 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 const float mn = S::session_audio_graph_node_param_min(app.session, tr, win.sel_audio_node, c.index);
                 const float mxx = S::session_audio_graph_node_param_max(app.session, tr, win.sel_audio_node, c.index);
                 const float v = S::session_audio_graph_node_param_get(app.session, tr, win.sel_audio_node, c.index);
-                win.ag_param_drag = c.index;
-                win.ag_param_v0 = (mxx > mn) ? std::clamp((v - mn) / (mxx - mn), 0.f, 1.f) : 0.f;
-                win.ag_param_y0 = my; return true;
+                ag.param_drag = c.index;
+                ag.param_v0 = (mxx > mn) ? std::clamp((v - mn) / (mxx - mn), 0.f, 1.f) : 0.f;
+                ag.param_y0 = my; return true;
             }
         }
         // UI-4a: clicking the LFO waveform preview cycles the enum (wraps min..max).
@@ -432,7 +432,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     }
     const auto boxes = ag.layout();
     for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
-        if (b.kind != 2 && hit(ag.out_port_rect(b), mx, my)) { win.ag_wire_from = b.node_id; return true; }
+        if (b.kind != 2 && hit(ag.out_port_rect(b), mx, my)) { ag.wire_from = b.node_id; return true; }
     // ADR-0022: the "+ param" row on a plugin card opens the searchable picker to expose one more
     // param as a port (the curated set drives which plugin params show).
     for (const auto& b : boxes)
@@ -473,17 +473,17 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
             // Double-click a VST3 node → open its native plugin editor (replaces the old chip double-click).
             const double now = glfwGetTime();
-            if (win.ag_last_node == b.node_id && now - win.ag_last_node_t < 0.35) {
+            if (ag.last_node == b.node_id && now - ag.last_node_t < 0.35) {
                 if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
                         S::session_audio_graph_node_controller(app.session, tr, b.node_id))) {
                     int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
                     if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
                 }
-                win.ag_last_node_t = -1;
-            } else { win.ag_last_node = b.node_id; win.ag_last_node_t = now; }
-            win.ag_node_drag = b.node_id;                                   // start a reposition drag (any node)
-            win.ag_node_dx = (mx - b.x) / ag.zoom();                        // grab offset in world units
-            win.ag_node_dy = (my - b.y) / ag.zoom();
+                ag.last_node_t = -1;
+            } else { ag.last_node = b.node_id; ag.last_node_t = now; }
+            ag.node_drag = b.node_id;                                   // start a reposition drag (any node)
+            ag.node_dx = (mx - b.x) / ag.zoom();                        // grab offset in world units
+            ag.node_dy = (my - b.y) / ag.zoom();
             return true;
         }
     }
@@ -508,12 +508,12 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     }
     // Empty space: double-click resets the view (2i); otherwise start a pan drag.
     const double now = glfwGetTime();
-    if (now - win.ag_last_click_t < 0.30) {
-        ag.set_view(1.f, 0.f, 0.f); win.ag_last_click_t = -1; return true;   // double-click resets the view
+    if (now - ag.last_click_t < 0.30) {
+        ag.set_view(1.f, 0.f, 0.f); ag.last_click_t = -1; return true;   // double-click resets the view
     }
-    win.ag_last_click_t = now;
-    win.ag_panning = true; win.ag_pan_mx0 = mx; win.ag_pan_my0 = my;
-    win.ag_pan_ox0 = ag.pan_x(); win.ag_pan_oy0 = ag.pan_y();
+    ag.last_click_t = now;
+    ag.panning = true; ag.pan_mx0 = mx; ag.pan_my0 = my;
+    ag.pan_ox0 = ag.pan_x(); ag.pan_oy0 = ag.pan_y();
     return true;   // consume other clicks in the graph
 }
 
@@ -551,7 +551,7 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
 // Complete an audio-graph rewire: a release over another node's input port connects the edge.
 // Returns true when a rewire drag was in progress (consumes the release).
 bool graph_rewire_release(Window& win, App& app, double mx, double my) {
-    if (win.ag_wire_from >= 0 && app.session) {
+    if (app.audio_graph->wire_from >= 0 && app.session) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
         AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
@@ -561,46 +561,46 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         // them is a NOTE edge; everything else is audio. (An explicit port picker can come later —
         // this is unambiguous today because no node emits both.)
         int from_kind = -1;
-        for (const auto& b : ag.layout()) if (b.node_id == win.ag_wire_from) { from_kind = b.kind; break; }
+        for (const auto& b : ag.layout()) if (b.node_id == ag.wire_from) { from_kind = b.kind; break; }
         const bool note_wire = (from_kind == 3 || from_kind == 4);
         // ADR-0022: a modulator (kind 5) emits CONTROL, which targets a specific PARAM. A wire from
         // it lands on a param PORT (exposed down a node's left edge), creating a control edge to that
         // exact param — the drag gesture P0.5 deferred, now driven by the mouse.
         if (from_kind == 5) {
             for (const auto& b : ag.layout()) {
-                if (b.node_id == win.ag_wire_from) continue;
+                if (b.node_id == ag.wire_from) continue;
                 const int slot = ag.param_port_hit(b, mx, my);
                 if (slot < 0) continue;
                 const std::vector<int> exp = ag.exposed_params(b.node_id);
                 if (slot >= static_cast<int>(exp.size())) continue;
                 // Default shape: full-range unipolar sweep (amount 1, curve 0). A shape editor
                 // (amount/bipolar) is the natural next step; a sensible default keeps the drop useful.
-                if (S::session_audio_graph_connect_control(app.session, tr, win.ag_wire_from, b.node_id,
+                if (S::session_audio_graph_connect_control(app.session, tr, ag.wire_from, b.node_id,
                                                            exp[slot], /*amount*/1.f, /*curve*/0.f,
                                                            /*invert*/0, /*bipolar*/0)
                     && app.edit_gateway)
                     app.edit_gateway->note_edit("Connect Modulation", "");
                 break;
             }
-            win.ag_wire_from = -1;
+            ag.wire_from = -1;
             return true;
         }
         for (const auto& b : ag.layout()) {
-            if (b.node_id == win.ag_wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
+            if (b.node_id == ag.wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
             // A note wire may land on an instrument (kind 0) or another note effect; an audio wire
             // may not land on a source.
             if (note_wire) {
                 if (b.kind == 0 || b.kind == 4) {
-                    S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 1);
+                    S::session_audio_graph_connect_kind(app.session, tr, ag.wire_from, b.node_id, 1);
                     if (app.edit_gateway) app.edit_gateway->note_edit("Connect Audio", "");   // ADR-0017/G3
                 }
             } else if (b.kind != 0 && b.kind != 3 && b.kind != 4) {
-                S::session_audio_graph_connect_kind(app.session, tr, win.ag_wire_from, b.node_id, 0);
+                S::session_audio_graph_connect_kind(app.session, tr, ag.wire_from, b.node_id, 0);
                 if (app.edit_gateway) app.edit_gateway->note_edit("Connect Audio", "");
             }
             break;
         }
-        win.ag_wire_from = -1;
+        ag.wire_from = -1;
         return true;
     }
     return false;

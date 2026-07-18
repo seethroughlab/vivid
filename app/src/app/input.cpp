@@ -14,6 +14,7 @@
 #include "ui/diagnostics_panel.h"    // diag_geom, diag_missing_row_rect (ADR-0019/E3)
 #include "ui/preset_popover.h"       // preset_geom + rows (ADR-0021/P4)
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"    // App::audio_graph interaction state (ADR-0023 6c)
 #include "gpu/shader_library.h"     // ShaderLibrary::entries/fork
 #include "app/node_presets.h"       // ADR-0021/P4: capture/save/list/load/remove
 #include "platform/platform.h"      // open_in_editor
@@ -353,7 +354,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_param_horiz = false; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false; win->mod_ed_drag = -1;
+        win->gain_drag = -1; win->param_drag = -1; win->mod_ed_drag = -1;
+        if (auto* ag = win->app->audio_graph) { ag->param_drag = -1; ag->param_horiz = false; ag->node_drag = -1; ag->key_drag = -1; ag->panning = false; }
         win->preview_drag = false; win->preview_resize = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) { if (app->edit_gateway) app->edit_gateway->end_group(); return; }

@@ -68,6 +68,22 @@ public:
     float zoom()  const { return zoom_; }
     float pan_x() const { return pan_x_; }
     float pan_y() const { return pan_y_; }
+
+    // Interaction state (ADR-0023 step 6c). The audio editor is becoming a stateful interaction owner
+    // (mirroring the visual NodeGraph, which owns its drag machine). These hold the in-flight gesture;
+    // moved here off the Window so the one persistent instance owns them. TODO(6d): the gesture logic
+    // in input_graph/frame/input still reads/writes these — folding it into on_down/on_move/on_up/
+    // on_scroll here turns them private. Until then they are public so those free functions can drive.
+    int    param_drag  = -1;                            // param index being dragged (-1 = none)
+    float  param_v0    = 0.f; double param_y0 = 0.0;    // knob-strip vertical drag: value + grab-y at start
+    bool   param_horiz = false; float param_rx = 0.f, param_rw = 1.f;   // slider-row horizontal drag: mx->[rx,rx+rw]
+    int    key_drag    = -1;                            // source key-range handle: 0 lo / 1 hi / -1 none
+    int    key_v0      = 0; double key_y0 = 0.0;        // key-range drag: value + grab-y at start
+    int    wire_from   = -1;                            // rewire drag: source node id (-1 = none)
+    int    node_drag   = -1; float node_dx = 0.f, node_dy = 0.f;   // node reposition: id + world-unit grab offset
+    bool   panning     = false; double pan_mx0 = 0, pan_my0 = 0; float pan_ox0 = 0, pan_oy0 = 0;   // pan gesture
+    double last_click_t = -1;                           // double-click-to-reset-view timer
+    int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
     // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
     // when the selection carries one, so draw + input must agree on the selection before sizing.
     void set_selection(int node_id) { sel_node_ = node_id; }
