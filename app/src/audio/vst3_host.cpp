@@ -781,6 +781,159 @@ static void run_track_modulators(Track& t, const GraphBlockCtx& b, float* scL, f
     }
 }
 
+// ADR-0022 P2b.2: process ONE compiled step — the per-node body of the render loop, factored out so a
+// session executor can drive steps from any track through a single path (each call carries the step's
+// owning Track, that track's node-pool region `pool`, and the block context `b`/`gctx`). Bit-identical
+// to the inline body it replaced; the loop's `continue`s became `return`s. `oL/oR` = the node's output
+// buffer in `pool`.
+static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* pool, uint32_t stride,
+                         int scratch, const GraphBlockCtx& b, const VividAudioContext& gctx, uint32_t frames) {
+    float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+    float* oR = oL + stride;
+    const GNodeBind& nb = t.gbinds[s.out_buf];
+
+    // ADR-0022 P2a.1b: modulators already ran in the pre-pass (into the session control pool) — skip
+    // them here, just keep their audio buffer silent (nothing consumes a modulator's audio).
+    if (nb.kind == GNKind::NativeMod) {
+        std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+        return;
+    }
+    // Resolve this node's control inputs into param overrides (shared helper — reads the session
+    // control pool region; the base stays live, so guardrail 3 holds).
+    vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
+    uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
+    // ADR-0022 P2a.2: apply cross-track control edges targeting this node — read the SOURCE track's
+    // region of the session pool and combine with the SAME live base+shape (guardrail 3), stacking
+    // onto any in-track override on the same param. Only the source region differs from in-track.
+    if (b.xctl_count > 0 && nb.op) {
+        for (uint32_t x = 0; x < b.xctl_count; ++x) {
+            const XCtlApply& xa = b.xctl[x];
+            if (xa.dst_track_id != t.id || xa.dst_out_buf != s.out_buf || xa.dst_param < 0) continue;
+            const float srcv = b.ctl_pool[xa.src_pool_index];
+            const float lo = vivid::audio_op_param_min(nb.op, xa.dst_param);
+            const float hi = vivid::audio_op_param_max(nb.op, xa.dst_param);
+            int slot = -1;
+            for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == xa.dst_param) { slot = static_cast<int>(j); break; }
+            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, xa.dst_param);
+            const float v = vivid::audio::control_resolve(base, srcv, xa.shape, lo, hi);
+            if (slot >= 0) ovr[slot].value = v;
+            else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { xa.dst_param, v };
+        }
+    }
+
+    if (s.n_in == 0) {   // source node
+        const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
+        // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
+        // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
+        const std::vector<NoteEvent>& nsrc = graph_note_input(t, s);
+        // MidiIn: the track's note stream AS A NODE. It publishes those notes on its note
+        // buffer for whatever it feeds, and makes no sound of its own.
+        if (nb.kind == GNKind::MidiIn) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
+                std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
+                outn.clear();
+                for (const NoteEvent& e : t.nev) {
+                    if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
+                    outn.push_back(e);
+                }
+            }
+            return;
+        }
+        // ADR-0015: a native NOTE EFFECT (Arp / chord / transpose). Notes in -> notes out; it
+        // makes no sound. Its emitted notes land in its own note buffer, which is what the
+        // instrument downstream reads.
+        if (nb.kind == GNKind::NativeNoteFx && nb.op) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            std::vector<NoteEvent>* outn = nullptr;
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                outn = &t.npool[static_cast<size_t>(s.note_out_buf)];
+            uint32_t produced = 0;
+            if (outn) {
+                outn->resize(kGraphMaxNotes);   // within reserved capacity: no allocation
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                        nsrc.data(), static_cast<uint32_t>(nsrc.size()),
+                                        outn->data(), kGraphMaxNotes, &produced, ovr, novr);
+                outn->resize(produced);
+            } else {
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                        nsrc.data(), static_cast<uint32_t>(nsrc.size()),
+                                        nullptr, 0, nullptr, ovr, novr);
+            }
+            return;
+        }
+        if (nb.kind == GNKind::NativeInst && nb.op) {
+            const NoteEvent* nn = nsrc.data(); uint32_t nc = static_cast<uint32_t>(nsrc.size());
+            if (!full_range) {   // key-split: hand this source only its in-range notes
+                filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
+                nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
+            }
+            vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc,
+                                    nullptr, 0, nullptr, ovr, novr);
+        }
+        else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
+            if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
+                emit_vst3(t.vev, nsrc, t.eev);
+                render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR);
+            } else {            // key-split: independent filtered event list for this source
+                filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
+                filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);
+                t.src_vev.clear();
+                emit_vst3(t.src_vev, t.src_nev, t.src_eev);
+                render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR);
+            }
+            // ADR-0015 (M3): a plugin that GENERATES notes (a chord generator, an arpeggiator)
+            // publishes them on its note output, so they can drive another instrument.
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                drain_vst3_notes(nb.handle, t.npool[static_cast<size_t>(s.note_out_buf)]);
+        }
+        else if (nb.kind == GNKind::ClapInst && nb.clap) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR);
+            else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
+                   render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
+            // ADR-0015 (M2): a CLAP that GENERATES notes publishes them on its note output.
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                drain_clap_notes(nb.clap, t.npool[static_cast<size_t>(s.note_out_buf)]);
+        }
+        else if (nb.kind == GNKind::Sampler) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
+            render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
+        }
+        else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
+        return;
+    }
+    // Sum inputs into the scratch buffer (predecessors already ran — topo order).
+    float* iL = pool + static_cast<size_t>(scratch) * 2 * stride;
+    float* iR = iL + stride;
+    const float* a0L = pool + static_cast<size_t>(s.in_buf[0]) * 2 * stride;
+    std::memcpy(iL, a0L, frames * sizeof(float));
+    std::memcpy(iR, a0L + stride, frames * sizeof(float));
+    for (int k = 1; k < s.n_in; ++k) {
+        const float* akL = pool + static_cast<size_t>(s.in_buf[k]) * 2 * stride;
+        const float* akR = akL + stride;
+        for (uint32_t i = 0; i < frames; ++i) { iL[i] += akL[i]; iR[i] += akR[i]; }
+    }
+    std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
+    std::memcpy(oR, iR, frames * sizeof(float));
+    if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place
+        vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
+                                nullptr, 0, nullptr, ovr, novr);
+    else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
+        render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
+    else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
+        render_clap_effect(t, nb.clap, frames, oL, oR);
+    else if (nb.kind == GNKind::Output) {
+        // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
+        // final output. (Was applied downstream in session_process's mix; relocated here so P1b's
+        // master node can simply SUM the track-out buffers.) Bit-identical: x*g here == the old
+        // L[i]*g in the mix. `oL/oR` already hold the summed inputs (passthrough above).
+        const float g = t.gain.load(std::memory_order_relaxed);
+        for (uint32_t i = 0; i < frames; ++i) { oL[i] *= g; oR[i] *= g; }
+    }
+}
+
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
     const GraphBlockCtx& b = t.blk;
@@ -800,152 +953,10 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     VividAudioContext gctx{};
     gctx.sample_rate = b.sample_rate; gctx.metronome_bpm = b.bpm;
     gctx.metronome_beats_per_bar = b.bpb; gctx.metronome_beats_elapsed = b.beats;
-    for (const vivid::audio::CompiledStep& s : cg.steps) {
-        float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
-        float* oR = oL + stride;
-        const GNodeBind& nb = t.gbinds[s.out_buf];
-
-        // ADR-0022 P2a.1b: modulators already ran in the pre-pass (into the session control pool) —
-        // skip them here, just keep their audio buffer silent (nothing consumes a modulator's audio).
-        if (nb.kind == GNKind::NativeMod) {
-            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-            continue;
-        }
-        // Resolve this node's control inputs into param overrides (shared helper — reads the session
-        // control pool region; the base stays live, so guardrail 3 holds).
-        vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
-        uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
-        // ADR-0022 P2a.2: apply cross-track control edges targeting this node — read the SOURCE track's
-        // region of the session pool and combine with the SAME live base+shape (guardrail 3), stacking
-        // onto any in-track override on the same param. Only the source region differs from in-track.
-        if (b.xctl_count > 0 && nb.op) {
-            for (uint32_t x = 0; x < b.xctl_count; ++x) {
-                const XCtlApply& xa = b.xctl[x];
-                if (xa.dst_track_id != t.id || xa.dst_out_buf != s.out_buf || xa.dst_param < 0) continue;
-                const float srcv = b.ctl_pool[xa.src_pool_index];
-                const float lo = vivid::audio_op_param_min(nb.op, xa.dst_param);
-                const float hi = vivid::audio_op_param_max(nb.op, xa.dst_param);
-                int slot = -1;
-                for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == xa.dst_param) { slot = static_cast<int>(j); break; }
-                const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, xa.dst_param);
-                const float v = vivid::audio::control_resolve(base, srcv, xa.shape, lo, hi);
-                if (slot >= 0) ovr[slot].value = v;
-                else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { xa.dst_param, v };
-            }
-        }
-
-        if (s.n_in == 0) {   // source node
-            const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
-            // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
-            // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
-            const std::vector<NoteEvent>& nsrc = graph_note_input(t, s);
-            // MidiIn: the track's note stream AS A NODE. It publishes those notes on its note
-            // buffer for whatever it feeds, and makes no sound of its own.
-            if (nb.kind == GNKind::MidiIn) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
-                    std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
-                    outn.clear();
-                    for (const NoteEvent& e : t.nev) {
-                        if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
-                        outn.push_back(e);
-                    }
-                }
-                continue;
-            }
-            // ADR-0015: a native NOTE EFFECT (Arp / chord / transpose). Notes in -> notes out; it
-            // makes no sound. Its emitted notes land in its own note buffer, which is what the
-            // instrument downstream reads.
-            if (nb.kind == GNKind::NativeNoteFx && nb.op) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                std::vector<NoteEvent>* outn = nullptr;
-                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
-                    outn = &t.npool[static_cast<size_t>(s.note_out_buf)];
-                uint32_t produced = 0;
-                if (outn) {
-                    outn->resize(kGraphMaxNotes);   // within reserved capacity: no allocation
-                    vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()),
-                                            outn->data(), kGraphMaxNotes, &produced, ovr, novr);
-                    outn->resize(produced);
-                } else {
-                    vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()),
-                                            nullptr, 0, nullptr, ovr, novr);
-                }
-                continue;
-            }
-            if (nb.kind == GNKind::NativeInst && nb.op) {
-                const NoteEvent* nn = nsrc.data(); uint32_t nc = static_cast<uint32_t>(nsrc.size());
-                if (!full_range) {   // key-split: hand this source only its in-range notes
-                    filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
-                    nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
-                }
-                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc,
-                                        nullptr, 0, nullptr, ovr, novr);
-            }
-            else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
-                if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
-                    emit_vst3(t.vev, nsrc, t.eev);
-                    render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR);
-                } else {            // key-split: independent filtered event list for this source
-                    filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
-                    filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);
-                    t.src_vev.clear();
-                    emit_vst3(t.src_vev, t.src_nev, t.src_eev);
-                    render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR);
-                }
-                // ADR-0015 (M3): a plugin that GENERATES notes (a chord generator, an arpeggiator)
-                // publishes them on its note output, so they can drive another instrument.
-                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
-                    drain_vst3_notes(nb.handle, t.npool[static_cast<size_t>(s.note_out_buf)]);
-            }
-            else if (nb.kind == GNKind::ClapInst && nb.clap) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR);
-                else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
-                       render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
-                // ADR-0015 (M2): a CLAP that GENERATES notes publishes them on its note output.
-                if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
-                    drain_clap_notes(nb.clap, t.npool[static_cast<size_t>(s.note_out_buf)]);
-            }
-            else if (nb.kind == GNKind::Sampler) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent until the clip renders, matches inline
-                render_sampler_block(t, b.beats, b.delta, frames, b.sample_rate, b.playing, oL, oR);
-            }
-            else { std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float)); }
-            continue;
-        }
-        // Sum inputs into the scratch buffer (predecessors already ran — topo order).
-        float* iL = pool + static_cast<size_t>(scratch) * 2 * stride;
-        float* iR = iL + stride;
-        const float* a0L = pool + static_cast<size_t>(s.in_buf[0]) * 2 * stride;
-        std::memcpy(iL, a0L, frames * sizeof(float));
-        std::memcpy(iR, a0L + stride, frames * sizeof(float));
-        for (int k = 1; k < s.n_in; ++k) {
-            const float* akL = pool + static_cast<size_t>(s.in_buf[k]) * 2 * stride;
-            const float* akR = akL + stride;
-            for (uint32_t i = 0; i < frames; ++i) { iL[i] += akL[i]; iR[i] += akR[i]; }
-        }
-        std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
-        std::memcpy(oR, iR, frames * sizeof(float));
-        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place
-            vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
-                                    nullptr, 0, nullptr, ovr, novr);
-        else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
-            render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
-        else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
-            render_clap_effect(t, nb.clap, frames, oL, oR);
-        else if (nb.kind == GNKind::Output) {
-            // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
-            // final output. (Was applied downstream in session_process's mix; relocated here so P1b's
-            // master node can simply SUM the track-out buffers.) Bit-identical: x*g here == the old
-            // L[i]*g in the mix. `oL/oR` already hold the summed inputs (passthrough above).
-            const float g = t.gain.load(std::memory_order_relaxed);
-            for (uint32_t i = 0; i < frames; ++i) { oL[i] *= g; oR[i] *= g; }
-        }
-    }
+    // ADR-0022 P2b.2: the executor is now one call per step (per-track islands, in topo order); the
+    // session executor (P2b.3) drives the same process_step across all tracks' plans.
+    for (const vivid::audio::CompiledStep& s : cg.steps)
+        process_step(s, t, pool, stride, scratch, b, gctx, frames);
     // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
     // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
     if (!t.node_scope.empty()) {
