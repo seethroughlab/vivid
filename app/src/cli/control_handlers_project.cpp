@@ -20,9 +20,9 @@ void register_project_handlers(Handlers& handlers_) {
         if (!c.session || !c.graph || !c.app || !c.app->audio_graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path");
-        auto* ag = c.app->audio_graph;
+        const auto& av = c.app->audio_graph->view();
         return save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h,
-                            ag->zoom(), ag->pan_x(), ag->pan_y())
+                            av.ox, av.oy, av.scale)
                    ? ok() : err(code::kIoError, "write failed");
     };
     handlers_["load_session"] = [](const ControlCtx& c, const json& b) {
@@ -35,9 +35,9 @@ void register_project_handlers(Handlers& handlers_) {
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path or session");
         auto* ag = c.app->audio_graph;
-        float az = ag->zoom(), apx = ag->pan_x(), apy = ag->pan_y();
-        const bool okr = load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h, az, apx, apy);
-        if (okr) ag->set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
+        float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
+        const bool okr = load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h, aox, aoy, ascale);
+        if (okr && ascale > 0.f) ag->set_view({ aox, aoy, ascale });   // restore the persisted camera (ADR-0023)
         return okr ? ok() : err(code::kIoError, "read failed");
     };
 

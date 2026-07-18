@@ -205,6 +205,67 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 >   audibly, in-track still bit-identical, parity green) → **P2a.3** persist + editor wires (round-trip
 >   + undo). RT contract verified under `-DVIVID_SANITIZE_THREAD=ON` with live cross-track editing.
 
+> ### Design — P2b (2026-07-18): the executor unification + cross-track audio + note re-scope
+>
+> The ADR's **riskiest step**, deferred through P1/P2a because it delivered nothing until a consumer
+> existed — now cross-track **audio** is that consumer. Cross-track control (P2a) worked on the
+> per-track engine because a control value is one block-rate number that tolerates a block of latency.
+> Cross-track **audio** is a full signal forming a real DAG dependency (track B's node needs track A's
+> node's output THIS block), so the source must actually render before the consumer and its buffer
+> must be reachable across the track boundary. That is the deferred **single-plan executor / one pool
+> / global node-id space** (P1b.3c), and P2b builds it, then adds cross-track audio + note re-scope
+> on top. User chose the **full executor unification** over a lean inter-track-routing shortcut (the
+> clean end-state; gated bit-identical at every step, like every prior phase).
+>
+> **Today (the target of the rewrite):** each `Track` owns its graph — `agraph` (authoritative
+> topology) → `gcg`/`gbinds` (compiled plan) → `gpool` (node buffer pool) — and `run_track_graph(t)`
+> renders that track's plan into the track's `track_out_pool` slot. `session_process` does: plan-swap
+> loop (all tracks) → modulator pre-pass (P2a.1b) → per-track render loop (`run_track_graph` per gok
+> track) → master sum. Notes are a per-track broadcast (`t.nev`); the control pool is already session-
+> wide (P2a.1). No cross-track audio path exists — each track is an independent island.
+>
+> **The end-state:** `Session` owns ONE graph (every track's nodes **plus a master node**, one global
+> node-id space), ONE compiled plan (a single topo-sort across all nodes, so cross-track edges just
+> fall out of ordering), ONE buffer pool. A **session executor** replaces the per-track
+> `run_track_graph`. `Track` becomes a **state block** (meters/gain/events/clips/note-stream)
+> addressed by its **track-out node id**; per-track EVENT PREP + the modulator pre-pass stay per-track
+> ahead of the executor. Cross-track audio + note edges are then just edges in the one graph.
+>
+> **Sub-phased, each a PR, gated bit-identical (except the two new-capability steps):**
+> - **P2b.1 — Session-owned node buffer pool (per-track regions).** Consolidate per-track `gpool` into
+>   one `Session::node_pool` laid out as per-track regions — the third instance of the P1b.3a /
+>   P2a.1 relocation (track-out pool, control pool, now node pool). `run_track_graph` renders into its
+>   region via a base offset carried on `blk`. Bit-identical (pure relocation); the session-visible
+>   pool cross-track audio will read from.
+> - **P2b.2 — One compiled session plan + the session executor.** Factor `run_track_graph`'s per-step
+>   body into a `process_step(step, Track&, pool, blk)` and build ONE session plan = every track's
+>   steps (session-global buffer indices) **each tagged with its owning Track**, topo-ordered per-
+>   track island. The executor iterates the one plan calling `process_step`; the per-track render loop
+>   disappears. Per-track islands ⇒ same steps, same order ⇒ bit-identical. THE risky RT rewrite —
+>   verify under TSan. (Event prep + pre-pass stay per-track, ahead of the executor.)
+> - **P2b.3 — Global node-id space + master-as-a-node.** Assign session-global node ids (cross-track
+>   edges address nodes across tracks — the scoped P1b.3b, now with a consumer). Make **master a real
+>   step** in the session plan that sums the track-out buffers (replacing the hardcoded master sum);
+>   split `is_output` → `is_master` / `is_track_out`. Bit-identical.
+> - **P2b.4 — Cross-track AUDIO edges (new capability).** A session-level audio edge from a node on
+>   one track to a node on another; the single topo-sort orders it; the executor routes the buffer
+>   through the one pool. `session_connect_audio` / MCP / persist / report — parallels the P2a
+>   cross-track-control surface. Gate: track A's signal audibly feeds track B; a cross-track cycle is
+>   rejected at compile (kept in the caller's last good plan).
+> - **P2b.5 — Note re-scope + cross-track note edges (new capability).** Re-scope the ADR-0015 note
+>   routing (today a per-track `t.nev` broadcast) onto the one graph so a note edge can cross tracks
+>   (an arpeggiator on one track driving an instrument on another). Note-default migration rule for
+>   old projects. Gate: cross-track note routing works; existing per-track note routing unchanged.
+>
+> **Risks / invariants:** every sub-PR gates on **bit-identical parity** (same session renders sample-
+> for-sample; meter atomics match) verified live via MCP + by ear, plus `ctest` + `-DVIVID_SANITIZE_
+> THREAD=ON` (esp. P2b.2's executor). Guardrails hold: the executor stays **right-sized** (per-step
+> dispatch, NOT classic's lane-value compiler — guardrail 2); pool capped at a realistic
+> `kSessionMaxNodes`; **compile-validate at the EditGateway** before publish (one bad edit can't
+> silence the session); `app/docs/thread-safety.md` updated for the unified publish. The
+> `(track, node)` C-API collapse to session-global (ADR P4) stays deferred — P2b keeps the existing
+> per-(track,node) surface, adding session-level `connect_audio` alongside it.
+
 ## Context
 
 ADR-0012 made a track's audio a rewireable DAG but kept it **per-track**, and explicitly
@@ -300,9 +361,11 @@ share.
      islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
      ADR-0012; updates `app/docs/thread-safety.md`.)
    - **P2 — Re-scope note routing + enable cross-track Audio/Control edges**; begin
-     serializing Control edges (note-default migration rule). **P2a (cross-track *control*) is
-     designed — see "Design — P2a" above**; cross-track *audio* + note re-scope stay deferred (they
-     need the executor unification P1 sub-phased and left for their consumer).
+     serializing Control edges (note-default migration rule). **P2a (cross-track *control*) ✅ SHIPPED**
+     (#50/#51/#52/#54 — engine, control, persist, introspection; editor wires deferred). **P2b
+     (executor unification + cross-track *audio* + note re-scope) is designed — see "Design — P2b"
+     above** (the deferred single-plan executor / one pool / global-id space, now that cross-track
+     audio is its consumer).
    - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
      compatible load by synthesizing clip nodes from old `clips[scene]` arrays.
    - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel

@@ -1,6 +1,7 @@
 #include "cli/control_handlers_audio_domains.h"
 #include "cli/control_handlers_internal.h"
 #include "cli/control_json.h"
+#include "cli/operator_catalog.h"
 
 #include "audio/plugin_catalog.h"
 #include "audio/vst3_host.h"
@@ -13,27 +14,15 @@ namespace vivid {
 
 void register_audio_catalog_handlers(Handlers& handlers_) {
     namespace P = vivid::session;
-    // The catalog of NATIVE audio operators (the audio peer of list_operators, which is
-    // visual): instruments (sources, no audio input) + effects (audio in->out). Names are
-    // stable registry keys for set_track_audio_instrument / add_audio_effect.
+    // The native-audio back-compat surface: instruments + effects with the full schema, like
+    // list_operators. ADR-0023 step 7: `list_operator_catalog` is the unified discovery endpoint;
+    // this domain-scoped native-only view uses the same shared builder so the two cannot drift.
     handlers_["list_audio_operators"] = [](const ControlCtx& c, const json&) {
         if (!c.session) return err(code::kNoSession, "no session");
         auto* reg = (c.vgraph && c.vgraph->registry()) ? c.vgraph->registry() : nullptr;
-        // Each entry carries the full schema (params + semantic metadata), like list_operators —
-        // so an agent can pick an op AND know its params without a second call.
-        auto emit = [&](int want_source, const char* kind) {
-            json arr = json::array();
-            for (int i = 0; i < P::session_available_audio_op_count(c.session, want_source); ++i) {
-                const char* nm = P::session_available_audio_op_name(c.session, want_source, i);
-                const VividOperatorDescriptor* d = reg ? reg->descriptor_for(nm ? nm : "") : nullptr;
-                if (d) arr.push_back(control_json::operator_to_json(*d, kind));
-                else   arr.push_back({ {"name", nm ? nm : ""}, {"kind", kind} });
-            }
-            return arr;
-        };
         json r = ok();
-        r["instruments"] = emit(1, "instrument");
-        r["effects"]     = emit(0, "audio_effect");
+        r["instruments"] = control_json::native_audio_ops(c.session, reg, 1, "instrument");
+        r["effects"]     = control_json::native_audio_ops(c.session, reg, 0, "audio_effect");
         return r;
     };
 

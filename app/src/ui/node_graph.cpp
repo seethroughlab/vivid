@@ -473,6 +473,39 @@ void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, flo
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
 
+// ADR-0023 Layer 1: enumerate the operator nodes as the shared card-chrome shape. This is exactly the
+// per-node data draw()'s op-card loop feeds to canvas_.card() (rect/accent/selection/health/title/error);
+// factoring it here gives the contract a real consumer (draw() below reads it back) and lets the audio
+// peer answer the same questions. The bridge data-nodes stay a visuals overlay (drawn separately).
+void NodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
+    out.clear();
+    const int n = vg_ ? int(vg_->nodes().size()) : 0;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i) {
+        const vivid::VisualNode& node = vg_->nodes()[i];
+        AdapterNode a;
+        a.id = node.id;
+        op_node_rect(i, a.rect.x, a.rect.y, a.rect.w, a.rect.h);
+        float ar, ag, ab; op_accent(node, ar, ag, ab);
+        a.accent[0] = ar; a.accent[1] = ag; a.accent[2] = ab;
+        a.selected = (i == sel_op_);
+        // ADR-0016/0020: a node's live error is its own compile error, else the registry's last
+        // hot-reload error for its op type (a compiled op keeps its old dylib running).
+        std::string err = node.error();
+        if (err.empty() && vg_->registry())
+            err = vg_->registry()->reload_error(node.op_type);
+        a.broken = !err.empty();
+        a.title = node.op_type;
+        a.error = std::move(err);
+        out.push_back(std::move(a));
+    }
+}
+
+int NodeGraph::selected_node_id() const {
+    const int n = vg_ ? int(vg_->nodes().size()) : 0;
+    return (sel_op_ >= 0 && sel_op_ < n) ? vg_->nodes()[sel_op_].id : -1;
+}
+
 
 void NodeGraph::draw(Renderer2D& r) {
     const Style& sty = style();
@@ -481,9 +514,9 @@ void NodeGraph::draw(Renderer2D& r) {
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
-    r.set_transform(view_.ox, view_.oy, view_.scale);
+    const NodeView& view = canvas_.view();   // the camera lives in the canvas (ADR-0023 #1)
+    r.set_transform(view.ox, view.oy, view.scale);
     // grid: cover the full visuals column (shared substrate), edge to edge (ADR-0023 Layer 2)
-    canvas_.set_view(view_);
     canvas_.set_region({ fx0_, fy0_, fx1_ - fx0_, fy1_ - fy0_ });
     canvas_.grid(r);
 
@@ -520,30 +553,28 @@ void NodeGraph::draw(Renderer2D& r) {
             const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
-    // op-nodes (classic-style cards)
+    // op-nodes (classic-style cards). ADR-0023 Layer 1: the card-level data (rect/accent/selection/
+    // health/title/error) comes from the shared adapter; the active-output ring, ports and thumbnail
+    // are visuals-domain overlays drawn inline by index (anodes[i] and vg_->nodes()[i] are the same node).
     const int active_out_idx = vg_ ? vg_->output_index() : -1;
-    if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (node removed/reloaded)
+    if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (removed/reloaded) BEFORE the snapshot
+    std::vector<AdapterNode> anodes; collect_nodes(anodes);
     for (int i = 0; i < n; ++i) {
         const vivid::VisualNode& node = vg_->nodes()[i];
-        float x, y, w, h; op_node_rect(i, x, y, w, h);
+        const AdapterNode& a = anodes[i];
+        const float x = a.rect.x, y = a.rect.y, w = a.rect.w, h = a.rect.h;
         const bool out = node.is_output();
         const bool active_out = out && i == active_out_idx;   // drives the viewer
-        float ar, ag, ab; op_accent(node, ar, ag, ab);
-        const float acc[3] = { ar, ag, ab };
         if (i != sel_op_ && active_out)  // active-output ring (accent) when not the inspector selection
-            r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, ar, ag, ab, 1.0f);
-        // A node that is broken says so ON THE CARD (ADR-0016 / S6): a red frame and the first
-        // line of the error. A shader whose file will not compile still renders (black, or its
-        // input passed through) — without this the user just sees a black frame and no reason.
-        // ADR-0020 V2: a compiled operator that failed to hot-recompile keeps its old dylib
-        // running, so it isn't "missing" — its last compile error comes from the registry side-table.
-        std::string node_err = node.error();
-        if (node_err.empty() && vg_->registry())
-            node_err = vg_->registry()->reload_error(vg_->nodes()[i].op_type);
+            r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, a.accent[0], a.accent[1], a.accent[2], 1.0f);
+        // A node that is broken says so ON THE CARD (ADR-0016 / S6): a red frame + the first error line
+        // (the adapter already resolved own-error vs registry hot-reload error). A shader that won't
+        // compile still renders (black / passthrough) — without this the user just sees a black frame.
+        const std::string& node_err = a.error;
         // ADR-0019: a broken node LOOKS broken (red border + "!" chip); ADR-0023 Layer 2: shared chrome.
-        canvas_.card(r, { x, y, w, h }, acc, i == sel_op_, !node_err.empty());
+        canvas_.card(r, a.rect, a.accent, a.selected, a.broken);
         const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
-        r.draw_text(label_x, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+        r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                              active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
         float px, py;
@@ -712,7 +743,7 @@ bool NodeGraph::on_down(double x, double y) {
     // constant on screen by dividing by the zoom.
     double wx, wy; to_world(x, y, wx, wy);
     cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
-    const double hr = 13.0 / view_.scale, pr = 12.0 / view_.scale;
+    const double hr = 13.0 / canvas_.view().scale, pr = 12.0 / canvas_.view().scale;
 
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
@@ -771,26 +802,26 @@ void NodeGraph::on_move(double x, double y) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
-        view_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
+        canvas_.view().pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
 void NodeGraph::zoom_at(double sx, double sy, float factor) {
-    view_.zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
+    canvas_.view().zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
 }
 
 void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(wx, wy, 18.0 / view_.scale, pni, pl)) {
+        if (nearest_param(wx, wy, 18.0 / canvas_.view().scale, pni, pl)) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
             note_edit_("Connect Mapping");
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_.scale, tport);
+        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
         if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;

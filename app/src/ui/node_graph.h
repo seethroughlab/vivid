@@ -6,6 +6,7 @@
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/node_canvas.h"    // NodeView — the shared pan/zoom transform (ADR-0023)
 #include "ui/graph_canvas.h"   // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
+#include "ui/graph_adapter.h"  // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
@@ -24,9 +25,15 @@ namespace vivid::ui {
 // output->input, terminating in an Output node that drives the viewer. Data nodes
 // wire into the ops' parameter ports (the audio->visual bridge). The chain itself
 // lives in VisualGraph; this class owns the layout + interaction.
-class NodeGraph {
+class NodeGraph : public GraphModelAdapter {
 public:
     NodeGraph();
+
+    // ADR-0023 Layer 1: the shared node-enumeration contract (op nodes only; the bridge data-nodes
+    // are a visuals-domain overlay). Consumed by draw()'s own op-card loop; the audio peer implements
+    // the same interface, so a shared draw loop can enumerate either (ADR-0023 #3).
+    void collect_nodes(std::vector<AdapterNode>& out) const override;
+    int  selected_node_id() const override;
 
     void set_value(int char_id, float v);
     void apply_params();   // resolve each node's params from the registry; publish viz.* sources
@@ -115,8 +122,8 @@ public:
     void on_move(double x, double y);
     void on_up(double x, double y);
     void zoom_at(double sx, double sy, float factor);   // scroll-wheel zoom around the cursor
-    void get_view(float& ox, float& oy, float& scale) const { ox = view_.ox; oy = view_.oy; scale = view_.scale; }
-    void set_view(float ox, float oy, float scale) { view_ = { ox, oy, scale }; }
+    void get_view(float& ox, float& oy, float& scale) const { const NodeView& v = canvas_.view(); ox = v.ox; oy = v.oy; scale = v.scale; }
+    void set_view(float ox, float oy, float scale) { canvas_.view() = { ox, oy, scale }; }
 
     // Operator chooser (Tab): a filtered palette that spawns a node at the cursor. The widget is
     // shared with the audio graph (ui/chooser.h); this class supplies the catalog + the spawn.
@@ -163,10 +170,9 @@ private:
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
-    NodeView view_;                                  // world->screen pan/zoom (shared, ADR-0023)
-    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared card/grid/ghost-wire draw skeleton
+    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared draw skeleton AND the owner of the pan/zoom camera (#1)
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
-    void to_world(double sx, double sy, double& wx, double& wy) const { view_.to_world(sx, sy, wx, wy); }
+    void to_world(double sx, double sy, double& wx, double& wy) const { canvas_.view().to_world(sx, sy, wx, wy); }
 
     Chooser chooser_;                  // the shared Tab palette (ui/chooser.h)
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back

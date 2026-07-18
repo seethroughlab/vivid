@@ -81,6 +81,15 @@ These are interface sketches, refined as code is extracted. They are the point o
 
 ### Layer 1 — `GraphModelAdapter` (the UI-facing view of a domain model)
 
+**Status — landed (node-level, ADR-0023 #2).** `app/src/ui/graph_adapter.h` defines `AdapterNode` +
+the `GraphModelAdapter` interface (`collect_nodes()` + `selected_node_id()`). Both `NodeGraph` and
+`AudioNodeGraph` implement it AND consume it in their own card loops — so the contract has real consumers,
+not just a future one, and the node-card data (rect/accent/selection/health/title/error) has a single
+source of truth per editor. Deliberately node-level: wires, ports, preview-well contents, the visuals
+bridge data-nodes, and the audio param strip stay per-editor domain overlays; the WRITE command callbacks
+below wait for the Layer-3 controller (they'd have no caller yet). `rect` is in the editor's own draw
+space (world for visual, screen for audio) — reconciling the two is the separate #3 problem.
+
 A read-mostly view interface the shared canvas/controller draw and hit-test against. Both editors
 already answer every one of these questions internally; the adapter is the common shape:
 
@@ -112,10 +121,10 @@ this behavior-preserving is that `card()` is **coordinate-agnostic**: it draws r
 so the ambient renderer transform the caller already set decides the scaling (visual world-transform →
 chrome scales; audio identity → chrome constant) — the two editors keep their conventions unchanged.
 Node hit-test is already shared via `hit(Rect,…)` + `CardPorts`; port hit-test diverges (visual distance
-vs audio rects) and stays per-editor. **Deferred:** migrating the editors' persisted view storage INTO
-`GraphCanvas` (v1 holds only frame-scoped view, primed each frame), the Layer-1 `GraphModelAdapter`, and a
-`GraphCanvas` that *owns the draw loop* driven by domain hooks (blocked on reconciling the coordinate-space
-and wire-endpoint divergences, which are real).
+vs audio rects) and stays per-editor. **Done since v1:** the editors' view storage moved INTO `GraphCanvas`
+(ADR-0023 #1 — it is now the sole `NodeView` owner) and the Layer-1 `GraphModelAdapter` landed (#2, above).
+**Deferred:** a `GraphCanvas` that *owns the draw loop* driven by domain hooks (ADR-0023 #3 — blocked on
+reconciling the coordinate-space and wire-endpoint divergences, which are real).
 
 ### Layer 3 — `GraphInteractionController` (the drag/select/pan/rewire state machine)
 
@@ -132,7 +141,7 @@ the owned-state editor and the stateless view without forcing either to invert f
 | 3 | 4 | No (view move) | Move `NodeGraph` draw + hit-test onto `GraphCanvas` in small pieces; keep mapping/shader/persistence ownership put |
 | 4 | 5 | No | **DONE** — `graph_catalog.h`'s typed `CatalogSpawn` {Domain, SpawnKind, type, format, char_id} replaces the colliding `ChooserEntry.tag` ints + `id`/`badge` overloading; both catalogs emit it, both spawn dispatchers switch on `spawn.kind` |
 | 5 | 6 | No | Split `input.cpp`: GLFW install + modal priority stays; graph gestures move behind the controllers |
-| 6 | 7 | Additive | Add `list_operator_catalog(domain?)`; keep `list_operators` + audio discovery as compat wrappers; migrate MCP parity tests last |
+| 6 | 7 | Additive | **DONE** — `list_operator_catalog`/`find_operators`/`unified_operator_catalog()` shipped (PR #53); step 7 finished with the `detail` arg (summary/full), one shared `native_audio_ops()` enumeration builder (no drift with the compat surfaces), and docs marking `list_operators`/`list_audio_operators` as the scoped back-compat views. Parity 128↔128 |
 
 ## Phase 1 — concrete scope
 

@@ -1,5 +1,6 @@
 #include "cli/control_handlers_internal.h"
 #include "cli/control_json.h"           // operator_to_json (operator catalog)
+#include "cli/operator_catalog.h"       // native_audio_ops — shared enumeration (ADR-0023 step 7)
 
 #include "audio/vst3_host.h"
 #include "gpu/visual_graph.h"           // op registry / descriptors
@@ -318,15 +319,11 @@ json unified_operator_catalog(const ControlCtx& c, const std::string& domain, co
     if (c.session && reg) {
         auto emit_audio = [&](int want_source, const char* k, const char* spawn_tool) {
             if (!accept("audio", k)) return;
-            for (int i = 0; i < P::session_available_audio_op_count(c.session, want_source); ++i) {
-                const char* nm = P::session_available_audio_op_name(c.session, want_source, i);
-                const VividOperatorDescriptor* d = reg->descriptor_for(nm ? nm : "");
-                json jo = d ? control_json::operator_to_json(*d, k)
-                            : json({ {"name", nm ? nm : ""}, {"kind", k} });
+            for (json& jo : control_json::native_audio_ops(c.session, reg, want_source, k)) {
                 jo["domain"] = "audio";
                 jo["format"] = "native";
-                jo["spawn"] = { {"tool", spawn_tool}, {"op_arg", nm ? nm : ""} };
-                arr.push_back(jo);
+                jo["spawn"] = { {"tool", spawn_tool}, {"op_arg", jo.value("name", std::string())} };
+                arr.push_back(std::move(jo));
             }
         };
         emit_audio(1, "instrument", "set_track_audio_instrument");
@@ -638,6 +635,9 @@ void register_introspection_handlers(Handlers& handlers_) {
     };
     // Full operator catalog for agent discovery: every registered op (built-in AND
     // loaded dylib) with its display_name/summary/keywords + param + port schema.
+    // The raw visual-operator registry dump (back-compat). ADR-0023 step 7: `list_operator_catalog`
+    // is the unified, domain/kind-aware discovery surface across visual + audio + plugins — prefer it
+    // for new agents; this stays for compatibility until callers migrate.
     handlers_["list_operators"] = [](const ControlCtx& c, const json&) {
         if (!c.vgraph || !c.vgraph->registry()) return err(code::kNoVgraph, "no visuals graph");
         auto* reg = c.vgraph->registry();
@@ -655,12 +655,19 @@ void register_introspection_handlers(Handlers& handlers_) {
     handlers_["list_operator_catalog"] = [](const ControlCtx& c, const json& b) {
         const std::string domain = lower_copy(b.value("domain", std::string("all")));
         const std::string kind = lower_copy(b.value("kind", std::string("all")));
+        const std::string detail = lower_copy(b.value("detail", std::string("summary")));
         if (domain != "all" && domain != "visual" && domain != "audio")
             return err(code::kBadArg, "domain must be all, visual, or audio");
+        if (detail != "summary" && detail != "full")
+            return err(code::kBadArg, "detail must be summary or full");
+        json ops = unified_operator_catalog(c, domain, kind);
+        if (detail == "summary")   // compact listing — drop the heavy per-op schema (params/ports/keywords)
+            for (auto& op : ops) { op.erase("params"); op.erase("ports"); op.erase("keywords"); }
         json r = ok();
         r["domain"] = domain;
         r["kind"] = kind;
-        r["operators"] = unified_operator_catalog(c, domain, kind);
+        r["detail"] = detail;
+        r["operators"] = std::move(ops);
         r["count"] = static_cast<int>(r["operators"].size());
         return r;
     };

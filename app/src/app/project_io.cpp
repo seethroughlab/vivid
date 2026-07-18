@@ -21,8 +21,9 @@ SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float spli
         if (ec) { r.error = "could not create project directory: " + ec.message(); return r; }
     }
     r.session_file = session_json_path(path);
+    const auto& av = app.audio_graph->view();
     if (!save_session(r.session_file, app.session, graph, win_w, win_h, split_x, dock_h,
-                      app.audio_graph->zoom(), app.audio_graph->pan_x(), app.audio_graph->pan_y())) {
+                      av.ox, av.oy, av.scale)) {
         r.error = "write failed";
         return r;
     }
@@ -58,12 +59,12 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
         }
     }
     const std::string jpath = session_json_path(path);
-    float az = app.audio_graph->zoom(), apx = app.audio_graph->pan_x(), apy = app.audio_graph->pan_y();
-    if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, az, apx, apy)) {
+    float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
+    if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, aox, aoy, ascale)) {
         r.error = "read failed";
         return r;
     }
-    app.audio_graph->set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
+    if (ascale > 0.f) app.audio_graph->set_view({ aox, aoy, ascale });   // restore the persisted camera (ADR-0023)
     // A node's relative `asset` (a CustomShader .glsl) resolves against the session
     // file's directory (the project folder, or a .json's parent dir).
     if (app.vgraph) app.vgraph->set_asset_dir(fs::path(jpath).parent_path().string());

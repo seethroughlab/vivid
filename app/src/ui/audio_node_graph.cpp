@@ -310,15 +310,14 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     std::vector<int> fill(max_rank + 1, 0);
     for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
-    // Every node has a stored world position (region-relative; screen = region + world*zoom + pan).
-    // An unpositioned node is seeded from the auto-layout (rank = signal depth, slot = fan-out order)
-    // and stuck — so the graph opens tidy, then every node is freely draggable and the layout persists.
-    const Rect g = graph_region();
+    // Every node has a stored world position; screen = canvas_.view().to_screen(world) (ADR-0023: the
+    // camera is an absolute NodeView owned by the canvas). An unpositioned node is seeded from the auto-layout
+    // (rank = signal depth, slot = fan-out order) and stuck — so the graph opens tidy, then every node
+    // is freely draggable and the layout persists.
     out.reserve(n);
     // Seed spacing uses a generous row pitch — cards are now variable-height (param ports), so the
     // tallest a fresh column can get must not overlap the next row on first open.
     constexpr float kSeedRowPitch = 150.f;
-    const NodeView v = region_view(g, zoom_, pan_x_, pan_y_);   // world -> screen (shared transform)
     for (int i = 0; i < n; ++i) {
         float wx = 0.f, wy = 0.f;
         if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
@@ -326,10 +325,11 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
             P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
         }
-        double sx, sy; v.to_screen(wx, wy, sx, sy);
+        const NodeView& view = canvas_.view();   // the camera lives in the canvas (ADR-0023 #1)
+        double sx, sy; view.to_screen(wx, wy, sx, sy);
         out.push_back({ kind[i], id[i],
                         static_cast<float>(sx), static_cast<float>(sy),
-                        kCardW * zoom_, card_height(id[i]) * zoom_ });
+                        kCardW * view.scale, card_height(id[i]) * view.scale });
     }
     return out;
 }
@@ -365,6 +365,38 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
         out.push_back(c);
     }
     return out;
+}
+
+// ADR-0023 Layer 1: a laid-out box -> the shared card-chrome shape (rect/accent/selection/health/title/
+// error). This is exactly what draw()'s card loop needs, so it consumes this directly; collect_nodes
+// wraps it for the polymorphic surface. Accent + title + broken mirror the old inline card computation
+// 1:1, so it stays behavior-preserving.
+AdapterNode AudioNodeGraph::node_from_box(const AudioNodeBox& b, int idx) const {
+    const Style& sty = style();
+    AdapterNode a;
+    a.id = b.node_id;
+    a.rect = { b.x, b.y, b.w, b.h };
+    // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx / 5 mod
+    const float* acc = b.kind == 0 ? sty.audio
+                     : (b.kind == 1 ? sty.fx
+                     : (b.kind == 5 ? sty.mod
+                     : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
+    a.accent[0] = acc[0]; a.accent[1] = acc[1]; a.accent[2] = acc[2];
+    a.selected = (b.node_id == sel_node_ && sel_node_ >= 0);
+    // ADR-0019: a plugin node whose load terminally failed LOOKS broken (NOT while still loading).
+    a.broken = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
+    const char* type = P::session_track_audio_graph_node_type(s_, track_, idx);
+    a.title = (type && *type) ? type : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
+    a.error = a.broken ? "plugin unavailable \xE2\x80\x94 silent" : "";
+    return a;
+}
+
+void AudioNodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
+    out.clear();
+    if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return;
+    const std::vector<AudioNodeBox> boxes = layout();
+    out.reserve(boxes.size());
+    for (int i = 0; i < static_cast<int>(boxes.size()); ++i) out.push_back(node_from_box(boxes[i], i));
 }
 
 void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const {
@@ -407,20 +439,14 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     // to node index i, so the type name is looked up by the same index.
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
-        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx (ADR-0015) / 5 mod (ADR-0022)
-        const float* acc = b.kind == 0 ? sty.audio
-                         : (b.kind == 1 ? sty.fx
-                         : (b.kind == 5 ? sty.mod
-                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
-        const bool sel = (b.node_id == sel_node && sel_node >= 0);
-        // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
-        // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
-        const bool node_err = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
-        canvas_.card(r, { b.x, b.y, b.w, b.h }, acc, sel, node_err);   // shared chrome (ADR-0023 Layer 2)
-        const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
-        const char* label = (type && *type) ? type
-                          : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
-        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, label,
+        // ADR-0023 Layer 1: the card-chrome data (accent/selection/health/title) comes from the shared
+        // adapter; the kind tag, remove-x, ports and waveform preview are audio-domain overlays drawn
+        // inline below (sel_node_ == the draw-time sel_node param, so a.selected matches the old flag).
+        const AdapterNode a = node_from_box(b, i);
+        const float* acc = a.accent;              // overlays (kind tag, ports, waveform) reuse the accent
+        const bool node_err = a.broken;
+        canvas_.card(r, a.rect, a.accent, a.selected, a.broken);   // shared chrome (ADR-0023 Layer 2)
+        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
                     sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "inst"
                         : (b.kind == 1 ? "fx"

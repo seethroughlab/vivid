@@ -152,8 +152,9 @@ def list_operators() -> dict:
 @mcp.tool
 def list_operator_catalog(domain: str = "all", kind: str = "all", detail: str = "summary") -> dict:
     """Unified operator/plugin catalog. domain=all|visual|audio; kind can be gpu_visual,
-    instrument, audio_effect, note_effect, modulator, plugin, or all. Entries include spawn
-    affordances plus params/ports when descriptor metadata is available."""
+    instrument, audio_effect, note_effect, modulator, plugin, or all. Every entry carries its
+    domain, kind, and a spawn affordance. detail=summary (default) is a compact listing; detail=full
+    adds each op's params/ports/keywords schema (use it, or find_params, when wiring by intent)."""
     return _post("list_operator_catalog", {"domain": domain, "kind": kind, "detail": detail})
 
 
