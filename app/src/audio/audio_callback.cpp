@@ -67,6 +67,7 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
     }
 
     if (a->transport) {
+        a->transport->capture_write_interleaved(fout, frames, static_cast<uint32_t>(sr));
         a->transport->advance(frames, sr);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / static_cast<float>(sr));
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / static_cast<float>(sr));

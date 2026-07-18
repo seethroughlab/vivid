@@ -35,6 +35,50 @@ def status() -> dict:
 
 
 @mcp.tool
+def inspect_session_overview(detail: str = "summary") -> dict:
+    """Summary-first project/session inspection for agents. Aggregates transport, project,
+    tracks, visual graph, mappings count, and warnings in one call. detail='summary' keeps clips
+    and mappings compressed; 'normal' includes mappings; 'full' also includes per-track clip
+    summaries for every scene."""
+    return _post("inspect_session_overview", {"detail": detail})
+
+
+@mcp.tool
+def inspect_track(track: int, detail: str = "normal") -> dict:
+    """Inspect one track by index: stable id, kind, gain, active/queued clip, live analysis
+    signals, devices, optional per-scene clip summaries, and audio-graph summary when present."""
+    return _post("inspect_track", {"track": track, "detail": detail})
+
+
+@mcp.tool
+def inspect_scene(scene: int, detail: str = "normal") -> dict:
+    """Inspect one scene/grid row: each track's clip slot, whether it is active/queued,
+    note count or audio length, and a concise scene summary."""
+    return _post("inspect_scene", {"scene": scene, "detail": detail})
+
+
+@mcp.tool
+def explain_scene(scene: int) -> dict:
+    """Narrative explanation of a scene's musical/audio material, active/queued clips, and
+    session-level mappings that may react to it."""
+    return _post("explain_scene", {"scene": scene})
+
+
+@mcp.tool
+def inspect_signal_flow(scope: str = "session") -> dict:
+    """Summary-first signal-flow inspection: visual graph shape, audio analysis sources,
+    audio graph summaries, and every audio/control mapping."""
+    return _post("inspect_signal_flow", {"scope": scope})
+
+
+@mcp.tool
+def explain_signal_flow(scope: str = "session") -> dict:
+    """Narrative explanation of how audio/control signals currently drive visual or audio
+    parameters. Use this before editing mappings or explaining why visuals react."""
+    return _post("explain_signal_flow", {"scope": scope})
+
+
+@mcp.tool
 def get_version() -> dict:
     """Version + compatibility surface: app_version, operator_abi (a loaded .dylib operator
     must match), session_schema (a saved session is gated against this), and build_type.
@@ -103,6 +147,28 @@ def list_operators() -> dict:
     guessing names. Call this to DISCOVER operators before add_node / set_node_param /
     connect_nodes."""
     return _post("list_operators")
+
+
+@mcp.tool
+def list_operator_catalog(domain: str = "all", kind: str = "all", detail: str = "summary") -> dict:
+    """Unified operator/plugin catalog. domain=all|visual|audio; kind can be gpu_visual,
+    instrument, audio_effect, note_effect, modulator, plugin, or all. Entries include spawn
+    affordances plus params/ports when descriptor metadata is available."""
+    return _post("list_operator_catalog", {"domain": domain, "kind": kind, "detail": detail})
+
+
+@mcp.tool
+def find_operators(query: str, domain: str = "all", kind: str = "all") -> dict:
+    """Search the unified operator catalog by name, summary, keywords, kind, domain, plugin
+    format/class, and parameter semantic metadata."""
+    return _post("find_operators", {"query": query, "domain": domain, "kind": kind})
+
+
+@mcp.tool
+def find_params(query: str, scope: str = "all") -> dict:
+    """Search live mappable parameters by name/intent across visual nodes and audio targets.
+    scope=all|visual|audio. Returns ready-to-use mapping destination strings."""
+    return _post("find_params", {"query": query, "scope": scope})
 
 
 @mcp.tool
@@ -187,6 +253,42 @@ def list_mapping_sources() -> dict:
     'track_2.low'; all 0..1). Destinations are params from list_operators / list_audio_ops:
     build 'node:<id>.<param>' (visual) or 'param:<track>:<device>:<index>' (audio)."""
     return _post("list_mapping_sources")
+
+
+@mcp.tool
+def list_mapping_destinations(scope: str = "all") -> dict:
+    """Discover valid mapping DESTINATIONS instead of inventing destination strings. scope =
+    visual|audio|all. Returns visual node params ('node:<id>.<param>'), hosted device params
+    ('param:<track>:<device>:<index>'), native audio-op params ('aparam:<track>:<index>:<param>'),
+    and audio-graph node params ('gnode:<track>:<node>:<param>')."""
+    return _post("list_mapping_destinations", {"scope": scope})
+
+
+@mcp.tool
+def inspect_bindings(detail: str = "summary") -> dict:
+    """Inspect the current audio/control bindings as first-class relationships, with readable
+    source/destination labels and shaping values. detail='normal' also includes source and
+    destination affordances."""
+    return _post("inspect_bindings", {"detail": detail})
+
+
+@mcp.tool
+def explain_mapping(src: str = "", dst: str = "") -> dict:
+    """Explain one or more existing mappings. Pass src, dst, or both to filter; empty values
+    explain all current mappings."""
+    return _post("explain_mapping", {"src": src, "dst": dst})
+
+
+@mcp.tool
+def suggest_mappings(intent: str = "", scene: int | None = None,
+                     source_scope: str = "all", dest_scope: str = "visual") -> dict:
+    """Conservative mapping suggestions from current live sources to valid destinations.
+    Today this ranks simple level/transient/band relationships against visual params; later
+    phases can use real audio analysis and scene context."""
+    payload = {"intent": intent, "source_scope": source_scope, "dest_scope": dest_scope}
+    if scene is not None:
+        payload["scene"] = scene
+    return _post("suggest_mappings", payload)
 
 
 @mcp.tool
@@ -399,6 +501,80 @@ def audio_auto_warp(track: int, scene: int, sensitivity: float = 0.5) -> dict:
 
 
 @mcp.tool
+def capture_audio(source: str = "master", duration_beats: float | None = None,
+                  duration_seconds: float | None = None, start: str = "now",
+                  track: int | None = None) -> dict:
+    """Snapshot recent live audio from the bounded runtime capture buffer. source='master'
+    captures the mix; pass track=<index> or source='track:<index>' for a post-gain track tap."""
+    payload = {"source": source, "start": start}
+    if track is not None:
+        payload["track"] = track
+    if duration_beats is not None:
+        payload["duration_beats"] = duration_beats
+    if duration_seconds is not None:
+        payload["duration_seconds"] = duration_seconds
+    return _post("capture_audio", payload)
+
+
+@mcp.tool
+def analyze_audio(source: str = "master", track: int | None = None, scene: int | None = None,
+                  windows: int = 16) -> dict:
+    """Analyze audio. With track+scene, analyzes that audio clip's PCM. Without them, returns
+    measurements over recent live master or track audio from the bounded runtime capture buffer."""
+    payload = {"source": source, "windows": windows}
+    if track is not None:
+        payload["track"] = track
+    if scene is not None:
+        payload["scene"] = scene
+    return _post("analyze_audio", payload)
+
+
+@mcp.tool
+def analyze_audio_clip(track: int, scene: int, windows: int = 16) -> dict:
+    """Analyze an audio clip's decoded PCM off the audio thread. Returns RMS, peak, clipping,
+    crest factor, silence ratio, 3-band proxy, spectral/flux proxies, transient density,
+    strongest onsets, tempo estimate, and energy windows."""
+    return _post("analyze_audio_clip", {"track": track, "scene": scene, "windows": windows})
+
+
+@mcp.tool
+def analyze_audio_file(path: str, windows: int = 16) -> dict:
+    """Decode and analyze an audio file using the same Phase 4 measurements as
+    analyze_audio_clip."""
+    return _post("analyze_audio_file", {"path": path, "windows": windows})
+
+
+@mcp.tool
+def detect_onsets(track: int | None = None, scene: int | None = None,
+                  path: str = "", sensitivity: float = 0.5) -> dict:
+    """Detect onset/transient times for an audio clip or file. Pass path for file analysis,
+    pass track+scene for an audio clip, or omit both to use recent master audio."""
+    payload = {"sensitivity": sensitivity}
+    if path:
+        payload["path"] = path
+    if track is not None:
+        payload["track"] = track
+    if scene is not None:
+        payload["scene"] = scene
+    return _post("detect_onsets", payload)
+
+
+@mcp.tool
+def summarize_mix(source: str = "master", duration_beats: float | None = None,
+                  duration_seconds: float | None = None, track: int | None = None) -> dict:
+    """Summarize recent live audio from the bounded runtime capture buffer. Defaults to the
+    master mix; pass track=<index> or source='track:<index>' for a per-track tap."""
+    payload = {"source": source}
+    if track is not None:
+        payload["track"] = track
+    if duration_beats is not None:
+        payload["duration_beats"] = duration_beats
+    if duration_seconds is not None:
+        payload["duration_seconds"] = duration_seconds
+    return _post("summarize_mix", payload)
+
+
+@mcp.tool
 def get_audio_graph(track: int) -> dict:
     """Read a track's audio signal graph — the authoritative topology the RT engine runs
     (nodes + edges), distinct from the linear device list (list_audio_ops). Returns
@@ -482,6 +658,13 @@ def set_audio_op_param(track: int, index: int, param: int, value: float) -> dict
     """Set a native audio operator's param by index (from list_audio_ops). index -1 = the
     track's instrument; 0+ = the effect at that chain position."""
     return _post("set_audio_op_param", {"track": track, "index": index, "param": param, "value": value})
+
+
+@mcp.tool
+def set_audio_op_param_by_name(track: int, index: int, name: str, value: float) -> dict:
+    """Set a native audio operator param by exact case-insensitive name. index -1 = instrument;
+    0+ = native effects. Use list_audio_ops or find_params first to inspect names/ranges."""
+    return _post("set_audio_op_param_by_name", {"track": track, "index": index, "name": name, "value": value})
 
 
 @mcp.tool
@@ -628,6 +811,13 @@ def audio_graph_set_node_param(track: int, node: int, param: int, value: float) 
     get_audio_graph). Unlike set_audio_op_param (which uses linear chain index), this works for
     any node in a non-linear/rewired graph."""
     return _post("audio_graph_set_node_param", {"track": track, "node": node, "param": param, "value": value})
+
+
+@mcp.tool
+def audio_graph_set_node_param_by_name(track: int, node: int, name: str, value: float) -> dict:
+    """Set an audio-graph node param by exact case-insensitive name. Use get_audio_graph or
+    find_params to inspect node ids, param names, and ranges."""
+    return _post("audio_graph_set_node_param_by_name", {"track": track, "node": node, "name": name, "value": value})
 
 
 # ---------------- live input / recording ----------------
