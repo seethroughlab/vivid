@@ -11,6 +11,7 @@
 // edit C-API + the graph as the editable source of truth (AG-1 step 2).
 #include "ui/renderer_2d.h"
 #include "ui/layout.h"        // vivid::ui::Rect
+#include "ui/node_canvas.h"   // CardPorts — the shared card port-row layout (ADR-0023)
 
 #include <vector>
 
@@ -125,6 +126,9 @@ public:
 private:
     Rect  param_region() const;   // the selected-node param strip (bottom band)
     float param_band_h() const;   // band height — taller when the selection has a compound preview
+    // The shared card port-row layout for a node (its exposed-param count + kind + plugin state).
+    // One source of truth for card height, port centres, and the preview well (draw + hit-test).
+    CardPorts card_ports(int node_id, int kind) const;
 
     vivid::session::Session* s_ = nullptr;
     const NodeGraph* map_ = nullptr;   // the bridge (for the mapped-state dot); not owned

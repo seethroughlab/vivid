@@ -215,15 +215,22 @@ Rect AudioNodeGraph::out_port_rect(const AudioNodeBox& b) const {
 // pure sources — no signal-in row, so their param ports start at row 0.
 static bool kind_has_sig_in(int kind) { return kind == 1 || kind == 2 || kind == 4; }
 
-// Center-y of a left-edge port row (row 0 = signal-in when present, then one row per exposed param).
-// Unscaled offsets from the card top, consistent with the other card widgets.
-static float port_row_cy(const AudioNodeBox& b, int row) {
-    return b.y + kCardHeaderH + row * kPortRowH + kPortRowH * 0.5f;
+// The shared card port-row layout for a node — the one place that knows a card's row composition
+// (signal-in? + exposed params + plugin "+param" row). Draw + hit-test both read it, so a port's
+// drawn centre and its hit-rect are the same formula. Metrics are the file's unscaled card widths.
+CardPorts AudioNodeGraph::card_ports(int node_id, int kind) const {
+    CardPorts cp;
+    cp.header_h = kCardHeaderH; cp.row_h = kPortRowH; cp.prev_h = kCardPrevH;
+    cp.sig_in   = kind_has_sig_in(kind);
+    cp.params   = static_cast<int>(exposed_params(node_id).size());
+    cp.add_row  = s_ && P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
+    return cp;
 }
 
 Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
-    if (!kind_has_sig_in(b.kind)) return { 0.f, 0.f, 0.f, 0.f };      // no signal input
-    return { b.x - 6.f, port_row_cy(b, 0) - 6.f, 12.f, 12.f };        // top-left row
+    const CardPorts cp = card_ports(b.node_id, b.kind);
+    if (!cp.sig_in) return { 0.f, 0.f, 0.f, 0.f };                    // no signal input
+    return { b.x - 6.f, cp.row_cy(b.y, cp.sig_in_row()) - 6.f, 12.f, 12.f };   // top-left row
 }
 
 // A native op exposes every param; a plugin exposes only its pinned/curated subset. The LFO
@@ -257,18 +264,15 @@ int AudioNodeGraph::param_port_hit(const AudioNodeBox& b, float mx, float my) co
 }
 
 Rect AudioNodeGraph::param_port_rect(const AudioNodeBox& b, int slot) const {
-    const int n = static_cast<int>(exposed_params(b.node_id).size());
-    if (slot < 0 || slot >= n) return { 0.f, 0.f, 0.f, 0.f };
-    const int row = (kind_has_sig_in(b.kind) ? 1 : 0) + slot;
-    return { b.x - 5.f, port_row_cy(b, row) - 5.f, 10.f, 10.f };
+    const CardPorts cp = card_ports(b.node_id, b.kind);
+    if (slot < 0 || slot >= cp.params) return { 0.f, 0.f, 0.f, 0.f };
+    return { b.x - 5.f, cp.row_cy(b.y, cp.param_row(slot)) - 5.f, 10.f, 10.f };
 }
 
 Rect AudioNodeGraph::add_param_port_rect(const AudioNodeBox& b) const {
-    if (!s_ || !P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) return { 0.f, 0.f, 0.f, 0.f };
-    const int n = static_cast<int>(exposed_params(b.node_id).size());
-    const int row = (kind_has_sig_in(b.kind) ? 1 : 0) + n;
-    const float cy = port_row_cy(b, row);
-    return { b.x + 6.f, cy - 6.f, b.w - 12.f, 12.f };   // full-width "+ param" hit row
+    const CardPorts cp = card_ports(b.node_id, b.kind);
+    if (!cp.add_row) return { 0.f, 0.f, 0.f, 0.f };   // native node: all params already exposed
+    return { b.x + 6.f, cp.row_cy(b.y, cp.add_row_index()) - 6.f, b.w - 12.f, 12.f };   // full-width "+ param" hit row
 }
 
 float AudioNodeGraph::card_height(int node_id) const {
@@ -277,11 +281,7 @@ float AudioNodeGraph::card_height(int node_id) const {
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     for (int i = 0; i < n; ++i)
         if (P::session_track_audio_graph_node_id(s_, track_, i) == node_id) { kind = P::session_track_audio_graph_node_kind(s_, track_, i); break; }
-    const int np = static_cast<int>(exposed_params(node_id).size());
-    const bool plugin = P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
-    int rows = (kind_has_sig_in(kind) ? 1 : 0) + np;   // signal-in + one per exposed param
-    if (plugin) rows += 1;                              // the "+ param" row
-    return kCardHeaderH + std::max(1, rows) * kPortRowH + kCardPrevH + 6.f;
+    return card_ports(node_id, kind).height();
 }
 
 std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
@@ -434,9 +434,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
 
         // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
         // is the signal input (audio/notes) when the node takes one; then one row per exposed param.
-        const bool sigin = kind_has_sig_in(b.kind);
-        if (sigin) {
-            const float cy = port_row_cy(b, 0);
+        const CardPorts cp = card_ports(b.node_id, b.kind);   // shared card port-row layout
+        if (cp.sig_in) {
+            const float cy = cp.row_cy(b.y, cp.sig_in_row());
             node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
             r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
         }
@@ -457,16 +457,13 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         }
 
         // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.
-        const int rows = std::max(1, (sigin ? 1 : 0) + static_cast<int>(exp.size())
-                                     + (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id) ? 1 : 0));
-        const float pvy = b.y + kCardHeaderH + rows * kPortRowH + 1.f;
-        const float pvx = b.x + 6.f, pvw = b.w - 12.f, pvh = (b.y + b.h) - pvy - 4.f;
-        if (pvh > 6.f) {
-            node_preview_panel(r, pvx, pvy, pvw, pvh);
+        const Rect pv = cp.preview({ b.x, b.y, b.w, b.h });
+        if (pv.h > 6.f) {
+            node_preview_panel(r, pv.x, pv.y, pv.w, pv.h);
             float scope[128];
             const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
-            if (ns > 1) node_waveform(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, scope, ns, acc[0], acc[1], acc[2]);
-            if (node_err) node_error_note(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, "plugin unavailable — silent");
+            if (ns > 1) node_waveform(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, scope, ns, acc[0], acc[1], acc[2]);
+            if (node_err) node_error_note(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, "plugin unavailable — silent");
         }
         // The signal output nub (right-edge centre; absent on the Output sink).
         if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }

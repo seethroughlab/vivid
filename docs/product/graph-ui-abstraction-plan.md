@@ -182,3 +182,54 @@ geometry and is out of scope for a no-behavior-change phase.
 - Session persistence round-trips unchanged (view transform included) — or, if the transform
   representation must change on disk, a persist migration + test lands with it.
 - No control-server / MCP surface change → MCP parity guard unaffected.
+
+## Phase 2 — move the audio graph's draw + hit-test onto the shared canvas
+
+Goal (ADR migration step 3): the audio editor's **graph area** — edges, cards, ports, the preview
+well, the ghost wire — draws and hit-tests through shared substrate code, not audio-private
+geometry. `AudioNodeGraph` is the right first target because it is already a deterministic view
+over session introspection.
+
+### What Phase 2 does *not* touch
+- **The param strip** (plugin pinned inspector, ADSR/LFO previews, key-range handles, knob grid,
+  bridge map dots) is audio-specific inspector UI — it stays in the audio module as a domain hook.
+- **The 3-file interaction split.** Audio interaction lives in `app/input_graph.cpp` (press) +
+  `app/frame.cpp` (`update_drag_continuations`, move) + `app/input.cpp` (release/dispatch), over
+  13+ `Window.ag_*` fields. Folding that back into one on_down/on_move/on_up owner is ADR migration
+  **step 6 (Phase 5)** — *not* here. Phase 2 keeps the existing interaction wiring and only changes
+  the geometry/draw it calls into.
+- **No control-server / MCP change** → parity guard untouched.
+
+### The two things the canvas must own that aren't shared yet
+1. **The view transform.** `layout()` bakes `screen = graph_region + world*zoom + pan` inline
+   (`audio_node_graph.cpp:329`); the same math is re-derived for zoom (`input_graph.cpp` scroll),
+   the node-drag inverse (`frame.cpp`), and draw priming (`session_view.cpp` `set_view`) — the
+   documented "MUST match the draw" hazard. The audio transform is **region-relative and not
+   persisted** (visual is absolute + persisted), so the canvas must *derive* a `NodeView` from
+   `(graph_region, zoom, pan)` rather than store an absolute one. (This is the deferred P1.2.)
+2. **The card port-row geometry.** `port_row_cy` / `card_height` / `in_port_rect` /
+   `param_port_rect` / `add_param_port_rect` and the draw-side preview-well math all encode the
+   same "header → N port rows → preview well" card layout with its own metrics (22px header, 15px
+   rows). Draw and hit-test independently re-derive it; a shared primitive removes the drift risk.
+
+### Sub-steps (each build+test green, behavior-preserving, verified by rendering/driving the audio graph)
+
+- **P2.2 — shared card port-row layout primitive** *(recommended first: most contained, on-target
+  for "hit-test onto canvas", pure geometry with exact metrics).* Add a parameterized card-layout
+  helper to `node_canvas.h` (given card rect + header/row heights + signal-in? + exposed-param
+  count + add-row? → the signal-in rect, each param-port rect, the add-row rect, the preview-well
+  rect). Route audio's port accessors + the draw-side preview math through it so they cannot drift.
+- **P2.1 — view-transform consolidation.** Add `NodeView::to_screen` (world→screen) and an
+  `audio_view(region, zoom, pan) → NodeView` derivation to `node_canvas.h`. Route `layout()`, the
+  zoom, the node-drag inverse, and the hit-test priming through it. Kills the "MUST match" hazard;
+  discharges deferred P1.2 in the region-relative way.
+- **P2.3 — minimal `GraphModelAdapter` + `GraphCanvas::draw_graph()`.** Introduce the adapter
+  interface (nodes/ids/rects/kinds/labels/ports/edges/preview) and move the graph-area draw loop
+  (edges + cards + ports + ghost wire) onto the canvas, audio implementing the adapter; per-port
+  labels + preview content are domain hooks. Largest step; behavior-preserving via careful port.
+
+### Phase 2 acceptance / verification
+- Audio graph renders identically (cards, ports, wires, preview, selection); node-drag, rewire,
+  pan, zoom behave identically — verified by driving the running audio-graph deep view.
+- Native build + 49 tests green; the visual graph is untouched.
+- The "MUST match the draw" transform duplication is reduced to one shared derivation.

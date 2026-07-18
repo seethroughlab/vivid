@@ -65,6 +65,38 @@ inline void node_card(Renderer2D& r, float x, float y, float w, float h,
     r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, s.card_hi[0], s.card_hi[1], s.card_hi[2], 1.0f);   // header strip
 }
 
+// --- Card port-row + preview-well layout (ADR-0023) -------------------------------------------
+// Below its header, a node card stacks a column of left-edge PORT ROWS — a signal input (when the
+// node takes one), then one row per exposed param, then an optional trailing "+param" add-row — and
+// a recessed preview well fills the space beneath them. Both graph editors share this vertical
+// structure; describing it in one place means a card's height, its ports' drawn centres, and their
+// hit-rects are all one formula and can't drift apart. The height metrics are fields because the two
+// editors use different pitches.
+struct CardPorts {
+    float header_h = 22.f;   // title-strip height
+    float row_h    = 15.f;   // one port-row height
+    float prev_h   = 30.f;   // preview-well height reserved beneath the rows
+    bool  sig_in   = false;  // row 0 is a signal input
+    int   params   = 0;      // one row per exposed param
+    bool  add_row  = false;  // a trailing "+param" row (e.g. a plugin card)
+
+    int   rows()          const { return (sig_in ? 1 : 0) + params + (add_row ? 1 : 0); }
+    int   rows_reserved() const { return std::max(1, rows()); }   // a card always reserves >= 1 row
+    float height()        const { return header_h + rows_reserved() * row_h + prev_h + 6.f; }
+
+    int   sig_in_row()     const { return 0; }
+    int   param_row(int k) const { return (sig_in ? 1 : 0) + k; }
+    int   add_row_index()  const { return (sig_in ? 1 : 0) + params; }
+
+    // Centre-y of port row `k` on a card whose top edge is at `card_y`.
+    float row_cy(float card_y, int k) const { return card_y + header_h + k * row_h + row_h * 0.5f; }
+    // The recessed preview well beneath the rows, within card rect `c` (c.h should be height()).
+    Rect  preview(const Rect& c) const {
+        const float y = c.y + header_h + rows_reserved() * row_h + 1.f;
+        return { c.x + 6.f, y, c.w - 12.f, (c.y + c.h) - y - 4.f };
+    }
+};
+
 // --- Broken-node vocabulary (ADR-0019). A node the engine knows is broken must LOOK broken, in
 // both editors, from one implementation. Each editor supplies its own error string (a shader that
 // won't compile, an op type that isn't registered, a plugin that failed to load); the drawing is
