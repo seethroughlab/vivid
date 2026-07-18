@@ -103,6 +103,20 @@ drawing, the preview slot, and hit-test primitives (node-at-point, port-at-point
 adapter for *what* to draw and where; domain overlays (thumbnails, waveforms, key ranges, plugin
 pin rows, compound widgets) render into canvas-provided slots.
 
+**Status — v1 landed (lean).** `app/src/ui/graph_canvas.h` defines a `GraphCanvas` class each editor
+owns as a member. Mapping both draw loops showed the *genuinely-shared* skeleton is small — `node_canvas.h`
++ `CardPorts` + `NodeView` already carried ~80% of Layer 2 — so v1 owns only the behavior-preserving
+core: `card()` (the shared error-border + card + selection-ring + error-badge chrome, identical in both
+editors), `grid()` (visuals-only for now; audio stays grid-less), and `ghost_wire()`. The key that makes
+this behavior-preserving is that `card()` is **coordinate-agnostic**: it draws relative to the passed rect,
+so the ambient renderer transform the caller already set decides the scaling (visual world-transform →
+chrome scales; audio identity → chrome constant) — the two editors keep their conventions unchanged.
+Node hit-test is already shared via `hit(Rect,…)` + `CardPorts`; port hit-test diverges (visual distance
+vs audio rects) and stays per-editor. **Deferred:** migrating the editors' persisted view storage INTO
+`GraphCanvas` (v1 holds only frame-scoped view, primed each frame), the Layer-1 `GraphModelAdapter`, and a
+`GraphCanvas` that *owns the draw loop* driven by domain hooks (blocked on reconciling the coordinate-space
+and wire-endpoint divergences, which are real).
+
 ### Layer 3 — `GraphInteractionController` (the drag/select/pan/rewire state machine)
 
 Hosts the interaction state currently living in `NodeGraph` (the `drag_mode_` machine) and in

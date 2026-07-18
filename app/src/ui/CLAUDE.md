@@ -18,6 +18,15 @@
 - **`shader_library_view.{h,cpp}`** — the ADR-0021 content browser: lists the shaders
   in the shader library (each row carries its compile `error` when it failed), for
   browsing/forking shipped shaders.
+- **`node_canvas.h` / `graph_canvas.h`** — the **shared graph-UI substrate** both node editors
+  (visuals `node_graph`, per-track `audio_node_graph`) draw through (ADR-0023). `node_canvas.h` is
+  the vocabulary: the `NodeView` world↔screen transform (+ `region_view`), `CardPorts` card geometry,
+  and the marks (`node_grid`/`node_wire`/`node_port`/`node_card` [selection ring folded in] /
+  `node_preview_panel`/`node_waveform` + the ADR-0019 error vocab). `graph_canvas.h` is the **Layer-2
+  `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton
+  (`card()` chrome, `grid()`, `ghost_wire()`). What still diverges stays per-editor: coordinate space
+  (visual draws WORLD-space via `set_transform`; audio bakes SCREEN coords in `layout()`), wire
+  endpoints/color, port/label content, preview-well contents, and the audio param band.
 - **`node_graph.{h,cpp}`** — the visuals node editor: op chain, data nodes, the
   `MappingRegistry` (the bridge), the Tab operator chooser, live thumbnails.
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and

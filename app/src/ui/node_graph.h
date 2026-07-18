@@ -5,6 +5,7 @@
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/node_canvas.h"    // NodeView — the shared pan/zoom transform (ADR-0023)
+#include "ui/graph_canvas.h"   // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
@@ -163,6 +164,7 @@ private:
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
     NodeView view_;                                  // world->screen pan/zoom (shared, ADR-0023)
+    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared card/grid/ghost-wire draw skeleton
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
     void to_world(double sx, double sy, double& wx, double& wy) const { view_.to_world(sx, sy, wx, wy); }
 

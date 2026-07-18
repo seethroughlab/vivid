@@ -12,6 +12,7 @@
 #include "ui/renderer_2d.h"
 #include "ui/layout.h"        // vivid::ui::Rect
 #include "ui/node_canvas.h"   // CardPorts — the shared card port-row layout (ADR-0023)
+#include "ui/graph_canvas.h"  // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 
 #include <vector>
 
@@ -152,6 +153,7 @@ private:
     int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
     float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
+    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared card/grid/ghost-wire draw skeleton
 
     // The in-flight gesture (ADR-0023 6c/6d): private state owned by the on_down/on_move/on_up FSM
     // above (nothing outside this class touches it). Exactly one gesture is live at a time.

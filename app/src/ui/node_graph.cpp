@@ -482,8 +482,10 @@ void NodeGraph::draw(Renderer2D& r) {
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
     r.set_transform(view_.ox, view_.oy, view_.scale);
-    // grid: cover the full visuals column (shared substrate), edge to edge
-    node_grid(r, view_, fx0_, fy0_, fx1_, fy1_);
+    // grid: cover the full visuals column (shared substrate), edge to edge (ADR-0023 Layer 2)
+    canvas_.set_view(view_);
+    canvas_.set_region({ fx0_, fy0_, fx1_ - fx0_, fy1_ - fy0_ });
+    canvas_.grid(r);
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input); one per connected texture input port.
@@ -508,12 +510,14 @@ void NodeGraph::draw(Renderer2D& r) {
             node_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
         }
     }
-    // drag preview
+    // drag preview (ADR-0023 Layer 2: the ghost wire comes from the canvas)
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < n + int(data_.size())) {
-        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy); node_wire(r, ox, oy, float(cx_), float(cy_), 0.55f, 0.85f, 0.80f); }
+        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy);
+            const float c[3] = { 0.55f, 0.85f, 0.80f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
     if (drag_mode_ == 4 && wire_from_ >= 0) {
-        float ox, oy; if (op_out_port(wire_from_, ox, oy)) node_wire(r, ox, oy, float(cx_), float(cy_), 0.5f, 0.65f, 0.9f);
+        float ox, oy; if (op_out_port(wire_from_, ox, oy)) {
+            const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
     // op-nodes (classic-style cards)
@@ -536,9 +540,8 @@ void NodeGraph::draw(Renderer2D& r) {
         std::string node_err = node.error();
         if (node_err.empty() && vg_->registry())
             node_err = vg_->registry()->reload_error(vg_->nodes()[i].op_type);
-        if (!node_err.empty()) node_error_border(r, x, y, w, h);   // ADR-0019: a broken node LOOKS broken
-        node_card(r, x, y, w, h, acc, i == sel_op_);   // shared: blue ring if selected + border/body/header/accent
-        if (!node_err.empty()) node_error_badge(r, x, y);          // clickable "!" chip (input_graph reveals the message)
+        // ADR-0019: a broken node LOOKS broken (red border + "!" chip); ADR-0023 Layer 2: shared chrome.
+        canvas_.card(r, { x, y, w, h }, acc, i == sel_op_, !node_err.empty());
         const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
         r.draw_text(label_x, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
@@ -586,7 +589,7 @@ void NodeGraph::draw(Renderer2D& r) {
     // data nodes (matching card style)
     for (auto& nd : data_) {
         if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        node_card(r, nd.x, nd.y, nd.w, nd.h, sty.teal, false);   // shared card (teal accent = data source)
+        canvas_.card(r, { nd.x, nd.y, nd.w, nd.h }, sty.teal, false, false);   // data source (teal, never broken)
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         // live value history (rolling bar sparkline) in a recessed panel
         const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;

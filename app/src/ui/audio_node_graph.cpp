@@ -416,9 +416,7 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
         // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
         const bool node_err = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
-        if (node_err) node_error_border(r, b.x, b.y, b.w, b.h);
-        node_card(r, b.x, b.y, b.w, b.h, acc, sel);   // shared: border/body/header/top accent + blue sel ring
-        if (node_err) node_error_badge(r, b.x, b.y);
+        canvas_.card(r, { b.x, b.y, b.w, b.h }, acc, sel, node_err);   // shared chrome (ADR-0023 Layer 2)
         const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
         const char* label = (type && *type) ? type
                           : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
@@ -471,11 +469,11 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
     }
 
-    // Ghost wire while dragging a rewire from a node's output port to the cursor.
+    // Ghost wire while dragging a rewire from a node's output port to the cursor (ADR-0023 Layer 2).
     if (wire_from >= 0) {
         for (int i = 0; i < static_cast<int>(boxes.size()); ++i)
             if (id[i] == wire_from) { const Rect p = out_port_rect(boxes[i]);
-                wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
+                canvas_.ghost_wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
     }
 
     // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). The old "+ FX" / "+ Src"
