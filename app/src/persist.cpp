@@ -19,7 +19,8 @@ using json = nlohmann::json;
 namespace vivid {
 
 json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                     int win_w, int win_h, float split_x, float dock_h) {
+                     int win_w, int win_h, float split_x, float dock_h,
+                     bool include_plugin_state) {
     json j;
     if (!s) return j;
     j["version"] = kSessionSchemaVersion;
@@ -83,16 +84,23 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 clips.push_back(jc);
             }
             jt["clips"] = clips;
-            const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset (VST3 or CLAP)
-            if (!state.empty()) jt["state"] = state;
+            // Plugin state (VST3/CLAP getState) — skipped for the undo/dirty projection, which
+            // strips it anyway; see include_plugin_state in persist.h. getState on a live plugin
+            // races the audio thread's process() and crashes heavy plugins on reload.
+            if (include_plugin_state) {
+                const std::string state = vivid::session::session_get_track_state(s, t);  // plugin preset (VST3 or CLAP)
+                if (!state.empty()) jt["state"] = state;
+            }
             // CLAP instrument + effects: save the .clap path (load recreates the plugin) + its state.
             const char* cpath = vivid::session::session_track_clap_instrument_path(s, t);
             if (cpath && *cpath) jt["clap_instrument"] = cpath;
             json cfx = json::array();
             for (int e = 0; e < vivid::session::session_track_clap_effect_count(s, t); ++e) {
                 json je = { {"path", vivid::session::session_track_clap_effect_path(s, t, e)} };
-                const std::string est = vivid::session::session_get_track_clap_effect_state(s, t, e);
-                if (!est.empty()) je["state"] = est;
+                if (include_plugin_state) {
+                    const std::string est = vivid::session::session_get_track_clap_effect_state(s, t, e);
+                    if (!est.empty()) je["state"] = est;
+                }
                 cfx.push_back(je);
             }
             if (!cfx.empty()) jt["clap_effects"] = cfx;
@@ -146,8 +154,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     jn["path"] = pp;
                     if (const char* pu = vivid::session::session_audio_graph_node_plugin_uid(s, t, id); pu && *pu)
                         jn["uid"] = pu;
-                    const std::string pst = vivid::session::session_audio_graph_node_get_state(s, t, id);
-                    if (!pst.empty()) jn["state"] = pst;   // the plugin's patch, per NODE
+                    if (include_plugin_state) {   // skipped for the undo/dirty projection (see above)
+                        const std::string pst = vivid::session::session_audio_graph_node_get_state(s, t, id);
+                        if (!pst.empty()) jn["state"] = pst;   // the plugin's patch, per NODE
+                    }
                 }
                 float nx = 0.f, ny = 0.f;   // editor position (only when the user has placed it)
                 if (vivid::session::session_track_audio_graph_node_pos(s, t, i, &nx, &ny)) { jn["x"] = nx; jn["y"] = ny; }
