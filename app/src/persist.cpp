@@ -27,6 +27,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
 
     const int nt = vivid::session::session_track_count(s);
     const int ns = vivid::session::session_scene_count(s);
+    j["scenes"] = ns;   // grid row count (optional; older loaders default to 3)
     json tracks = json::array();
     for (int t = 0; t < nt; ++t) {
         json jt;
@@ -418,6 +419,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
 
     // v2+: rebuild the track set from the document before restoring per-track state. ParamsOnly
     // keeps the existing tracks (topology is unchanged), so it skips the rebuild.
+    // Restore the scene count FIRST (before the rebuild) so each recreated track is born with the
+    // right number of clip slots — otherwise scenes beyond the default 3 have no slot to land in.
+    if (restore_audio && !params_only && j.contains("scenes"))
+        vivid::session::session_set_scene_count(s, j.value("scenes", 3));
     if (restore_audio && !params_only && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
         rebuild_tracks_from_doc(s, j["tracks"]);
 

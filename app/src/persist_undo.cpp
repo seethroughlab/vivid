@@ -71,6 +71,10 @@ nlohmann::json track_topology(const nlohmann::json& tr) {
 }  // namespace
 
 bool audio_topology_equal(const nlohmann::json& a, const nlohmann::json& b) {
+    // A scene-count change is a topology change (tracks gain/lose clip slots), so it needs a Full
+    // rebuild — ParamsOnly never touches scene count. Without this, undo/redo of Add Scene would be
+    // classified ParamsOnly and silently do nothing.
+    if (a.value("scenes", 3) != b.value("scenes", 3)) return false;
     static const nlohmann::json kEmpty = nlohmann::json::array();
     const nlohmann::json& ta = a.contains("tracks") ? a.at("tracks") : kEmpty;
     const nlohmann::json& tb = b.contains("tracks") ? b.at("tracks") : kEmpty;
