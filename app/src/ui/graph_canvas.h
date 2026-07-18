@@ -3,10 +3,11 @@
 
 // ADR-0023 Layer 2 — the GraphCanvas: the shared graph-area DRAW skeleton both node editors (the
 // visuals `node_graph` and the per-track `audio_node_graph`) render through, built on the
-// `node_canvas.h` marks. Each editor owns one as a member and primes its view/region per frame
-// (mirroring how AudioNodeGraph is primed via set_source/set_bounds) — no persisted-storage change.
+// `node_canvas.h` marks. Each editor owns one as a member; the canvas is the SOLE owner of that
+// editor's pan/zoom camera (ADR-0023 #1 — the editor reaches it through `canvas_.view()` rather than
+// keeping its own `NodeView`), and the editor primes the draw region per frame.
 //
-// v1 owns only the genuinely-shared, behavior-preserving skeleton: the node-card chrome (error border
+// It owns only the genuinely-shared, behavior-preserving skeleton: the node-card chrome (error border
 // + card + selection ring + error badge), the background grid, and the ghost/drag-preview wire.
 // Everything that legitimately diverges stays in each editor's own draw loop: the coordinate space
 // (visual draws in WORLD space via set_transform; audio bakes SCREEN coords in layout()), wire
@@ -16,9 +17,11 @@ namespace vivid::ui {
 
 class GraphCanvas {
 public:
-    // Primed by the editor each frame (only grid() reads these today).
-    void set_view(const NodeView& v) { view_ = v; }
-    void set_region(const Rect& r)   { region_ = r; }
+    // The canvas OWNS the pan/zoom camera (ADR-0023 #1): both editors mutate it through view()
+    // instead of keeping their own NodeView copy. The owning editor persists it with the session.
+    NodeView&       view()       { return view_; }
+    const NodeView& view() const { return view_; }
+    void set_region(const Rect& r) { region_ = r; }   // draw region, primed by the editor each frame
 
     // The shared node-card chrome. COORDINATE-AGNOSTIC: it draws relative to `rect` with the mark
     // metrics, so whether the chrome ends up zoom-scaled is decided by the ambient renderer transform

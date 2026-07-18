@@ -310,8 +310,8 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     std::vector<int> fill(max_rank + 1, 0);
     for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
-    // Every node has a stored world position; screen = view_.to_screen(world) (ADR-0023: the camera is
-    // an absolute NodeView, like the visual editor). An unpositioned node is seeded from the auto-layout
+    // Every node has a stored world position; screen = canvas_.view().to_screen(world) (ADR-0023: the
+    // camera is an absolute NodeView owned by the canvas). An unpositioned node is seeded from the auto-layout
     // (rank = signal depth, slot = fan-out order) and stuck — so the graph opens tidy, then every node
     // is freely draggable and the layout persists.
     out.reserve(n);
@@ -325,10 +325,11 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
             P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
         }
-        double sx, sy; view_.to_screen(wx, wy, sx, sy);
+        const NodeView& view = canvas_.view();   // the camera lives in the canvas (ADR-0023 #1)
+        double sx, sy; view.to_screen(wx, wy, sx, sy);
         out.push_back({ kind[i], id[i],
                         static_cast<float>(sx), static_cast<float>(sy),
-                        kCardW * view_.scale, card_height(id[i]) * view_.scale });
+                        kCardW * view.scale, card_height(id[i]) * view.scale });
     }
     return out;
 }

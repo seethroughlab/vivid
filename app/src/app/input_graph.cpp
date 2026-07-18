@@ -545,8 +545,8 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
                 last_node_t = -1;
             } else { last_node = b.node_id; last_node_t = now; }
             node_drag = b.node_id;                                   // start a reposition drag (any node)
-            node_dx = (mx - b.x) / view_.scale;                      // grab offset in world units
-            node_dy = (my - b.y) / view_.scale;
+            node_dx = (mx - b.x) / canvas_.view().scale;             // grab offset in world units
+            node_dy = (my - b.y) / canvas_.view().scale;
             return true;
         }
     }
@@ -572,12 +572,12 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     // Empty space: double-click resets the view (2i); otherwise start a pan drag.
     const double now = glfwGetTime();
     if (now - last_click_t < 0.30) {   // double-click resets the camera to the fitted view (panel origin)
-        const Rect gr = graph_region(); view_ = { gr.x, gr.y, 1.f }; view_init_ = true;
+        const Rect gr = graph_region(); canvas_.view() = { gr.x, gr.y, 1.f }; view_init_ = true;
         last_click_t = -1; return true;
     }
     last_click_t = now;
     panning = true; pan_mx0 = mx; pan_my0 = my;
-    pan_ox0 = view_.ox; pan_oy0 = view_.oy;   // baseline for the pan drag (absolute camera)
+    pan_ox0 = canvas_.view().ox; pan_oy0 = canvas_.view().oy;   // baseline for the pan drag (absolute camera)
     return true;   // consume other clicks in the graph
 }
 
@@ -644,10 +644,10 @@ void AudioNodeGraph::on_scroll(App& app, Window& win, double yoff, double mx, do
     const Rect gr = graph_region();
     if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
         // Zoom the absolute camera around the cursor, keeping the world point under it fixed.
-        double wx, wy; view_.to_world(mx, my, wx, wy);
-        const float z1 = std::clamp(view_.scale * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
-        view_ = { static_cast<float>(mx) - static_cast<float>(wx) * z1,
-                  static_cast<float>(my) - static_cast<float>(wy) * z1, z1 };
+        double wx, wy; canvas_.view().to_world(mx, my, wx, wy);
+        const float z1 = std::clamp(canvas_.view().scale * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
+        canvas_.view() = { static_cast<float>(mx) - static_cast<float>(wx) * z1,
+                           static_cast<float>(my) - static_cast<float>(wy) * z1, z1 };
         view_init_ = true;
     }
 }
