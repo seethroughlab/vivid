@@ -424,5 +424,269 @@ int main() {
         CHECK(g.node_pinned(a)->size() == 1);
     }
 
+    // ===== ADR-0022 (P0): control is a THIRD signal in the graph =====
+
+    // --- 19. PARITY: a graph with no control edges compiles exactly as it always did ---
+    // The migration gate, and the mirror of case 12. If a third edge kind changed anything about a
+    // graph that has no modulator, every existing project would be affected by a feature it does
+    // not use.
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int fx  = g.add_node(false, false, nullptr, nullptr, "fx");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.connect(src, fx);
+        g.connect(fx, out);
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 0);       // no modulator => no control pool at all
+        CHECK(cg.note_buf_count == 0);
+        CHECK(cg.buf_count == 3);
+        CHECK(cg.output_buf == g.node_index(out));
+        for (const CompiledStep& s : cg.steps) {
+            CHECK(s.n_control_in == 0);
+            CHECK(s.control_out_buf == -1);     // every step is control-free, exactly as before
+        }
+    }
+
+    // --- 20. Control edges constrain execution ORDER ---
+    // A modulator must run BEFORE the node whose param it drives — even though no audio and no
+    // notes flow between them. Getting this wrong means the target reads last block's value.
+    //
+    // The LFO is added LAST on purpose. Added first it would land early in the topo queue anyway
+    // (both are indegree-0 roots, emitted in insertion order), so the assertion would hold even if
+    // control edges constrained nothing — a test that passes by luck. Declared last, the ONLY
+    // thing that can pull it ahead of the filter is the control edge itself.
+    {
+        AudioGraph g;
+        const int src = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int flt = g.add_node(false, false, nullptr, nullptr, "filter");
+        const int out = g.add_node(false, true,  nullptr, nullptr, "out");
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        g.set_output_id(out);
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+        g.connect(src, flt);
+        g.connect(flt, out);
+        CHECK(g.connect_control(lfo, flt, /*dest_param=*/3));
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+
+        auto step_pos = [&](int id) {
+            const int b = g.node_index(id);
+            for (size_t i = 0; i < cg.steps.size(); ++i) if (cg.steps[i].out_buf == b) return static_cast<int>(i);
+            return -1;
+        };
+        CHECK(step_pos(lfo) < step_pos(flt));   // the modulator is ordered before its target...
+        CHECK(step_pos(flt) < step_pos(out));   // ...and audio still follows
+
+        // The control edge must NOT have been summed into the filter's audio inputs: the filter
+        // takes audio from `src` alone. (An LFO that leaks into the audio sum is a DC offset.)
+        const CompiledStep& s_flt = cg.steps[static_cast<size_t>(step_pos(flt))];
+        CHECK(s_flt.n_in == 1);
+        CHECK(s_flt.in_buf[0] == g.node_index(src));
+        CHECK(s_flt.n_note_in == 0);            // ...nor merged into its notes
+    }
+
+    // --- 21. Control buffers + the shaper survive compile ---
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_output_id(flt);
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+        ControlShape sh;
+        sh.amount = 0.5f; sh.curve = -0.25f; sh.invert = true; sh.bipolar = true;
+        CHECK(g.connect_control(lfo, flt, 7, sh));
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1);       // only the LFO emits
+
+        auto step_of = [&](int id) -> const CompiledStep& {
+            const int b = g.node_index(id);
+            for (const CompiledStep& s : cg.steps) if (s.out_buf == b) return s;
+            return cg.steps[0];
+        };
+        const CompiledStep& s_lfo = step_of(lfo);
+        const CompiledStep& s_flt = step_of(flt);
+        CHECK(s_lfo.control_out_buf >= 0);      // the emitter writes a buffer...
+        CHECK(s_lfo.n_control_in == 0);
+        CHECK(s_flt.control_out_buf == -1);     // ...a pure consumer emits nothing
+        CHECK(s_flt.n_control_in == 1);
+        CHECK(s_flt.control_in[0].src_buf == s_lfo.control_out_buf);   // ...and reads the emitter's
+        CHECK(s_flt.control_in[0].param == 7);                          // the opaque selector rides through
+        CHECK(std::fabs(s_flt.control_in[0].shape.amount - 0.5f) < 1e-6f);
+        CHECK(std::fabs(s_flt.control_in[0].shape.curve + 0.25f) < 1e-6f);
+        CHECK(s_flt.control_in[0].shape.invert);
+        CHECK(s_flt.control_in[0].shape.bipolar);   // per-edge polarity rides through compile
+    }
+
+    // --- 22. Dedup is PER PARAM, and a selector-less control edge is impossible ---
+    // One LFO driving two params of one node is the normal case — the (from, to, kind) rule the
+    // other signals use would have wrongly called the second one a duplicate.
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_control_ports(lfo, false, true);
+        g.set_control_ports(flt, true,  false);
+
+        CHECK(g.connect_control(lfo, flt, 1));    // cutoff
+        CHECK(g.connect_control(lfo, flt, 2));    // resonance — same pair, different param
+        CHECK(!g.connect_control(lfo, flt, 1));   // ...but the same param twice is a duplicate
+        CHECK(!g.connect_control(lfo, lfo, 1));   // self-loop
+        CHECK(!g.connect_control(lfo, flt, -1));  // no selector
+        CHECK(!g.connect_control(lfo, 999, 1));   // absent endpoint
+        CHECK(g.edges().size() == 2);
+
+        // The kind-based entry points refuse Control outright: an edge with no selector could
+        // never be applied, so it must not be creatable.
+        CHECK(!g.connect(lfo, flt, EdgeKind::Control));
+        CHECK(g.edges().size() == 2);
+        g.disconnect(lfo, flt, EdgeKind::Control);   // no-op: (from,to) doesn't identify one
+        CHECK(g.edges().size() == 2);
+
+        g.disconnect_control(lfo, flt, 1);
+        CHECK(g.edges().size() == 1);
+        CHECK(g.edges()[0].dest_param == 2);         // the OTHER param's edge survived
+
+        // set_control_shape re-shapes an existing edge in place; identifies it by (from,to,param).
+        ControlShape ns; ns.amount = 0.3f; ns.bipolar = true; ns.curve = 0.5f; ns.invert = true;
+        CHECK(g.set_control_shape(lfo, flt, 2, ns));   // the surviving edge
+        CHECK(std::fabs(g.edges()[0].shape.amount - 0.3f) < 1e-6f);
+        CHECK(g.edges()[0].shape.bipolar && g.edges()[0].shape.invert);
+        CHECK(!g.set_control_shape(lfo, flt, 1, ns));  // no edge on param 1 any more → false
+        CHECK(!g.set_control_shape(lfo, 999, 2, ns));  // absent node → false
+
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1);
+        // ...and the reshaped values reach the compiled step.
+        for (const CompiledStep& s : cg.steps)
+            for (int k = 0; k < s.n_control_in; ++k)
+                CHECK(std::fabs(s.control_in[k].shape.amount - 0.3f) < 1e-6f);
+    }
+
+    // --- 23. A cycle through CONTROL edges is rejected like any other ---
+    // A modulator driven by something it drives is a cycle in the one DAG. P0 rejects it (a
+    // last-block/deferred edge would be an explicit future decision, not an accident).
+    {
+        AudioGraph g;
+        const int x = g.add_node(true, false, nullptr, nullptr, "x");
+        const int y = g.add_node(true, false, nullptr, nullptr, "y");
+        g.set_control_ports(x, true, true);
+        g.set_control_ports(y, true, true);
+        CHECK(g.connect_control(x, y, 0));
+        CHECK(g.connect_control(y, x, 0));
+        CompiledAudioGraph cg;
+        CHECK(!g.compile(cg));                     // the caller keeps its last good plan
+    }
+
+    // --- 24. remove_node_bridged DROPS control edges rather than re-pointing a selector ---
+    // Bridging the removed node's own modulator onto its targets would aim param selector 5 (the
+    // LFO's rate) at whatever param the LFO happened to drive. Dropping is the honest outcome.
+    {
+        AudioGraph g;
+        const int src  = g.add_node(true,  false, nullptr, nullptr, "src");
+        const int lfo2 = g.add_node(true,  false, nullptr, nullptr, "lfo2");
+        const int lfo  = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt  = g.add_node(false, false, nullptr, nullptr, "filter");
+        const int out  = g.add_node(false, true,  nullptr, nullptr, "out");
+        g.set_output_id(out);
+        g.set_control_ports(lfo2, false, true);
+        g.set_control_ports(lfo,  true,  true);    // an LFO whose rate is itself modulated
+        g.set_control_ports(flt,  true,  false);
+        g.connect(src, flt);
+        g.connect(flt, out);
+        CHECK(g.connect_control(lfo2, lfo, 5));    // lfo2 -> lfo.rate
+        CHECK(g.connect_control(lfo,  flt, 3));    // lfo  -> filter.cutoff
+
+        g.remove_node_bridged(lfo);
+        CHECK(g.node_index(lfo) < 0);
+        for (const AudioGraphEdge& e : g.edges())
+            CHECK(e.kind != EdgeKind::Control);    // both control edges died with the node...
+        CHECK(has_edge(g, src, flt));              // ...while the audio path healed as ever
+        CHECK(has_edge(g, flt, out));
+    }
+
+    // --- 25. control_resolve: base + modulation, resolved live (the ADR-0022 control model) ---
+    // The base is a live argument, never baked into the shape. vivid-classic folded the base into
+    // a compile-time remap range and paid for it with a lowering-record table, three read paths
+    // that special-case a modulated param back to its authored value, and a recompile per amount
+    // drag. Keeping base a parameter of the combine is what makes that machinery unnecessary.
+    {
+        ControlShape sh;                       // amount 1.0, linear, unipolar
+        // Unipolar over a 0..1 param: 0 -> base, 1 -> base + amount*range.
+        CHECK(std::fabs(control_resolve(0.f, 0.0f, sh, 0.f, 1.f) - 0.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 1.0f, sh, 0.f, 1.f) - 1.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 0.5f, sh, 0.f, 1.f) - 0.5f) < 1e-6f);
+
+        // The BASE moves the whole range with it — this is the property the audio side lacks
+        // today (frame.cpp overwrites the param instead of adding to it).
+        sh.amount = 0.25f;
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, sh, 0.f, 1.f) - 0.50f) < 1e-6f);   // sits at base
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, sh, 0.f, 1.f) - 0.75f) < 1e-6f);   // base + amount
+
+        // Bipolar straddles the base: 0.5 IS the base — what a pitch/pan LFO needs.
+        sh.bipolar = true;
+        CHECK(std::fabs(control_resolve(0.5f, 0.5f, sh, 0.f, 1.f) - 0.50f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, sh, 0.f, 1.f) - 0.75f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, sh, 0.f, 1.f) - 0.25f) < 1e-6f);   // base - amount
+
+        // Amount scales by the param's DECLARED range, not a hard-coded [0,1]. Classic's own
+        // test used base=880 / amount=0.7 on a frequency param; the trunk once pinned every
+        // int/enum param to 1 by assuming 0..1 here.
+        ControlShape hz;  hz.amount = 0.1f; hz.bipolar = true;
+        CHECK(std::fabs(control_resolve(880.f, 0.5f, hz, 20.f, 20000.f) - 880.0f) < 1e-3f);
+        CHECK(control_resolve(880.f, 1.0f, hz, 20.f, 20000.f) > 880.f);   // swings up...
+        CHECK(control_resolve(880.f, 0.0f, hz, 20.f, 20000.f) < 880.f);   // ...and down, around base
+
+        // Clamped to the declared range. Classic passed clamp=false and let modulation push a
+        // param outside its own bounds.
+        ControlShape hot;  hot.amount = 10.f;
+        CHECK(std::fabs(control_resolve(0.5f, 1.0f, hot, 0.f, 1.f) - 1.0f) < 1e-6f);
+        hot.bipolar = true;
+        CHECK(std::fabs(control_resolve(0.5f, 0.0f, hot, 0.f, 1.f) - 0.0f) < 1e-6f);
+
+        // invert flips the SOURCE before shaping; an out-of-range source is clamped, not NaN.
+        ControlShape inv;  inv.invert = true;
+        CHECK(std::fabs(control_resolve(0.f, 0.0f, inv, 0.f, 1.f) - 1.0f) < 1e-6f);
+        CHECK(std::fabs(control_resolve(0.f, 2.0f, inv, 0.f, 1.f) - 0.0f) < 1e-6f);   // clamped src
+        ControlShape crv;  crv.curve = 1.0f;
+        CHECK(control_resolve(0.f, 0.5f, crv, 0.f, 1.f) < 0.5f);                      // eases in
+        CHECK(std::fabs(control_resolve(0.f, -1.f, crv, 0.f, 1.f) - 0.0f) < 1e-6f);   // no NaN
+
+        // amount 0 = a connected-but-silent edge: the param sits exactly at its base.
+        ControlShape off;  off.amount = 0.f;
+        CHECK(std::fabs(control_resolve(0.42f, 1.0f, off, 0.f, 1.f) - 0.42f) < 1e-6f);
+    }
+
+    // --- 26. An empty graph clears every count (a stale one would outlive its nodes) ---
+    {
+        AudioGraph g;
+        const int lfo = g.add_node(true,  false, nullptr, nullptr, "lfo");
+        const int flt = g.add_node(false, true,  nullptr, nullptr, "filter");
+        g.set_output_id(flt);
+        g.set_control_ports(lfo, false, true);
+        g.set_note_ports(lfo, false, true);
+        g.set_control_ports(flt, true, false);
+        CHECK(g.connect_control(lfo, flt, 0));
+        CompiledAudioGraph cg;
+        CHECK(g.compile(cg));
+        CHECK(cg.control_buf_count == 1 && cg.note_buf_count == 1);
+
+        g.clear();                                 // recompiling the now-empty graph into the SAME plan
+        CHECK(g.compile(cg));
+        CHECK(cg.steps.empty());
+        CHECK(cg.buf_count == 0);
+        CHECK(cg.control_buf_count == 0);          // ...must not leave the old pool sizes behind
+        CHECK(cg.note_buf_count == 0);
+    }
+
     return vivid::test::summary("test_audio_graph");
 }

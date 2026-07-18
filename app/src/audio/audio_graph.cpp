@@ -109,8 +109,14 @@ void AudioGraph::remove_node_bridged(int id) {
     // Heal each SIGNAL separately: an audio in/out pair bridges as audio, a note in/out pair as
     // notes. Bridging across kinds would silently turn a note wire into an audio wire (and vice
     // versa) — a plausible-looking graph that means something else entirely.
+    //
+    // CONTROL edges are deliberately NOT bridged (ADR-0022): a control edge terminates at a
+    // specific param of a specific node, so re-pointing a removed modulator's own driver at that
+    // modulator's targets would aim a param selector that was never meant for them. Dropping is
+    // the honest outcome — the incident control edges die with the node.
     std::vector<int> preds[2], succs[2];   // [0] = audio, [1] = note
     for (const AudioGraphEdge& e : edges_) {
+        if (e.kind == EdgeKind::Control) continue;
         const int k = (e.kind == EdgeKind::Note) ? 1 : 0;
         if (e.to_id == id)   preds[k].push_back(e.from_id);
         if (e.from_id == id) succs[k].push_back(e.to_id);
@@ -124,14 +130,61 @@ void AudioGraph::remove_node_bridged(int id) {
 }
 
 bool AudioGraph::connect(int from_id, int to_id, EdgeKind kind) {
+    // A control edge needs a param selector to mean anything; this signature has nowhere to put
+    // one. Refuse rather than create an edge that can never be applied — connect_control() is the
+    // only way in.
+    if (kind == EdgeKind::Control) return false;
     if (from_id == to_id || node_index(from_id) < 0 || node_index(to_id) < 0) return false;
     for (const AudioGraphEdge& e : edges_)   // dup of the SAME kind (one pair may carry both signals)
         if (e.from_id == from_id && e.to_id == to_id && e.kind == kind) return false;
-    edges_.push_back({ from_id, to_id, kind });
+    AudioGraphEdge e;
+    e.from_id = from_id; e.to_id = to_id; e.kind = kind;
+    edges_.push_back(e);
     return true;
 }
 
+// ADR-0022: one modulator -> one param. Dedup is per (from, to, dest_param), NOT per (from, to):
+// an LFO driving both cutoff and resonance of the same filter is two legitimate edges, and the
+// per-kind rule above would have wrongly rejected the second.
+bool AudioGraph::connect_control(int from_id, int to_id, int dest_param, ControlShape shape) {
+    if (from_id == to_id || node_index(from_id) < 0 || node_index(to_id) < 0) return false;
+    if (dest_param < 0) return false;
+    for (const AudioGraphEdge& e : edges_)
+        if (e.kind == EdgeKind::Control && e.from_id == from_id && e.to_id == to_id &&
+            e.dest_param == dest_param) return false;
+    AudioGraphEdge e;
+    e.from_id = from_id; e.to_id = to_id; e.kind = EdgeKind::Control;
+    e.dest_param = dest_param; e.shape = shape;
+    edges_.push_back(e);
+    return true;
+}
+
+void AudioGraph::disconnect_control(int from_id, int to_id, int dest_param) {
+    for (size_t i = 0; i < edges_.size(); ++i)
+        if (edges_[i].kind == EdgeKind::Control && edges_[i].from_id == from_id &&
+            edges_[i].to_id == to_id && edges_[i].dest_param == dest_param) {
+            edges_.erase(edges_.begin() + i);
+            return;
+        }
+}
+
+// ADR-0022: re-shape an existing control edge (amount/curve/invert/bipolar) without rewiring. The
+// caller recompiles so the audio thread's ControlIn picks up the new shape. Returns false if no
+// such edge exists.
+bool AudioGraph::set_control_shape(int from_id, int to_id, int dest_param, ControlShape shape) {
+    for (AudioGraphEdge& e : edges_)
+        if (e.kind == EdgeKind::Control && e.from_id == from_id && e.to_id == to_id &&
+            e.dest_param == dest_param) {
+            e.shape = shape;
+            return true;
+        }
+    return false;
+}
+
 void AudioGraph::disconnect(int from_id, int to_id, EdgeKind kind) {
+    // Symmetric with connect(): (from, to) does not identify a control edge — the param does. This
+    // would erase an arbitrary one of several. Use disconnect_control().
+    if (kind == EdgeKind::Control) return;
     for (size_t i = 0; i < edges_.size(); ++i)
         if (edges_[i].from_id == from_id && edges_[i].to_id == to_id && edges_[i].kind == kind) {
             edges_.erase(edges_.begin() + i);
@@ -144,6 +197,13 @@ void AudioGraph::set_note_ports(int id, bool note_in, bool note_out) {
     if (idx < 0) return;
     nodes_[idx].note_in = note_in;
     nodes_[idx].note_out = note_out;
+}
+
+void AudioGraph::set_control_ports(int id, bool control_in, bool control_out) {
+    const int idx = node_index(id);
+    if (idx < 0) return;
+    nodes_[idx].control_in = control_in;
+    nodes_[idx].control_out = control_out;
 }
 
 void AudioGraph::set_node_processor(int id, ProcessFn fn, void* ctx) {
@@ -187,20 +247,35 @@ void AudioGraph::reset() { nodes_.clear(); edges_.clear(); output_id_ = -1; next
 // run (as isolated sources/sinks) — every node gets a step.
 bool AudioGraph::compile(CompiledAudioGraph& out) const {
     const int N = static_cast<int>(nodes_.size());
-    if (N == 0) { out.steps.clear(); out.buf_count = 0; out.output_buf = -1; return true; }
+    // An empty graph must clear EVERY count: `out` is the caller's live plan, so a stale
+    // note/control count would outlive the nodes it was sized for.
+    if (N == 0) {
+        out.steps.clear();
+        out.buf_count = 0;
+        out.output_buf = -1;
+        out.note_buf_count = 0;
+        out.control_buf_count = 0;
+        return true;
+    }
 
     std::vector<int> indeg(N, 0);
     // Predecessor buffers per node index (each predecessor's out_buf == its node index).
     std::vector<std::vector<int>> preds(N);        // AUDIO inputs (summed)
     std::vector<std::vector<int>> note_preds(N);   // NOTE inputs (merged) — ADR-0015
+    // CONTROL inputs (ADR-0022) — neither summed nor merged: each drives its own param, so the
+    // edge itself is carried through (for its selector + shaper), not just the source index.
+    std::vector<std::vector<const AudioGraphEdge*>> ctl_preds(N);
     for (const AudioGraphEdge& e : edges_) {
         const int fi = node_index(e.from_id), ti = node_index(e.to_id);
         if (fi < 0 || ti < 0) continue;
-        // BOTH kinds constrain execution order: a note effect must run before the instrument it
-        // feeds, exactly as an audio effect must run before its consumer. One DAG, one topo sort.
+        // ALL THREE kinds constrain execution order: a note effect must run before the instrument
+        // it feeds and a modulator before the param it drives, exactly as an audio effect must run
+        // before its consumer. One DAG, one topo sort.
         indeg[ti]++;
         if (e.kind == EdgeKind::Note) {
             if (static_cast<int>(note_preds[ti].size()) < kMaxNoteInputs) note_preds[ti].push_back(fi);
+        } else if (e.kind == EdgeKind::Control) {
+            if (static_cast<int>(ctl_preds[ti].size()) < kMaxControlInputs) ctl_preds[ti].push_back(&e);
         } else {
             if (static_cast<int>(preds[ti].size()) < kMaxInputs) preds[ti].push_back(fi);
         }
@@ -231,6 +306,12 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
     int nnb = 0;
     for (int i = 0; i < N; ++i) if (nodes_[i].note_out) note_buf[i] = nnb++;
 
+    // Control buffers: one per control-EMITTING node, on the same principle as the note pool —
+    // a graph with no modulator gets none, so control costs nothing until it is used (ADR-0022).
+    std::vector<int> ctl_buf(N, -1);
+    int ncb = 0;
+    for (int i = 0; i < N; ++i) if (nodes_[i].control_out) ctl_buf[i] = ncb++;
+
     out.steps.clear();
     out.steps.reserve(N);
     for (int idx : order) {
@@ -244,10 +325,21 @@ bool AudioGraph::compile(CompiledAudioGraph& out) const {
         s.n_note_in = 0;
         for (int p : note_preds[idx])                  // only a note-emitting predecessor has a buffer
             if (note_buf[p] >= 0 && s.n_note_in < kMaxNoteInputs) s.note_in_buf[s.n_note_in++] = note_buf[p];
+        s.control_out_buf = ctl_buf[idx];
+        s.n_control_in = 0;
+        for (const AudioGraphEdge* e : ctl_preds[idx]) {   // only a control-emitting predecessor has a buffer
+            const int p = node_index(e->from_id);
+            if (p < 0 || ctl_buf[p] < 0 || s.n_control_in >= kMaxControlInputs) continue;
+            ControlIn& ci = s.control_in[s.n_control_in++];
+            ci.src_buf = ctl_buf[p];
+            ci.param   = e->dest_param;
+            ci.shape   = e->shape;
+        }
         out.steps.push_back(s);
     }
     out.buf_count = N;
     out.note_buf_count = nnb;
+    out.control_buf_count = ncb;
     out.output_buf = (output_id_ >= 0) ? node_index(output_id_) : -1;
     return true;
 }

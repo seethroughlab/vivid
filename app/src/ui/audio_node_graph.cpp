@@ -5,6 +5,7 @@
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
 #include "audio/vst3_host.h"
+#include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
 #include <algorithm>
 #include <cmath>
@@ -16,7 +17,48 @@ namespace vivid::ui {
 
 namespace {
 namespace P = vivid::session;
-constexpr float kCardW = 116.f, kCardH = 76.f, kGapX = 46.f, kGapY = 18.f, kPad = 12.f;   // taller: hosts a live waveform preview
+
+// ADR-0022: the modulation state of one param, in the same normalized [0,1] space the widgets use.
+// `wired` gates the overlay; lo01..hi01 is the reachable range (control_resolve at src 0 and 1),
+// live01 is where it is right now. Computed entirely from the C API on the UI thread — the range is
+// pure math, the live value reads the modulator's published output — so it never touches the audio
+// thread.
+struct ParamMod { bool wired = false; float lo01 = 0.f, hi01 = 0.f, live01 = 0.f; };
+static ParamMod param_mod(vivid::session::Session* s, int track, int node, int param, float mn, float mx) {
+    ParamMod m;
+    if (!P::session_audio_graph_node_param_wired(s, track, node, param)) return m;
+    m.wired = true;
+    auto nrm = [&](float v) { return (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f; };
+    const float base = P::session_audio_graph_node_param_get(s, track, node, param);   // BASE
+    // Find the control edge driving this param and evaluate its reach at the endpoints. Single edge
+    // is the common case; with several, the first sets the drawn band while the live dot (resolved)
+    // still reflects all of them stacked.
+    vivid::audio::ControlShape sh; bool found = false;
+    for (int e = 0; e < P::session_track_audio_graph_edge_count(s, track) && !found; ++e) {
+        if (P::session_track_audio_graph_edge_kind(s, track, e) != 2) continue;   // 2 = control
+        if (P::session_track_audio_graph_edge_to(s, track, e) != node) continue;
+        if (P::session_track_audio_graph_edge_dest_param(s, track, e) != param) continue;
+        float amt = 1.f, cur = 0.f; int inv = 0, bip = 0;
+        P::session_track_audio_graph_edge_control_shape(s, track, e, &amt, &cur, &inv, &bip);
+        sh.amount = amt; sh.curve = cur; sh.invert = inv != 0; sh.bipolar = bip != 0;
+        found = true;
+    }
+    if (found) {
+        m.lo01 = nrm(vivid::audio::control_resolve(base, 0.f, sh, mn, mx));
+        m.hi01 = nrm(vivid::audio::control_resolve(base, 1.f, sh, mn, mx));
+    }
+    m.live01 = nrm(P::session_audio_graph_node_param_resolved(s, track, node, param));
+    return m;
+}
+
+constexpr float kCardW = 132.f, kGapX = 46.f, kGapY = 22.f, kPad = 12.f;   // wider: hosts param-name ports
+// ADR-0022: the card now exposes its params as ports down the left edge (like the visuals graph),
+// so its height is VARIABLE — a function of how many params it exposes. These are the row metrics
+// (unscaled, like the other card widgets — remove_rect etc. — which also use unscaled offsets).
+constexpr float kCardHeaderH   = 22.f;    // the title strip
+constexpr float kPortRowH  = 15.f;    // one left-edge port row (signal-in, then one per exposed param)
+constexpr float kCardPrevH = 30.f;    // the live-waveform preview well, below the port rows
+constexpr float kAddRowH   = 15.f;    // the "+ param" row on a plugin card
 constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
 constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
 constexpr float kPreviewH = 46.f;       // the compound-preview strip at the top of a tall band
@@ -167,8 +209,79 @@ Rect AudioNodeGraph::remove_rect(const AudioNodeBox& b) const {
 Rect AudioNodeGraph::out_port_rect(const AudioNodeBox& b) const {
     return { b.x + b.w - 6.f, b.y + b.h * 0.5f - 6.f, 12.f, 12.f };   // right-edge dot hit area
 }
+
+// A node has a SIGNAL input (drawn as row 0 of the left edge) iff it consumes a signal: an effect
+// or the output take audio; a note effect takes notes. Instruments, MidiIn, and modulators are
+// pure sources — no signal-in row, so their param ports start at row 0.
+static bool kind_has_sig_in(int kind) { return kind == 1 || kind == 2 || kind == 4; }
+
+// Center-y of a left-edge port row (row 0 = signal-in when present, then one row per exposed param).
+// Unscaled offsets from the card top, consistent with the other card widgets.
+static float port_row_cy(const AudioNodeBox& b, int row) {
+    return b.y + kCardHeaderH + row * kPortRowH + kPortRowH * 0.5f;
+}
+
 Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
-    return { b.x - 6.f, b.y + b.h * 0.5f - 6.f, 12.f, 12.f };         // left-edge dot hit area
+    if (!kind_has_sig_in(b.kind)) return { 0.f, 0.f, 0.f, 0.f };      // no signal input
+    return { b.x - 6.f, port_row_cy(b, 0) - 6.f, 12.f, 12.f };        // top-left row
+}
+
+// A native op exposes every param; a plugin exposes only its pinned/curated subset. The LFO
+// waveform enum (a compound-widget leader) is skipped so the port list reads cleanly.
+std::vector<int> AudioNodeGraph::exposed_params(int node_id) const {
+    std::vector<int> out;
+    if (!s_ || node_id < 0) return out;
+    if (P::session_audio_graph_node_is_plugin(s_, track_, node_id)) {
+        const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
+        for (int k = 0; k < np; ++k) {
+            const int p = P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k);
+            if (p >= 0) out.push_back(p);
+        }
+    } else {
+        const int pc = P::session_audio_graph_node_param_count(s_, track_, node_id);
+        for (int p = 0; p < pc; ++p)
+            if (P::session_audio_graph_node_param_hint(s_, track_, node_id, p) != VIVID_DISPLAY_LFO)
+                out.push_back(p);
+    }
+    return out;
+}
+
+// Card kind for a node id (small linear scan; n <= kGraphMaxNodes).
+int AudioNodeGraph::param_port_hit(const AudioNodeBox& b, float mx, float my) const {
+    const int n = static_cast<int>(exposed_params(b.node_id).size());
+    for (int slot = 0; slot < n; ++slot) {
+        const Rect r = param_port_rect(b, slot);
+        if (mx >= r.x - 3.f && mx <= r.x + r.w + 3.f && my >= r.y - 2.f && my <= r.y + r.h + 2.f) return slot;
+    }
+    return -1;
+}
+
+Rect AudioNodeGraph::param_port_rect(const AudioNodeBox& b, int slot) const {
+    const int n = static_cast<int>(exposed_params(b.node_id).size());
+    if (slot < 0 || slot >= n) return { 0.f, 0.f, 0.f, 0.f };
+    const int row = (kind_has_sig_in(b.kind) ? 1 : 0) + slot;
+    return { b.x - 5.f, port_row_cy(b, row) - 5.f, 10.f, 10.f };
+}
+
+Rect AudioNodeGraph::add_param_port_rect(const AudioNodeBox& b) const {
+    if (!s_ || !P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) return { 0.f, 0.f, 0.f, 0.f };
+    const int n = static_cast<int>(exposed_params(b.node_id).size());
+    const int row = (kind_has_sig_in(b.kind) ? 1 : 0) + n;
+    const float cy = port_row_cy(b, row);
+    return { b.x + 6.f, cy - 6.f, b.w - 12.f, 12.f };   // full-width "+ param" hit row
+}
+
+float AudioNodeGraph::card_height(int node_id) const {
+    if (!s_) return kCardHeaderH + kPortRowH + kCardPrevH;
+    int kind = 1;
+    const int n = P::session_track_audio_graph_node_count(s_, track_);
+    for (int i = 0; i < n; ++i)
+        if (P::session_track_audio_graph_node_id(s_, track_, i) == node_id) { kind = P::session_track_audio_graph_node_kind(s_, track_, i); break; }
+    const int np = static_cast<int>(exposed_params(node_id).size());
+    const bool plugin = P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
+    int rows = (kind_has_sig_in(kind) ? 1 : 0) + np;   // signal-in + one per exposed param
+    if (plugin) rows += 1;                              // the "+ param" row
+    return kCardHeaderH + std::max(1, rows) * kPortRowH + kCardPrevH + 6.f;
 }
 
 std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
@@ -202,16 +315,19 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     // and stuck — so the graph opens tidy, then every node is freely draggable and the layout persists.
     const Rect g = graph_region();
     out.reserve(n);
+    // Seed spacing uses a generous row pitch — cards are now variable-height (param ports), so the
+    // tallest a fresh column can get must not overlap the next row on first open.
+    constexpr float kSeedRowPitch = 150.f;
     for (int i = 0; i < n; ++i) {
         float wx = 0.f, wy = 0.f;
         if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
             wx = kPad + rank[i] * (kCardW + kGapX);
-            wy = kPad + slot[i] * (kCardH + kGapY);
+            wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
             P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
         }
         out.push_back({ kind[i], id[i],
                         g.x + wx * zoom_ + pan_x_, g.y + wy * zoom_ + pan_y_,
-                        kCardW * zoom_, kCardH * zoom_ });
+                        kCardW * zoom_, card_height(id[i]) * zoom_ });
     }
     return out;
 }
@@ -278,20 +394,22 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         const AudioNodeBox* a = box_of(P::session_track_audio_graph_edge_from(s_, track_, e));
         const AudioNodeBox* b = box_of(P::session_track_audio_graph_edge_to(s_, track_, e));
         if (!a || !b) continue;
-        // ADR-0015: a note wire carries a DIFFERENT signal from an audio wire, so it must not look
-        // the same. Notes are drawn in the control accent (the "this is data, not sound" color).
-        const bool note = P::session_track_audio_graph_edge_kind(s_, track_, e) == 1;
-        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, note ? sty.control : sty.audio);
+        // Each signal is a different color so a wire's meaning is legible: audio (amber), note
+        // (control gray — "data, not sound", ADR-0015), control/modulation (magenta, ADR-0022).
+        const int ek = P::session_track_audio_graph_edge_kind(s_, track_, e);
+        const float* wc = ek == 2 ? sty.mod : (ek == 1 ? sty.control : sty.audio);
+        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, wc);
     }
 
     // Cards: fill + accent + type label + kind tag (+ remove-x on effects). boxes[i] corresponds
     // to node index i, so the type name is looked up by the same index.
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
-        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn (ADR-0015)
+        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx (ADR-0015) / 5 mod (ADR-0022)
         const float* acc = b.kind == 0 ? sty.audio
                          : (b.kind == 1 ? sty.fx
-                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold));
+                         : (b.kind == 5 ? sty.mod
+                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
         // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
         // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
@@ -304,24 +422,45 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                           : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
         r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, label,
                     sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-        const char* tag = b.kind == 0 ? "instrument"
-                        : (b.kind == 1 ? "effect"
-                        : (b.kind == 3 ? "notes" : (b.kind == 4 ? "note effect" : "output")));
-        r.draw_text(b.x + 10.f, b.y + b.h - 13.f, tag, acc[0], acc[1], acc[2], 0.9f, 0.66f);
-        if (b.kind == 0) {   // source: show its key range on the card when it's a key-split (non-full)
-            int lo = 0, hi = 127;
-            if (P::session_audio_graph_node_key_range_get(s_, track_, b.node_id, &lo, &hi) && (lo > 0 || hi < 127)) {
-                char a[8], z[8], rng[20]; note_name(lo, a, sizeof a); note_name(hi, z, sizeof z);
-                std::snprintf(rng, sizeof rng, "%s-%s", a, z);
-                r.draw_text(b.x + b.w - 46.f, b.y + b.h - 13.f, rng, sty.gold[0], sty.gold[1], sty.gold[2], 0.95f, 0.66f);
-            }
-        }
+        const char* tag = b.kind == 0 ? "inst"
+                        : (b.kind == 1 ? "fx"
+                        : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
+        { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
+          r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f, 0.6f); }
         if (b.kind == 1) {   // effect: removable
             const Rect x = remove_rect(b);
             r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
         }
-        // Live output-waveform preview — the node's real audio, in a recessed panel (shared substrate).
-        const float pvx = b.x + 6.f, pvy = b.y + 23.f, pvw = b.w - 12.f, pvh = b.h - 40.f;
+
+        // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
+        // is the signal input (audio/notes) when the node takes one; then one row per exposed param.
+        const bool sigin = kind_has_sig_in(b.kind);
+        if (sigin) {
+            const float cy = port_row_cy(b, 0);
+            node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
+            r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+        }
+        const std::vector<int> exp = exposed_params(b.node_id);
+        for (int slot = 0; slot < static_cast<int>(exp.size()); ++slot) {
+            const Rect pp = param_port_rect(b, slot);
+            const float cx = pp.x + pp.w * 0.5f, cy = pp.y + pp.h * 0.5f;
+            const bool wired = P::session_audio_graph_node_param_wired(s_, track_, b.node_id, exp[slot]) != 0;
+            const float* pc = wired ? sty.mod : sty.dim;   // magenta when a control edge drives it
+            node_port(r, cx, cy, 4.f, pc[0], pc[1], pc[2]);
+            const char* pn = P::session_audio_graph_node_param_name(s_, track_, b.node_id, exp[slot]);
+            r.draw_text(cx + 9.f, cy - 5.f, fit_text(r, pn ? pn : "", b.w - 22.f, 0.62f).c_str(), pc[0], pc[1], pc[2], 1.0f, 0.62f);
+        }
+        // A plugin node: the "+ param" row opens the searchable picker to expose one more param.
+        if (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) {
+            const Rect ab = add_param_port_rect(b);
+            r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+        }
+
+        // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.
+        const int rows = std::max(1, (sigin ? 1 : 0) + static_cast<int>(exp.size())
+                                     + (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id) ? 1 : 0));
+        const float pvy = b.y + kCardHeaderH + rows * kPortRowH + 1.f;
+        const float pvx = b.x + 6.f, pvw = b.w - 12.f, pvh = (b.y + b.h) - pvy - 4.f;
         if (pvh > 6.f) {
             node_preview_panel(r, pvx, pvy, pvw, pvh);
             float scope[128];
@@ -329,9 +468,8 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
             if (ns > 1) node_waveform(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, scope, ns, acc[0], acc[1], acc[2]);
             if (node_err) node_error_note(r, pvx + 1.f, pvy + 1.f, pvw - 2.f, pvh - 2.f, "plugin unavailable — silent");
         }
-        // Wire ports: an output nub (source; not on Output) and an input nub (target; not on inst).
+        // The signal output nub (right-edge centre; absent on the Output sink).
         if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
-        if (b.kind != 0) { const Rect p = in_port_rect(b);  node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]); }
     }
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor.
@@ -383,6 +521,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                                (disp && *disp) ? disp : "", sty.audio, false);
             } else {
                 slider(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, norm, nullptr, nullptr, sty.audio, mapped, hit(row.widget_rect, cx, cy));
+                // ADR-0022: a control edge's reach + live position, over the groove.
+                if (const ParamMod pm = param_mod(s_, track_, sel_node, row.index, mn, mx); pm.wired)
+                    slider_mod_overlay(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, pm.lo01, pm.hi01, pm.live01);
             }
             // value (right-aligned) — the enum shows its label in the field, so skip it there
             if (wk != NodeWidget::Enum)
@@ -447,6 +588,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
         const std::string vtxt = fit_text(r, (disp && *disp) ? disp : vt, c.w - 2.f, 0.66f);
         knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vtxt.c_str(), sty.audio, false);
+        // ADR-0022: if a modulator drives this param, ring it with the reachable range + a live dot.
+        if (const ParamMod pm = param_mod(s_, track_, sel_node, c.index, mn, mx); pm.wired)
+            knob_mod_overlay(r, c.knob_cx, c.knob_cy, c.knob_r, pm.lo01, pm.hi01, pm.live01);
         // Ellipsize the label to the cell so long plugin param names don't collide with neighbours.
         r.draw_text(c.x + 2.f, c.y + c.h - 10.f, fit_text(r, nm ? nm : "", c.w - 4.f, 0.65f).c_str(),
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);

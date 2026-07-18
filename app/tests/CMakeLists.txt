@@ -68,6 +68,14 @@ target_sources(test_arp_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 
+vivid_add_test(test_lfo_op)         # ADR-0022 P0.5: the LFO, the first modulator (control_out, ABI v13)
+target_sources(test_lfo_op PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
+
 vivid_add_test(test_note_tools)     # M5 musical transforms (midi/note_tools.h)
 vivid_add_test(test_audio_warp)     # A0 pure audio-warp math (audio/audio_clip_shared.h)
 target_link_libraries(test_audio_warp PRIVATE nlohmann_json::nlohmann_json)

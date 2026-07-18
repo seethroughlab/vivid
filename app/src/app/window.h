@@ -21,6 +21,23 @@ namespace vivid {
 // A right-click context menu of a track's audio characteristics (the bridge).
 // src: -1 = master, >= 0 = track.
 struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };
+
+// ADR-0022: the modulation shape editor — a floating popover for one control edge (`from` -> the
+// param `param` of node `node`). Opened by clicking a wired (magenta) param port; edits the edge's
+// amount / curve / bipolar / invert, or removes it. Geometry is shared by draw + input via the
+// mod_editor_* helpers below so the hit-rects match what's drawn.
+struct ModEditor { bool open = false; float x = 0, y = 0; int node = -1; int param = -1; int from = -1; };
+namespace ui {
+constexpr float kModEdW = 184.f, kModEdRowH = 26.f, kModEdHdr = 24.f;
+inline Rect mod_editor_panel(const ModEditor& m) { return { m.x, m.y, kModEdW, kModEdHdr + 5.f * kModEdRowH + 6.f }; }
+inline Rect mod_editor_row(const ModEditor& m, int row) {   // row 0 = amount, 1 = curve, 2 = bipolar, 3 = invert, 4 = remove
+    return { m.x + 8.f, m.y + kModEdHdr + row * kModEdRowH + 3.f, kModEdW - 16.f, kModEdRowH - 6.f };
+}
+inline Rect mod_editor_widget(const ModEditor& m, int row) {   // the control column (right of the label)
+    const Rect r = mod_editor_row(m, row);
+    return { r.x + 66.f, r.y, r.w - 66.f, r.h };
+}
+}  // namespace ui
 // A right-click context menu on a visuals op node. ADR-0020: one contextual edit action per node —
 // Fork&edit a shipped (read-only) shader, Open the editable source of a user shader / cloned C++ op,
 // or Clone&edit a compiled built-in. `target` is the shader op-type to fork (ForkEdit) or the file
@@ -113,6 +130,7 @@ struct Window {
     uint64_t last_toast_id = 0;               // highest log id already turned into a toast (gate)
     CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
+    ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;
     // UI-3: the audio-graph node selected for inline param editing, by stable NODE ID (>= 0);
@@ -134,6 +152,7 @@ struct Window {
     // Dragging an audio-graph node's body to reposition it: the node id (-1 = none) + the grab
     // offset in world units (cursor-to-node-origin), so the node follows the cursor under zoom.
     int     ag_node_drag   = -1; float ag_node_dx = 0.f, ag_node_dy = 0.f;
+    int     mod_ed_drag    = -1;   // ADR-0022: the mod-editor slider being dragged (0 amount / 1 curve / -1 none)
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
     // UI-3 Stage 2 (2i): the audio-graph view transform (on top of the auto-fit). zoom 1 + pan 0 =
     // the fitted view; scroll zooms around the cursor, dragging empty space pans, double-click resets.

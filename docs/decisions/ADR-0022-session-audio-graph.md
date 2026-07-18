@@ -1,8 +1,10 @@
 # ADR-0022: The Session Audio Graph — One Rewireable DAG for the Whole Session
 
-Status: proposed
+Status: **accepted** — the ADR-0017 dependency cleared (PR #31, `14306ec2`) and implementation has
+begun. **P0 (`EdgeKind::Control` in the pure core) is landed**; P1–P4 are not started. See "As
+built" below for what the code taught us that this ADR did not know.
 
-Date: 2026-07-14
+Date: 2026-07-14 (accepted 2026-07-17)
 
 Supersedes the deferral in [ADR-0012](ADR-0012-per-track-audio-graph.md) ("a session-wide
 audio graph … Deferred: per-track graphs match the click-a-track model; cross-track routing
@@ -16,6 +18,133 @@ Decided: the per-track audio graphs become **one session-wide DAG** in a shared 
 space. A **track is defined by a Track-Out node**; the **master is a node**; **modulation is
 a first-class signal** (`EdgeKind::Control`); and **clips + generators are first-class
 nodes**. Per-track behavior is preserved as the bit-identical migration case.
+
+> ### As built — P0 (2026-07-17, `EdgeKind::Control` in the pure core)
+>
+> P0 landed as specified: a third `EdgeKind`, control ports mirroring ADR-0015's note ports, a
+> `control_out_buf` / `control_in[]` pair on `CompiledStep`, and one control buffer per emitting
+> node — `control_buf_count == 0` for any graph without a modulator, so control costs nothing
+> until used. `CompiledAudioGraph::run()` is untouched: the core resolves buffer indices and
+> nothing else. Three decisions the ADR did not anticipate, each forced by the code:
+>
+> - **`connect_control()` is a separate entry point.** `connect(from, to, kind)` has nowhere to put
+>   a param selector, and its dedup rule is `(from, to, kind)` — which would have rejected one LFO
+>   driving *two params of the same node*, the normal case. Control dedups on
+>   `(from, to, dest_param)`. `connect(..., Control)` and `disconnect(..., Control)` now refuse
+>   outright rather than create or erase an edge that `(from, to)` cannot identify.
+> - **`remove_node_bridged` DROPS control edges instead of healing them.** Bridging a removed
+>   modulator's own driver onto its targets would aim a param selector that was never meant for
+>   them — the same class of error the audio/note split already guards against.
+> - **A control edge into an upstream node is a cycle, and P0 rejects it.** Deferred/last-block
+>   modulation would need an explicit edge flag; it is a decision to take deliberately, not to
+>   fall into.
+>
+> Also fixed in passing: `compile()`'s empty-graph early return left `note_buf_count` stale from a
+> prior compile (`out` is the caller's live plan), so a count could outlive the nodes it was sized
+> for. Verified by 7 mutations of the implementation, each confirmed to fail the new tests — the
+> first pass of which caught a *vacuous* ordering assertion that passed on insertion-order luck.
+
+> ### Settled — the base/resolved param API (2026-07-17)
+>
+> Modulation makes one value into two, and every surface has to say which it means. Decided once,
+> here, because the UI, MCP, persistence, and undo all read it.
+>
+> **A param has a BASE (the user's knob) and a RESOLVED value (base + live modulation).** The base
+> is authoritative and is what a native op's `pvals` holds; the resolved value is computed per
+> block at the point of use and stored nowhere. This mirrors the visuals graph, which has had the
+> split since the mapping bridge existed (`op_param_base_at` / `op_param_value_at` /
+> `op_param_wired_at`, `ui/node_graph.h:89-93`).
+>
+> | Consumer | Reads | Why |
+> |---|---|---|
+> | UI knob handle, drag origin | **base** | must stay draggable; a handle that jitters at block rate is unusable |
+> | persist | **base** | saving resolved would bake the modulator's instantaneous phase into the document |
+> | undo's canonical projection | **base** | see the hazard below |
+> | MCP | **all three** | `base`, `value` (resolved), `wired` — the same field names the visuals dump already emits (`cli/control_handlers_introspection.cpp:229`) |
+>
+> C API: `session_audio_graph_node_param_get`/`_set` keep meaning **base** (unchanged, so persist +
+> undo + the inspector need no edit), joined by `_param_resolved` and `_param_wired`. The C spelling
+> differs from the JSON (`_resolved` vs `value`) because `_get` already means base at the C level and
+> a `_param_value` beside a `_param_get` would be a coin-flip at every call site.
+>
+> **The undo hazard, stated precisely** (it is not the one you would guess): `EditGateway` does not
+> poll — `commit_frame` early-returns unless an edit set `pending_` — so a moving value cannot mark
+> the document dirty or fire ADR-0018's autosave by itself. The real risk is *snapshot poisoning*:
+> if the accessor returned resolved, the next **unrelated** edit would capture whatever phase the
+> modulator happened to be at and undo would restore that as the user's authored value. And because
+> `audio_block_equal` compares whole `tracks` arrays, a drifting param means the `Skip` restore tier
+> never hits and every undo silently upgrades to `ParamsOnly`. Base-in-`pvals` makes all of it
+> unrepresentable.
+>
+> **Known gap — plugin nodes have no base (P2 prerequisite).** `session_audio_graph_node_param_get`
+> is three accessors in a trenchcoat (`audio/vst3_host.cpp:2883-2894`): native reads `pvals` (base),
+> while VST3 reads `controller->getParamNormalized()` and CLAP reads `clap_param_value()` — both
+> **plugin-owned current**. For a plugin there is nowhere to *get* a base from. Invisible today
+> because nothing modulates a plugin param. So P2 cannot simply push control values into
+> `IParameterChanges`: state comes from the plugin's own `getState()`, so saving mid-modulation
+> would bake the modulator's phase into the patch (and `persist_undo` strips `state` for being
+> non-deterministic, but does **not** strip `audio_graph.nodes[].params`). **P2 must build a
+> host-side base for plugin params first.** P0.5 is native-only and does not have this problem.
+>
+> **Live values reach the UI as one atomic per MODULATOR, not per modulated param.** A modulator
+> publishes its current 0..1 output; the UI applies the same `control_resolve()` the audio thread
+> uses. N atomics for N LFOs rather than N×params, and no chance of the two sides drifting because
+> it is the same pure function. The modulation *range* arc needs no atomic at all — it is
+> `control_resolve` evaluated at src=0 and src=1, pure UI-thread math.
+>
+> **The bridge clobbers the base today — noted, deliberately NOT fixed here.**
+> `apply_audio_param_mappings` (`app/frame.cpp:155-181`) drives a mapped audio param by calling
+> `param_set` every frame — which writes `pvals`. Map a visual source to an audio param and your
+> knob is destroyed while mapped, with nothing to restore on disconnect: precisely the design this
+> ADR rejects, shipping today on the bridge path. The clean fix keeps the bridge's value math
+> byte-identical (`Mapping` is deliberately ABSOLUTE — `out_lo`/`out_hi` — which is right for the
+> bridge) and changes only the *delivery*: an override rather than a write to the base. But the
+> override path built here is audio-thread / per-block, fed by control edges; the bridge is
+> UI-thread / frame-rate. Making the bridge deliver an override means extending the override
+> mechanism to a UI-thread source — a coherent piece of its own, **deferred** so it isn't
+> half-done. (An earlier draft of this note claimed the fix shipped in P0.5; it did not.)
+
+> ### As built — P0.5 (2026-07-17): in-track modulation, end to end + visible
+>
+> An **inserted phase**, not in the original plan. P0 shipped a control core nothing used, and P1
+> (the risky executor rewrite) delivers nothing visible — so before P1, make `EdgeKind::Control`
+> *do* something in today's per-track graph. The result: an `LFO → filter.cutoff` is audible, the
+> modulation is drawn on the knob, and the whole thing is drivable from MCP and reversible. This
+> de-risks the entire control model against real DSP before P1 touches the RT structure.
+>
+> - **The control model resolves live** (`control_resolve()` in `audio/audio_graph.h`):
+>   `value = clamp(base + shaped(src)·amount·(hi−lo), lo, hi)`, base read live from `pvals` and
+>   never written on the audio thread. Applied at the existing param-copy in `audio_op_process`.
+>   This is vivid-classic's *semantics* (`base ± amount`) without its *mechanism* — classic baked
+>   the base into a compile-time remap, the sole reason its `ModulationLoweringRecord` existed;
+>   keeping base a live value makes guardrail 3 structural, not a discipline.
+> - **ABI v13** appends `control_out` to `VividAudioContext` (additive, floor stays 11). The **LFO**
+>   is the first modulator — a `GNKind::NativeMod` source that emits control, marked with the same
+>   escape hatch note effects use so the instrument picker doesn't offer it. Native only; **VST3/
+>   CLAP control-apply is P2** and needs the host-side plugin base named above.
+> - **The audio graph now looks and works like the visuals graph:** each node exposes its params as
+>   **ports down the left edge** (native = all, plugin = the pinned/curated subset via the existing
+>   searchable picker). Dragging a modulator's output onto a param port creates the control edge —
+>   the drag-to-a-param gesture; a **magenta arc + live dot** on the knob show the reachable range
+>   and the live value; a **shape editor** popover (amount/curve/bipolar/invert/remove) tunes an
+>   existing edge. All undoable; `set_control_shape` also exposed over MCP.
+> - **Two pre-existing bugs fixed on the way**, both reaching beyond this feature: the audio-graph
+>   INPUT handlers built their hit-test graph without the view transform (so clicks missed once the
+>   canvas was panned), and `EditGateway::note_edit` dropped a lone structural mouse-gesture edit
+>   from undo (`force_close_group` only flushed prior dirt) — every drag-connect (the existing
+>   audio-wire connect included) was silently non-undoable.
+> - **Reload path — investigated, found stable (an earlier "SIGSEGV" was a misdiagnosis).** During
+>   P0.5 a heavy-plugin session reload appeared to crash; a follow-up investigation could **not**
+>   reproduce it in 60+ heavy teardown/reload cycles (Pigments + Atoms + Serum2, transport playing,
+>   incl. `new_session` full teardown), there is **no crash report and no crash signature in any
+>   log**, and the reload path is well-guarded (retire-not-free, null-checked derefs, an RT
+>   bail-to-silence net). The apparent crash was the backgrounded-app symptom — the control server
+>   only drains MCP from the foreground run loop, so a reload driven while the window is not
+>   frontmost returns `http 000` (alive but unresponsive), which read as "dead." **Reload is not a
+>   demonstrated P1 blocker.** (A real, separate finding along the way: the undo/dirty *projection*
+>   was calling plugin `getState()` only to strip the result — a needless `getState`‖`process`
+>   contention on the hot edit path; fixed independently, framed as a perf/correctness win, not a
+>   crash fix.)
 
 ## Context
 
@@ -32,11 +161,16 @@ and three capabilities the product wants have no home in the per-track model —
 - **A real master / buses / sends / sidechain.** "Track out → master" is a hardcoded
   `master += gain * trackL/R` in the audio callback (`app/src/audio/vst3_host.cpp`
   ~2008–2015). Each track has exactly one `Output` node whose buffer is copied to L/R.
-  There is no master node, no bus, no send anywhere in the model.
+  There is no master node, no bus, no send anywhere in the model. **Note for P1:** that mix
+  loop and the per-track meter / 3-band / transient publish are *the same loop*
+  (`vst3_host.cpp:2008-2030`), so making master a node has to relocate the analysis too — it
+  is not a lift of the mix alone.
 - **Clips and generators as peers.** Clips are positional `Track::clips[scene]` with no
   identity (one MIDI clip per scene; the grid is a derived immediate-mode view); an
   algorithmic generator (Arp, a `GNKind::NativeNoteFx`) can't sit beside a clip as a
-  note-source.
+  note-source. **Note for P3:** `ClipScheduler` is **one per `Track`** (`vst3_host.cpp:129`),
+  re-pointed on scene switch via `t.sched.reset(&t.clips[q])` (`:1970`) — "each clip node owns
+  its own `ClipScheduler`" is a structural change, not a relocation.
 
 The engine is ready for the lift: ADR-0012's compile→execute plan, ADR-0015's typed edges,
 the generation-counter edit-mirror, preallocated pools, and now the undo `EditGateway` as a
@@ -93,21 +227,25 @@ share.
    the `EditGateway` before publish** so one bad edit can't silence the whole session. The
    ADR-0015 note fallback is **re-scoped** to each Track-Out's note stream — a bare source
    resolves to the stream of the track-out it transitively feeds, so single-owner nodes
-   stay bit-identical and there is no per-track broadcast. `docs/thread-safety.md` is
+   stay bit-identical and there is no per-track broadcast. `app/docs/thread-safety.md` is
    updated for the pointer-swap contract.
 
 6. **Phased and parity-gated** (per ADR-0005). The undo/redo branch has merged (PR #31), so each phase
    simply routes every topology edit through the now-shipped `EditGateway`:
-   - **P0 — `EdgeKind::Control` in the pure core** (de-risk first; no host wiring).
+   - **P0 — `EdgeKind::Control` in the pure core** (de-risk first; no host wiring). ✅ **landed
+     2026-07-17** — see "As built" above.
+   - **P0.5 — in-track modulation, end to end + visible** (inserted; not in the original plan).
+     ✅ **landed 2026-07-17** — host-side control apply (native), ABI v13 + the LFO, params-as-ports
+     UI, knob arc/dot, the shape editor; MCP + persist + undo. See "As built — P0.5" above.
    - **P1 — Unify structure + executor + pool + master node**, topology still per-track
      islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
-     ADR-0012; updates `docs/thread-safety.md`.)
+     ADR-0012; updates `app/docs/thread-safety.md`.)
    - **P2 — Re-scope note routing + enable cross-track Audio/Control edges**; begin
      serializing Control edges (note-default migration rule).
    - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
      compatible load by synthesizing clip nodes from old `clips[scene]` arrays.
    - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel
-     `session_graph_*` shim, migrating MCP + persistence + the 74↔74 parity guard last.
+     `session_graph_*` shim, migrating MCP + persistence + the 96↔96 parity guard last.
 
 ## Consequences
 

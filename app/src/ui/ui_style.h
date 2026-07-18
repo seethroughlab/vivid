@@ -34,6 +34,7 @@ struct Style {
     float fx[3]      = { 0.60f, 0.45f, 0.85f };      // violet (effects)
     float control[3] = { 0.55f, 0.60f, 0.66f };      // gray   (control)
     float teal[3]    = { 0.31f, 0.80f, 0.75f };      // bridge (data sources)
+    float mod[3]     = { 0.90f, 0.42f, 0.85f };      // magenta (ADR-0022 modulation: control edge arc + live dot)
     float sel[3]     = { 0.353f, 0.549f, 0.851f };   // selection / focus frame (#5A8CD9, classic blue)
     float gold[3]    = { 0.95f, 0.78f, 0.30f };      // queued / warn
     float green[3]   = { 0.30f, 0.80f, 0.50f };      // meter / level
@@ -393,6 +394,42 @@ inline void slider(Renderer2D& r, float x, float y, float w, float h, float v01,
         const float tw = r.text_width(valtext, s.fs_label);
         r.draw_text(x + w - tw, y, valtext, s.text[0], s.text[1], s.text[2], 1.0f, s.fs_label);
     }
+}
+
+// ADR-0022: the modulation overlay for a knob — the thing vivid-classic promised and never drew.
+// The handle stays at the BASE (drawn by knob() above); this adds, just outside the knob's ring, a
+// magenta ARC spanning where the modulation can push the value ([lo01, hi01] in the same normalized
+// space as v01), and a bright DOT at where it IS right now (live01). So the user sees the knob they
+// set, the range it can travel, and its live position — all at once. No-op when the param is not
+// modulated (the caller gates on `wired`).
+inline void knob_mod_overlay(Renderer2D& r, float cx, float cy, float rad,
+                             float lo01, float hi01, float live01) {
+    const Style& s = style();
+    const float a0 = 2.3562f, sweep = 4.7124f;    // MUST match knob(): 135deg start, 270deg sweep
+    auto clamp01 = [](float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); };
+    lo01 = clamp01(lo01); hi01 = clamp01(hi01); live01 = clamp01(live01);
+    if (hi01 < lo01) std::swap(lo01, hi01);
+    const float rr = rad + 3.5f;                   // sit just outside the value arc
+    if (hi01 - lo01 > 0.002f)                      // the reachable range, dim magenta
+        r.draw_arc(cx, cy, rr, a0 + sweep * lo01, a0 + sweep * hi01, 2.2f, 0, s.mod[0], s.mod[1], s.mod[2], 0.55f);
+    const float la = a0 + sweep * live01;          // the live value, a bright dot on that ring
+    r.draw_circle(cx + std::cos(la) * rr, cy + std::sin(la) * rr, 2.6f, 0, s.mod[0], s.mod[1], s.mod[2], 1.0f);
+}
+
+// ADR-0022: the modulation overlay for a horizontal slider — the arc's linear twin. A magenta band
+// over the groove marks the reachable range; a bright notch marks the live value. Geometry mirrors
+// slider() exactly so the band lines up with the fill.
+inline void slider_mod_overlay(Renderer2D& r, float x, float y, float w, float h,
+                               float lo01, float hi01, float live01) {
+    const Style& s = style();
+    auto clamp01 = [](float v) { return v < 0.f ? 0.f : (v > 1.f ? 1.f : v); };
+    lo01 = clamp01(lo01); hi01 = clamp01(hi01); live01 = clamp01(live01);
+    if (hi01 < lo01) std::swap(lo01, hi01);
+    const float th = 6.f, ty = y + h - 9.f;        // MUST match slider()
+    const float my = ty - 3.f;                     // a thin band just above the groove
+    if (hi01 - lo01 > 0.002f)
+        r.draw_rect(x + (w) * lo01, my, (w) * (hi01 - lo01), 2.5f, s.mod[0], s.mod[1], s.mod[2], 0.55f);
+    r.draw_rect(x + w * live01 - 1.f, my - 1.f, 2.f, 4.5f, s.mod[0], s.mod[1], s.mod[2], 1.0f);   // live notch
 }
 
 // A toggle switch: a hard rectangular track + a sliding square knob; on = accent, off = recess,

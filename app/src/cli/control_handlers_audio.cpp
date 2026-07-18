@@ -489,6 +489,50 @@ void register_audio_handlers(Handlers& handlers_) {
         if (nid < 0) return err(code::kBadArg, "could not add note op '" + op + "'");
         json r = ok(); r["node"] = nid; return r;
     };
+    // A native MODULATOR (ADR-0022), e.g. "LFO": no audio, emits a 0..1 control signal. Wire its
+    // output to a param with audio_graph_connect_control.
+    handlers_["audio_graph_add_mod_op"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const std::string op = b.value("op", std::string());
+        const int nid = P::session_audio_graph_add_mod_op(c.session, track, op.c_str());
+        if (nid < 0) return err(code::kBadArg, "could not add modulator '" + op + "' (unknown op or not a modulator)");
+        json r = ok(); r["node"] = nid; return r;
+    };
+    // Wire a modulator -> one param of a node (ADR-0022). amount is a fraction of the param's
+    // declared range; bipolar straddles the base (an LFO for pitch/pan), unipolar runs up from it.
+    handlers_["audio_graph_connect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_audio_graph_connect_control(c.session, track, from, to, param, amount, curve, invert, bipolar))
+            return err(code::kBadArg, "control edge rejected (duplicate param, self-loop, unknown node, or would create a cycle)");
+        return ok();
+    };
+    handlers_["audio_graph_disconnect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_audio_graph_disconnect_control(c.session, track, from, to, param);
+        return ok();
+    };
+    // Re-shape an existing modulation edge (ADR-0022) without rewiring.
+    handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_audio_graph_set_control_shape(c.session, track, from, to, param, amount, curve, invert, bipolar))
+            return err(code::kNotFound, "no control edge for that (from, to, param)");
+        return ok();
+    };
     // The track's note stream as a NODE (ADR-0015). Wire its note edge into an instrument.
     handlers_["audio_graph_add_midi_in"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -548,7 +592,7 @@ void register_audio_handlers(Handlers& handlers_) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0);
         json e; if (!need_track(c.session, track, e)) return e;
-        static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect" };   // 3,4 = ADR-0015
+        static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect", "modulator" };   // 3,4 ADR-0015; 5 ADR-0022
         json r = ok();
         r["graph_ok"]   = P::session_track_audio_graph_ok(c.session, track) != 0;
         r["output_id"]  = P::session_track_audio_graph_output_id(c.session, track);
@@ -559,7 +603,7 @@ void register_audio_handlers(Handlers& handlers_) {
             int nin = 0, nout = 0;   // ADR-0015: does it take / emit notes?
             P::session_track_audio_graph_node_note_ports(c.session, track, i, &nin, &nout);
             json jn = { {"id",   nid},
-                        {"kind", (k >= 0 && k < 5) ? kKind[k] : "unknown"},
+                        {"kind", (k >= 0 && k < 6) ? kKind[k] : "unknown"},
                         {"note_in", nin != 0}, {"note_out", nout != 0},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
             if (k == 0) {   // source node: report its key range (a key-split shows disjoint ranges)
@@ -568,17 +612,38 @@ void register_audio_handlers(Handlers& handlers_) {
                     jn["key_lo"] = lo; jn["key_hi"] = hi;
                 }
             }
+            // ADR-0022: each param as base / value (resolved) / wired — the same shape the visuals
+            // introspection dump uses. `value` == `base` unless a control edge drives the param.
+            json params = json::array();
+            for (int p = 0; p < P::session_audio_graph_node_param_count(c.session, track, nid); ++p) {
+                const bool wired = P::session_audio_graph_node_param_wired(c.session, track, nid, p) != 0;
+                json jp = { {"name",  P::session_audio_graph_node_param_name(c.session, track, nid, p)},
+                            {"base",  P::session_audio_graph_node_param_get(c.session, track, nid, p)},
+                            {"value", P::session_audio_graph_node_param_resolved(c.session, track, nid, p)},
+                            {"wired", wired} };
+                params.push_back(jp);
+            }
+            if (!params.empty()) jn["params"] = params;
             nodes.push_back(jn);
         }
         r["nodes"] = nodes;
         json edges = json::array();
-        for (int i = 0; i < P::session_track_audio_graph_edge_count(c.session, track); ++i)
-            edges.push_back({ {"from", P::session_track_audio_graph_edge_from(c.session, track, i)},
-                              {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)},
-                              // Which SIGNAL the wire carries. Without this an agent can't tell a
-                              // note edge from an audio one, and the two mean very different things.
-                              {"kind", P::session_track_audio_graph_edge_kind(c.session, track, i) == 1
-                                           ? "note" : "audio"} });
+        for (int i = 0; i < P::session_track_audio_graph_edge_count(c.session, track); ++i) {
+            const int ek = P::session_track_audio_graph_edge_kind(c.session, track, i);
+            // Which SIGNAL the wire carries. Without this an agent can't tell a note edge from an
+            // audio one from a control one, and the three mean very different things.
+            json je = { {"from", P::session_track_audio_graph_edge_from(c.session, track, i)},
+                        {"to",   P::session_track_audio_graph_edge_to(c.session, track, i)},
+                        {"kind", ek == 2 ? "control" : (ek == 1 ? "note" : "audio")} };
+            if (ek == 2) {   // ADR-0022: a control edge carries its target param + shaper
+                je["param"] = P::session_track_audio_graph_edge_dest_param(c.session, track, i);
+                float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
+                P::session_track_audio_graph_edge_control_shape(c.session, track, i, &amount, &curve, &invert, &bipolar);
+                je["amount"] = amount; je["curve"] = curve;
+                je["invert"] = invert != 0; je["bipolar"] = bipolar != 0;
+            }
+            edges.push_back(je);
+        }
         r["edges"] = edges;
         return r;
     };

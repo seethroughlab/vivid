@@ -1,4 +1,6 @@
 #pragma once
+#include "signal_shape.h"   // vivid::shape_curve — shared with the audio-graph control model
+
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -40,11 +42,9 @@ struct Mapping {
 };
 
 // Gamma shaping: curve 0 = linear; >0 eases in (exp up to 4); <0 eases out.
-inline float mapping_shape(float s, float curve) {
-    if (curve == 0.0f) return s;
-    const float e = curve > 0.0f ? (1.0f + curve * 3.0f) : 1.0f / (1.0f - curve * 3.0f);
-    return std::pow(s < 0.0f ? 0.0f : s, e);
-}
+// The math moved to signal_shape.h when the audio-graph control model needed the same shaper
+// (ADR-0022); this name is the bridge's spelling of it.
+inline float mapping_shape(float s, float curve) { return shape_curve(s, curve); }
 
 // Central registry: holds the mappings + the current value of every source.
 // One mapping per destination (matches the old one-wire-per-port behaviour).

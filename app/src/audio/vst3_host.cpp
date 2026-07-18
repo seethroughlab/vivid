@@ -86,7 +86,7 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
 // the old invisible per-track broadcast.
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx };
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -213,11 +213,22 @@ struct Track {
     std::vector<std::vector<vivid::session::NoteEvent>> npool;
     std::vector<vivid::session::NoteEvent> nmerge;   // scratch: >1 note edge into one node (reserved)
     std::vector<float>               gpool;            // node-buffer pool
+    // ADR-0022: the CONTROL pool — one buffer per possible control-emitting node, indexed by the
+    // node's control_out_buf. A modulator writes its 0..1 signal here; a downstream node's
+    // control_in[k].src_buf selects which to read. Reserved to the worst case (reserve_track_graph),
+    // so the audio thread only writes within capacity — and empty of meaning for any graph with no
+    // control edges (control_buf_count == 0).
+    std::vector<float>               cpool;            // kGraphMaxNodes * kGraphMaxBlock (one row per node)
     // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
     // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
     // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
     std::vector<float>               node_scope;       // kGraphMaxNodes * kScopeN
     std::vector<uint32_t>            node_scope_head;  // kGraphMaxNodes write positions
+    // ADR-0022: each modulator node's latest 0..1 output, published for the UI (indexed by node
+    // index == out_buf). The UI applies the SAME control_resolve() the audio thread uses, so the
+    // live dot on a modulated knob never drifts from what you hear. Display-only, single float —
+    // a torn read is a harmless one-frame blip, exactly like node_scope.
+    std::unique_ptr<std::atomic<float>[]> ctl_pub;     // kGraphMaxNodes
     bool                             gok = false, gok_edit = false;
     std::mutex                       gmtx;
     std::atomic<uint64_t>            ggen{0};
@@ -384,6 +395,12 @@ static void reserve_track_graph(Track* t) {
     t->npool.resize(kGraphMaxNodes);
     for (auto& nb : t->npool) nb.reserve(kGraphMaxNotes);
     t->nmerge.reserve(kGraphMaxNotes);
+    // ADR-0022: the control pool — one 0..1 signal buffer per possible control-emitting node
+    // (a modulator writes a block's worth; the host samples index 0 today). Same worst-case
+    // preallocation as the pools above; the audio thread only writes within capacity.
+    t->cpool.assign(static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock, 0.f);
+    t->ctl_pub.reset(new std::atomic<float>[kGraphMaxNodes]);
+    for (int i = 0; i < kGraphMaxNodes; ++i) t->ctl_pub[i].store(0.f, std::memory_order_relaxed);
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -590,7 +607,48 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         float* oL = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
         float* oR = oL + stride;
         const GNodeBind& nb = t.gbinds[s.out_buf];
+
+        // ADR-0022: resolve this block's control inputs into param OVERRIDES before the node runs.
+        // The modulator upstream already wrote its 0..1 signal into cpool (topo order guarantees
+        // it), so we read it, combine with the LIVE BASE (audio_op_param_get reads pvals, never
+        // written on this thread), and hand the op the effective value — leaving the base intact.
+        // Block-rate: we sample cpool[row][0]. Native only in P0.5; VST3/CLAP land in P2 (they have
+        // no host-side base to modulate around — see ADR-0022). Empty for any unmodulated node.
+        vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
+        uint32_t novr = 0;
+        if (s.n_control_in > 0 && nb.op) {
+            for (int k = 0; k < s.n_control_in; ++k) {
+                const vivid::audio::ControlIn& ci = s.control_in[k];
+                if (ci.src_buf < 0 || ci.param < 0) continue;
+                const float src = t.cpool[static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0
+                const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
+                const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
+                // Two modulators on one param STACK: the second resolves around the first's result,
+                // not the raw base — so each adds its own swing rather than the last one winning.
+                int slot = -1;
+                for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
+                const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
+                const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
+                if (slot >= 0) ovr[slot].value = v;
+                else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
+            }
+        }
+
         if (s.n_in == 0) {   // source node
+            // ADR-0022: a MODULATOR (LFO/envelope). No sound; it writes its 0..1 signal into its
+            // cpool row for the control edges downstream to read. A source, so it lands here.
+            if (nb.kind == GNKind::NativeMod && nb.op) {
+                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+                float* cout = nullptr;
+                if (s.control_out_buf >= 0 && static_cast<size_t>(s.control_out_buf) < t.cpool.size() / kGraphMaxBlock)
+                    cout = &t.cpool[static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                        nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
+                // Publish this block's output for the UI's live dot (node index == out_buf).
+                if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
+                    t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
+                continue;
+            }
             const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
             // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
             // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
@@ -622,11 +680,12 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                     outn->resize(kGraphMaxNotes);   // within reserved capacity: no allocation
                     vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
                                             nsrc.data(), static_cast<uint32_t>(nsrc.size()),
-                                            outn->data(), kGraphMaxNotes, &produced);
+                                            outn->data(), kGraphMaxNotes, &produced, ovr, novr);
                     outn->resize(produced);
                 } else {
                     vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()));
+                                            nsrc.data(), static_cast<uint32_t>(nsrc.size()),
+                                            nullptr, 0, nullptr, ovr, novr);
                 }
                 continue;
             }
@@ -636,7 +695,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
                     filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
                     nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
                 }
-                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc);
+                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc,
+                                        nullptr, 0, nullptr, ovr, novr);
             }
             else if (nb.kind == GNKind::Vst3Inst && nb.handle) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
@@ -685,7 +745,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
         std::memcpy(oR, iR, frames * sizeof(float));
         if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
-            vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0);
+            vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
+                                    nullptr, 0, nullptr, ovr, novr);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
         else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
@@ -2351,6 +2412,12 @@ int session_available_note_op_count(Session* s) {
 const char* session_available_note_op_name(Session* s, int idx) {
     return (s && s->op_reg) ? vivid::audio_note_op_name(*s->op_reg, idx) : "";
 }
+int session_available_mod_op_count(Session* s) {   // ADR-0022: native modulators (LFO / envelope)
+    return (s && s->op_reg) ? vivid::audio_mod_op_count(*s->op_reg) : 0;
+}
+const char* session_available_mod_op_name(Session* s, int idx) {
+    return (s && s->op_reg) ? vivid::audio_mod_op_name(*s->op_reg, idx) : "";
+}
 
 int session_available_audio_op_count(Session* s, int want_source) {
     return (s && s->op_reg) ? vivid::audio_op_registry_count(*s->op_reg, want_source != 0) : 0;
@@ -2409,6 +2476,7 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::Output:     return 2;
         case GNKind::MidiIn:       return 3;   // ADR-0015: the track's note stream as a node
         case GNKind::NativeNoteFx: return 4;   // ADR-0015: a note effect (Arp) — notes in, notes out
+        case GNKind::NativeMod:    return 5;   // ADR-0022: a modulator (LFO) — no audio, emits control
     }
     return -1;
 }
@@ -2482,13 +2550,17 @@ int session_track_audio_graph_edge_count(Session* s, int t) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     return static_cast<int>(tr->agraph.edges().size());
 }
-// ADR-0015: what signal an edge carries — 0 = audio, 1 = note.
+// ADR-0015/0022: what signal an edge carries — 0 = audio, 1 = note, 2 = control.
 int session_track_audio_graph_edge_kind(Session* s, int t, int e) {
     Track* tr = graph_track(s, t); if (!tr) return 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     const auto& es = tr->agraph.edges();
     if (e < 0 || e >= static_cast<int>(es.size())) return 0;
-    return es[static_cast<size_t>(e)].kind == vivid::audio::EdgeKind::Note ? 1 : 0;
+    switch (es[static_cast<size_t>(e)].kind) {
+        case vivid::audio::EdgeKind::Note:    return 1;
+        case vivid::audio::EdgeKind::Control: return 2;
+        default:                              return 0;
+    }
 }
 
 int session_track_audio_graph_edge_from(Session* s, int t, int e) {
@@ -2504,6 +2576,33 @@ int session_track_audio_graph_edge_to(Session* s, int t, int e) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     const auto& es = tr->agraph.edges();
     return (e >= 0 && e < static_cast<int>(es.size())) ? es[e].to_id : -1;
+}
+// ADR-0022: a control edge's target param, or -1 (not a control edge / bad index). The UI needs it
+// to draw the modulation arc on the right knob; MCP reports it so a control edge round-trips.
+int session_track_audio_graph_edge_dest_param(Session* s, int t, int e) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& es = tr->agraph.edges();
+    if (e < 0 || e >= static_cast<int>(es.size()) || es[e].kind != vivid::audio::EdgeKind::Control) return -1;
+    return es[e].dest_param;
+}
+// A control edge's shaper (amount/curve/invert/bipolar) — the UI evaluates control_resolve() at
+// src=0 and src=1 with these to draw the arc's extent. Returns 1 on a real control edge, else 0
+// (outputs left untouched). Any of the out-pointers may be null.
+int session_track_audio_graph_edge_control_shape(Session* s, int t, int e, float* amount, float* curve,
+                                                 int* invert, int* bipolar) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& es = tr->agraph.edges();
+    if (e < 0 || e >= static_cast<int>(es.size()) || es[e].kind != vivid::audio::EdgeKind::Control) return 0;
+    const vivid::audio::ControlShape& sh = es[e].shape;
+    if (amount)  *amount  = sh.amount;
+    if (curve)   *curve   = sh.curve;
+    if (invert)  *invert  = sh.invert ? 1 : 0;
+    if (bipolar) *bipolar = sh.bipolar ? 1 : 0;
+    return 1;
 }
 
 // AG-1 step 2 — authoritative topology edits (UI thread). Each flips the track to
@@ -2810,6 +2909,69 @@ int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
     return nid;
 }
 
+// ADR-0022: add a MODULATOR (LFO / envelope) as a node. Like a note effect it makes no sound and
+// gets no audio wiring; it emits a 0..1 control signal that a CONTROL edge carries to a param.
+// Returns the new node id, or -1 (unknown op / not a modulator / cap / no track).
+int session_audio_graph_add_mod_op(Session* s, int t, const char* op_type) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !s->op_reg) return -1;
+    if (!op_type || !vivid::audio_op_is_mod_op(op_type)) return -1;   // only a registered modulator
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
+    if (!op) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) { vivid::audio_op_destroy(op); return -1; }
+    { std::lock_guard<std::mutex> olk(tr->op_fx_mtx); tr->op_effects_edit.push_back(op); }   // ownership
+    tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+    const int nid = tr->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, op_type);
+    tr->agraph.set_control_ports(nid, /*control_in*/false, /*control_out*/true);   // emits control
+    GNodeBind nb;
+    nb.kind = GNKind::NativeMod;
+    nb.op = op;
+    tr->agnodes.push_back(nb);
+    tr->agraph.clear_positions();
+    tr->graph_authoritative = true;
+    republish_track_graph(tr);
+    return nid;
+}
+
+// ADR-0022: wire a modulator's control output to ONE param of `to_id`, shaped by amount/curve/
+// invert/bipolar (see ControlShape). Returns 1 / 0 (dup of that exact param / self-loop / bad id /
+// cycle). The dest param is addressed the same way the param accessors are: by param index.
+int session_audio_graph_connect_control(Session* s, int t, int from_id, int to_id, int dest_param,
+                                        float amount, float curve, int invert, int bipolar) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::audio::ControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert != 0; sh.bipolar = bipolar != 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (!tr->agraph.connect_control(from_id, to_id, dest_param, sh)) return 0;
+    if (!republish_track_graph(tr)) { tr->agraph.disconnect_control(from_id, to_id, dest_param); return 0; }  // cycle: revert
+    tr->agraph.clear_positions();   // a modulator adds an upstream column: re-seed the layout
+    tr->graph_authoritative = true;
+    return 1;
+}
+int session_audio_graph_disconnect_control(Session* s, int t, int from_id, int to_id, int dest_param) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.disconnect_control(from_id, to_id, dest_param);
+    republish_track_graph(tr);
+    return 1;
+}
+// ADR-0022: re-shape an existing control edge (amount/curve/invert/bipolar) without rewiring.
+// Recompiles so the audio thread picks up the new shape. 1 on success, 0 if no such edge.
+int session_audio_graph_set_control_shape(Session* s, int t, int from_id, int to_id, int dest_param,
+                                          float amount, float curve, int invert, int bipolar) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::audio::ControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert != 0; sh.bipolar = bipolar != 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (!tr->agraph.set_control_shape(from_id, to_id, dest_param, sh)) return 0;
+    republish_track_graph(tr);
+    return 1;
+}
+
 // ADR-0015: add the track's note stream AS A NODE — clips + live MIDI + typing + MCP + preview.
 // It emits notes on a note edge; wire it to an instrument (or to a note effect) to route them.
 // Returns the new node id, or -1.
@@ -2889,9 +3051,10 @@ int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_hint(op, p);
     return 0;   // VST3 params → DEFAULT (a knob)
 }
-float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
-    Track* tr = graph_track(s, t); if (!tr) return 0.f;
-    std::lock_guard<std::mutex> lk(tr->gmtx);
+// Base/min/max WITHOUT taking gmtx — for callers already holding it (the resolved accessor below).
+// Base for a native op is its `pvals` (never written by the audio thread); for a plugin it is the
+// plugin's own current value (there is no host-side base for plugins yet — ADR-0022, a P2 gap).
+static float graph_param_base_nolock(Track* tr, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_get(op, p);
     if (Vst3Handle* h = graph_node_handle(tr, node_id))
         return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
@@ -2901,21 +3064,61 @@ float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) 
                    ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
     return 0.f;
 }
-float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
-    Track* tr = graph_track(s, t); if (!tr) return 0.f;
-    std::lock_guard<std::mutex> lk(tr->gmtx);
+static float graph_param_min_nolock(Track* tr, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_min(op, p);
     if (ClapHandle* c = graph_node_clap(tr, node_id))
         return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].min) : 0.f;
     return 0.f;   // VST3 params are normalized
 }
-float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
-    Track* tr = graph_track(s, t); if (!tr) return 1.f;
-    std::lock_guard<std::mutex> lk(tr->gmtx);
+static float graph_param_max_nolock(Track* tr, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_max(op, p);
     if (ClapHandle* c = graph_node_clap(tr, node_id))
         return (p >= 0 && p < static_cast<int>(c->params.size())) ? static_cast<float>(c->params[p].max) : 1.f;
     return 1.f;
+}
+
+float session_audio_graph_node_param_get(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return graph_param_base_nolock(tr, node_id, p);   // the BASE (ADR-0022): the user's value
+}
+float session_audio_graph_node_param_min(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return graph_param_min_nolock(tr, node_id, p);
+}
+float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 1.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return graph_param_max_nolock(tr, node_id, p);
+}
+
+// ADR-0022: the RESOLVED value — base + every control edge driving this param, right now. The UI
+// draws the live dot with this; MCP reports it as "value". It runs the same control_resolve() the
+// audio thread runs, reading each modulator's published output (ctl_pub), so the dot cannot drift
+// from what you hear. For an unmodulated param it is exactly the base.
+float session_audio_graph_node_param_resolved(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0.f;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    float v = graph_param_base_nolock(tr, node_id, p);
+    const float lo = graph_param_min_nolock(tr, node_id, p);
+    const float hi = graph_param_max_nolock(tr, node_id, p);
+    for (const vivid::audio::AudioGraphEdge& e : tr->agraph.edges()) {
+        if (e.kind != vivid::audio::EdgeKind::Control || e.to_id != node_id || e.dest_param != p) continue;
+        const int mi = tr->agraph.node_index(e.from_id);   // modulator node index == ctl_pub index
+        if (mi < 0 || mi >= kGraphMaxNodes) continue;
+        const float src = tr->ctl_pub[mi].load(std::memory_order_relaxed);
+        v = vivid::audio::control_resolve(v, src, e.shape, lo, hi);   // stacks, like the audio thread
+    }
+    return v;
+}
+// 1 if any control edge drives this param (the UI's "modulated" affordance — the teal ring).
+int session_audio_graph_node_param_wired(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    for (const vivid::audio::AudioGraphEdge& e : tr->agraph.edges())
+        if (e.kind == vivid::audio::EdgeKind::Control && e.to_id == node_id && e.dest_param == p) return 1;
+    return 0;
 }
 void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
     Track* tr = graph_track(s, t); if (!tr) return;
@@ -3116,6 +3319,17 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
         tr->agnodes.push_back(nbm);
         return nid_mi;
     }
+    if (kind == 5) {   // ADR-0022: a native MODULATOR (LFO) — no audio, emits control
+        vivid::AudioOp* mop = vivid::audio_op_create(*s->op_reg, op_type);
+        if (!mop) return -1;
+        { std::lock_guard<std::mutex> olk(tr->op_fx_mtx); tr->op_effects_edit.push_back(mop); }
+        tr->op_fx_gen.fetch_add(1, std::memory_order_release);
+        const int nid_md = tr->agraph.add_node(true, false, nullptr, nullptr, op_type ? op_type : "mod");
+        tr->agraph.set_control_ports(nid_md, false, true);
+        GNodeBind nbd; nbd.kind = GNKind::NativeMod; nbd.op = mop;
+        tr->agnodes.push_back(nbd);
+        return nid_md;
+    }
     if (kind == 2) { is_out = true; }   // output sink: no op
     else if (plugin_kind != 0) {
         // Plugin source/effect (VST3/CLAP) or the audio-loop Sampler: no native op. Create the
@@ -3225,6 +3439,16 @@ void session_audio_graph_load_edge_kind(Session* s, int t, int from_id, int to_i
     std::lock_guard<std::mutex> lk(tr->gmtx);
     tr->agraph.connect(from_id, to_id,
                        kind == 1 ? vivid::audio::EdgeKind::Note : vivid::audio::EdgeKind::Audio);
+}
+// ADR-0022: load a control edge (into agraph only; finish_load compiles + publishes, like the
+// other load_edge* calls). Shape carried straight from the saved fields.
+void session_audio_graph_load_edge_control(Session* s, int t, int from_id, int to_id, int dest_param,
+                                           float amount, float curve, int invert, int bipolar) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    vivid::audio::ControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert != 0; sh.bipolar = bipolar != 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    tr->agraph.connect_control(from_id, to_id, dest_param, sh);
 }
 void session_audio_graph_load_edge(Session* s, int t, int from_id, int to_id) {
     session_audio_graph_load_edge_kind(s, t, from_id, to_id, 0);   // audio (pre-ADR-0015 default)

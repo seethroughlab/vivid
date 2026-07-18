@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-namespace vivid { struct Window; struct CtxMenu; }
+namespace vivid { struct Window; struct CtxMenu; struct ModEditor; }
 namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
@@ -21,6 +21,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
 // sits above both the graph canvas and the rendered output.
 void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my);
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
+void draw_mod_editor(Renderer2D& ui, const ModEditor& m, vivid::session::Session* s, int track);
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
 void draw_node_menu(Renderer2D& ui, const Window& w);   // right-click op-node menu (open source / clone)
 

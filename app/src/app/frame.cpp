@@ -2,6 +2,7 @@
 
 #include "app/app.h"
 #include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
+#include "app/input_internal.h"  // ADR-0022: mod_editor_drag (per-frame slider drag apply)
 #include "platform/menu_bar.h"  // ADR-0017/G4 set_edit_labels; ADR-0018 set_document_edited
 #include "platform/file_dialog.h" // ADR-0018 confirm_discard_changes (quit save-confirm)
 #include "app/file_actions.h"     // ADR-0018 save() from the quit confirm
@@ -330,6 +331,8 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
         if (app.edit_gateway) app.edit_gateway->note_edit("Set Key Range", "ag-key-drag");   // ADR-0017/G3
     }
+    // ADR-0022: dragging a mod-editor slider (amount / curve).
+    if (win.mod_ed_drag >= 0) vivid::input::mod_editor_drag(win, app, mx, my);
 }
 
 // ADR-0016 / S4 — the shader library's hot-reload, applied on the main thread.
@@ -566,6 +569,7 @@ void run_frame_loop(App& app, Window& win) {
                       win.menu.src < 0 ? "Master"
                       : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
             draw_map_menu(ui, win.map_menu);
+            draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor
             draw_node_menu(ui, win);
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);

@@ -173,7 +173,16 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                             {"to",   vivid::session::session_track_audio_graph_edge_to(s, t, e)} };
                 // ADR-0015: only a NOTE edge is written. An edge with no `kind` is audio, so every
                 // project saved before note edges existed loads with its meaning unchanged.
-                if (vivid::session::session_track_audio_graph_edge_kind(s, t, e) == 1) je["kind"] = "note";
+                const int ek = vivid::session::session_track_audio_graph_edge_kind(s, t, e);
+                if (ek == 1) je["kind"] = "note";
+                else if (ek == 2) {   // ADR-0022: a control edge carries its target param + shaper
+                    je["kind"]  = "control";
+                    je["param"] = vivid::session::session_track_audio_graph_edge_dest_param(s, t, e);
+                    float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
+                    vivid::session::session_track_audio_graph_edge_control_shape(s, t, e, &amount, &curve, &invert, &bipolar);
+                    je["amount"] = amount; je["curve"] = curve;
+                    je["invert"] = invert != 0; je["bipolar"] = bipolar != 0;
+                }
                 edges.push_back(std::move(je));
             }
             g["nodes"] = nodes; g["edges"] = edges;
@@ -556,10 +565,16 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 if (g.contains("edges"))
                     for (const auto& je : g["edges"]) {
                         auto f = id_map.find(je.value("from", -1)), o = id_map.find(je.value("to", -1));
-                        if (f != id_map.end() && o != id_map.end())
+                        if (f == id_map.end() || o == id_map.end()) continue;
+                        const std::string ek = je.value("kind", std::string("audio"));
+                        if (ek == "control")   // ADR-0022: carry the target param + shaper across
+                            vivid::session::session_audio_graph_load_edge_control(
+                                s, t, f->second, o->second, je.value("param", -1),
+                                je.value("amount", 1.f), je.value("curve", 0.f),
+                                je.value("invert", false) ? 1 : 0, je.value("bipolar", false) ? 1 : 0);
+                        else
                             vivid::session::session_audio_graph_load_edge_kind(
-                                s, t, f->second, o->second,
-                                je.value("kind", std::string("audio")) == "note" ? 1 : 0);
+                                s, t, f->second, o->second, ek == "note" ? 1 : 0);
                     }
                 auto out = id_map.find(g.value("output", -1));
                 vivid::session::session_audio_graph_finish_load(s, t, out != id_map.end() ? out->second : -1);
