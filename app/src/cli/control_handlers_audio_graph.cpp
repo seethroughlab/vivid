@@ -263,6 +263,7 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             int nin = 0, nout = 0;   // ADR-0015: does it take / emit notes?
             P::session_track_audio_graph_node_note_ports(c.session, track, i, &nin, &nout);
             json jn = { {"id",   nid},
+                        {"gnid", P::session_track_audio_graph_node_gnid(c.session, track, i)},   // ADR-0022 P2b.3c: session-global id (-1 if unassigned)
                         {"kind", (k >= 0 && k < 6) ? kKind[k] : "unknown"},
                         {"note_in", nin != 0}, {"note_out", nout != 0},
                         {"type", P::session_track_audio_graph_node_type(c.session, track, i)} };
