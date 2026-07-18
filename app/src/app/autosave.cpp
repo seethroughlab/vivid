@@ -26,8 +26,9 @@ static std::string meta_path()    { return (fs::path(dir()) / "meta.json").strin
 void write(App& app, int win_w, int win_h, float split_x, float dock_h, long long now_unix) {
     if (!app.session || !app.graph || !app.audio_graph) return;
     std::error_code ec; fs::create_directories(dir(), ec);   // create just-in-time on the first real autosave
+    const auto& av = app.audio_graph->view();
     if (!save_session(session_path(), app.session, *app.graph, win_w, win_h, split_x, dock_h,
-                      app.audio_graph->zoom(), app.audio_graph->pan_x(), app.audio_graph->pan_y()))
+                      av.ox, av.oy, av.scale))
         return;   // best-effort; a failed autosave just means the last good one stands
     json m = { {"project", app.project.current_project_path}, {"saved_at", now_unix} };
     std::ofstream(meta_path(), std::ios::trunc) << m.dump(2);

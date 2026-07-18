@@ -721,10 +721,10 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
 
 bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int win_w, int win_h, float split_x, float dock_h,
-                  float ag_zoom, float ag_pan_x, float ag_pan_y) {
+                  float ag_ox, float ag_oy, float ag_scale) {
     if (!s) return false;
     json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
-    j["audio_view"] = { {"zoom", ag_zoom}, {"pan_x", ag_pan_x}, {"pan_y", ag_pan_y} };
+    j["audio_view"] = { {"ox", ag_ox}, {"oy", ag_oy}, {"scale", ag_scale} };   // absolute camera (ADR-0023)
     std::ofstream f(path);
     if (!f) return false;
     f << j.dump(2);
@@ -733,17 +733,19 @@ bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui
 
 bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int& win_w, int& win_h, float& split_x, float& dock_h,
-                  float& ag_zoom, float& ag_pan_x, float& ag_pan_y) {
+                  float& ag_ox, float& ag_oy, float& ag_scale) {
     if (!s) return false;
     std::ifstream f(path);
     if (!f) return false;
     json j;
     try { f >> j; } catch (...) { return false; }
-    if (j.contains("audio_view")) {
+    // Only the new absolute form ("ox") loads a camera; the block's absence or the pre-migration
+    // {zoom,pan_x,pan_y} form leaves ag_scale as the caller's sentinel (0) → the graph seeds to fitted.
+    if (j.contains("audio_view") && j["audio_view"].contains("ox")) {
         const json& av = j["audio_view"];
-        ag_zoom  = av.value("zoom",  ag_zoom);
-        ag_pan_x = av.value("pan_x", ag_pan_x);
-        ag_pan_y = av.value("pan_y", ag_pan_y);
+        ag_ox    = av.value("ox",    ag_ox);
+        ag_oy    = av.value("oy",    ag_oy);
+        ag_scale = av.value("scale", ag_scale);
     }
     return session_from_json(j, s, g, win_w, win_h, split_x, dock_h);
 }

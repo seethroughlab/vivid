@@ -24,7 +24,9 @@
   and the marks (`node_grid`/`node_wire`/`node_port`/`node_card` [selection ring folded in] /
   `node_preview_panel`/`node_waveform` + the ADR-0019 error vocab). `graph_canvas.h` is the **Layer-2
   `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton
-  (`card()` chrome, `grid()`, `ghost_wire()`). What still diverges stays per-editor: coordinate space
+  (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera** (ADR-0023 #1
+  — the sole `NodeView`; each editor reaches it via `canvas_.view()` rather than keeping its own copy).
+  What still diverges stays per-editor: coordinate space
   (visual draws WORLD-space via `set_transform`; audio bakes SCREEN coords in `layout()`), wire
   endpoints/color, port/label content, preview-well contents, and the audio param band.
 - **`node_graph.{h,cpp}`** — the visuals node editor: op chain, data nodes, the

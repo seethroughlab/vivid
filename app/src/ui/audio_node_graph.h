@@ -62,14 +62,19 @@ struct AudioCompoundPreview {
 class AudioNodeGraph {
 public:
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
-    void set_bounds(float x0, float y0, float x1, float y1) { x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1; }
-    // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan. The
-    // instance owns the canonical view (ADR-0023 step 6b) — persisted with the session, so it no
-    // longer resets to the fitted view each launch.
-    void set_view(float zoom, float pan_x, float pan_y) { zoom_ = zoom; pan_x_ = pan_x; pan_y_ = pan_y; }
-    float zoom()  const { return zoom_; }
-    float pan_x() const { return pan_x_; }
-    float pan_y() const { return pan_y_; }
+    void set_bounds(float x0, float y0, float x1, float y1) {
+        x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1;
+        // Until a gesture or a load sets the camera, seed it to the panel origin so a fresh graph opens
+        // in the dock at identity scale. (ADR-0023: the audio camera is now an ABSOLUTE NodeView like
+        // the visual editor's — no more per-frame region-relative derivation.)
+        if (!view_init_) { canvas_.view().ox = x0_; canvas_.view().oy = y0_; }
+    }
+    // The pan/zoom camera — an absolute world->screen NodeView, matching the visual editor (ADR-0023).
+    // It lives in `canvas_` (ADR-0023 #1: GraphCanvas is the sole owner); the editor reaches it via
+    // canvas_.view(). Persisted with the session (ox/oy/scale). set_view marks it user-set so set_bounds
+    // stops seeding; the gesture methods (on_scroll/on_move/on_down) mutate canvas_.view() + set view_init_.
+    void set_view(const NodeView& v) { canvas_.view() = v; view_init_ = true; }
+    const NodeView& view() const { return canvas_.view(); }
 
     // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
     // when the selection carries one, so draw + input must agree on the selection before sizing.
@@ -152,8 +157,8 @@ private:
     int   track_ = -1;
     int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
-    float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
-    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared card/grid/ghost-wire draw skeleton
+    bool     view_init_ = false; // false until a gesture/load sets it; set_bounds seeds the panel origin meanwhile
+    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared draw skeleton AND the owner of the pan/zoom camera (#1)
 
     // The in-flight gesture (ADR-0023 6c/6d): private state owned by the on_down/on_move/on_up FSM
     // above (nothing outside this class touches it). Exactly one gesture is live at a time.

@@ -481,9 +481,9 @@ void NodeGraph::draw(Renderer2D& r) {
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
-    r.set_transform(view_.ox, view_.oy, view_.scale);
+    const NodeView& view = canvas_.view();   // the camera lives in the canvas (ADR-0023 #1)
+    r.set_transform(view.ox, view.oy, view.scale);
     // grid: cover the full visuals column (shared substrate), edge to edge (ADR-0023 Layer 2)
-    canvas_.set_view(view_);
     canvas_.set_region({ fx0_, fy0_, fx1_ - fx0_, fy1_ - fy0_ });
     canvas_.grid(r);
 
@@ -712,7 +712,7 @@ bool NodeGraph::on_down(double x, double y) {
     // constant on screen by dividing by the zoom.
     double wx, wy; to_world(x, y, wx, wy);
     cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
-    const double hr = 13.0 / view_.scale, pr = 12.0 / view_.scale;
+    const double hr = 13.0 / canvas_.view().scale, pr = 12.0 / canvas_.view().scale;
 
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
@@ -771,26 +771,26 @@ void NodeGraph::on_move(double x, double y) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
-        view_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
+        canvas_.view().pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
 void NodeGraph::zoom_at(double sx, double sy, float factor) {
-    view_.zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
+    canvas_.view().zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
 }
 
 void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(wx, wy, 18.0 / view_.scale, pni, pl)) {
+        if (nearest_param(wx, wy, 18.0 / canvas_.view().scale, pni, pl)) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
             note_edit_("Connect Mapping");
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_.scale, tport);
+        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);
         if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
