@@ -90,13 +90,15 @@ bool session_from_json_scoped(const nlohmann::json& j, vivid::session::Session* 
 
 // File wrappers over the above. The audio-graph view (ADR-0023 step 6b) rides only on the file
 // path — like the visual view it is UI/view state, kept out of the MCP document and undo (the
-// canonical projection strips the visual view too). On load, ag_* default to the passed-in values
-// when the file omits the block, so a pre-6b session keeps the fitted view.
+// canonical projection strips the visual view too). The audio camera is now an absolute NodeView
+// (ADR-0023), persisted as {ox,oy,scale} just like the visual `view` block. On load, `ag_scale` is
+// left untouched when the block is absent OR in the pre-migration `{zoom,pan_x,pan_y}` form — so the
+// caller (which seeds `ag_scale = 0`) can tell "no camera loaded" and let the graph reset to fitted.
 bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int win_w, int win_h, float split_x, float dock_h,
-                  float ag_zoom, float ag_pan_x, float ag_pan_y);
+                  float ag_ox, float ag_oy, float ag_scale);
 bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                   int& win_w, int& win_h, float& split_x, float& dock_h,
-                  float& ag_zoom, float& ag_pan_x, float& ag_pan_y);
+                  float& ag_ox, float& ag_oy, float& ag_scale);
 
 }  // namespace vivid

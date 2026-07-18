@@ -650,9 +650,12 @@ namespace vivid::ui {
 namespace S = vivid::session;
 
 void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
-    // 2i: drag empty space to pan the view.
-    if (panning)
-        set_view(zoom(), pan_ox0 + static_cast<float>(mx - pan_mx0), pan_oy0 + static_cast<float>(my - pan_my0));
+    // 2i: drag empty space to pan the absolute camera (scale unchanged).
+    if (panning) {
+        view_.ox = pan_ox0 + static_cast<float>(mx - pan_mx0);
+        view_.oy = pan_oy0 + static_cast<float>(my - pan_my0);
+        view_init_ = true;
+    }
     // UI-3 Stage 1: drag a selected node's param knob (vertical) or a pinned slider row (horizontal).
     if (param_drag >= 0 && app.session && win.sel_audio_node >= 0) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
@@ -671,10 +674,8 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
         set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        set_selection(win.sel_audio_node);   // graph_region height depends on the param band
-        const Rect gr = graph_region();
-        const NodeView v = region_view(gr, zoom(), pan_x(), pan_y());
-        double wxd, wyd; v.to_world(mx, my, wxd, wyd);   // screen -> world
+        set_selection(win.sel_audio_node);   // keep the instance primed (bounds/selection) for the draw
+        double wxd, wyd; view_.to_world(mx, my, wxd, wyd);   // screen -> world via the absolute camera
         S::session_audio_graph_node_set_pos(app.session, tr, node_drag,
                                             static_cast<float>(wxd) - node_dx, static_cast<float>(wyd) - node_dy);
         if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3

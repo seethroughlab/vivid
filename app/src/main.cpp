@@ -371,10 +371,10 @@ int main(int argc, char** argv) {
             const std::string what = rec.project_path.empty() ? "an untitled project" : rec.project_path;
             if (vivid::platform::confirm_recover_autosave("Vivid found unsaved changes to " + what + ".")) {
                 int ww = win.win_w, wh = win.win_h; float sx = win.split_x, dh = win.dock_h;
-                float az = audio_graph.zoom(), apx = audio_graph.pan_x(), apy = audio_graph.pan_y();
-                if (vivid::load_session(rec.session_path, app.session, graph, ww, wh, sx, dh, az, apx, apy)) {
+                float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
+                if (vivid::load_session(rec.session_path, app.session, graph, ww, wh, sx, dh, aox, aoy, ascale)) {
                     win.split_x = sx; win.dock_h = dh;
-                    audio_graph.set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
+                    if (ascale > 0.f) audio_graph.set_view({ aox, aoy, ascale });   // restore the camera (ADR-0023)
                     if (!rec.project_path.empty()) app.remember_project_path(rec.project_path);
                     app.recovered_unsaved = true;
                     VLOG_WARN(app, "recovered unsaved changes (%s)", what.c_str());
