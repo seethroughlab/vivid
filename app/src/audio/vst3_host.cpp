@@ -1583,6 +1583,46 @@ void session_disconnect_control(Session* s, int src_track, int src_node, int dst
     }
     if (changed) republish_xctl(s);
 }
+// ADR-0022 P2a.3: re-shape an existing cross-track control edge without rewiring. Returns false if
+// no edge matches (src,dst,param).
+bool session_set_control_shape(Session* s, int src_track, int src_node, int dst_track, int dst_node,
+                               int param, float amount, float curve, int invert, int bipolar) {
+    if (!s) return false;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return false;
+    const int src_id = s->tracks[static_cast<size_t>(src_track)]->id;
+    const int dst_id = s->tracks[static_cast<size_t>(dst_track)]->id;
+    for (XCtlEdge& e : s->xctl_edges) {
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node && e.dst_param == param) {
+            e.shape.amount = amount; e.shape.curve = curve; e.shape.invert = invert != 0; e.shape.bipolar = bipolar != 0;
+            republish_xctl(s);
+            return true;
+        }
+    }
+    return false;
+}
+// ADR-0022 P2a.3: enumerate cross-track control edges for persist / introspection. `session_xctl_get`
+// fills the edge at `i` with track INDICES (resolved from the stored stable ids); returns false if
+// `i` is out of range or an endpoint track no longer exists.
+int session_xctl_count(Session* s) { return s ? static_cast<int>(s->xctl_edges.size()) : 0; }
+bool session_xctl_get(Session* s, int i, int* src_track, int* src_node, int* dst_track, int* dst_node,
+                      int* param, float* amount, float* curve, int* invert, int* bipolar) {
+    if (!s || i < 0 || i >= static_cast<int>(s->xctl_edges.size())) return false;
+    const XCtlEdge& e = s->xctl_edges[static_cast<size_t>(i)];
+    int src_idx = -1, dst_idx = -1;
+    for (size_t k = 0; k < s->tracks.size(); ++k) {
+        if (s->tracks[k]->id == e.src_track_id) src_idx = static_cast<int>(k);
+        if (s->tracks[k]->id == e.dst_track_id) dst_idx = static_cast<int>(k);
+    }
+    if (src_idx < 0 || dst_idx < 0) return false;
+    if (src_track) *src_track = src_idx;   if (src_node) *src_node = e.src_node_id;
+    if (dst_track) *dst_track = dst_idx;   if (dst_node) *dst_node = e.dst_node_id;
+    if (param) *param = e.dst_param;
+    if (amount) *amount = e.shape.amount;  if (curve) *curve = e.shape.curve;
+    if (invert) *invert = e.shape.invert ? 1 : 0;   if (bipolar) *bipolar = e.shape.bipolar ? 1 : 0;
+    return true;
+}
 bool session_track_mute(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->mute.load(std::memory_order_relaxed);
 }

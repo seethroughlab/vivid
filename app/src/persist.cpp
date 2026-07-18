@@ -203,6 +203,18 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     }
     j["tracks"] = tracks;
 
+    // ADR-0022 P2a.3: session-level cross-track control edges (a modulator on one track driving a
+    // param on another). Referenced by track INDEX + stable graph node id + shape — mirrors the
+    // per-track control-edge shape. Optional; absent in pre-P2a projects.
+    json xctl = json::array();
+    for (int i = 0; i < vivid::session::session_xctl_count(s); ++i) {
+        int st = 0, sn = 0, dt = 0, dn = 0, pr = 0, inv = 0, bip = 0; float am = 1.f, cv = 0.f;
+        if (!vivid::session::session_xctl_get(s, i, &st, &sn, &dt, &dn, &pr, &am, &cv, &inv, &bip)) continue;
+        xctl.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn},
+                         {"param", pr}, {"amount", am}, {"curve", cv}, {"invert", inv != 0}, {"bipolar", bip != 0} });
+    }
+    if (!xctl.empty()) j["xcontrol"] = xctl;
+
     // Clip pool — loose clips stashed outside the track grid (browser sidebar).
     // Audio pool clips are runtime-only (like grid audio content, their PCM isn't persisted).
     json pool = json::array();
@@ -616,6 +628,19 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             vivid::session::session_pool_add(s, notes.data(), static_cast<int>(notes.size()),
                                              jp.value("length", 4.0), jp.value("name", std::string()).c_str());
         }
+
+    // ADR-0022 P2a.3: restore cross-track control edges after the tracks + their audio graphs exist
+    // (native modulator nodes load synchronously). By-index addressing round-trips because tracks
+    // reload in save order.
+    if (restore_audio && !params_only && j.contains("xcontrol") && j["xcontrol"].is_array()) {
+        for (const auto& e : j["xcontrol"]) {
+            vivid::session::session_connect_control(
+                s, e.value("src_track", 0), e.value("src_node", -1),
+                e.value("dst_track", 0), e.value("dst_node", -1), e.value("param", -1),
+                e.value("amount", 1.f), e.value("curve", 0.f),
+                e.value("invert", false) ? 1 : 0, e.value("bipolar", false) ? 1 : 0);
+        }
+    }
 
     if (j.contains("graph")) {
         const json& jg = j["graph"];
