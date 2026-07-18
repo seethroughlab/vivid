@@ -385,7 +385,6 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ag.set_source(s, tr);
         const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.set_view(w.ag_zoom, w.ag_pan_x, w.ag_pan_y);
         ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
         ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
         ag.draw(ui, w.sel_audio_node, w.ag_wire_from,

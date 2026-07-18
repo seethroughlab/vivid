@@ -184,8 +184,9 @@ void apply_audio_param_mappings(App& app) {
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
     win.cur_x = mx; win.cur_y = my;   // latest cursor (used by the audio-graph ghost wire)
     if (win.ag_panning) {   // 2i: drag empty space in the audio graph to pan the view
-        win.ag_pan_x = win.ag_pan_ox0 + static_cast<float>(mx - win.ag_pan_mx0);
-        win.ag_pan_y = win.ag_pan_oy0 + static_cast<float>(my - win.ag_pan_my0);
+        app.audio_graph->set_view(app.audio_graph->zoom(),
+                                  win.ag_pan_ox0 + static_cast<float>(mx - win.ag_pan_mx0),
+                                  win.ag_pan_oy0 + static_cast<float>(my - win.ag_pan_my0));
     }
     if ((win.clip_drag_t >= 0 || win.clip_drag_from_pool >= 0) && !win.clip_dragging) {   // clip drag crosses the move threshold
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
@@ -315,7 +316,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(win.sel_audio_node);   // graph_region height depends on the param band
         const vivid::ui::Rect gr = ag.graph_region();
-        const vivid::ui::NodeView v = vivid::ui::region_view(gr, win.ag_zoom, win.ag_pan_x, win.ag_pan_y);
+        const vivid::ui::NodeView v = vivid::ui::region_view(gr, ag.zoom(), ag.pan_x(), ag.pan_y());
         double wxd, wyd; v.to_world(mx, my, wxd, wyd);   // screen -> world (shared transform)
         const float wx = static_cast<float>(wxd) - win.ag_node_dx;
         const float wy = static_cast<float>(wyd) - win.ag_node_dy;

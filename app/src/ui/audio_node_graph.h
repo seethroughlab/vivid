@@ -61,8 +61,13 @@ class AudioNodeGraph {
 public:
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) { x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1; }
-    // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan.
+    // View transform applied on top of the auto-fit (2i): zoom around the region origin + pan. The
+    // instance owns the canonical view (ADR-0023 step 6b) — persisted with the session, so it no
+    // longer resets to the fitted view each launch.
     void set_view(float zoom, float pan_x, float pan_y) { zoom_ = zoom; pan_x_ = pan_x; pan_y_ = pan_y; }
+    float zoom()  const { return zoom_; }
+    float pan_x() const { return pan_x_; }
+    float pan_y() const { return pan_y_; }
     // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
     // when the selection carries one, so draw + input must agree on the selection before sizing.
     void set_selection(int node_id) { sel_node_ = node_id; }

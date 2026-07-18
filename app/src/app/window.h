@@ -154,9 +154,9 @@ struct Window {
     int     ag_node_drag   = -1; float ag_node_dx = 0.f, ag_node_dy = 0.f;
     int     mod_ed_drag    = -1;   // ADR-0022: the mod-editor slider being dragged (0 amount / 1 curve / -1 none)
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
-    // UI-3 Stage 2 (2i): the audio-graph view transform (on top of the auto-fit). zoom 1 + pan 0 =
-    // the fitted view; scroll zooms around the cursor, dragging empty space pans, double-click resets.
-    float   ag_zoom = 1.f, ag_pan_x = 0.f, ag_pan_y = 0.f;
+    // UI-3 Stage 2 (2i): the audio-graph view transform (zoom 1 + pan 0 = the fitted view) now lives
+    // on the persistent AudioNodeGraph instance (ADR-0023 step 6b) and is persisted with the session.
+    // The pan-DRAG gesture baseline stays here (per-window interaction state; unified in step 6c).
     bool    ag_panning = false; double ag_pan_mx0 = 0, ag_pan_my0 = 0; float ag_pan_ox0 = 0, ag_pan_oy0 = 0;
     double  ag_last_click_t = -1;   // for double-click-to-reset the audio-graph view
     int     ag_last_node = -1; double ag_last_node_t = -1;   // double-click a node → open its plugin editor

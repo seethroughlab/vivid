@@ -302,12 +302,12 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
         if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
             // Keep the world point under the cursor fixed across the zoom. World-under-cursor via the
             // shared transform; the zoom clamp ([0.35,4.0]) is the audio graph's own policy.
-            const vivid::ui::NodeView v0 = vivid::ui::region_view(gr, win.ag_zoom, win.ag_pan_x, win.ag_pan_y);
+            const vivid::ui::NodeView v0 = vivid::ui::region_view(gr, ag.zoom(), ag.pan_x(), ag.pan_y());
             double wx, wy; v0.to_world(mx, my, wx, wy);
-            const float z1 = std::clamp(win.ag_zoom * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
-            win.ag_pan_x = static_cast<float>(mx) - gr.x - static_cast<float>(wx) * z1;
-            win.ag_pan_y = static_cast<float>(my) - gr.y - static_cast<float>(wy) * z1;
-            win.ag_zoom = z1;
+            const float z1 = std::clamp(ag.zoom() * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
+            const float px = static_cast<float>(mx) - gr.x - static_cast<float>(wx) * z1;
+            const float py = static_cast<float>(my) - gr.y - static_cast<float>(wy) * z1;
+            ag.set_view(z1, px, py);
         }
     }
 }
@@ -324,7 +324,6 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-    ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
     ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
     // "Editor" button in the dock header → open the selected VST3 node's native plugin window (its
     // full param surface). Mirrors the node double-click open path; shown only when it has a controller.
@@ -483,8 +482,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
                 win.ag_last_node_t = -1;
             } else { win.ag_last_node = b.node_id; win.ag_last_node_t = now; }
             win.ag_node_drag = b.node_id;                                   // start a reposition drag (any node)
-            win.ag_node_dx = (mx - b.x) / win.ag_zoom;                      // grab offset in world units
-            win.ag_node_dy = (my - b.y) / win.ag_zoom;
+            win.ag_node_dx = (mx - b.x) / ag.zoom();                        // grab offset in world units
+            win.ag_node_dy = (my - b.y) / ag.zoom();
             return true;
         }
     }
@@ -510,11 +509,11 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     // Empty space: double-click resets the view (2i); otherwise start a pan drag.
     const double now = glfwGetTime();
     if (now - win.ag_last_click_t < 0.30) {
-        win.ag_zoom = 1.f; win.ag_pan_x = win.ag_pan_y = 0.f; win.ag_last_click_t = -1; return true;
+        ag.set_view(1.f, 0.f, 0.f); win.ag_last_click_t = -1; return true;   // double-click resets the view
     }
     win.ag_last_click_t = now;
     win.ag_panning = true; win.ag_pan_mx0 = mx; win.ag_pan_my0 = my;
-    win.ag_pan_ox0 = win.ag_pan_x; win.ag_pan_oy0 = win.ag_pan_y;
+    win.ag_pan_ox0 = ag.pan_x(); win.ag_pan_oy0 = ag.pan_y();
     return true;   // consume other clicks in the graph
 }
 
@@ -557,7 +556,6 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
         // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits.
         // A MidiIn (kind 3) and a note effect (kind 4) emit notes and nothing else, so a wire out of
         // them is a NOTE edge; everything else is audio. (An explicit port picker can come later —
