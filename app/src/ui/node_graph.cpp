@@ -434,7 +434,7 @@ int NodeGraph::op_at(double sx, double sy) const {
     double wx, wy; to_world(sx, sy, wx, wy);
     for (int i = 0; i < int(vg_->nodes().size()); ++i) {
         float x, y, w, h; op_node_rect(i, x, y, w, h);
-        if (in_rect(x, y, w, h, wx, wy)) return i;
+        if (hit({ x, y, w, h }, wx, wy)) return i;
     }
     return -1;
 }
@@ -460,9 +460,6 @@ void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, flo
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
-bool NodeGraph::in_rect(float rx, float ry, float rw, float rh, double x, double y) {
-    return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
-}
 
 
 void NodeGraph::draw(Renderer2D& r) {
@@ -472,10 +469,9 @@ void NodeGraph::draw(Renderer2D& r) {
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
-    r.set_transform(view_ox_, view_oy_, view_scale_);
+    r.set_transform(view_.ox, view_.oy, view_.scale);
     // grid: cover the full visuals column (shared substrate), edge to edge
-    { const NodeView v{ view_ox_, view_oy_, view_scale_ };
-      node_grid(r, v, fx0_, fy0_, fx1_, fy1_); }
+    node_grid(r, view_, fx0_, fy0_, fx1_, fy1_);
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input); one per connected texture input port.
@@ -701,7 +697,7 @@ bool NodeGraph::on_down(double x, double y) {
     // constant on screen by dividing by the zoom.
     double wx, wy; to_world(x, y, wx, wy);
     cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
-    const double hr = 13.0 / view_scale_, pr = 12.0 / view_scale_;
+    const double hr = 13.0 / view_.scale, pr = 12.0 / view_.scale;
 
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
@@ -725,10 +721,10 @@ bool NodeGraph::on_down(double x, double y) {
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
-        if (!vg_->nodes()[i].is_output() && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
+        if (!vg_->nodes()[i].is_output() && hit({ ox + ow - 15.f, oy + 3.f, 12.f, 12.f }, wx, wy)) {
             vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); note_edit_("Delete Node"); return true;
         }
-        if (in_rect(ox, oy, ow, oh, wx, wy)) {
+        if (hit({ ox, oy, ow, oh }, wx, wy)) {
             if (vg_->nodes()[i].is_output()) { vg_->set_active_output(i); note_edit_("Set Output"); }  // clicking selects the viewer source
             sel_op_ = i;  // select for the inspector (dock)
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
@@ -740,7 +736,7 @@ bool NodeGraph::on_down(double x, double y) {
 
     // data-node body drag
     for (int i = 0; i < int(data_.size()); ++i)
-        if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, wx, wy)) {
+        if (hit({ data_[i].x, data_[i].y, data_[i].w, data_[i].h }, wx, wy)) {
             drag_mode_ = 1; drag_idx_ = i; dx_ = wx - data_[i].x; dy_ = wy - data_[i].y; return true;
         }
     // empty canvas within the network pane -> pan the view (screen coords)
@@ -760,29 +756,26 @@ void NodeGraph::on_move(double x, double y) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
-        view_ox_ += float(x) - pan_last_x_; view_oy_ += float(y) - pan_last_y_;
+        view_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
 void NodeGraph::zoom_at(double sx, double sy, float factor) {
-    double wx, wy; to_world(sx, sy, wx, wy);              // world point under the cursor
-    view_scale_ = std::clamp(view_scale_ * factor, 0.35f, 3.0f);
-    view_ox_ = float(sx) - float(wx) * view_scale_;       // keep that point under the cursor
-    view_oy_ = float(sy) - float(wy) * view_scale_;
+    view_.zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
 }
 
 void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl)) {
+        if (nearest_param(wx, wy, 18.0 / view_.scale, pni, pl)) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
             note_edit_("Connect Mapping");
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_scale_, tport);
+        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_.scale, tport);
         if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;
