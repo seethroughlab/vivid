@@ -252,6 +252,42 @@ uses distance/`hypot`, audio uses rects).
   `param_port` route through a visual `card_ports(i)`; thumbnail rect stays local.
 - Verify BOTH editors render identically (audio + visual graph smokes).
 
+## Step 6 — the audio editor becomes a stateful interaction owner (do BEFORE `GraphCanvas`)
+
+Discovered when starting the `GraphCanvas` extraction: the shared substrate (marks · `NodeView` ·
+`CardPorts`) is already factored, and a `GraphCanvas` *class* is blocked by an architectural
+asymmetry — the visual editor is a **stateful** object that draws in **world space** (`set_transform`)
+and owns its interaction (`on_down/move/up`, drag members); the audio editor is a **stateless** view
+that draws in **screen space** and has its interaction smeared across `input_graph.cpp` (press) +
+`frame.cpp` (`update_drag_continuations`, move) + `input.cpp` (release/dispatch) over 13 `Window.ag_*`
+fields. Unifying the *draw* first would be ceremony or heavy hooks. So do the interaction unification
+first — it removes the asymmetry, after which `GraphCanvas` is a natural lift of two aligned editors.
+
+Target: mirror the visual editor. `App::graph` is a persistent `ui::NodeGraph*`; add a persistent
+**`App::audio_graph`** (`ui::AudioNodeGraph*`), give `AudioNodeGraph` interaction **members** (the
+current `Window.ag_*` set) + a **member view** (its `zoom_/pan_x_/pan_y_`), and move the gesture
+logic out of the four free functions into `on_scroll/on_down/on_move/on_up`. `input.cpp`/`frame.cpp`
+then call the one persistent instance instead of rebuilding throwaways.
+
+Sub-steps (each build+test green; the refactor is behavior-preserving; persisting the view is the one
+deliberate behavior change):
+- **6a** — introduce persistent `App::audio_graph`; `graph_audio_dock`/`graph_scroll`/
+  `graph_rewire_release`/`update_drag_continuations`/`session_view` draw all use that instance
+  (still stateless-primed) instead of throwaways. Pure plumbing.
+- **6b** — move the view (`zoom_/pan_x_/pan_y_`) onto the instance as members; **persist it**
+  (mirror `persist.cpp:660` for the visual view). Drop `Window.ag_zoom/ag_pan_*`.
+- **6c** — move the drag state (`ag_node_drag`, `ag_wire_from`, `ag_param_*`, `ag_key_*`, `ag_pan*`,
+  double-click timers) onto the instance as members.
+- **6d** — move the gesture logic into `AudioNodeGraph::on_scroll/on_down/on_move/on_up`; the free
+  functions become thin forwarders, then dissolve. Domain edits still route through the session
+  C-API + `edit_gateway` exactly as now.
+- **6e** — delete the dead `Window.ag_*` fields + the free functions.
+
+Verify after each: audio-graph node select/drag, rewire (audio/note/mod), param knob/slider drag,
+key-range drag, add/remove, disconnect, pan/zoom/reset, double-click-editor — all identical.
+
+High regression surface (every audio-graph gesture) → a focused effort with a smoke pass per sub-step.
+
 ### Phase 2 acceptance / verification
 - Audio graph renders identically (cards, ports, wires, preview, selection); node-drag, rewire,
   pan, zoom behave identically — verified by driving the running audio-graph deep view.
