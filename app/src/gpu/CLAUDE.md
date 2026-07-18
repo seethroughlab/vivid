@@ -1,7 +1,7 @@
 # `app/src/gpu/` — wgpu context + the visuals pipeline
 
 wgpu-native (WebGPU/Metal). Some files are macOS-locked (`.mm`); a cross-platform
-abstraction is P3 in the [roadmap](../../../docs/roadmap/poc-to-product.md).
+abstraction is P3 in the [roadmap](../../../docs/roadmap/reboot-readiness-roadmap.md).
 
 - **`gpu_context.{h,cpp}`** — wgpu instance/adapter/device/queue + the swapchain
   surface; `begin_frame`/`end_frame`/`resize`. Configured at **framebuffer

@@ -1,7 +1,7 @@
 # The classic → trunk platform gap
 
-Companion to [ADR-0011](../decisions/ADR-0011-poc-to-product-architecture.md) and
-[poc-to-product.md](poc-to-product.md), which set the strategy: **keep `app/` as the trunk and adopt
+Companion to [ADR-0011](../decisions/ADR-0011-reboot-product-architecture.md) and
+[reboot-readiness-roadmap.md](reboot-readiness-roadmap.md), which set the strategy: **keep `app/` as the trunk and adopt
 vivid-classic's platform by selective lift.** That document scoped the *engineering* lift (ABI,
 loader, packages, tests, CI). This one scopes what remains: the **product** lift — the application-
 level machinery and UX affordances that make the thing usable.

@@ -1,13 +1,15 @@
 # Vivid (`app/`)
 
-A real macOS C++ proof-of-concept for Vivid: **two best-in-class surfaces** — a DAW
+A real macOS C++ application for the Vivid reboot: **two best-in-class surfaces** — a DAW
 (tracks × scenes of clips; each track an instrument + FX chain) and a rewireable
 visuals node-graph — joined by a bidirectional **mapping bridge** and driven
-**MCP-natively**. See [ADR-0009](../docs/decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md)
-for the product thesis and [ADR-0011](../docs/decisions/ADR-0011-poc-to-product-architecture.md)
-for where it's going (keep this trunk; adopt vivid-classic's platform by selective lift).
+**MCP-natively**. See [ADR-0009](../docs/decisions/ADR-0009-two-surface-bridge-and-native-reboot.md)
+for the product thesis and [ADR-0011](../docs/decisions/ADR-0011-reboot-product-architecture.md)
+for the trunk strategy: keep this app as the reboot trunk while selectively lifting proven platform
+pieces from `vivid-classic`.
 
 - **Architecture & thread model:** [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Newcomer source map:** [src/README.md](src/README.md)
 - **Audio-thread safety rules (read before touching the engine):** [docs/thread-safety.md](docs/thread-safety.md)
 - **MCP control bridge:** [`../mcp/README.md`](../mcp/README.md)
 
@@ -47,6 +49,8 @@ cmake --build build -j && ctest --test-dir build --output-on-failure
   builds + runs the suite on Linux in a normal and an ASan/UBSan matrix.
 
 ## Source map (`app/src/`)
+
+For a task-oriented reading path, see [src/README.md](src/README.md).
 
 | Dir | What lives there |
 |---|---|

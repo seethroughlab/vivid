@@ -17,6 +17,13 @@ codes in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §5.
 - **`control_parse.h`** — pure helpers (`in_range`, `kind_index`,
   `char_id_from_source` — the mapping-source wire encoding). Unit-tested headlessly
   (`tests/test_control_parse.cpp`); keep new pure parse/validation logic here.
+- **`audio_analysis_tools.{h,cpp}`** — extracted audio-perception helpers for the
+  audio handlers: PCM analysis, file decode, live-capture source resolution, and lowercase
+  param-name matching.
+- **`control_handlers_audio_*.cpp`** — audio endpoint registrations split by domain:
+  perception, clip pool, devices/plugins, graph topology, and catalog/session structure.
+  Keep new audio endpoints in the narrowest domain file, with shared wiring declarations in
+  `control_handlers_audio_domains.h` (ADR-0025).
 - **`control_handlers_*.cpp`** — the handlers, grouped by domain, register into the
   dispatch table. `control_handlers_edit.cpp` provides `undo`/`redo` (ADR-0017), and
   `edit_methods.{h,cpp}` is the table of which methods the `EditGateway` captures at the

@@ -1,4 +1,4 @@
-# ADR-0009: Two Best-in-Class Surfaces + a Bridge; Real C++ PoC Borrows Classic Subsystems
+# ADR-0009: Two Best-in-Class Surfaces + a Bridge; Native Reboot Borrows Classic Subsystems
 
 Status: accepted
 
@@ -28,7 +28,7 @@ This honors the PRD's "audio-visual parity, *not* symmetry" better than a single
 2. **The bridge is first-class and bidirectional.** Audio characteristics (level, transient, bands,
    notes) → data-source nodes driving visual parameters; visual characteristics (brightness, motion,
    colour) → modulators on DAW parameters. One shared master transport (ADR-0003 holds).
-3. **Build a real macOS C++ proof of concept**, borrowing **subsystems, not mental models**, from
+3. **Build a real macOS C++ reboot trunk**, borrowing **subsystems, not mental models**, from
    `vivid-classic` (Classic Lesson 10). Specifically: reuse the audio engine pattern (miniaudio),
    VST3 host, MIDI-clip scheduling, `GpuContext` (WebGPU), `Renderer2D`, and audio analysis — but
    NOT the operator registry / graph compiler / lane-value runtime the reboot set out to shed.
@@ -49,8 +49,8 @@ This honors the PRD's "audio-visual parity, *not* symmetry" better than a single
 
 - The product is now two surfaces + a bridge over a shared transport; UI work splits into a DAW
   Session View and a visuals node editor, both on `Renderer2D`.
-- The C++ PoC is the proving ground; its phased plan lives in
-  [`../roadmap/cpp-poc-phased-plan.md`](../roadmap/cpp-poc-phased-plan.md). The PoC is declared
-  proven when the interactive audio→visual bridge works end to end.
+- The native app is the proving ground for the reboot; its initial phased plan lives in
+  [`../roadmap/native-implementation-plan.md`](../roadmap/native-implementation-plan.md). The direction is
+  validated when the interactive audio→visual bridge works end to end.
 - Borrowing from Classic stays explicit and narrow; the heavy runtime is left behind.
 - The earlier disposable HTML prototypes remain as history, not the product direction.

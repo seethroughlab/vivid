@@ -11,7 +11,7 @@ Date: 2026-07-06
 
 Follows: [ADR-0002](ADR-0002-session-view-first.md) (session-view-first),
 [ADR-0007](ADR-0007-node-graph-contextual-deep-view.md) (node graph as a contextual deep view),
-[ADR-0009](ADR-0009-two-surface-bridge-and-cpp-poc.md) (two surfaces + bridge)
+[ADR-0009](ADR-0009-two-surface-bridge-and-native-reboot.md) (two surfaces + bridge)
 
 Decided: the interface is reorganized around **strict domain zones**, an **always-on visual
 output**, and **one focused deep-view editor at a time** driven by an **explicit focus context**

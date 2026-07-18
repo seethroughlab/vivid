@@ -8,7 +8,7 @@ effects become possible and note routing becomes a wire. Everything below still 
 
 Date: 2026-07-05
 
-Follows: [ADR-0009](ADR-0009-two-surface-bridge-and-cpp-poc.md) (two surfaces + bridge),
+Follows: [ADR-0009](ADR-0009-two-surface-bridge-and-native-reboot.md) (two surfaces + bridge),
 [ADR-0007](ADR-0007-node-graph-contextual-deep-view.md) (node-graph contextual deep view)
 
 Decided: a track's audio devices become a **rewireable node graph** (a directed acyclic graph with
