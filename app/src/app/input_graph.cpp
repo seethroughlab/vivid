@@ -87,6 +87,7 @@ static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser:
         case U::kAudioNativeEffect: nid = S::session_audio_graph_add_op(app.session, tr, e.id.c_str()); break;
         case U::kAudioNativeSource: nid = S::session_audio_graph_add_source(app.session, tr, e.id.c_str()); break;
         case U::kAudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, e.id.c_str()); break;
+        case U::kAudioModOp:        nid = S::session_audio_graph_add_mod_op(app.session, tr, e.id.c_str()); break;
         case U::kAudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
         case U::kAudioPluginEffect:
         case U::kAudioPluginSource: {
@@ -472,6 +473,11 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         int from_kind = -1;
         for (const auto& b : ag.layout()) if (b.node_id == win.ag_wire_from) { from_kind = b.kind; break; }
         const bool note_wire = (from_kind == 3 || from_kind == 4);
+        // ADR-0022: a modulator (kind 5) emits CONTROL, which targets a specific PARAM, not a node.
+        // A plain node-to-node drop can't say which param, so it would make a dead (silent) audio
+        // edge — refuse it. Control edges are created via audio_graph_connect_control (MCP) until the
+        // drag-onto-a-param gesture lands.
+        if (from_kind == 5) { win.ag_wire_from = -1; return true; }
         for (const auto& b : ag.layout()) {
             if (b.node_id == win.ag_wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
             // A note wire may land on an instrument (kind 0) or another note effect; an audio wire

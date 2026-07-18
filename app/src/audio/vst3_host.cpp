@@ -2403,6 +2403,12 @@ int session_available_note_op_count(Session* s) {
 const char* session_available_note_op_name(Session* s, int idx) {
     return (s && s->op_reg) ? vivid::audio_note_op_name(*s->op_reg, idx) : "";
 }
+int session_available_mod_op_count(Session* s) {   // ADR-0022: native modulators (LFO / envelope)
+    return (s && s->op_reg) ? vivid::audio_mod_op_count(*s->op_reg) : 0;
+}
+const char* session_available_mod_op_name(Session* s, int idx) {
+    return (s && s->op_reg) ? vivid::audio_mod_op_name(*s->op_reg, idx) : "";
+}
 
 int session_available_audio_op_count(Session* s, int want_source) {
     return (s && s->op_reg) ? vivid::audio_op_registry_count(*s->op_reg, want_source != 0) : 0;

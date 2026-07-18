@@ -24,6 +24,7 @@ enum AudioEntryTag {
     kAudioPluginSource = 3,   // session_audio_graph_add_plugin(..., is_source=1)
     kAudioNoteOp       = 4,   // session_audio_graph_add_note_op   (ADR-0015: notes in -> notes out)
     kAudioMidiIn       = 5,   // session_audio_graph_add_midi_in   (the track's note stream)
+    kAudioModOp        = 6,   // session_audio_graph_add_mod_op    (ADR-0022: a modulator, e.g. LFO)
 };
 
 // `instruments_only` = the "+ Track" case (pick something that can START a signal).
@@ -78,6 +79,21 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.hay = "note effect arpeggiator midi";
             e.tag = kAudioNoteOp;
             e.accent = sty.control;
+            out.push_back(std::move(e));
+        }
+        // ADR-0022: native MODULATORS (LFO / envelope) — no sound; wire the output to a param.
+        const int nm_ct = S::session_available_mod_op_count(s);
+        for (int i = 0; i < nm_ct; ++i) {
+            const char* nm = S::session_available_mod_op_name(s, i);
+            if (!nm || !*nm) continue;
+            ChooserEntry e;
+            e.label = nm;
+            e.id = nm;
+            e.badge = "MOD";
+            e.summary = "modulator \xE2\x80\x94 drives a param over time, makes no sound";
+            e.hay = "modulator lfo envelope control modulation";
+            e.tag = kAudioModOp;
+            e.accent = sty.mod;
             out.push_back(std::move(e));
         }
     }

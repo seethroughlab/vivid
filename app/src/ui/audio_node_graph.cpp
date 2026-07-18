@@ -5,6 +5,7 @@
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
 #include "audio/vst3_host.h"
+#include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
 #include <algorithm>
 #include <cmath>
@@ -16,6 +17,40 @@ namespace vivid::ui {
 
 namespace {
 namespace P = vivid::session;
+
+// ADR-0022: the modulation state of one param, in the same normalized [0,1] space the widgets use.
+// `wired` gates the overlay; lo01..hi01 is the reachable range (control_resolve at src 0 and 1),
+// live01 is where it is right now. Computed entirely from the C API on the UI thread — the range is
+// pure math, the live value reads the modulator's published output — so it never touches the audio
+// thread.
+struct ParamMod { bool wired = false; float lo01 = 0.f, hi01 = 0.f, live01 = 0.f; };
+static ParamMod param_mod(vivid::session::Session* s, int track, int node, int param, float mn, float mx) {
+    ParamMod m;
+    if (!P::session_audio_graph_node_param_wired(s, track, node, param)) return m;
+    m.wired = true;
+    auto nrm = [&](float v) { return (mx > mn) ? std::clamp((v - mn) / (mx - mn), 0.f, 1.f) : 0.f; };
+    const float base = P::session_audio_graph_node_param_get(s, track, node, param);   // BASE
+    // Find the control edge driving this param and evaluate its reach at the endpoints. Single edge
+    // is the common case; with several, the first sets the drawn band while the live dot (resolved)
+    // still reflects all of them stacked.
+    vivid::audio::ControlShape sh; bool found = false;
+    for (int e = 0; e < P::session_track_audio_graph_edge_count(s, track) && !found; ++e) {
+        if (P::session_track_audio_graph_edge_kind(s, track, e) != 2) continue;   // 2 = control
+        if (P::session_track_audio_graph_edge_to(s, track, e) != node) continue;
+        if (P::session_track_audio_graph_edge_dest_param(s, track, e) != param) continue;
+        float amt = 1.f, cur = 0.f; int inv = 0, bip = 0;
+        P::session_track_audio_graph_edge_control_shape(s, track, e, &amt, &cur, &inv, &bip);
+        sh.amount = amt; sh.curve = cur; sh.invert = inv != 0; sh.bipolar = bip != 0;
+        found = true;
+    }
+    if (found) {
+        m.lo01 = nrm(vivid::audio::control_resolve(base, 0.f, sh, mn, mx));
+        m.hi01 = nrm(vivid::audio::control_resolve(base, 1.f, sh, mn, mx));
+    }
+    m.live01 = nrm(P::session_audio_graph_node_param_resolved(s, track, node, param));
+    return m;
+}
+
 constexpr float kCardW = 116.f, kCardH = 76.f, kGapX = 46.f, kGapY = 18.f, kPad = 12.f;   // taller: hosts a live waveform preview
 constexpr float kParamBand = 60.f;      // bottom strip that hosts the selected node's params
 constexpr float kParamBandTall = 118.f; // grown to host a compound-widget preview above the knobs
@@ -278,20 +313,22 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         const AudioNodeBox* a = box_of(P::session_track_audio_graph_edge_from(s_, track_, e));
         const AudioNodeBox* b = box_of(P::session_track_audio_graph_edge_to(s_, track_, e));
         if (!a || !b) continue;
-        // ADR-0015: a note wire carries a DIFFERENT signal from an audio wire, so it must not look
-        // the same. Notes are drawn in the control accent (the "this is data, not sound" color).
-        const bool note = P::session_track_audio_graph_edge_kind(s_, track_, e) == 1;
-        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, note ? sty.control : sty.audio);
+        // Each signal is a different color so a wire's meaning is legible: audio (amber), note
+        // (control gray — "data, not sound", ADR-0015), control/modulation (magenta, ADR-0022).
+        const int ek = P::session_track_audio_graph_edge_kind(s_, track_, e);
+        const float* wc = ek == 2 ? sty.mod : (ek == 1 ? sty.control : sty.audio);
+        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, wc);
     }
 
     // Cards: fill + accent + type label + kind tag (+ remove-x on effects). boxes[i] corresponds
     // to node index i, so the type name is looked up by the same index.
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
-        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn (ADR-0015)
+        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx (ADR-0015) / 5 mod (ADR-0022)
         const float* acc = b.kind == 0 ? sty.audio
                          : (b.kind == 1 ? sty.fx
-                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold));
+                         : (b.kind == 5 ? sty.mod
+                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
         const bool sel = (b.node_id == sel_node && sel_node >= 0);
         // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
         // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
@@ -383,6 +420,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
                                (disp && *disp) ? disp : "", sty.audio, false);
             } else {
                 slider(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, norm, nullptr, nullptr, sty.audio, mapped, hit(row.widget_rect, cx, cy));
+                // ADR-0022: a control edge's reach + live position, over the groove.
+                if (const ParamMod pm = param_mod(s_, track_, sel_node, row.index, mn, mx); pm.wired)
+                    slider_mod_overlay(r, row.widget_rect.x, row.widget_rect.y, row.widget_rect.w, row.widget_rect.h, pm.lo01, pm.hi01, pm.live01);
             }
             // value (right-aligned) — the enum shows its label in the field, so skip it there
             if (wk != NodeWidget::Enum)
@@ -447,6 +487,9 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         char vt[16]; std::snprintf(vt, sizeof vt, "%.2f", v);
         const std::string vtxt = fit_text(r, (disp && *disp) ? disp : vt, c.w - 2.f, 0.66f);
         knob(r, c.knob_cx, c.knob_cy, c.knob_r, norm, nullptr, vtxt.c_str(), sty.audio, false);
+        // ADR-0022: if a modulator drives this param, ring it with the reachable range + a live dot.
+        if (const ParamMod pm = param_mod(s_, track_, sel_node, c.index, mn, mx); pm.wired)
+            knob_mod_overlay(r, c.knob_cx, c.knob_cy, c.knob_r, pm.lo01, pm.hi01, pm.live01);
         // Ellipsize the label to the cell so long plugin param names don't collide with neighbours.
         r.draw_text(c.x + 2.f, c.y + c.h - 10.f, fit_text(r, nm ? nm : "", c.w - 4.f, 0.65f).c_str(),
                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.65f);
