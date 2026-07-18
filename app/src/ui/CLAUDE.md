@@ -35,9 +35,9 @@
   `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton
   (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera** (ADR-0023 #1
   — the sole `NodeView`; each editor reaches it via `canvas_.view()` rather than keeping its own copy).
-  What still diverges stays per-editor: coordinate space
-  (visual draws WORLD-space via `set_transform`; audio bakes SCREEN coords in `layout()`), wire
-  endpoints/color, port/label content, preview-well contents, and the audio param band.
+  Both editors now draw WORLD-space through the shared `NodeView` transform ("true zoom", ADR-0023 #3 —
+  the audio graph moved off its old screen-space `layout()` baking). What still diverges stays per-editor:
+  wire endpoints/color, port/label content, preview-well contents, and the audio param band.
 - **`node_graph.{h,cpp}`** — the visuals node editor: op chain, data nodes, the
   `MappingRegistry` (the bridge), the Tab operator chooser, live thumbnails.
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and

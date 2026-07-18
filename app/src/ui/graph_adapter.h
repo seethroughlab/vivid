@@ -17,10 +17,9 @@
 // (connect/disconnect/set-param/add/remove/move) wait for the Layer-3 controller — they'd have no caller
 // yet, and each editor already owns its own gesture FSM (ADR-0023 step 6).
 //
-// COORDINATE NOTE: `rect` is in the owning editor's DRAW space — world coords for the visuals graph
-// (which draws through `set_transform`), screen coords for the audio graph (which bakes screen positions
-// in `layout()`). The shared `card()` is coordinate-agnostic, so a mixed convention is fine here;
-// reconciling the two draw spaces is the separate, harder ADR-0023 #3 problem.
+// COORDINATE NOTE: `rect` is in WORLD coordinates for BOTH editors — each draws its graph content through
+// the canvas `NodeView` transform ("true zoom", ADR-0023 #3). (Historically the audio graph baked screen
+// coords in `layout()`; #3 moved it onto the shared world-space transform.)
 namespace vivid::ui {
 
 struct AdapterNode {

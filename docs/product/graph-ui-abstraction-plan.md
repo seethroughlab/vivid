@@ -132,6 +132,44 @@ Hosts the interaction state currently living in `NodeGraph` (the `drag_mode_` ma
 `input.cpp` (for audio). Translates gestures into adapter command callbacks. Must support both
 the owned-state editor and the stateless view without forcing either to invert first.
 
+### ADR-0023 #3 — the coordinate-model unification (the right long-term structure)
+
+**The finding.** After #1 (canvas owns the `NodeView`) and #2 (the `GraphModelAdapter`), the only
+remaining divergence is the *coordinate model* — and it is **accidental, not principled**. BOTH editors
+already store node positions in WORLD coordinates (visuals `op_pos_`; audio
+`session_audio_graph_node_pos`). Visual draws them world-space through `set_transform` (the transform
+does world→screen). Audio converts to screen EARLY — inside `layout()` (`to_screen` + baking
+`scale` into card w/h) and again in ~90 screen-space hit-tests. That early conversion is the debt: "how
+audio maps world→screen" is duplicated across the draw path and every interaction, so two coordinate
+conventions tax every change forever.
+
+**The decision (2026-07-18).** The canonical model is visuals' **true zoom** — one affine transform,
+everything scales (card, border, text, ports), like magnifying an image (Blender/TouchDesigner/Max
+convention). Legibility at extreme zoom-out is a later level-of-detail refinement, not a second model.
+The audio editor conforms. There is no separate "policy" to build — both editors simply draw through
+`set_transform`.
+
+**The end state.** `GraphCanvas` owns the graph's rendering-and-interaction model in ONE coordinate
+space; each editor contributes only *content* (its `GraphModelAdapter` + thin domain hooks) and its
+domain-specific gestures. Two editors that are genuinely one surface — same rendering, same zoom, same
+common interaction — differing only in what they draw.
+
+**Sub-phases (each independently build/test/GUI-smoke, then PR + merge, as #1/#2 were):**
+- **3b — audio draws + hit-tests in WORLD space** (the linchpin). `layout()` returns world coords (drop
+  `to_screen` + the `*scale` on w/h); `draw()` wraps the graph area in `set_transform(view)` (chrome —
+  the param strip, "TAB to add", the mod-editor popover — resets to identity + stays screen-space); every
+  GRAPH-AREA hit-test converts the mouse `(mx,my)→world` once via `view.to_world` before testing the
+  now-world card/port/handle rects (the param-strip + popover hit-tests stay screen). The screen-space
+  clip on `graph_region()` is unchanged (GPU scissor is screen-space regardless of transform). Visible,
+  intended change: audio chrome/text now scale with zoom.
+- **3c — `GraphCanvas` owns the draw loop.** Both editors call `canvas.draw(adapter, hooks)`. Define the
+  domain-hook surface: enumerate wire segments (`{x0,y0,x1,y1,color}`), draw the per-node overlay
+  (ports + the preview-well contents: thumbnail / waveform / sparkline), draw the ghost wire. The canvas
+  owns grid → wires → card-loop(card + label) → overlays → ghost, in world space.
+- **3d — shared interaction for the COMMON gestures** (pan/zoom/select/node-drag/rewire) in world space;
+  domain-specific gestures (audio key-range drag, param pinning, plugin picker; visuals bridge wiring)
+  stay per-editor extensions — different vocabularies, not worth forcing into one controller.
+
 ## Phased migration (maps ADR-0023 migration steps → phases)
 
 | Phase | ADR-0023 steps | Behavior change? | Gist |
