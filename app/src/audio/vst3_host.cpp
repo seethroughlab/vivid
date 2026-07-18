@@ -342,6 +342,9 @@ struct Session {
     // one source of truth for every control value — the substrate cross-track modulation reads across
     // regions (P2a.2). Sized to kMaxTracks regions (== the old aggregate per-track cpools).
     std::vector<float>    ctl_pool;
+    // ADR-0022 P2a.1b: scratch for the modulator pre-pass's discarded silent audio output (stereo,
+    // kGraphMaxBlock). Modulators run one at a time, so one shared scratch suffices.
+    std::vector<float>    mod_scratch;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -653,6 +656,63 @@ static void drain_clap_notes(ClapHandle* h, std::vector<NoteEvent>& out) {
     }
 }
 
+// ADR-0022: resolve a step's control inputs into param OVERRIDES before the node runs. Reads each
+// driving modulator's 0..1 value from the session control pool region (`b.ctl_pool + b.ctl_base`),
+// combines it with the LIVE BASE (`audio_op_param_get` reads pvals, never written on this thread),
+// and stacks (two modulators on one param each add their swing). Shared by the modulator pre-pass and
+// the audio render loop. Returns the override count. Empty (returns 0) for any unmodulated node.
+static uint32_t resolve_control_inputs(const vivid::audio::CompiledStep& s, const GNodeBind& nb,
+                                       const GraphBlockCtx& b, vivid::AudioOpParamOverride* ovr) {
+    uint32_t novr = 0;
+    if (s.n_control_in > 0 && nb.op) {
+        for (int k = 0; k < s.n_control_in; ++k) {
+            const vivid::audio::ControlIn& ci = s.control_in[k];
+            if (ci.src_buf < 0 || ci.param < 0) continue;
+            const float src = b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0
+            const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
+            const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
+            int slot = -1;
+            for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
+            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
+            const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
+            if (slot >= 0) ovr[slot].value = v;
+            else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
+        }
+    }
+    return novr;
+}
+
+// ADR-0022 P2a.1b: run one MODULATOR step — resolve its own control inputs (a modulator can be
+// modulated), run the op into its control-pool region, publish the UI live dot. `scL`/`scR` receive
+// its (discarded) silent audio output. Pure DSP + atomics; no alloc/lock.
+static void run_modulator_step(const vivid::audio::CompiledStep& s, const GNodeBind& nb, Track& t,
+                               const GraphBlockCtx& b, float* scL, float* scR, uint32_t frames) {
+    vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
+    const uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
+    std::memset(scL, 0, frames * sizeof(float)); std::memset(scR, 0, frames * sizeof(float));
+    float* cout = nullptr;
+    if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
+        cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+    vivid::audio_op_process(nb.op, scL, scR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                            nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
+    if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
+        t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
+}
+
+// ADR-0022 P2a.1b: the modulator PRE-PASS for one track — run every `NativeMod` step (in the plan's
+// topological order, so a modulator that drives another runs first) into the session control pool
+// BEFORE any track renders audio. This is what makes control-edge resolution independent of track
+// render order — the basis for cross-track modulation (P2a.2). Uses the currently published plan.
+static void run_track_modulators(Track& t, const GraphBlockCtx& b, float* scL, float* scR, uint32_t frames) {
+    const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+    if (frames > kGraphMaxBlock || cg.steps.empty() || static_cast<int>(t.gbinds.size()) < cg.buf_count) return;
+    for (const vivid::audio::CompiledStep& s : cg.steps) {
+        if (s.out_buf < 0 || s.out_buf >= static_cast<int>(t.gbinds.size())) continue;
+        const GNodeBind& nb = t.gbinds[s.out_buf];
+        if (nb.kind == GNKind::NativeMod && nb.op) run_modulator_step(s, nb, t, b, scL, scR, frames);
+    }
+}
+
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
     // RT safety net: bail to silence on any inconsistency between the plan and the working
@@ -677,47 +737,18 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         float* oR = oL + stride;
         const GNodeBind& nb = t.gbinds[s.out_buf];
 
-        // ADR-0022: resolve this block's control inputs into param OVERRIDES before the node runs.
-        // The modulator upstream already wrote its 0..1 signal into cpool (topo order guarantees
-        // it), so we read it, combine with the LIVE BASE (audio_op_param_get reads pvals, never
-        // written on this thread), and hand the op the effective value — leaving the base intact.
-        // Block-rate: we sample cpool[row][0]. Native only in P0.5; VST3/CLAP land in P2 (they have
-        // no host-side base to modulate around — see ADR-0022). Empty for any unmodulated node.
-        vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
-        uint32_t novr = 0;
-        if (s.n_control_in > 0 && nb.op) {
-            for (int k = 0; k < s.n_control_in; ++k) {
-                const vivid::audio::ControlIn& ci = s.control_in[k];
-                if (ci.src_buf < 0 || ci.param < 0) continue;
-                const float src = b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0, this track's region
-                const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
-                const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
-                // Two modulators on one param STACK: the second resolves around the first's result,
-                // not the raw base — so each adds its own swing rather than the last one winning.
-                int slot = -1;
-                for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
-                const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
-                const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
-                if (slot >= 0) ovr[slot].value = v;
-                else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
-            }
+        // ADR-0022 P2a.1b: modulators already ran in the pre-pass (into the session control pool) —
+        // skip them here, just keep their audio buffer silent (nothing consumes a modulator's audio).
+        if (nb.kind == GNKind::NativeMod) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            continue;
         }
+        // Resolve this node's control inputs into param overrides (shared helper — reads the session
+        // control pool region; the base stays live, so guardrail 3 holds).
+        vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
+        const uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
 
         if (s.n_in == 0) {   // source node
-            // ADR-0022: a MODULATOR (LFO/envelope). No sound; it writes its 0..1 signal into its
-            // cpool row for the control edges downstream to read. A source, so it lands here.
-            if (nb.kind == GNKind::NativeMod && nb.op) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                float* cout = nullptr;
-                if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
-                    cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
-                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                                        nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
-                // Publish this block's output for the UI's live dot (node index == out_buf).
-                if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
-                    t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
-                continue;
-            }
             const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
             // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
             // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
@@ -1162,6 +1193,7 @@ Session* session_create(uint32_t sample_rate) {
     s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
     // ADR-0022 P2a.1: the session control pool — kMaxTracks regions of kGraphMaxNodes control buffers.
     s->ctl_pool.assign(static_cast<size_t>(kMaxTracks) * kGraphMaxNodes * kGraphMaxBlock, 0.f);
+    s->mod_scratch.assign(static_cast<size_t>(2) * kGraphMaxBlock, 0.f);   // P2a.1b modulator pre-pass scratch
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -2079,6 +2111,23 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     const bool new_bar = bar != s->last_bar;
     s->last_bar = bar;
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
+
+    // ADR-0022 P2a.1b: the modulator PRE-PASS — run every track's modulators into the session control
+    // pool BEFORE any track renders audio, so control-edge resolution no longer depends on track
+    // render order (the basis for cross-track modulation, P2a.2). In-track modulation is unchanged:
+    // a modulator still runs exactly once per block, into the same region its consumer reads. Uses
+    // the currently published plan (a plan edit landing this block is one block late for a newly added
+    // modulator — acceptable, block-rate). Modulators need only transport + their control region.
+    for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
+        Track& t = *s->tracks_view[tv_i];
+        if (!t.gok) continue;
+        GraphBlockCtx mb;
+        mb.frames = frames; mb.sample_rate = sample_rate;
+        mb.bpm = static_cast<float>(bpm); mb.bpb = bpb; mb.beats = beats;
+        mb.ctl_pool = s->ctl_pool.data();
+        mb.ctl_base = tv_i * static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock;
+        run_track_modulators(t, mb, s->mod_scratch.data(), s->mod_scratch.data() + kGraphMaxBlock, frames);
+    }
 
     bool any = false;
     for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
