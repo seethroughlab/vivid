@@ -111,6 +111,23 @@ struct GNodeBind {
 // silently break the real-time contract, so pin it.
 static_assert(std::is_trivially_copyable<GNodeBind>::value, "GNodeBind must stay POD for the RT gbinds swap");
 
+// ADR-0022 P2a.2: a SESSION-LEVEL cross-track control edge — a modulator on one track driving a param
+// on ANOTHER track. `XCtlEdge` is the UI-thread authoritative record (stable ids, survives reorders).
+// `XCtlApply` is its resolved form for the audio thread: read the source modulator's value at
+// `src_pool_index` (absolute sample-0 index into Session::ctl_pool) and drive the dst node's param.
+// The dst is addressed by (track id, compiled out_buf) so run_track_graph can match its current node.
+struct XCtlEdge {
+    int src_track_id = -1, src_node_id = -1;
+    int dst_track_id = -1, dst_node_id = -1, dst_param = -1;
+    vivid::audio::ControlShape shape;
+};
+struct XCtlApply {
+    int    dst_track_id = -1, dst_out_buf = -1, dst_param = -1;
+    size_t src_pool_index = 0;   // absolute sample-0 index into Session::ctl_pool (source track's region)
+    vivid::audio::ControlShape shape;
+};
+static_assert(std::is_trivially_copyable<XCtlApply>::value, "XCtlApply must stay POD for the RT xctl swap");
+
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
     uint32_t frames = 0, sample_rate = 48000;
@@ -120,9 +137,19 @@ struct GraphBlockCtx {
     // these). `steady` is the track's running sample counter (also on Track); `delta` is
     // beats-per-block; `playing` gates the sampler. Filled alongside the native fields each block.
     uint64_t steady = 0; double delta = 0.0; bool playing = false;
+    // ADR-0022 P2a.1: the session control pool + this track's region base (in floats). The apply
+    // reads ctl_pool[ctl_base + src_buf·kGraphMaxBlock]; a modulator writes ctl_pool[ctl_base +
+    // control_out_buf·kGraphMaxBlock]. Set per track in session_process (== tracks_view index · stride).
+    float* ctl_pool = nullptr; size_t ctl_base = 0;
+    // ADR-0022 P2a.2: the published cross-track control edges (all of them; each node matches those
+    // targeting it by dst_track_id + dst_out_buf). Empty ⇒ zero cost.
+    const XCtlApply* xctl = nullptr; uint32_t xctl_count = 0;
 };
 
+struct Session;   // ADR-0022 P2a.2 (Track back-pointer, for re-resolving cross-track edges on recompile)
+
 struct Track {
+    Session*              session = nullptr;   // set by rebuild_track_view; UI-thread only
     Vst3Handle*           handle = nullptr;
     std::string           name;
     int                   id = -1;   // stable identity (monotonic; survives reorders/deletes)
@@ -131,6 +158,12 @@ struct Track {
     std::atomic<int>      active{0};
     std::atomic<int>      queued{-1};
     std::atomic<float>    gain{0.8f};
+    // ADR-0022 P1b.4: solo/mute. `mute`/`solo` are the UI-set state; `mix_scale` is the derived
+    // per-track master-sum multiplier (1 = audible, 0 = silenced by mute or by another track's solo),
+    // recomputed on the UI thread whenever any track's mute/solo changes and read by the audio thread
+    // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
+    std::atomic<bool>     mute{false}, solo{false};
+    std::atomic<float>    mix_scale{1.f};
     std::atomic<float>    level{0.f};
     std::atomic<float>    transient{0.f};
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
@@ -212,6 +245,15 @@ struct Track {
     // edit copies never reallocates. `blk` is transient (filled each block).
     vivid::audio::CompiledAudioGraph gcg, gcg_edit;   // topology plan (POD steps)
     std::vector<GNodeBind>           gbinds, gbinds_edit;
+    // ADR-0022 P1b.2: the publish HANDOFF buffer. The UI thread copies the freshly-built edit plan
+    // (gcg_edit/gbinds_edit/gok_edit) into these under gmtx (publish_track_plan); the audio thread
+    // then pointer-SWAPS them into the working plan (gcg/gbinds/gok) under a try_lock — so the
+    // callback exchanges buffers instead of copying the steps/binds vectors. The UI's authoritative
+    // *_edit copies are never swapped (UI queries still read them). Reserved to kGraphMaxNodes so
+    // both the UI copy and the audio swap stay allocation-free.
+    vivid::audio::CompiledAudioGraph gcg_ho;
+    std::vector<GNodeBind>           gbinds_ho;
+    bool                             gok_ho = false;
     // ADR-0015: the NOTE buffer pool — one fixed-capacity note list per note-emitting node
     // (CompiledAudioGraph::note_buf_count). Sized + reserved on the UI thread when a plan is
     // published, so the audio thread only ever clear()s and push_back()s within capacity: no
@@ -219,12 +261,9 @@ struct Track {
     std::vector<std::vector<vivid::session::NoteEvent>> npool;
     std::vector<vivid::session::NoteEvent> nmerge;   // scratch: >1 note edge into one node (reserved)
     std::vector<float>               gpool;            // node-buffer pool
-    // ADR-0022: the CONTROL pool — one buffer per possible control-emitting node, indexed by the
-    // node's control_out_buf. A modulator writes its 0..1 signal here; a downstream node's
-    // control_in[k].src_buf selects which to read. Reserved to the worst case (reserve_track_graph),
-    // so the audio thread only writes within capacity — and empty of meaning for any graph with no
-    // control edges (control_buf_count == 0).
-    std::vector<float>               cpool;            // kGraphMaxNodes * kGraphMaxBlock (one row per node)
+    // ADR-0022 P2a.1: the CONTROL pool moved to the Session (`Session::ctl_pool`, per-track regions),
+    // so cross-track modulation can read across track boundaries. A modulator writes its 0..1 signal
+    // into this track's region; a consumer reads it via `blk.ctl_pool[blk.ctl_base + src_buf·...]`.
     // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
     // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
     // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
@@ -282,6 +321,20 @@ static constexpr int32_t kLiveNoteIdBase = 0x40000000;
 // awaiting its note-off.
 struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool open; };
 
+// ADR-0022 P1b: the MASTER node — the session's single sink. It SUMS every track that rendered
+// this block, applies the master gain, and publishes the master meters. This is the seed of the
+// compiled master step (P1b.3): today's per-track mix loop no longer accumulates into `out`; it
+// renders + meters each track, and this node does the summation. `gain` defaults to 1.0, which
+// keeps the mix bit-identical with the pre-P1b inline sum. The meter fields are the master's own
+// state block: `flt_lo/flt_hi/tr_baseline` are audio-thread-only running state; the atomics are
+// UI-read (same layout + math as a Track's meters).
+struct Master {
+    std::atomic<float> gain{1.f};
+    std::atomic<float> level{0.f}, transient{0.f};
+    std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};
+    float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
+};
+
 struct Session {
     Vst3HostApp host;
     vivid::OpRegistry* op_reg = nullptr;   // shared operator registry (for native audio ops); set at init
@@ -298,6 +351,38 @@ struct Session {
     std::vector<Track*>   tracks_pub;     // UI-published snapshot (guarded by tracks_mtx)
     std::vector<Track*>   tracks_view;    // audio working copy (audio thread only)
     std::mutex            tracks_mtx;
+    // ADR-0022 P1b: the master node + its input list. `render_list` is the set of tracks that
+    // actually rendered this block (a source present), in tracks_view order — the master node sums
+    // their outputs. Audio-thread-only scratch, reserved to kMaxTracks so the per-block clear +
+    // push_back never allocate.
+    Master                master;
+    std::vector<Track*>   render_list;
+    // ADR-0022 P1b.3a: ONE session-owned buffer pool for the track OUTPUTS (was per-track
+    // Track::bl/br). A track's `slot` (its render order this block) writes its final L/R into
+    // track_out_pool[slot] — L at slot*2*kGraphMaxBlock, R one kGraphMaxBlock later — and the master
+    // node sums the slices of render_list. Sized to kMaxTracks slots × stereo × kGraphMaxBlock; the
+    // audio thread only ever writes within a slot (frames ≤ kGraphMaxBlock, guarded in
+    // session_process), so there is no allocation in the callback.
+    std::vector<float>    track_out_pool;
+    // ADR-0022 P2a.1: ONE session-owned CONTROL pool (was per-track Track::cpool), laid out as
+    // per-track regions — the control analog of track_out_pool. Track at tracks_view index `i` owns
+    // region `i` (base = i · kGraphMaxNodes · kGraphMaxBlock floats); a control buffer `c` in that
+    // region holds a block at base + c·kGraphMaxBlock. A modulator writes its 0..1 signal into its
+    // region; a consumer reads `ctl_pool[region_base + src_buf·kGraphMaxBlock]` (sample 0). One pool,
+    // one source of truth for every control value — the substrate cross-track modulation reads across
+    // regions (P2a.2). Sized to kMaxTracks regions (== the old aggregate per-track cpools).
+    std::vector<float>    ctl_pool;
+    // ADR-0022 P2a.1b: scratch for the modulator pre-pass's discarded silent audio output (stereo,
+    // kGraphMaxBlock). Modulators run one at a time, so one shared scratch suffices.
+    std::vector<float>    mod_scratch;
+    // ADR-0022 P2a.2: session-level cross-track control edges. `xctl_edges` is UI-thread
+    // authoritative; `republish_xctl` resolves it into `xctl_ho` and the audio thread swaps that into
+    // `xctl_view` (the P1b.2 handoff pattern) — the callback reads the resolved list, never the edges.
+    std::vector<XCtlEdge>  xctl_edges;
+    std::vector<XCtlApply> xctl_view, xctl_ho;
+    std::mutex             xctl_mtx;
+    std::atomic<uint64_t>  xctl_gen{0};
+    uint64_t               xctl_gen_seen = 0;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -338,12 +423,20 @@ struct Session {
     std::string              clap_last_error;    // main-thread only (last failed async load)
 };
 
+static void recompute_mix_scales(Session* s);   // ADR-0022 P1b.4 (defined below)
+static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below)
+
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
 static void rebuild_track_view(Session* s) {
+    // ADR-0022 P1b.4: membership changed — a new track must respect an active solo, and dropping a
+    // soloed track must un-silence the rest. Recompute before publishing the new view.
+    recompute_mix_scales(s);
+    // ADR-0022 P2a.2: track POSITIONS moved → cross-track source region bases changed → re-resolve.
+    republish_xctl(s);
     std::lock_guard<std::mutex> lk(s->tracks_mtx);
     s->tracks_pub.clear();
-    for (auto& tp : s->tracks) s->tracks_pub.push_back(tp.get());
+    for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
     s->tracks_gen.fetch_add(1, std::memory_order_release);
 }
 
@@ -391,6 +484,7 @@ static void pad_aud_clips(Track* t, int scenes) {
 static void reserve_track_graph(Track* t) {
     t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
     t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
+    t->gbinds_ho.reserve(kGraphMaxNodes);    t->gcg_ho.steps.reserve(kGraphMaxNodes);   // P1b.2 publish handoff
     t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
@@ -401,10 +495,9 @@ static void reserve_track_graph(Track* t) {
     t->npool.resize(kGraphMaxNodes);
     for (auto& nb : t->npool) nb.reserve(kGraphMaxNotes);
     t->nmerge.reserve(kGraphMaxNotes);
-    // ADR-0022: the control pool — one 0..1 signal buffer per possible control-emitting node
-    // (a modulator writes a block's worth; the host samples index 0 today). Same worst-case
-    // preallocation as the pools above; the audio thread only writes within capacity.
-    t->cpool.assign(static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2a.1: the control pool is now session-owned (Session::ctl_pool, per-track regions),
+    // sized once at session init — no per-track allocation here. `ctl_pub` (the UI live-dot atomics)
+    // stays per-track.
     t->ctl_pub.reset(new std::atomic<float>[kGraphMaxNodes]);
     for (int i = 0; i < kGraphMaxNodes; ++i) t->ctl_pub[i].store(0.f, std::memory_order_relaxed);
 }
@@ -433,11 +526,29 @@ static void configure_track_capture(Track* t, uint32_t sample_rate) {
 // thread (the usual ggen/gmtx mirror). Caller MUST hold t->gmtx. Returns false if the graph does
 // not compile (a cycle) — in that case gcg_edit is left untouched (AudioGraph::compile bails
 // before writing `out`), so the last good plan keeps playing; the caller reverts its edit.
+// ADR-0022 P1b.2: stage the just-built edit plan into the handoff buffer, then bump the gen. The
+// steps/binds COPY happens HERE, on the UI thread (caller holds t->gmtx); the audio thread's apply
+// only pointer-SWAPS the handoff into its working plan — no vector copy in the callback. Copies
+// exactly the fields the audio thread reads (steps + buf_count + output_buf + binds + gok), matching
+// the pre-P1b.2 in-callback copy. Reserved capacities keep this copy allocation-free.
+static void publish_track_plan(Track* t) {
+    t->gcg_ho.steps      = t->gcg_edit.steps;
+    t->gcg_ho.buf_count  = t->gcg_edit.buf_count;
+    t->gcg_ho.output_buf = t->gcg_edit.output_buf;
+    t->gbinds_ho = t->gbinds_edit;
+    t->gok_ho    = t->gok_edit;
+    t->ggen.fetch_add(1, std::memory_order_release);
+}
+
 static bool republish_track_graph(Track* t) {
     if (!t->agraph.compile(t->gcg_edit)) return false;   // cycle → published plan unchanged
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
     t->gok_edit    = true;
-    t->ggen.fetch_add(1, std::memory_order_release);
+    publish_track_plan(t);
+    // ADR-0022 P2a.2: this track's node indices / control buffers may have moved — re-resolve any
+    // cross-track edges that reference it. (t->session is null only during initial track construction,
+    // before any cross-track edge can exist.)
+    republish_xctl(t->session);
     return true;
 }
 
@@ -496,7 +607,7 @@ static void rebuild_track_graph(Track* t) {
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
-        t->ggen.fetch_add(1, std::memory_order_release);
+        publish_track_plan(t);
         return;
     }
     int prev;
@@ -537,7 +648,7 @@ static void rebuild_track_graph(Track* t) {
     t->agraph.set_output_id(out);
     t->gbinds_edit = t->agnodes;                 // parallel to nodes(): index == out_buf
     t->gok_edit = t->agraph.compile(t->gcg_edit);
-    t->ggen.fetch_add(1, std::memory_order_release);
+    publish_track_plan(t);
 }
 
 // The per-source/effect render primitives (defined below, near session_process); forward-declared
@@ -601,6 +712,63 @@ static void drain_clap_notes(ClapHandle* h, std::vector<NoteEvent>& out) {
     }
 }
 
+// ADR-0022: resolve a step's control inputs into param OVERRIDES before the node runs. Reads each
+// driving modulator's 0..1 value from the session control pool region (`b.ctl_pool + b.ctl_base`),
+// combines it with the LIVE BASE (`audio_op_param_get` reads pvals, never written on this thread),
+// and stacks (two modulators on one param each add their swing). Shared by the modulator pre-pass and
+// the audio render loop. Returns the override count. Empty (returns 0) for any unmodulated node.
+static uint32_t resolve_control_inputs(const vivid::audio::CompiledStep& s, const GNodeBind& nb,
+                                       const GraphBlockCtx& b, vivid::AudioOpParamOverride* ovr) {
+    uint32_t novr = 0;
+    if (s.n_control_in > 0 && nb.op) {
+        for (int k = 0; k < s.n_control_in; ++k) {
+            const vivid::audio::ControlIn& ci = s.control_in[k];
+            if (ci.src_buf < 0 || ci.param < 0) continue;
+            const float src = b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0
+            const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
+            const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
+            int slot = -1;
+            for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
+            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
+            const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
+            if (slot >= 0) ovr[slot].value = v;
+            else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
+        }
+    }
+    return novr;
+}
+
+// ADR-0022 P2a.1b: run one MODULATOR step — resolve its own control inputs (a modulator can be
+// modulated), run the op into its control-pool region, publish the UI live dot. `scL`/`scR` receive
+// its (discarded) silent audio output. Pure DSP + atomics; no alloc/lock.
+static void run_modulator_step(const vivid::audio::CompiledStep& s, const GNodeBind& nb, Track& t,
+                               const GraphBlockCtx& b, float* scL, float* scR, uint32_t frames) {
+    vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
+    const uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
+    std::memset(scL, 0, frames * sizeof(float)); std::memset(scR, 0, frames * sizeof(float));
+    float* cout = nullptr;
+    if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
+        cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+    vivid::audio_op_process(nb.op, scL, scR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                            nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
+    if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
+        t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
+}
+
+// ADR-0022 P2a.1b: the modulator PRE-PASS for one track — run every `NativeMod` step (in the plan's
+// topological order, so a modulator that drives another runs first) into the session control pool
+// BEFORE any track renders audio. This is what makes control-edge resolution independent of track
+// render order — the basis for cross-track modulation (P2a.2). Uses the currently published plan.
+static void run_track_modulators(Track& t, const GraphBlockCtx& b, float* scL, float* scR, uint32_t frames) {
+    const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+    if (frames > kGraphMaxBlock || cg.steps.empty() || static_cast<int>(t.gbinds.size()) < cg.buf_count) return;
+    for (const vivid::audio::CompiledStep& s : cg.steps) {
+        if (s.out_buf < 0 || s.out_buf >= static_cast<int>(t.gbinds.size())) continue;
+        const GNodeBind& nb = t.gbinds[s.out_buf];
+        if (nb.kind == GNKind::NativeMod && nb.op) run_modulator_step(s, nb, t, b, scL, scR, frames);
+    }
+}
+
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
     // RT safety net: bail to silence on any inconsistency between the plan and the working
@@ -625,47 +793,36 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         float* oR = oL + stride;
         const GNodeBind& nb = t.gbinds[s.out_buf];
 
-        // ADR-0022: resolve this block's control inputs into param OVERRIDES before the node runs.
-        // The modulator upstream already wrote its 0..1 signal into cpool (topo order guarantees
-        // it), so we read it, combine with the LIVE BASE (audio_op_param_get reads pvals, never
-        // written on this thread), and hand the op the effective value — leaving the base intact.
-        // Block-rate: we sample cpool[row][0]. Native only in P0.5; VST3/CLAP land in P2 (they have
-        // no host-side base to modulate around — see ADR-0022). Empty for any unmodulated node.
+        // ADR-0022 P2a.1b: modulators already ran in the pre-pass (into the session control pool) —
+        // skip them here, just keep their audio buffer silent (nothing consumes a modulator's audio).
+        if (nb.kind == GNKind::NativeMod) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            continue;
+        }
+        // Resolve this node's control inputs into param overrides (shared helper — reads the session
+        // control pool region; the base stays live, so guardrail 3 holds).
         vivid::AudioOpParamOverride ovr[vivid::audio::kMaxControlInputs];
-        uint32_t novr = 0;
-        if (s.n_control_in > 0 && nb.op) {
-            for (int k = 0; k < s.n_control_in; ++k) {
-                const vivid::audio::ControlIn& ci = s.control_in[k];
-                if (ci.src_buf < 0 || ci.param < 0) continue;
-                const float src = t.cpool[static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0
-                const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
-                const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
-                // Two modulators on one param STACK: the second resolves around the first's result,
-                // not the raw base — so each adds its own swing rather than the last one winning.
+        uint32_t novr = resolve_control_inputs(s, nb, b, ovr);
+        // ADR-0022 P2a.2: apply cross-track control edges targeting this node — read the SOURCE track's
+        // region of the session pool and combine with the SAME live base+shape (guardrail 3), stacking
+        // onto any in-track override on the same param. Only the source region differs from in-track.
+        if (b.xctl_count > 0 && nb.op) {
+            for (uint32_t x = 0; x < b.xctl_count; ++x) {
+                const XCtlApply& xa = b.xctl[x];
+                if (xa.dst_track_id != t.id || xa.dst_out_buf != s.out_buf || xa.dst_param < 0) continue;
+                const float srcv = b.ctl_pool[xa.src_pool_index];
+                const float lo = vivid::audio_op_param_min(nb.op, xa.dst_param);
+                const float hi = vivid::audio_op_param_max(nb.op, xa.dst_param);
                 int slot = -1;
-                for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
-                const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
-                const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
+                for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == xa.dst_param) { slot = static_cast<int>(j); break; }
+                const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, xa.dst_param);
+                const float v = vivid::audio::control_resolve(base, srcv, xa.shape, lo, hi);
                 if (slot >= 0) ovr[slot].value = v;
-                else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
+                else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { xa.dst_param, v };
             }
         }
 
         if (s.n_in == 0) {   // source node
-            // ADR-0022: a MODULATOR (LFO/envelope). No sound; it writes its 0..1 signal into its
-            // cpool row for the control edges downstream to read. A source, so it lands here.
-            if (nb.kind == GNKind::NativeMod && nb.op) {
-                std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-                float* cout = nullptr;
-                if (s.control_out_buf >= 0 && static_cast<size_t>(s.control_out_buf) < t.cpool.size() / kGraphMaxBlock)
-                    cout = &t.cpool[static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
-                vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                                        nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
-                // Publish this block's output for the UI's live dot (node index == out_buf).
-                if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
-                    t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
-                continue;
-            }
             const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
             // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
             // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
@@ -761,13 +918,21 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         }
         std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
         std::memcpy(oR, iR, frames * sizeof(float));
-        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
+        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
                                     nullptr, 0, nullptr, ovr, novr);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
         else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
             render_clap_effect(t, nb.clap, frames, oL, oR);
+        else if (nb.kind == GNKind::Output) {
+            // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
+            // final output. (Was applied downstream in session_process's mix; relocated here so P1b's
+            // master node can simply SUM the track-out buffers.) Bit-identical: x*g here == the old
+            // L[i]*g in the mix. `oL/oR` already hold the summed inputs (passthrough above).
+            const float g = t.gain.load(std::memory_order_relaxed);
+            for (uint32_t i = 0; i < frames; ++i) { oL[i] *= g; oR[i] *= g; }
+        }
     }
     // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
     // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
@@ -1099,6 +1264,13 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks.reserve(kMaxTracks);
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
+    s->render_list.reserve(kMaxTracks);   // ADR-0022 P1b: master-node input list (audio thread)
+    // ADR-0022 P1b.3a: the session track-output pool — one stereo kGraphMaxBlock slot per track.
+    s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2a.1: the session control pool — kMaxTracks regions of kGraphMaxNodes control buffers.
+    s->ctl_pool.assign(static_cast<size_t>(kMaxTracks) * kGraphMaxNodes * kGraphMaxBlock, 0.f);
+    s->mod_scratch.assign(static_cast<size_t>(2) * kGraphMaxBlock, 0.f);   // P2a.1b modulator pre-pass scratch
+    s->xctl_edges.reserve(256); s->xctl_view.reserve(256); s->xctl_ho.reserve(256);   // P2a.2 cross-track edges
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -1338,6 +1510,123 @@ float session_track_gain(Session* s, int t) {
 }
 void session_set_track_gain(Session* s, int t, float g) {
     if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) s->tracks[t]->gain.store(g, std::memory_order_relaxed);
+}
+// ADR-0022 P1b.4: recompute every track's master-sum multiplier from the mute/solo state (UI thread).
+// A track is audible unless it is muted, or unless SOME track is soloed and this one is not. The audio
+// thread reads the resulting `mix_scale` in the master sum; at the all-default state every scale is 1.
+static void recompute_mix_scales(Session* s) {
+    if (!s) return;
+    bool any_solo = false;
+    for (auto& tp : s->tracks) if (tp->solo.load(std::memory_order_relaxed)) { any_solo = true; break; }
+    for (auto& tp : s->tracks) {
+        const bool muted  = tp->mute.load(std::memory_order_relaxed);
+        const bool soloed = tp->solo.load(std::memory_order_relaxed);
+        const bool audible = !muted && (!any_solo || soloed);
+        tp->mix_scale.store(audible ? 1.f : 0.f, std::memory_order_relaxed);
+    }
+}
+// ADR-0022 P2a.2: resolve every cross-track control edge into its audio-thread apply form and publish
+// (UI thread). For each edge: locate the src+dst tracks by stable id (their POSITION = region base),
+// map node ids to compiled indices via the agraph, read the source modulator's control buffer from
+// its compiled plan, and compute the absolute sample-0 index into the session control pool. An edge
+// whose endpoints don't currently resolve (track/node gone, or the source isn't a control emitter) is
+// dropped from this publish and revives when they reappear. Called on connect/disconnect, membership
+// change, and any plan recompile (indices move). Cheap (few edges); UI-thread only.
+static void republish_xctl(Session* s) {
+    if (!s) return;
+    std::vector<XCtlApply> resolved;
+    resolved.reserve(s->xctl_edges.size());
+    for (const XCtlEdge& e : s->xctl_edges) {
+        int src_pos = -1, dst_pos = -1;
+        for (size_t i = 0; i < s->tracks.size(); ++i) {
+            if (s->tracks[i]->id == e.src_track_id) src_pos = static_cast<int>(i);
+            if (s->tracks[i]->id == e.dst_track_id) dst_pos = static_cast<int>(i);
+        }
+        if (src_pos < 0 || dst_pos < 0) continue;
+        Track* srcT = s->tracks[static_cast<size_t>(src_pos)].get();
+        Track* dstT = s->tracks[static_cast<size_t>(dst_pos)].get();
+        const int src_idx = srcT->agraph.node_index(e.src_node_id);
+        const int dst_idx = dstT->agraph.node_index(e.dst_node_id);
+        if (src_idx < 0 || dst_idx < 0) continue;
+        int src_ctl_buf = -1;   // the source modulator's control buffer, from its compiled plan
+        for (const auto& st : srcT->gcg_edit.steps) if (st.out_buf == src_idx) { src_ctl_buf = st.control_out_buf; break; }
+        if (src_ctl_buf < 0) continue;   // source node isn't a control emitter
+        XCtlApply a;
+        a.dst_track_id  = e.dst_track_id;
+        a.dst_out_buf   = dst_idx;
+        a.dst_param     = e.dst_param;
+        a.src_pool_index = static_cast<size_t>(src_pos) * kGraphMaxNodes * kGraphMaxBlock
+                         + static_cast<size_t>(src_ctl_buf) * kGraphMaxBlock;
+        a.shape = e.shape;
+        resolved.push_back(a);
+    }
+    std::lock_guard<std::mutex> lk(s->xctl_mtx);
+    s->xctl_ho = resolved;   // UI thread; the audio thread swaps it in
+    s->xctl_gen.fetch_add(1, std::memory_order_release);
+}
+// ADR-0022 P2a.2: create a cross-track control edge (a modulator on `src_track` node `src_node`
+// driving `dst_track` node `dst_node`'s `param`). Tracks are INDICES (converted to stable ids for
+// storage so the edge survives reorders); nodes are stable agraph node ids. Returns 1 on success, 0
+// on a bad track/node or a duplicate (src,dst,param).
+int session_connect_control(Session* s, int src_track, int src_node, int dst_track, int dst_node,
+                            int param, float amount, float curve, int invert, int bipolar) {
+    if (!s) return 0;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt || param < 0) return 0;
+    Track* srcT = s->tracks[static_cast<size_t>(src_track)].get();
+    Track* dstT = s->tracks[static_cast<size_t>(dst_track)].get();
+    if (srcT->agraph.node_index(src_node) < 0 || dstT->agraph.node_index(dst_node) < 0) return 0;
+    const int src_id = srcT->id, dst_id = dstT->id;
+    for (const XCtlEdge& e : s->xctl_edges)
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node && e.dst_param == param) return 0;  // duplicate
+    XCtlEdge e;
+    e.src_track_id = src_id; e.src_node_id = src_node;
+    e.dst_track_id = dst_id; e.dst_node_id = dst_node; e.dst_param = param;
+    e.shape.amount = amount; e.shape.curve = curve; e.shape.invert = invert != 0; e.shape.bipolar = bipolar != 0;
+    s->xctl_edges.push_back(e);
+    republish_xctl(s);
+    return 1;
+}
+void session_disconnect_control(Session* s, int src_track, int src_node, int dst_track, int dst_node, int param) {
+    if (!s) return;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return;
+    const int src_id = s->tracks[static_cast<size_t>(src_track)]->id;
+    const int dst_id = s->tracks[static_cast<size_t>(dst_track)]->id;
+    bool changed = false;
+    for (size_t i = 0; i < s->xctl_edges.size();) {
+        const XCtlEdge& e = s->xctl_edges[i];
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node && e.dst_param == param) {
+            s->xctl_edges.erase(s->xctl_edges.begin() + static_cast<long>(i)); changed = true;
+        } else ++i;
+    }
+    if (changed) republish_xctl(s);
+}
+bool session_track_mute(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->mute.load(std::memory_order_relaxed);
+}
+void session_set_track_mute(Session* s, int t, bool m) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) { s->tracks[t]->mute.store(m, std::memory_order_relaxed); recompute_mix_scales(s); }
+}
+bool session_track_solo(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->solo.load(std::memory_order_relaxed);
+}
+void session_set_track_solo(Session* s, int t, bool so) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) { s->tracks[t]->solo.store(so, std::memory_order_relaxed); recompute_mix_scales(s); }
+}
+// ADR-0022 P1b: the master node's gain + meters (the session's single sink).
+float session_master_gain(Session* s) { return s ? s->master.gain.load(std::memory_order_relaxed) : 1.f; }
+void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store(std::max(0.f, g), std::memory_order_relaxed); }
+float session_master_level(Session* s) { return s ? s->master.level.load(std::memory_order_relaxed) : 0.f; }
+float session_master_transient(Session* s) { return s ? s->master.transient.load(std::memory_order_relaxed) : 0.f; }
+float session_master_band(Session* s, int b) {
+    if (!s) return 0.f;
+    switch (b) { case 0: return s->master.band_low.load(std::memory_order_relaxed);
+                 case 1: return s->master.band_mid.load(std::memory_order_relaxed);
+                 case 2: return s->master.band_high.load(std::memory_order_relaxed);
+                 default: return 0.f; }
 }
 float session_track_level(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->level.load(std::memory_order_relaxed) : 0.f;
@@ -1992,6 +2281,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                      bool playing, bool release_all) {
     if (!s) return false;
     std::memset(out, 0, sizeof(float) * 2 * frames);
+    // ADR-0022 P1b.3a: the whole engine is sized to kGraphMaxBlock (the node pool, the control pool,
+    // and now the session track-output pool), and run_track_graph bails on a larger block. Guard the
+    // top-level entry too: an oversized block renders silence (already memset above) rather than
+    // overflow a track slot. macOS CoreAudio never exceeds this, so normal operation is untouched.
+    if (frames > kGraphMaxBlock) return true;
     s->play_beats.store(beats, std::memory_order_relaxed);   // publish the clock for live-input stamping (M6)
 
     // Refresh the audio-thread track view if the UI added/removed a track (cheap gen-
@@ -2005,6 +2299,17 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         }
     }
     if (s->tracks_view.empty()) return false;
+    s->render_list.clear();   // ADR-0022 P1b: rebuilt each block; the master node sums it
+
+    // ADR-0022 P2a.2: pick up a re-resolved cross-track control edge list (pointer-swap handoff, like
+    // the per-track plan). On try_lock contention we keep the current list and retry next block.
+    if (s->xctl_gen.load(std::memory_order_acquire) != s->xctl_gen_seen) {
+        if (s->xctl_mtx.try_lock()) {
+            s->xctl_view.swap(s->xctl_ho);
+            s->xctl_gen_seen = s->xctl_gen.load(std::memory_order_acquire);
+            s->xctl_mtx.unlock();
+        }
+    }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
     const long long bar = static_cast<long long>(std::floor(beats / bpb));
@@ -2012,9 +2317,45 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     s->last_bar = bar;
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
 
-    bool any = false;
+    // ADR-0022 P2a.1b: apply each track's pending audio-graph plan swap (P1b.2 handoff) for EVERY
+    // track — BEFORE the pre-pass and BEFORE the render loop's no-instrument skip. A modulator-only
+    // track (a dedicated LFO track, no instrument) is skipped in the render loop, so if its plan were
+    // only applied there its modulators would never reach the audio thread; applying here makes its
+    // gok/plan current so the pre-pass runs its LFO. vector::swap is O(1); try_lock skips on contention.
     for (Track* tp : s->tracks_view) {
         Track& t = *tp;
+        if (t.ggen.load(std::memory_order_acquire) == t.ggen_seen) continue;
+        if (t.gmtx.try_lock()) {
+            t.gcg.steps.swap(t.gcg_ho.steps);
+            std::swap(t.gcg.buf_count,  t.gcg_ho.buf_count);
+            std::swap(t.gcg.output_buf, t.gcg_ho.output_buf);
+            t.gbinds.swap(t.gbinds_ho);
+            std::swap(t.gok, t.gok_ho);
+            t.ggen_seen = t.ggen.load(std::memory_order_acquire);
+            t.gmtx.unlock();
+        }
+    }
+
+    // ADR-0022 P2a.1b: the modulator PRE-PASS — run every track's modulators into the session control
+    // pool BEFORE any track renders audio, so control-edge resolution no longer depends on track
+    // render order (the basis for cross-track modulation, P2a.2). In-track modulation is unchanged:
+    // a modulator still runs exactly once per block, into the same region its consumer reads. Now that
+    // the plan swap above ran for all tracks, the pre-pass sees the current plan. Modulators need only
+    // transport + their control region.
+    for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
+        Track& t = *s->tracks_view[tv_i];
+        if (!t.gok) continue;
+        GraphBlockCtx mb;
+        mb.frames = frames; mb.sample_rate = sample_rate;
+        mb.bpm = static_cast<float>(bpm); mb.bpb = bpb; mb.beats = beats;
+        mb.ctl_pool = s->ctl_pool.data();
+        mb.ctl_base = tv_i * static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock;
+        run_track_modulators(t, mb, s->mod_scratch.data(), s->mod_scratch.data() + kGraphMaxBlock, frames);
+    }
+
+    bool any = false;
+    for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
+        Track& t = *s->tracks_view[tv_i];
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
@@ -2061,21 +2402,15 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_fx_mtx.unlock();
             }
         }
-        // AG-0: apply a pending audio-graph edit (topology plan + node bindings). Reserved
-        // working buffers => these copies never reallocate (RT-safe); no free on this thread.
-        if (t.ggen.load(std::memory_order_acquire) != t.ggen_seen) {
-            if (t.gmtx.try_lock()) {
-                t.gcg.steps  = t.gcg_edit.steps;   // POD steps; capacity reserved to kGraphMaxNodes
-                t.gcg.buf_count  = t.gcg_edit.buf_count;
-                t.gcg.output_buf = t.gcg_edit.output_buf;
-                t.gbinds     = t.gbinds_edit;      // POD binds; capacity reserved
-                t.gok        = t.gok_edit;
-                t.ggen_seen  = t.ggen.load(std::memory_order_acquire);
-                t.gmtx.unlock();
-            }
-        }
-        if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
-        float* L = t.bl.data(); float* R = t.br.data();
+        // (ADR-0022 P2a.1b: the audio-graph plan swap was hoisted to a loop BEFORE the pre-pass, so
+        // every track's plan — including a modulator-only track the render loop skips — is current
+        // when the pre-pass runs its modulators.)
+        // ADR-0022 P1b.3a: render into this track's slice of the session output pool (slot = its
+        // render order this block; == its future render_list index). run_track_graph writes L/R
+        // through these pointers exactly as it did with the per-track bl/br buffers.
+        const size_t slot = s->render_list.size();
+        float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+        float* R = L + kGraphMaxBlock;
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
@@ -2129,11 +2464,22 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
             t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
             t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;
+            // ADR-0022 P2a.1: this track's region of the session control pool.
+            t.blk.ctl_pool = s->ctl_pool.data();
+            t.blk.ctl_base = tv_i * static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock;
+            // ADR-0022 P2a.2: the cross-track control edges (each node matches those targeting it).
+            t.blk.xctl = s->xctl_view.data();
+            t.blk.xctl_count = static_cast<uint32_t>(s->xctl_view.size());
             run_track_graph(t, L, R, frames);
         }
         t.steady += frames;
 
-        const float g = t.gain.load(std::memory_order_relaxed);
+        // ADR-0022 P1a: the track GAIN is applied inside the Track-Out (Output) node, so L/R already
+        // hold the GAINED output (or silence for a gok=false / bailed track). ADR-0022 P1b: this loop
+        // no longer sums into `out` — it only computes the per-track meters over that gained signal;
+        // the MASTER node below sums every rendered track's output. (Per-track metering stays here —
+        // it must cover the graph-bail and no-source cases too; it relocates into the track-out node
+        // in P1b.3 when this per-track loop is replaced by the session-graph executor.)
         const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
@@ -2152,8 +2498,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
         }
         for (uint32_t i = 0; i < frames; ++i) {
-            const float l = L[i] * g, r = R[i] * g;
-            out[2 * i] += l; out[2 * i + 1] += r;
+            const float l = L[i], r = R[i];
             if (cap_locked) {
                 t.capture_l[cap_pos] = l;
                 t.capture_r[cap_pos] = r;
@@ -2180,6 +2525,48 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
         t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
         t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+        s->render_list.push_back(&t);   // ADR-0022 P1b: this track feeds the master node
+    }
+
+    // ADR-0022 P1b: the MASTER node. Sum every rendered track's output into the master buffer
+    // (`out`, already silent from the memset above), apply the master gain, then compute the master
+    // meters over the result. At master gain 1.0 the sum is bit-identical to the pre-P1b inline
+    // per-track accumulation (same values, same tracks_view order). The metronome click is mixed in
+    // downstream (audio_callback), so — as before — it is neither gained here nor in these meters.
+    {
+        Master& m = s->master;
+        for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+            // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix;
+            // its own meter, computed above, stays pre-mute). At the default 1.0 this is an IEEE
+            // identity, so an all-audible session sums bit-identically to before.
+            const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
+            const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+            const float* R = L + kGraphMaxBlock;
+            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+        }
+        const float mg = m.gain.load(std::memory_order_relaxed);
+        const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
+        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);
+        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);
+        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+        for (uint32_t i = 0; i < frames; ++i) {
+            const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
+            out[2 * i] = l; out[2 * i + 1] = r;
+            sum_sq += static_cast<double>(l) * l;
+            m.flt_lo += (l - m.flt_lo) * a_lo;
+            m.flt_hi += (l - m.flt_hi) * a_hi;
+            const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
+            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        }
+        const float inv = 1.f / (frames > 0 ? frames : 1);
+        m.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+        m.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+        m.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
+        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+        m.level.store(rms, std::memory_order_relaxed);
+        const float tr = std::max(0.f, (rms - m.tr_baseline) * 6.f);
+        m.tr_baseline += (rms - m.tr_baseline) * 0.04f;
+        m.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
     }
     return any;
 }

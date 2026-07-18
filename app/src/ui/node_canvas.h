@@ -17,6 +17,9 @@ struct NodeView {
     void to_world(double sx, double sy, double& wx, double& wy) const {
         wx = (sx - ox) / scale; wy = (sy - oy) / scale;
     }
+    void to_screen(double wx, double wy, double& sx, double& sy) const {
+        sx = ox + wx * scale; sy = oy + wy * scale;
+    }
     // Zoom by `factor` about the screen point (sx,sy), keeping that world point under the cursor.
     void zoom_at(double sx, double sy, float factor) {
         double wx, wy; to_world(sx, sy, wx, wy);
@@ -26,6 +29,14 @@ struct NodeView {
     }
     void pan(float dx, float dy) { ox += dx; oy += dy; }
 };
+
+// The audio graph stores a zoom + a pan that are RELATIVE to its graph region (so the graph stays
+// put when the region moves — e.g. when the param band grows/shrinks). This reconstructs the
+// absolute world->screen NodeView the shared transform math uses. (The visuals graph stores an
+// absolute NodeView directly; the audio graph derives one here — ADR-0023.)
+inline NodeView region_view(const Rect& region, float zoom, float pan_x, float pan_y) {
+    return { region.x + pan_x, region.y + pan_y, zoom };
+}
 
 // A bezier wire from an output port to an input port.
 inline void node_wire(Renderer2D& r, float x0, float y0, float x1, float y1, float cr, float cg, float cb) {
@@ -64,6 +75,40 @@ inline void node_card(Renderer2D& r, float x, float y, float w, float h,
     item_box(r, { x, y, w, h }, accent, false, selected, AccentEdge::Top);
     r.draw_rect(x + 1.f, y + 3.f, w - 2.f, 19.f, s.card_hi[0], s.card_hi[1], s.card_hi[2], 1.0f);   // header strip
 }
+
+// --- Card port-row + preview-well layout (ADR-0023) -------------------------------------------
+// Below its header, a node card stacks a column of left-edge PORT ROWS — some LEAD input rows (a
+// signal input on an audio node; texture inputs on a visual op), then one row per exposed/visible
+// param, then an optional trailing "+param" add-row — and a preview/thumbnail region fills the space
+// beneath them. Both graph editors share this vertical structure; describing it in one place means a
+// card's height and its ports' drawn centres are one formula and can't drift apart. The metrics
+// (heights, pitch, tail) are fields because the two editors differ: audio uses a 22px header / 15px
+// rows / a fill-to-bottom waveform well; the visuals graph uses 30 / 18 / a fixed 46px thumbnail.
+struct CardPorts {
+    float header_h  = 22.f;   // title-strip height
+    float row_h     = 15.f;   // one port-row height
+    float tail_h    = 30.f;   // preview/thumbnail region height below the rows (0 = none)
+    float tail_pad  = 6.f;    // gap below the tail region to the card bottom
+    int   lead_rows = 0;      // input rows before the params (audio: 0/1 signal-in; visual: 0..2 texture ins)
+    int   params    = 0;      // one row per exposed/visible param
+    bool  add_row   = false;  // a trailing "+param" row (e.g. a plugin card)
+
+    int   rows()          const { return lead_rows + params + (add_row ? 1 : 0); }
+    int   rows_reserved() const { return std::max(1, rows()); }   // a card always reserves >= 1 row
+    float height()        const { return header_h + rows_reserved() * row_h + tail_h + tail_pad; }
+
+    int   param_row(int k) const { return lead_rows + k; }   // row index of the k-th param
+    int   add_row_index()  const { return lead_rows + params; }
+
+    // Centre-y of port row `k` on a card whose top edge is at `card_y` (lead rows are 0..lead_rows-1).
+    float row_cy(float card_y, int k) const { return card_y + header_h + k * row_h + row_h * 0.5f; }
+    // A fill-to-bottom recessed preview well beneath the rows (the audio convention), within card
+    // rect `c`. The visuals graph places a fixed-height thumbnail itself — this is not shared.
+    Rect  preview(const Rect& c) const {
+        const float y = c.y + header_h + rows_reserved() * row_h + 1.f;
+        return { c.x + 6.f, y, c.w - 12.f, (c.y + c.h) - y - 4.f };
+    }
+};
 
 // --- Broken-node vocabulary (ADR-0019). A node the engine knows is broken must LOOK broken, in
 // both editors, from one implementation. Each editor supplies its own error string (a shader that

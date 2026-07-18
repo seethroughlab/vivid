@@ -469,6 +469,30 @@ def set_track_gain(track: int, gain: float) -> dict:
 
 
 @mcp.tool
+def set_master_gain(gain: float) -> dict:
+    """Set the master node's gain (the session's single sink; 1.0 = unity).
+
+    The master node sums every track's output; its gain + meters are reported under
+    the 'master' key of list_tracks."""
+    return _post("set_master_gain", {"gain": gain})
+
+
+@mcp.tool
+def set_track_mute(track: int, mute: bool = True) -> dict:
+    """Mute/unmute a track in the master mix. The track's own meter stays pre-mute.
+
+    Reported as 'mute' per track in list_tracks."""
+    return _post("set_track_mute", {"track": track, "mute": mute})
+
+
+@mcp.tool
+def set_track_solo(track: int, solo: bool = True) -> dict:
+    """Solo/unsolo a track: while any track is soloed, only soloed (and non-muted) tracks
+    are heard. Reported as 'solo' per track in list_tracks."""
+    return _post("set_track_solo", {"track": track, "solo": solo})
+
+
+@mcp.tool
 def audio_set_warp(track: int, scene: int, enabled: bool = True, mode: str = "complex") -> dict:
     """Enable/disable warping on an audio clip. mode: 'complex' (pitch-preserving), 'beats'
     (transient-aware, tight for drums), or 'repitch' (tape-style, pitch follows tempo)."""
@@ -772,6 +796,29 @@ def audio_graph_disconnect_control(track: int, from_node: int, to_node: int, par
     triple used to create it with audio_graph_connect_control."""
     return _post("audio_graph_disconnect_control", {"track": track, "from": from_node,
                                                     "to": to_node, "param": param})
+
+
+@mcp.tool
+def session_connect_control(src_track: int, src_node: int, dst_track: int, dst_node: int, param: int,
+                            amount: float = 1.0, curve: float = 0.0,
+                            invert: bool = False, bipolar: bool = False) -> dict:
+    """CROSS-TRACK modulation (ADR-0022 P2a): a modulator (src_node) on src_track drives ONE param
+    (by index) of dst_node on ANOTHER track (dst_track). Same live base+shape model as the in-track
+    audio_graph_connect_control (the dst param keeps its base; the modulator adds an offset on top).
+    The source may be on an instrument track or a dedicated modulator-only track. Tracks are indices;
+    nodes are stable graph node ids (from get_audio_graph)."""
+    return _post("session_connect_control", {"src_track": src_track, "src_node": src_node,
+                                             "dst_track": dst_track, "dst_node": dst_node, "param": param,
+                                             "amount": amount, "curve": curve,
+                                             "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
+def session_disconnect_control(src_track: int, src_node: int, dst_track: int, dst_node: int, param: int) -> dict:
+    """Remove a cross-track modulation edge (ADR-0022 P2a): the dst param returns to its base. Same
+    (src_track, src_node, dst_track, dst_node, param) used to create it with session_connect_control."""
+    return _post("session_disconnect_control", {"src_track": src_track, "src_node": src_node,
+                                                "dst_track": dst_track, "dst_node": dst_node, "param": param})
 
 
 @mcp.tool

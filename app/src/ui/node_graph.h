@@ -4,6 +4,8 @@
 #include "gpu/visual_graph.h"
 #include "mapping.h"
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
+#include "ui/node_canvas.h"    // NodeView — the shared pan/zoom transform (ADR-0023)
+#include "ui/graph_canvas.h"   // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
@@ -113,8 +115,8 @@ public:
     void on_move(double x, double y);
     void on_up(double x, double y);
     void zoom_at(double sx, double sy, float factor);   // scroll-wheel zoom around the cursor
-    void get_view(float& ox, float& oy, float& scale) const { ox = view_ox_; oy = view_oy_; scale = view_scale_; }
-    void set_view(float ox, float oy, float scale) { view_ox_ = ox; view_oy_ = oy; view_scale_ = scale; }
+    void get_view(float& ox, float& oy, float& scale) const { ox = view_.ox; oy = view_.oy; scale = view_.scale; }
+    void set_view(float ox, float oy, float scale) { view_ = { ox, oy, scale }; }
 
     // Operator chooser (Tab): a filtered palette that spawns a node at the cursor. The widget is
     // shared with the audio graph (ui/chooser.h); this class supplies the catalog + the spawn.
@@ -161,11 +163,10 @@ private:
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
-    float  view_ox_ = 0.f, view_oy_ = 0.f, view_scale_ = 1.f;  // world->screen pan/zoom
+    NodeView view_;                                  // world->screen pan/zoom (shared, ADR-0023)
+    GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared card/grid/ghost-wire draw skeleton
     float  pan_last_x_ = 0.f, pan_last_y_ = 0.f;     // last cursor during a canvas pan
-    void to_world(double sx, double sy, double& wx, double& wy) const {
-        wx = (sx - view_ox_) / view_scale_; wy = (sy - view_oy_) / view_scale_;
-    }
+    void to_world(double sx, double sy, double& wx, double& wy) const { view_.to_world(sx, sy, wx, wy); }
 
     Chooser chooser_;                  // the shared Tab palette (ui/chooser.h)
     void chooser_spawn(const Chooser::Entry& e);   // create the node the chooser handed back
@@ -177,10 +178,10 @@ private:
     void note_edit_(const char* label, const char* key = "");   // fold a graph edit into the gesture
 
     static void data_out(const DataNode& n, float& px, float& py);
-    static bool in_rect(float rx, float ry, float rw, float rh, double x, double y);
     int  find_source_node(const std::string& src) const;
 
     void sync_op_pos();
+    CardPorts card_ports(int i) const;   // shared card port-row layout (ADR-0023)
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output

@@ -4,6 +4,7 @@
 #include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/app.h"
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"   // App::audio_graph view (ADR-0023 6b: file save/load round-trips it)
 #include "gpu/visual_graph.h"
 
 #include <string>
@@ -16,14 +17,16 @@ void register_project_handlers(Handlers& handlers_) {
     namespace P = vivid::session;
     // ---------------- session author / persist ----------------
     handlers_["save_session"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
+        if (!c.session || !c.graph || !c.app || !c.app->audio_graph) return err(code::kNoSession, "no session");
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path");
-        return save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h)
+        auto* ag = c.app->audio_graph;
+        return save_session(path, c.session, *c.graph, *c.win_w, *c.win_h, *c.split_x, *c.dock_h,
+                            ag->zoom(), ag->pan_x(), ag->pan_y())
                    ? ok() : err(code::kIoError, "write failed");
     };
     handlers_["load_session"] = [](const ControlCtx& c, const json& b) {
-        if (!c.session || !c.graph) return err(code::kNoSession, "no session");
+        if (!c.session || !c.graph || !c.app || !c.app->audio_graph) return err(code::kNoSession, "no session");
         int ww = *c.win_w, wh = *c.win_h;   // don't resize the window via MCP
         if (b.contains("session")) {        // inline JSON
             return session_from_json(b["session"], c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
@@ -31,8 +34,11 @@ void register_project_handlers(Handlers& handlers_) {
         }
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path or session");
-        return load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
-                   ? ok() : err(code::kIoError, "read failed");
+        auto* ag = c.app->audio_graph;
+        float az = ag->zoom(), apx = ag->pan_x(), apy = ag->pan_y();
+        const bool okr = load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h, az, apx, apy);
+        if (okr) ag->set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
+        return okr ? ok() : err(code::kIoError, "read failed");
     };
 
     // ---------------- project workflow (thin layer over session JSON) ----------------

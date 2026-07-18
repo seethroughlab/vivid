@@ -28,11 +28,15 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     const int nt = vivid::session::session_track_count(s);
     const int ns = vivid::session::session_scene_count(s);
     j["scenes"] = ns;   // grid row count (optional; older loaders default to 3)
+    // ADR-0022 P1b: the master node's gain (optional; older loaders default to 1.0 = unity).
+    j["master"] = { {"gain", vivid::session::session_master_gain(s)} };
     json tracks = json::array();
     for (int t = 0; t < nt; ++t) {
         json jt;
         jt["name"]   = vivid::session::session_track_name(s, t);
         jt["gain"]   = vivid::session::session_track_gain(s, t);
+        jt["mute"]   = vivid::session::session_track_mute(s, t);   // ADR-0022 P1b.4 (optional; default false)
+        jt["solo"]   = vivid::session::session_track_solo(s, t);
         jt["active"] = vivid::session::session_active_clip(s, t);
         const bool aud = vivid::session::session_track_is_audio(s, t);
         jt["is_audio"] = aud;
@@ -331,6 +335,8 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
 static void apply_track_values(vivid::session::Session* s, int t, const json& jt) {
     using namespace vivid::session;
     session_set_track_gain(s, t, jt.value("gain", 0.8f));
+    session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
+    session_set_track_solo(s, t, jt.value("solo", false));
     if (session_track_is_audio(s, t)) {
         if (jt.contains("trims"))
             for (int sc = 0; sc < static_cast<int>(jt["trims"].size()); ++sc)
@@ -432,6 +438,9 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     // right number of clip slots — otherwise scenes beyond the default 3 have no slot to land in.
     if (restore_audio && !params_only && j.contains("scenes"))
         vivid::session::session_set_scene_count(s, j.value("scenes", 3));
+    // ADR-0022 P1b: the master node's gain (optional; absent in older files => unity).
+    if (restore_audio && !params_only && j.contains("master") && j["master"].is_object())
+        vivid::session::session_set_master_gain(s, j["master"].value("gain", 1.0f));
     if (restore_audio && !params_only && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
         rebuild_tracks_from_doc(s, j["tracks"]);
 
@@ -449,6 +458,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             const json& jt = T[t];
             if (params_only) { apply_track_values(s, t, jt); continue; }   // values only, no rebuild
             vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
+            vivid::session::session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
+            vivid::session::session_set_track_solo(s, t, jt.value("solo", false));
             if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)
@@ -674,9 +685,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
 }
 
 bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                  int win_w, int win_h, float split_x, float dock_h) {
+                  int win_w, int win_h, float split_x, float dock_h,
+                  float ag_zoom, float ag_pan_x, float ag_pan_y) {
     if (!s) return false;
-    const json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
+    json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
+    j["audio_view"] = { {"zoom", ag_zoom}, {"pan_x", ag_pan_x}, {"pan_y", ag_pan_y} };
     std::ofstream f(path);
     if (!f) return false;
     f << j.dump(2);
@@ -684,12 +697,19 @@ bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui
 }
 
 bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                  int& win_w, int& win_h, float& split_x, float& dock_h) {
+                  int& win_w, int& win_h, float& split_x, float& dock_h,
+                  float& ag_zoom, float& ag_pan_x, float& ag_pan_y) {
     if (!s) return false;
     std::ifstream f(path);
     if (!f) return false;
     json j;
     try { f >> j; } catch (...) { return false; }
+    if (j.contains("audio_view")) {
+        const json& av = j["audio_view"];
+        ag_zoom  = av.value("zoom",  ag_zoom);
+        ag_pan_x = av.value("pan_x", ag_pan_x);
+        ag_pan_y = av.value("pan_y", ag_pan_y);
+    }
     return session_from_json(j, s, g, win_w, win_h, split_x, dock_h);
 }
 

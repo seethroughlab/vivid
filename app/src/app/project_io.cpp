@@ -5,6 +5,7 @@
 #include "packages/package_manager.h"    // install_package
 #include "gpu/operator_scan.h"           // load_and_register_operator
 #include "gpu/visual_graph.h"            // VisualGraph::set_asset_dir
+#include "ui/audio_node_graph.h"         // App::audio_graph view getters (ADR-0023 6b)
 
 #include <filesystem>
 
@@ -20,7 +21,8 @@ SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float spli
         if (ec) { r.error = "could not create project directory: " + ec.message(); return r; }
     }
     r.session_file = session_json_path(path);
-    if (!save_session(r.session_file, app.session, graph, win_w, win_h, split_x, dock_h)) {
+    if (!save_session(r.session_file, app.session, graph, win_w, win_h, split_x, dock_h,
+                      app.audio_graph->zoom(), app.audio_graph->pan_x(), app.audio_graph->pan_y())) {
         r.error = "write failed";
         return r;
     }
@@ -56,10 +58,12 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
         }
     }
     const std::string jpath = session_json_path(path);
-    if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h)) {
+    float az = app.audio_graph->zoom(), apx = app.audio_graph->pan_x(), apy = app.audio_graph->pan_y();
+    if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, az, apx, apy)) {
         r.error = "read failed";
         return r;
     }
+    app.audio_graph->set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
     // A node's relative `asset` (a CustomShader .glsl) resolves against the session
     // file's directory (the project folder, or a .json's parent dir).
     if (app.vgraph) app.vgraph->set_asset_dir(fs::path(jpath).parent_path().string());

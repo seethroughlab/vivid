@@ -46,6 +46,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_connect",    { "Connect Audio",      false } },
         { "audio_graph_connect_control",    { "Connect Modulation",    false } },
         { "audio_graph_disconnect_control", { "Disconnect Modulation", false } },
+        { "session_connect_control",        { "Connect Modulation",    false } },
+        { "session_disconnect_control",     { "Disconnect Modulation", false } },
         { "audio_graph_set_control_shape",  { "Shape Modulation",      true  } },
         { "audio_graph_disconnect", { "Disconnect Audio",   false } },
         { "pool_place",            { "Add Clip",            false } },
@@ -53,6 +55,9 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "pool_stash",            { "Stash Clip",          false } },
         // ---- audio session (G3): values (coalesce a rapid run into one entry) ----
         { "set_track_gain",        { "Set Gain",            true  } },
+        { "set_master_gain",       { "Set Master Gain",     true  } },
+        { "set_track_mute",        { "Mute",                false } },
+        { "set_track_solo",        { "Solo",                false } },
         { "set_param",             { "Set Param",           true  } },
         { "set_audio_op_param",    { "Set Param",           true  } },
         { "audio_graph_set_node_param",     { "Set Param",       true } },

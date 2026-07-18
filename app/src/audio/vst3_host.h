@@ -96,12 +96,31 @@ void session_launch_scene(Session*, int scene);   // launches scene on every tra
 // Mixer.
 float session_track_gain(Session*, int track);
 void  session_set_track_gain(Session*, int track, float gain);
+// ADR-0022 P1b.4: solo/mute (mix state). A track is silenced in the master sum if muted, or if any
+// track is soloed and it is not; its own meter stays pre-mute.
+bool  session_track_mute(Session*, int track);
+void  session_set_track_mute(Session*, int track, bool mute);
+bool  session_track_solo(Session*, int track);
+void  session_set_track_solo(Session*, int track, bool solo);
+// ADR-0022 P2a.2: cross-track control edges (a modulator on one track drives a param on another).
+// Tracks are indices; nodes are stable agraph node ids. connect returns 1 on success, 0 on bad
+// track/node or a duplicate (src,dst,param).
+int   session_connect_control(Session*, int src_track, int src_node, int dst_track, int dst_node,
+                              int param, float amount, float curve, int invert, int bipolar);
+void  session_disconnect_control(Session*, int src_track, int src_node, int dst_track, int dst_node, int param);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
 int   session_track_capture_snapshot(Session*, int track, double seconds,
                                      std::vector<float>& outL, std::vector<float>& outR,
                                      uint32_t* out_sample_rate);  // recent post-gain track audio
+
+// ADR-0022 P1b: the master node — the session's single sink (sums the track outputs).
+float session_master_gain(Session*);
+void  session_set_master_gain(Session*, float gain);
+float session_master_level(Session*);               // master output RMS (meters)
+float session_master_transient(Session*);           // master onset detector (0..1)
+float session_master_band(Session*, int band);      // 0=low 1=mid 2=high energy
 
 // Plugin editor: the track's IEditController, as void* (cast in main).
 void* session_track_controller(Session*, int track);

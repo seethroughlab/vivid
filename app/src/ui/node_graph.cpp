@@ -163,8 +163,6 @@ static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
     return op_in_count(vg, i) + node_pcount(vg, i);
 }
-static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
-
 static constexpr float kCardW  = 156.f;
 static constexpr float kThumbH = 46.f;                 // live-output thumbnail strip
 // Every node but the sink renders an image, so every node but the sink gets a thumbnail.
@@ -172,11 +170,25 @@ static bool op_has_thumb(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && !vg->nodes()[i].is_output();
 }
 
+// The visuals card port-row layout, in the shared CardPorts vocabulary (ADR-0023): a 30px header,
+// 18px rows (texture inputs then params), and a fixed 46px thumbnail tail (none on the sink). One
+// source of truth for the card height + the ports' row centres, shared with the audio graph.
+CardPorts NodeGraph::card_ports(int i) const {
+    CardPorts cp;
+    cp.header_h = 30.f; cp.row_h = 18.f;
+    const bool thumb = op_has_thumb(vg_, i);
+    cp.tail_h   = thumb ? kThumbH : 0.f;   // fixed thumbnail, or nothing (the output sink)
+    cp.tail_pad = thumb ? 8.f : 6.f;
+    cp.lead_rows = op_in_count(vg_, i);    // one lead row per texture input port
+    cp.params    = node_pcount(vg_, i);
+    return cp;
+}
+
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
     w = kCardW;
-    h = 30.f + std::max(1, op_input_rows_at(vg_, i)) * 18.f + (op_has_thumb(vg_, i) ? kThumbH + 8.f : 6.f);
+    h = card_ports(i).height();
 }
 
 
@@ -190,7 +202,7 @@ static void op_accent(const vivid::VisualNode& n, float& r, float& g, float& b) 
 }
 bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // texture input `port`: left edge, one row each
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || port < 0 || port >= op_in_count(vg_, i)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = op_row_y(y, port); return true;
+    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = card_ports(i).row_cy(y, port); return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
     if (!op_has_out(vg_, i)) return false;
@@ -205,8 +217,8 @@ bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const 
     if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
     if (local < 0 || local >= node_pcount(vg_, node_idx)) return false;
     float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
-    const int row = op_in_count(vg_, node_idx) + local;  // after the texture input port(s)
-    px = x; py = op_row_y(y, row);
+    const CardPorts cp = card_ports(node_idx);
+    px = x; py = cp.row_cy(y, cp.param_row(local));   // param rows follow the texture-input rows
     return true;
 }
 bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, int& local) const {
@@ -434,7 +446,7 @@ int NodeGraph::op_at(double sx, double sy) const {
     double wx, wy; to_world(sx, sy, wx, wy);
     for (int i = 0; i < int(vg_->nodes().size()); ++i) {
         float x, y, w, h; op_node_rect(i, x, y, w, h);
-        if (in_rect(x, y, w, h, wx, wy)) return i;
+        if (hit({ x, y, w, h }, wx, wy)) return i;
     }
     return -1;
 }
@@ -460,9 +472,6 @@ void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, flo
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
-bool NodeGraph::in_rect(float rx, float ry, float rw, float rh, double x, double y) {
-    return x >= rx && x < rx + rw && y >= ry && y < ry + rh;
-}
 
 
 void NodeGraph::draw(Renderer2D& r) {
@@ -472,10 +481,11 @@ void NodeGraph::draw(Renderer2D& r) {
     // (The region is labelled by the SIGNAL panel header; no in-graph title needed.)
     // Everything below is graph content: drawn in WORLD space through the view
     // transform (pan + zoom). Chrome (palette) resets the transform first.
-    r.set_transform(view_ox_, view_oy_, view_scale_);
-    // grid: cover the full visuals column (shared substrate), edge to edge
-    { const NodeView v{ view_ox_, view_oy_, view_scale_ };
-      node_grid(r, v, fx0_, fy0_, fx1_, fy1_); }
+    r.set_transform(view_.ox, view_.oy, view_.scale);
+    // grid: cover the full visuals column (shared substrate), edge to edge (ADR-0023 Layer 2)
+    canvas_.set_view(view_);
+    canvas_.set_region({ fx0_, fy0_, fx1_ - fx0_, fy1_ - fy0_ });
+    canvas_.grid(r);
 
     const int n = vg_ ? int(vg_->nodes().size()) : 0;
     // chain wires (op output -> op input); one per connected texture input port.
@@ -500,12 +510,14 @@ void NodeGraph::draw(Renderer2D& r) {
             node_wire(r, ox, oy, px, py, 0.45f, 0.78f, 0.85f);
         }
     }
-    // drag preview
+    // drag preview (ADR-0023 Layer 2: the ghost wire comes from the canvas)
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < n + int(data_.size())) {
-        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy); node_wire(r, ox, oy, float(cx_), float(cy_), 0.55f, 0.85f, 0.80f); }
+        float ox, oy; if (wire_from_ < int(data_.size())) { data_out(data_[wire_from_], ox, oy);
+            const float c[3] = { 0.55f, 0.85f, 0.80f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
     if (drag_mode_ == 4 && wire_from_ >= 0) {
-        float ox, oy; if (op_out_port(wire_from_, ox, oy)) node_wire(r, ox, oy, float(cx_), float(cy_), 0.5f, 0.65f, 0.9f);
+        float ox, oy; if (op_out_port(wire_from_, ox, oy)) {
+            const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
     // op-nodes (classic-style cards)
@@ -528,9 +540,8 @@ void NodeGraph::draw(Renderer2D& r) {
         std::string node_err = node.error();
         if (node_err.empty() && vg_->registry())
             node_err = vg_->registry()->reload_error(vg_->nodes()[i].op_type);
-        if (!node_err.empty()) node_error_border(r, x, y, w, h);   // ADR-0019: a broken node LOOKS broken
-        node_card(r, x, y, w, h, acc, i == sel_op_);   // shared: blue ring if selected + border/body/header/accent
-        if (!node_err.empty()) node_error_badge(r, x, y);          // clickable "!" chip (input_graph reveals the message)
+        // ADR-0019: a broken node LOOKS broken (red border + "!" chip); ADR-0023 Layer 2: shared chrome.
+        canvas_.card(r, { x, y, w, h }, acc, i == sel_op_, !node_err.empty());
         const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
         r.draw_text(label_x, y + 6.f, vg_->nodes()[i].op_type.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
@@ -578,7 +589,7 @@ void NodeGraph::draw(Renderer2D& r) {
     // data nodes (matching card style)
     for (auto& nd : data_) {
         if (nd.flash > 0) { r.draw_rect(nd.x - 3.f, nd.y - 3.f, nd.w + 6.f, nd.h + 6.f, 0.31f, 0.80f, 0.75f, 1.0f); nd.flash--; }
-        node_card(r, nd.x, nd.y, nd.w, nd.h, sty.teal, false);   // shared card (teal accent = data source)
+        canvas_.card(r, { nd.x, nd.y, nd.w, nd.h }, sty.teal, false, false);   // data source (teal, never broken)
         r.draw_text(nd.x + 12.f, nd.y + 6.f, nd.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         // live value history (rolling bar sparkline) in a recessed panel
         const float gx = nd.x + 12.f, gy = nd.y + 30.f, gw = nd.w - 24.f, gh = 26.f;
@@ -701,7 +712,7 @@ bool NodeGraph::on_down(double x, double y) {
     // constant on screen by dividing by the zoom.
     double wx, wy; to_world(x, y, wx, wy);
     cx_ = wx; cy_ = wy;  // world cursor for drag-preview wires
-    const double hr = 13.0 / view_scale_, pr = 12.0 / view_scale_;
+    const double hr = 13.0 / view_.scale, pr = 12.0 / view_.scale;
 
     // disconnect an op input or a param port
     int oiPort = 0; int oi = nearest_op_in(wx, wy, hr, oiPort);
@@ -725,10 +736,10 @@ bool NodeGraph::on_down(double x, double y) {
     // op-node x button / body drag
     for (int i = 0; i < n; ++i) {
         float ox, oy, ow, oh; op_node_rect(i, ox, oy, ow, oh);
-        if (!vg_->nodes()[i].is_output() && in_rect(ox + ow - 15.f, oy + 3.f, 12.f, 12.f, wx, wy)) {
+        if (!vg_->nodes()[i].is_output() && hit({ ox + ow - 15.f, oy + 3.f, 12.f, 12.f }, wx, wy)) {
             vg_->remove_node(i); sel_op_ = -1; sync_op_pos(); note_edit_("Delete Node"); return true;
         }
-        if (in_rect(ox, oy, ow, oh, wx, wy)) {
+        if (hit({ ox, oy, ow, oh }, wx, wy)) {
             if (vg_->nodes()[i].is_output()) { vg_->set_active_output(i); note_edit_("Set Output"); }  // clicking selects the viewer source
             sel_op_ = i;  // select for the inspector (dock)
             drag_mode_ = 2; drag_idx_ = i; dx_ = wx - ox; dy_ = wy - oy; return true;
@@ -740,7 +751,7 @@ bool NodeGraph::on_down(double x, double y) {
 
     // data-node body drag
     for (int i = 0; i < int(data_.size()); ++i)
-        if (in_rect(data_[i].x, data_[i].y, data_[i].w, data_[i].h, wx, wy)) {
+        if (hit({ data_[i].x, data_[i].y, data_[i].w, data_[i].h }, wx, wy)) {
             drag_mode_ = 1; drag_idx_ = i; dx_ = wx - data_[i].x; dy_ = wy - data_[i].y; return true;
         }
     // empty canvas within the network pane -> pan the view (screen coords)
@@ -760,29 +771,26 @@ void NodeGraph::on_move(double x, double y) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
-        view_ox_ += float(x) - pan_last_x_; view_oy_ += float(y) - pan_last_y_;
+        view_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
 void NodeGraph::zoom_at(double sx, double sy, float factor) {
-    double wx, wy; to_world(sx, sy, wx, wy);              // world point under the cursor
-    view_scale_ = std::clamp(view_scale_ * factor, 0.35f, 3.0f);
-    view_ox_ = float(sx) - float(wx) * view_scale_;       // keep that point under the cursor
-    view_oy_ = float(sy) - float(wy) * view_scale_;
+    view_.zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
 }
 
 void NodeGraph::on_up(double x, double y) {
     double wx, wy; to_world(x, y, wx, wy);
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
-        if (nearest_param(wx, wy, 18.0 / view_scale_, pni, pl)) {
+        if (nearest_param(wx, wy, 18.0 / view_.scale, pni, pl)) {
             reg_.connect(source_id_for(data_[wire_from_].char_id),
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
             note_edit_("Connect Mapping");
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
-        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_scale_, tport);
+        int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / view_.scale, tport);
         if (target >= 0 && vg_) { set_op_input_port(target, tport, wire_from_); note_edit_("Connect"); }
     }
     drag_mode_ = 0; drag_idx_ = -1; wire_from_ = -1;

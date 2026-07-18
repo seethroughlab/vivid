@@ -18,6 +18,7 @@
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
 #include "ui/layout.h"
 #include "app/app.h"
@@ -262,6 +263,8 @@ int main(int argc, char** argv) {
     graph.set_shader_library(&app.shader_library);   // ADR-0016: badge shader rows in the Tab chooser
     graph.set_quarantined(app.quarantined_ops);       // ADR-0018: grey quarantined ops in the chooser
     app.graph = &graph;
+    vivid::ui::AudioNodeGraph audio_graph;   // ADR-0023 step 6: one persistent audio-graph view (re-primed per use)
+    app.audio_graph = &audio_graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;
     clip_editor.set_audition_cb([&app](int track, int pitch, float vel, bool on) {   // keyboard audition
@@ -368,8 +371,10 @@ int main(int argc, char** argv) {
             const std::string what = rec.project_path.empty() ? "an untitled project" : rec.project_path;
             if (vivid::platform::confirm_recover_autosave("Vivid found unsaved changes to " + what + ".")) {
                 int ww = win.win_w, wh = win.win_h; float sx = win.split_x, dh = win.dock_h;
-                if (vivid::load_session(rec.session_path, app.session, graph, ww, wh, sx, dh)) {
+                float az = audio_graph.zoom(), apx = audio_graph.pan_x(), apy = audio_graph.pan_y();
+                if (vivid::load_session(rec.session_path, app.session, graph, ww, wh, sx, dh, az, apx, apy)) {
                     win.split_x = sx; win.dock_h = dh;
+                    audio_graph.set_view(az, apx, apy);   // restore the persisted audio-graph view (ADR-0023 6b)
                     if (!rec.project_path.empty()) app.remember_project_path(rec.project_path);
                     app.recovered_unsaved = true;
                     VLOG_WARN(app, "recovered unsaved changes (%s)", what.c_str());
