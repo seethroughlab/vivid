@@ -130,7 +130,7 @@ the owned-state editor and the stateless view without forcing either to invert f
 | **1 (this scope)** | 1–2 | **No** | This doc + adopt the existing substrate fully; extract only provably-identical primitives |
 | 2 | 3 | No (view move) | Move `AudioNodeGraph` draw + hit-test onto `GraphCanvas` (it is already a pure view — the safest first migration) |
 | 3 | 4 | No (view move) | Move `NodeGraph` draw + hit-test onto `GraphCanvas` in small pieces; keep mapping/shader/persistence ownership put |
-| 4 | 5 | No | Normalize graph catalogs + `ChooserEntry` construction (domain/kind/spawn) after both consume the canvas |
+| 4 | 5 | No | **DONE** — `graph_catalog.h`'s typed `CatalogSpawn` {Domain, SpawnKind, type, format, char_id} replaces the colliding `ChooserEntry.tag` ints + `id`/`badge` overloading; both catalogs emit it, both spawn dispatchers switch on `spawn.kind` |
 | 5 | 6 | No | Split `input.cpp`: GLFW install + modal priority stays; graph gestures move behind the controllers |
 | 6 | 7 | Additive | Add `list_operator_catalog(domain?)`; keep `list_operators` + audio discovery as compat wrappers; migrate MCP parity tests last |
 

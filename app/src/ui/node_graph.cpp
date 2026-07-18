@@ -626,7 +626,7 @@ void NodeGraph::chooser_show(double sx, double sy) {
             // A shader row says SHADER: same catalog, same spawn, but it is a FILE you can open,
             // edit and fork — the one distinction worth drawing (ADR-0016).
             e.badge = (shaders_ && shaders_->is_shader(nm)) ? "shader" : "op";
-            e.tag = 0;                                // 0 = a visuals operator
+            e.spawn = { Domain::Visual, SpawnKind::VisualOp, nm };   // ADR-0023 step 5
             e.accent = style().gpu;                   // both are visual ops: one zone, one accent
             if (const auto* d = vg_->registry()->descriptor_for(nm)) {   // v3+ metadata (both optional)
                 if (d->summary) e.summary = d->summary;
@@ -638,7 +638,8 @@ void NodeGraph::chooser_show(double sx, double sy) {
     }
     for (const auto& nm : quarantined_) {             // ADR-0018: repeat crashers — greyed, unspawnable, with a reason
         Chooser::Entry e;
-        e.label = nm; e.id = nm; e.badge = "op"; e.tag = 0; e.accent = style().gpu;
+        e.label = nm; e.id = nm; e.badge = "op"; e.accent = style().gpu;
+        e.spawn = { Domain::Visual, SpawnKind::VisualOp, nm };   // (disabled below; kind set for consistency)
         e.enabled = false;
         e.disabled_note = "quarantined: repeat crashes \xC2\xB7 clear its crash history to re-enable";
         entries.push_back(std::move(e));
@@ -648,8 +649,7 @@ void NodeGraph::chooser_show(double sx, double sy) {
         e.label = s.label;
         e.summary = "audio characteristic";
         e.badge = "src";
-        e.tag = 1;                                    // 1 = a bridge data node
-        e.id = std::to_string(s.char_id);
+        e.spawn = { Domain::Bridge, SpawnKind::BridgeNode, "", 0, s.char_id };   // ADR-0023 step 5
         e.accent = style().audio;
         entries.push_back(std::move(e));
     }
@@ -662,14 +662,14 @@ void NodeGraph::note_edit_(const char* label, const char* key) {
 }
 
 void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
-    if (e.tag == 0 && vg_) {                          // an operator
-        const int ni = vg_->add_node(e.id);
+    if (e.spawn.kind == SpawnKind::VisualOp && vg_) {     // an operator
+        const int ni = vg_->add_node(e.spawn.type);
         sync_op_pos();                                // grow op_pos_ for the new node...
         if (ni >= 0 && ni < int(op_pos_.size()))      // ...then place it where the chooser was opened
             op_pos_[ni] = { chooser_.spawn_x() - kCardW * 0.5f, chooser_.spawn_y() - 15.f };
         note_edit_("Add Node");
-    } else if (e.tag == 1) {                          // a bridge data node (add_data_node notes the edit)
-        add_data_node(e.label, std::atoi(e.id.c_str()));
+    } else if (e.spawn.kind == SpawnKind::BridgeNode) {   // a bridge data node (add_data_node notes the edit)
+        add_data_node(e.label, e.spawn.char_id);
         if (!data_.empty()) { data_.back().x = chooser_.spawn_x() - 84.f; data_.back().y = chooser_.spawn_y() - 36.f; }
     }
 }

@@ -32,10 +32,14 @@
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and
   **Tab is the only way to add a node** — the chooser is registry-driven, opens at the
   cursor, and spawns there. Don't reintroduce a hard-coded palette.
-- **`chooser.{h,cpp}`** — the **Tab palette, shared by both graphs**: type to filter, Enter to
-  spawn, at the cursor. Generic over its entries, so each surface supplies a catalog
+- **`chooser.{h,cpp}` / `graph_catalog.h`** — the **Tab palette, shared by both graphs**: type to
+  filter, Enter to spawn, at the cursor. Generic over its entries, so each surface supplies a catalog
   (`audio_catalog.h` for audio; the operator registry for visuals) and spawns what comes back.
-  `text_match.h` is the ranked matcher (exact > prefix > substring > metadata).
+  `text_match.h` is the ranked matcher (exact > prefix > substring > metadata). `graph_catalog.h`
+  (ADR-0023 step 5) is the **typed `CatalogSpawn` descriptor** every node-catalog entry carries —
+  `{Domain, SpawnKind, type, format, char_id}` — replacing the old colliding `ChooserEntry.tag` ints
+  and the `id`/`badge` overloading; each editor's spawn dispatcher switches on `spawn.kind`. (`tag`
+  survives only for the non-catalog param pickers.)
 - **`audio_catalog.h`** — the ONE audio add-catalog: native operators + every installed VST3 +
   every installed CLAP, grouped instrument/effect, badged by format. **Tab is the only way to add
   an audio node** — there is no plugin browser and no `+ Src`/`+ FX`; those covered disjoint halves

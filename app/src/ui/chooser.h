@@ -1,5 +1,6 @@
 #pragma once
 #include "ui/renderer_2d.h"
+#include "ui/graph_catalog.h"   // CatalogSpawn — the typed domain/kind/spawn descriptor (ADR-0023 step 5)
 
 #include <string>
 #include <vector>
@@ -13,21 +14,24 @@
 // hands back the chosen entry.
 namespace vivid::ui {
 
-// One row. `id` is whatever the owner needs to spawn it (an operator type name, a plugin bundle
-// path, …); `tag` is an owner-defined discriminator (e.g. native-op vs VST3 vs CLAP).
-// `enabled == false` renders the row greyed and refuses to spawn it — used to show a capability the
-// catalog has but the engine can't host yet (a CLAP note-effect before ADR-0015's note edges land),
-// because hiding it would make the catalog lie.
+// One row. `enabled == false` renders the row greyed and refuses to spawn it — used to show a
+// capability the catalog has but the engine can't host yet (a CLAP note-effect before ADR-0015's note
+// edges land), because hiding it would make the catalog lie.
+//
+// NODE catalogs (the two graph editors) carry the typed `spawn` descriptor (ADR-0023 step 5) and their
+// spawn dispatcher switches on `spawn.kind`. `id`/`tag` remain owner-opaque fields the widget passes
+// through untouched — still used by the non-catalog param pickers (`tag` = a param/enum index).
 struct ChooserEntry {
     std::string label;      // what the user reads + what ranking matches against
-    std::string id;         // op type / bundle path
+    std::string id;         // owner-opaque (param pickers); node catalogs use `spawn` instead
     std::string summary;    // one-line description, drawn under the label
     std::string badge;      // short right-aligned kind/format tag ("VST3", "CLAP", "FX", "INS")
     std::string hay;        // extra searchable metadata (keywords, vendor, class) — lowercased by build()
-    int   tag = 0;          // owner-defined (see the audio/visual catalogs)
+    int   tag = 0;          // owner-opaque discriminator (param pickers use it as an index)
     bool  enabled = true;
     const float* accent = nullptr;   // optional badge color (a ui_style token); null = default
     std::string disabled_note;       // why it can't be spawned (drawn instead of the summary)
+    CatalogSpawn spawn;              // ADR-0023 step 5: the typed domain/kind/spawn payload (node catalogs)
 };
 
 class Chooser {
