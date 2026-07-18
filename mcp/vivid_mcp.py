@@ -967,6 +967,13 @@ def add_track(instrument: str = "", kind: str = "instrument") -> dict:
 
 
 @mcp.tool
+def add_scene() -> dict:
+    """Append a new scene (grid ROW) to the session — an empty clip slot on every track.
+    Returns the new scene index. Fails once the session reaches the scene cap (8). Undoable."""
+    return _post("add_scene", {})
+
+
+@mcp.tool
 def add_graph_track(instrument: str = "", name: str = "") -> dict:
     """Create a bare NATIVE-instrument track that hosts a native audio node graph (get_audio_graph
     / audio_graph_* edits). Unlike add_track, this makes no VST3/plugin handle, so the track is

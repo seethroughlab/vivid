@@ -639,6 +639,14 @@ void register_audio_handlers(Handlers& handlers_) {
         if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
         json r = ok(); r["track"] = idx; return r;
     };
+    // Append a scene (grid row): grows every track by one empty clip slot. Returns the new
+    // scene index. Fails once the session reaches kMaxScenes.
+    handlers_["add_scene"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int sc = P::session_add_scene(c.session);
+        if (sc < 0) return err(code::kInternal, "add_scene failed (kMaxScenes reached?)");
+        json r = ok(); r["scene"] = sc; return r;
+    };
     // Delete a track. Also drops audio->visual mappings whose source encodes the removed
     // track's stable id; surviving mappings do not need index renumbering.
     handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {

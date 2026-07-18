@@ -193,6 +193,12 @@ bool clipgrid_cells(Window& win, App& app, double mx, double my, int tracks, int
             }
     for (int sc = 0; sc < scenes; ++sc)
         if (hit(scene_launch_rect(sc), dmx, my)) { S::session_launch_scene(app.session, sc); return true; }
+    // "+ Scene": append a grid row (empty clip slot on every track). Undoable via the gateway.
+    if (scenes < S::kMaxScenes && hit(scene_add_rect(scenes), dmx, my)) {
+        if (S::session_add_scene(app.session) >= 0 && app.edit_gateway)
+            app.edit_gateway->note_edit("Add Scene", "");   // ADR-0017/G3 undo capture (UI path)
+        return true;
+    }
     return false;
 }
 

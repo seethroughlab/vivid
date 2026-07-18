@@ -26,6 +26,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         // ---- audio session (G3): structure ----
         { "add_track",             { "Add Track",           false } },
         { "add_graph_track",       { "Add Track",           false } },
+        { "add_scene",             { "Add Scene",           false } },
         { "remove_track",          { "Delete Track",        false } },
         { "add_effect",            { "Add Effect",          false } },
         { "remove_effect",         { "Remove Effect",       false } },
