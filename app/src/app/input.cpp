@@ -353,7 +353,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;
 
     if (action == GLFW_RELEASE) {
-        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_param_horiz = false; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false;
+        win->gain_drag = -1; win->param_drag = -1; win->ag_param_drag = -1; win->ag_param_horiz = false; win->ag_node_drag = -1; win->ag_key_drag = -1; win->ag_panning = false; win->mod_ed_drag = -1;
         win->preview_drag = false; win->preview_resize = false;
         // Complete an audio-graph rewire: release over another node's input port connects the edge.
         if (vivid::input::graph_rewire_release(*win, *app, mx, my)) { if (app->edit_gateway) app->edit_gateway->end_group(); return; }
@@ -367,6 +367,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // ADR-0017: bracket the whole left-button gesture into one undo entry. Reconcile any leaked group
     // first (a lost release), then open a fresh one; note_edit calls during the gesture fold in.
     if (app->edit_gateway) { app->edit_gateway->close_open_group(); app->edit_gateway->begin_group(""); }
+
+    // ADR-0022: the modulation shape editor is a modal popover — it gets first refusal on a press.
+    if (vivid::input::mod_editor_press(*win, *app, mx, my)) { if (app->edit_gateway) app->edit_gateway->end_group(); return; }
 
     // Browser sidebar (left column) — the CLIPS pool. (The PLUGINS panel is gone: adding a node is
     // Tab in the graph, one path, over the unified catalog. A browser that could only ever offer

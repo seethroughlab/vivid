@@ -647,6 +647,43 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
 }
 
 // The "map this param from a source" picker (the return path).
+// ADR-0022: the modulation shape editor popover — amount / curve / bipolar / invert + remove for
+// one control edge. Reads the edge's current shape from the session so the widgets show live state.
+void draw_mod_editor(Renderer2D& ui, const ModEditor& m, vivid::session::Session* s, int track) {
+    if (!m.open || !s) return;
+    namespace P = vivid::session;
+    const Style& sty = style();
+    // Pull the edge's current shape (scan for the matching control edge).
+    float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0; bool found = false;
+    for (int e = 0, ne = P::session_track_audio_graph_edge_count(s, track); e < ne; ++e) {
+        if (P::session_track_audio_graph_edge_kind(s, track, e) != 2) continue;
+        if (P::session_track_audio_graph_edge_from(s, track, e) != m.from) continue;
+        if (P::session_track_audio_graph_edge_to(s, track, e) != m.node) continue;
+        if (P::session_track_audio_graph_edge_dest_param(s, track, e) != m.param) continue;
+        P::session_track_audio_graph_edge_control_shape(s, track, e, &amount, &curve, &invert, &bipolar);
+        found = true; break;
+    }
+    if (!found) return;   // edge gone (e.g. undone) — the popover closes next input tick
+    const char* pn = P::session_audio_graph_node_param_name(s, track, m.node, m.param);
+    char hdr[64]; std::snprintf(hdr, sizeof hdr, "modulate %s", pn && *pn ? pn : "param");
+    overlay_panel(ui, mod_editor_panel(m), hdr, sty.mod);
+
+    auto label = [&](int row, const char* t) {
+        const Rect r = mod_editor_row(m, row);
+        ui.draw_text(r.x + 2.f, r.y + 4.f, t, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.72f);
+    };
+    // amount (fraction of range) + curve (-1..+1 mapped to a 0..1 slider)
+    label(0, "amount");  { const Rect w = mod_editor_widget(m, 0);
+        slider(ui, w.x, w.y, w.w, w.h, std::clamp(amount, 0.f, 1.f), nullptr, nullptr, sty.mod); }
+    label(1, "curve");   { const Rect w = mod_editor_widget(m, 1);
+        slider(ui, w.x, w.y, w.w, w.h, std::clamp((curve + 1.f) * 0.5f, 0.f, 1.f), nullptr, nullptr, sty.mod); }
+    label(2, "bipolar"); { const Rect w = mod_editor_widget(m, 2); toggle(ui, w.x, w.y + 1.f, 34.f, w.h - 2.f, bipolar != 0, sty.mod); }
+    label(3, "invert");  { const Rect w = mod_editor_widget(m, 3); toggle(ui, w.x, w.y + 1.f, 34.f, w.h - 2.f, invert != 0, sty.mod); }
+    { const Rect r = mod_editor_row(m, 4);   // remove
+      item_box(ui, r, sty.red);
+      ui.draw_text(r.x + 10.f, r.y + 4.f, "remove modulation", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.72f); }
+}
+
 void draw_map_menu(Renderer2D& ui, const CtxMenu& m) {
     if (!m.open) return;
     const Style& sty = style();

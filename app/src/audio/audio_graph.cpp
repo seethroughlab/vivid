@@ -168,6 +168,19 @@ void AudioGraph::disconnect_control(int from_id, int to_id, int dest_param) {
         }
 }
 
+// ADR-0022: re-shape an existing control edge (amount/curve/invert/bipolar) without rewiring. The
+// caller recompiles so the audio thread's ControlIn picks up the new shape. Returns false if no
+// such edge exists.
+bool AudioGraph::set_control_shape(int from_id, int to_id, int dest_param, ControlShape shape) {
+    for (AudioGraphEdge& e : edges_)
+        if (e.kind == EdgeKind::Control && e.from_id == from_id && e.to_id == to_id &&
+            e.dest_param == dest_param) {
+            e.shape = shape;
+            return true;
+        }
+    return false;
+}
+
 void AudioGraph::disconnect(int from_id, int to_id, EdgeKind kind) {
     // Symmetric with connect(): (from, to) does not identify a control edge — the param does. This
     // would erase an arbitrary one of several. Use disconnect_control().

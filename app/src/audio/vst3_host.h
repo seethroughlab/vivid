@@ -316,6 +316,9 @@ int         session_audio_graph_connect_control(Session*, int track, int from_id
                                                 int dest_param, float amount, float curve,
                                                 int invert, int bipolar);
 int         session_audio_graph_disconnect_control(Session*, int track, int from_id, int to_id, int dest_param);
+// ADR-0022: re-shape an existing control edge in place (amount/curve/invert/bipolar). 1 ok / 0 if absent.
+int         session_audio_graph_set_control_shape(Session*, int track, int from_id, int to_id, int dest_param,
+                                                  float amount, float curve, int invert, int bipolar);
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
 // A source node's MIDI key range [lo,hi] (0..127 = full). Two sources with disjoint ranges = a
 // key-split; the audio thread hands each source only its in-range notes. get returns 1 on success.

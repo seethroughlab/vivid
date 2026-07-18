@@ -42,6 +42,8 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
 bool graph_rewire_release(Window& win, App& app, double mx, double my);                        // complete a rewire
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
+bool mod_editor_press(Window& win, App& app, double mx, double my);                            // ADR-0022 shape editor press (modal)
+void mod_editor_drag(Window& win, App& app, double mx, double my);                             // ...its slider drag (frame loop)
 
 // ---- bottom dock: menus + device chain + node inspector (input_dock.cpp) ----
 bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node

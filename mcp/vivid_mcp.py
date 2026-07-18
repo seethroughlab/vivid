@@ -592,6 +592,19 @@ def audio_graph_disconnect_control(track: int, from_node: int, to_node: int, par
 
 
 @mcp.tool
+def audio_graph_set_control_shape(track: int, from_node: int, to_node: int, param: int,
+                                  amount: float = 1.0, curve: float = 0.0,
+                                  invert: bool = False, bipolar: bool = False) -> dict:
+    """Re-shape an EXISTING modulation edge (ADR-0022) without rewiring — tune its depth/response.
+    `amount` is the depth as a fraction of the param's declared range; `bipolar` straddles the base
+    (0.5 -> base), unipolar runs up from it; `curve` (-1..+1) shapes the response; `invert` flips the
+    source. Identifies the edge by the (from, to, param) triple. Errors if no such edge exists."""
+    return _post("audio_graph_set_control_shape", {"track": track, "from": from_node, "to": to_node,
+                                                   "param": param, "amount": amount, "curve": curve,
+                                                   "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
 def audio_graph_add_plugin(track: int, path: str, source: bool = False, uid: str = "") -> dict:
     """Add an installed VST3/CLAP plugin (path from list_plugins) as a NODE in a track's audio
     graph. source=True adds it as an instrument (fans in to the Output, in parallel with any other

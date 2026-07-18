@@ -47,6 +47,64 @@ static int audio_graph_track(const Window& win, App& app) {
     return std::min(std::max(win.sel_track, 0), n - 1);
 }
 
+// ADR-0022: the modulation shape editor popover. Reads the edited control edge's current shape
+// (scans for the (from,node,param) edge), applies a change through set_control_shape + note_edit.
+static bool mod_editor_read(Window& win, App& app, float& amount, float& curve, int& invert, int& bipolar) {
+    const int tr = audio_graph_track(win, app);
+    if (tr < 0) return false;
+    const ModEditor& m = win.mod_editor;
+    for (int e = 0, ne = S::session_track_audio_graph_edge_count(app.session, tr); e < ne; ++e) {
+        if (S::session_track_audio_graph_edge_kind(app.session, tr, e) != 2) continue;
+        if (S::session_track_audio_graph_edge_from(app.session, tr, e) != m.from) continue;
+        if (S::session_track_audio_graph_edge_to(app.session, tr, e) != m.node) continue;
+        if (S::session_track_audio_graph_edge_dest_param(app.session, tr, e) != m.param) continue;
+        S::session_track_audio_graph_edge_control_shape(app.session, tr, e, &amount, &curve, &invert, &bipolar);
+        return true;
+    }
+    return false;
+}
+static void mod_editor_apply(Window& win, App& app, float amount, float curve, int invert, int bipolar) {
+    const int tr = audio_graph_track(win, app);
+    if (tr < 0) return;
+    const ModEditor& m = win.mod_editor;
+    S::session_audio_graph_set_control_shape(app.session, tr, m.from, m.node, m.param, amount, curve, invert, bipolar);
+    if (app.edit_gateway) app.edit_gateway->note_edit("Shape Modulation", "mod_shape");   // coalesce a drag
+}
+
+// Press handler for the open editor. Returns true (consumed) whenever the editor is open — a click
+// anywhere while it's up is either a control interaction or a dismiss.
+bool mod_editor_press(Window& win, App& app, double mx, double my) {
+    if (!win.mod_editor.open || !app.session) return false;
+    const ModEditor& m = win.mod_editor;
+    float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
+    if (!mod_editor_read(win, app, amount, curve, invert, bipolar)) { win.mod_editor.open = false; return false; }
+    if (!hit(mod_editor_panel(m), mx, my)) { win.mod_editor.open = false; return true; }   // click-away closes
+    const Rect aw = mod_editor_widget(m, 0), cw = mod_editor_widget(m, 1);
+    if (hit(aw, mx, my)) { win.mod_ed_drag = 0; mod_editor_apply(win, app, std::clamp((float)(mx - aw.x) / aw.w, 0.f, 1.f), curve, invert, bipolar); return true; }
+    if (hit(cw, mx, my)) { win.mod_ed_drag = 1; mod_editor_apply(win, app, amount, std::clamp((float)(mx - cw.x) / cw.w, 0.f, 1.f) * 2.f - 1.f, invert, bipolar); return true; }
+    if (hit(mod_editor_row(m, 2), mx, my)) { mod_editor_apply(win, app, amount, curve, invert, bipolar ? 0 : 1); return true; }
+    if (hit(mod_editor_row(m, 3), mx, my)) { mod_editor_apply(win, app, amount, curve, invert ? 0 : 1, bipolar); return true; }
+    if (hit(mod_editor_row(m, 4), mx, my)) {   // remove the modulation
+        const int tr = audio_graph_track(win, app);
+        S::session_audio_graph_disconnect_control(app.session, tr, m.from, m.node, m.param);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Disconnect Modulation", "");
+        win.mod_editor.open = false;
+        return true;
+    }
+    return true;   // inside the panel but not on a control — consume (don't fall through to the graph)
+}
+
+// Continue a slider drag (called from the frame loop while the button is held).
+void mod_editor_drag(Window& win, App& app, double mx, double /*my*/) {
+    if (win.mod_ed_drag < 0 || !win.mod_editor.open) return;
+    float amount = 1.f, curve = 0.f; int invert = 0, bipolar = 0;
+    if (!mod_editor_read(win, app, amount, curve, invert, bipolar)) return;
+    const Rect w = mod_editor_widget(win.mod_editor, win.mod_ed_drag);
+    const float v = std::clamp((float)(mx - w.x) / w.w, 0.f, 1.f);
+    if (win.mod_ed_drag == 0) mod_editor_apply(win, app, v, curve, invert, bipolar);
+    else                      mod_editor_apply(win, app, amount, v * 2.f - 1.f, invert, bipolar);
+}
+
 bool audio_chooser_open_at(Window& win, App& app, double mx, double my) {
     if (win.focus.kind != vivid::FocusContext::Kind::AudioGraph || my < win.dock_top()) return false;
     if (audio_graph_track(win, app) < 0) return false;
@@ -381,6 +439,27 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
             param_chooser_open(win, app, b.node_id, mx, my);
             return true;
         }
+    // ADR-0022: clicking a WIRED (magenta) param port opens the modulation shape editor for its
+    // control edge. (An unwired port is a drag target only — a lone click there does nothing.)
+    for (const auto& b : boxes) {
+        const int slot = ag.param_port_hit(b, mx, my);
+        if (slot < 0) continue;
+        const std::vector<int> exp = ag.exposed_params(b.node_id);
+        if (slot >= static_cast<int>(exp.size())) continue;
+        const int param = exp[slot];
+        int from = -1;   // the modulator driving this param (first control edge into it)
+        for (int e = 0, ne = S::session_track_audio_graph_edge_count(app.session, tr); e < ne; ++e)
+            if (S::session_track_audio_graph_edge_kind(app.session, tr, e) == 2
+                && S::session_track_audio_graph_edge_to(app.session, tr, e) == b.node_id
+                && S::session_track_audio_graph_edge_dest_param(app.session, tr, e) == param) {
+                from = S::session_track_audio_graph_edge_from(app.session, tr, e); break;
+            }
+        if (from < 0) return true;   // an unwired port — consume the click, no editor
+        const float px = std::min(static_cast<float>(mx), win.win_w - vivid::ui::kModEdW - 8.f);
+        win.mod_editor = { true, px, static_cast<float>(my), b.node_id, param, from };
+        win.sel_audio_node = b.node_id;
+        return true;
+    }
     for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
         if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
             S::session_audio_graph_remove_node(app.session, tr, b.node_id);

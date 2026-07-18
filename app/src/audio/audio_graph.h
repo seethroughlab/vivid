@@ -216,6 +216,9 @@ public:
     // this source.
     bool connect_control(int from_id, int to_id, int dest_param, ControlShape shape = {});
     void disconnect_control(int from_id, int to_id, int dest_param);
+    // Re-shape an existing control edge in place (amount/curve/invert/bipolar), no rewire. Returns
+    // false if the edge doesn't exist. The caller recompiles to push the new shape to the RT plan.
+    bool set_control_shape(int from_id, int to_id, int dest_param, ControlShape shape);
     void set_node_processor(int id, ProcessFn fn, void* ctx);   // rebind after a device swap
     // Drop all nodes/edges but KEEP the id counter, so a rebuilt/edited graph never recycles a
     // stale id (edges saved against an old node can't silently re-bind to a new one). Use this

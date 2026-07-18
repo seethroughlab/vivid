@@ -2949,6 +2949,19 @@ int session_audio_graph_disconnect_control(Session* s, int t, int from_id, int t
     republish_track_graph(tr);
     return 1;
 }
+// ADR-0022: re-shape an existing control edge (amount/curve/invert/bipolar) without rewiring.
+// Recompiles so the audio thread picks up the new shape. 1 on success, 0 if no such edge.
+int session_audio_graph_set_control_shape(Session* s, int t, int from_id, int to_id, int dest_param,
+                                          float amount, float curve, int invert, int bipolar) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return 0;
+    vivid::audio::ControlShape sh;
+    sh.amount = amount; sh.curve = curve; sh.invert = invert != 0; sh.bipolar = bipolar != 0;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (!tr->agraph.set_control_shape(from_id, to_id, dest_param, sh)) return 0;
+    republish_track_graph(tr);
+    return 1;
+}
 
 // ADR-0015: add the track's note stream AS A NODE — clips + live MIDI + typing + MCP + preview.
 // It emits notes on a note edge; wire it to an instrument (or to a note effect) to route them.

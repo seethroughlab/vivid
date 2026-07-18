@@ -555,9 +555,21 @@ int main() {
         CHECK(g.edges().size() == 1);
         CHECK(g.edges()[0].dest_param == 2);         // the OTHER param's edge survived
 
+        // set_control_shape re-shapes an existing edge in place; identifies it by (from,to,param).
+        ControlShape ns; ns.amount = 0.3f; ns.bipolar = true; ns.curve = 0.5f; ns.invert = true;
+        CHECK(g.set_control_shape(lfo, flt, 2, ns));   // the surviving edge
+        CHECK(std::fabs(g.edges()[0].shape.amount - 0.3f) < 1e-6f);
+        CHECK(g.edges()[0].shape.bipolar && g.edges()[0].shape.invert);
+        CHECK(!g.set_control_shape(lfo, flt, 1, ns));  // no edge on param 1 any more → false
+        CHECK(!g.set_control_shape(lfo, 999, 2, ns));  // absent node → false
+
         CompiledAudioGraph cg;
         CHECK(g.compile(cg));
         CHECK(cg.control_buf_count == 1);
+        // ...and the reshaped values reach the compiled step.
+        for (const CompiledStep& s : cg.steps)
+            for (int k = 0; k < s.n_control_in; ++k)
+                CHECK(std::fabs(s.control_in[k].shape.amount - 0.3f) < 1e-6f);
     }
 
     // --- 23. A cycle through CONTROL edges is rejected like any other ---

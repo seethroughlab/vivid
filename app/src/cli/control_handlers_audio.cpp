@@ -521,6 +521,18 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_audio_graph_disconnect_control(c.session, track, from, to, param);
         return ok();
     };
+    // Re-shape an existing modulation edge (ADR-0022) without rewiring.
+    handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), from = b.value("from", -1), to = b.value("to", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_audio_graph_set_control_shape(c.session, track, from, to, param, amount, curve, invert, bipolar))
+            return err(code::kNotFound, "no control edge for that (from, to, param)");
+        return ok();
+    };
     // The track's note stream as a NODE (ADR-0015). Wire its note edge into an instrument.
     handlers_["audio_graph_add_midi_in"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
