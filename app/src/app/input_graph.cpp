@@ -139,20 +139,20 @@ static void audio_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser:
         if (app.graph) app.graph->select_op(-1);            // focus the new track's audio graph
     }
     if (tr < 0) return;
-    namespace U = vivid::ui;
+    using SK = vivid::ui::SpawnKind;   // ADR-0023 step 5: the typed spawn descriptor
+    const auto& sp = e.spawn;
     int nid = -1;
-    switch (e.tag) {
-        case U::kAudioNativeEffect: nid = S::session_audio_graph_add_op(app.session, tr, e.id.c_str()); break;
-        case U::kAudioNativeSource: nid = S::session_audio_graph_add_source(app.session, tr, e.id.c_str()); break;
-        case U::kAudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, e.id.c_str()); break;
-        case U::kAudioModOp:        nid = S::session_audio_graph_add_mod_op(app.session, tr, e.id.c_str()); break;
-        case U::kAudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
-        case U::kAudioPluginEffect:
-        case U::kAudioPluginSource: {
-            const bool src = (e.tag == U::kAudioPluginSource);
-            const bool clap = e.badge == "CLAP";
-            nid = S::session_audio_graph_add_plugin(app.session, tr, e.id.c_str(),
-                                                    clap ? S::kFmtCLAP : S::kFmtVST3, src ? 1 : 0, "");
+    switch (sp.kind) {
+        case SK::AudioNativeEffect: nid = S::session_audio_graph_add_op(app.session, tr, sp.type.c_str()); break;
+        case SK::AudioNativeSource: nid = S::session_audio_graph_add_source(app.session, tr, sp.type.c_str()); break;
+        case SK::AudioNoteOp:       nid = S::session_audio_graph_add_note_op(app.session, tr, sp.type.c_str()); break;
+        case SK::AudioModOp:        nid = S::session_audio_graph_add_mod_op(app.session, tr, sp.type.c_str()); break;
+        case SK::AudioMidiIn:       nid = S::session_audio_graph_add_midi_in(app.session, tr); break;
+        case SK::AudioPluginEffect:
+        case SK::AudioPluginSource: {
+            const bool src = (sp.kind == SK::AudioPluginSource);
+            nid = S::session_audio_graph_add_plugin(app.session, tr, sp.type.c_str(),
+                                                    sp.format, src ? 1 : 0, "");   // format carried explicitly
             break;
         }
         default: break;

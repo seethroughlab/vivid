@@ -16,17 +16,9 @@
 // kInstrumentCatalog) pretended otherwise.
 namespace vivid::ui {
 
-// ChooserEntry::tag — how the owner spawns the chosen row.
-enum AudioEntryTag {
-    kAudioNativeEffect = 0,   // session_audio_graph_add_op
-    kAudioNativeSource = 1,   // session_audio_graph_add_source
-    kAudioPluginEffect = 2,   // session_audio_graph_add_plugin(..., is_source=0)
-    kAudioPluginSource = 3,   // session_audio_graph_add_plugin(..., is_source=1)
-    kAudioNoteOp       = 4,   // session_audio_graph_add_note_op   (ADR-0015: notes in -> notes out)
-    kAudioMidiIn       = 5,   // session_audio_graph_add_midi_in   (the track's note stream)
-    kAudioModOp        = 6,   // session_audio_graph_add_mod_op    (ADR-0022: a modulator, e.g. LFO)
-};
-
+// Each row carries a typed `CatalogSpawn` (ADR-0023 step 5, ui/graph_catalog.h) describing how the
+// audio editor spawns it; `audio_chooser_spawn` in input_graph.cpp switches on `spawn.kind`.
+//
 // `instruments_only` = the "+ Track" case (pick something that can START a signal).
 inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool instruments_only = false) {
     namespace S = vivid::session;
@@ -47,7 +39,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.id = nm;
             e.badge = want_source ? "INS" : "FX";
             e.hay = std::string("native ") + (want_source ? "instrument synth" : "effect");
-            e.tag = want_source ? kAudioNativeSource : kAudioNativeEffect;
+            e.spawn = { Domain::Audio, want_source ? SpawnKind::AudioNativeSource : SpawnKind::AudioNativeEffect, nm };
             e.accent = want_source ? sty.audio : sty.fx;
             e.summary = want_source ? "native instrument" : "native effect";
             out.push_back(std::move(e));
@@ -63,7 +55,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.badge = "NOTE";
             e.summary = "the track's notes (clips, keyboard, live MIDI) as a node";
             e.hay = "midi notes input keyboard clip source";
-            e.tag = kAudioMidiIn;
+            e.spawn = { Domain::Audio, SpawnKind::AudioMidiIn };
             e.accent = sty.control;
             out.push_back(std::move(e));
         }
@@ -77,7 +69,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.badge = "NOTE";
             e.summary = "note effect \xE2\x80\x94 transforms notes, makes no sound";
             e.hay = "note effect arpeggiator midi";
-            e.tag = kAudioNoteOp;
+            e.spawn = { Domain::Audio, SpawnKind::AudioNoteOp, nm };
             e.accent = sty.control;
             out.push_back(std::move(e));
         }
@@ -92,7 +84,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.badge = "MOD";
             e.summary = "modulator \xE2\x80\x94 drives a param over time, makes no sound";
             e.hay = "modulator lfo envelope control modulation";
-            e.tag = kAudioModOp;
+            e.spawn = { Domain::Audio, SpawnKind::AudioModOp, nm };
             e.accent = sty.mod;
             out.push_back(std::move(e));
         }
@@ -113,7 +105,8 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
         e.id = p.path;
         e.badge = S::plugin_format_name(p.format);
         e.hay = p.vendor + " " + S::plugin_class_name(p.cls) + " plugin";
-        e.tag = is_inst ? kAudioPluginSource : kAudioPluginEffect;
+        e.spawn = { Domain::Audio, is_inst ? SpawnKind::AudioPluginSource : SpawnKind::AudioPluginEffect,
+                    p.path, p.format };
         e.accent = is_inst ? sty.audio : sty.fx;
         e.summary = p.vendor.empty() ? (is_inst ? "instrument" : "effect")
                                      : p.vendor + " \xC2\xB7 " + (is_inst ? "instrument" : "effect");
@@ -122,7 +115,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
         // a SOURCE-shaped node (no audio inputs, so it can never write silence over the chain) and
         // wired with note edges. The host drains the notes it emits (M2/M3).
         if (is_note) {
-            e.tag = kAudioPluginSource;
+            e.spawn.kind = SpawnKind::AudioPluginSource;   // source-shaped; format/path already set
             e.badge = "NOTE";
             e.summary = "note effect \xE2\x80\x94 transforms notes; wire it with note edges";
             e.accent = sty.control;
