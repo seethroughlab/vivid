@@ -18,6 +18,7 @@
 #include "audio/vst3_host.h"
 #include "ui/renderer_2d.h"
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"
 #include "ui/ui_style.h"
 #include "ui/layout.h"
 #include "app/app.h"
@@ -262,6 +263,8 @@ int main(int argc, char** argv) {
     graph.set_shader_library(&app.shader_library);   // ADR-0016: badge shader rows in the Tab chooser
     graph.set_quarantined(app.quarantined_ops);       // ADR-0018: grey quarantined ops in the chooser
     app.graph = &graph;
+    vivid::ui::AudioNodeGraph audio_graph;   // ADR-0023 step 6: one persistent audio-graph view (re-primed per use)
+    app.audio_graph = &audio_graph;
     vivid::ui::ClipEditor clip_editor;
     win.editor = &clip_editor;
     clip_editor.set_audition_cb([&app](int track, int pitch, float vel, bool on) {   // keyboard audition

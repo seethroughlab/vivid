@@ -20,7 +20,7 @@ class ControlServer;
 class TextureSource;
 class EditGateway;
 class CrashRecovery;
-namespace ui { class NodeGraph; }
+namespace ui { class NodeGraph; class AudioNodeGraph; }
 }
 namespace vivid::session { struct Session; }
 struct Transport;
@@ -36,6 +36,7 @@ struct App {
     GpuContext*         gpu       = nullptr;   // owns the wgpu device/queue
     VisualGraph*        vgraph    = nullptr;   // the visuals pipeline (model)
     ui::NodeGraph*      graph     = nullptr;   // node editor + mapping registry (model)
+    ui::AudioNodeGraph* audio_graph = nullptr; // audio node editor (ADR-0023 step 6: one persistent instance)
     vivid::session::Session* session   = nullptr;   // audio session (or null -> test tone)
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server

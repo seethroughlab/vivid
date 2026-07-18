@@ -310,7 +310,7 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     if (win.ag_node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
         namespace S = vivid::session;
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        vivid::ui::AudioNodeGraph ag; ag.set_source(app.session, tr);
+        vivid::ui::AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
         const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(win.sel_audio_node);   // graph_region height depends on the param band

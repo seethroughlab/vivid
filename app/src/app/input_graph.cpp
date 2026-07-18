@@ -294,7 +294,7 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
         app.graph->zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));
     // Audio-graph deep view: zoom around the cursor (keeps the point under the cursor fixed).
     if (win.focus.kind == vivid::FocusContext::Kind::AudioGraph && app.session) {
-        vivid::ui::AudioNodeGraph ag; ag.set_source(app.session, win.sel_track);
+        vivid::ui::AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, win.sel_track);
         const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
@@ -321,7 +321,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top()
           && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app.session)) return false;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-    AudioNodeGraph ag; ag.set_source(app.session, tr);
+    AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
     ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
@@ -554,7 +554,7 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
 bool graph_rewire_release(Window& win, App& app, double mx, double my) {
     if (win.ag_wire_from >= 0 && app.session) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        AudioNodeGraph ag; ag.set_source(app.session, tr);
+        AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
