@@ -258,9 +258,14 @@ int         session_track_audio_graph_node_scope(Session*, int track, int i, flo
 void*       session_audio_graph_node_controller(Session*, int track, int node_id);
 int         session_track_audio_graph_edge_count(Session*, int track);
 void        session_track_audio_graph_node_note_ports(Session*, int track, int i, int* note_in, int* note_out);
-int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note (ADR-0015)
+int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note / 2 control
 int         session_track_audio_graph_edge_from(Session*, int track, int e);
 int         session_track_audio_graph_edge_to(Session*, int track, int e);
+// ADR-0022: a control edge's target param + shaper (for the UI arc + MCP round-trip). dest_param
+// returns -1 for a non-control edge; control_shape returns 1 on a control edge (out-ptrs may be null).
+int         session_track_audio_graph_edge_dest_param(Session*, int track, int e);
+int         session_track_audio_graph_edge_control_shape(Session*, int track, int e,
+                                                         float* amount, float* curve, int* invert, int* bipolar);
 
 // AG-1 step 2 — authoritative topology edits (UI thread). The first such edit flips the track
 // to graph-authoritative: rebuild_track_graph stops regenerating from the linear device chain
@@ -299,6 +304,16 @@ int         session_audio_graph_connect_kind(Session*, int track, int from_id, i
 int         session_audio_graph_add_midi_in(Session*, int track);
 // A native NOTE EFFECT (e.g. "Arp"): notes in -> notes out, no audio. Wire it with note edges.
 int         session_audio_graph_add_note_op(Session*, int track, const char* op_type);
+// ADR-0022: a native MODULATOR (e.g. "LFO"): no audio, emits a 0..1 control signal. Wire its output
+// to a param with connect_control below.
+int         session_audio_graph_add_mod_op(Session*, int track, const char* op_type);
+// Wire a modulator -> ONE param of `to_id`, shaped by amount (fraction of the param's range) /
+// curve (-1..+1) / invert / bipolar (straddle the base vs. run up from it). 1 ok / 0 (dup param /
+// self-loop / bad id / cycle). disconnect by the same (from,to,param) triple.
+int         session_audio_graph_connect_control(Session*, int track, int from_id, int to_id,
+                                                int dest_param, float amount, float curve,
+                                                int invert, int bipolar);
+int         session_audio_graph_disconnect_control(Session*, int track, int from_id, int to_id, int dest_param);
 int         session_audio_graph_disconnect(Session*, int track, int from_id, int to_id);// 1 ok
 // A source node's MIDI key range [lo,hi] (0..127 = full). Two sources with disjoint ranges = a
 // key-split; the audio thread hands each source only its in-range notes. get returns 1 on success.
@@ -309,10 +324,15 @@ int         session_audio_graph_node_key_range_get(Session*, int track, int node
 int         session_audio_graph_node_param_count(Session*, int track, int node_id);
 const char* session_audio_graph_node_param_name (Session*, int track, int node_id, int p);
 int         session_audio_graph_node_param_hint (Session*, int track, int node_id, int p);   // VividDisplayHint (0 = DEFAULT)
-float       session_audio_graph_node_param_get  (Session*, int track, int node_id, int p);
+float       session_audio_graph_node_param_get  (Session*, int track, int node_id, int p);   // BASE (ADR-0022)
 float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
 void        session_audio_graph_node_param_set  (Session*, int track, int node_id, int p, float v);
+// ADR-0022: a param has a BASE (the user's value, above) and a RESOLVED value (base + live
+// modulation from control edges). `_resolved` is what the DSP is actually using this instant — the
+// UI's live dot, MCP's "value"; `_wired` is 1 iff a control edge drives it (the modulated ring).
+float       session_audio_graph_node_param_resolved (Session*, int track, int node_id, int p);
+int         session_audio_graph_node_param_wired    (Session*, int track, int node_id, int p);
 // Richer param metadata for widget-by-type + a curated inspector (param-panel redesign). Complete
 // for VST3 (derived from the plugin's step count + the controller's own value formatter); native
 // ops and CLAP fall back (type=FLOAT / no choices / numeric display) as they lack this today.
@@ -343,6 +363,9 @@ void        session_audio_graph_clear      (Session*, int track);
 int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type);   // -> new node id
 void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
 void        session_audio_graph_load_edge_kind(Session*, int track, int from_id, int to_id, int kind);  // 0 audio / 1 note
+// ADR-0022: load a control edge (target param + shaper). finish_load compiles + publishes.
+void        session_audio_graph_load_edge_control(Session*, int track, int from_id, int to_id,
+                                                  int dest_param, float amount, float curve, int invert, int bipolar);
 void        session_audio_graph_finish_load(Session*, int track, int output_id);
 
 // Slice the source audio clip into a new MIDI track driven by a native Sampler loaded

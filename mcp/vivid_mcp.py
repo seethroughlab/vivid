@@ -561,6 +561,37 @@ def audio_graph_add_note_op(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def audio_graph_add_mod_op(track: int, op: str) -> dict:
+    """Add a MODULATOR node (ADR-0022) — e.g. "LFO": no sound, it emits a 0..1 control signal. Wire
+    its output to any node param with audio_graph_connect_control to animate that param over time
+    (LFO params: waveform, sync, rate, division). Returns its new node id."""
+    return _post("audio_graph_add_mod_op", {"track": track, "op": op})
+
+
+@mcp.tool
+def audio_graph_connect_control(track: int, from_node: int, to_node: int, param: int,
+                                amount: float = 1.0, curve: float = 0.0,
+                                invert: bool = False, bipolar: bool = False) -> dict:
+    """Wire a modulator (from_node) to ONE param (by index) of to_node — modulation (ADR-0022). The
+    param keeps its user-set BASE value; the modulator adds an offset on top, so disconnecting
+    restores the knob. `amount` is the depth as a fraction of the param's declared range. `bipolar`
+    straddles the base (0.5 -> base, the shape for pitch/pan), unipolar runs up from it. `curve`
+    (-1..+1) shapes the response; `invert` flips the source. get_audio_graph reports each param's
+    base/value/wired, and control edges as kind:"control" with their param + shape."""
+    return _post("audio_graph_connect_control", {"track": track, "from": from_node, "to": to_node,
+                                                 "param": param, "amount": amount, "curve": curve,
+                                                 "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
+def audio_graph_disconnect_control(track: int, from_node: int, to_node: int, param: int) -> dict:
+    """Remove a modulation edge (ADR-0022): the param returns to its base value. Same (from,to,param)
+    triple used to create it with audio_graph_connect_control."""
+    return _post("audio_graph_disconnect_control", {"track": track, "from": from_node,
+                                                    "to": to_node, "param": param})
+
+
+@mcp.tool
 def audio_graph_add_plugin(track: int, path: str, source: bool = False, uid: str = "") -> dict:
     """Add an installed VST3/CLAP plugin (path from list_plugins) as a NODE in a track's audio
     graph. source=True adds it as an instrument (fans in to the Output, in parallel with any other
