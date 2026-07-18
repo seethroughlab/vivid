@@ -543,6 +543,32 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_audio_graph_disconnect_control(c.session, track, from, to, param);
         return ok();
     };
+    // ADR-0022 P2a.2: a SESSION-level CROSS-TRACK control edge — a modulator on `src_track` node
+    // `src_node` drives `dst_track` node `dst_node`'s `param`. Tracks are indices; nodes are stable
+    // graph node ids; shape = amount/curve/invert/bipolar (same as the in-track edge).
+    handlers_["session_connect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_connect_control(c.session, src_track, src_node, dst_track, dst_node, param, amount, curve, invert, bipolar))
+            return err(code::kBadArg, "cross-track control edge rejected (unknown track/node, no param, or duplicate)");
+        return ok();
+    };
+    handlers_["session_disconnect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        P::session_disconnect_control(c.session, src_track, src_node, dst_track, dst_node, param);
+        return ok();
+    };
     // Re-shape an existing modulation edge (ADR-0022) without rewiring.
     handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

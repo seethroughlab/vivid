@@ -101,6 +101,12 @@ bool  session_track_mute(Session*, int track);
 void  session_set_track_mute(Session*, int track, bool mute);
 bool  session_track_solo(Session*, int track);
 void  session_set_track_solo(Session*, int track, bool solo);
+// ADR-0022 P2a.2: cross-track control edges (a modulator on one track drives a param on another).
+// Tracks are indices; nodes are stable agraph node ids. connect returns 1 on success, 0 on bad
+// track/node or a duplicate (src,dst,param).
+int   session_connect_control(Session*, int src_track, int src_node, int dst_track, int dst_node,
+                              int param, float amount, float curve, int invert, int bipolar);
+void  session_disconnect_control(Session*, int src_track, int src_node, int dst_track, int dst_node, int param);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
