@@ -64,6 +64,12 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_set_track_gain(c.session, track, b.value("gain", 0.8f));
         return ok();
     };
+    // ADR-0022 P1b: the master node's gain (the session's single sink). Default 1.0 (unity).
+    handlers_["set_master_gain"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        P::session_set_master_gain(c.session, b.value("gain", 1.0f));
+        return ok();
+    };
     handlers_["arm_track"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", -1);   // -1 disarms

@@ -194,7 +194,12 @@ void register_introspection_handlers(Handlers& handlers_) {
             jt["devices"] = devs;
             arr.push_back(jt);
         }
-        json r = ok(); r["tracks"] = arr; return r;
+        json r = ok(); r["tracks"] = arr;
+        // ADR-0022 P1b: the master node (the session's single sink) — its gain + meters.
+        r["master"] = { {"gain", P::session_master_gain(s)}, {"level", P::session_master_level(s)},
+                        {"transient", P::session_master_transient(s)},
+                        {"bands", { P::session_master_band(s, 0), P::session_master_band(s, 1), P::session_master_band(s, 2) }} };
+        return r;
     };
     handlers_["list_params"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
