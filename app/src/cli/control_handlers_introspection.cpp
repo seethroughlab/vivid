@@ -815,6 +815,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         // ADR-0022 P1b: the master node (the session's single sink) — its gain + meters.
         r["master"] = { {"gain", P::session_master_gain(s)}, {"level", P::session_master_level(s)},
                         {"transient", P::session_master_transient(s)},
+                        {"gnid", P::session_master_gnid(s)}, {"is_master", true},   // ADR-0022 P2b.3c: the sink's global node id
                         {"bands", { P::session_master_band(s, 0), P::session_master_band(s, 1), P::session_master_band(s, 2) }} };
         return r;
     };

@@ -125,6 +125,7 @@ int   session_track_capture_snapshot(Session*, int track, double seconds,
 // ADR-0022 P1b: the master node — the session's single sink (sums the track outputs).
 float session_master_gain(Session*);
 void  session_set_master_gain(Session*, float gain);
+int   session_master_gnid(Session*);                // ADR-0022 P2b.3c: the master's global node id (0)
 float session_master_level(Session*);               // master output RMS (meters)
 float session_master_transient(Session*);           // master onset detector (0..1)
 float session_master_band(Session*, int band);      // 0=low 1=mid 2=high energy
@@ -296,6 +297,7 @@ const char* session_available_audio_op_name(Session*, int want_source, int idx);
 int         session_track_audio_graph_ok(Session*, int track);
 int         session_track_audio_graph_node_count(Session*, int track);
 int         session_track_audio_graph_node_id(Session*, int track, int i);
+int         session_track_audio_graph_node_gnid(Session*, int track, int i);       // ADR-0022 P2b.3c: session-global id (-1 if unassigned)
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
