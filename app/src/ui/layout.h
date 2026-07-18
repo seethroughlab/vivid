@@ -46,7 +46,11 @@ inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, k
 inline Rect track_add_rect(int tracks) { return { track_x(tracks), kHeaderY, kTrackW, kHeaderH }; }  // "+ Track" header
 inline Rect track_header_x_rect(int t) { return { track_x(t) + kTrackW - 15.f, kHeaderY + 3.f, 12.f, 12.f }; }  // remove ×
 inline Rect scene_launch_rect(int scene) { return { kSceneColX, kGridTopY + scene * (kRowH + kRowGap), kSceneColW, kRowH }; }
-inline float mixer_y(int scenes) { return kGridTopY + scenes * (kRowH + kRowGap) + kPanePad; }
+// "+ Scene" cell: a compact strip in the scene column just below the last scene row. The mixer
+// reserves kSceneAddH below the grid for it (see mixer_y), so it never collides with the mixer.
+constexpr float kSceneAddH = 20.f;
+inline Rect scene_add_rect(int scenes) { return { kSceneColX, kGridTopY + scenes * (kRowH + kRowGap), kSceneColW, kSceneAddH }; }
+inline float mixer_y(int scenes) { return kGridTopY + scenes * (kRowH + kRowGap) + kSceneAddH + kPanePad; }
 inline Rect track_meter_rect(int t, int scenes) { return { track_x(t) + 2.f, mixer_y(scenes) + 20.f, kTrackW - 4.f, 6.f }; }
 inline Rect track_gain_rect(int t, int scenes)  { return { track_x(t) + 2.f, mixer_y(scenes) + 32.f, kTrackW - 4.f, 10.f }; }
 inline Rect master_meter_rect(int scenes) { return { kSceneColX, mixer_y(scenes) + 20.f, kSceneColW, 22.f }; }

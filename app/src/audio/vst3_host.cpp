@@ -258,8 +258,8 @@ struct Track {
     std::vector<Sampler>  aud_clips;
     std::vector<std::unique_ptr<ClipDsp>> aud_dsp;   // A2: per-slot warp stretcher (null until warp on)
     std::mutex            aud_mtx;
-    std::atomic<float>    aud_trim0[8];   // per-scene loop window (fractions)
-    std::atomic<float>    aud_trim1[8];
+    std::atomic<float>    aud_trim0[kMaxScenes];   // per-scene loop window (fractions)
+    std::atomic<float>    aud_trim1[kMaxScenes];
 };
 
 // A loose clip in the session-level pool (lives outside the track grid). Holds either a
@@ -375,6 +375,7 @@ static bool name_has(const std::string& path, const char* lower_needle) {
 // An audio track keeps exactly `scenes` clip slots (an empty Sampler = empty cell), so
 // stash/place/launch address any scene by a stable index.
 static void pad_aud_clips(Track* t, int scenes) {
+    t->aud_clips.reserve(kMaxScenes);   // append within reserved capacity → no realloc (RT-safe growth)
     if (static_cast<int>(t->aud_clips.size()) > scenes) t->aud_clips.resize(scenes);
     while (static_cast<int>(t->aud_clips.size()) < scenes) t->aud_clips.emplace_back();
 }
@@ -922,6 +923,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
+    t->clips.reserve(kMaxScenes);   // reserve to the scene cap so session_add_scene appends without realloc
     if (kind == kDrums)      for (auto& p : drum_patterns()) t->clips.push_back(p);
     else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
     else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
@@ -929,6 +931,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
     t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
+    t->edit_clips.reserve(kMaxScenes);   // operator= may shrink capacity to size — re-reserve
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     reserve_track_graph(t);
@@ -941,11 +944,13 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
     auto* t = new Track();
     t->handle = h;
     t->name = name;
+    t->clips.reserve(kMaxScenes);   // reserve to the scene cap so session_add_scene appends without realloc
     for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
     t->sched.reset(&t->clips[0]);
     t->nev.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;
+    t->edit_clips.reserve(kMaxScenes);   // operator= may shrink capacity to size — re-reserve
     t->effects.reserve(16); t->effects_edit.reserve(16);
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     reserve_track_graph(t);
@@ -1111,7 +1116,7 @@ Session* session_create(uint32_t sample_rate) {
         at->is_audio = true;
         at->name = "Audio";
         at->gain.store(0.7f, std::memory_order_relaxed);
-        for (int i = 0; i < 8; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
+        for (int i = 0; i < kMaxScenes; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
 
         namespace fs = std::filesystem;
         std::vector<std::pair<std::string, double>> loops;  // (path, source bpm)
@@ -1962,6 +1967,10 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         // scheduler's clip pointer — stay valid). Only runs after a user edit.
         if (t.edit_gen.load(std::memory_order_acquire) != t.edit_gen_seen) {
             if (t.edit_mtx.try_lock()) {
+                // A scene may have been appended to edit_clips (session_add_scene). Grow the
+                // audio-owned clips to match — reserved to kMaxScenes, so this append never
+                // reallocates and the scheduler's &clips[q] pointers stay valid.
+                while (t.clips.size() < t.edit_clips.size()) t.clips.push_back(t.edit_clips[t.clips.size()]);
                 const size_t ns = std::min(t.clips.size(), t.edit_clips.size());
                 for (size_t sc = 0; sc < ns; ++sc) {
                     t.clips[sc].notes      = t.edit_clips[sc].notes;
@@ -3628,7 +3637,8 @@ int session_add_audio_track(Session* s) {
     at->is_audio = true;
     at->name = "Audio";
     at->gain.store(0.7f, std::memory_order_relaxed);
-    for (int i = 0; i < 8; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
+    for (int i = 0; i < kMaxScenes; ++i) { at->aud_trim0[i].store(0.f); at->aud_trim1[i].store(1.f); }
+    at->aud_clips.reserve(kMaxScenes);   // reserve to the scene cap so session_add_scene appends without realloc
     at->aud_clips.push_back(gen_sub_pulse(s->sample_rate, 124.0));
     at->aud_clips.push_back(gen_noise_sweep(s->sample_rate, 124.0));
     at->aud_clips.push_back(gen_bell_loop(s->sample_rate, 124.0));
@@ -3640,6 +3650,45 @@ int session_add_audio_track(Session* s) {
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);
     return idx;
+}
+
+// Append a scene (grid row) to every track. Growth is append-only within the reserved
+// kMaxScenes capacity, so nothing reallocates:
+//   - audio tracks grow aud_clips under aud_mtx (the audio thread try_locks it around render);
+//   - MIDI tracks grow edit_clips under edit_mtx + bump edit_gen — the audio thread grows the
+//     audio-owned `clips` to match in its mirror-apply, keeping sched's &clips[q] valid.
+// Bump s->scenes LAST (after every track has the slot), so a launch of the new scene is gated
+// off until the row exists everywhere. UI/main thread only.
+int session_add_scene(Session* s) {
+    if (!s || s->scenes >= kMaxScenes) return -1;
+    const int ns = s->scenes + 1;
+    for (auto& tp : s->tracks) {
+        Track* t = tp.get();
+        if (t->is_audio) {
+            std::lock_guard<std::mutex> lk(t->aud_mtx);
+            pad_aud_clips(t, ns);
+            t->aud_trim0[ns - 1].store(0.f, std::memory_order_relaxed);   // full-clip loop window for the new slot
+            t->aud_trim1[ns - 1].store(1.f, std::memory_order_relaxed);
+        } else {
+            {
+                std::lock_guard<std::mutex> lk(t->edit_mtx);
+                MidiClip c; c.length = 4.0;
+                t->edit_clips.push_back(c);   // reserved to kMaxScenes → no realloc
+            }
+            t->edit_gen.fetch_add(1, std::memory_order_release);
+        }
+    }
+    s->scenes = ns;
+    rebuild_track_view(s);
+    std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
+    return ns - 1;
+}
+
+// Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),
+// so each track is born with the right number of clip slots. Clamped to [1, kMaxScenes].
+void session_set_scene_count(Session* s, int scenes) {
+    if (!s) return;
+    s->scenes = std::min(std::max(scenes, 1), kMaxScenes);
 }
 
 // A bare native-instrument track (no VST3 handle) whose instrument + effects come from an

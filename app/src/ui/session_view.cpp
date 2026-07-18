@@ -536,6 +536,13 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
         }
     }
+    // "+ Scene" — append a grid row (a compact cell in the scene column, below the last row).
+    if (scenes < vivid::session::kMaxScenes) {
+        const Rect a = scene_add_rect(scenes);
+        const bool ah = hit(a, mx, my);
+        session_scene_button(ui, a, sty.audio, ah);
+        ui.draw_text(a.x + (a.w - ui.text_width("+", sty.fs_body)) * 0.5f, a.y + 3.f, "+", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_body);
+    }
     // --- mixer strip ---
     const float my0 = mixer_y(scenes);
     ui.draw_rect(kSceneColX, mixer_divider_y(scenes), contentR - kSceneColX, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
