@@ -6,6 +6,7 @@
 #include "ui/param_widget.h"   // NodeWidget + node_widget_kind (dock draw / input agree)
 #include "ui/node_canvas.h"    // NodeView — the shared pan/zoom transform (ADR-0023)
 #include "ui/graph_canvas.h"   // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
+#include "ui/graph_adapter.h"  // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 #include "ui/chooser.h"        // the shared Tab palette (also used by the audio graph)
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
@@ -24,9 +25,15 @@ namespace vivid::ui {
 // output->input, terminating in an Output node that drives the viewer. Data nodes
 // wire into the ops' parameter ports (the audio->visual bridge). The chain itself
 // lives in VisualGraph; this class owns the layout + interaction.
-class NodeGraph {
+class NodeGraph : public GraphModelAdapter {
 public:
     NodeGraph();
+
+    // ADR-0023 Layer 1: the shared node-enumeration contract (op nodes only; the bridge data-nodes
+    // are a visuals-domain overlay). Consumed by draw()'s own op-card loop; the audio peer implements
+    // the same interface, so a shared draw loop can enumerate either (ADR-0023 #3).
+    void collect_nodes(std::vector<AdapterNode>& out) const override;
+    int  selected_node_id() const override;
 
     void set_value(int char_id, float v);
     void apply_params();   // resolve each node's params from the registry; publish viz.* sources
