@@ -105,6 +105,13 @@ struct GNodeBind {
     // old rebind re-attached handles to nodes by kind+ORDER, which only works while the graph is a
     // faithful copy of the linear chain. A user-spawned plugin node breaks that coupling.
     int32_t pslot = -1;
+    // ADR-0022 P2b.3c: this node's SESSION-GLOBAL id (unique across every track + the master node),
+    // -1 until assigned. Assigned on the AUTHORITATIVE publish path only (a derived linear-chain
+    // track regenerates its local ids every rebuild and can't be cross-addressed, so it stays -1);
+    // once a track is authoritative its nodes keep a stable gnid across republishes. The audio thread
+    // never reads it — it is host/UI addressing (the substrate cross-track AUDIO edges name nodes by,
+    // P2b.4) that rides along in the POD bind harmlessly.
+    int32_t gnid = -1;
 };
 // The audio thread swaps gbinds under a try_lock as a plain copy (reserved capacity, no move) —
 // that is only RT-safe while the bind is trivially copyable. Adding a non-POD member here would
@@ -339,6 +346,11 @@ struct Master {
     std::atomic<float> level{0.f}, transient{0.f};
     std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};
     float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
+    // ADR-0022 P2b.3c: the master's SESSION-GLOBAL node id — the sink of the one session graph, and
+    // the first citizen of the global id space (assigned 0 at session init). `is_master` marks it as
+    // the single session sink, as distinct from a track's `is_track_out` node (AudioGraph::is_output).
+    int  gnid = -1;
+    bool is_master = true;
 };
 
 // ADR-0022 P2b.3b: one entry in the FLAT session execution plan. The prior two per-track render
@@ -419,6 +431,11 @@ struct Session {
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
+    // ADR-0022 P2b.3c: monotonic source of SESSION-GLOBAL node ids (unique across every track's nodes
+    // + the master). The master claims id 0 at init; authoritative-track nodes draw the rest. UI-thread
+    // only. Unbounded/never reused (like a track's local id), so an edge saved against a gnid can never
+    // silently re-bind to a different node.
+    int       next_gnid = 0;
     int       scenes = 3;
     long long last_bar = -1;
     uint32_t  sample_rate = 0;
@@ -574,8 +591,21 @@ static void publish_track_plan(Track* t) {
     t->ggen.fetch_add(1, std::memory_order_release);
 }
 
+// ADR-0022 P2b.3c: give every node on this (authoritative) track a session-global id. Assigns to any
+// agnode still at -1 (a newly added node), leaving already-assigned ids stable — so a node keeps its
+// gnid across every republish of an authoritative track. Only the authoritative path calls this: a
+// derived linear-chain track regenerates its local ids each rebuild and can't be cross-addressed, so
+// its nodes stay at -1. UI-thread only (draws from Session::next_gnid). Behaviour-inert — the audio
+// thread never reads gnid.
+static void assign_node_gnids(Track* t) {
+    if (!t->session) return;   // pre-construction: no cross-track edge can exist yet; assigned later
+    for (GNodeBind& nb : t->agnodes)
+        if (nb.gnid < 0) nb.gnid = t->session->next_gnid++;
+}
+
 static bool republish_track_graph(Track* t) {
     if (!t->agraph.compile(t->gcg_edit)) return false;   // cycle → published plan unchanged
+    assign_node_gnids(t);                                 // ADR-0022 P2b.3c: session-global ids
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
     t->gok_edit    = true;
     publish_track_plan(t);
@@ -1400,6 +1430,7 @@ Session* session_create(uint32_t sample_rate) {
 
     auto* s = new Session();
     s->sample_rate = sample_rate;
+    s->master.gnid = s->next_gnid++;   // ADR-0022 P2b.3c: the master claims global node id 0
     s->tracks.reserve(kMaxTracks);
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
@@ -1802,6 +1833,7 @@ void session_set_track_solo(Session* s, int t, bool so) {
 }
 // ADR-0022 P1b: the master node's gain + meters (the session's single sink).
 float session_master_gain(Session* s) { return s ? s->master.gain.load(std::memory_order_relaxed) : 1.f; }
+int   session_master_gnid(Session* s) { return s ? s->master.gnid : -1; }   // ADR-0022 P2b.3c: the sink's global node id
 void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store(std::max(0.f, g), std::memory_order_relaxed); }
 float session_master_level(Session* s) { return s ? s->master.level.load(std::memory_order_relaxed) : 0.f; }
 float session_master_transient(Session* s) { return s ? s->master.transient.load(std::memory_order_relaxed) : 0.f; }
@@ -3049,6 +3081,14 @@ int session_track_audio_graph_node_id(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     const auto& n = tr->agraph.nodes();
     return (i >= 0 && i < static_cast<int>(n.size())) ? n[i].id : -1;
+}
+// ADR-0022 P2b.3c: node i's SESSION-GLOBAL id (-1 if unassigned — a derived-chain track's nodes, which
+// aren't cross-addressable). agnodes is parallel to nodes() by index (same lock as node_kind reads it).
+int session_track_audio_graph_node_gnid(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return (i >= 0 && i < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[i].gnid : -1;
 }
 // ADR-0015: does node i take / emit NOTES? (The UI draws note ports from this; an agent needs it to
 // know whether a plugin can drive another instrument.)
