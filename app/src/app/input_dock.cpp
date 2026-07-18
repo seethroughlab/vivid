@@ -142,6 +142,6 @@ bool dock_inspector(Window& win, App& app, double mx, double my) {
 }
 
 // (dock_device_chain — the linear device chip-row input — was retired; the audio node graph
-// is a track's primary detail view. Its editing lives in graph_audio_dock.)
+// is a track's primary detail view. Its editing lives in AudioNodeGraph::on_down/on_move/on_up.)
 
 }  // namespace vivid::input

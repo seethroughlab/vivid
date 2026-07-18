@@ -4,6 +4,7 @@
 #include "persist.h"                 // save_session (the same serializer a real save uses)
 #include "platform/platform.h"       // user_data_dir
 #include "ui/node_graph.h"
+#include "ui/audio_node_graph.h"      // App::audio_graph view getters (ADR-0023 6b)
 
 #include <filesystem>
 #include <fstream>
@@ -23,9 +24,10 @@ static std::string session_path() { return (fs::path(dir()) / "session.json").st
 static std::string meta_path()    { return (fs::path(dir()) / "meta.json").string(); }
 
 void write(App& app, int win_w, int win_h, float split_x, float dock_h, long long now_unix) {
-    if (!app.session || !app.graph) return;
+    if (!app.session || !app.graph || !app.audio_graph) return;
     std::error_code ec; fs::create_directories(dir(), ec);   // create just-in-time on the first real autosave
-    if (!save_session(session_path(), app.session, *app.graph, win_w, win_h, split_x, dock_h))
+    if (!save_session(session_path(), app.session, *app.graph, win_w, win_h, split_x, dock_h,
+                      app.audio_graph->zoom(), app.audio_graph->pan_x(), app.audio_graph->pan_y()))
         return;   // best-effort; a failed autosave just means the last good one stands
     json m = { {"project", app.project.current_project_path}, {"saved_at", now_unix} };
     std::ofstream(meta_path(), std::ios::trunc) << m.dump(2);

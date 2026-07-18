@@ -38,9 +38,7 @@ bool param_chooser_click(Window& win, App& app, double mx, double my);
 
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
-bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, double my);  // deep-view press
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
-bool graph_rewire_release(Window& win, App& app, double mx, double my);                        // complete a rewire
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
 bool mod_editor_press(Window& win, App& app, double mx, double my);                            // ADR-0022 shape editor press (modal)
 void mod_editor_drag(Window& win, App& app, double mx, double my);                             // ...its slider drag (frame loop)

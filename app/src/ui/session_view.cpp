@@ -381,15 +381,13 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
             item_box(ui, eb, sty.audio, eh);
             ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);
         }
-        AudioNodeGraph ag;
+        AudioNodeGraph& ag = *w.app->audio_graph;   // ADR-0023 step 6: the one persistent instance, re-primed
         ag.set_source(s, tr);
         const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.set_view(w.ag_zoom, w.ag_pan_x, w.ag_pan_y);
         ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
         ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
-        ag.draw(ui, w.sel_audio_node, w.ag_wire_from,
-                static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
+        ag.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
 
