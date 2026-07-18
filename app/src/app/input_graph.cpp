@@ -300,10 +300,13 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my) {
         ag.set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
         const vivid::ui::Rect gr = ag.graph_region();
         if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
-            const float z0 = win.ag_zoom;
-            const float z1 = std::clamp(z0 * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
-            win.ag_pan_x = static_cast<float>(mx) - gr.x - ((static_cast<float>(mx) - gr.x - win.ag_pan_x) / z0) * z1;
-            win.ag_pan_y = static_cast<float>(my) - gr.y - ((static_cast<float>(my) - gr.y - win.ag_pan_y) / z0) * z1;
+            // Keep the world point under the cursor fixed across the zoom. World-under-cursor via the
+            // shared transform; the zoom clamp ([0.35,4.0]) is the audio graph's own policy.
+            const vivid::ui::NodeView v0 = vivid::ui::region_view(gr, win.ag_zoom, win.ag_pan_x, win.ag_pan_y);
+            double wx, wy; v0.to_world(mx, my, wx, wy);
+            const float z1 = std::clamp(win.ag_zoom * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
+            win.ag_pan_x = static_cast<float>(mx) - gr.x - static_cast<float>(wx) * z1;
+            win.ag_pan_y = static_cast<float>(my) - gr.y - static_cast<float>(wy) * z1;
             win.ag_zoom = z1;
         }
     }

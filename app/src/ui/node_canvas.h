@@ -17,6 +17,9 @@ struct NodeView {
     void to_world(double sx, double sy, double& wx, double& wy) const {
         wx = (sx - ox) / scale; wy = (sy - oy) / scale;
     }
+    void to_screen(double wx, double wy, double& sx, double& sy) const {
+        sx = ox + wx * scale; sy = oy + wy * scale;
+    }
     // Zoom by `factor` about the screen point (sx,sy), keeping that world point under the cursor.
     void zoom_at(double sx, double sy, float factor) {
         double wx, wy; to_world(sx, sy, wx, wy);
@@ -26,6 +29,14 @@ struct NodeView {
     }
     void pan(float dx, float dy) { ox += dx; oy += dy; }
 };
+
+// The audio graph stores a zoom + a pan that are RELATIVE to its graph region (so the graph stays
+// put when the region moves — e.g. when the param band grows/shrinks). This reconstructs the
+// absolute world->screen NodeView the shared transform math uses. (The visuals graph stores an
+// absolute NodeView directly; the audio graph derives one here — ADR-0023.)
+inline NodeView region_view(const Rect& region, float zoom, float pan_x, float pan_y) {
+    return { region.x + pan_x, region.y + pan_y, zoom };
+}
 
 // A bezier wire from an output port to an input port.
 inline void node_wire(Renderer2D& r, float x0, float y0, float x1, float y1, float cr, float cg, float cb) {

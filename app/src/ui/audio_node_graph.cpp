@@ -318,6 +318,7 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     // Seed spacing uses a generous row pitch — cards are now variable-height (param ports), so the
     // tallest a fresh column can get must not overlap the next row on first open.
     constexpr float kSeedRowPitch = 150.f;
+    const NodeView v = region_view(g, zoom_, pan_x_, pan_y_);   // world -> screen (shared transform)
     for (int i = 0; i < n; ++i) {
         float wx = 0.f, wy = 0.f;
         if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
@@ -325,8 +326,9 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
             P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
         }
+        double sx, sy; v.to_screen(wx, wy, sx, sy);
         out.push_back({ kind[i], id[i],
-                        g.x + wx * zoom_ + pan_x_, g.y + wy * zoom_ + pan_y_,
+                        static_cast<float>(sx), static_cast<float>(sy),
                         kCardW * zoom_, card_height(id[i]) * zoom_ });
     }
     return out;
