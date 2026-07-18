@@ -822,6 +822,19 @@ def session_disconnect_control(src_track: int, src_node: int, dst_track: int, ds
 
 
 @mcp.tool
+def session_set_control_shape(src_track: int, src_node: int, dst_track: int, dst_node: int, param: int,
+                              amount: float = 1.0, curve: float = 0.0,
+                              invert: bool = False, bipolar: bool = False) -> dict:
+    """Re-shape an existing cross-track modulation edge (ADR-0022 P2a) without rewiring — same
+    amount/curve/invert/bipolar controls as session_connect_control. Cross-track edges are reported
+    under the 'xcontrol' key of get_audio_graph."""
+    return _post("session_set_control_shape", {"src_track": src_track, "src_node": src_node,
+                                              "dst_track": dst_track, "dst_node": dst_node, "param": param,
+                                              "amount": amount, "curve": curve,
+                                              "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
 def audio_graph_set_control_shape(track: int, from_node: int, to_node: int, param: int,
                                   amount: float = 1.0, curve: float = 0.0,
                                   invert: bool = False, bipolar: bool = False) -> dict:

@@ -915,6 +915,19 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_disconnect_control(c.session, src_track, src_node, dst_track, dst_node, param);
         return ok();
     };
+    handlers_["session_set_control_shape"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        const int param = b.value("param", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_set_control_shape(c.session, src_track, src_node, dst_track, dst_node, param, amount, curve, invert, bipolar))
+            return err(code::kNotFound, "no cross-track control edge for that (src, dst, param)");
+        return ok();
+    };
     // Re-shape an existing modulation edge (ADR-0022) without rewiring.
     handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
@@ -1057,6 +1070,17 @@ void register_audio_handlers(Handlers& handlers_) {
             edges.push_back(je);
         }
         r["edges"] = edges;
+        // ADR-0022 P2a.2/P2a.3: the session-level CROSS-TRACK control edges (all of them — they are a
+        // session concept, not per-track). Each is {src_track, src_node, dst_track, dst_node, param}
+        // + shape, mirroring the in-track control-edge report.
+        json xctl = json::array();
+        for (int i = 0; i < P::session_xctl_count(c.session); ++i) {
+            int st = 0, sn = 0, dt = 0, dn = 0, pr = 0, inv = 0, bip = 0; float am = 1.f, cv = 0.f;
+            if (!P::session_xctl_get(c.session, i, &st, &sn, &dt, &dn, &pr, &am, &cv, &inv, &bip)) continue;
+            xctl.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn},
+                             {"param", pr}, {"amount", am}, {"curve", cv}, {"invert", inv != 0}, {"bipolar", bip != 0} });
+        }
+        r["xcontrol"] = xctl;
         return r;
     };
 

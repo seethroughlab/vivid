@@ -108,6 +108,13 @@ void  session_set_track_solo(Session*, int track, bool solo);
 int   session_connect_control(Session*, int src_track, int src_node, int dst_track, int dst_node,
                               int param, float amount, float curve, int invert, int bipolar);
 void  session_disconnect_control(Session*, int src_track, int src_node, int dst_track, int dst_node, int param);
+bool  session_set_control_shape(Session*, int src_track, int src_node, int dst_track, int dst_node,
+                                int param, float amount, float curve, int invert, int bipolar);
+// Enumerate cross-track control edges (persist + get_audio_graph). `session_xctl_get` returns track
+// INDICES; false if `i` out of range or an endpoint track is gone.
+int   session_xctl_count(Session*);
+bool  session_xctl_get(Session*, int i, int* src_track, int* src_node, int* dst_track, int* dst_node,
+                       int* param, float* amount, float* curve, int* invert, int* bipolar);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
