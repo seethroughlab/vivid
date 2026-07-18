@@ -132,7 +132,7 @@ the owned-state editor and the stateless view without forcing either to invert f
 | 3 | 4 | No (view move) | Move `NodeGraph` draw + hit-test onto `GraphCanvas` in small pieces; keep mapping/shader/persistence ownership put |
 | 4 | 5 | No | **DONE** — `graph_catalog.h`'s typed `CatalogSpawn` {Domain, SpawnKind, type, format, char_id} replaces the colliding `ChooserEntry.tag` ints + `id`/`badge` overloading; both catalogs emit it, both spawn dispatchers switch on `spawn.kind` |
 | 5 | 6 | No | Split `input.cpp`: GLFW install + modal priority stays; graph gestures move behind the controllers |
-| 6 | 7 | Additive | Add `list_operator_catalog(domain?)`; keep `list_operators` + audio discovery as compat wrappers; migrate MCP parity tests last |
+| 6 | 7 | Additive | **DONE** — `list_operator_catalog`/`find_operators`/`unified_operator_catalog()` shipped (PR #53); step 7 finished with the `detail` arg (summary/full), one shared `native_audio_ops()` enumeration builder (no drift with the compat surfaces), and docs marking `list_operators`/`list_audio_operators` as the scoped back-compat views. Parity 128↔128 |
 
 ## Phase 1 — concrete scope
 
