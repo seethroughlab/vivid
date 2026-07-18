@@ -92,15 +92,50 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 > it is the same pure function. The modulation *range* arc needs no atomic at all — it is
 > `control_resolve` evaluated at src=0 and src=1, pure UI-thread math.
 >
-> **The bridge clobbers the base today, and it is fixed here.** `apply_audio_param_mappings`
-> (`app/frame.cpp:155-181`) drives a mapped audio param by calling `param_set` every frame — which
-> writes `pvals`. Map a visual source to an audio param and your knob is destroyed while mapped,
-> with nothing to restore on disconnect: precisely the design this ADR rejects, shipping today on
-> the bridge path. The fix keeps the bridge's value math **byte-identical** — `Mapping` is
-> deliberately ABSOLUTE (`out_lo`/`out_hi`), which is right for the bridge — and changes only the
-> delivery: an override rather than a write to the base. Switching the bridge to base+offset would
-> have been a behavior change to every existing session that maps an audio param. The two models
-> stay two models (guardrail 3); they share an apply point, not a representation.
+> **The bridge clobbers the base today — noted, deliberately NOT fixed here.**
+> `apply_audio_param_mappings` (`app/frame.cpp:155-181`) drives a mapped audio param by calling
+> `param_set` every frame — which writes `pvals`. Map a visual source to an audio param and your
+> knob is destroyed while mapped, with nothing to restore on disconnect: precisely the design this
+> ADR rejects, shipping today on the bridge path. The clean fix keeps the bridge's value math
+> byte-identical (`Mapping` is deliberately ABSOLUTE — `out_lo`/`out_hi` — which is right for the
+> bridge) and changes only the *delivery*: an override rather than a write to the base. But the
+> override path built here is audio-thread / per-block, fed by control edges; the bridge is
+> UI-thread / frame-rate. Making the bridge deliver an override means extending the override
+> mechanism to a UI-thread source — a coherent piece of its own, **deferred** so it isn't
+> half-done. (An earlier draft of this note claimed the fix shipped in P0.5; it did not.)
+
+> ### As built — P0.5 (2026-07-17): in-track modulation, end to end + visible
+>
+> An **inserted phase**, not in the original plan. P0 shipped a control core nothing used, and P1
+> (the risky executor rewrite) delivers nothing visible — so before P1, make `EdgeKind::Control`
+> *do* something in today's per-track graph. The result: an `LFO → filter.cutoff` is audible, the
+> modulation is drawn on the knob, and the whole thing is drivable from MCP and reversible. This
+> de-risks the entire control model against real DSP before P1 touches the RT structure.
+>
+> - **The control model resolves live** (`control_resolve()` in `audio/audio_graph.h`):
+>   `value = clamp(base + shaped(src)·amount·(hi−lo), lo, hi)`, base read live from `pvals` and
+>   never written on the audio thread. Applied at the existing param-copy in `audio_op_process`.
+>   This is vivid-classic's *semantics* (`base ± amount`) without its *mechanism* — classic baked
+>   the base into a compile-time remap, the sole reason its `ModulationLoweringRecord` existed;
+>   keeping base a live value makes guardrail 3 structural, not a discipline.
+> - **ABI v13** appends `control_out` to `VividAudioContext` (additive, floor stays 11). The **LFO**
+>   is the first modulator — a `GNKind::NativeMod` source that emits control, marked with the same
+>   escape hatch note effects use so the instrument picker doesn't offer it. Native only; **VST3/
+>   CLAP control-apply is P2** and needs the host-side plugin base named above.
+> - **The audio graph now looks and works like the visuals graph:** each node exposes its params as
+>   **ports down the left edge** (native = all, plugin = the pinned/curated subset via the existing
+>   searchable picker). Dragging a modulator's output onto a param port creates the control edge —
+>   the drag-to-a-param gesture; a **magenta arc + live dot** on the knob show the reachable range
+>   and the live value; a **shape editor** popover (amount/curve/bipolar/invert/remove) tunes an
+>   existing edge. All undoable; `set_control_shape` also exposed over MCP.
+> - **Two pre-existing bugs fixed on the way**, both reaching beyond this feature: the audio-graph
+>   INPUT handlers built their hit-test graph without the view transform (so clicks missed once the
+>   canvas was panned), and `EditGateway::note_edit` dropped a lone structural mouse-gesture edit
+>   from undo (`force_close_group` only flushed prior dirt) — every drag-connect (the existing
+>   audio-wire connect included) was silently non-undoable.
+> - **Known gap:** the heavy-plugin *reload* path SIGSEGVs (the documented VST startup race, not
+>   this work). It is independent of P0.5 but a **P1 prerequisite** — P1 makes undo trigger a full
+>   session-graph rebuild, i.e. the reload path, so it must be solid before P1's undo gate can pass.
 
 ## Context
 
@@ -190,6 +225,9 @@ share.
    simply routes every topology edit through the now-shipped `EditGateway`:
    - **P0 — `EdgeKind::Control` in the pure core** (de-risk first; no host wiring). ✅ **landed
      2026-07-17** — see "As built" above.
+   - **P0.5 — in-track modulation, end to end + visible** (inserted; not in the original plan).
+     ✅ **landed 2026-07-17** — host-side control apply (native), ABI v13 + the LFO, params-as-ports
+     UI, knob arc/dot, the shape editor; MCP + persist + undo. See "As built — P0.5" above.
    - **P1 — Unify structure + executor + pool + master node**, topology still per-track
      islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
      ADR-0012; updates `app/docs/thread-safety.md`.)
