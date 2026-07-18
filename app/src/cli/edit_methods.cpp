@@ -54,6 +54,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         // ---- audio session (G3): values (coalesce a rapid run into one entry) ----
         { "set_track_gain",        { "Set Gain",            true  } },
         { "set_master_gain",       { "Set Master Gain",     true  } },
+        { "set_track_mute",        { "Mute",                false } },
+        { "set_track_solo",        { "Solo",                false } },
         { "set_param",             { "Set Param",           true  } },
         { "set_audio_op_param",    { "Set Param",           true  } },
         { "audio_graph_set_node_param",     { "Set Param",       true } },

@@ -376,6 +376,21 @@ def set_master_gain(gain: float) -> dict:
 
 
 @mcp.tool
+def set_track_mute(track: int, mute: bool = True) -> dict:
+    """Mute/unmute a track in the master mix. The track's own meter stays pre-mute.
+
+    Reported as 'mute' per track in list_tracks."""
+    return _post("set_track_mute", {"track": track, "mute": mute})
+
+
+@mcp.tool
+def set_track_solo(track: int, solo: bool = True) -> dict:
+    """Solo/unsolo a track: while any track is soloed, only soloed (and non-muted) tracks
+    are heard. Reported as 'solo' per track in list_tracks."""
+    return _post("set_track_solo", {"track": track, "solo": solo})
+
+
+@mcp.tool
 def audio_set_warp(track: int, scene: int, enabled: bool = True, mode: str = "complex") -> dict:
     """Enable/disable warping on an audio clip. mode: 'complex' (pitch-preserving), 'beats'
     (transient-aware, tight for drums), or 'repitch' (tape-style, pitch follows tempo)."""

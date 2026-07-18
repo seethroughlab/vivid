@@ -70,6 +70,22 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_set_master_gain(c.session, b.value("gain", 1.0f));
         return ok();
     };
+    // ADR-0022 P1b.4: solo/mute. Silence a track in the master mix (mute), or hear only the
+    // soloed track(s) (solo). The track's own meter stays pre-mute.
+    handlers_["set_track_mute"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_set_track_mute(c.session, track, b.value("mute", true));
+        return ok();
+    };
+    handlers_["set_track_solo"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        P::session_set_track_solo(c.session, track, b.value("solo", true));
+        return ok();
+    };
     handlers_["arm_track"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", -1);   // -1 disarms
