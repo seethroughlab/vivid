@@ -35,6 +35,8 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         json jt;
         jt["name"]   = vivid::session::session_track_name(s, t);
         jt["gain"]   = vivid::session::session_track_gain(s, t);
+        jt["mute"]   = vivid::session::session_track_mute(s, t);   // ADR-0022 P1b.4 (optional; default false)
+        jt["solo"]   = vivid::session::session_track_solo(s, t);
         jt["active"] = vivid::session::session_active_clip(s, t);
         const bool aud = vivid::session::session_track_is_audio(s, t);
         jt["is_audio"] = aud;
@@ -333,6 +335,8 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
 static void apply_track_values(vivid::session::Session* s, int t, const json& jt) {
     using namespace vivid::session;
     session_set_track_gain(s, t, jt.value("gain", 0.8f));
+    session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
+    session_set_track_solo(s, t, jt.value("solo", false));
     if (session_track_is_audio(s, t)) {
         if (jt.contains("trims"))
             for (int sc = 0; sc < static_cast<int>(jt["trims"].size()); ++sc)
@@ -454,6 +458,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             const json& jt = T[t];
             if (params_only) { apply_track_values(s, t, jt); continue; }   // values only, no rebuild
             vivid::session::session_set_track_gain(s, t, jt.value("gain", 0.8f));
+            vivid::session::session_set_track_mute(s, t, jt.value("mute", false));   // ADR-0022 P1b.4
+            vivid::session::session_set_track_solo(s, t, jt.value("solo", false));
             if (vivid::session::session_track_is_audio(s, t) && jt.contains("trims")) {
                 const json& tr = jt["trims"];
                 for (int sc = 0; sc < static_cast<int>(tr.size()); ++sc)

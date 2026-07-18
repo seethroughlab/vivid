@@ -95,6 +95,12 @@ void session_launch_scene(Session*, int scene);   // launches scene on every tra
 // Mixer.
 float session_track_gain(Session*, int track);
 void  session_set_track_gain(Session*, int track, float gain);
+// ADR-0022 P1b.4: solo/mute (mix state). A track is silenced in the master sum if muted, or if any
+// track is soloed and it is not; its own meter stays pre-mute.
+bool  session_track_mute(Session*, int track);
+void  session_set_track_mute(Session*, int track, bool mute);
+bool  session_track_solo(Session*, int track);
+void  session_set_track_solo(Session*, int track, bool solo);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy

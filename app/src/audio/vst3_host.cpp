@@ -130,6 +130,12 @@ struct Track {
     std::atomic<int>      active{0};
     std::atomic<int>      queued{-1};
     std::atomic<float>    gain{0.8f};
+    // ADR-0022 P1b.4: solo/mute. `mute`/`solo` are the UI-set state; `mix_scale` is the derived
+    // per-track master-sum multiplier (1 = audible, 0 = silenced by mute or by another track's solo),
+    // recomputed on the UI thread whenever any track's mute/solo changes and read by the audio thread
+    // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
+    std::atomic<bool>     mute{false}, solo{false};
+    std::atomic<float>    mix_scale{1.f};
     std::atomic<float>    level{0.f};
     std::atomic<float>    transient{0.f};
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
@@ -367,9 +373,14 @@ struct Session {
     std::string              clap_last_error;    // main-thread only (last failed async load)
 };
 
+static void recompute_mix_scales(Session* s);   // ADR-0022 P1b.4 (defined below)
+
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
 static void rebuild_track_view(Session* s) {
+    // ADR-0022 P1b.4: membership changed — a new track must respect an active solo, and dropping a
+    // soloed track must un-silence the rest. Recompute before publishing the new view.
+    recompute_mix_scales(s);
     std::lock_guard<std::mutex> lk(s->tracks_mtx);
     s->tracks_pub.clear();
     for (auto& tp : s->tracks) s->tracks_pub.push_back(tp.get());
@@ -1380,6 +1391,32 @@ float session_track_gain(Session* s, int t) {
 void session_set_track_gain(Session* s, int t, float g) {
     if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) s->tracks[t]->gain.store(g, std::memory_order_relaxed);
 }
+// ADR-0022 P1b.4: recompute every track's master-sum multiplier from the mute/solo state (UI thread).
+// A track is audible unless it is muted, or unless SOME track is soloed and this one is not. The audio
+// thread reads the resulting `mix_scale` in the master sum; at the all-default state every scale is 1.
+static void recompute_mix_scales(Session* s) {
+    if (!s) return;
+    bool any_solo = false;
+    for (auto& tp : s->tracks) if (tp->solo.load(std::memory_order_relaxed)) { any_solo = true; break; }
+    for (auto& tp : s->tracks) {
+        const bool muted  = tp->mute.load(std::memory_order_relaxed);
+        const bool soloed = tp->solo.load(std::memory_order_relaxed);
+        const bool audible = !muted && (!any_solo || soloed);
+        tp->mix_scale.store(audible ? 1.f : 0.f, std::memory_order_relaxed);
+    }
+}
+bool session_track_mute(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->mute.load(std::memory_order_relaxed);
+}
+void session_set_track_mute(Session* s, int t, bool m) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) { s->tracks[t]->mute.store(m, std::memory_order_relaxed); recompute_mix_scales(s); }
+}
+bool session_track_solo(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->solo.load(std::memory_order_relaxed);
+}
+void session_set_track_solo(Session* s, int t, bool so) {
+    if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) { s->tracks[t]->solo.store(so, std::memory_order_relaxed); recompute_mix_scales(s); }
+}
 // ADR-0022 P1b: the master node's gain + meters (the session's single sink).
 float session_master_gain(Session* s) { return s ? s->master.gain.load(std::memory_order_relaxed) : 1.f; }
 void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store(std::max(0.f, g), std::memory_order_relaxed); }
@@ -2201,9 +2238,13 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     {
         Master& m = s->master;
         for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+            // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix;
+            // its own meter, computed above, stays pre-mute). At the default 1.0 this is an IEEE
+            // identity, so an all-audible session sums bit-identically to before.
+            const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
             const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
             const float* R = L + kGraphMaxBlock;
-            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += L[i]; out[2 * i + 1] += R[i]; }
+            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
         }
         const float mg = m.gain.load(std::memory_order_relaxed);
         const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);

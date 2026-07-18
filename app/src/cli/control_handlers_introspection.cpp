@@ -181,6 +181,8 @@ void register_introspection_handlers(Handlers& handlers_) {
             jt["id"] = P::session_track_id(s, t);   // stable id — use in mapping sources "track_<id>.<kind>"
             jt["name"] = P::session_track_name(s, t);
             jt["gain"] = P::session_track_gain(s, t);
+            jt["mute"] = P::session_track_mute(s, t);   // ADR-0022 P1b.4
+            jt["solo"] = P::session_track_solo(s, t);
             jt["is_audio"] = P::session_track_is_audio(s, t);
             jt["active_clip"] = P::session_active_clip(s, t);
             jt["queued_clip"] = P::session_queued_clip(s, t);
