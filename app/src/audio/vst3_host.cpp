@@ -135,7 +135,6 @@ struct Track {
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
     std::atomic<float>    band_low{0.f}, band_mid{0.f}, band_high{0.f};  // 3-band energy
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
-    std::vector<float>    bl, br;          // planar scratch
     std::vector<NoteEvent> nev;
     std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
@@ -321,6 +320,13 @@ struct Session {
     // push_back never allocate.
     Master                master;
     std::vector<Track*>   render_list;
+    // ADR-0022 P1b.3a: ONE session-owned buffer pool for the track OUTPUTS (was per-track
+    // Track::bl/br). A track's `slot` (its render order this block) writes its final L/R into
+    // track_out_pool[slot] — L at slot*2*kGraphMaxBlock, R one kGraphMaxBlock later — and the master
+    // node sums the slices of render_list. Sized to kMaxTracks slots × stereo × kGraphMaxBlock; the
+    // audio thread only ever writes within a slot (frames ≤ kGraphMaxBlock, guarded in
+    // session_process), so there is no allocation in the callback.
+    std::vector<float>    track_out_pool;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -1133,6 +1139,8 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
     s->render_list.reserve(kMaxTracks);   // ADR-0022 P1b: master-node input list (audio thread)
+    // ADR-0022 P1b.3a: the session track-output pool — one stereo kGraphMaxBlock slot per track.
+    s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -1999,6 +2007,11 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                      bool playing, bool release_all) {
     if (!s) return false;
     std::memset(out, 0, sizeof(float) * 2 * frames);
+    // ADR-0022 P1b.3a: the whole engine is sized to kGraphMaxBlock (the node pool, the control pool,
+    // and now the session track-output pool), and run_track_graph bails on a larger block. Guard the
+    // top-level entry too: an oversized block renders silence (already memset above) rather than
+    // overflow a track slot. macOS CoreAudio never exceeds this, so normal operation is untouched.
+    if (frames > kGraphMaxBlock) return true;
     s->play_beats.store(beats, std::memory_order_relaxed);   // publish the clock for live-input stamping (M6)
 
     // Refresh the audio-thread track view if the UI added/removed a track (cheap gen-
@@ -2087,8 +2100,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.gmtx.unlock();
             }
         }
-        if (t.bl.size() < frames) { t.bl.resize(frames); t.br.resize(frames); }
-        float* L = t.bl.data(); float* R = t.br.data();
+        // ADR-0022 P1b.3a: render into this track's slice of the session output pool (slot = its
+        // render order this block; == its future render_list index). run_track_graph writes L/R
+        // through these pointers exactly as it did with the per-track bl/br buffers.
+        const size_t slot = s->render_list.size();
+        float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+        float* R = L + kGraphMaxBlock;
         std::memset(L, 0, frames * sizeof(float));
         std::memset(R, 0, frames * sizeof(float));
 
@@ -2183,8 +2200,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     // downstream (audio_callback), so — as before — it is neither gained here nor in these meters.
     {
         Master& m = s->master;
-        for (Track* tp : s->render_list) {
-            const float* L = tp->bl.data(); const float* R = tp->br.data();
+        for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+            const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+            const float* R = L + kGraphMaxBlock;
             for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += L[i]; out[2 * i + 1] += R[i]; }
         }
         const float mg = m.gain.load(std::memory_order_relaxed);
