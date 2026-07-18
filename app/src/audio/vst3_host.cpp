@@ -2418,14 +2418,19 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         run_track_modulators(t, mb, s->mod_scratch.data(), s->mod_scratch.data() + kGraphMaxBlock, frames);
     }
 
-    bool any = false;
+    // ADR-0022 P2b.3a: PREP phase — build the render list (a track's index here IS its track-out slot)
+    // and get every rendering track ready: apply pending edits (clips / fx / audio ops), prep the
+    // note/event stream, set up the block context. Split from the RENDER phase below so all per-track
+    // state is ready BEFORE any track renders — the shape the flat session executor (P2b.3b) needs.
+    // The skip decision is made HERE, once (recorded in render_list), so an edit applied below can't
+    // make the two phases disagree. Bit-identical: the work is per-track independent, hoisted ahead.
     for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
         Track& t = *s->tracks_view[tv_i];
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
         if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit && !t.clap_inst) continue;
-        any = true;
+        s->render_list.push_back(&t);   // renders this block — its index in render_list is its track-out slot
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
         // scheduler's clip pointer — stay valid). Only runs after a user edit.
@@ -2467,18 +2472,6 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 t.op_fx_mtx.unlock();
             }
         }
-        // (ADR-0022 P2a.1b: the audio-graph plan swap was hoisted to a loop BEFORE the pre-pass, so
-        // every track's plan — including a modulator-only track the render loop skips — is current
-        // when the pre-pass runs its modulators.)
-        // ADR-0022 P1b.3a: render into this track's slice of the session output pool (slot = its
-        // render order this block; == its future render_list index). run_track_graph writes L/R
-        // through these pointers exactly as it did with the per-track bl/br buffers.
-        const size_t slot = s->render_list.size();
-        float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
-        float* R = L + kGraphMaxBlock;
-        std::memset(L, 0, frames * sizeof(float));
-        std::memset(R, 0, frames * sizeof(float));
-
         if (t.is_audio) {
             // Bar-quantized scene switch (a transport action the Sampler graph node reads each block).
             if (new_bar) {
@@ -2538,8 +2531,19 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // ADR-0022 P2a.2: the cross-track control edges (each node matches those targeting it).
             t.blk.xctl = s->xctl_view.data();
             t.blk.xctl_count = static_cast<uint32_t>(s->xctl_view.size());
-            run_track_graph(t, L, R, frames);
         }
+    }
+
+    // ADR-0022 P2b.3a: RENDER phase — with every track prepped, render each into its track-out slot
+    // (its slot == its index in render_list) and meter it. P2b.3b replaces this with a single flat
+    // executor over one session plan (the track-out copy + metering become plan steps).
+    for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+        Track& t = *s->render_list[slot];
+        float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+        float* R = L + kGraphMaxBlock;
+        std::memset(L, 0, frames * sizeof(float));
+        std::memset(R, 0, frames * sizeof(float));
+        if (t.gok) run_track_graph(t, L, R, frames);
         t.steady += frames;
 
         // ADR-0022 P1a: the track GAIN is applied inside the Track-Out (Output) node, so L/R already
@@ -2547,7 +2551,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         // no longer sums into `out` — it only computes the per-track meters over that gained signal;
         // the MASTER node below sums every rendered track's output. (Per-track metering stays here —
         // it must cover the graph-bail and no-source cases too; it relocates into the track-out node
-        // in P1b.3 when this per-track loop is replaced by the session-graph executor.)
+        // in P2b.3c when the track-out becomes a real plan step.)
         const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
@@ -2593,8 +2597,8 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
         t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
         t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
-        s->render_list.push_back(&t);   // ADR-0022 P1b: this track feeds the master node
     }
+    const bool any = !s->render_list.empty();
 
     // ADR-0022 P1b: the MASTER node. Sum every rendered track's output into the master buffer
     // (`out`, already silent from the memset above), apply the master gain, then compute the master
