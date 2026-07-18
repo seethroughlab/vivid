@@ -367,6 +367,15 @@ def set_track_gain(track: int, gain: float) -> dict:
 
 
 @mcp.tool
+def set_master_gain(gain: float) -> dict:
+    """Set the master node's gain (the session's single sink; 1.0 = unity).
+
+    The master node sums every track's output; its gain + meters are reported under
+    the 'master' key of list_tracks."""
+    return _post("set_master_gain", {"gain": gain})
+
+
+@mcp.tool
 def audio_set_warp(track: int, scene: int, enabled: bool = True, mode: str = "complex") -> dict:
     """Enable/disable warping on an audio clip. mode: 'complex' (pitch-preserving), 'beats'
     (transient-aware, tight for drums), or 'repitch' (tape-style, pitch follows tempo)."""

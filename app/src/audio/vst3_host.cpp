@@ -276,6 +276,20 @@ static constexpr int32_t kLiveNoteIdBase = 0x40000000;
 // awaiting its note-off.
 struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool open; };
 
+// ADR-0022 P1b: the MASTER node — the session's single sink. It SUMS every track that rendered
+// this block, applies the master gain, and publishes the master meters. This is the seed of the
+// compiled master step (P1b.3): today's per-track mix loop no longer accumulates into `out`; it
+// renders + meters each track, and this node does the summation. `gain` defaults to 1.0, which
+// keeps the mix bit-identical with the pre-P1b inline sum. The meter fields are the master's own
+// state block: `flt_lo/flt_hi/tr_baseline` are audio-thread-only running state; the atomics are
+// UI-read (same layout + math as a Track's meters).
+struct Master {
+    std::atomic<float> gain{1.f};
+    std::atomic<float> level{0.f}, transient{0.f};
+    std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};
+    float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
+};
+
 struct Session {
     Vst3HostApp host;
     vivid::OpRegistry* op_reg = nullptr;   // shared operator registry (for native audio ops); set at init
@@ -292,6 +306,12 @@ struct Session {
     std::vector<Track*>   tracks_pub;     // UI-published snapshot (guarded by tracks_mtx)
     std::vector<Track*>   tracks_view;    // audio working copy (audio thread only)
     std::mutex            tracks_mtx;
+    // ADR-0022 P1b: the master node + its input list. `render_list` is the set of tracks that
+    // actually rendered this block (a source present), in tracks_view order — the master node sums
+    // their outputs. Audio-thread-only scratch, reserved to kMaxTracks so the per-block clear +
+    // push_back never allocate.
+    Master                master;
+    std::vector<Track*>   render_list;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -1088,6 +1108,7 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks.reserve(kMaxTracks);
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
+    s->render_list.reserve(kMaxTracks);   // ADR-0022 P1b: master-node input list (audio thread)
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -1326,6 +1347,18 @@ float session_track_gain(Session* s, int t) {
 }
 void session_set_track_gain(Session* s, int t, float g) {
     if (s && t >= 0 && t < static_cast<int>(s->tracks.size())) s->tracks[t]->gain.store(g, std::memory_order_relaxed);
+}
+// ADR-0022 P1b: the master node's gain + meters (the session's single sink).
+float session_master_gain(Session* s) { return s ? s->master.gain.load(std::memory_order_relaxed) : 1.f; }
+void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store(std::max(0.f, g), std::memory_order_relaxed); }
+float session_master_level(Session* s) { return s ? s->master.level.load(std::memory_order_relaxed) : 0.f; }
+float session_master_transient(Session* s) { return s ? s->master.transient.load(std::memory_order_relaxed) : 0.f; }
+float session_master_band(Session* s, int b) {
+    if (!s) return 0.f;
+    switch (b) { case 0: return s->master.band_low.load(std::memory_order_relaxed);
+                 case 1: return s->master.band_mid.load(std::memory_order_relaxed);
+                 case 2: return s->master.band_high.load(std::memory_order_relaxed);
+                 default: return 0.f; }
 }
 float session_track_level(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->level.load(std::memory_order_relaxed) : 0.f;
@@ -1955,6 +1988,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         }
     }
     if (s->tracks_view.empty()) return false;
+    s->render_list.clear();   // ADR-0022 P1b: rebuilt each block; the master node sums it
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
     const long long bar = static_cast<long long>(std::floor(beats / bpb));
@@ -2083,18 +2117,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         }
         t.steady += frames;
 
-        // ADR-0022 P1a: the track GAIN is now applied inside the Track-Out (Output) node, so L/R
-        // already hold the GAINED output (or silence for a gok=false / bailed track). Mix + meter
-        // that gained signal directly. (Metering stays here — it must cover the graph-bail and
-        // no-source cases too; it relocates into the track-out node in P1b when this per-track loop
-        // is replaced by the session-graph executor.)
+        // ADR-0022 P1a: the track GAIN is applied inside the Track-Out (Output) node, so L/R already
+        // hold the GAINED output (or silence for a gok=false / bailed track). ADR-0022 P1b: this loop
+        // no longer sums into `out` — it only computes the per-track meters over that gained signal;
+        // the MASTER node below sums every rendered track's output. (Per-track metering stays here —
+        // it must cover the graph-bail and no-source cases too; it relocates into the track-out node
+        // in P1b.3 when this per-track loop is replaced by the session-graph executor.)
         const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
         double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
         for (uint32_t i = 0; i < frames; ++i) {
-            const float l = L[i], r = R[i];
-            out[2 * i] += l; out[2 * i + 1] += r;
+            const float l = L[i];
             sum_sq += static_cast<double>(l) * l;
             t.flt_lo += (l - t.flt_lo) * a_lo;
             t.flt_hi += (l - t.flt_hi) * a_hi;
@@ -2110,6 +2144,43 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
         t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
         t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+        s->render_list.push_back(&t);   // ADR-0022 P1b: this track feeds the master node
+    }
+
+    // ADR-0022 P1b: the MASTER node. Sum every rendered track's output into the master buffer
+    // (`out`, already silent from the memset above), apply the master gain, then compute the master
+    // meters over the result. At master gain 1.0 the sum is bit-identical to the pre-P1b inline
+    // per-track accumulation (same values, same tracks_view order). The metronome click is mixed in
+    // downstream (audio_callback), so — as before — it is neither gained here nor in these meters.
+    {
+        Master& m = s->master;
+        for (Track* tp : s->render_list) {
+            const float* L = tp->bl.data(); const float* R = tp->br.data();
+            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += L[i]; out[2 * i + 1] += R[i]; }
+        }
+        const float mg = m.gain.load(std::memory_order_relaxed);
+        const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
+        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);
+        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);
+        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+        for (uint32_t i = 0; i < frames; ++i) {
+            const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
+            out[2 * i] = l; out[2 * i + 1] = r;
+            sum_sq += static_cast<double>(l) * l;
+            m.flt_lo += (l - m.flt_lo) * a_lo;
+            m.flt_hi += (l - m.flt_hi) * a_hi;
+            const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
+            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        }
+        const float inv = 1.f / (frames > 0 ? frames : 1);
+        m.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+        m.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+        m.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
+        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+        m.level.store(rms, std::memory_order_relaxed);
+        const float tr = std::max(0.f, (rms - m.tr_baseline) * 6.f);
+        m.tr_baseline += (rms - m.tr_baseline) * 0.04f;
+        m.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
     }
     return any;
 }
