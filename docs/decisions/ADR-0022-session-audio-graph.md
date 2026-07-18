@@ -146,6 +146,59 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 >   contention on the hot edit path; fixed independently, framed as a perf/correctness win, not a
 >   crash fix.)
 
+> ### Design — P2a (2026-07-18): cross-track modulation
+>
+> The design for the ADR's marquee capability — a modulator on one track driving a param on
+> **another** track. P1 (merged, #43–47) made the master a node, consolidated the track-output pool,
+> and added solo/mute, but every track's audio graph is still a private island: its control pool
+> (`Track::cpool`) and node ids are track-local, and its modulators run *inside* that track's render.
+> P2a adds cross-track *control* on **today's per-track render** — deliberately **not** the audio-
+> executor unification, which stays deferred until cross-track **audio** routing / note re-scope
+> (the rest of the ADR's "P2") genuinely need it. Chosen over the big executor rewrite first: the
+> highest-value piece is reachable on the current structure.
+>
+> - **Two problems to solve.** *Ordering* — tracks render in `tracks_view` order, so a source
+>   modulator may render *after* the node that reads it. *Addressing* — a consumer reads
+>   `t.cpool[src_buf·kGraphMaxBlock]` (`vst3_host.cpp:684`), an index into its **own** track's pool.
+> - **Session control bus + a modulator pre-pass.** `Session` owns a flat `ctl_bus` (one block-rate
+>   value per modulator, session-cap sized like the P1b.3a `track_out_pool`; audio-thread-written and
+>   -read, no cross-thread race). A **pre-pass** over `tracks_view` runs every track's `GNKind::
+>   NativeMod` steps *before* any audio render, writing each modulator to **both** its `cpool` row
+>   (in-track path, unchanged) **and** `ctl_bus[slot]` (session-visible) **and** `ctl_pub` (UI dot, as
+>   at `:709-710`); `run_track_graph`'s NativeMod branch (`:698-712`) becomes memset-silence + skip.
+>   The per-step "resolve control → run op" logic (`:670-696`) is factored into a shared helper so the
+>   pre-pass and the render loop both use it (preserving modulator-drives-modulator + stacking). A
+>   modulator runs **once per block** (in the pre-pass, not inline) writing the same `cpool` value, so
+>   **in-track modulation is bit-identical** — the gate is today's `LFO → SVFilter.cutoff` unchanged.
+> - **Stable per-modulator slot** = a *scoped* global id (modulators only, not every node), allocated
+>   in `session_audio_graph_add_mod_op` (`vst3_host.cpp:3086-3106`), freed on removal. It has an
+>   immediate consumer (cross-track edges), so — unlike the general global-id space deferred in P1b.3b
+>   — it is not speculative scaffolding.
+> - **Session-level cross-track edges.** `Session` owns a list `{src_track_id, src_node_id,
+>   dst_track_id, dst_node_id, dst_param, ControlShape}`; per-track in-track control edges stay in each
+>   `agraph`, untouched. Per dst track, edges resolve (UI thread) to `{dst_node_local_id, dst_param,
+>   src_slot, shape}` and **publish** to the audio thread via the gen + `try_lock` handoff (Pattern 3,
+>   `thread-safety.md`); `run_track_graph` applies matches with the **same** `control_resolve(base =
+>   audio_op_param_get(...), src = ctl_bus[src_slot], shape, lo, hi)` (`audio_graph.h:89`), stacking
+>   with any in-track override on the same param (`:687-694`).
+> - **Guardrail 3 preserved.** The bus carries the modulator's raw 0..1; the dst resolves against its
+>   own **live base** (`pvals`). Cross-track is the identical live base+modulation combine as in-track
+>   — no lowering, no baked remap. Only the *source* of `src` changes (session bus vs local cpool).
+> - **Constraints.** Cross-track control targets **audio-node params** (0-latency: read after the full
+>   pre-pass); a cross-track **modulator→modulator** edge is **rejected** in P2a (it would need cross-
+>   track modulator ordering — revisit if wanted). Connect validates the in-track rejects
+>   (`audio_graph.cpp:149-160`): duplicate `(src,dst,param)`, unknown node, `param < 0`.
+> - **Surface.** Session-level `session_connect_control` / `disconnect` / `set_control_shape`
+>   (`src_track/src_node/dst_track/dst_node/param` + shape), paralleling the in-track
+>   `audio_graph_connect_control` (`control_handlers_audio.cpp:527`), with matching `mcp/vivid_mcp.py`
+>   tools (parity guard stays green) and an `xcontrol` array in `get_audio_graph` (`:613`); persisted
+>   as a top-level `xcontrol` JSON array mirroring the per-track control-edge shape (`persist.cpp:182-189`).
+> - **Sub-phased, each a PR:** **P2a.1** session bus + pre-pass (bit-identical enabler; gate =
+>   in-track LFO unchanged, `ctest` 49/49) → **P2a.2** the cross-track edges + apply/publish + MCP
+>   (the capability; gate = a track-A LFO moves a track-B param's resolved value while its base holds,
+>   audibly, in-track still bit-identical, parity green) → **P2a.3** persist + editor wires (round-trip
+>   + undo). RT contract verified under `-DVIVID_SANITIZE_THREAD=ON` with live cross-track editing.
+
 ## Context
 
 ADR-0012 made a track's audio a rewireable DAG but kept it **per-track**, and explicitly
@@ -241,7 +294,9 @@ share.
      islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
      ADR-0012; updates `app/docs/thread-safety.md`.)
    - **P2 — Re-scope note routing + enable cross-track Audio/Control edges**; begin
-     serializing Control edges (note-default migration rule).
+     serializing Control edges (note-default migration rule). **P2a (cross-track *control*) is
+     designed — see "Design — P2a" above**; cross-track *audio* + note re-scope stay deferred (they
+     need the executor unification P1 sub-phased and left for their consumer).
    - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
      compatible load by synthesizing clip nodes from old `clips[scene]` arrays.
    - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel
