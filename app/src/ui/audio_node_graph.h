@@ -13,6 +13,7 @@
 #include "ui/layout.h"        // vivid::ui::Rect
 #include "ui/node_canvas.h"   // CardPorts — the shared card port-row layout (ADR-0023)
 #include "ui/graph_canvas.h"  // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
+#include "ui/graph_adapter.h" // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 
 #include <vector>
 
@@ -59,8 +60,14 @@ struct AudioCompoundPreview {
     Rect rect;
 };
 
-class AudioNodeGraph {
+class AudioNodeGraph : public GraphModelAdapter {
 public:
+    // ADR-0023 Layer 1: the shared node-enumeration contract, over the session audio-graph model.
+    // Consumed by draw()'s own card loop (via node_from_box); the visuals peer implements the same
+    // interface, so a shared draw loop can enumerate either (ADR-0023 #3).
+    void collect_nodes(std::vector<AdapterNode>& out) const override;
+    int  selected_node_id() const override { return sel_node_; }
+
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) {
         x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1;
@@ -86,6 +93,9 @@ public:
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
     std::vector<AudioNodeBox> layout() const;
+    // ADR-0023 Layer 1: a laid-out box -> the shared card-chrome shape. The single source of truth for
+    // the card data, used by both collect_nodes (the polymorphic surface) and draw()'s own card loop.
+    AdapterNode node_from_box(const AudioNodeBox& b, int idx) const;
     // The "+ FX" affordance rect (adds an effect to the end of the chain).
     Rect add_button_rect() const;
     // The "+ Src" affordance rect (adds a parallel instrument source — the key-split builder).

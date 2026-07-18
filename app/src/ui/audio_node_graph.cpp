@@ -367,6 +367,38 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     return out;
 }
 
+// ADR-0023 Layer 1: a laid-out box -> the shared card-chrome shape (rect/accent/selection/health/title/
+// error). This is exactly what draw()'s card loop needs, so it consumes this directly; collect_nodes
+// wraps it for the polymorphic surface. Accent + title + broken mirror the old inline card computation
+// 1:1, so it stays behavior-preserving.
+AdapterNode AudioNodeGraph::node_from_box(const AudioNodeBox& b, int idx) const {
+    const Style& sty = style();
+    AdapterNode a;
+    a.id = b.node_id;
+    a.rect = { b.x, b.y, b.w, b.h };
+    // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx / 5 mod
+    const float* acc = b.kind == 0 ? sty.audio
+                     : (b.kind == 1 ? sty.fx
+                     : (b.kind == 5 ? sty.mod
+                     : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
+    a.accent[0] = acc[0]; a.accent[1] = acc[1]; a.accent[2] = acc[2];
+    a.selected = (b.node_id == sel_node_ && sel_node_ >= 0);
+    // ADR-0019: a plugin node whose load terminally failed LOOKS broken (NOT while still loading).
+    a.broken = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
+    const char* type = P::session_track_audio_graph_node_type(s_, track_, idx);
+    a.title = (type && *type) ? type : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
+    a.error = a.broken ? "plugin unavailable \xE2\x80\x94 silent" : "";
+    return a;
+}
+
+void AudioNodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
+    out.clear();
+    if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return;
+    const std::vector<AudioNodeBox> boxes = layout();
+    out.reserve(boxes.size());
+    for (int i = 0; i < static_cast<int>(boxes.size()); ++i) out.push_back(node_from_box(boxes[i], i));
+}
+
 void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const {
     if (!s_ || track_ < 0) return;
     const Style& sty = style();
@@ -407,20 +439,14 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     // to node index i, so the type name is looked up by the same index.
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
         const AudioNodeBox& b = boxes[i];
-        // kind: 0 instrument / 1 effect / 2 output / 3 MidiIn / 4 note-fx (ADR-0015) / 5 mod (ADR-0022)
-        const float* acc = b.kind == 0 ? sty.audio
-                         : (b.kind == 1 ? sty.fx
-                         : (b.kind == 5 ? sty.mod
-                         : ((b.kind == 3 || b.kind == 4) ? sty.control : sty.gold)));
-        const bool sel = (b.node_id == sel_node && sel_node >= 0);
-        // ADR-0019: a plugin node whose load terminally failed LOOKS broken — the same shared badge
-        // the visuals graph uses. NOT badged while still loading (plugin_ready==0) — that would lie.
-        const bool node_err = P::session_audio_graph_node_plugin_failed(s_, track_, b.node_id) == 1;
-        canvas_.card(r, { b.x, b.y, b.w, b.h }, acc, sel, node_err);   // shared chrome (ADR-0023 Layer 2)
-        const char* type = P::session_track_audio_graph_node_type(s_, track_, i);
-        const char* label = (type && *type) ? type
-                          : (b.kind == 2 ? "Output" : (b.kind == 3 ? "MIDI In" : "?"));
-        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, label,
+        // ADR-0023 Layer 1: the card-chrome data (accent/selection/health/title) comes from the shared
+        // adapter; the kind tag, remove-x, ports and waveform preview are audio-domain overlays drawn
+        // inline below (sel_node_ == the draw-time sel_node param, so a.selected matches the old flag).
+        const AdapterNode a = node_from_box(b, i);
+        const float* acc = a.accent;              // overlays (kind tag, ports, waveform) reuse the accent
+        const bool node_err = a.broken;
+        canvas_.card(r, a.rect, a.accent, a.selected, a.broken);   // shared chrome (ADR-0023 Layer 2)
+        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
                     sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const char* tag = b.kind == 0 ? "inst"
                         : (b.kind == 1 ? "fx"

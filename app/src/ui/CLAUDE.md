@@ -18,6 +18,15 @@
 - **`shader_library_view.{h,cpp}`** — the ADR-0021 content browser: lists the shaders
   in the shader library (each row carries its compile `error` when it failed), for
   browsing/forking shipped shaders.
+- **`graph_adapter.h`** — the **Layer-1 `GraphModelAdapter`** (ADR-0023 #2): the read surface a shared
+  canvas enumerates a graph through, independent of the domain model. It carries the node-level shape both
+  editors already compute for `card()` — `AdapterNode {id, draw-space rect, accent, selected, broken,
+  title, error}` — via `collect_nodes()` + `selected_node_id()`. Both `NodeGraph` and `AudioNodeGraph`
+  implement it AND consume it in their own card loops (so the contract has real consumers). What diverges
+  stays a per-editor domain overlay outside the adapter: wires, ports, the preview-well contents (thumbnail
+  / waveform / sparkline), the visuals bridge data-nodes, and the audio param strip. WRITE commands wait
+  for the Layer-3 controller. `rect` is in the editor's own draw space (world for visual, screen for audio)
+  — reconciling the two spaces is the separate ADR-0023 #3 problem.
 - **`node_canvas.h` / `graph_canvas.h`** — the **shared graph-UI substrate** both node editors
   (visuals `node_graph`, per-track `audio_node_graph`) draw through (ADR-0023). `node_canvas.h` is
   the vocabulary: the `NodeView` world↔screen transform (+ `region_view`), `CardPorts` card geometry,
