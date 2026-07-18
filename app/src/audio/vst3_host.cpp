@@ -119,6 +119,10 @@ struct GraphBlockCtx {
     // these). `steady` is the track's running sample counter (also on Track); `delta` is
     // beats-per-block; `playing` gates the sampler. Filled alongside the native fields each block.
     uint64_t steady = 0; double delta = 0.0; bool playing = false;
+    // ADR-0022 P2a.1: the session control pool + this track's region base (in floats). The apply
+    // reads ctl_pool[ctl_base + src_buf·kGraphMaxBlock]; a modulator writes ctl_pool[ctl_base +
+    // control_out_buf·kGraphMaxBlock]. Set per track in session_process (== tracks_view index · stride).
+    float* ctl_pool = nullptr; size_t ctl_base = 0;
 };
 
 struct Track {
@@ -227,12 +231,9 @@ struct Track {
     std::vector<std::vector<vivid::session::NoteEvent>> npool;
     std::vector<vivid::session::NoteEvent> nmerge;   // scratch: >1 note edge into one node (reserved)
     std::vector<float>               gpool;            // node-buffer pool
-    // ADR-0022: the CONTROL pool — one buffer per possible control-emitting node, indexed by the
-    // node's control_out_buf. A modulator writes its 0..1 signal here; a downstream node's
-    // control_in[k].src_buf selects which to read. Reserved to the worst case (reserve_track_graph),
-    // so the audio thread only writes within capacity — and empty of meaning for any graph with no
-    // control edges (control_buf_count == 0).
-    std::vector<float>               cpool;            // kGraphMaxNodes * kGraphMaxBlock (one row per node)
+    // ADR-0022 P2a.1: the CONTROL pool moved to the Session (`Session::ctl_pool`, per-track regions),
+    // so cross-track modulation can read across track boundaries. A modulator writes its 0..1 signal
+    // into this track's region; a consumer reads it via `blk.ctl_pool[blk.ctl_base + src_buf·...]`.
     // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
     // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
     // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
@@ -333,6 +334,14 @@ struct Session {
     // audio thread only ever writes within a slot (frames ≤ kGraphMaxBlock, guarded in
     // session_process), so there is no allocation in the callback.
     std::vector<float>    track_out_pool;
+    // ADR-0022 P2a.1: ONE session-owned CONTROL pool (was per-track Track::cpool), laid out as
+    // per-track regions — the control analog of track_out_pool. Track at tracks_view index `i` owns
+    // region `i` (base = i · kGraphMaxNodes · kGraphMaxBlock floats); a control buffer `c` in that
+    // region holds a block at base + c·kGraphMaxBlock. A modulator writes its 0..1 signal into its
+    // region; a consumer reads `ctl_pool[region_base + src_buf·kGraphMaxBlock]` (sample 0). One pool,
+    // one source of truth for every control value — the substrate cross-track modulation reads across
+    // regions (P2a.2). Sized to kMaxTracks regions (== the old aggregate per-track cpools).
+    std::vector<float>    ctl_pool;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -442,10 +451,9 @@ static void reserve_track_graph(Track* t) {
     t->npool.resize(kGraphMaxNodes);
     for (auto& nb : t->npool) nb.reserve(kGraphMaxNotes);
     t->nmerge.reserve(kGraphMaxNotes);
-    // ADR-0022: the control pool — one 0..1 signal buffer per possible control-emitting node
-    // (a modulator writes a block's worth; the host samples index 0 today). Same worst-case
-    // preallocation as the pools above; the audio thread only writes within capacity.
-    t->cpool.assign(static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2a.1: the control pool is now session-owned (Session::ctl_pool, per-track regions),
+    // sized once at session init — no per-track allocation here. `ctl_pub` (the UI live-dot atomics)
+    // stays per-track.
     t->ctl_pub.reset(new std::atomic<float>[kGraphMaxNodes]);
     for (int i = 0; i < kGraphMaxNodes; ++i) t->ctl_pub[i].store(0.f, std::memory_order_relaxed);
 }
@@ -681,7 +689,7 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             for (int k = 0; k < s.n_control_in; ++k) {
                 const vivid::audio::ControlIn& ci = s.control_in[k];
                 if (ci.src_buf < 0 || ci.param < 0) continue;
-                const float src = t.cpool[static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0
+                const float src = b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock];   // sample 0, this track's region
                 const float lo  = vivid::audio_op_param_min(nb.op, ci.param);
                 const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
                 // Two modulators on one param STACK: the second resolves around the first's result,
@@ -701,8 +709,8 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
             if (nb.kind == GNKind::NativeMod && nb.op) {
                 std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
                 float* cout = nullptr;
-                if (s.control_out_buf >= 0 && static_cast<size_t>(s.control_out_buf) < t.cpool.size() / kGraphMaxBlock)
-                    cout = &t.cpool[static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+                if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
+                    cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
                 vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
                                         nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
                 // Publish this block's output for the UI's live dot (node index == out_buf).
@@ -1152,6 +1160,8 @@ Session* session_create(uint32_t sample_rate) {
     s->render_list.reserve(kMaxTracks);   // ADR-0022 P1b: master-node input list (audio thread)
     // ADR-0022 P1b.3a: the session track-output pool — one stereo kGraphMaxBlock slot per track.
     s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2a.1: the session control pool — kMaxTracks regions of kGraphMaxNodes control buffers.
+    s->ctl_pool.assign(static_cast<size_t>(kMaxTracks) * kGraphMaxNodes * kGraphMaxBlock, 0.f);
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -2071,8 +2081,8 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
 
     bool any = false;
-    for (Track* tp : s->tracks_view) {
-        Track& t = *tp;
+    for (size_t tv_i = 0; tv_i < s->tracks_view.size(); ++tv_i) {
+        Track& t = *s->tracks_view[tv_i];
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
@@ -2196,6 +2206,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.blk.bpm = static_cast<float>(bpm); t.blk.bpb = bpb; t.blk.beats = beats;
             t.blk.notes = t.nev.data(); t.blk.note_count = static_cast<uint32_t>(t.nev.size());
             t.blk.steady = t.steady; t.blk.delta = delta; t.blk.playing = playing;
+            // ADR-0022 P2a.1: this track's region of the session control pool.
+            t.blk.ctl_pool = s->ctl_pool.data();
+            t.blk.ctl_base = tv_i * static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock;
             run_track_graph(t, L, R, frames);
         }
         t.steady += frames;
