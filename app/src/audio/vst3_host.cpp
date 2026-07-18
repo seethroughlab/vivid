@@ -744,13 +744,21 @@ static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
         }
         std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
         std::memcpy(oR, iR, frames * sizeof(float));
-        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place (Output = passthrough)
+        if (nb.kind == GNKind::NativeFx && nb.op)       // effect: transform in place
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
                                     nullptr, 0, nullptr, ovr, novr);
         else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
             render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
         else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
             render_clap_effect(t, nb.clap, frames, oL, oR);
+        else if (nb.kind == GNKind::Output) {
+            // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
+            // final output. (Was applied downstream in session_process's mix; relocated here so P1b's
+            // master node can simply SUM the track-out buffers.) Bit-identical: x*g here == the old
+            // L[i]*g in the mix. `oL/oR` already hold the summed inputs (passthrough above).
+            const float g = t.gain.load(std::memory_order_relaxed);
+            for (uint32_t i = 0; i < frames; ++i) { oL[i] *= g; oR[i] *= g; }
+        }
     }
     // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
     // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
@@ -2075,13 +2083,17 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         }
         t.steady += frames;
 
-        const float g = t.gain.load(std::memory_order_relaxed);
+        // ADR-0022 P1a: the track GAIN is now applied inside the Track-Out (Output) node, so L/R
+        // already hold the GAINED output (or silence for a gok=false / bailed track). Mix + meter
+        // that gained signal directly. (Metering stays here — it must cover the graph-bail and
+        // no-source cases too; it relocates into the track-out node in P1b when this per-track loop
+        // is replaced by the session-graph executor.)
         const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
         double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
         for (uint32_t i = 0; i < frames; ++i) {
-            const float l = L[i] * g, r = R[i] * g;
+            const float l = L[i], r = R[i];
             out[2 * i] += l; out[2 * i + 1] += r;
             sum_sq += static_cast<double>(l) * l;
             t.flt_lo += (l - t.flt_lo) * a_lo;
