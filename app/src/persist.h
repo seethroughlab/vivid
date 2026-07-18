@@ -68,8 +68,14 @@ inline float migrate_param_value(int file_ver, const std::string& op_type, const
 // — it's rebuilt deterministically at startup (role-based), so load restores
 // state onto the existing tracks by index. These power both file save/load and
 // the MCP get_session/load_session tools.
+// `include_plugin_state`: when false, the (potentially slow, RT-unsafe) VST3/CLAP `getState()`
+// calls are SKIPPED. The undo/dirty canonical projection strips plugin state anyway
+// (persist_undo.*), so it passes false — which also stops `getState()` from being called on a
+// live, processing plugin during a reload's undo-baseline snapshot (a data race that SIGSEGV'd
+// heavy plugins). Real file saves pass true.
 nlohmann::json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                               int win_w, int win_h, float split_x, float dock_h);
+                               int win_w, int win_h, float split_x, float dock_h,
+                               bool include_plugin_state = true);
 bool session_from_json(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                        int& win_w, int& win_h, float& split_x, float& dock_h);
 

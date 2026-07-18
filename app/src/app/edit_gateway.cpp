@@ -15,7 +15,10 @@ using json = nlohmann::json;
 nlohmann::json EditGateway::canonical_projection_now() const {
     if (!app_.session || !app_.graph) return json::object();
     // Dummy window dims: the projection strips the whole "window" block, so they never matter.
-    return canonical_document_projection(session_to_json(app_.session, *app_.graph, 0, 0, 0.f, 0.f));
+    // include_plugin_state=false: the projection strips plugin state anyway, and skipping getState
+    // keeps this dirty/undo snapshot from racing the audio thread's process() on a live plugin
+    // (the reload SIGSEGV) — and makes every edit's snapshot cheaper.
+    return canonical_document_projection(session_to_json(app_.session, *app_.graph, 0, 0, 0.f, 0.f, /*include_plugin_state*/false));
 }
 
 void EditGateway::reset_baseline() {
