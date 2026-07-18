@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <string>
+#include <vector>
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
 namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops)
@@ -117,6 +118,9 @@ bool  session_xctl_get(Session*, int i, int* src_track, int* src_node, int* dst_
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
+int   session_track_capture_snapshot(Session*, int track, double seconds,
+                                     std::vector<float>& outL, std::vector<float>& outR,
+                                     uint32_t* out_sample_rate);  // recent post-gain track audio
 
 // ADR-0022 P1b: the master node — the session's single sink (sums the track outputs).
 float session_master_gain(Session*);
@@ -155,6 +159,9 @@ void        session_set_track_state(Session*, int track, const std::string& stat
 // Audio waveform editing. Waveform = peak amplitude per bin (read-only).
 int  session_audio_waveform(Session*, int track, int scene, float* out_bins, int n_bins);
 double session_audio_loop_beats(Session*, int track, int scene);   // clip's loop length (beats)
+int  session_audio_copy_pcm(Session*, int track, int scene,
+                            std::vector<float>& outL, std::vector<float>& outR,
+                            uint32_t* out_sample_rate);            // UI/main thread snapshot for analysis
 void session_get_audio_trim(Session*, int track, int scene, float* t0, float* t1);   // loop window [0,1]
 void session_set_audio_trim(Session*, int track, int scene, float t0, float t1);
 

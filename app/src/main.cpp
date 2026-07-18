@@ -286,6 +286,7 @@ int main(int argc, char** argv) {
     ma_device device;
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
+        transport.configure_capture(device.sampleRate, 30.0);
         // Now that we know the device sample rate, scan + load the default project. This
         // blocks for seconds on VST3 instrument load — drive the splash from each phase.
         vivid::session::session_set_load_progress(

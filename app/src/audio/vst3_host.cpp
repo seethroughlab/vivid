@@ -77,6 +77,7 @@ struct LiveMidi {
 // AudioGraph::compile), so bindings are addressed by out_buf.
 constexpr int      kGraphMaxNodes = 64;
 constexpr uint32_t kGraphMaxBlock = 4096;
+constexpr double   kTrackCaptureSeconds = 30.0;
 // ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that
 // somehow carried more notes than this would be truncated rather than allocate on the RT thread.
 constexpr size_t   kGraphMaxNotes = 512;
@@ -168,6 +169,12 @@ struct Track {
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
     std::atomic<float>    band_low{0.f}, band_mid{0.f}, band_high{0.f};  // 3-band energy
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
+    std::vector<float>    bl, br;          // planar scratch
+    std::mutex            capture_mtx;      // audio thread uses try_lock; UI snapshots may block
+    std::vector<float>    capture_l, capture_r;
+    uint32_t              capture_sample_rate = 0;
+    size_t                capture_write_pos = 0;
+    size_t                capture_filled = 0;
     std::vector<NoteEvent> nev;
     std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
@@ -493,6 +500,17 @@ static void reserve_track_graph(Track* t) {
     // stays per-track.
     t->ctl_pub.reset(new std::atomic<float>[kGraphMaxNodes]);
     for (int i = 0; i < kGraphMaxNodes; ++i) t->ctl_pub[i].store(0.f, std::memory_order_relaxed);
+}
+
+static void configure_track_capture(Track* t, uint32_t sample_rate) {
+    if (!t || sample_rate == 0) return;
+    const size_t frames = static_cast<size_t>(kTrackCaptureSeconds * static_cast<double>(sample_rate));
+    std::lock_guard<std::mutex> lk(t->capture_mtx);
+    t->capture_l.assign(frames, 0.f);
+    t->capture_r.assign(frames, 0.f);
+    t->capture_sample_rate = sample_rate;
+    t->capture_write_pos = 0;
+    t->capture_filled = 0;
 }
 
 // AG-0: (re)compile a track's audio graph from its native chain (UI thread). The graph path
@@ -1083,7 +1101,7 @@ static std::vector<MidiClip> drum_patterns() {
 
 enum TrackKind { kLead = 0, kBass = 1, kDrums = 2 };
 
-static Track* make_track(Vst3Handle* h, const std::string& name, int kind) {
+static Track* make_track(Vst3Handle* h, const std::string& name, int kind, uint32_t sample_rate) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
@@ -1099,12 +1117,13 @@ t->eev.reserve(256);
     t->effects.reserve(16); t->effects_edit.reserve(16);  // avoid audio-thread realloc
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     reserve_track_graph(t);
+    configure_track_capture(t, sample_rate);
     return t;
 }
 
 // A dynamically-added instrument track: empty clips (the user authors them) across all
 // scenes, so set_clip/launch work immediately.
-static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int scenes) {
+static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int scenes, uint32_t sample_rate) {
     auto* t = new Track();
     t->handle = h;
     t->name = name;
@@ -1118,6 +1137,7 @@ t->eev.reserve(256);
     t->effects.reserve(16); t->effects_edit.reserve(16);
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     reserve_track_graph(t);
+    configure_track_capture(t, sample_rate);
     return t;
 }
 
@@ -1160,7 +1180,7 @@ void session_build_split_showcase(Session* s) {
     if (!s || !s->op_reg) return;
     using namespace demo;
     auto new_native_track = [&](const char* name) -> int {
-        s->tracks.emplace_back(make_instrument_track(nullptr, name, s->scenes));
+        s->tracks.emplace_back(make_instrument_track(nullptr, name, s->scenes, s->sample_rate));
         s->tracks.back()->id = s->next_track_id++;
         return static_cast<int>(s->tracks.size()) - 1;
     };
@@ -1256,7 +1276,7 @@ Session* session_create(uint32_t sample_rate) {
         std::string name;
         Vst3Handle* h = load_role(bundles, role.prefer, sample_rate, &s->host, name);
         if (!h) { std::fprintf(stderr, "[Session] role kind %d unfilled\n", role.kind); continue; }
-        s->tracks.emplace_back(make_track(h, name, role.kind));
+        s->tracks.emplace_back(make_track(h, name, role.kind, sample_rate));
         s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: %s\n", s->tracks.size() - 1, name.c_str());
     }
@@ -1327,6 +1347,7 @@ Session* session_create(uint32_t sample_rate) {
         }
         pad_aud_clips(at.get(), s->scenes);
         at->active.store(-1, std::memory_order_relaxed);  // start stopped
+        configure_track_capture(at.get(), sample_rate);
         s->tracks.emplace_back(std::move(at));
         s->tracks.back()->id = s->next_track_id++;
         std::fprintf(stderr, "[Session] track %zu: Audio (sampler, %zu loops)\n",
@@ -1660,6 +1681,31 @@ float session_track_band(Session* s, int t, int band) {
          : band == 1 ? tr.band_mid.load(std::memory_order_relaxed)
                      : tr.band_high.load(std::memory_order_relaxed);
 }
+int session_track_capture_snapshot(Session* s, int t, double seconds, std::vector<float>& outL,
+                                   std::vector<float>& outR, uint32_t* out_sample_rate) {
+    outL.clear(); outR.clear();
+    if (out_sample_rate) *out_sample_rate = 0;
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0;
+    Track& tr = *s->tracks[t];
+    std::lock_guard<std::mutex> lk(tr.capture_mtx);
+    if (tr.capture_l.empty() || tr.capture_filled == 0 || tr.capture_sample_rate == 0) return 0;
+    size_t want = tr.capture_filled;
+    if (seconds > 0.0) {
+        want = std::min(tr.capture_filled,
+                        static_cast<size_t>(seconds * static_cast<double>(tr.capture_sample_rate)));
+    }
+    if (want == 0) return 0;
+    outL.resize(want); outR.resize(want);
+    const size_t cap = tr.capture_l.size();
+    const size_t start = (tr.capture_write_pos + cap - want) % cap;
+    for (size_t i = 0; i < want; ++i) {
+        const size_t src = (start + i) % cap;
+        outL[i] = tr.capture_l[src];
+        outR[i] = tr.capture_r[src];
+    }
+    if (out_sample_rate) *out_sample_rate = tr.capture_sample_rate;
+    return static_cast<int>(want);
+}
 void* session_track_controller(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size()) && s->tracks[t]->handle) ? s->tracks[t]->handle->controller : nullptr;
 }
@@ -1766,6 +1812,19 @@ int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
         out[i] = peak;
     }
     return n;
+}
+int session_audio_copy_pcm(Session* s, int t, int sc, std::vector<float>& outL, std::vector<float>& outR,
+                           uint32_t* out_sample_rate) {
+    outL.clear(); outR.clear();
+    if (out_sample_rate) *out_sample_rate = 0;
+    if (!aud_valid(s, t, sc)) return 0;
+    std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
+    const Sampler& smp = s->tracks[t]->aud_clips[sc];
+    if (!smp.ok()) return 0;
+    outL = smp.L;
+    outR = smp.R.empty() ? smp.L : smp.R;
+    if (out_sample_rate) *out_sample_rate = smp.sr ? smp.sr : (s->sample_rate ? s->sample_rate : 48000);
+    return static_cast<int>(outL.size());
 }
 double session_audio_loop_beats(Session* s, int t, int sc) {
     if (!aud_valid(s, t, sc)) return 4.0;
@@ -2465,13 +2524,37 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
         const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
         double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+        bool cap_locked = false;
+        size_t cap = 0, cap_pos = 0, cap_filled = 0;
+        if (!t.capture_l.empty() && t.capture_mtx.try_lock()) {
+            cap_locked = !t.capture_l.empty() && !t.capture_r.empty();
+            if (cap_locked) {
+                t.capture_sample_rate = sample_rate;
+                cap = t.capture_l.size();
+                cap_pos = t.capture_write_pos;
+                cap_filled = t.capture_filled;
+            } else {
+                t.capture_mtx.unlock();
+            }
+        }
         for (uint32_t i = 0; i < frames; ++i) {
-            const float l = L[i];
+            const float l = L[i], r = R[i];
+            if (cap_locked) {
+                t.capture_l[cap_pos] = l;
+                t.capture_r[cap_pos] = r;
+                cap_pos = (cap_pos + 1) % cap;
+                cap_filled = std::min(cap, cap_filled + 1);
+            }
             sum_sq += static_cast<double>(l) * l;
             t.flt_lo += (l - t.flt_lo) * a_lo;
             t.flt_hi += (l - t.flt_hi) * a_hi;
             const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
             slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        }
+        if (cap_locked) {
+            t.capture_write_pos = cap_pos;
+            t.capture_filled = cap_filled;
+            t.capture_mtx.unlock();
         }
         const float inv = 1.f / (frames > 0 ? frames : 1);
         t.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
@@ -3917,7 +4000,7 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     const int base_note = 36;   // C1 → slice 0
 
     // 2. Create the paired instrument (MIDI) track — no VST3, empty clips.
-    Track* nt = make_instrument_track(nullptr, s->tracks[src_track]->name + " Slices", s->scenes);
+    Track* nt = make_instrument_track(nullptr, s->tracks[src_track]->name + " Slices", s->scenes, s->sample_rate);
     s->tracks.emplace_back(nt);
     s->tracks.back()->id = s->next_track_id++;
     const int new_track = static_cast<int>(s->tracks.size()) - 1;
@@ -4049,7 +4132,7 @@ int session_add_instrument_track(Session* s, const char* instrument) {
     std::string name;
     Vst3Handle* h = load_instrument_spec(s, instrument, name);
     if (!h) { std::fprintf(stderr, "[Session] add track: no instrument matched '%s'\n", instrument); return -1; }
-    s->tracks.emplace_back(make_instrument_track(h, name, s->scenes));
+    s->tracks.emplace_back(make_instrument_track(h, name, s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
@@ -4070,6 +4153,7 @@ int session_add_audio_track(Session* s) {
     at->aud_clips.push_back(gen_bell_loop(s->sample_rate, 124.0));
     pad_aud_clips(at.get(), s->scenes);
     at->active.store(-1, std::memory_order_relaxed);
+    configure_track_capture(at.get(), s->sample_rate);
     s->tracks.emplace_back(std::move(at));
     s->tracks.back()->id = s->next_track_id++;
     rebuild_track_view(s);
@@ -4122,7 +4206,7 @@ void session_set_scene_count(Session* s, int scenes) {
 // as the track slice_to_midi builds; reserve_track_graph runs inside make_instrument_track.
 int session_add_graph_track(Session* s, const char* name) {
     if (!s || static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
-    s->tracks.emplace_back(make_instrument_track(nullptr, (name && *name) ? name : "Graph", s->scenes));
+    s->tracks.emplace_back(make_instrument_track(nullptr, (name && *name) ? name : "Graph", s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
