@@ -263,6 +263,7 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     AudioNodeGraph ag; ag.set_source(app.session, tr);
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
     ag.set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
     // "Editor" button in the dock header → open the selected VST3 node's native plugin window (its
     // full param surface). Mirrors the node double-click open path; shown only when it has a controller.
@@ -372,6 +373,14 @@ bool graph_audio_dock(Window& win, App& app, int button, int action, double mx, 
     const auto boxes = ag.layout();
     for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
         if (b.kind != 2 && hit(ag.out_port_rect(b), mx, my)) { win.ag_wire_from = b.node_id; return true; }
+    // ADR-0022: the "+ param" row on a plugin card opens the searchable picker to expose one more
+    // param as a port (the curated set drives which plugin params show).
+    for (const auto& b : boxes)
+        if (hit(ag.add_param_port_rect(b), mx, my)) {
+            win.sel_audio_node = b.node_id;
+            param_chooser_open(win, app, b.node_id, mx, my);
+            return true;
+        }
     for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
         if (b.kind == 1 && hit(ag.remove_rect(b), mx, my)) {
             S::session_audio_graph_remove_node(app.session, tr, b.node_id);
@@ -466,6 +475,7 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         AudioNodeGraph ag; ag.set_source(app.session, tr);
         const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        ag.set_view(win.ag_zoom, win.ag_pan_x, win.ag_pan_y);   // MUST match the draw, or hit-tests miss when panned
         // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits.
         // A MidiIn (kind 3) and a note effect (kind 4) emit notes and nothing else, so a wire out of
         // them is a NOTE edge; everything else is audio. (An explicit port picker can come later —
@@ -473,11 +483,28 @@ bool graph_rewire_release(Window& win, App& app, double mx, double my) {
         int from_kind = -1;
         for (const auto& b : ag.layout()) if (b.node_id == win.ag_wire_from) { from_kind = b.kind; break; }
         const bool note_wire = (from_kind == 3 || from_kind == 4);
-        // ADR-0022: a modulator (kind 5) emits CONTROL, which targets a specific PARAM, not a node.
-        // A plain node-to-node drop can't say which param, so it would make a dead (silent) audio
-        // edge — refuse it. Control edges are created via audio_graph_connect_control (MCP) until the
-        // drag-onto-a-param gesture lands.
-        if (from_kind == 5) { win.ag_wire_from = -1; return true; }
+        // ADR-0022: a modulator (kind 5) emits CONTROL, which targets a specific PARAM. A wire from
+        // it lands on a param PORT (exposed down a node's left edge), creating a control edge to that
+        // exact param — the drag gesture P0.5 deferred, now driven by the mouse.
+        if (from_kind == 5) {
+            for (const auto& b : ag.layout()) {
+                if (b.node_id == win.ag_wire_from) continue;
+                const int slot = ag.param_port_hit(b, mx, my);
+                if (slot < 0) continue;
+                const std::vector<int> exp = ag.exposed_params(b.node_id);
+                if (slot >= static_cast<int>(exp.size())) continue;
+                // Default shape: full-range unipolar sweep (amount 1, curve 0). A shape editor
+                // (amount/bipolar) is the natural next step; a sensible default keeps the drop useful.
+                if (S::session_audio_graph_connect_control(app.session, tr, win.ag_wire_from, b.node_id,
+                                                           exp[slot], /*amount*/1.f, /*curve*/0.f,
+                                                           /*invert*/0, /*bipolar*/0)
+                    && app.edit_gateway)
+                    app.edit_gateway->note_edit("Connect Modulation", "");
+                break;
+            }
+            win.ag_wire_from = -1;
+            return true;
+        }
         for (const auto& b : ag.layout()) {
             if (b.node_id == win.ag_wire_from || !hit(ag.in_port_rect(b), mx, my)) continue;
             // A note wire may land on an instrument (kind 0) or another note effect; an audio wire

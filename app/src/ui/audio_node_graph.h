@@ -84,9 +84,26 @@ public:
     // The remove (x) rect for an effect node card (only meaningful for kind==1 boxes).
     Rect remove_rect(const AudioNodeBox& b) const;
     // Wire ports for drag-to-rewire: the output port (right edge; source of a new edge — absent on
-    // the Output node) and the input port (left edge; target of an edge — absent on instruments).
+    // the Output node) and the signal input port (top-left row; target of an edge — absent on
+    // instruments/modulators, which have no signal input).
     Rect out_port_rect(const AudioNodeBox& b) const;
     Rect in_port_rect(const AudioNodeBox& b) const;
+    // The params a node EXPOSES as ports (ADR-0022, mirroring the visuals graph): every param for a
+    // native op, the pinned/curated subset for a plugin. Compound-widget leaders (the LFO waveform
+    // enum) are skipped so the port list stays clean. Indices into the node's param list.
+    std::vector<int> exposed_params(int node_id) const;
+    // A param port down the card's left edge (below the signal-in port): `slot` indexes into
+    // exposed_params(). A control wire from a modulator drops here. Empty rect if slot is invalid.
+    Rect param_port_rect(const AudioNodeBox& b, int slot) const;
+    // The "+" affordance under a PLUGIN node's ports (opens the searchable pin picker to expose one
+    // more param). Empty rect for a native node (all params already exposed). Shared draw + input.
+    Rect add_param_port_rect(const AudioNodeBox& b) const;
+    // Hit-test the param ports of `b`: returns the exposed-list slot under (mx,my), or -1. Shared so
+    // the drag-to-connect release and the draw agree on where a port is.
+    int  param_port_hit(const AudioNodeBox& b, float mx, float my) const;
+    // The card height for a node — a function of its exposed-param count (variable, like the visuals
+    // graph), so layout() can size each box. A plugin's "+" row is included.
+    float card_height(int node_id) const;
     // The inline param cells for the selected node (by node id; -1 = none); empty otherwise. The
     // LFO enum leader is claimed by its preview and omitted (no knob); ADSR channels stay as knobs.
     std::vector<AudioParamCell> param_cells(int sel_node) const;

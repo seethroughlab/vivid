@@ -44,6 +44,13 @@ void EditGateway::note_edit(const std::string& label, const std::string& coalesc
         if (coalesce_key.empty()) {
             // A structural edit reached us mid-group: close the group as its own clean boundary.
             force_close_group();
+            // ...and commit THIS edit too. force_close_group only flushes PRIOR in-group dirt, so a
+            // structural edit that is the ONLY thing in the gesture — a wire connect via drag — would
+            // otherwise leave no undo entry at all (the gesture opens a group on mouse-down, so every
+            // drag-connect lands here with group_dirty_ still false).
+            pending_ = true;
+            pending_label_ = label;
+            pending_key_.clear();
         } else {
             // A fine-grained edit inside an open group: fold in; committed at end_group.
             group_dirty_ = true;
