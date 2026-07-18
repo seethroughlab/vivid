@@ -163,8 +163,6 @@ static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
     return op_in_count(vg, i) + node_pcount(vg, i);
 }
-static float op_row_y(float y, int row) { return y + 30.f + row * 18.f; }  // center of input row
-
 static constexpr float kCardW  = 156.f;
 static constexpr float kThumbH = 46.f;                 // live-output thumbnail strip
 // Every node but the sink renders an image, so every node but the sink gets a thumbnail.
@@ -172,11 +170,25 @@ static bool op_has_thumb(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && !vg->nodes()[i].is_output();
 }
 
+// The visuals card port-row layout, in the shared CardPorts vocabulary (ADR-0023): a 30px header,
+// 18px rows (texture inputs then params), and a fixed 46px thumbnail tail (none on the sink). One
+// source of truth for the card height + the ports' row centres, shared with the audio graph.
+CardPorts NodeGraph::card_ports(int i) const {
+    CardPorts cp;
+    cp.header_h = 30.f; cp.row_h = 18.f;
+    const bool thumb = op_has_thumb(vg_, i);
+    cp.tail_h   = thumb ? kThumbH : 0.f;   // fixed thumbnail, or nothing (the output sink)
+    cp.tail_pad = thumb ? 8.f : 6.f;
+    cp.lead_rows = op_in_count(vg_, i);    // one lead row per texture input port
+    cp.params    = node_pcount(vg_, i);
+    return cp;
+}
+
 void NodeGraph::op_node_rect(int i, float& x, float& y, float& w, float& h) const {
     x = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].first : bx0_;
     y = (i >= 0 && i < int(op_pos_.size())) ? op_pos_[i].second : by0_;
     w = kCardW;
-    h = 30.f + std::max(1, op_input_rows_at(vg_, i)) * 18.f + (op_has_thumb(vg_, i) ? kThumbH + 8.f : 6.f);
+    h = card_ports(i).height();
 }
 
 
@@ -190,7 +202,7 @@ static void op_accent(const vivid::VisualNode& n, float& r, float& g, float& b) 
 }
 bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // texture input `port`: left edge, one row each
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || port < 0 || port >= op_in_count(vg_, i)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = op_row_y(y, port); return true;
+    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = card_ports(i).row_cy(y, port); return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
     if (!op_has_out(vg_, i)) return false;
@@ -205,8 +217,8 @@ bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const 
     if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
     if (local < 0 || local >= node_pcount(vg_, node_idx)) return false;
     float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
-    const int row = op_in_count(vg_, node_idx) + local;  // after the texture input port(s)
-    px = x; py = op_row_y(y, row);
+    const CardPorts cp = card_ports(node_idx);
+    px = x; py = cp.row_cy(y, cp.param_row(local));   // param rows follow the texture-input rows
     return true;
 }
 bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, int& local) const {

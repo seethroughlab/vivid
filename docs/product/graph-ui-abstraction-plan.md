@@ -223,10 +223,34 @@ over session introspection.
   `audio_view(region, zoom, pan) → NodeView` derivation to `node_canvas.h`. Route `layout()`, the
   zoom, the node-drag inverse, and the hit-test priming through it. Kills the "MUST match" hazard;
   discharges deferred P1.2 in the region-relative way.
-- **P2.3 — minimal `GraphModelAdapter` + `GraphCanvas::draw_graph()`.** Introduce the adapter
-  interface (nodes/ids/rects/kinds/labels/ports/edges/preview) and move the graph-area draw loop
-  (edges + cards + ports + ghost wire) onto the canvas, audio implementing the adapter; per-port
-  labels + preview content are domain hooks. Largest step; behavior-preserving via careful port.
+- **P2.3 — `GraphCanvas` / adapter — REORDERED: do Phase 3 first.** Closer reading of both draw
+  loops showed they differ enough (audio draws edges card-mid→card-mid; the visual graph draws
+  port→port + data→param wires; different card layouts) that a fully-generic `GraphCanvas` built
+  from the audio editor alone would be shaped around audio and need rework once the visual editor
+  arrives. The three genuinely-shared primitives (marks, `NodeView`, `CardPorts`) are already
+  extracted. **Decision: adopt those shared primitives in the visual editor next (Phase 3), so both
+  editors sit on the same base, THEN extract the common draw skeleton into `GraphCanvas` from BOTH
+  — non-speculative, no rework.** The `GraphCanvas` extraction becomes a later step (P4-ish).
+
+## Phase 3 — the visual editor adopts the shared primitives
+
+Mirror of Phase 2, on `NodeGraph`. It already adopted `NodeView` (P1.1) and routes through the
+shared marks + `hit` (P1.3), so the remaining work is the **card row geometry**.
+
+Finding: `CardPorts` fits the visual card's *row* geometry exactly once generalized —
+`sig_in` (bool) → `lead_rows` (int: audio 0–1 signal-in; visual 0–2 texture inputs), and
+`prev_h` → `tail_h`/`tail_pad` (audio: preview well 30+6; visual: thumbnail 46+8, or sink 0+6).
+Then `height()` and `row_cy()` reproduce `op_node_rect` height, `op_row_y`, `op_in_port`, and
+`param_port` exactly. The preview/thumbnail *rect* does NOT generalize (visual thumbnail is
+fixed-height at +2; audio well fills-to-bottom at +1) — it stays each editor's local geometry; only
+the well *mark* (`node_preview_panel`) is shared. Hit-test *method* also stays per-editor (visual
+uses distance/`hypot`, audio uses rects).
+
+- **P3.1 — generalize `CardPorts`** (`sig_in`→`lead_rows`; add `tail_h`/`tail_pad`); update audio's
+  `card_ports()` to the new fields (behavior-preserving). 
+- **P3.2 — adopt `CardPorts` in `NodeGraph`**: `op_node_rect` height, `op_row_y`, `op_in_port`,
+  `param_port` route through a visual `card_ports(i)`; thumbnail rect stays local.
+- Verify BOTH editors render identically (audio + visual graph smokes).
 
 ### Phase 2 acceptance / verification
 - Audio graph renders identically (cards, ports, wires, preview, selection); node-drag, rewire,

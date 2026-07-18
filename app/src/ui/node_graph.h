@@ -179,6 +179,7 @@ private:
     int  find_source_node(const std::string& src) const;
 
     void sync_op_pos();
+    CardPorts card_ports(int i) const;   // shared card port-row layout (ADR-0023)
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
     bool op_out_port(int i, float& px, float& py) const;  // false if op has no output

@@ -220,8 +220,8 @@ static bool kind_has_sig_in(int kind) { return kind == 1 || kind == 2 || kind ==
 // drawn centre and its hit-rect are the same formula. Metrics are the file's unscaled card widths.
 CardPorts AudioNodeGraph::card_ports(int node_id, int kind) const {
     CardPorts cp;
-    cp.header_h = kCardHeaderH; cp.row_h = kPortRowH; cp.prev_h = kCardPrevH;
-    cp.sig_in   = kind_has_sig_in(kind);
+    cp.header_h = kCardHeaderH; cp.row_h = kPortRowH; cp.tail_h = kCardPrevH; cp.tail_pad = 6.f;
+    cp.lead_rows = kind_has_sig_in(kind) ? 1 : 0;   // audio: a single signal-in row (or none)
     cp.params   = static_cast<int>(exposed_params(node_id).size());
     cp.add_row  = s_ && P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
     return cp;
@@ -229,8 +229,8 @@ CardPorts AudioNodeGraph::card_ports(int node_id, int kind) const {
 
 Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
     const CardPorts cp = card_ports(b.node_id, b.kind);
-    if (!cp.sig_in) return { 0.f, 0.f, 0.f, 0.f };                    // no signal input
-    return { b.x - 6.f, cp.row_cy(b.y, cp.sig_in_row()) - 6.f, 12.f, 12.f };   // top-left row
+    if (cp.lead_rows == 0) return { 0.f, 0.f, 0.f, 0.f };             // no signal input
+    return { b.x - 6.f, cp.row_cy(b.y, 0) - 6.f, 12.f, 12.f };        // top-left row
 }
 
 // A native op exposes every param; a plugin exposes only its pinned/curated subset. The LFO
@@ -437,8 +437,8 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, 
         // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
         // is the signal input (audio/notes) when the node takes one; then one row per exposed param.
         const CardPorts cp = card_ports(b.node_id, b.kind);   // shared card port-row layout
-        if (cp.sig_in) {
-            const float cy = cp.row_cy(b.y, cp.sig_in_row());
+        if (cp.lead_rows > 0) {
+            const float cy = cp.row_cy(b.y, 0);
             node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
             r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
         }
