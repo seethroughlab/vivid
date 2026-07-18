@@ -133,9 +133,18 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 >   canvas was panned), and `EditGateway::note_edit` dropped a lone structural mouse-gesture edit
 >   from undo (`force_close_group` only flushed prior dirt) — every drag-connect (the existing
 >   audio-wire connect included) was silently non-undoable.
-> - **Known gap:** the heavy-plugin *reload* path SIGSEGVs (the documented VST startup race, not
->   this work). It is independent of P0.5 but a **P1 prerequisite** — P1 makes undo trigger a full
->   session-graph rebuild, i.e. the reload path, so it must be solid before P1's undo gate can pass.
+> - **Reload path — investigated, found stable (an earlier "SIGSEGV" was a misdiagnosis).** During
+>   P0.5 a heavy-plugin session reload appeared to crash; a follow-up investigation could **not**
+>   reproduce it in 60+ heavy teardown/reload cycles (Pigments + Atoms + Serum2, transport playing,
+>   incl. `new_session` full teardown), there is **no crash report and no crash signature in any
+>   log**, and the reload path is well-guarded (retire-not-free, null-checked derefs, an RT
+>   bail-to-silence net). The apparent crash was the backgrounded-app symptom — the control server
+>   only drains MCP from the foreground run loop, so a reload driven while the window is not
+>   frontmost returns `http 000` (alive but unresponsive), which read as "dead." **Reload is not a
+>   demonstrated P1 blocker.** (A real, separate finding along the way: the undo/dirty *projection*
+>   was calling plugin `getState()` only to strip the result — a needless `getState`‖`process`
+>   contention on the hot edit path; fixed independently, framed as a perf/correctness win, not a
+>   crash fix.)
 
 ## Context
 
