@@ -141,6 +141,10 @@ struct GraphBlockCtx {
     // reads ctl_pool[ctl_base + src_buf·kGraphMaxBlock]; a modulator writes ctl_pool[ctl_base +
     // control_out_buf·kGraphMaxBlock]. Set per track in session_process (== tracks_view index · stride).
     float* ctl_pool = nullptr; size_t ctl_base = 0;
+    // ADR-0022 P2b.1: the session NODE-buffer pool + this track's region base (in floats). Each track
+    // owns (kGraphMaxNodes+1) stereo buffers at node_pool[node_base ..]. Set per track in
+    // session_process (== tracks_view index · the per-track stride).
+    float* node_pool = nullptr; size_t node_base = 0;
     // ADR-0022 P2a.2: the published cross-track control edges (all of them; each node matches those
     // targeting it by dst_track_id + dst_out_buf). Empty ⇒ zero cost.
     const XCtlApply* xctl = nullptr; uint32_t xctl_count = 0;
@@ -260,7 +264,9 @@ struct Track {
     // allocation in the callback. Empty (and free) for any graph without note edges.
     std::vector<std::vector<vivid::session::NoteEvent>> npool;
     std::vector<vivid::session::NoteEvent> nmerge;   // scratch: >1 note edge into one node (reserved)
-    std::vector<float>               gpool;            // node-buffer pool
+    // ADR-0022 P2b.1: the node-buffer pool moved to the Session (`Session::node_pool`, per-track
+    // regions) — the substrate a unified session executor + cross-track audio route through. A track's
+    // nodes render into its region via `blk.node_pool + blk.node_base`.
     // ADR-0022 P2a.1: the CONTROL pool moved to the Session (`Session::ctl_pool`, per-track regions),
     // so cross-track modulation can read across track boundaries. A modulator writes its 0..1 signal
     // into this track's region; a consumer reads it via `blk.ctl_pool[blk.ctl_base + src_buf·...]`.
@@ -372,6 +378,11 @@ struct Session {
     // one source of truth for every control value — the substrate cross-track modulation reads across
     // regions (P2a.2). Sized to kMaxTracks regions (== the old aggregate per-track cpools).
     std::vector<float>    ctl_pool;
+    // ADR-0022 P2b.1: ONE session-owned NODE-buffer pool (was per-track Track::gpool), per-track
+    // regions — track `i` owns region `i` (base = i·(kGraphMaxNodes+1)·2·kGraphMaxBlock floats; each
+    // region holds (kGraphMaxNodes+1) stereo buffers, node outputs + 1 scratch). run_track_graph
+    // renders into its region; a session executor + cross-track audio route through this one pool.
+    std::vector<float>    node_pool;
     // ADR-0022 P2a.1b: scratch for the modulator pre-pass's discarded silent audio output (stereo,
     // kGraphMaxBlock). Modulators run one at a time, so one shared scratch suffices.
     std::vector<float>    mod_scratch;
@@ -485,7 +496,8 @@ static void reserve_track_graph(Track* t) {
     t->gbinds.reserve(kGraphMaxNodes);       t->gbinds_edit.reserve(kGraphMaxNodes);
     t->gcg.steps.reserve(kGraphMaxNodes);    t->gcg_edit.steps.reserve(kGraphMaxNodes);
     t->gbinds_ho.reserve(kGraphMaxNodes);    t->gcg_ho.steps.reserve(kGraphMaxNodes);   // P1b.2 publish handoff
-    t->gpool.assign(static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2b.1: the node-buffer pool is now session-owned (Session::node_pool, per-track
+    // regions), sized once at session init — no per-track allocation here.
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
     t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
@@ -771,19 +783,19 @@ static void run_track_modulators(Track& t, const GraphBlockCtx& b, float* scL, f
 
 static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
     const vivid::audio::CompiledAudioGraph& cg = t.gcg;
-    // RT safety net: bail to silence on any inconsistency between the plan and the working
-    // buffers (e.g. a graph published before its pool/bindings were reserved). The audio thread
-    // must never index past gpool/gbinds — the pool holds (buf_count + 1) stereo buffers.
-    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty()
+    const GraphBlockCtx& b = t.blk;
+    // RT safety net: bail to silence on any inconsistency between the plan and the working buffers
+    // (e.g. a graph published before its bindings were reserved). The audio thread must never index
+    // past this track's node-pool region ((kGraphMaxNodes+1) stereo buffers) or gbinds.
+    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty() || !b.node_pool
         || static_cast<int>(t.gbinds.size()) < cg.buf_count
-        || t.gpool.size() < static_cast<size_t>(cg.buf_count + 1) * 2 * frames) {
+        || static_cast<size_t>(cg.buf_count + 1) * 2 * frames > static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock) {
         std::memset(L, 0, frames * sizeof(float)); std::memset(R, 0, frames * sizeof(float));
         return;
     }
     const uint32_t stride = frames;
-    float* pool = t.gpool.data();
+    float* pool = b.node_pool + b.node_base;   // this track's region of the session node pool
     const int scratch = cg.buf_count;
-    const GraphBlockCtx& b = t.blk;
     // Rebuilt from the block context for VST3 nodes (ProcessContext); native/sampler read `b` directly.
     VividAudioContext gctx{};
     gctx.sample_rate = b.sample_rate; gctx.metronome_bpm = b.bpm;
@@ -1269,6 +1281,8 @@ Session* session_create(uint32_t sample_rate) {
     s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
     // ADR-0022 P2a.1: the session control pool — kMaxTracks regions of kGraphMaxNodes control buffers.
     s->ctl_pool.assign(static_cast<size_t>(kMaxTracks) * kGraphMaxNodes * kGraphMaxBlock, 0.f);
+    // ADR-0022 P2b.1: the session node-buffer pool — kMaxTracks regions of (kGraphMaxNodes+1) stereo buffers.
+    s->node_pool.assign(static_cast<size_t>(kMaxTracks) * (kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
     s->mod_scratch.assign(static_cast<size_t>(2) * kGraphMaxBlock, 0.f);   // P2a.1b modulator pre-pass scratch
     s->xctl_edges.reserve(256); s->xctl_view.reserve(256); s->xctl_ho.reserve(256);   // P2a.2 cross-track edges
     for (const auto& role : kRoles) {
@@ -2507,6 +2521,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // ADR-0022 P2a.1: this track's region of the session control pool.
             t.blk.ctl_pool = s->ctl_pool.data();
             t.blk.ctl_base = tv_i * static_cast<size_t>(kGraphMaxNodes) * kGraphMaxBlock;
+            // ADR-0022 P2b.1: this track's region of the session node-buffer pool.
+            t.blk.node_pool = s->node_pool.data();
+            t.blk.node_base = tv_i * static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock;
             // ADR-0022 P2a.2: the cross-track control edges (each node matches those targeting it).
             t.blk.xctl = s->xctl_view.data();
             t.blk.xctl_count = static_cast<uint32_t>(s->xctl_view.size());
