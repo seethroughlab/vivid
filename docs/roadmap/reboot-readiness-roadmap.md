@@ -1,14 +1,13 @@
-# PoC → Product: Readiness Assessment & Roadmap
+# Reboot Readiness: Assessment & Roadmap
 
-Companion to [ADR-0011](../decisions/ADR-0011-poc-to-product-architecture.md). Target (ratified): an
+Companion to [ADR-0011](../decisions/ADR-0011-reboot-product-architecture.md). Target (ratified): an
 **extensible, cross-platform-capable platform**. Trunk strategy (**accepted 2026-06-29**, evidence-based):
 **keep our codebase (`app/`) as the trunk and adopt vivid-classic's platform by *selective lift*** — not a
 whole-trunk swap to classic. See §1d for the entanglement audit that decided this.
 
-Date: 2026-06-29 · Scope: `app/` (branch `poc-cpp-prototype`), benchmarked against the `vivid-classic`
-branch.
+Date: 2026-06-29 · Scope: `app/`, benchmarked against the more mature `vivid-classic` branch.
 
-> **Status (2026-07-15).** This is the original PoC→product assessment; its P0–P4 roadmap has **largely
+> **Status (2026-07-15).** This is the original reboot-readiness assessment; its P0–P4 roadmap has **largely
 > landed** and the phase text below reads in the future tense of its writing. For the *current* gap and
 > what's next, see [`classic-platform-gap.md`](classic-platform-gap.md) — the product lift beyond P0–P4
 > (undo ✅ ADR-0017, content browsing ✅ ADR-0021; resilience/error-surfaces/inner-loop still ahead).
@@ -18,7 +17,7 @@ branch.
 
 ## 1. Assessment
 
-### 1a. The PoC today (audit)
+### 1a. The reboot today (audit)
 
 `app/` is ~8,100 LOC across 43 files in clean module dirs (`audio` 1.4k, `gpu` 1.0k, `ui` 1.3k, `cli`
 0.4k, `platform`, `midi`, root 1.8k). What's good and what blocks productization:
@@ -30,14 +29,14 @@ branch.
 | **Tests / CI** | **Critical (none)** | 0 test files, no framework, no `.github/workflows`, no sanitizers. Untested: thread-safe edit patterns, mapping math, persistence round-trip, control-server dispatch |
 | **Error handling** | **High** | Silent failures (video open, effect add); MCP `control_server` handlers pass **unvalidated** track/scene/device indices to the C API; crash vectors: null-session-after-failed-create, plugin-window double-free, video nullptr |
 | Concurrency | Good | generation-counter + mutex + try_lock for clips/FX; lock-free SPSC param queue + transport atomics |
-| Conventions | Mixed | consistent intra-module namespaces but `vivid` vs `vivid_poc` across the repo; `#pragma once` everywhere; header-only mega-files (`vst3_host_common.h` 1.1k) |
+| Conventions | Mixed | consistent intra-module namespaces; `#pragma once` everywhere; header-only mega-files (`vst3_host_common.h` 1.1k) |
 | **Docs (in `app/`)** | **Medium (none)** | no README/ARCHITECTURE/BUILD, no thread-safety guide, ~2% comments in `main.cpp`; header doc-comments are good where present |
 | Deps | Mostly pinned | all FetchContent pinned except **`glfw3webgpu` tracks `main`**; no lockfile |
 | **Platform lock** | **Medium** | ~20% macOS-locked: `platform/macos_frame_timer.cpp` (CFRunLoop), `gpu/video_player.mm` (AVFoundation), `audio/vst3_plugin_window.mm` (Cocoa), Metal-only wgpu path, `MACOSX_BUNDLE`; **no conditional compilation / abstraction** |
 
 ### 1b. vivid-classic's discipline (the benchmark)
 
-Classic is ~4,500 tracked files with the engineering scaffolding the PoC lacks — and most of it exists
+Classic is ~4,500 tracked files with engineering scaffolding the reboot had not yet grown — and most of it exists
 *to enable extensibility + cross-platform*, which is exactly the chosen target:
 
 - **Enforced layering**: `operator_api` (public C ABI) → `common` → `runtime{core,graph,operators,
@@ -61,7 +60,7 @@ Classic is ~4,500 tracked files with the engineering scaffolding the PoC lacks �
 
 ### 1c. Verdict
 
-Architecture and product are sound; the **engineering base is a prototype's**. The god file, the absence
+Architecture and product are sound; the **engineering base still needs product hardening**. The god file, the absence
 of tests/CI/sanitizers, the unvalidated control surface, and the thin docs are the disqualifiers — and
 the extensibility/cross-platform machinery the target requires is largely absent. The question is whether
 to swap to classic's trunk to get that machinery (Option B) or lift it onto ours — answered in §1d.
@@ -125,7 +124,7 @@ subsystem (per §1d) onto it, builds the right-sized graph model fresh, and adop
 ### P1 — Operator/ABI contract + a right-sized graph model (the keystone)
 - **Lift `operator_api/` (LIFT-CLEAN)** into our trunk; keep our `Renderer2D` as the host behind its
   type-erased draw table. Add descriptor validation with named error codes.
-- **Build a right-sized graph model fresh** (seed: our `VisualGraph` executor) and express the PoC's
+- **Build a right-sized graph model fresh** (seed: our `VisualGraph` executor) and express the reboot's
   visuals ops + audio nodes as operators against the lifted ABI.
 - **Front-load the seam spike**: the lifted `operator_api` descriptor model ↔ our new graph model is the
   main integration risk — prove one operator end-to-end (Plasma op + the bridge + a clip launching)

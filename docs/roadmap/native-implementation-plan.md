@@ -1,17 +1,17 @@
-# Vivid C++ PoC — Phased Implementation Plan
+# Vivid Native Reboot — Phased Implementation Plan
 
-Status: **COMPLETE** — P0–P8 proven on hardware (2026-06-28). See
-[ADR-0009](../decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md) for the pivot rationale. Code
-lives under `app/` on branch `poc-cpp-prototype` (commits `b23ba677` … `a63c9e21`).
+Status: **COMPLETE** — P0–P8 validated on hardware (2026-06-28). See
+[ADR-0009](../decisions/ADR-0009-two-surface-bridge-and-native-reboot.md) for the pivot rationale. Code
+lives under `app/`.
 
-A real macOS C++ proof of concept of **two best-in-class surfaces + a bridge** — a DAW (Ableton
+A real macOS C++ implementation of **two best-in-class surfaces + a bridge** — a DAW (Ableton
 Session View) and a node-based visuals platform (TouchDesigner), sharing one transport — leaning on
 `vivid-classic` for battle-tested subsystems (not its runtime). Each phase is a committable, runnable
 milestone ending in a concrete proof, ordered to de-risk the hard parts early.
 
 **Verification reality:** the dev sandbox has no display/audio, so phases are verified to
 **compile + link** there; the audible/visible proofs are run on a Mac
-(`cmake --build app/build && ./app/build/vivid_poc`).
+(`cmake --build app/build && ./app/build/vivid`).
 
 ## Locked decisions
 
@@ -37,7 +37,7 @@ milestone ending in a concrete proof, ordered to de-risk the hard parts early.
 
 ## Outcome
 
-**PoC proven at P8** and verified interactively on hardware. Notable as-built findings:
+**Native direction validated at P8** and verified interactively on hardware. Notable as-built findings:
 
 - **GLSL needs no toolchain** — wgpu-native ingests GLSL natively (`WGPUShaderSourceGLSL`), so the
   GLSL-authoring decision cost zero extra deps (no glslang/shaderc). The plan's `glslang` assumption
@@ -49,8 +49,8 @@ milestone ending in a concrete proof, ordered to de-risk the hard parts early.
 - The "borrow subsystems, not mental models" approach (Classic Lesson 10 / ADR-0009) held: we reused
   the hard parts (audio engine, VST3 host, WebGPU, 2D renderer, font atlas) and left the runtime.
 
-P9 (JSON persistence, threading hardening, VST3 plugin-GUI windows) and deepening the bridge are
-post-PoC; see the next-sprint plan.
+P9 (JSON persistence, threading hardening, VST3 plugin-GUI windows) and deepening the bridge were
+the next tranche of product work.
 
 ## Classic subsystems borrowed (by phase)
 

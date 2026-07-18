@@ -8,10 +8,11 @@ job well.
 
 - `../CLAUDE.md` - repo navigation for agents
 - `../app/ARCHITECTURE.md` - current native architecture and thread model
-- `decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md` - pivot to two primary surfaces plus bridge
-- `decisions/ADR-0010-poc-proven-production-seed.md` - C++ PoC promoted to product seed
-- `decisions/ADR-0011-poc-to-product-architecture.md` - current trunk and selective-lift decision
-- `roadmap/poc-to-product.md` - current productization roadmap
+- `decisions/ADR-0009-two-surface-bridge-and-native-reboot.md` - pivot to two primary surfaces plus bridge
+- `decisions/ADR-0010-native-reboot-seed.md` - native reboot promoted to product trunk
+- `decisions/ADR-0011-reboot-product-architecture.md` - current trunk and selective-lift decision
+- `decisions/ADR-0025-cpp17-organization-and-patterns.md` - C++17 organization and engineering-pattern guidance
+- `roadmap/reboot-readiness-roadmap.md` - historical reboot-readiness roadmap
 - `product/PRD.md` - product vision, scope, and current principles
 - `product/glossary.md` - canonical vocabulary for Vivid 4 concepts
 - `research/vivid-classic-lessons.md` - lessons from Vivid Classic and its commit history

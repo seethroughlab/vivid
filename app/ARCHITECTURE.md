@@ -3,8 +3,8 @@
 This describes how `app/` is put together: the two-surface product model, the
 `App`/`Window` split, the module layering, the thread model, and the MCP control
 flow. For the *why* and the productization plan, see
-[ADR-0009](../docs/decisions/ADR-0009-two-surface-bridge-and-cpp-poc.md) /
-[ADR-0011](../docs/decisions/ADR-0011-poc-to-product-architecture.md).
+[ADR-0009](../docs/decisions/ADR-0009-two-surface-bridge-and-native-reboot.md) /
+[ADR-0011](../docs/decisions/ADR-0011-reboot-product-architecture.md).
 
 ## 1. The product model: two surfaces + a bridge
 
@@ -26,7 +26,7 @@ visual node params, and visuals state (`viz.warp`, …) drives audio device para
 
 ## 2. App (shared) vs Window (per-view)
 
-The central seam (introduced in P0.1 / [ADR-0011](../docs/decisions/ADR-0011-poc-to-product-architecture.md)):
+The central seam (introduced in P0.1 / [ADR-0011](../docs/decisions/ADR-0011-reboot-product-architecture.md)):
 
 - **`App`** (`app/app.h`) — the **shared engine + document**, one per process: the
   audio `Session`, master `Transport`, the visuals `VisualGraph` + `NodeGraph` (the

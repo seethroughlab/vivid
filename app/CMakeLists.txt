@@ -239,6 +239,12 @@ add_executable(vivid MACOSX_BUNDLE
     src/packages/hot_reload.cpp
     src/packages/hot_reload_manager.cpp
     src/cli/control_server.cpp
+    src/cli/audio_analysis_tools.cpp
+    src/cli/control_handlers_audio_analysis.cpp
+    src/cli/control_handlers_audio_clip_pool.cpp
+    src/cli/control_handlers_audio_devices.cpp
+    src/cli/control_handlers_audio_graph.cpp
+    src/cli/control_handlers_audio_catalog.cpp
     src/cli/control_handlers_introspection.cpp
     src/cli/control_handlers_mappings.cpp
     src/cli/control_handlers_visuals.cpp
@@ -314,12 +320,20 @@ if(APPLE)
 else()
     set(_examples_dest "$<TARGET_FILE_DIR:vivid>/examples")
 endif()
-add_custom_target(vivid_examples ALL
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects" "${_examples_dest}"
-    COMMENT "Copying the bundled example projects into the app"
-    VERBATIM)
+set(_examples_src "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects")
+if(EXISTS "${_examples_src}")
+    add_custom_target(vivid_examples ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${_examples_src}" "${_examples_dest}"
+        COMMENT "Copying the bundled example projects into the app"
+        VERBATIM)
+else()
+    add_custom_target(vivid_examples ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
+        COMMAND ${CMAKE_COMMAND} -E echo "No bundled example projects found at ${_examples_src}; creating an empty examples dir"
+        COMMENT "Preparing empty bundled examples directory"
+        VERBATIM)
+endif()
 add_dependencies(vivid_examples vivid)   # the bundle dir has to exist first
 target_include_directories(vivid PRIVATE src src/gpu src/audio src/ui deps/stb
     ${CMAKE_CURRENT_BINARY_DIR}/generated)   # generated version.h (P4.1)

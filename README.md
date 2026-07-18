@@ -32,7 +32,7 @@ without the window frontmost (see [`app/README.md`](app/README.md)).
 - **[`app/README.md`](app/README.md)** — build, run, tests, sanitizers, CI.
 - **[`mcp/README.md`](mcp/README.md)** — the agent tool surface.
 - **[`docs/decisions/`](docs/decisions/)** — the ADRs. Recent load-bearing ones: ADR-0009
-  (two surfaces + bridge), ADR-0011 (productization target), ADR-0012 (per-track audio graph),
+  (two surfaces + bridge), ADR-0011 (reboot product architecture), ADR-0012 (per-track audio graph),
   ADR-0013 (focus-first UI), ADR-0016 (a shader file is an operator), ADR-0017 (every edit is
   reversible — whole-document undo/redo), ADR-0021 (content is browsable).
 

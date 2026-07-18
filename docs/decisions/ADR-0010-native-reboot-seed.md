@@ -1,22 +1,22 @@
-# ADR-0010: The C++ PoC Is Proven; Promote It to the Production Seed
+# ADR-0010: The Native Reboot Is Validated; Promote It to Product Trunk
 
 Status: accepted
 
 Date: 2026-06-28 (accepted 2026-06-29)
 
-Follows: [ADR-0009](ADR-0009-two-surface-bridge-and-cpp-poc.md)
+Follows: [ADR-0009](ADR-0009-two-surface-bridge-and-native-reboot.md)
 
-Superseded-in-part-by: [ADR-0011](ADR-0011-poc-to-product-architecture.md) — the productization target
-(extensible + cross-platform) and the trunk question (grow the PoC vs. port onto vivid-classic's runtime)
+Superseded-in-part-by: [ADR-0011](ADR-0011-reboot-product-architecture.md) — the product architecture
+(extensible + cross-platform) and the trunk question (grow the reboot vs. port onto vivid-classic's runtime)
 are decided there.
 
 ## Context
 
 ADR-0009 committed to two best-in-class surfaces plus a first-class bridge, and to a real macOS
-C++ proof of concept that borrows *subsystems, not mental models* from `vivid-classic`. It declared
-the PoC "proven when the interactive audio→visual bridge works end to end."
+C++ reboot that borrows *subsystems, not mental models* from `vivid-classic`. It set the validation
+bar at "the interactive audio→visual bridge works end to end."
 
-That bar is now cleared, and then some. Across 67 commits (Sprints 1–8 / P9–P28) the PoC became a
+That bar is now cleared, and then some. Across 67 commits (Sprints 1–8 / P9–P28) the reboot became a
 genuinely interactive two-surface instrument:
 
 - **DAW surface** — multi-track Session View: Pigments / Serum / EZdrummer instruments + a warped
@@ -32,10 +32,10 @@ genuinely interactive two-surface instrument:
   visual state back into audio parameters, with one overview panel (M) to see and prune every
   mapping. The bridge is bidirectional and legible, exactly as ADR-0009 envisioned.
 
-The PoC was deliberately built in production-grade C++, not throwaway HTML. The open question is no
+The reboot was deliberately built in production-grade C++, not throwaway HTML. The open question is no
 longer "does the approach work" — it does — but "what do we carry forward, and how."
 
-### What the PoC taught us
+### What the reboot taught us
 
 1. **The mapping registry is the keystone.** Collapsing `char_id` + per-port wiring into one
    `{source, dest, amount}` table (string IDs like `track_2.transient`, `uniform.warp`,
@@ -67,8 +67,8 @@ longer "does the approach work" — it does — but "what do we carry forward, a
 
 ## Decision
 
-**Promote the PoC codebase (`app/`) to the seed of the production product**, rather than treating it
-as disposable or restarting from the reboot-docs track. Concretely:
+**Promote the native reboot codebase (`app/`) to the product trunk**, rather than treating it
+as disposable or restarting from the docs/HTML track. Concretely:
 
 1. **Carry forward as load-bearing foundations** (harden in place, don't rewrite):
    - the `MappingRegistry` model and its persistence;
@@ -86,13 +86,13 @@ as disposable or restarting from the reboot-docs track. Concretely:
 
 ## Alternatives Considered
 
-- **Keep the PoC disposable; rewrite production from scratch on the learnings.** Rejected: the PoC
+- **Keep the early trunk disposable; rewrite production from scratch on the learnings.** Rejected: the reboot
   is already production-grade C++ with the right subsystem boundaries; a clean-room rewrite would
   re-pay costs (VST3 hosting, the bridge model, the graph executor) we have already paid. Refactor
   in place instead.
-- **Freeze the PoC and resume the `vivid-4` reboot docs/HTML track.** Rejected: the PoC *is* the
+- **Freeze the native app and resume the `vivid-4` reboot docs/HTML track.** Rejected: the app *is* the
   validated direction now; the disposable prototypes remain history (per ADR-0009), not the product.
-- **Adopt the PoC wholesale with no hardening pass.** Rejected: several shortcuts (below) are PoC
+- **Adopt the native app wholesale with no hardening pass.** Rejected: several shortcuts (below) are early
   scaffolding, not decisions, and would calcify into the product if not named and addressed.
 
 ## Consequences
@@ -103,7 +103,7 @@ as disposable or restarting from the reboot-docs track. Concretely:
 - **Positive:** the single mapping model gives modulation, the return path, and the overview from one
   abstraction, and is the natural place to later add curve/polarity/range (Classic's
   `ModAssignmentDef` shape).
-- **Cost / debt to schedule** (PoC scaffolding to harden before it calcifies):
+- **Cost / debt to schedule** (early scaffolding to harden before it calcifies):
   - visual-op params are **global per op-type**, not per-node — needs per-node param storage;
   - exactly **one `Output` node** and no graph zoom / view-state persistence;
   - thumbnails are contained by **skip-if-off-pane**, not a real clip-rect on the blit pass;
@@ -115,7 +115,8 @@ as disposable or restarting from the reboot-docs track. Concretely:
 
 ## Status note
 
-**Accepted (2026-06-29).** The PoC is the seed; its ADR-0010 debt list was retired in full this
-session. The productization target and the trunk question (keep growing `app/` vs. port the product
-layer onto vivid-classic's runtime) are taken up in [ADR-0011](ADR-0011-poc-to-product-architecture.md)
-with the [PoC → Product roadmap](../roadmap/poc-to-product.md).
+**Accepted (2026-06-29).** The native app is the product trunk; the ADR-0010 debt list was retired in
+full this session. The product architecture and the trunk question (keep growing `app/` vs. port the
+product layer onto vivid-classic's runtime) are taken up in
+[ADR-0011](ADR-0011-reboot-product-architecture.md) with the
+[reboot-readiness roadmap](../roadmap/reboot-readiness-roadmap.md).

@@ -34,7 +34,7 @@ Boundary held: not a sandbox (operators still run in-process; crashes are attrib
 not harmless), not crash reporting (no telemetry), no watchdog/supervisor binary (safe mode is a flag
 + the auto-quarantine, not an auto-relaunch).
 
-Amends: [ADR-0011](ADR-0011-poc-to-product-architecture.md), which made **the third-party dylib the
+Amends: [ADR-0011](ADR-0011-reboot-product-architecture.md), which made **the third-party dylib the
 unit of extension** — and did not say what happens when one of them segfaults.
 
 Decided: adopt classic's four-link resilience chain — **attribute → record → safe mode →

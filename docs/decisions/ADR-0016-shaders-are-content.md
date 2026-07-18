@@ -4,7 +4,7 @@ Status: accepted (implemented — S1..S6, 2026-07-14)
 
 Date: 2026-07-13
 
-Amends: [ADR-0011](ADR-0011-poc-to-product-architecture.md) (the operator/package platform), which
+Amends: [ADR-0011](ADR-0011-reboot-product-architecture.md) (the operator/package platform), which
 makes **the compiled dylib the only unit of extension**. That is right for operators that are
 genuinely code. It is wrong for the ones that are, in truth, a fragment shader.
 

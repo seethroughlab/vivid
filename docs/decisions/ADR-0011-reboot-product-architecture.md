@@ -1,29 +1,31 @@
-# ADR-0011: PoC → Product — Keep Our Trunk; Adopt Classic's Platform by Selective Lift
+# ADR-0011: Reboot Product Architecture — Keep Our Trunk; Adopt Classic's Platform by Selective Lift
 
 Status: accepted
 
 Date: 2026-06-29
 
-Follows: [ADR-0010](ADR-0010-poc-proven-production-seed.md)
+Follows: [ADR-0010](ADR-0010-native-reboot-seed.md)
 
-Decided: **the PoC codebase (`app/`) stays the trunk**; we adopt vivid-classic's platform machinery by
+Decided: **the native reboot codebase (`app/`) stays the trunk**; we adopt vivid-classic's platform machinery by
 **selective lift** (not a whole-trunk swap), and **build a right-sized graph model fresh**.
 
 ## Context
 
-[ADR-0010](ADR-0010-poc-proven-production-seed.md) declared the PoC proven and promoted it to the seed.
+[ADR-0010](ADR-0010-native-reboot-seed.md) declared the native reboot validated and promoted `app/` to
+the product trunk.
 The target (ratified): an **extensible, cross-platform-capable platform** — which ≈ vivid-classic's
 architecture (operator/ABI boundary, graph model, codegen, hot-reload, packages, cross-cadence bridge,
-test partitioning, production gate, docs culture). Classic has all of it; the PoC has little of it.
+test partitioning, production gate, docs culture). Classic has all of it; the reboot has the validated
+product surface and a smaller, cleaner trunk.
 
 The initial recommendation (an earlier draft of this ADR) was **Option B — make classic the trunk and
-port the PoC's product layer onto it.** That was reconsidered: B would inherit classic's ~4,500-file
-codebase (including the large parts irrelevant to this product) and would **discard the PoC's hard-won
+port the reboot's product layer onto it.** That was reconsidered: B would inherit classic's ~4,500-file
+codebase (including the large parts irrelevant to this product) and would **discard the reboot's hard-won
 low-level work** — the `Renderer2D` drawing library, `ui_style`, the GPU/audio stacks, the thread-safety
 discipline — because classic has its own equivalents. That maximizes both inherited cruft *and* lost work.
 
 So we ran an **entanglement audit** (three read-only probes of vivid-classic, recorded in
-[`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) §1d) to answer the deciding question: *can
+[`../roadmap/reboot-readiness-roadmap.md`](../roadmap/reboot-readiness-roadmap.md) §1d) to answer the deciding question: *can
 classic's valuable subsystems be lifted cleanly, or are they welded to its runtime?* The answer is that
 classic's strict dependency direction makes the important pieces **lift cleanly** — which collapses the
 A/B/C choice.
@@ -33,7 +35,7 @@ A/B/C choice.
 1. **Target:** an extensible, cross-platform-capable platform (ratified).
 
 2. **Trunk: our codebase (`app/`) stays the trunk.** We do **not** swap to classic's runtime (Option B
-   rejected — see Alternatives). This keeps the PoC's validated low-level work — `Renderer2D`/`ui_style`,
+   rejected — see Alternatives). This keeps the reboot's validated low-level work — `Renderer2D`/`ui_style`,
    the GPU/audio stacks, the thread-safety discipline, the mapping bridge, the two-surface product — and
    avoids inheriting classic's irrelevant breadth as cruft.
 
@@ -56,11 +58,11 @@ A/B/C choice.
 
 ## Alternatives Considered
 
-- **Option A — Grow the PoC, reimplement classic's designs.** Rejected: needlessly *reimplements* code
+- **Option A — Grow the reboot, reimplement classic's designs.** Rejected: needlessly *reimplements* code
   (operator ABI, loader, packages) that the audit shows lifts cleanly — slower, and re-derives subtle
   lessons we can just copy.
 - **Option B — Make classic the trunk; port the product layer onto it.** *Rejected.* Inherits classic's
-  full breadth as cruft and discards the PoC's low-level work (renderer, style, GPU/audio, thread-safety)
+  full breadth as cruft and discards the reboot's low-level work (renderer, style, GPU/audio, thread-safety)
   in favor of classic's equivalents. Optimizes against both of the user's stated goals.
 - **Option C — Selective lift onto our trunk (chosen, refined by the audit).** Keep `app/` as trunk; lift
   the cleanly-separable platform pieces; build the graph model fresh; adopt practices as patterns. Gains
@@ -68,7 +70,7 @@ A/B/C choice.
 
 ## Consequences
 
-- **Positive:** we keep every validated PoC asset and inherit classic's proven ABI/loader/packages with
+- **Positive:** we keep every validated reboot asset and inherit classic's proven ABI/loader/packages with
   minimal drag; no ~4,500-file cruft; the graph model is built to this product's actual needs.
 - **Cost / risk:** integration **seams** where lifted code meets ours — chiefly the `operator_api`
   descriptor model ↔ our (new, right-sized) graph model, the `operator_codegen` template retarget, and
@@ -77,7 +79,7 @@ A/B/C choice.
   sanitizers, control-server validation, docs) is **real, non-throwaway work on the trunk** and should
   start first; the operator-ABI lift (P1) is the first platform step and front-loads the
   graph-model/ABI-seam spike to de-risk it.
-- **Follow-up:** the roadmap in [`../roadmap/poc-to-product.md`](../roadmap/poc-to-product.md) executes
+- **Follow-up:** the roadmap in [`../roadmap/reboot-readiness-roadmap.md`](../roadmap/reboot-readiness-roadmap.md) executes
   P0 → P4; P0 starts first as real trunk work.
 
 ## Status note

@@ -6,7 +6,7 @@ Date: 2026-07-18
 
 Extends [ADR-0006](ADR-0006-agent-external-mcp.md),
 [ADR-0008](ADR-0008-agent-capability-surface.md),
-[ADR-0010](ADR-0010-poc-proven-production-seed.md),
+[ADR-0010](ADR-0010-native-reboot-seed.md),
 [ADR-0019](ADR-0019-nothing-fails-silently.md),
 [ADR-0022](ADR-0022-session-audio-graph.md), and
 [ADR-0023](ADR-0023-shared-graph-ui-substrate.md).
