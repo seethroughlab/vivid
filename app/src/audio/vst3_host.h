@@ -21,6 +21,12 @@ struct Session;  // opaque
 // gen-counter try_lock swap never allocates) and the per-track UI arrays in window.h.
 constexpr int kMaxTracks = 32;
 
+// Upper bound on scenes (grid rows). Per-track clip vectors are reserved to this cap at
+// construction so appending a scene never reallocates — the audio thread holds a raw
+// pointer into each track's clip vector (Track::sched), so growth must be append-only
+// within reserved capacity. Also the fixed size of the per-scene audio-trim arrays.
+constexpr int kMaxScenes = 8;
+
 // Optional startup load-progress hook: session_create blocks while it scans + loads the
 // default project's VST3 instruments (seconds). Set this before session_create to drive a
 // splash frame after each load phase; `status` is a short human label. Cleared by passing
@@ -33,6 +39,14 @@ void     session_destroy(Session*);
 
 int  session_track_count(Session*);
 int  session_scene_count(Session*);
+// Append a scene (grid row): grows every track's clip vector by one empty clip. Returns the
+// new scene index, or -1 if already at kMaxScenes. UI/main thread only (append is RT-safe
+// because clip vectors are reserved to kMaxScenes, so no reallocation occurs).
+int  session_add_scene(Session*);
+// Load-time only: set the scene count (clamped to [1, kMaxScenes]) BEFORE tracks are
+// recreated, so each track is born with the right number of clip slots. Does not touch
+// existing tracks.
+void session_set_scene_count(Session*, int scenes);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never
