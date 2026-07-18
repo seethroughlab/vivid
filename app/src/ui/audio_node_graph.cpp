@@ -367,7 +367,7 @@ std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
     return out;
 }
 
-void AudioNodeGraph::draw(Renderer2D& r, int sel_node, int wire_from, float cx, float cy) const {
+void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const {
     if (!s_ || track_ < 0) return;
     const Style& sty = style();
     if (x1_ - x0_ < 20.f || y1_ - y0_ < 20.f) return;

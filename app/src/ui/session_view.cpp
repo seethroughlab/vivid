@@ -387,8 +387,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
         ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
-        ag.draw(ui, w.sel_audio_node, ag.wire_from,
-                static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
+        ag.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
 

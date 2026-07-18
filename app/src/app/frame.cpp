@@ -183,11 +183,9 @@ void apply_audio_param_mappings(App& app) {
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
     win.cur_x = mx; win.cur_y = my;   // latest cursor (used by the audio-graph ghost wire)
-    if (app.audio_graph->panning) {   // 2i: drag empty space in the audio graph to pan the view
-        app.audio_graph->set_view(app.audio_graph->zoom(),
-                                  app.audio_graph->pan_ox0 + static_cast<float>(mx - app.audio_graph->pan_mx0),
-                                  app.audio_graph->pan_oy0 + static_cast<float>(my - app.audio_graph->pan_my0));
-    }
+    // Audio-graph drag continuations (pan / param knob / node reposition / key range) — the editor
+    // owns them (ADR-0023 6d). Mutually exclusive with the shell drags below, so order is immaterial.
+    if (app.audio_graph) app.audio_graph->on_move(app, win, mx, my);
     if ((win.clip_drag_t >= 0 || win.clip_drag_from_pool >= 0) && !win.clip_dragging) {   // clip drag crosses the move threshold
         const double dx = mx - win.clip_drag_x0, dy = my - win.clip_drag_y0;
         if (dx * dx + dy * dy > 25.0) win.clip_dragging = true;   // ~5px
@@ -289,50 +287,6 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
                                    static_cast<float>(win.param_drag_y0 - my) * 0.006f, 0.f, 1.f);
         if (win.param_is_node && app.graph)   // visual-node param drag (the linear device drag was retired)
             app.graph->set_op_param_base_at(app.graph->selected_op(), win.param_drag, v);
-    }
-    // UI-3 Stage 1: drag a selected audio-graph node's param knob (vertical). ag_param_v0 is the
-    // normalized value at drag start; convert back to the op's [min,max] to set it.
-    if (app.audio_graph->param_drag >= 0 && app.session && win.sel_audio_node >= 0) {
-        namespace S = vivid::session;
-        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        const int nid = win.sel_audio_node;   // node id (not chain index)
-        const float mn = S::session_audio_graph_node_param_min(app.session, tr, nid, app.audio_graph->param_drag);
-        const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, app.audio_graph->param_drag);
-        // Curated inspector slider rows drag HORIZONTALLY (absolute mx→[rx,rx+rw]); the native knob
-        // strip drags vertically (delta from the grab point).
-        const float norm = app.audio_graph->param_horiz
-            ? std::clamp(static_cast<float>(mx - app.audio_graph->param_rx) / app.audio_graph->param_rw, 0.f, 1.f)
-            : std::clamp(app.audio_graph->param_v0 + static_cast<float>(app.audio_graph->param_y0 - my) * 0.006f, 0.f, 1.f);
-        S::session_audio_graph_node_param_set(app.session, tr, nid, app.audio_graph->param_drag, mn + norm * (mxx - mn));
-        if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
-    }
-    // Reposition drag: move the grabbed audio-graph node so it follows the cursor. Positions are
-    // region-relative world units (screen = region_origin + world*zoom + pan); invert that here.
-    if (app.audio_graph->node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
-        namespace S = vivid::session;
-        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        vivid::ui::AudioNodeGraph& ag = *app.audio_graph; ag.set_source(app.session, tr);
-        const vivid::ui::Rect gp = vivid::ui::audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.set_selection(win.sel_audio_node);   // graph_region height depends on the param band
-        const vivid::ui::Rect gr = ag.graph_region();
-        const vivid::ui::NodeView v = vivid::ui::region_view(gr, ag.zoom(), ag.pan_x(), ag.pan_y());
-        double wxd, wyd; v.to_world(mx, my, wxd, wyd);   // screen -> world (shared transform)
-        const float wx = static_cast<float>(wxd) - app.audio_graph->node_dx;
-        const float wy = static_cast<float>(wyd) - app.audio_graph->node_dy;
-        S::session_audio_graph_node_set_pos(app.session, tr, app.audio_graph->node_drag, wx, wy);
-        if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3
-    }
-    // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
-    if (app.audio_graph->key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
-        namespace S = vivid::session;
-        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        int lo = 0, hi = 127;
-        S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
-        const int nv = std::clamp(app.audio_graph->key_v0 + static_cast<int>((app.audio_graph->key_y0 - my) * 0.25), 0, 127);
-        if (app.audio_graph->key_drag == 0) lo = std::min(nv, hi); else hi = std::max(nv, lo);
-        S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
-        if (app.edit_gateway) app.edit_gateway->note_edit("Set Key Range", "ag-key-drag");   // ADR-0017/G3
     }
     // ADR-0022: dragging a mod-editor slider (amount / curve).
     if (win.mod_ed_drag >= 0) vivid::input::mod_editor_drag(win, app, mx, my);
@@ -688,3 +642,53 @@ void run_frame_loop(App& app, Window& win) {
 }
 
 }  // namespace vivid
+
+// ADR-0023 6d: the audio-graph drag continuations, owned by the editor (see input_graph.cpp for the
+// press/release/scroll methods). Exactly one gesture is live at a time; each routes edits through the
+// session C-API + the EditGateway, exactly as the free-function continuation did.
+namespace vivid::ui {
+namespace S = vivid::session;
+
+void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
+    // 2i: drag empty space to pan the view.
+    if (panning)
+        set_view(zoom(), pan_ox0 + static_cast<float>(mx - pan_mx0), pan_oy0 + static_cast<float>(my - pan_my0));
+    // UI-3 Stage 1: drag a selected node's param knob (vertical) or a pinned slider row (horizontal).
+    if (param_drag >= 0 && app.session && win.sel_audio_node >= 0) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        const int nid = win.sel_audio_node;   // node id (not chain index)
+        const float mn = S::session_audio_graph_node_param_min(app.session, tr, nid, param_drag);
+        const float mxx = S::session_audio_graph_node_param_max(app.session, tr, nid, param_drag);
+        const float norm = param_horiz
+            ? std::clamp(static_cast<float>(mx - param_rx) / param_rw, 0.f, 1.f)
+            : std::clamp(param_v0 + static_cast<float>(param_y0 - my) * 0.006f, 0.f, 1.f);
+        S::session_audio_graph_node_param_set(app.session, tr, nid, param_drag, mn + norm * (mxx - mn));
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
+    }
+    // Reposition drag: the grabbed node follows the cursor (screen -> world via the shared transform).
+    if (node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        set_source(app.session, tr);
+        const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+        set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+        set_selection(win.sel_audio_node);   // graph_region height depends on the param band
+        const Rect gr = graph_region();
+        const NodeView v = region_view(gr, zoom(), pan_x(), pan_y());
+        double wxd, wyd; v.to_world(mx, my, wxd, wyd);   // screen -> world
+        S::session_audio_graph_node_set_pos(app.session, tr, node_drag,
+                                            static_cast<float>(wxd) - node_dx, static_cast<float>(wyd) - node_dy);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Move Node", "ag-node-drag");   // ADR-0017/G3
+    }
+    // Drag a source node's key-range handle (vertical): ~0.25 semitone/px, lo/hi kept ordered.
+    if (key_drag >= 0 && app.session && win.sel_audio_node >= 0) {
+        const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+        int lo = 0, hi = 127;
+        S::session_audio_graph_node_key_range_get(app.session, tr, win.sel_audio_node, &lo, &hi);
+        const int nv = std::clamp(key_v0 + static_cast<int>((key_y0 - my) * 0.25), 0, 127);
+        if (key_drag == 0) lo = std::min(nv, hi); else hi = std::max(nv, lo);
+        S::session_audio_graph_node_key_range_set(app.session, tr, win.sel_audio_node, lo, hi);
+        if (app.edit_gateway) app.edit_gateway->note_edit("Set Key Range", "ag-key-drag");   // ADR-0017/G3
+    }
+}
+
+}  // namespace vivid::ui

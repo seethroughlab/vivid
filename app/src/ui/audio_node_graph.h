@@ -16,6 +16,7 @@
 #include <vector>
 
 namespace vivid::session { struct Session; }
+namespace vivid { struct App; struct Window; }   // ADR-0023 6d: the gesture methods take the shell context
 
 namespace vivid::ui {
 
@@ -69,21 +70,6 @@ public:
     float pan_x() const { return pan_x_; }
     float pan_y() const { return pan_y_; }
 
-    // Interaction state (ADR-0023 step 6c). The audio editor is becoming a stateful interaction owner
-    // (mirroring the visual NodeGraph, which owns its drag machine). These hold the in-flight gesture;
-    // moved here off the Window so the one persistent instance owns them. TODO(6d): the gesture logic
-    // in input_graph/frame/input still reads/writes these — folding it into on_down/on_move/on_up/
-    // on_scroll here turns them private. Until then they are public so those free functions can drive.
-    int    param_drag  = -1;                            // param index being dragged (-1 = none)
-    float  param_v0    = 0.f; double param_y0 = 0.0;    // knob-strip vertical drag: value + grab-y at start
-    bool   param_horiz = false; float param_rx = 0.f, param_rw = 1.f;   // slider-row horizontal drag: mx->[rx,rx+rw]
-    int    key_drag    = -1;                            // source key-range handle: 0 lo / 1 hi / -1 none
-    int    key_v0      = 0; double key_y0 = 0.0;        // key-range drag: value + grab-y at start
-    int    wire_from   = -1;                            // rewire drag: source node id (-1 = none)
-    int    node_drag   = -1; float node_dx = 0.f, node_dy = 0.f;   // node reposition: id + world-unit grab offset
-    bool   panning     = false; double pan_mx0 = 0, pan_my0 = 0; float pan_ox0 = 0, pan_oy0 = 0;   // pan gesture
-    double last_click_t = -1;                           // double-click-to-reset-view timer
-    int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
     // The selected node (UI-4a): the param band grows to host a compound-widget preview (ADSR/LFO)
     // when the selection carries one, so draw + input must agree on the selection before sizing.
     void set_selection(int node_id) { sel_node_ = node_id; }
@@ -139,10 +125,19 @@ public:
     std::vector<AudioPinRow> pinned_rows(int sel_node) const;
     Rect add_param_button_rect(int sel_node) const;
 
-    // Render: the graph + (if a node is selected) its highlight + inline param strip. When
-    // wire_from >= 0 a rewire drag is in progress: draw a ghost wire from that node's output port
-    // to the cursor (cx, cy).
-    void draw(Renderer2D& r, int sel_node, int wire_from = -1, float cx = 0.f, float cy = 0.f) const;
+    // Interaction (ADR-0023 6d): the audio editor owns its gesture FSM (mirroring the visual
+    // NodeGraph's on_down/on_move/on_up). Because it does not own the session, the methods take the
+    // shell context and route domain edits through the session C-API + the EditGateway, exactly as
+    // the free functions they replace did. on_down returns true when it consumed the press.
+    bool on_down(App& app, Window& win, double mx, double my);
+    void on_move(App& app, Window& win, double mx, double my);
+    bool on_up(App& app, Window& win, double mx, double my);   // true = a rewire was completed
+    void on_scroll(App& app, Window& win, double yoff, double mx, double my);
+
+    // Render: the graph + (if a node is selected) its highlight + inline param strip. When a rewire
+    // drag is in progress (the wire_from member is set), draw a ghost wire from that node's output
+    // port to the cursor (cx, cy).
+    void draw(Renderer2D& r, int sel_node, float cx = 0.f, float cy = 0.f) const;
 
 private:
     Rect  param_region() const;   // the selected-node param strip (bottom band)
@@ -157,6 +152,19 @@ private:
     int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
     float zoom_ = 1.f, pan_x_ = 0.f, pan_y_ = 0.f;   // 2i view transform (applied in layout())
+
+    // The in-flight gesture (ADR-0023 6c/6d): private state owned by the on_down/on_move/on_up FSM
+    // above (nothing outside this class touches it). Exactly one gesture is live at a time.
+    int    param_drag  = -1;                            // param index being dragged (-1 = none)
+    float  param_v0    = 0.f; double param_y0 = 0.0;    // knob-strip vertical drag: value + grab-y at start
+    bool   param_horiz = false; float param_rx = 0.f, param_rw = 1.f;   // slider-row horizontal drag: mx->[rx,rx+rw]
+    int    key_drag    = -1;                            // source key-range handle: 0 lo / 1 hi / -1 none
+    int    key_v0      = 0; double key_y0 = 0.0;        // key-range drag: value + grab-y at start
+    int    wire_from   = -1;                            // rewire drag: source node id (-1 = none); read by draw
+    int    node_drag   = -1; float node_dx = 0.f, node_dy = 0.f;   // node reposition: id + world-unit grab offset
+    bool   panning     = false; double pan_mx0 = 0, pan_my0 = 0; float pan_ox0 = 0, pan_oy0 = 0;   // pan gesture
+    double last_click_t = -1;                           // double-click-to-reset-view timer
+    int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
 };
 
 }  // namespace vivid::ui

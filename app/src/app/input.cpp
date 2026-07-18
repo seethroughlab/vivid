@@ -355,10 +355,11 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1; win->mod_ed_drag = -1;
-        if (auto* ag = win->app->audio_graph) { ag->param_drag = -1; ag->param_horiz = false; ag->node_drag = -1; ag->key_drag = -1; ag->panning = false; }
         win->preview_drag = false; win->preview_resize = false;
-        // Complete an audio-graph rewire: release over another node's input port connects the edge.
-        if (vivid::input::graph_rewire_release(*win, *app, mx, my)) { if (app->edit_gateway) app->edit_gateway->end_group(); return; }
+        // The audio editor ends its own drag + completes a rewire (ADR-0023 6d); true = a rewire landed.
+        if (auto* ag = win->app->audio_graph; ag && ag->on_up(*app, *win, mx, my)) {
+            if (app->edit_gateway) app->edit_gateway->end_group(); return;
+        }
         vivid::input::clipgrid_release(*win, *app, mx, my, mods, tracks, scenes);   // clip drop (grid/pool); no-op if no drag
         if (app->graph) app->graph->on_up(mx, my);
         // ADR-0017: close the gesture opened on press — one undo entry per drag (commits if dirtied).
@@ -426,9 +427,9 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         }
         return;   // consume clicks inside the editor region
     }
-    // UI-3 audio node graph deep view: all its dock interaction (select / param / +FX / remove /
-    // rewire / edge-disconnect / pan) + the Device header "Graph" drill-in button.
-    if (vivid::input::graph_audio_dock(*win, *app, button, action, mx, my)) return;
+    // UI-3 audio node graph deep view: the editor owns its dock press (ADR-0023 6d) — select / param /
+    // rewire / edge-disconnect / pan + the header "Editor" button. The left-press is guaranteed here.
+    if (auto* ag = app->audio_graph; ag && ag->on_down(*app, *win, mx, my)) return;
     if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
     // mixer: ARM buttons (record-arm) then gain sliders.
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
