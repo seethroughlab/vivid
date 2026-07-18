@@ -341,6 +341,23 @@ struct Master {
     float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
 };
 
+// ADR-0022 P2b.3b: one entry in the FLAT session execution plan. The prior two per-track render
+// loops (render each track → meter → then sum the master) are replaced by a single ordered list of
+// these, walked by one executor. A `Node` step runs one compiled node of its track through
+// process_step; a `Finalize` step copies that track's output into its track-out slot, taps the node
+// scope, and computes its meters; the single trailing `Master` step sums the slots. For per-track
+// islands (no cross-track audio edges yet) the list is exactly track0's nodes, track0 finalize,
+// track1's nodes, … , master — bit-identical to the loops it replaces. P2b.4 topo-sorts this list so
+// cross-track edges can interleave tracks; because every Node step is self-describing (its Track +
+// node-pool region), the executor never special-cases a loop boundary.
+struct FlatStep {
+    enum Kind : uint8_t { Node, Finalize, Master } kind;
+    Track*                             t;      // Node, Finalize
+    const vivid::audio::CompiledStep*  node;   // Node
+    uint32_t                           slot;   // Finalize (its track-out-pool slot)
+    bool                               valid;  // Finalize: did the track's plan pass the RT bail-net
+};
+
 struct Session {
     Vst3HostApp host;
     vivid::OpRegistry* op_reg = nullptr;   // shared operator registry (for native audio ops); set at init
@@ -363,6 +380,11 @@ struct Session {
     // push_back never allocate.
     Master                master;
     std::vector<Track*>   render_list;
+    // ADR-0022 P2b.3b: the flat session execution plan — one ordered list of steps across all render
+    // tracks (see FlatStep). Audio-thread-only scratch, rebuilt each block; reserved so the per-block
+    // clear + push_back never allocate (kMaxTracks tracks × up to kGraphMaxNodes node steps + one
+    // finalize each, plus one master step).
+    std::vector<FlatStep> session_plan;
     // ADR-0022 P1b.3a: ONE session-owned buffer pool for the track OUTPUTS (was per-track
     // Track::bl/br). A track's `slot` (its render order this block) writes its final L/R into
     // track_out_pool[slot] — L at slot*2*kGraphMaxBlock, R one kGraphMaxBlock later — and the master
@@ -934,48 +956,142 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     }
 }
 
-static void run_track_graph(Track& t, float* L, float* R, uint32_t frames) {
-    const vivid::audio::CompiledAudioGraph& cg = t.gcg;
-    const GraphBlockCtx& b = t.blk;
-    // RT safety net: bail to silence on any inconsistency between the plan and the working buffers
-    // (e.g. a graph published before its bindings were reserved). The audio thread must never index
-    // past this track's node-pool region ((kGraphMaxNodes+1) stereo buffers) or gbinds.
-    if (frames > kGraphMaxBlock || cg.output_buf < 0 || cg.steps.empty() || !b.node_pool
-        || static_cast<int>(t.gbinds.size()) < cg.buf_count
-        || static_cast<size_t>(cg.buf_count + 1) * 2 * frames > static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock) {
-        std::memset(L, 0, frames * sizeof(float)); std::memset(R, 0, frames * sizeof(float));
-        return;
-    }
-    const uint32_t stride = frames;
-    float* pool = b.node_pool + b.node_base;   // this track's region of the session node pool
-    const int scratch = cg.buf_count;
-    // Rebuilt from the block context for VST3 nodes (ProcessContext); native/sampler read `b` directly.
-    VividAudioContext gctx{};
-    gctx.sample_rate = b.sample_rate; gctx.metronome_bpm = b.bpm;
-    gctx.metronome_beats_per_bar = b.bpb; gctx.metronome_beats_elapsed = b.beats;
-    // ADR-0022 P2b.2: the executor is now one call per step (per-track islands, in topo order); the
-    // session executor (P2b.3) drives the same process_step across all tracks' plans.
-    for (const vivid::audio::CompiledStep& s : cg.steps)
-        process_step(s, t, pool, stride, scratch, b, gctx, frames);
-    // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
-    // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
-    if (!t.node_scope.empty()) {
-        for (const vivid::audio::CompiledStep& s : cg.steps) {
-            if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes) continue;
-            const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
-            float* ring = t.node_scope.data() + static_cast<size_t>(s.out_buf) * kScopeN;
-            uint32_t h = t.node_scope_head[s.out_buf];
-            for (int c = 0; c < kScopePerBlock; ++c) {
-                uint32_t si = static_cast<uint32_t>((2 * c + 1)) * frames / (2u * kScopePerBlock);
-                ring[h % kScopeN] = nl[si < frames ? si : frames - 1];
-                ++h;
+// The VST3 ProcessContext values a node reads, rebuilt from the block context (native/sampler read
+// the GraphBlockCtx directly). Same values for every step of a block, so the executor can rebuild it
+// cheaply per Node step and keep each step self-describing (P2b.4 interleaves tracks).
+static inline VividAudioContext block_gctx(const GraphBlockCtx& b) {
+    VividAudioContext g{};
+    g.sample_rate = b.sample_rate; g.metronome_bpm = b.bpm;
+    g.metronome_beats_per_bar = b.bpb; g.metronome_beats_elapsed = b.beats;
+    return g;
+}
+
+// ADR-0022 P2b.3b: the per-track FINALIZE step of the flat plan. The track's node steps have already
+// run (writing into its node-pool region); this copies its output node into its track-out slot
+// (`slotL`/`slotL+kGraphMaxBlock`), taps the per-node waveform scope, and computes the track meters.
+// `valid` is the RT bail-net verdict decided once at plan-build time: a valid track's output is
+// copied out (and its scope tapped); an invalid or gok=false track's slot is silenced. Bit-identical
+// to the old tail of run_track_graph + the render loop's metering block, in the same order.
+static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, uint32_t sample_rate) {
+    float* L = slotL;
+    float* R = slotL + kGraphMaxBlock;
+    if (valid) {
+        const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+        const uint32_t stride = frames;
+        float* pool = t.blk.node_pool + t.blk.node_base;   // this track's region of the session node pool
+        // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
+        // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
+        if (!t.node_scope.empty()) {
+            for (const vivid::audio::CompiledStep& s : cg.steps) {
+                if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes) continue;
+                const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+                float* ring = t.node_scope.data() + static_cast<size_t>(s.out_buf) * kScopeN;
+                uint32_t h = t.node_scope_head[s.out_buf];
+                for (int c = 0; c < kScopePerBlock; ++c) {
+                    uint32_t si = static_cast<uint32_t>((2 * c + 1)) * frames / (2u * kScopePerBlock);
+                    ring[h % kScopeN] = nl[si < frames ? si : frames - 1];
+                    ++h;
+                }
+                t.node_scope_head[s.out_buf] = h;
             }
-            t.node_scope_head[s.out_buf] = h;
+        }
+        const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
+        std::memcpy(L, outL, frames * sizeof(float));
+        std::memcpy(R, outL + stride, frames * sizeof(float));
+    } else {
+        std::memset(L, 0, frames * sizeof(float));
+        std::memset(R, 0, frames * sizeof(float));
+    }
+    t.steady += frames;
+
+    // Per-track meters over the gained track output (or silence). The track GAIN was applied inside
+    // the Track-Out node (P1a), so L/R already hold the final output; metering stays PRE-mute (a muted
+    // track still shows its own level). Runs for every render_list track — including a bailed / no-
+    // source one — so the meters cover those cases too.
+    const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
+    const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
+    const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
+    double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+    bool cap_locked = false;
+    size_t cap = 0, cap_pos = 0, cap_filled = 0;
+    if (!t.capture_l.empty() && t.capture_mtx.try_lock()) {
+        cap_locked = !t.capture_l.empty() && !t.capture_r.empty();
+        if (cap_locked) {
+            t.capture_sample_rate = sample_rate;
+            cap = t.capture_l.size();
+            cap_pos = t.capture_write_pos;
+            cap_filled = t.capture_filled;
+        } else {
+            t.capture_mtx.unlock();
         }
     }
-    const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
-    std::memcpy(L, outL, frames * sizeof(float));
-    std::memcpy(R, outL + stride, frames * sizeof(float));
+    for (uint32_t i = 0; i < frames; ++i) {
+        const float l = L[i], r = R[i];
+        if (cap_locked) {
+            t.capture_l[cap_pos] = l;
+            t.capture_r[cap_pos] = r;
+            cap_pos = (cap_pos + 1) % cap;
+            cap_filled = std::min(cap, cap_filled + 1);
+        }
+        sum_sq += static_cast<double>(l) * l;
+        t.flt_lo += (l - t.flt_lo) * a_lo;
+        t.flt_hi += (l - t.flt_hi) * a_hi;
+        const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
+        slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+    }
+    if (cap_locked) {
+        t.capture_write_pos = cap_pos;
+        t.capture_filled = cap_filled;
+        t.capture_mtx.unlock();
+    }
+    const float inv = 1.f / (frames > 0 ? frames : 1);
+    t.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+    t.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+    t.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
+    const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+    t.level.store(rms, std::memory_order_relaxed);
+    const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
+    t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
+    t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+}
+
+// ADR-0022 P2b.3b: the MASTER step of the flat plan (one, after every track's finalize). Sums each
+// rendered track's slot (with its solo/mute multiplier) into `out`, applies the master gain, and
+// computes the master meters — bit-identical to the master block it replaces.
+static void master_mix(Session* s, float* out, uint32_t frames, uint32_t sample_rate) {
+    Master& m = s->master;
+    for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
+        // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix; its
+        // own meter, computed in finalize, stays pre-mute). At the default 1.0 this is an IEEE
+        // identity, so an all-audible session sums bit-identically to before.
+        const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
+        const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
+        const float* R = L + kGraphMaxBlock;
+        for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+    }
+    const float mg = m.gain.load(std::memory_order_relaxed);
+    const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
+    const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);
+    const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);
+    double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
+    for (uint32_t i = 0; i < frames; ++i) {
+        const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
+        out[2 * i] = l; out[2 * i + 1] = r;
+        sum_sq += static_cast<double>(l) * l;
+        m.flt_lo += (l - m.flt_lo) * a_lo;
+        m.flt_hi += (l - m.flt_hi) * a_hi;
+        const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
+        slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+    }
+    const float inv = 1.f / (frames > 0 ? frames : 1);
+    m.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+    m.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+    m.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
+    const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+    m.level.store(rms, std::memory_order_relaxed);
+    const float tr = std::max(0.f, (rms - m.tr_baseline) * 6.f);
+    m.tr_baseline += (rms - m.tr_baseline) * 0.04f;
+    m.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
 }
 
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {
@@ -1288,6 +1404,9 @@ Session* session_create(uint32_t sample_rate) {
     s->tracks_pub.reserve(kMaxTracks);
     s->tracks_view.reserve(kMaxTracks);
     s->render_list.reserve(kMaxTracks);   // ADR-0022 P1b: master-node input list (audio thread)
+    // ADR-0022 P2b.3b: the flat session plan — worst case one node step per node on every track
+    // (kGraphMaxNodes), one finalize per track, and one master step.
+    s->session_plan.reserve(static_cast<size_t>(kMaxTracks) * (kGraphMaxNodes + 1) + 1);
     // ADR-0022 P1b.3a: the session track-output pool — one stereo kGraphMaxBlock slot per track.
     s->track_out_pool.assign(static_cast<size_t>(kMaxTracks) * 2 * kGraphMaxBlock, 0.f);
     // ADR-0022 P2a.1: the session control pool — kMaxTracks regions of kGraphMaxNodes control buffers.
@@ -2534,113 +2653,51 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         }
     }
 
-    // ADR-0022 P2b.3a: RENDER phase — with every track prepped, render each into its track-out slot
-    // (its slot == its index in render_list) and meter it. P2b.3b replaces this with a single flat
-    // executor over one session plan (the track-out copy + metering become plan steps).
+    // ADR-0022 P2b.3b: build the FLAT session plan and drive it with ONE executor, replacing the two
+    // per-track render loops (render+meter each track, then sum the master). The plan is, in
+    // render_list order: each track's node steps (only if its plan passes the RT bail-net), then that
+    // track's finalize step (copy-out + scope tap + meters), then one trailing master step. Because
+    // that order is exactly track0's nodes → track0 finalize → track1's nodes → … → master, this is
+    // bit-identical to the loops it replaces; P2b.4 will topo-sort the list so cross-track audio edges
+    // can interleave tracks. The RT bail-net verdict is decided ONCE here (`valid`) so a track's node
+    // steps and its finalize can never disagree.
+    s->session_plan.clear();
     for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
         Track& t = *s->render_list[slot];
-        float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
-        float* R = L + kGraphMaxBlock;
-        std::memset(L, 0, frames * sizeof(float));
-        std::memset(R, 0, frames * sizeof(float));
-        if (t.gok) run_track_graph(t, L, R, frames);
-        t.steady += frames;
-
-        // ADR-0022 P1a: the track GAIN is applied inside the Track-Out (Output) node, so L/R already
-        // hold the GAINED output (or silence for a gok=false / bailed track). ADR-0022 P1b: this loop
-        // no longer sums into `out` — it only computes the per-track meters over that gained signal;
-        // the MASTER node below sums every rendered track's output. (Per-track metering stays here —
-        // it must cover the graph-bail and no-source cases too; it relocates into the track-out node
-        // in P2b.3c when the track-out becomes a real plan step.)
-        const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
-        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);    // crossover @ ~200 Hz
-        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);   // crossover @ ~2 kHz
-        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
-        bool cap_locked = false;
-        size_t cap = 0, cap_pos = 0, cap_filled = 0;
-        if (!t.capture_l.empty() && t.capture_mtx.try_lock()) {
-            cap_locked = !t.capture_l.empty() && !t.capture_r.empty();
-            if (cap_locked) {
-                t.capture_sample_rate = sample_rate;
-                cap = t.capture_l.size();
-                cap_pos = t.capture_write_pos;
-                cap_filled = t.capture_filled;
-            } else {
-                t.capture_mtx.unlock();
-            }
-        }
-        for (uint32_t i = 0; i < frames; ++i) {
-            const float l = L[i], r = R[i];
-            if (cap_locked) {
-                t.capture_l[cap_pos] = l;
-                t.capture_r[cap_pos] = r;
-                cap_pos = (cap_pos + 1) % cap;
-                cap_filled = std::min(cap, cap_filled + 1);
-            }
-            sum_sq += static_cast<double>(l) * l;
-            t.flt_lo += (l - t.flt_lo) * a_lo;
-            t.flt_hi += (l - t.flt_hi) * a_hi;
-            const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
-            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
-        }
-        if (cap_locked) {
-            t.capture_write_pos = cap_pos;
-            t.capture_filled = cap_filled;
-            t.capture_mtx.unlock();
-        }
-        const float inv = 1.f / (frames > 0 ? frames : 1);
-        t.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
-        t.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
-        t.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
-        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
-        t.level.store(rms, std::memory_order_relaxed);
-        const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
-        t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
-        t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+        const vivid::audio::CompiledAudioGraph& cg = t.gcg;
+        const bool valid =
+            t.gok && frames <= kGraphMaxBlock && cg.output_buf >= 0 && !cg.steps.empty() && t.blk.node_pool
+            && static_cast<int>(t.gbinds.size()) >= cg.buf_count
+            && static_cast<size_t>(cg.buf_count + 1) * 2 * frames <= static_cast<size_t>(kGraphMaxNodes + 1) * 2 * kGraphMaxBlock;
+        if (valid)
+            for (const vivid::audio::CompiledStep& st : cg.steps)
+                s->session_plan.push_back({ FlatStep::Node, &t, &st, static_cast<uint32_t>(slot), true });
+        s->session_plan.push_back({ FlatStep::Finalize, &t, nullptr, static_cast<uint32_t>(slot), valid });
     }
-    const bool any = !s->render_list.empty();
+    s->session_plan.push_back({ FlatStep::Master, nullptr, nullptr, 0, false });
 
-    // ADR-0022 P1b: the MASTER node. Sum every rendered track's output into the master buffer
-    // (`out`, already silent from the memset above), apply the master gain, then compute the master
-    // meters over the result. At master gain 1.0 the sum is bit-identical to the pre-P1b inline
-    // per-track accumulation (same values, same tracks_view order). The metronome click is mixed in
-    // downstream (audio_callback), so — as before — it is neither gained here nor in these meters.
-    {
-        Master& m = s->master;
-        for (size_t slot = 0; slot < s->render_list.size(); ++slot) {
-            // ADR-0022 P1b.4: apply the track's solo/mute multiplier here (0 silences it in the mix;
-            // its own meter, computed above, stays pre-mute). At the default 1.0 this is an IEEE
-            // identity, so an all-audible session sums bit-identically to before.
-            const float scale = s->render_list[slot]->mix_scale.load(std::memory_order_relaxed);
-            const float* L = s->track_out_pool.data() + slot * 2 * kGraphMaxBlock;
-            const float* R = L + kGraphMaxBlock;
-            for (uint32_t i = 0; i < frames; ++i) { out[2 * i] += scale * L[i]; out[2 * i + 1] += scale * R[i]; }
+    for (const FlatStep& fs : s->session_plan) {
+        switch (fs.kind) {
+        case FlatStep::Node: {
+            Track& t = *fs.t;
+            float* pool = t.blk.node_pool + t.blk.node_base;   // its region of the session node pool
+            const VividAudioContext gctx = block_gctx(t.blk);
+            process_step(*fs.node, t, pool, frames /*stride*/, t.gcg.buf_count /*scratch*/, t.blk, gctx, frames);
+            break;
         }
-        const float mg = m.gain.load(std::memory_order_relaxed);
-        const float sr = static_cast<float>(sample_rate > 0 ? sample_rate : 48000);
-        const float a_lo = 1.f - std::exp(-6.2832f * 200.f / sr);
-        const float a_hi = 1.f - std::exp(-6.2832f * 2000.f / sr);
-        double sum_sq = 0.0, slo = 0.0, smi = 0.0, shi = 0.0;
-        for (uint32_t i = 0; i < frames; ++i) {
-            const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
-            out[2 * i] = l; out[2 * i + 1] = r;
-            sum_sq += static_cast<double>(l) * l;
-            m.flt_lo += (l - m.flt_lo) * a_lo;
-            m.flt_hi += (l - m.flt_hi) * a_hi;
-            const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
-            slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        case FlatStep::Finalize:
+            finalize_track(*fs.t, s->track_out_pool.data() + static_cast<size_t>(fs.slot) * 2 * kGraphMaxBlock,
+                           fs.valid, frames, sample_rate);
+            break;
+        case FlatStep::Master:
+            // Sums into `out` (already silent from the memset at the top of session_process). The
+            // metronome click is mixed in downstream (audio_callback), so it is neither gained here
+            // nor in the master meters — unchanged from the pre-P2b.3b master block.
+            master_mix(s, out, frames, sample_rate);
+            break;
         }
-        const float inv = 1.f / (frames > 0 ? frames : 1);
-        m.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
-        m.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
-        m.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
-        const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
-        m.level.store(rms, std::memory_order_relaxed);
-        const float tr = std::max(0.f, (rms - m.tr_baseline) * 6.f);
-        m.tr_baseline += (rms - m.tr_baseline) * 0.04f;
-        m.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
     }
-    return any;
+    return !s->render_list.empty();
 }
 
 static void destroy_handle(Vst3Handle* h) {
