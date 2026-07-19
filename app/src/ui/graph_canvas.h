@@ -1,7 +1,6 @@
 #pragma once
 #include "ui/node_canvas.h"    // NodeView, Rect, node_card/grid/wire, error vocab
 #include "ui/graph_adapter.h"  // GraphModelAdapter + AdapterNode — the node set draw_cards iterates
-#include <algorithm>           // std::clamp (zoom clamp)
 #include <vector>
 
 // ADR-0023 Layer 2 — the GraphCanvas: the shared graph-area DRAW skeleton both node editors (the
@@ -36,18 +35,13 @@ public:
     void set_region(const Rect& r) { region_ = r; }   // draw region, primed by the editor each frame
 
     // ADR-0023 #3d: the shared CAMERA gestures — pan / zoom-around-cursor / reset — the common
-    // interaction both editors now drive identically on the canvas-owned view. (Select, node-drag,
-    // rewire and the domain-specific gestures stay per-editor: their hit-tests are entangled with each
-    // model's port geometry and edge types.)
-    static constexpr float kMinZoom = 0.35f, kMaxZoom = 4.0f;   // one zoom range for both surfaces
+    // interaction both editors drive identically on the canvas-owned view. The math (incl. the shared
+    // zoom clamp) lives on NodeView (ui/node_view.h — a pure, unit-tested unit); the canvas just
+    // forwards. (Select, node-drag, rewire and the domain-specific gestures stay per-editor: their
+    // hit-tests are entangled with each model's port geometry and edge types.)
     void pan(float dx, float dy) { view_.pan(dx, dy); }
-    void zoom_at(double sx, double sy, float factor) {   // zoom around the cursor; the world point under it stays fixed
-        double wx, wy; view_.to_world(sx, sy, wx, wy);
-        view_.scale = std::clamp(view_.scale * factor, kMinZoom, kMaxZoom);
-        view_.ox = static_cast<float>(sx) - static_cast<float>(wx) * view_.scale;
-        view_.oy = static_cast<float>(sy) - static_cast<float>(wy) * view_.scale;
-    }
-    void reset(const Rect& region) { view_ = { region.x, region.y, 1.f }; }   // fit the region at identity scale
+    void zoom_at(double sx, double sy, float factor) { view_.zoom_at(sx, sy, factor); }
+    void reset(const Rect& region) { view_.reset_to(region.x, region.y); }   // fit the region at identity scale
 
     // The shared node-card chrome. Draws relative to `rect` in the ambient (world) transform both
     // editors now set, so the chrome scales with zoom uniformly (ADR-0023 #3). `broken` gates the

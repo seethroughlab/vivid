@@ -29,6 +29,7 @@ target_sources(test_undo_projection PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/persist_undo.cpp)
 target_link_libraries(test_undo_projection PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_param_widget)   # inspector widget classifier (type/hint/enum -> widget)
+vivid_add_test(test_graph_camera)   # ADR-0023 #1/#3d shared graph camera (transform + pan/zoom/reset math)
 vivid_add_test(test_shader_library_view)  # ADR-0021/P1 shader-view geometry + fork-name helpers
 vivid_add_test(test_examples)             # ADR-0021/P2 example-project enumerator
 target_sources(test_examples PRIVATE
