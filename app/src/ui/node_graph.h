@@ -25,15 +25,18 @@ namespace vivid::ui {
 // output->input, terminating in an Output node that drives the viewer. Data nodes
 // wire into the ops' parameter ports (the audio->visual bridge). The chain itself
 // lives in VisualGraph; this class owns the layout + interaction.
-class NodeGraph : public GraphModelAdapter {
+class NodeGraph : public GraphModelAdapter, public CardDelegate {
 public:
     NodeGraph();
 
     // ADR-0023 Layer 1: the shared node-enumeration contract (op nodes only; the bridge data-nodes
-    // are a visuals-domain overlay). Consumed by draw()'s own op-card loop; the audio peer implements
-    // the same interface, so a shared draw loop can enumerate either (ADR-0023 #3).
+    // are a visuals-domain overlay). draw() drives the shared canvas card loop (GraphCanvas::draw_cards)
+    // over it; before_card draws the active-output ring UNDER the card, after_card draws the visuals
+    // overlay OVER it (label, texture-input ports, output port, ×, live thumbnail).
     void collect_nodes(std::vector<AdapterNode>& out) const override;
     int  selected_node_id() const override;
+    void before_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
+    void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
     void set_value(int char_id, float v);
     void apply_params();   // resolve each node's params from the registry; publish viz.* sources

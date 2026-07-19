@@ -162,10 +162,13 @@ common interaction — differing only in what they draw.
   now-world card/port/handle rects (the param-strip + popover hit-tests stay screen). The screen-space
   clip on `graph_region()` is unchanged (GPU scissor is screen-space regardless of transform). Visible,
   intended change: audio chrome/text now scale with zoom.
-- **3c — `GraphCanvas` owns the draw loop.** Both editors call `canvas.draw(adapter, hooks)`. Define the
-  domain-hook surface: enumerate wire segments (`{x0,y0,x1,y1,color}`), draw the per-node overlay
-  (ports + the preview-well contents: thumbnail / waveform / sparkline), draw the ghost wire. The canvas
-  owns grid → wires → card-loop(card + label) → overlays → ghost, in world space.
+- **3c — `GraphCanvas` owns the card loop.** ✅ `GraphCanvas::draw_cards(r, adapter, CardDelegate&)`
+  iterates the adapter's nodes and draws each `card()`, calling the editor's `before_card` (under — e.g.
+  the active-output ring) and `after_card` (over — label, ports, preview well). Both editors drive it.
+  Scoped to the card loop deliberately: mapping both draw loops showed that's the ONE genuinely-repeated
+  pattern; the wires, ghost, the visuals param-port + bridge-data-node passes, and the audio param band
+  legitimately diverge in content AND draw-order, so they stay in each editor's `draw()` *around* the
+  shared card call (where the order is explicit) rather than forced through a hook-heavy template.
 - **3d — shared interaction for the COMMON gestures** (pan/zoom/select/node-drag/rewire) in world space;
   domain-specific gestures (audio key-range drag, param pinning, plugin picker; visuals bridge wiring)
   stay per-editor extensions — different vocabularies, not worth forcing into one controller.

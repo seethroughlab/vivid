@@ -60,13 +60,14 @@ struct AudioCompoundPreview {
     Rect rect;
 };
 
-class AudioNodeGraph : public GraphModelAdapter {
+class AudioNodeGraph : public GraphModelAdapter, public CardDelegate {
 public:
     // ADR-0023 Layer 1: the shared node-enumeration contract, over the session audio-graph model.
-    // Consumed by draw()'s own card loop (via node_from_box); the visuals peer implements the same
-    // interface, so a shared draw loop can enumerate either (ADR-0023 #3).
+    // draw() drives the shared canvas card loop (GraphCanvas::draw_cards) over it; after_card paints the
+    // audio domain overlay per card (label, kind tag, remove-x, param ports, waveform preview, out nub).
     void collect_nodes(std::vector<AdapterNode>& out) const override;
     int  selected_node_id() const override { return sel_node_; }
+    void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
     void set_bounds(float x0, float y0, float x1, float y1) {

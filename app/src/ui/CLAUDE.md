@@ -36,8 +36,12 @@
   (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera** (ADR-0023 #1
   — the sole `NodeView`; each editor reaches it via `canvas_.view()` rather than keeping its own copy).
   Both editors now draw WORLD-space through the shared `NodeView` transform ("true zoom", ADR-0023 #3 —
-  the audio graph moved off its old screen-space `layout()` baking). What still diverges stays per-editor:
-  wire endpoints/color, port/label content, preview-well contents, and the audio param band.
+  the audio graph moved off its old screen-space `layout()` baking), and both drive the shared **card loop**
+  `GraphCanvas::draw_cards(r, adapter, CardDelegate&)` (#3c): it iterates the adapter's nodes and draws each
+  `card()`, calling the editor's `before_card` (under — e.g. the active-output ring) and `after_card` (over
+  — label, ports, preview well). What still diverges stays per-editor, drawn around that call in each
+  `draw()`: wire enumeration/endpoints/color, the ghost wire, the visuals param-port + bridge-data-node
+  passes, the "TAB to add" chrome, and the audio param band — their content AND draw-order legitimately differ.
 - **`node_graph.{h,cpp}`** — the visuals node editor: op chain, data nodes, the
   `MappingRegistry` (the bridge), the Tab operator chooser, live thumbnails.
   Per ADR-0014 this graph **is** the visuals zone (it owns the whole right column), and

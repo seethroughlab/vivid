@@ -396,6 +396,65 @@ void AudioNodeGraph::collect_nodes(std::vector<AdapterNode>& out) const {
     for (int i = 0; i < static_cast<int>(boxes.size()); ++i) out.push_back(node_from_box(boxes[i], i));
 }
 
+// ADR-0023 #3c: the audio-domain overlay drawn OVER each card by the shared canvas card loop — type
+// label, kind tag, remove-x, the exposed-param ports (+ "+ param" on plugins), the live output-waveform
+// preview well, and the signal-output nub. Reconstructs the laid-out box from the adapter node (idx maps
+// to the same layout() node) so the existing box-relative geometry helpers apply unchanged.
+void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
+    const Style& sty = style();
+    const int kind = P::session_track_audio_graph_node_kind(s_, track_, i);
+    const AudioNodeBox b{ kind, a.id, a.rect.x, a.rect.y, a.rect.w, a.rect.h };
+    const float* acc = a.accent;
+    const bool node_err = a.broken;
+    r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
+                sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
+    const char* tag = b.kind == 0 ? "inst"
+                    : (b.kind == 1 ? "fx"
+                    : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
+    { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
+      r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f, 0.6f); }
+    if (b.kind == 1) {   // effect: removable
+        const Rect x = remove_rect(b);
+        r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
+    }
+
+    // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
+    // is the signal input (audio/notes) when the node takes one; then one row per exposed param.
+    const CardPorts cp = card_ports(b.node_id, b.kind);   // shared card port-row layout
+    if (cp.lead_rows > 0) {
+        const float cy = cp.row_cy(b.y, 0);
+        node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
+        r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+    }
+    const std::vector<int> exp = exposed_params(b.node_id);
+    for (int slot = 0; slot < static_cast<int>(exp.size()); ++slot) {
+        const Rect pp = param_port_rect(b, slot);
+        const float cx = pp.x + pp.w * 0.5f, cy = pp.y + pp.h * 0.5f;
+        const bool wired = P::session_audio_graph_node_param_wired(s_, track_, b.node_id, exp[slot]) != 0;
+        const float* pc = wired ? sty.mod : sty.dim;   // magenta when a control edge drives it
+        node_port(r, cx, cy, 4.f, pc[0], pc[1], pc[2]);
+        const char* pn = P::session_audio_graph_node_param_name(s_, track_, b.node_id, exp[slot]);
+        r.draw_text(cx + 9.f, cy - 5.f, fit_text(r, pn ? pn : "", b.w - 22.f, 0.62f).c_str(), pc[0], pc[1], pc[2], 1.0f, 0.62f);
+    }
+    // A plugin node: the "+ param" row opens the searchable picker to expose one more param.
+    if (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) {
+        const Rect ab = add_param_port_rect(b);
+        r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+    }
+
+    // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.
+    const Rect pv = cp.preview({ b.x, b.y, b.w, b.h });
+    if (pv.h > 6.f) {
+        node_preview_panel(r, pv.x, pv.y, pv.w, pv.h);
+        float scope[128];
+        const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
+        if (ns > 1) node_waveform(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, scope, ns, acc[0], acc[1], acc[2]);
+        if (node_err) node_error_note(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, "plugin unavailable \xE2\x80\x94 silent");
+    }
+    // The signal output nub (right-edge centre; absent on the Output sink).
+    if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
+}
+
 void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const {
     if (!s_ || track_ < 0) return;
     const Style& sty = style();
@@ -438,65 +497,10 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, wc);
     }
 
-    // Cards: fill + accent + type label + kind tag (+ remove-x on effects). boxes[i] corresponds
-    // to node index i, so the type name is looked up by the same index.
-    for (int i = 0; i < static_cast<int>(boxes.size()); ++i) {
-        const AudioNodeBox& b = boxes[i];
-        // ADR-0023 Layer 1: the card-chrome data (accent/selection/health/title) comes from the shared
-        // adapter; the kind tag, remove-x, ports and waveform preview are audio-domain overlays drawn
-        // inline below (sel_node_ == the draw-time sel_node param, so a.selected matches the old flag).
-        const AdapterNode a = node_from_box(b, i);
-        const float* acc = a.accent;              // overlays (kind tag, ports, waveform) reuse the accent
-        const bool node_err = a.broken;
-        canvas_.card(r, a.rect, a.accent, a.selected, a.broken);   // shared chrome (ADR-0023 Layer 2)
-        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
-                    sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
-        const char* tag = b.kind == 0 ? "inst"
-                        : (b.kind == 1 ? "fx"
-                        : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
-        { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
-          r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f, 0.6f); }
-        if (b.kind == 1) {   // effect: removable
-            const Rect x = remove_rect(b);
-            r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
-        }
-
-        // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
-        // is the signal input (audio/notes) when the node takes one; then one row per exposed param.
-        const CardPorts cp = card_ports(b.node_id, b.kind);   // shared card port-row layout
-        if (cp.lead_rows > 0) {
-            const float cy = cp.row_cy(b.y, 0);
-            node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
-            r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
-        }
-        const std::vector<int> exp = exposed_params(b.node_id);
-        for (int slot = 0; slot < static_cast<int>(exp.size()); ++slot) {
-            const Rect pp = param_port_rect(b, slot);
-            const float cx = pp.x + pp.w * 0.5f, cy = pp.y + pp.h * 0.5f;
-            const bool wired = P::session_audio_graph_node_param_wired(s_, track_, b.node_id, exp[slot]) != 0;
-            const float* pc = wired ? sty.mod : sty.dim;   // magenta when a control edge drives it
-            node_port(r, cx, cy, 4.f, pc[0], pc[1], pc[2]);
-            const char* pn = P::session_audio_graph_node_param_name(s_, track_, b.node_id, exp[slot]);
-            r.draw_text(cx + 9.f, cy - 5.f, fit_text(r, pn ? pn : "", b.w - 22.f, 0.62f).c_str(), pc[0], pc[1], pc[2], 1.0f, 0.62f);
-        }
-        // A plugin node: the "+ param" row opens the searchable picker to expose one more param.
-        if (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) {
-            const Rect ab = add_param_port_rect(b);
-            r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
-        }
-
-        // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.
-        const Rect pv = cp.preview({ b.x, b.y, b.w, b.h });
-        if (pv.h > 6.f) {
-            node_preview_panel(r, pv.x, pv.y, pv.w, pv.h);
-            float scope[128];
-            const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
-            if (ns > 1) node_waveform(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, scope, ns, acc[0], acc[1], acc[2]);
-            if (node_err) node_error_note(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, "plugin unavailable — silent");
-        }
-        // The signal output nub (right-edge centre; absent on the Output sink).
-        if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
-    }
+    // Cards: the shared canvas card loop (ADR-0023 #3c) draws each card's chrome and calls after_card
+    // below for the audio-domain overlay. boxes[i] (for edges/ghost above/below) and the adapter node i
+    // are the same node — both from the deterministic layout().
+    canvas_.draw_cards(r, *this, *this);
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor (ADR-0023 Layer 2).
     // Endpoints are WORLD (drawn under the transform): convert the screen cursor to world.
