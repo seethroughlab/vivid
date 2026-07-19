@@ -488,8 +488,21 @@ void register_introspection_handlers(Handlers& handlers_) {
                 jt["source_bpm"] = P::session_audio_clip_bpm(c.session, t, scene);
                 jt["empty"] = len <= 0.0;
                 if (len > 0.0) ++filled;
+            } else if (P::session_cell_is_generator(c.session, t, scene)) {
+                // ADR-0022 P3.3: a generator cell — report its type + live params instead of clip notes.
+                jt["cell"] = "generator";
+                jt["generator"] = safe_cstr(P::session_generator_type(c.session, t, scene));
+                json params = json::object();
+                const int np = P::session_generator_param_count(c.session, t, scene);
+                for (int i = 0; i < np; ++i)
+                    params[safe_cstr(P::session_generator_param_name(c.session, t, scene, i))] =
+                        P::session_generator_param_value(c.session, t, scene, i);
+                jt["params"] = params;
+                jt["empty"] = false;
+                ++filled;
             } else {
                 const int notes = P::session_clip_note_count(c.session, t, scene);
+                jt["cell"] = "clip";
                 jt["length"] = P::session_clip_length(c.session, t, scene);
                 jt["notes"] = notes;
                 jt["empty"] = notes <= 0;

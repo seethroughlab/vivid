@@ -1342,6 +1342,14 @@ def remove_generator(track: int, scene: int) -> dict:
 
 
 @mcp.tool
+def set_generator_param(track: int, scene: int, name: str, value: float) -> dict:
+    """Set a parameter on a scene cell's generator (e.g. Euclid steps/pulses/rotate/note/rate/gate,
+    Chord root/quality, RandMelody scale/density/seed). Param names + current values are listed by
+    inspect_scene. Takes effect live. Undoable (a rapid run coalesces into one edit)."""
+    return _post("set_generator_param", {"track": track, "scene": scene, "name": name, "value": value})
+
+
+@mcp.tool
 def add_graph_track(instrument: str = "", name: str = "") -> dict:
     """Create a bare NATIVE-instrument track that hosts a native audio node graph (get_audio_graph
     / audio_graph_* edits). Unlike add_track, this makes no VST3/plugin handle, so the track is
