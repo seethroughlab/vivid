@@ -331,6 +331,7 @@ int         session_track_audio_graph_node_count(Session*, int track);
 int         session_track_audio_graph_node_id(Session*, int track, int i);
 int         session_track_audio_graph_node_gnid(Session*, int track, int i);       // ADR-0022 P2b.3c: session-global id (-1 if unassigned)
 void        session_set_node_gnid(Session*, int track, int node_id, int gnid);     // ADR-0022 P4.4: restore a saved gnid on load
+int         session_track_audio_graph_node_cell_scene(Session*, int track, int i); // scene a MidiClip/NativeGen node gates (-1 else)
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
@@ -467,7 +468,7 @@ int         session_track_audio_graph_authoritative(Session*, int track);
 // plugin_kind (0 native/1 vst3/2 clap/3 sampler) selects the placeholder for a non-native source/fx node:
 // the VST3/CLAP handle is bound after the (async) plugin load lands (rebind on rebuild/finish_load).
 void        session_audio_graph_clear      (Session*, int track);
-int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type);   // -> new node id
+int         session_audio_graph_load_node  (Session*, int track, int kind, int plugin_kind, const char* op_type, int scene = -1);   // -> new node id (scene: for MidiClip/NativeGen)
 void        session_audio_graph_load_edge  (Session*, int track, int from_id, int to_id);
 void        session_audio_graph_load_edge_kind(Session*, int track, int from_id, int to_id, int kind);  // 0 audio / 1 note
 // ADR-0022: load a control edge (target param + shaper). finish_load compiles + publishes.
