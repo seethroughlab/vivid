@@ -169,9 +169,14 @@ common interaction — differing only in what they draw.
   pattern; the wires, ghost, the visuals param-port + bridge-data-node passes, and the audio param band
   legitimately diverge in content AND draw-order, so they stay in each editor's `draw()` *around* the
   shared card call (where the order is explicit) rather than forced through a hook-heavy template.
-- **3d — shared interaction for the COMMON gestures** (pan/zoom/select/node-drag/rewire) in world space;
-  domain-specific gestures (audio key-range drag, param pinning, plugin picker; visuals bridge wiring)
-  stay per-editor extensions — different vocabularies, not worth forcing into one controller.
+- **3d — shared CAMERA gestures.** ✅ `GraphCanvas` now owns pan / zoom-around-cursor / reset
+  (`pan`/`zoom_at`/`reset`, with one shared zoom clamp `[0.35, 4.0]`); both editors drive them on the
+  canvas-owned view (audio's inline zoom + baseline-pan math is gone — pan is now the same incremental
+  `canvas_.pan` both use; `NodeView::zoom_at` folded into the canvas, which carries the clamp policy).
+  Scoped to the camera deliberately: select / node-drag / rewire and the domain gestures (audio key-range
+  drag, param pinning, plugin picker; visuals bridge wiring, port disconnect) stay per-editor — their
+  hit-tests are a thin part of logic entangled with each model's port geometry and edge types, so a
+  single controller would be over-abstraction. The camera is the one gesture both drive identically.
 
 ## Phased migration (maps ADR-0023 migration steps → phases)
 

@@ -33,8 +33,9 @@
   and the marks (`node_grid`/`node_wire`/`node_port`/`node_card` [selection ring folded in] /
   `node_preview_panel`/`node_waveform` + the ADR-0019 error vocab). `graph_canvas.h` is the **Layer-2
   `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton
-  (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera** (ADR-0023 #1
-  — the sole `NodeView`; each editor reaches it via `canvas_.view()` rather than keeping its own copy).
+  (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera + the camera
+  gestures** (ADR-0023 #1/#3d — the sole `NodeView`, reached via `canvas_.view()`, plus `pan`/`zoom_at`/
+  `reset` with one shared zoom clamp; both editors drive the camera identically).
   Both editors now draw WORLD-space through the shared `NodeView` transform ("true zoom", ADR-0023 #3 —
   the audio graph moved off its old screen-space `layout()` baking), and both drive the shared **card loop**
   `GraphCanvas::draw_cards(r, adapter, CardDelegate&)` (#3c): it iterates the adapter's nodes and draws each
