@@ -528,19 +528,26 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     const bool out = node.is_output();
     const bool active_out = out && i == vg_->output_index();
     const std::string& node_err = a.error;
+    // ADR-0023 LOD: fade small text out as the camera zooms out (it would be illegible noise). Cards,
+    // accents, ports and thumbnails stay; the label text fades — port labels first (small fs), then the
+    // title (larger fs). Below the fade floor the text is skipped entirely (draw nothing, not invisibly).
     const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
-    r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
-    if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
-                         active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
+    if (const float ta = canvas_.text_alpha(sty.fs_body); ta > 0.01f)
+        r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], ta, sty.fs_body);
+    if (const float ta = canvas_.text_alpha(0.72f); out && ta > 0.01f)
+        r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
+                    active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, ta, 0.72f);
+    const float a_port = canvas_.text_alpha(0.7f);   // port-stub labels ("in" / "A" / "B")
     float px, py;
     for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per texture input port
         if (!op_in_port(i, p, px, py)) continue;
         node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
         const char* lbl = (np <= 1) ? "in" : (p == 0 ? "A" : "B");
-        r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
+        if (a_port > 0.01f) r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, a_port, 0.7f);
     }
     if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
-    if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
+    if (const float ta = canvas_.text_alpha(0.95f); !out && ta > 0.01f)
+        r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, ta, 0.95f);
     // thumbnail: a recessed panel with the node's live output drawn on top via Renderer2D's
     // textured-quad path (scales/pans with the view, letterboxed to the source aspect).
     if (op_has_thumb(vg_, i)) {
@@ -611,7 +618,9 @@ void NodeGraph::draw(Renderer2D& r) {
     // for the visuals overlay. The param-input ports + bridge data-nodes are separate passes below.
     if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (removed/reloaded) BEFORE the snapshot
     canvas_.draw_cards(r, *this, *this);
-    // param input ports + labels (down each node's left edge)
+    // param input ports + labels (down each node's left edge). ADR-0023 LOD: the port dots stay; the
+    // param-name text fades out when the camera is zoomed out too far to read it.
+    const float a_param = canvas_.text_alpha(0.68f);
     for (int i = 0; i < n; ++i) {
         const int pc = node_pcount(vg_, i);
         for (int l = 0; l < pc; ++l) {
@@ -619,8 +628,9 @@ void NodeGraph::draw(Renderer2D& r) {
             const char* name = node_plabel(vg_, i, l);
             const bool on = reg_.source_of(node_param_dest(vg_->nodes()[i].id, name)) != nullptr;
             node_port(r, px, py, 4.f, on ? 0.31f : 0.34f, on ? 0.80f : 0.40f, on ? 0.75f : 0.45f);
-            r.draw_text(px + 10.f, py - 5.f, name,
-                        on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, 1.0f, 0.68f);
+            if (a_param > 0.01f)
+                r.draw_text(px + 10.f, py - 5.f, name,
+                            on ? 0.72f : 0.48f, on ? 0.82f : 0.5f, on ? 0.78f : 0.55f, a_param, 0.68f);
         }
     }
 

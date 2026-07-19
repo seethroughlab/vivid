@@ -145,9 +145,12 @@ conventions tax every change forever.
 
 **The decision (2026-07-18).** The canonical model is visuals' **true zoom** — one affine transform,
 everything scales (card, border, text, ports), like magnifying an image (Blender/TouchDesigner/Max
-convention). Legibility at extreme zoom-out is a later level-of-detail refinement, not a second model.
-The audio editor conforms. There is no separate "policy" to build — both editors simply draw through
-`set_transform`.
+convention). The audio editor conforms. There is no separate "policy" to build — both editors simply
+draw through `set_transform`. Legibility at extreme zoom-out is handled by a **level-of-detail fade**
+(shipped): `GraphCanvas::text_alpha(fs)` fades label text as its on-screen size shrinks (port/param
+labels first, titles last), so a zoomed-out graph stays a clean structural overview — cards, accents,
+port dots, wires and previews remain; the illegible-tiny text drops away — rather than a mess of
+unreadable text.
 
 **The end state.** `GraphCanvas` owns the graph's rendering-and-interaction model in ONE coordinate
 space; each editor contributes only *content* (its `GraphModelAdapter` + thin domain hooks) and its
