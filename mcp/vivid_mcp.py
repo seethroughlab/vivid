@@ -770,6 +770,44 @@ def graph_set_node_param(gnid: int, name: str, value: float) -> dict:
 
 
 @mcp.tool
+def graph_connect_control(from_gnid: int, to_gnid: int, param: int, amount: float = 1.0,
+                          curve: float = 0.0, invert: bool = False, bipolar: bool = False) -> dict:
+    """Wire a MODULATOR node (e.g. an LFO) to one PARAM of a target node, by session-global id (gnid).
+    ONE call whether the two nodes are on the same track or different tracks (cross-track modulation).
+    `param` is the target's param index (get_audio_graph). amount is a fraction of the param's range;
+    bipolar straddles the base, unipolar runs up from it."""
+    return _post("graph_connect_control", {"from": from_gnid, "to": to_gnid, "param": param,
+                                           "amount": amount, "curve": curve, "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
+def graph_disconnect_control(from_gnid: int, to_gnid: int, param: int) -> dict:
+    """Remove a modulation edge (gnid -> gnid, target param). Intra- or cross-track."""
+    return _post("graph_disconnect_control", {"from": from_gnid, "to": to_gnid, "param": param})
+
+
+@mcp.tool
+def graph_set_control_shape(from_gnid: int, to_gnid: int, param: int, amount: float = 1.0,
+                            curve: float = 0.0, invert: bool = False, bipolar: bool = False) -> dict:
+    """Re-shape an existing modulation edge (amount/curve/invert/bipolar) by gnid, in place."""
+    return _post("graph_set_control_shape", {"from": from_gnid, "to": to_gnid, "param": param,
+                                             "amount": amount, "curve": curve, "invert": invert, "bipolar": bipolar})
+
+
+@mcp.tool
+def graph_set_node_key_range(gnid: int, lo: int = 0, hi: int = 127) -> dict:
+    """Set a source node's MIDI key range by gnid (for a key-split: two sources with disjoint ranges)."""
+    return _post("graph_set_node_key_range", {"gnid": gnid, "lo": lo, "hi": hi})
+
+
+@mcp.tool
+def graph_remove_node(gnid: int) -> dict:
+    """Remove an audio-graph node by session-global id (gnid). Effects/added nodes only (not the
+    instrument or output)."""
+    return _post("graph_remove_node", {"gnid": gnid})
+
+
+@mcp.tool
 def audio_graph_add_midi_in(track: int) -> dict:
     """Add the track's NOTE STREAM as a node (ADR-0015): its clips, the musical-typing keyboard,
     live MIDI, and note_on/note_off all flow out of it. Wire it with a NOTE edge (audio_graph_connect
