@@ -122,6 +122,13 @@ int   session_connect_audio(Session*, int src_track, int src_node, int dst_track
 void  session_disconnect_audio(Session*, int src_track, int src_node, int dst_track, int dst_node);
 int   session_xaudio_count(Session*);
 bool  session_xaudio_get(Session*, int i, int* src_track, int* src_node, int* dst_track, int* dst_node);
+// ADR-0022 P2b.5: cross-track NOTE edges (a note-emitting node on one track drives a note-consuming
+// node on another). connect returns 1 on success, 0 on bad track/node, a same-track edge, a non-emitter
+// source / non-consumer destination, a duplicate, or a cross-track cycle.
+int   session_connect_note(Session*, int src_track, int src_node, int dst_track, int dst_node);
+void  session_disconnect_note(Session*, int src_track, int src_node, int dst_track, int dst_node);
+int   session_xnote_count(Session*);
+bool  session_xnote_get(Session*, int i, int* src_track, int* src_node, int* dst_track, int* dst_node);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy

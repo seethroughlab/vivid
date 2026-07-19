@@ -185,6 +185,27 @@ void register_audio_graph_handlers(Handlers& handlers_) {
         P::session_disconnect_audio(c.session, src_track, src_node, dst_track, dst_node);
         return ok();
     };
+    // ADR-0022 P2b.5: cross-track NOTE edges — a note-emitting node (MidiIn / note effect / note-
+    // generating plugin) on one track drives a note-consuming node (instrument / note effect) on another.
+    handlers_["session_connect_note"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        if (!P::session_connect_note(c.session, src_track, src_node, dst_track, dst_node))
+            return err(code::kBadArg, "cross-track note edge rejected (unknown track/node, same track, non-emitter source, non-consumer destination, duplicate, or would cycle)");
+        return ok();
+    };
+    handlers_["session_disconnect_note"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        P::session_disconnect_note(c.session, src_track, src_node, dst_track, dst_node);
+        return ok();
+    };
     // Re-shape an existing modulation edge (ADR-0022) without rewiring.
     handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
