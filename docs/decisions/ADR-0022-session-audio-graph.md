@@ -266,6 +266,79 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 > `(track, node)` C-API collapse to session-global (ADR P4) stays deferred — P2b keeps the existing
 > per-(track,node) surface, adding session-level `connect_audio` alongside it.
 
+> ### Design — P3 (2026-07-19): clips + generators as first-class nodes + scene reconciliation
+>
+> The ADR's **deepest migration** (pillar 3), deferred until the session graph + note model existed. It
+> touches four subsystems at once — the note path, the scene/launch path, `ClipScheduler` ownership, and
+> the grid UI — so it is decomposed into bit-identical steps like every prior phase, and it has a hard
+> **prerequisite: P2b.5 (note re-scope)**.
+>
+> **The precedent already in the tree.** The audio **Sampler is already a clip-as-node**: `GNKind::Sampler`
+> carries NO clip pointer in its binding (`vst3_host.cpp:93`); `render_sampler_block` (`:2638`) reads
+> `t.active` each block and renders `t.aud_clips[sc]` under a `try_lock` — the scene→clip resolution lives
+> *inside the node's render*, not baked into a binding or a held raw pointer. P3 is, in one line:
+> **generalize that pattern to MIDI clips, then split the per-track clip stack into per-clip nodes fronted
+> by a selector.**
+>
+> **Today (the target of the rewrite).** MIDI clips are positional `Track::clips[scene]` (`:191`) with no
+> identity; the grid is a derived immediate-mode view. One **`ClipScheduler` per Track** (`:192`) is
+> re-pointed at a bar boundary via `sched.reset(&clips[q])` (`:2810`) — the scheduler is playhead-*stateless*
+> (recomputed from transport each block; only `active[]` held-notes carried, `midi_clip.h:76`), non-owning,
+> and depends on the `kMaxScenes=8` reserve (`vst3_host.h:29`) to keep `&clips[q]` valid across scene
+> appends. Its notes reach an instrument through the **per-track `t.nev` broadcast** — a source with no note
+> edge falls back to `t.nev` at `graph_note_input` (`:779`, `s.n_note_in <= 0 => return t.nev`). Note EDGES
+> exist (ADR-0015: `MidiIn`/`NativeNoteFx` nodes, the `t.npool` buffers, `kMaxNoteInputs=8`) but nothing
+> wires them by default. Launch just sets `t.queued` (`:1723`), applied to `t.active` at the next bar. **No
+> selector/mux node exists anywhere** — `graph_note_input` *merges* note inputs (`:785`), it never *selects*.
+>
+> **The end-state.**
+> - A **MidiClip node** (a new gated note *source*, `GNKind::MidiClip`) owns one `MidiClip` + its own
+>   `ClipScheduler` and emits on a note-out buffer (`t.npool`) — never the broadcast. Like the Sampler it
+>   holds no cross-vector raw pointer: the node owns its clip, so the fragile `&clips[scene]` + kMaxScenes
+>   reserve contract is *replaced* by a per-node clip + edit-mirror (cleaner — no shared-vector realloc, no
+>   `invalidate_active_src` dance).
+> - A **per-track-out Selector node** (the second new kind) takes the scene-clips as note inputs + an
+>   `active_scene` atomic; it passes through only the active scene's clip to its single note-out → the
+>   instrument's one note edge, so instrument note fan-in stays 1 regardless of scene count (respects
+>   `kMaxNoteInputs=8`). Only the active clip node runs its scheduler (the rest gate to silence) — one live
+>   scheduler per track-out, exactly today's cost.
+> - A **scene is a named set of `{track-out : enabled clip/generator node}` bindings.** Launch flips the
+>   selector's `active_scene` atomic, bar-quantized — **never a rewire, never a recompile** (the ADR
+>   explicitly rejects launch-by-rewiring). The grid (rows = track-outs, cols = scenes) becomes a
+>   *projection* over these bindings; loose clips stay in the `PoolClip` sidebar.
+> - **Generators are peers**: a generator (euclidean, chord, …) is just another gated note-*source* node in
+>   a scene column. Only `Arp` exists natively today (a note *effect* — notes in→out, `builtin_audio_ops.cpp:489`);
+>   the generator *ops* are separate content work — P3 provides the SLOT, not the ops.
+> - **Audio clips** already resolve `t.active` inside the Sampler, so they fold into the selector model last
+>   (or the Sampler-as-selector is confirmed sufficient as-is); MIDI leads.
+>
+> **Sub-phased, each a PR, gated bit-identical (except the two new-capability steps):**
+> - **Prereq — P2b.5 note re-scope.** Kill the `t.nev` broadcast: every source acquires a note edge (from a
+>   MidiIn / clip node); `graph_note_input`'s `n_note_in<=0 => t.nev` fallback (`:779`) is re-scoped to each
+>   Track-Out's stream so single-owner nodes stay bit-identical. Without it a clip node's notes and the
+>   broadcast would double up.
+> - **P3.1 — MIDI clip stack as ONE node.** A MidiClip-source node per track holding `clips[]`, reading
+>   `t.active`, running the (relocated) scheduler, emitting on a note edge into the instrument — the MIDI
+>   mirror of the Sampler. Bit-identical: same notes, same timing, same bar-quantized switch; only the
+>   *path* (edge, not broadcast) changed. THE pivotal step.
+> - **P3.2 — split into per-clip nodes + a Selector.** One MidiClip node per scene slot (each its own clip +
+>   scheduler) feeding a per-track-out Selector that passes the active scene. Bit-identical (the active clip
+>   plays identically); clips are now first-class, individually addressable nodes.
+> - **P3.3 — scenes as bindings + launch-as-atomic + backward-compat load (new capability).** Reify scenes
+>   as `{track-out : enabled node}` bindings; the grid becomes a graph projection; synthesize clip nodes
+>   from old `clips[scene]` arrays on load so old projects round-trip. Generators slot in here.
+> - **P3.4 — audio clips fold into the selector model** (or confirm the existing Sampler-as-selector
+>   suffices); persist + MCP + the grid-as-projection UI, gated where they are surface.
+>
+> **Risks / invariants.** Per-clip `ClipScheduler` ownership is a *structural* change, not a relocation —
+> each clip node owns its clip + scheduler, so the audio-thread clip-pointer / `invalidate_active_src`
+> contract (`:2772`) is re-derived per node, not shared. One scheduler runs per track-out (gated), keeping
+> today's cost. Every non-capability sub-PR gates on **bit-identical parity** (same session renders
+> sample-for-sample; note on/off offsets identical) verified live via MCP + by ear, plus `ctest` +
+> `-DVIVID_SANITIZE_THREAD=ON`; edits compile-validate at the `EditGateway`; `kSessionMaxNodes` must budget
+> for scenes × tracks clip nodes. The grid UX is preserved as a projection, so the whole migration is
+> invisible to a user who never opens the graph.
+
 ## Context
 
 ADR-0012 made a track's audio a rewireable DAG but kept it **per-track**, and explicitly
@@ -367,7 +440,9 @@ share.
      above** (the deferred single-plan executor / one pool / global-id space, now that cross-track
      audio is its consumer).
    - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
-     compatible load by synthesizing clip nodes from old `clips[scene]` arrays.
+     compatible load by synthesizing clip nodes from old `clips[scene]` arrays. **Designed — see
+     "Design — P3" above** (generalize the Sampler's clip-as-node pattern to MIDI, then split into
+     per-clip nodes + a per-track-out selector; hard prereq = P2b.5 note re-scope).
    - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel
      `session_graph_*` shim, migrating MCP + persistence + the 96↔96 parity guard last.
 
