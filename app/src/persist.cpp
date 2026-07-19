@@ -236,6 +236,16 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     }
     if (!xaudio.empty()) j["xaudio"] = xaudio;
 
+    // ADR-0022 P2b.5: session-level cross-track NOTE edges (a note-emitting node on one track driving a
+    // note-consuming node on another). By track INDEX + stable graph node id (no shape). Optional.
+    json xnote = json::array();
+    for (int i = 0; i < vivid::session::session_xnote_count(s); ++i) {
+        int st = 0, sn = 0, dt = 0, dn = 0;
+        if (!vivid::session::session_xnote_get(s, i, &st, &sn, &dt, &dn)) continue;
+        xnote.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn} });
+    }
+    if (!xnote.empty()) j["xnote"] = xnote;
+
     // Clip pool — loose clips stashed outside the track grid (browser sidebar).
     // Audio pool clips are runtime-only (like grid audio content, their PCM isn't persisted).
     json pool = json::array();
@@ -671,6 +681,14 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     if (restore_audio && !params_only && j.contains("xaudio") && j["xaudio"].is_array()) {
         for (const auto& e : j["xaudio"]) {
             vivid::session::session_connect_audio(
+                s, e.value("src_track", 0), e.value("src_node", -1),
+                e.value("dst_track", 0), e.value("dst_node", -1));
+        }
+    }
+    // ADR-0022 P2b.5: restore cross-track note edges (same by-index round-trip).
+    if (restore_audio && !params_only && j.contains("xnote") && j["xnote"].is_array()) {
+        for (const auto& e : j["xnote"]) {
+            vivid::session::session_connect_note(
                 s, e.value("src_track", 0), e.value("src_node", -1),
                 e.value("dst_track", 0), e.value("dst_node", -1));
         }

@@ -369,6 +369,15 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             xaudio.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn} });
         }
         r["xaudio"] = xaudio;
+        // ADR-0022 P2b.5: the session-level CROSS-TRACK note edges. Each is {src_track, src_node,
+        // dst_track, dst_node} — no shape.
+        json xnote = json::array();
+        for (int i = 0; i < P::session_xnote_count(c.session); ++i) {
+            int st = 0, sn = 0, dt = 0, dn = 0;
+            if (!P::session_xnote_get(c.session, i, &st, &sn, &dt, &dn)) continue;
+            xnote.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn} });
+        }
+        r["xnote"] = xnote;
         return r;
     };
 
