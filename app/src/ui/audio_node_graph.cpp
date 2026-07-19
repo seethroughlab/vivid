@@ -406,16 +406,22 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     const AudioNodeBox b{ kind, a.id, a.rect.x, a.rect.y, a.rect.w, a.rect.h };
     const float* acc = a.accent;
     const bool node_err = a.broken;
-    r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
-                sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
+    // ADR-0023 LOD: fade the card text out as the camera zooms out (illegible when small). The cards,
+    // accents, port dots and the waveform preview stay; the title fades last (larger fs), the small
+    // tag/port/param labels first. text_alpha() returns 0 below the fade floor, so those draws no-op.
+    if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f)
+        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
+                    sty.text[0], sty.text[1], sty.text[2], ta, sty.fs_label);
+    const float a_small = canvas_.text_alpha(0.6f);   // kind tag, lead-row label, "+ param"
     const char* tag = b.kind == 0 ? "inst"
                     : (b.kind == 1 ? "fx"
                     : (b.kind == 3 ? "midi" : (b.kind == 4 ? "note" : (b.kind == 5 ? "mod" : "out"))));
-    { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
-      r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f, 0.6f); }
+    if (a_small > 0.01f) { const float tw = r.text_width(tag, 0.6f);   // right-aligned kind tag in the header
+      r.draw_text(b.x + b.w - tw - 8.f, b.y + 7.f, tag, acc[0], acc[1], acc[2], 0.85f * a_small, 0.6f); }
     if (b.kind == 1) {   // effect: removable
         const Rect x = remove_rect(b);
-        r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, 1.0f, sty.fs_label);
+        if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f)
+            r.draw_text(x.x, x.y - 3.f, "\xC3\x97", 0.7f, 0.5f, 0.5f, ta, sty.fs_label);
     }
 
     // ADR-0022: params exposed as PORTS down the left edge (mirroring the visuals graph). Row 0
@@ -424,8 +430,10 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     if (cp.lead_rows > 0) {
         const float cy = cp.row_cy(b.y, 0);
         node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
-        r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+        if (a_small > 0.01f)
+            r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f * a_small, 0.6f);
     }
+    const float a_param = canvas_.text_alpha(0.62f);
     const std::vector<int> exp = exposed_params(b.node_id);
     for (int slot = 0; slot < static_cast<int>(exp.size()); ++slot) {
         const Rect pp = param_port_rect(b, slot);
@@ -433,13 +441,15 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
         const bool wired = P::session_audio_graph_node_param_wired(s_, track_, b.node_id, exp[slot]) != 0;
         const float* pc = wired ? sty.mod : sty.dim;   // magenta when a control edge drives it
         node_port(r, cx, cy, 4.f, pc[0], pc[1], pc[2]);
-        const char* pn = P::session_audio_graph_node_param_name(s_, track_, b.node_id, exp[slot]);
-        r.draw_text(cx + 9.f, cy - 5.f, fit_text(r, pn ? pn : "", b.w - 22.f, 0.62f).c_str(), pc[0], pc[1], pc[2], 1.0f, 0.62f);
+        if (a_param > 0.01f) {
+            const char* pn = P::session_audio_graph_node_param_name(s_, track_, b.node_id, exp[slot]);
+            r.draw_text(cx + 9.f, cy - 5.f, fit_text(r, pn ? pn : "", b.w - 22.f, 0.62f).c_str(), pc[0], pc[1], pc[2], a_param, 0.62f);
+        }
     }
     // A plugin node: the "+ param" row opens the searchable picker to expose one more param.
-    if (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id)) {
+    if (P::session_audio_graph_node_is_plugin(s_, track_, b.node_id) && a_small > 0.01f) {
         const Rect ab = add_param_port_rect(b);
-        r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f, 0.6f);
+        r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f * a_small, 0.6f);
     }
 
     // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.

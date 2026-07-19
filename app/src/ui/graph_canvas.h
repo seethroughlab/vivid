@@ -1,6 +1,7 @@
 #pragma once
 #include "ui/node_canvas.h"    // NodeView, Rect, node_card/grid/wire, error vocab
 #include "ui/graph_adapter.h"  // GraphModelAdapter + AdapterNode — the node set draw_cards iterates
+#include <algorithm>           // std::clamp (LOD text fade)
 #include <vector>
 
 // ADR-0023 Layer 2 — the GraphCanvas: the shared graph-area DRAW skeleton both node editors (the
@@ -42,6 +43,17 @@ public:
     void pan(float dx, float dy) { view_.pan(dx, dy); }
     void zoom_at(double sx, double sy, float factor) { view_.zoom_at(sx, sy, factor); }
     void reset(const Rect& region) { view_.reset_to(region.x, region.y); }   // fit the region at identity scale
+
+    // ADR-0023 LOD: because "true zoom" scales everything, text shrinks with the camera and becomes
+    // illegible noise when zoomed out. This is the fade factor to multiply a text alpha by: text drawn
+    // at `fs` (the draw_text scale param) is at full opacity above ~kFadeHiPx on-screen and fully faded
+    // below ~kFadeLoPx, linear between — so port/param labels declutter first (small fs), then titles
+    // (larger fs), while cards / accents / ports / thumbnails stay. Base atlas font is 15px (main.cpp).
+    static constexpr float kBaseFontPx = 15.0f, kFadeLoPx = 4.5f, kFadeHiPx = 8.5f;
+    float text_alpha(float fs) const {
+        const float px = fs * view_.scale * kBaseFontPx;
+        return std::clamp((px - kFadeLoPx) / (kFadeHiPx - kFadeLoPx), 0.f, 1.f);
+    }
 
     // The shared node-card chrome. Draws relative to `rect` in the ambient (world) transform both
     // editors now set, so the chrome scales with zoom uniformly (ADR-0023 #3). `broken` gates the

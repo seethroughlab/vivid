@@ -39,7 +39,10 @@
   `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton
   (`card()` chrome, `grid()`, `ghost_wire()`) **and owning that editor's pan/zoom camera + the camera
   gestures** (ADR-0023 #1/#3d — the sole `NodeView`, reached via `canvas_.view()`, plus `pan`/`zoom_at`/
-  `reset` with one shared zoom clamp; both editors drive the camera identically).
+  `reset` with one shared zoom clamp; both editors drive the camera identically). It also owns the **LOD
+  fade** `text_alpha(fs)`: since true-zoom shrinks text with the camera, both editors multiply each
+  label's alpha by it so port/param labels (small fs) fade first, then titles — a zoomed-out graph stays
+  a clean structural overview (cards/accents/ports/wires/previews remain) instead of illegible text.
   Both editors now draw WORLD-space through the shared `NodeView` transform ("true zoom", ADR-0023 #3 —
   the audio graph moved off its old screen-space `layout()` baking), and both drive the shared **card loop**
   `GraphCanvas::draw_cards(r, adapter, CardDelegate&)` (#3c): it iterates the adapter's nodes and draws each
