@@ -479,6 +479,211 @@ struct LfoOp : OperatorBase, AudioProcessable {
     }
 };
 
+// ==== Note GENERATORS (ADR-0022 P3.3) ====================================================
+// Algorithmic note SOURCES: they read NO input notes and emit their own, phase-locked to the
+// transport (c->metronome_beats_elapsed), so a scene that gates one off then on resyncs with no
+// drift. Each declares only an audio OUTPUT port (silent) like Arp, so it reads as a "source"; it
+// is marked a GENERATOR (audio_op_mark_gen_op) to keep it out of the instrument list. They implement
+// NoteFlushable so the host can release their held voices when their scene stops (see note_flush).
+//
+// NoteGenBase carries the shared machinery: the transport step clock, note-out emission with
+// sample-accurate offsets, and voice tracking. A subclass only decides which pitches a given step
+// fires (step_notes) plus its rate/gate/velocity.
+struct NoteGenBase : OperatorBase, AudioProcessable, NoteFlushable {
+    static constexpr int kRateN = 6;
+    static double rate_beats(int i) {   // 1/1 1/2 1/4 1/8 1/16 1/8T, in beats per step
+        static const double b[kRateN] = { 4.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0 };
+        return b[i < 0 ? 0 : (i >= kRateN ? kRateN - 1 : i)];
+    }
+    static constexpr int kMaxVoices = 8;
+    struct Voice { int pitch; int32_t id; };
+    Voice     voices_[kMaxVoices] = {};
+    int       n_voices_ = 0;
+    double    off_beat_ = -1.0;     // absolute transport beat when the held voices release
+    long long last_step_ = -1;      // last step index fired (dedup across block boundaries)
+    int32_t   next_id_ = 0;
+    int32_t   id_base_ = 900000;    // our own note-id namespace (never collides with clip/live ids)
+
+    // Subclass hooks:
+    virtual int    step_notes(long long step_index, int* out) = 0;   // pitches this step fires (0 = rest)
+    virtual double step_beats() const = 0;
+    virtual double gate_frac() const = 0;
+    virtual float  velocity()   const = 0;
+
+    template <class Emit> void release_all(uint32_t off, Emit&& emit) {
+        for (int i = 0; i < n_voices_; ++i) emit(off, false, voices_[i].pitch, 0.f, voices_[i].id);
+        n_voices_ = 0; off_beat_ = -1.0;
+    }
+
+    void process_audio(const VividAudioContext* c) override {
+        const uint32_t frames = c->buffer_size;
+        for (uint32_t ch = 0; ch < 2 && c->output_buffers && c->output_buffers[0]; ++ch)
+            std::memset(c->output_buffers[0] + ch * frames, 0, frames * sizeof(float));   // silent
+        VividNoteEvent* out = c->note_out;
+        const uint32_t cap = c->note_out_capacity;
+        uint32_t out_n = 0;
+        const auto emit = [&](uint32_t off, bool on, int pitch, float vel, int32_t id) {
+            if (!out || out_n >= cap || pitch < 0 || pitch > 127) return;
+            out[out_n++] = VividNoteEvent{ off, static_cast<uint8_t>(on ? 1 : 0),
+                                           static_cast<int16_t>(pitch), vel, id, 0.f };
+        };
+        const double bpm  = c->metronome_bpm > 1.f ? c->metronome_bpm : 120.0;
+        const double spb  = 60.0 * static_cast<double>(c->sample_rate) / bpm;   // samples per beat
+        const double beat0 = c->metronome_beats_elapsed;
+        const double beat1 = beat0 + static_cast<double>(frames) / spb;
+        const double sb = step_beats();
+        if (sb <= 0.0) { if (c->note_out_count) *c->note_out_count = 0; return; }
+        auto to_sample = [&](double beat) -> uint32_t {
+            const double s = (beat - beat0) * spb;
+            return static_cast<uint32_t>(std::min<double>(frames - 1, std::max(0.0, s)));
+        };
+        // 1) release held voices whose off-beat has passed (clamped to block start if slightly before).
+        if (n_voices_ > 0 && off_beat_ >= 0.0 && off_beat_ < beat1)
+            release_all(to_sample(off_beat_), emit);
+        // 2) fire every step boundary that falls in [beat0, beat1).
+        long long k = static_cast<long long>(std::ceil(beat0 / sb - 1e-9));
+        for (; static_cast<double>(k) * sb < beat1 - 1e-12; ++k) {
+            if (k == last_step_) continue;
+            const double step_beat = static_cast<double>(k) * sb;
+            if (step_beat < beat0 - 1e-12) continue;
+            int pitches[kMaxVoices];
+            const int np = step_notes(k, pitches);
+            const uint32_t on_s = to_sample(step_beat);
+            if (n_voices_ > 0) release_all(on_s, emit);      // retrigger: release the prior step first
+            for (int i = 0; i < np && i < kMaxVoices; ++i) {
+                const int32_t id = (++next_id_) + id_base_;
+                emit(on_s, true, pitches[i], velocity(), id);
+                voices_[n_voices_++] = { pitches[i], id };
+            }
+            if (np > 0) off_beat_ = step_beat + gate_frac() * sb;
+            last_step_ = k;
+        }
+        if (c->note_out_count) *c->note_out_count = out_n;
+    }
+
+    // NoteFlushable: emit an off for every held voice (offset 0), then forget them — the host is
+    // releasing us because our scene stopped, so on re-activation we start clean and resync to beat.
+    void note_flush(VividNoteEvent* out, uint32_t cap, uint32_t* count) override {
+        uint32_t n = 0;
+        for (int i = 0; i < n_voices_ && n < cap; ++i)
+            out[n++] = VividNoteEvent{ 0u, 0, static_cast<int16_t>(voices_[i].pitch), 0.f, voices_[i].id, 0.f };
+        if (count) *count = n;
+        n_voices_ = 0; off_beat_ = -1.0; last_step_ = -1;
+    }
+};
+
+// Euclid: a Euclidean rhythm E(pulses, steps) on one note. The bucket formula
+// (i*pulses)%steps < pulses distributes `pulses` hits as evenly as possible over `steps`.
+struct EuclidOp : NoteGenBase {
+    static constexpr const char* kDisplayName = "Euclid";
+    static constexpr const char* kSummary = "Generator: a Euclidean rhythm on one note, locked to the transport.";
+    static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "generator", "euclidean"};
+    Param<int>   steps{"steps", 16, 1, 32};
+    Param<int>   pulses{"pulses", 4, 0, 32};
+    Param<int>   rotate{"rotate", 0, 0, 31};
+    Param<int>   note{"note", 36, 0, 127};
+    Param<int>   rate{"rate", 4, {"1/1", "1/2", "1/4", "1/8", "1/16", "1/8T"}};
+    Param<float> gate{"gate", 0.5f, 0.05f, 1.0f};
+    Param<float> vel{"velocity", 0.8f, 0.f, 1.f};
+    EuclidOp() { id_base_ = 910000; }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&steps); o.push_back(&pulses); o.push_back(&rotate); o.push_back(&note);
+        o.push_back(&rate); o.push_back(&gate); o.push_back(&vel);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+    }
+    double step_beats() const override { return rate_beats(rate.int_value()); }
+    double gate_frac()  const override { return gate.value; }
+    float  velocity()   const override { return vel.value; }
+    int step_notes(long long k, int* out) override {
+        const int st = steps.int_value() < 1 ? 1 : steps.int_value();
+        int pu = pulses.int_value(); pu = pu < 0 ? 0 : (pu > st ? st : pu);
+        if (pu <= 0) return 0;
+        const long long i = ((k % st) + st) % st;
+        const long long j = ((i + rotate.int_value()) % st + st) % st;
+        if (static_cast<int>((j * pu) % st) >= pu) return 0;   // not a hit
+        out[0] = note.int_value();
+        return 1;
+    }
+};
+
+// Chord: fires a chord stack every step. quality picks the intervals.
+struct ChordOp : NoteGenBase {
+    static constexpr const char* kDisplayName = "Chord";
+    static constexpr const char* kSummary = "Generator: repeats a chord in time, locked to the transport.";
+    static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "generator", "chord"};
+    Param<int>   root{"root", 48, 0, 127};
+    Param<int>   quality{"quality", 0, {"Maj", "Min", "Dom7", "Min7", "Sus4"}};
+    Param<int>   rate{"rate", 2, {"1/1", "1/2", "1/4", "1/8", "1/16", "1/8T"}};
+    Param<float> gate{"gate", 0.85f, 0.05f, 1.0f};
+    Param<float> vel{"velocity", 0.8f, 0.f, 1.f};
+    ChordOp() { id_base_ = 920000; }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&root); o.push_back(&quality); o.push_back(&rate); o.push_back(&gate); o.push_back(&vel);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+    }
+    double step_beats() const override { return rate_beats(rate.int_value()); }
+    double gate_frac()  const override { return gate.value; }
+    float  velocity()   const override { return vel.value; }
+    int step_notes(long long /*k*/, int* out) override {
+        static const int chords[5][4] = { {0,4,7,-1}, {0,3,7,-1}, {0,4,7,10}, {0,3,7,10}, {0,5,7,-1} };
+        int q = quality.int_value(); q = q < 0 ? 0 : (q > 4 ? 4 : q);
+        int n = 0;
+        for (int i = 0; i < 4; ++i) if (chords[q][i] >= 0) out[n++] = root.int_value() + chords[q][i];
+        return n;
+    }
+};
+
+// RandMelody: one in-scale note per step, fired with probability `density`. The RNG is seeded by
+// (seed, step index) — NOT free-running — so relaunching the scene at the same transport position
+// reproduces the same melody (required for A/B + undo/redo determinism).
+struct RandMelodyOp : NoteGenBase {
+    static constexpr const char* kDisplayName = "RandMelody";
+    static constexpr const char* kSummary = "Generator: a deterministic in-scale random melody, locked to the transport.";
+    static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "generator", "random"};
+    Param<int>   root{"root", 48, 0, 127};
+    Param<int>   scale{"scale", 0, {"Major", "Minor", "PentMin", "Dorian"}};
+    Param<int>   octaves{"octaves", 2, 1, 4};
+    Param<int>   rate{"rate", 4, {"1/1", "1/2", "1/4", "1/8", "1/16", "1/8T"}};
+    Param<float> density{"density", 0.7f, 0.f, 1.f};
+    Param<float> gate{"gate", 0.6f, 0.05f, 1.0f};
+    Param<int>   seed{"seed", 1, 0, 9999};
+    RandMelodyOp() { id_base_ = 930000; }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&root); o.push_back(&scale); o.push_back(&octaves); o.push_back(&rate);
+        o.push_back(&density); o.push_back(&gate); o.push_back(&seed);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+    }
+    double step_beats() const override { return rate_beats(rate.int_value()); }
+    double gate_frac()  const override { return gate.value; }
+    float  velocity()   const override { return 0.8f; }
+    int step_notes(long long k, int* out) override {
+        uint32_t h = static_cast<uint32_t>(seed.int_value()) * 2654435761u
+                   ^ static_cast<uint32_t>(k * 40503LL);          // seed + step → deterministic
+        h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; h *= 3266489917u; h ^= h >> 16;
+        if (static_cast<double>(h & 0xffffu) / 65535.0 > density.value) return 0;   // a rest
+        static const int scales[4][7] = { {0,2,4,5,7,9,11}, {0,2,3,5,7,8,10}, {0,3,5,7,10,-1,-1}, {0,2,3,5,7,9,10} };
+        static const int lens[4] = { 7, 7, 5, 7 };
+        int sc = scale.int_value(); sc = sc < 0 ? 0 : (sc > 3 ? 3 : sc);
+        const int len = lens[sc];
+        const int oc = octaves.int_value() < 1 ? 1 : octaves.int_value();
+        const int deg = static_cast<int>((h >> 16) % static_cast<uint32_t>(len * oc));
+        out[0] = root.int_value() + scales[sc][deg % len] + 12 * (deg / len);
+        return 1;
+    }
+};
+
 void register_glitch_ops(OpRegistry& reg);   // audio/glitch/glitch_ops.cpp
 
 void register_builtin_audio_ops(OpRegistry& reg) {
@@ -490,6 +695,12 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out
     register_op<LfoOp>(reg, "LFO");   // ADR-0022: the first modulator
     audio_op_mark_mod_op("LFO");      // ...nor is it: no audio at all, it emits a control signal
+    register_op<EuclidOp>(reg, "Euclid");           // ADR-0022 P3.3: note generators (sources, not instruments)
+    audio_op_mark_gen_op("Euclid");
+    register_op<ChordOp>(reg, "Chord");
+    audio_op_mark_gen_op("Chord");
+    register_op<RandMelodyOp>(reg, "RandMelody");
+    audio_op_mark_gen_op("RandMelody");
     register_glitch_ops(reg);
 }
 

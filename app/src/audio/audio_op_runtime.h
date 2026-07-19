@@ -61,6 +61,21 @@ bool audio_op_is_mod_op(const std::string& name);
 int  audio_mod_op_count(OpRegistry& reg);
 const char* audio_mod_op_name(OpRegistry& reg, int idx);
 
+// ADR-0022 P3.3: which registered audio operators are note GENERATORS — algorithmic note SOURCES
+// (Euclid / Chord / RandMelody) that read no notes and emit their own from the transport. Same
+// escape hatch as note effects/modulators: they declare an audio OUTPUT port so `descriptor_is_source`
+// would offer them as instruments; marking excludes them from the instrument list and lists them as
+// generators (a scene cell can hold one in place of a clip).
+void audio_op_mark_gen_op(const std::string& name);
+bool audio_op_is_gen_op(const std::string& name);
+int  audio_gen_op_count(OpRegistry& reg);
+const char* audio_gen_op_name(OpRegistry& reg, int idx);
+
+// ADR-0022 P3.3: ask a generator to emit note-offs for the voices it is currently sounding (see
+// NoteFlushable). Used to release a scene-gated generator's held notes on a scene switch. Writes up
+// to `cap` offs into `out`, sets *count. A no-op (count=0) for ops that don't implement NoteFlushable.
+void audio_op_note_flush(AudioOp*, session::NoteEvent* out, uint32_t cap, uint32_t* count);
+
 // ADR-0022: one param driven by a control edge for THIS block. The host resolves the effective
 // value (control_resolve() — base + modulation, see audio/audio_graph.h) and hands it over here;
 // the op sees the modulated value while `pvals` — the param's BASE — is never written.

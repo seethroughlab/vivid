@@ -386,6 +386,17 @@ struct AudioProcessable {
     virtual void process_audio(const VividAudioContext* ctx) = 0;
 };
 
+// NoteFlushable (ADR-0022 P3.3): an OPTIONAL capability for note-source operators (generators)
+// that sustain voices across blocks. When the host stops calling a generator — e.g. its scene is
+// no longer active — the generator can't emit its own note-offs, so the host asks it to flush:
+// emit an off for every voice it is currently sounding into out[cap], setting *count. A separate
+// interface (not a method on AudioProcessable) so it is ABI-additive — ops that don't implement it
+// are simply never asked (the host caches a possibly-null NoteFlushable* per op, no vtable change).
+struct NoteFlushable {
+    virtual ~NoteFlushable() = default;
+    virtual void note_flush(VividNoteEvent* out, uint32_t cap, uint32_t* count) = 0;
+};
+
 // GpuProcessable: forward-declared VividGpuContext* (defined in gpu_operator.h).
 // GPU operators must #include "operator_api/gpu_operator.h" for the full definition.
 struct GpuProcessable {
