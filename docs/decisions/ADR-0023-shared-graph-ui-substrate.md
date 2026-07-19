@@ -1,8 +1,18 @@
 # ADR-0023: Shared Graph UI Substrate
 
-Status: proposed
+Status: accepted (implemented 2026-07-18)
 
 Date: 2026-07-18
+
+Implemented across PRs #49 (steps 1–6 + GraphCanvas v1), #55 (step 5 catalog), #57 (step 7
+`list_operator_catalog`), #61 (#1 — GraphCanvas owns the pan/zoom camera), #64 (#2 — the
+`GraphModelAdapter`), #67 (#3b — the audio editor draws + hit-tests in world space, "true zoom"),
+#69 (#3c — GraphCanvas owns the shared card loop), and #72 (#3d — GraphCanvas owns the shared camera
+gestures). The two editors now share the `node_canvas.h` marks, the `NodeView` world-space transform,
+`CardPorts` geometry, the `card()` chrome, the `GraphModelAdapter`, the `GraphCanvas` card loop, and the
+camera gestures; wire enumeration, port/preview content, and the model-entangled select/drag/rewire
+gestures stay per-editor by design. See [`../product/graph-ui-abstraction-plan.md`](../product/graph-ui-abstraction-plan.md)
+for the phase-by-phase record.
 
 Extends [ADR-0007](ADR-0007-node-graph-contextual-deep-view.md),
 [ADR-0013](ADR-0013-focus-first-strict-zone-ui.md),
