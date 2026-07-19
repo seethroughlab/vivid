@@ -1,6 +1,6 @@
 # Graph UI Abstraction Plan
 
-Status: draft — Phase 1 scope
+Status: complete — all phases delivered (2026-07-18)
 Date: 2026-07-18
 Implements [ADR-0023](../decisions/ADR-0023-shared-graph-ui-substrate.md) (shared graph UI
 substrate). This is the document ADR-0023 migration step 1 asks for: it defines the
