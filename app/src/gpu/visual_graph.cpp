@@ -131,15 +131,16 @@ bool VisualGraph::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat fmt
     // Present blit draws into the frame's 4x MSAA color target (op RTs stay 1x).
     if (!blit_.init(device, queue, fmt, kBlitGLSL, 1, kMsaaSamples)) return false;
     fallback_.init(device, rtW, rtH, fmt);
-    reset_to_default();   // Plasma -> Feedback -> Blur -> Output (ids 0..3)
+    reset_to_default();   // clean canvas: just the Output sink (id 0)
     return true;
 }
 
 void VisualGraph::reset_to_default() {
+    // A clean canvas: just the Output sink (the surface always has one), nothing feeding it.
+    // The user builds the chain from Tab — no baked-in demo content (matches the empty audio session).
     nodes_.clear(); next_id_ = 0;
-    add_node("Plasma"); add_node("Feedback"); add_node("Blur"); add_node("Output");
-    nodes_[1].set_in(0, 0); nodes_[2].set_in(0, 1); nodes_[3].set_in(0, 2);
-    active_output_id_ = nodes_[3].id;
+    add_node("Output");
+    active_output_id_ = nodes_[0].id;
     ensure_resources(nodes_.size());
 }
 

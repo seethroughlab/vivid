@@ -287,8 +287,9 @@ int main(int argc, char** argv) {
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
     if (audio_ok) {
         transport.configure_capture(device.sampleRate, 30.0);
-        // Now that we know the device sample rate, scan + load the default project. This
-        // blocks for seconds on VST3 instrument load — drive the splash from each phase.
+        // Now that we know the device sample rate, create the (empty) session engine. The app
+        // starts clean — no baked-in content; a project is loaded via File > Open. The splash
+        // progress hook stays wired for any future load phases.
         vivid::session::session_set_load_progress(
             [](void* u, const char* s) { (*static_cast<std::function<void(const char*)>*>(u))(s); },
             &render_splash);
@@ -299,10 +300,8 @@ int main(int argc, char** argv) {
         // apply instantly, only new/changed plugins are probed. Kicked explicitly HERE and not from
         // the catalog's lazy first query — that one happens inside a draw call.
         vivid::session::plugin_scan_start();
-        vivid::session::session_build_split_showcase(app.session);   // node-graph demo tracks (needs the registry)
-        std::fprintf(stderr, "[vivid] session: %d tracks (track 0: %s)\n",
-                     app.session ? vivid::session::session_track_count(app.session) : 0,
-                     app.session ? vivid::session::session_track_name(app.session, 0) : "none — test tone");
+        std::fprintf(stderr, "[vivid] session: %d tracks (empty — clean start)\n",
+                     app.session ? vivid::session::session_track_count(app.session) : 0);
         if (ma_device_start(&device) != MA_SUCCESS) audio_ok = false;
     }
     glfwSetWindowUserPointer(window, &win);
