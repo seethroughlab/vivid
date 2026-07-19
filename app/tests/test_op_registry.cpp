@@ -4,6 +4,7 @@
 #include "gpu/op_runtime.h"
 #include "test_helpers.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -126,6 +127,28 @@ int main() {
     vivid::sync_params(*gi, vals, 2);
     CHECK(gi->param_ptrs[0]->value == 0.9f);
     CHECK(gi->param_ptrs[1]->value == 1.5f);
+
+    // unregister_type retires a type (the project-scoped-operator teardown path): has() is
+    // false, create() has no value, its cached descriptor is dropped, and it leaves type_names —
+    // while the other types are untouched. Build Fx2's descriptor first, so we prove the cache is
+    // cleared too (not just the entry).
+    CHECK(reg.descriptor_for("Fx2") != nullptr);
+    CHECK(reg.has("Fx2"));
+    reg.unregister_type("Fx2");
+    CHECK(!reg.has("Fx2"));
+    CHECK(!reg.create("Fx2", issues).has_value());
+    CHECK(reg.descriptor_for("Fx2") == nullptr);
+    {
+        auto ns = reg.type_names();
+        CHECK(ns.size() == 3 && std::find(ns.begin(), ns.end(), "Fx2") == ns.end());
+    }
+    CHECK(reg.has("Gen") && reg.has("Fx") && reg.has("Filey"));   // siblings intact
+    reg.unregister_type("Bogus");                                 // unknown name → harmless no-op
+    CHECK(reg.type_names().size() == 3);
+    // Re-registering the same name after an unregister works (a project re-open): the descriptor
+    // rebuilds fresh from the new factory.
+    reg.register_type("Fx2", [] { return std::make_unique<Fx2StandIn>(); });
+    CHECK(reg.has("Fx2") && reg.descriptor_for("Fx2") != nullptr);
 
     return vivid::test::summary("test_op_registry");
 }

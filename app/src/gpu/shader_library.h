@@ -69,6 +69,14 @@ public:
     // previously failed — a fixed header should just appear). Returns the number newly registered.
     int rescan(OpRegistry& reg);
 
+    // Swap the PROJECT tier: unregister every operator this library registered from the previous
+    // project folder, then scan + register the shaders under `project_dir`/shaders. Pass "" to just
+    // clear (on File > New). Called on project load BEFORE the graph reads its nodes, so a node that
+    // names a project-scoped shader resolves. Bundled/user tiers are untouched — only project-scoped
+    // operators churn. Returns the number newly registered. (This is how a shipped-but-not-core
+    // operator, e.g. a demo's Plasma, exists only while its example project is open.)
+    int set_project(OpRegistry& reg, const std::string& project_dir);
+
     // Once per frame, main thread: pick up edits to watched files. Cheap (an mtime stat each).
     std::vector<ShaderReload> poll(OpRegistry& reg);
 

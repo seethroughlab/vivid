@@ -93,7 +93,7 @@ public:
     void load_node(const std::string& type, int id);   // append with a persisted id
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
-    void reset_to_default();                   // the out-of-box Plasma->Feedback->Blur->Output chain
+    void reset_to_default();                   // a clean canvas: just the Output sink (no baked-in content)
     void set_input(int node, int port, int src);   // wire src's output -> node's texture input `port`
     void set_input(int node, int src)   { set_input(node, 0, src); }   // back-compat: primary input (port A)
     void set_input_b(int node, int src) { set_input(node, 1, src); }   // back-compat: second input (port B)

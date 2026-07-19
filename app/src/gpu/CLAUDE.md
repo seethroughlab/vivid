@@ -39,8 +39,15 @@ abstraction is P3 in the [roadmap](../../../docs/roadmap/reboot-readiness-roadma
   (`operator_api/shader_meta.h`), so the struct and the bytes cannot drift apart. Editing a file
   hot-reloads it (a body edit recompiles in the live node; a header edit rebuilds its nodes,
   keeping values by name); a broken edit keeps the LAST GOOD pipeline and shows the error on the
-  node card. Ten of the visual operators are these files now — see `app/shaders/` and
+  node card. The core ships six of these (`app/shaders/`: real compositing effects + geometry —
+  `blur`/`composite`/`displace`/`kaleidoscope`/`transform`/`shape`); see
   [docs/shaders.md](../../../docs/shaders.md).
+  **PROJECT-SCOPED operators (the `project` tier):** `set_project(reg, project_dir)` registers a
+  loaded project's `shaders/` on open (before the graph reads its nodes) and `unregister_type`s them
+  on New/close — so a shader that ships with an EXAMPLE, not the core, exists ONLY while its project
+  is open. That is how the fullscreen "field" generators (`plasma`/`rings`/`noise_texture`/`gradient`/
+  `tint`) were demoted out of the day-1 catalog into `examples/demos/projects/generative-fields/` —
+  they are not "core," but a fresh session is clean and opening that example brings them back.
   **`ShaderDef` is never freed** while the app runs: `ParamBase::name` and the cached descriptors
   are raw `const char*` INTO it.
 - **`shader_op.*` / `effect_op.*`** — the OLDER fixed-four-uniform GLSL pass behind the

@@ -59,6 +59,9 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
         }
     }
     const std::string jpath = session_json_path(path);
+    // Register this project's project-scoped shader operators (its shaders/ dir) BEFORE the session
+    // is read below, so a node that names one resolves. Cleared when another project loads / on New.
+    app.shader_library.set_project(app.op_registry, fs::path(jpath).parent_path().string());
     float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
     if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, aox, aoy, ascale)) {
         r.error = "read failed";

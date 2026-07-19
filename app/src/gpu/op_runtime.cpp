@@ -96,6 +96,13 @@ void OpRegistry::register_type(const std::string& name, Factory f, OpMeta meta) 
     entries_.push_back({ name, std::move(f), std::move(meta) });
 }
 
+void OpRegistry::unregister_type(const std::string& name) {
+    for (auto it = entries_.begin(); it != entries_.end(); ++it)
+        if (it->name == name) { entries_.erase(it); break; }
+    invalidate_descriptor(name);   // drop the cached descriptor (name-keyed, so no aliasing)
+    reload_errors_.erase(name);
+}
+
 const OpRegistry::Entry* OpRegistry::find(const std::string& name) const {
     for (const auto& e : entries_) if (e.name == name) return &e;
     return nullptr;

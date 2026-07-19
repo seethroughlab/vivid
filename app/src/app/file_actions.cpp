@@ -57,6 +57,7 @@ void new_project(App& app) {
             session::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
     app.graph->reset_nodes();
     if (app.vgraph) { app.vgraph->reset_to_default(); app.vgraph->set_asset_dir(""); }
+    app.shader_library.set_project(app.op_registry, "");   // drop any project-scoped operators
     app.project.current_project_path.clear();
     app.project.media_root.clear();
     app.project.missing_media.clear();
