@@ -129,6 +129,9 @@ int   session_connect_note(Session*, int src_track, int src_node, int dst_track,
 void  session_disconnect_note(Session*, int src_track, int src_node, int dst_track, int dst_node);
 int   session_xnote_count(Session*);
 bool  session_xnote_get(Session*, int i, int* src_track, int* src_node, int* dst_track, int* dst_node);
+// ADR-0022 P2b: drop all cross-track edges (control/audio/note); called on session load before the
+// document's edges are restored, so a load fully replaces them rather than leaking the old session's.
+void  session_clear_cross_track_edges(Session*);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
