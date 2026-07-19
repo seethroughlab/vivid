@@ -1311,6 +1311,14 @@ def add_scene() -> dict:
 
 
 @mcp.tool
+def set_scene_name(scene: int, name: str) -> dict:
+    """Rename a scene (the label shown on its launch button; default "A","B",…). An empty name
+    resets it to the default. Names persist with the session and are reported by inspect_scene.
+    Undoable."""
+    return _post("set_scene_name", {"scene": scene, "name": name})
+
+
+@mcp.tool
 def add_graph_track(instrument: str = "", name: str = "") -> dict:
     """Create a bare NATIVE-instrument track that hosts a native audio node graph (get_audio_graph
     / audio_graph_* edits). Unlike add_track, this makes no VST3/plugin handle, so the track is

@@ -518,6 +518,9 @@ struct Session {
     // silently re-bind to a different node.
     int       next_gnid = 0;
     int       scenes = 3;
+    // ADR-0022 P3.3: per-scene display names (the "named" in "a scene is a NAMED set of bindings").
+    // UI-thread only; NEVER read on the audio thread. Sized lazily to `scenes`; default "A","B",…
+    std::vector<std::string> scene_names;
     long long last_bar = -1;
     uint32_t  sample_rate = 0;
     // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
@@ -1759,6 +1762,30 @@ Session* session_create(uint32_t sample_rate) {
 
 int  session_track_count(Session* s) { return s ? static_cast<int>(s->tracks.size()) : 0; }
 int  session_scene_count(Session* s) { return s ? s->scenes : 0; }
+
+// ADR-0022 P3.3: the default display name for scene i — A..Z, then "Scene N". UI-thread only.
+static std::string default_scene_name(int i) {
+    if (i >= 0 && i < 26) return std::string(1, static_cast<char>('A' + i));
+    return "Scene " + std::to_string(i + 1);
+}
+// Grow/shrink scene_names to match s->scenes, filling any new slots with defaults. UI-thread only.
+static void ensure_scene_names(Session* s) {
+    if (!s) return;
+    const int n = s->scenes;
+    if (static_cast<int>(s->scene_names.size()) > n) s->scene_names.resize(n);
+    while (static_cast<int>(s->scene_names.size()) < n)
+        s->scene_names.push_back(default_scene_name(static_cast<int>(s->scene_names.size())));
+}
+const char* session_scene_name(Session* s, int scene) {
+    if (!s || scene < 0 || scene >= s->scenes) return "";
+    ensure_scene_names(s);
+    return s->scene_names[static_cast<size_t>(scene)].c_str();
+}
+void session_set_scene_name(Session* s, int scene, const char* name) {
+    if (!s || scene < 0 || scene >= s->scenes) return;
+    ensure_scene_names(s);
+    s->scene_names[static_cast<size_t>(scene)] = (name && *name) ? name : default_scene_name(scene);
+}
 const char* session_track_name(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->name.c_str() : "";
 }
@@ -4902,6 +4929,7 @@ int session_add_scene(Session* s) {
         if (!t->graph_authoritative) rebuild_track_graph(t);
         else                         add_authoritative_scene_clip_node(t, ns - 1);
     }
+    ensure_scene_names(s);   // ADR-0022 P3.3: the new scene gets a default name ("A","B",…)
     rebuild_track_view(s);
     std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
     return ns - 1;
@@ -4912,6 +4940,7 @@ int session_add_scene(Session* s) {
 void session_set_scene_count(Session* s, int scenes) {
     if (!s) return;
     s->scenes = std::min(std::max(scenes, 1), kMaxScenes);
+    ensure_scene_names(s);   // ADR-0022 P3.3: keep names sized to the scene count (defaults fill new slots)
 }
 
 // A bare native-instrument track (no VST3 handle) whose instrument + effects come from an

@@ -29,6 +29,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     const int nt = vivid::session::session_track_count(s);
     const int ns = vivid::session::session_scene_count(s);
     j["scenes"] = ns;   // grid row count (optional; older loaders default to 3)
+    // ADR-0022 P3.3: per-scene display names (optional; absent in older files => defaults A/B/C).
+    { json snames = json::array();
+      for (int sc = 0; sc < ns; ++sc) snames.push_back(vivid::session::session_scene_name(s, sc));
+      j["scene_names"] = snames; }
     // ADR-0022 P1b: the master node's gain (optional; older loaders default to 1.0 = unity).
     j["master"] = { {"gain", vivid::session::session_master_gain(s)} };
     json tracks = json::array();
@@ -486,6 +490,13 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     // right number of clip slots — otherwise scenes beyond the default 3 have no slot to land in.
     if (restore_audio && !params_only && j.contains("scenes"))
         vivid::session::session_set_scene_count(s, j.value("scenes", 3));
+    // ADR-0022 P3.3: restore per-scene names (absent => session_set_scene_count already defaulted A/B/C).
+    if (restore_audio && !params_only && j.contains("scene_names") && j["scene_names"].is_array()) {
+        const auto& sn = j["scene_names"];
+        for (int sc = 0; sc < static_cast<int>(sn.size()); ++sc)
+            if (sn[sc].is_string())
+                vivid::session::session_set_scene_name(s, sc, sn[sc].get<std::string>().c_str());
+    }
     // ADR-0022 P1b: the master node's gain (optional; absent in older files => unity).
     if (restore_audio && !params_only && j.contains("master") && j["master"].is_object())
         vivid::session::session_set_master_gain(s, j["master"].value("gain", 1.0f));
