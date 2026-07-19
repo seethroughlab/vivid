@@ -4851,6 +4851,27 @@ int session_add_audio_track(Session* s) {
 //     audio-owned `clips` to match in its mirror-apply, keeping sched's &clips[q] valid.
 // Bump s->scenes LAST (after every track has the slot), so a launch of the new scene is gated
 // off until the row exists everywhere. UI/main thread only.
+// ADR-0022 P3.3 (PR-1): give an AUTHORITATIVE instrument track's note sub-graph the new scene's
+// MidiClip node. The derived path regenerates the whole per-scene fan from scratch, but an
+// authoritative graph is the user's topology — so we surgically append ONE MidiClip node (scene =
+// the new index) wired into the existing per-track-out Selector, then republish. This works while
+// the canonical MidiClip -> Selector shape is intact; a fully-rewired note graph with no Selector
+// is left as-is (a documented limitation: its new scene has no clip node until the user wires one).
+static void add_authoritative_scene_clip_node(Track* t, int scene) {
+    std::lock_guard<std::mutex> lk(t->gmtx);
+    int selector_id = -1;
+    for (size_t i = 0; i < t->agnodes.size(); ++i)
+        if (t->agnodes[i].kind == GNKind::Selector) { selector_id = t->agraph.nodes()[i].id; break; }
+    if (selector_id < 0) return;                                          // no Selector: documented limitation
+    if (static_cast<int>(t->agraph.nodes().size()) + 1 > kGraphMaxNodes) return;
+    GNodeBind cb; cb.kind = GNKind::MidiClip; cb.scene = scene;
+    t->agnodes.push_back(cb);                                            // keep agnodes parallel to nodes()
+    const int mc = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
+    t->agraph.set_note_ports(mc, /*note_in*/false, /*note_out*/true);
+    t->agraph.connect(mc, selector_id, vivid::audio::EdgeKind::Note);
+    republish_track_graph(t);
+}
+
 int session_add_scene(Session* s) {
     if (!s || s->scenes >= kMaxScenes) return -1;
     const int ns = s->scenes + 1;
@@ -4871,13 +4892,15 @@ int session_add_scene(Session* s) {
         }
     }
     s->scenes = ns;
-    // ADR-0022 P3.2b: the derived note sub-graph has one MidiClip node per scene, so a new scene
-    // needs a new clip node. Rebuild each DERIVED instrument track's graph (authoritative tracks own
-    // their topology — their per-scene nodes are a P3.3 concern). Cheap: the derived rebuild just
-    // regenerates the linear chain + note sub-graph.
+    // ADR-0022 P3.2b/P3.3: the note sub-graph has one MidiClip node per scene, so a new scene needs
+    // a new clip node on every instrument track. A DERIVED track regenerates its whole fan; an
+    // AUTHORITATIVE track keeps its user topology and gets one node surgically appended to its
+    // Selector (P3.3 PR-1 — was previously skipped, leaving authoritative tracks silent on the new scene).
     for (auto& tp : s->tracks) {
         Track* t = tp.get();
-        if (!t->is_audio && !t->graph_authoritative) rebuild_track_graph(t);
+        if (t->is_audio) continue;
+        if (!t->graph_authoritative) rebuild_track_graph(t);
+        else                         add_authoritative_scene_clip_node(t, ns - 1);
     }
     rebuild_track_view(s);
     std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
