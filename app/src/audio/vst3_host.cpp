@@ -91,7 +91,11 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // mirror of the Sampler, reading t.active. Split out of MidiIn so clips and live/preview are
 // distinct note SOURCES; both feed the instrument's note-in (merged, time-sorted). Appended to
 // keep every prior enumerator's value stable.
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip };
+// Selector (ADR-0022 P3.2): a per-track-out note MUX — merges its note inputs (the scene clip
+// nodes) into one note-out feeding the instrument, so instrument note fan-in stays low regardless
+// of scene count. Selection is by SOURCE gating: only the active scene's clip node emits, so the
+// merge is exactly the active clip. Appended to keep prior enumerator values stable.
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip, Selector };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -744,7 +748,7 @@ static void rebuild_track_graph(Track* t) {
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
                               + static_cast<int>(t->op_effects_edit.size())
                               + static_cast<int>(t->clap_effects.size()) + 1   // source + VST3 FX + native FX + CLAP FX + output
-                              + (t->is_audio ? 0 : 2);   // ADR-0022 P3.1a/b: + a MidiIn AND a MidiClip source on every instrument track
+                              + (t->is_audio ? 0 : 3);   // ADR-0022 P3.1a/b/P3.2a: + MidiClip + MidiIn + Selector on every instrument track
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -770,22 +774,31 @@ static void rebuild_track_graph(Track* t) {
     // EDGES (n_note_in), not this flag, so a derived instrument with no note edge still reads its own
     // stream. A Sampler (is_audio) ignores notes, so it is left without a note-in port.
     //
-    // ADR-0022 P3.1a/b — note production becomes graph nodes. Insert two note SOURCES feeding the
-    // instrument through NOTE edges, replacing the invisible per-track t.nev broadcast fallback for
-    // derived instrument tracks: a MidiClip node (t.nev_clip = clip scheduler + release flush; the
-    // MIDI mirror of the Sampler) and a MidiIn node (t.nev_live = live MIDI + musical typing + MCP +
-    // preview). Together MidiClip+MidiIn == the pre-split t.nev, so the instrument receives the same
-    // notes — every event keeps its exact pitch/vel/offset/id. The note edges force both to render
-    // before the instrument (all edge kinds constrain topo order); with two note inputs the instrument
-    // reads them via graph_note_input's merge path, which TIME-SORTS by sample offset (what plugins
-    // and scanning native ops require). graph_note_input's broadcast fallback is untouched — just no
-    // longer reached for this instrument. A Sampler (is_audio) ignores notes, so it gets none of this.
+    // ADR-0022 P3.1a/b + P3.2a — note production becomes graph nodes. Build the derived note
+    // sub-graph feeding the instrument through NOTE edges, replacing the invisible per-track t.nev
+    // broadcast fallback for derived instrument tracks:
+    //   MidiClip (t.nev_clip = clip scheduler + release flush; the MIDI mirror of the Sampler)
+    //       → Selector (per-track-out note MUX) → instrument
+    //   MidiIn   (t.nev_live = live MIDI + typing + MCP + preview) → instrument  (live is NOT
+    //                                                                scene-gated, so it bypasses
+    //                                                                the Selector)
+    // The Selector collapses the clip fan-in to one edge into the instrument (P3.2b fans MidiClip
+    // into N per-scene nodes behind it); today it passes the single clip stream through. Together
+    // Selector(clip)+MidiIn(live) == the pre-split t.nev, so the instrument receives the same notes
+    // — every event keeps its exact pitch/vel/offset/id. All edge kinds constrain topo order, so
+    // each node renders before its consumer; the instrument reads via graph_note_input's merge path,
+    // which TIME-SORTS by sample offset (what plugins and scanning native ops require). The broadcast
+    // fallback is untouched — just no longer reached. A Sampler (is_audio) gets none of this.
     if (!t->is_audio) {
         t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
+        t->agnodes.push_back({ GNKind::Selector, nullptr, nullptr });
+        const int selector = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "sel");
+        t->agraph.set_note_ports(selector, /*note_in*/true, /*note_out*/true);
+        t->agraph.connect(selector, prev, vivid::audio::EdgeKind::Note);
         t->agnodes.push_back({ GNKind::MidiClip, nullptr, nullptr });
         const int midi_clip = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
         t->agraph.set_note_ports(midi_clip, /*note_in*/false, /*note_out*/true);
-        t->agraph.connect(midi_clip, prev, vivid::audio::EdgeKind::Note);
+        t->agraph.connect(midi_clip, selector, vivid::audio::EdgeKind::Note);
         t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
         const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
         t->agraph.set_note_ports(midi_in, /*note_in*/false, /*note_out*/true);
@@ -1018,6 +1031,23 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
                 std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
                 outn.clear();
                 for (const NoteEvent& e : srcn) {
+                    if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
+                    outn.push_back(e);
+                }
+            }
+            return;
+        }
+        // ADR-0022 P3.2: the per-track-out note SELECTOR. It merges its note inputs (the scene
+        // clip nodes) into its own note-out for the instrument — selection is by SOURCE gating
+        // (only the active scene's clip node emits, so the merge is exactly the active clip). It
+        // makes no sound. `nsrc` is already the merged+sorted note input (graph_note_input), so
+        // the selector just republishes it on its note buffer, collapsing fan-in to 1 downstream.
+        if (nb.kind == GNKind::Selector) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
+                std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
+                outn.clear();
+                for (const NoteEvent& e : nsrc) {
                     if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
                     outn.push_back(e);
                 }
@@ -3581,6 +3611,7 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::NativeNoteFx: return 4;   // ADR-0015: a note effect (Arp) — notes in, notes out
         case GNKind::NativeMod:    return 5;   // ADR-0022: a modulator (LFO) — no audio, emits control
         case GNKind::MidiClip:     return 6;   // ADR-0022 P3.1b: the clip scheduler as a note source
+        case GNKind::Selector:     return 7;   // ADR-0022 P3.2: the per-track-out note selector/mux
     }
     return -1;
 }

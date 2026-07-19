@@ -34,7 +34,7 @@ namespace P = vivid::session;
 const char* safe_cstr(const char* s) { return s ? s : ""; }
 
 json audio_graph_summary(P::Session* s, int track) {
-    static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect", "modulator", "midi_clip" };
+    static const char* kKind[] = { "instrument", "effect", "output", "midi_in", "note_effect", "modulator", "midi_clip", "selector" };
     json r;
     r["graph_ok"] = P::session_track_audio_graph_ok(s, track) != 0;
     r["output_id"] = P::session_track_audio_graph_output_id(s, track);
@@ -44,7 +44,7 @@ json audio_graph_summary(P::Session* s, int track) {
     json kinds = json::object();
     for (int i = 0; i < P::session_track_audio_graph_node_count(s, track); ++i) {
         const int k = P::session_track_audio_graph_node_kind(s, track, i);
-        const std::string key = (k >= 0 && k < 7) ? kKind[k] : "unknown";
+        const std::string key = (k >= 0 && k < 8) ? kKind[k] : "unknown";
         kinds[key] = kinds.value(key, 0) + 1;
     }
     r["node_kinds"] = kinds;
