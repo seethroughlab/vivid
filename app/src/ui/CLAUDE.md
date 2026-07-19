@@ -27,9 +27,13 @@
   / waveform / sparkline), the visuals bridge data-nodes, and the audio param strip. WRITE commands wait
   for the Layer-3 controller. `rect` is in the editor's own draw space (world for visual, screen for audio)
   — reconciling the two spaces is the separate ADR-0023 #3 problem.
+- **`node_view.h`** — the shared graph **camera**: the pure `NodeView` world↔screen transform + the
+  pan / `zoom_at` (shared `[kMinZoom, kMaxZoom]` clamp) / `reset_to` gesture math. Deliberately
+  renderer-free (no GPU / marks) so the interaction math is a standalone, headlessly-testable unit
+  (`tests/test_graph_camera.cpp`); `GraphCanvas` owns one and forwards its pan/zoom/reset to it.
 - **`node_canvas.h` / `graph_canvas.h`** — the **shared graph-UI substrate** both node editors
   (visuals `node_graph`, per-track `audio_node_graph`) draw through (ADR-0023). `node_canvas.h` is
-  the vocabulary: the `NodeView` world↔screen transform (+ `region_view`), `CardPorts` card geometry,
+  the vocabulary: the `NodeView` transform (from `node_view.h`, + `region_view`), `CardPorts` card geometry,
   and the marks (`node_grid`/`node_wire`/`node_port`/`node_card` [selection ring folded in] /
   `node_preview_panel`/`node_waveform` + the ADR-0019 error vocab). `graph_canvas.h` is the **Layer-2
   `GraphCanvas`** — a small class each editor owns as a member, providing the shared draw skeleton

@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/node_view.h"     // NodeView — the pure world<->screen camera (transform + gesture math)
 #include "ui/renderer_2d.h"
 #include "ui/ui_style.h"
 #include <algorithm>
@@ -11,18 +12,8 @@
 // data-node sparklines, param bands) stay in each editor; everything here is graph-agnostic.
 namespace vivid::ui {
 
-// Pan/zoom view transform (world <-> screen). Both editors kept private copies of this; now shared.
-struct NodeView {
-    float ox = 0.f, oy = 0.f, scale = 1.f;
-    void to_world(double sx, double sy, double& wx, double& wy) const {
-        wx = (sx - ox) / scale; wy = (sy - oy) / scale;
-    }
-    void to_screen(double wx, double wy, double& sx, double& sy) const {
-        sx = ox + wx * scale; sy = oy + wy * scale;
-    }
-    void pan(float dx, float dy) { ox += dx; oy += dy; }
-    // (Zoom-around-cursor lives on GraphCanvas — it carries the shared clamp policy, ADR-0023 #3d.)
-};
+// NodeView (the pan/zoom world<->screen camera + its gesture math) lives in ui/node_view.h — a pure,
+// renderer-free header so the interaction math is a standalone, headlessly-testable unit.
 
 // The audio graph stores a zoom + a pan that are RELATIVE to its graph region (so the graph stays
 // put when the region moves — e.g. when the param band grows/shrinks). This reconstructs the
