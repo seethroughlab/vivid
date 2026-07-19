@@ -330,6 +330,7 @@ int         session_track_audio_graph_ok(Session*, int track);
 int         session_track_audio_graph_node_count(Session*, int track);
 int         session_track_audio_graph_node_id(Session*, int track, int i);
 int         session_track_audio_graph_node_gnid(Session*, int track, int i);       // ADR-0022 P2b.3c: session-global id (-1 if unassigned)
+void        session_set_node_gnid(Session*, int track, int node_id, int gnid);     // ADR-0022 P4.4: restore a saved gnid on load
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
