@@ -120,6 +120,12 @@ struct GNodeBind {
     // never reads it — it is host/UI addressing (the substrate cross-track AUDIO edges name nodes by,
     // P2b.4) that rides along in the POD bind harmlessly.
     int32_t gnid = -1;
+    // ADR-0022 P3.2b: for a MidiClip node, WHICH scene slot it represents (-1 = not a per-scene clip
+    // node). The derived graph builds one MidiClip node per scene; only the node whose scene == the
+    // track's active scene emits (the others gate to silence), so the shared scheduler still drives
+    // exactly one live stream. Set on the UI thread, read on the audio thread (a plain int, published
+    // via the gbinds swap like every other field).
+    int32_t scene = -1;
 };
 // The audio thread swaps gbinds under a try_lock as a plain copy (reserved capacity, no move) —
 // that is only RT-safe while the bind is trivially copyable. Adding a non-POD member here would
@@ -745,10 +751,13 @@ static void rebuild_track_graph(Track* t) {
     const bool has_native_inst = t->op_instrument_edit != nullptr;
     const bool has_vst3_inst   = t->handle != nullptr;
     const bool has_source = t->is_audio || has_clap_inst || has_native_inst || has_vst3_inst;
+    // ADR-0022 P3.2b: one MidiClip node PER SCENE (edit_clips is sized to the scene count on the UI
+    // thread — where this runs — and grown by session_add_scene, so it is the reliable count here).
+    const int  nscenes = t->is_audio ? 0 : std::clamp(static_cast<int>(t->edit_clips.size()), 1, kMaxScenes);
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
                               + static_cast<int>(t->op_effects_edit.size())
                               + static_cast<int>(t->clap_effects.size()) + 1   // source + VST3 FX + native FX + CLAP FX + output
-                              + (t->is_audio ? 0 : 3);   // ADR-0022 P3.1a/b/P3.2a: + MidiClip + MidiIn + Selector on every instrument track
+                              + (t->is_audio ? 0 : (2 + nscenes));   // ADR-0022 P3.1a/b/P3.2a/b: + MidiIn + Selector + one MidiClip per scene
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -795,10 +804,19 @@ static void rebuild_track_graph(Track* t) {
         const int selector = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "sel");
         t->agraph.set_note_ports(selector, /*note_in*/true, /*note_out*/true);
         t->agraph.connect(selector, prev, vivid::audio::EdgeKind::Note);
-        t->agnodes.push_back({ GNKind::MidiClip, nullptr, nullptr });
-        const int midi_clip = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
-        t->agraph.set_note_ports(midi_clip, /*note_in*/false, /*note_out*/true);
-        t->agraph.connect(midi_clip, selector, vivid::audio::EdgeKind::Note);
+        // ADR-0022 P3.2b: one MidiClip node per scene slot, each feeding the Selector. Only the node
+        // whose scene == the active scene emits (t.nev_clip, driven by the shared scheduler already
+        // pointed at the active clip); the rest gate to silence, so the Selector's merge is exactly the
+        // active clip — bit-identical to P3.2a's single MidiClip. This makes each scene's clip an
+        // individually-addressable node; nscenes ≤ kMaxScenes = kMaxNoteInputs, so the Selector's note
+        // fan-in never overflows.
+        for (int sc = 0; sc < nscenes; ++sc) {
+            GNodeBind cb; cb.kind = GNKind::MidiClip; cb.scene = sc;
+            t->agnodes.push_back(cb);
+            const int midi_clip = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
+            t->agraph.set_note_ports(midi_clip, /*note_in*/false, /*note_out*/true);
+            t->agraph.connect(midi_clip, selector, vivid::audio::EdgeKind::Note);
+        }
         t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
         const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
         t->agraph.set_note_ports(midi_in, /*note_in*/false, /*note_out*/true);
@@ -1022,17 +1040,22 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         // MidiIn / MidiClip: note production AS NODES. Each publishes its stream on its note-out
         // buffer for whatever it feeds, and makes no sound of its own. ADR-0022 P3.1b split what
         // P3.1a's single MidiIn carried: MidiIn now emits t.nev_live (live MIDI + editor preview),
-        // MidiClip emits t.nev_clip (clip scheduler + release flush). Merged at the instrument,
-        // MidiClip+MidiIn == the pre-split t.nev.
+        // MidiClip emits t.nev_clip (clip scheduler + release flush). ADR-0022 P3.2b: there is one
+        // MidiClip node per scene, but only the node whose scene == the active scene emits the clip
+        // stream (t.nev_clip is the active clip, from the shared scheduler); the rest gate to silence.
         if (nb.kind == GNKind::MidiIn || nb.kind == GNKind::MidiClip) {
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
             if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
-                const std::vector<NoteEvent>& srcn = (nb.kind == GNKind::MidiClip) ? t.nev_clip : t.nev_live;
+                const bool emit = (nb.kind == GNKind::MidiIn) ||
+                                  (nb.scene == t.active.load(std::memory_order_relaxed));   // active scene's clip only
                 std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
                 outn.clear();
-                for (const NoteEvent& e : srcn) {
-                    if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
-                    outn.push_back(e);
+                if (emit) {
+                    const std::vector<NoteEvent>& srcn = (nb.kind == GNKind::MidiClip) ? t.nev_clip : t.nev_live;
+                    for (const NoteEvent& e : srcn) {
+                        if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
+                        outn.push_back(e);
+                    }
                 }
             }
             return;
@@ -4828,6 +4851,14 @@ int session_add_scene(Session* s) {
         }
     }
     s->scenes = ns;
+    // ADR-0022 P3.2b: the derived note sub-graph has one MidiClip node per scene, so a new scene
+    // needs a new clip node. Rebuild each DERIVED instrument track's graph (authoritative tracks own
+    // their topology — their per-scene nodes are a P3.3 concern). Cheap: the derived rebuild just
+    // regenerates the linear chain + note sub-graph.
+    for (auto& tp : s->tracks) {
+        Track* t = tp.get();
+        if (!t->is_audio && !t->graph_authoritative) rebuild_track_graph(t);
+    }
     rebuild_track_view(s);
     std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
     return ns - 1;
