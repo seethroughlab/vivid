@@ -260,6 +260,7 @@ struct Track {
     // across sources (like t.vev). Reserved off the audio thread; src_vev is fixed-capacity (256).
     std::vector<NoteEvent> src_nev;
     std::vector<ExprEvent> src_eev;
+    std::vector<NoteEvent> ni_nev;         // native-instrument note scratch: [scene-switch releases ++ this block's notes]
     Vst3EventList          src_vev;
     LiveMidi              preview_in;       // editor keyboard-audition notes (drained every block, any arm state)
     uint64_t              steady = 0;
@@ -624,6 +625,7 @@ static void reserve_track_graph(Track* t) {
     t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
     t->node_scope_head.assign(kGraphMaxNodes, 0u);
     t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
+    t->ni_nev.reserve(kGraphMaxNotes);   // native-instrument scene-release prepend scratch (RT: no alloc)
     // ADR-0015: the note pool — one note list per possible note-emitting node, each reserved to
     // kGraphMaxNotes. Preallocated to the same worst case as the audio pool, so the audio thread
     // only ever clear()s and push_back()s within capacity: no allocation in the callback.
@@ -1104,6 +1106,24 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
             if (!full_range) {   // key-split: hand this source only its in-range notes
                 filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
                 nn = t.src_nev.data(); nc = static_cast<uint32_t>(t.src_nev.size());
+            }
+            // Prepend this block's scene-switch note-offs, exactly as the VST3 path does via t.vev and
+            // the CLAP path does in render_clap_instrument. Without this a NATIVE instrument never
+            // received scene-switch releases (they only reached t.vev / t.scene_rel), so switching away
+            // from a native clip with held notes left them stuck. The releases carry the OUTGOING clip's
+            // note_ids, so the op releases exactly those voices regardless of order. Only builds the
+            // scratch on a switch block (t.scene_rel non-empty); the steady-state path is unchanged.
+            if (!t.scene_rel.empty()) {
+                t.ni_nev.clear();
+                for (const NoteEvent& e : t.scene_rel) {
+                    if (t.ni_nev.size() >= kGraphMaxNotes) break;   // truncate, never allocate
+                    t.ni_nev.push_back(e);
+                }
+                for (uint32_t i = 0; i < nc; ++i) {
+                    if (t.ni_nev.size() >= kGraphMaxNotes) break;
+                    t.ni_nev.push_back(nn[i]);
+                }
+                nn = t.ni_nev.data(); nc = static_cast<uint32_t>(t.ni_nev.size());
             }
             vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nn, nc,
                                     nullptr, 0, nullptr, ovr, novr);
