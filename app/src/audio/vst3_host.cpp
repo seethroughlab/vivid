@@ -87,7 +87,11 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
 // the old invisible per-track broadcast.
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod };
+// MidiClip (ADR-0022 P3.1b): the clip scheduler + play-stop release flush AS A NODE — the MIDI
+// mirror of the Sampler, reading t.active. Split out of MidiIn so clips and live/preview are
+// distinct note SOURCES; both feed the instrument's note-in (merged, time-sorted). Appended to
+// keep every prior enumerator's value stable.
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -233,7 +237,9 @@ struct Track {
     uint32_t              capture_sample_rate = 0;
     size_t                capture_write_pos = 0;
     size_t                capture_filled = 0;
-    std::vector<NoteEvent> nev;
+    std::vector<NoteEvent> nev;            // full per-block note stream = nev_clip ++ nev_live (broadcast fallback + blk.notes)
+    std::vector<NoteEvent> nev_clip;       // ADR-0022 P3.1b: clip scheduler + release flush (feeds the MidiClip node)
+    std::vector<NoteEvent> nev_live;       // ADR-0022 P3.1b: live MIDI + editor preview (feeds the MidiIn node)
     std::vector<NoteEvent> scene_rel;      // scene-switch note-offs for the CLAP path (VST3 gets them via vev)
     std::vector<ExprEvent> eev;            // per-note expression scratch (M3), pre-reserved
     Vst3EventList          vev;            // VST3 event list for this block (scene-switch releases +
@@ -738,7 +744,7 @@ static void rebuild_track_graph(Track* t) {
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
                               + static_cast<int>(t->op_effects_edit.size())
                               + static_cast<int>(t->clap_effects.size()) + 1   // source + VST3 FX + native FX + CLAP FX + output
-                              + (t->is_audio ? 0 : 1);   // ADR-0022 P3.1a: + a MidiIn source on every instrument track
+                              + (t->is_audio ? 0 : 2);   // ADR-0022 P3.1a/b: + a MidiIn AND a MidiClip source on every instrument track
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -764,16 +770,22 @@ static void rebuild_track_graph(Track* t) {
     // EDGES (n_note_in), not this flag, so a derived instrument with no note edge still reads its own
     // stream. A Sampler (is_audio) ignores notes, so it is left without a note-in port.
     //
-    // ADR-0022 P3.1a — note production becomes a graph node. Insert a MidiIn source feeding the
-    // instrument through a NOTE edge, replacing the invisible per-track t.nev broadcast fallback for
-    // derived instrument tracks. GNKind::MidiIn emits the ENTIRE t.nev (clips + live MIDI + musical
-    // typing + MCP + preview + scene-switch releases), so the instrument receives exactly the same
-    // note stream it read via the broadcast → bit-identical audio. The note edge forces MidiIn to
-    // render before the instrument (all edge kinds constrain topo order). graph_note_input's broadcast
-    // fallback is untouched — it is just no longer reached for this instrument (n_note_in becomes 1).
-    // A Sampler (is_audio) ignores notes, so it gets neither a note-in port nor a MidiIn source.
+    // ADR-0022 P3.1a/b — note production becomes graph nodes. Insert two note SOURCES feeding the
+    // instrument through NOTE edges, replacing the invisible per-track t.nev broadcast fallback for
+    // derived instrument tracks: a MidiClip node (t.nev_clip = clip scheduler + release flush; the
+    // MIDI mirror of the Sampler) and a MidiIn node (t.nev_live = live MIDI + musical typing + MCP +
+    // preview). Together MidiClip+MidiIn == the pre-split t.nev, so the instrument receives the same
+    // notes — every event keeps its exact pitch/vel/offset/id. The note edges force both to render
+    // before the instrument (all edge kinds constrain topo order); with two note inputs the instrument
+    // reads them via graph_note_input's merge path, which TIME-SORTS by sample offset (what plugins
+    // and scanning native ops require). graph_note_input's broadcast fallback is untouched — just no
+    // longer reached for this instrument. A Sampler (is_audio) ignores notes, so it gets none of this.
     if (!t->is_audio) {
         t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
+        t->agnodes.push_back({ GNKind::MidiClip, nullptr, nullptr });
+        const int midi_clip = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
+        t->agraph.set_note_ports(midi_clip, /*note_in*/false, /*note_out*/true);
+        t->agraph.connect(midi_clip, prev, vivid::audio::EdgeKind::Note);
         t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
         const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
         t->agraph.set_note_ports(midi_in, /*note_in*/false, /*note_out*/true);
@@ -994,14 +1006,18 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
         // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
         const std::vector<NoteEvent>& nsrc = graph_note_input(t, s, b);
-        // MidiIn: the track's note stream AS A NODE. It publishes those notes on its note
-        // buffer for whatever it feeds, and makes no sound of its own.
-        if (nb.kind == GNKind::MidiIn) {
+        // MidiIn / MidiClip: note production AS NODES. Each publishes its stream on its note-out
+        // buffer for whatever it feeds, and makes no sound of its own. ADR-0022 P3.1b split what
+        // P3.1a's single MidiIn carried: MidiIn now emits t.nev_live (live MIDI + editor preview),
+        // MidiClip emits t.nev_clip (clip scheduler + release flush). Merged at the instrument,
+        // MidiClip+MidiIn == the pre-split t.nev.
+        if (nb.kind == GNKind::MidiIn || nb.kind == GNKind::MidiClip) {
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
             if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size())) {
+                const std::vector<NoteEvent>& srcn = (nb.kind == GNKind::MidiClip) ? t.nev_clip : t.nev_live;
                 std::vector<NoteEvent>& outn = t.npool[static_cast<size_t>(s.note_out_buf)];
                 outn.clear();
-                for (const NoteEvent& e : t.nev) {
+                for (const NoteEvent& e : srcn) {
                     if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
                     outn.push_back(e);
                 }
@@ -1406,7 +1422,7 @@ static Track* make_track(Vst3Handle* h, const std::string& name, int kind, uint3
     else if (kind == kBass)  for (auto& p : bass_patterns()) t->clips.push_back(p);
     else                     for (auto& p : base_patterns()) t->clips.push_back(p);   // lead, at pitch
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64); t->scene_rel.reserve(64);
+    t->nev.reserve(128); t->nev_clip.reserve(64); t->nev_live.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;  // editor's mirror starts equal to the live clips
     t->edit_clips.reserve(kMaxScenes);   // operator= may shrink capacity to size — re-reserve
@@ -1426,7 +1442,7 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
     t->clips.reserve(kMaxScenes);   // reserve to the scene cap so session_add_scene appends without realloc
     for (int i = 0; i < scenes; ++i) { MidiClip c; c.length = 4.0; t->clips.push_back(c); }
     t->sched.reset(&t->clips[0]);
-    t->nev.reserve(64); t->scene_rel.reserve(64);
+    t->nev.reserve(128); t->nev_clip.reserve(64); t->nev_live.reserve(64); t->scene_rel.reserve(64);
 t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->edit_clips.reserve(kMaxScenes);   // operator= may shrink capacity to size — re-reserve
@@ -3021,9 +3037,17 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 }
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
             }
-            t.nev.clear(); t.eev.clear();
-            if (release_all)    t.sched.flush(t.nev);                            // play->stop edge: release held notes
-            else if (playing)   t.sched.emit(beats, delta, frames, t.nev, t.eev);  // paused: emit nothing (tails still ring)
+            // ADR-0022 P3.1b: split note production into two source streams that P3.1a's single
+            // MidiIn used to carry together. nev_clip = the clip scheduler + play-stop release
+            // flush (feeds the MidiClip node); nev_live = live MIDI + editor preview (feeds the
+            // MidiIn node). t.nev is then rebuilt as nev_clip ++ nev_live — byte-identical to the
+            // pre-split stream (same sources, same push order) — so the broadcast fallback and
+            // blk.notes are unchanged. The instrument now reads BOTH via note edges, merged and
+            // time-sorted by graph_note_input.
+            t.nev_clip.clear(); t.eev.clear();
+            if (release_all)    t.sched.flush(t.nev_clip);                            // play->stop edge: release held notes
+            else if (playing)   t.sched.emit(beats, delta, frames, t.nev_clip, t.eev);  // paused: emit nothing (tails still ring)
+            t.nev_live.clear();
             // Live MIDI monitoring (M6): the armed track drains the session live-input
             // queue into its own event stream so played/typed notes sound through its
             // instrument, whether or not the transport is running. note_id lives in the
@@ -3031,15 +3055,20 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             if (t.id == s->armed_track.load(std::memory_order_relaxed)) {
                 LiveMidi::Ev le;
                 while (s->live_in.pop(le))
-                    t.nev.push_back(NoteEvent{ 0u, le.on != 0, le.pitch, le.vel,
-                                              kLiveNoteIdBase + le.pitch, 0.f });
+                    t.nev_live.push_back(NoteEvent{ 0u, le.on != 0, le.pitch, le.vel,
+                                                   kLiveNoteIdBase + le.pitch, 0.f });
             }
             // Editor keyboard-audition: this track's own preview queue, sounded whatever
             // the arm state (a distinct note_id range so its offs never hit clip notes).
             { LiveMidi::Ev pe;
               while (t.preview_in.pop(pe))
-                  t.nev.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
-                                            kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
+                  t.nev_live.push_back(NoteEvent{ 0u, pe.on != 0, pe.pitch, pe.vel,
+                                                 kLiveNoteIdBase + 1000 + pe.pitch, 0.f }); }
+            // Rebuild the legacy full stream = clip ++ live, exact same order as before the split
+            // (within reserved capacity → no RT allocation).
+            t.nev.clear();
+            t.nev.insert(t.nev.end(), t.nev_clip.begin(), t.nev_clip.end());
+            t.nev.insert(t.nev.end(), t.nev_live.begin(), t.nev_live.end());
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }
 
@@ -3548,9 +3577,10 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::NativeInst: case GNKind::Vst3Inst: case GNKind::ClapInst: case GNKind::Sampler: return 0;  // source/instrument
         case GNKind::NativeFx:   case GNKind::Vst3Fx:   case GNKind::ClapFx:   return 1;              // effect
         case GNKind::Output:     return 2;
-        case GNKind::MidiIn:       return 3;   // ADR-0015: the track's note stream as a node
+        case GNKind::MidiIn:       return 3;   // ADR-0015: the track's live/preview note stream as a node
         case GNKind::NativeNoteFx: return 4;   // ADR-0015: a note effect (Arp) — notes in, notes out
         case GNKind::NativeMod:    return 5;   // ADR-0022: a modulator (LFO) — no audio, emits control
+        case GNKind::MidiClip:     return 6;   // ADR-0022 P3.1b: the clip scheduler as a note source
     }
     return -1;
 }
