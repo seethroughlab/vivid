@@ -381,6 +381,20 @@ int         session_audio_graph_load_plugin_node(Session*, int track, int node_i
                                                  const char* state);
 int         session_audio_graph_remove_node(Session*, int track, int node_id);      // 1 ok / 0 fail (effects only)
 int         session_audio_graph_connect(Session*, int track, int from_id, int to_id);   // 1 ok / 0 (dup/cycle/bad)
+// ADR-0022 P4: the session-global (gnid) node API — address a node by its session-global id instead
+// of (track, local node id). Delegates to the per-track functions (identical behaviour). The MCP +
+// persist surfaces migrate onto this to collapse the (track,node) addressing. gnid comes from
+// session_track_audio_graph_node_gnid / get_audio_graph.
+int         session_graph_node_track(Session*, int gnid);          // owning track index, or -1
+int         session_graph_node_kind(Session*, int gnid);
+const char* session_graph_node_type(Session*, int gnid);
+int         session_graph_node_param_count(Session*, int gnid);
+const char* session_graph_node_param_name(Session*, int gnid, int i);
+float       session_graph_node_param_get(Session*, int gnid, int i);
+void        session_graph_node_param_set(Session*, int gnid, int i, float v);
+int         session_graph_remove_node(Session*, int gnid);
+int         session_graph_connect(Session*, int from_gnid, int to_gnid, int kind);      // intra OR cross-track; 0 audio/1 note
+int         session_graph_disconnect(Session*, int from_gnid, int to_gnid, int kind);
 // ADR-0015: notes are a signal too. kind: 0 = audio (sums at the destination), 1 = note (merges).
 int         session_audio_graph_connect_kind(Session*, int track, int from_id, int to_id, int kind);
 // The track's note stream as an explicit NODE (clips + live MIDI + typing + MCP + preview). Wire

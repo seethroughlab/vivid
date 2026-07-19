@@ -4195,6 +4195,50 @@ int session_audio_graph_connect(Session* s, int t, int from_id, int to_id) {
     return session_audio_graph_connect_kind(s, t, from_id, to_id, 0);   // audio (the default signal)
 }
 
+// ==== ADR-0022 P4.2: the session-global (gnid) node API ====================================
+// A parallel "session_graph_*" surface addressing a node by its session-global id (gnid) instead
+// of (track, local node id). resolve_gnid finds the owning track + node position; each shim
+// delegates to the existing per-track function, so behaviour is identical — this is the C-API the
+// MCP + persist surfaces migrate onto (P4.3/P4.4), collapsing the (track,node) addressing.
+static bool resolve_gnid(Session* s, int gnid, int* out_track, int* out_pos) {
+    if (!s || gnid < 0) return false;
+    for (size_t t = 0; t < s->tracks.size(); ++t) {
+        const std::vector<GNodeBind>& ag = s->tracks[t]->agnodes;
+        for (size_t i = 0; i < ag.size(); ++i)
+            if (ag[i].gnid == gnid) { if (out_track) *out_track = static_cast<int>(t); if (out_pos) *out_pos = static_cast<int>(i); return true; }
+    }
+    return false;
+}
+static int gnid_node_id(Session* s, int track, int pos) { return session_track_audio_graph_node_id(s, track, pos); }
+
+int         session_graph_node_track(Session* s, int gnid) { int t=-1; return resolve_gnid(s, gnid, &t, nullptr) ? t : -1; }
+int         session_graph_node_kind(Session* s, int gnid)  { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_track_audio_graph_node_kind(s, t, p) : -1; }
+const char* session_graph_node_type(Session* s, int gnid)  { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_track_audio_graph_node_type(s, t, p) : ""; }
+int         session_graph_node_param_count(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_param_count(s, t, gnid_node_id(s,t,p)) : 0; }
+const char* session_graph_node_param_name(Session* s, int gnid, int i) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_param_name(s, t, gnid_node_id(s,t,p), i) : ""; }
+float       session_graph_node_param_get(Session* s, int gnid, int i) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_param_get(s, t, gnid_node_id(s,t,p), i) : 0.f; }
+void        session_graph_node_param_set(Session* s, int gnid, int i, float v) { int t,p; if (resolve_gnid(s, gnid, &t, &p)) session_audio_graph_node_param_set(s, t, gnid_node_id(s,t,p), i, v); }
+int         session_graph_remove_node(Session* s, int gnid) { int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_remove_node(s, t, gnid_node_id(s,t,p)) : 0; }
+
+// Unified connect/disconnect: intra-track OR cross-track, chosen by whether the endpoints share a
+// track — the payoff of session-global addressing (one call spans the whole session). kind: 0 audio,
+// 1 note. (Control edges take a dest_param, so they keep their own entry point.)
+int session_graph_connect(Session* s, int from_gnid, int to_gnid, int kind) {
+    int ta,pa,tb,pb;
+    if (!resolve_gnid(s, from_gnid, &ta, &pa) || !resolve_gnid(s, to_gnid, &tb, &pb)) return 0;
+    const int fa = gnid_node_id(s, ta, pa), fb = gnid_node_id(s, tb, pb);
+    if (ta == tb) return session_audio_graph_connect_kind(s, ta, fa, fb, kind);
+    return (kind == 1) ? session_connect_note(s, ta, fa, tb, fb) : session_connect_audio(s, ta, fa, tb, fb);
+}
+int session_graph_disconnect(Session* s, int from_gnid, int to_gnid, int kind) {
+    int ta,pa,tb,pb;
+    if (!resolve_gnid(s, from_gnid, &ta, &pa) || !resolve_gnid(s, to_gnid, &tb, &pb)) return 0;
+    const int fa = gnid_node_id(s, ta, pa), fb = gnid_node_id(s, tb, pb);
+    if (ta == tb) { session_audio_graph_disconnect(s, ta, fa, fb); return 1; }
+    if (kind == 1) session_disconnect_note(s, ta, fa, tb, fb); else session_disconnect_audio(s, ta, fa, tb, fb);
+    return 1;
+}
+
 // ADR-0015: add a native NOTE EFFECT (Arp / chord / transpose) as a node. It is wired with NOTE
 // edges only — it makes no sound, so it gets no audio wiring at all (an audio edge to Output would
 // just add silence). Returns the new node id, or -1 (unknown op / cap / no track).

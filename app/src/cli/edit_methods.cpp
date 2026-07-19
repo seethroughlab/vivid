@@ -48,6 +48,9 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_add_plugin", { "Add Audio Node",     false } },
         { "audio_graph_remove_node",{ "Remove Audio Node",  false } },
         { "audio_graph_connect",    { "Connect Audio",      false } },
+        { "graph_connect",          { "Connect",            false } },   // ADR-0022 P4: by gnid (intra/cross)
+        { "graph_disconnect",       { "Disconnect",         false } },
+        { "graph_set_node_param",   { "Set Param",          true  } },
         { "audio_graph_connect_control",    { "Connect Modulation",    false } },
         { "audio_graph_disconnect_control", { "Disconnect Modulation", false } },
         { "session_connect_control",        { "Connect Modulation",    false } },
