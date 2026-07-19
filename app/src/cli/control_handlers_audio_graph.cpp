@@ -115,6 +115,47 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             }
         return err(code::kBadArg, "set failed (unknown gnid or param name)");
     };
+    // ADR-0022 P4.3: CONTROL (modulation) edges by gnid — intra OR cross-track. `param` is the
+    // target node's param index (from get_audio_graph); amount is a fraction of its range.
+    handlers_["graph_connect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int from = b.value("from", -1), to = b.value("to", -1), param = b.value("param", -1);
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_graph_connect_control(c.session, from, to, param, amount, curve, invert, bipolar))
+            return err(code::kBadArg, "control edge rejected (unknown gnid, duplicate param, self-loop, or cycle)");
+        return ok();
+    };
+    handlers_["graph_disconnect_control"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int from = b.value("from", -1), to = b.value("to", -1), param = b.value("param", -1);
+        if (!P::session_graph_disconnect_control(c.session, from, to, param)) return err(code::kBadArg, "unknown gnid");
+        return ok();
+    };
+    handlers_["graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int from = b.value("from", -1), to = b.value("to", -1), param = b.value("param", -1);
+        const float amount = b.value("amount", 1.f), curve = b.value("curve", 0.f);
+        const int invert = b.value("invert", false) ? 1 : 0, bipolar = b.value("bipolar", false) ? 1 : 0;
+        if (!P::session_graph_set_control_shape(c.session, from, to, param, amount, curve, invert, bipolar))
+            return err(code::kBadArg, "no such control edge");
+        return ok();
+    };
+    // ADR-0022 P4.3: key-split range on a source node, by gnid.
+    handlers_["graph_set_node_key_range"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int gnid = b.value("gnid", -1), lo = b.value("lo", 0), hi = b.value("hi", 127);
+        if (P::session_graph_node_track(c.session, gnid) < 0) return err(code::kBadArg, "unknown gnid");
+        P::session_graph_node_key_range_set(c.session, gnid, lo, hi);
+        json r = ok(); r["gnid"] = gnid; r["lo"] = lo; r["hi"] = hi; return r;
+    };
+    // ADR-0022 P4.3: remove a node by gnid (effects only, like the per-track version).
+    handlers_["graph_remove_node"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int gnid = b.value("gnid", -1);
+        if (!P::session_graph_remove_node(c.session, gnid)) return err(code::kBadArg, "remove failed (unknown gnid, or not removable)");
+        json r = ok(); r["gnid"] = gnid; return r;
+    };
     // A native NOTE EFFECT (ADR-0015), e.g. "Arp": notes in -> notes out, no audio. Wire MidiIn ->
     // it -> an instrument with NOTE edges.
     handlers_["audio_graph_add_note_op"] = [](const ControlCtx& c, const json& b) {

@@ -4239,6 +4239,41 @@ int session_graph_disconnect(Session* s, int from_gnid, int to_gnid, int kind) {
     return 1;
 }
 
+// ADR-0022 P4.3: CONTROL (modulation) edges by gnid — the modulation analog of session_graph_connect,
+// unified across intra-track and cross-track. dest_param is the target op's param index; shape =
+// amount/curve/invert/bipolar (the ControlShape fields).
+int session_graph_connect_control(Session* s, int from_gnid, int to_gnid, int dest_param,
+                                  float amount, float curve, int invert, int bipolar) {
+    int ta,pa,tb,pb;
+    if (!resolve_gnid(s, from_gnid, &ta, &pa) || !resolve_gnid(s, to_gnid, &tb, &pb)) return 0;
+    const int fa = gnid_node_id(s, ta, pa), fb = gnid_node_id(s, tb, pb);
+    return (ta == tb) ? session_audio_graph_connect_control(s, ta, fa, fb, dest_param, amount, curve, invert, bipolar)
+                      : session_connect_control(s, ta, fa, tb, fb, dest_param, amount, curve, invert, bipolar);
+}
+int session_graph_disconnect_control(Session* s, int from_gnid, int to_gnid, int dest_param) {
+    int ta,pa,tb,pb;
+    if (!resolve_gnid(s, from_gnid, &ta, &pa) || !resolve_gnid(s, to_gnid, &tb, &pb)) return 0;
+    const int fa = gnid_node_id(s, ta, pa), fb = gnid_node_id(s, tb, pb);
+    if (ta == tb) return session_audio_graph_disconnect_control(s, ta, fa, fb, dest_param);
+    session_disconnect_control(s, ta, fa, tb, fb, dest_param); return 1;
+}
+int session_graph_set_control_shape(Session* s, int from_gnid, int to_gnid, int dest_param,
+                                    float amount, float curve, int invert, int bipolar) {
+    int ta,pa,tb,pb;
+    if (!resolve_gnid(s, from_gnid, &ta, &pa) || !resolve_gnid(s, to_gnid, &tb, &pb)) return 0;
+    const int fa = gnid_node_id(s, ta, pa), fb = gnid_node_id(s, tb, pb);
+    return (ta == tb) ? session_audio_graph_set_control_shape(s, ta, fa, fb, dest_param, amount, curve, invert, bipolar)
+                      : (session_set_control_shape(s, ta, fa, tb, fb, dest_param, amount, curve, invert, bipolar) ? 1 : 0);
+}
+
+// ADR-0022 P4.3: key-split range on a source node, by gnid.
+void session_graph_node_key_range_set(Session* s, int gnid, int lo, int hi) {
+    int t,p; if (resolve_gnid(s, gnid, &t, &p)) session_audio_graph_node_key_range_set(s, t, gnid_node_id(s,t,p), lo, hi);
+}
+int session_graph_node_key_range_get(Session* s, int gnid, int* lo, int* hi) {
+    int t,p; return resolve_gnid(s, gnid, &t, &p) ? session_audio_graph_node_key_range_get(s, t, gnid_node_id(s,t,p), lo, hi) : 0;
+}
+
 // ADR-0015: add a native NOTE EFFECT (Arp / chord / transpose) as a node. It is wired with NOTE
 // edges only — it makes no sound, so it gets no audio wiring at all (an audio edge to Output would
 // just add silence). Returns the new node id, or -1 (unknown op / cap / no track).

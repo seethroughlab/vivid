@@ -395,6 +395,11 @@ void        session_graph_node_param_set(Session*, int gnid, int i, float v);
 int         session_graph_remove_node(Session*, int gnid);
 int         session_graph_connect(Session*, int from_gnid, int to_gnid, int kind);      // intra OR cross-track; 0 audio/1 note
 int         session_graph_disconnect(Session*, int from_gnid, int to_gnid, int kind);
+int         session_graph_connect_control(Session*, int from_gnid, int to_gnid, int dest_param, float amount, float curve, int invert, int bipolar);
+int         session_graph_disconnect_control(Session*, int from_gnid, int to_gnid, int dest_param);
+int         session_graph_set_control_shape(Session*, int from_gnid, int to_gnid, int dest_param, float amount, float curve, int invert, int bipolar);
+void        session_graph_node_key_range_set(Session*, int gnid, int lo, int hi);
+int         session_graph_node_key_range_get(Session*, int gnid, int* lo, int* hi);
 // ADR-0015: notes are a signal too. kind: 0 = audio (sums at the destination), 1 = note (merges).
 int         session_audio_graph_connect_kind(Session*, int track, int from_id, int to_id, int kind);
 // The track's note stream as an explicit NODE (clips + live MIDI + typing + MCP + preview). Wire
