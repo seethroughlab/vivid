@@ -201,14 +201,14 @@ void update_drag_continuations(App& app, Window& win, double mx, double my) {
     // ADR-0014: the floating output preview — drag the header to move it, the corner grip to size it
     // (width only; the height follows the output's aspect). Kept loosely inside the visuals column so
     // it can't be lost off-screen.
-    if (win.preview_drag || win.preview_resize) {
-        if (win.preview_resize) {
-            win.preview_w = static_cast<float>(mx - win.preview_grab_x);
+    if (win.preview.dragging || win.preview.resizing) {
+        if (win.preview.resizing) {
+            win.preview.w = static_cast<float>(mx - win.preview.grab_x);
         } else {
-            win.preview_x = static_cast<float>(mx - win.preview_grab_x);
-            win.preview_y = static_cast<float>(my - win.preview_grab_y);
+            win.preview.x = static_cast<float>(mx - win.preview.grab_x);
+            win.preview.y = static_cast<float>(my - win.preview.grab_y);
         }
-        win.clamp_preview();   // one authority for "the preview stays inside the column"
+        win.preview.clamp(win.visuals_panel());   // one authority for "the preview stays inside the column"
     }
     if (app.graph) app.graph->on_move(mx, my);
     if (win.editor && win.editor->is_open()) {
@@ -458,13 +458,13 @@ void run_frame_loop(App& app, Window& win) {
             // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
             vgraph.run_chain(frame.encoder, tsec, srcTex.view);
-            win.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
-            win.clamp_preview();                   // ...so a new aspect can resize it out of bounds
+            win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
+            win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
             // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the
             // node's params with the actual window state each frame — the params are the truth, the
             // UI buttons just write to them (and so do MCP / the control server, for free).
             if (vgraph.output_index() >= 0) {
-                win.preview_show = vgraph.output_param("preview", 1.f) > 0.5f;
+                win.preview.show = vgraph.output_param("preview", 1.f) > 0.5f;
                 const bool want_out = vgraph.output_param("launch", 0.f) > 0.5f;
                 const int  disp = static_cast<int>(std::lround(vgraph.output_param("display", 0.f)));
                 if (want_out && !win.popout)                      open_popout(app, win, disp);
@@ -511,15 +511,15 @@ void run_frame_loop(App& app, Window& win) {
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             // The floating OUTPUT preview: blitted OVER the graph canvas (a GPU pass recorded after
             // pass 1's, so it lands on top), with its chrome drawn above it in pass 2.
-            if (win.preview_show) {
-                const Rect vp = win.viewer_rect();
+            if (win.preview.show) {
+                const Rect vp = win.preview.viewer();
                 vgraph.present_to(frame.encoder, frame.view, vp.x * win.dpi, vp.y * win.dpi,
                                   vp.w * win.dpi, vp.h * win.dpi,
                                   static_cast<float>(win.fb_w), static_cast<float>(win.fb_h),
                                   tsec, /*clear*/false);
             }
             // Pass 2: floating overlays — drawn AFTER pass 1 so they sit on top.
-            if (win.preview_show) draw_output_preview(ui, win, mx, my);
+            if (win.preview.show) draw_output_preview(ui, win, mx, my);
             graph.draw_overlays(ui);      // the visuals Tab chooser
             win.audio_chooser.draw(ui);   // the audio Tab chooser (A3) — same widget, one catalog
             draw_menu(ui, win.menu,
