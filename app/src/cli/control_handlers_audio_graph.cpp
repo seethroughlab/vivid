@@ -81,6 +81,40 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "edge rejected (duplicate, self-loop, unknown node, or would create a cycle)");
         return ok();
     };
+    // ADR-0022 P4: connect/disconnect TWO NODES BY SESSION-GLOBAL id (gnid) — one call whether the
+    // endpoints are on the same track (intra) or different tracks (cross-track). gnids come from
+    // get_audio_graph. kind: "audio" (default) or "note".
+    handlers_["graph_connect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int from = b.value("from", -1), to = b.value("to", -1);
+        const std::string kind = b.value("kind", std::string("audio"));
+        if (kind != "audio" && kind != "note") return err(code::kBadArg, "kind must be 'audio' or 'note'");
+        if (!P::session_graph_connect(c.session, from, to, kind == "note" ? 1 : 0))
+            return err(code::kBadArg, "edge rejected (unknown gnid, duplicate, self-loop, or would create a cycle)");
+        json r = ok(); r["from"] = from; r["to"] = to; r["kind"] = kind; return r;
+    };
+    handlers_["graph_disconnect"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int from = b.value("from", -1), to = b.value("to", -1);
+        const std::string kind = b.value("kind", std::string("audio"));
+        if (!P::session_graph_disconnect(c.session, from, to, kind == "note" ? 1 : 0))
+            return err(code::kBadArg, "disconnect failed (unknown gnid)");
+        return ok();
+    };
+    // ADR-0022 P4: set a node param BY GNID (by param name). Migrates the per-track set to session-global.
+    handlers_["graph_set_node_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int gnid = b.value("gnid", -1);
+        const std::string name = b.value("name", std::string());
+        const float value = b.value("value", 0.f);
+        const int np = P::session_graph_node_param_count(c.session, gnid);
+        for (int i = 0; i < np; ++i)
+            if (name == P::session_graph_node_param_name(c.session, gnid, i)) {
+                P::session_graph_node_param_set(c.session, gnid, i, value);
+                json r = ok(); r["gnid"] = gnid; r["name"] = name; r["value"] = value; return r;
+            }
+        return err(code::kBadArg, "set failed (unknown gnid or param name)");
+    };
     // A native NOTE EFFECT (ADR-0015), e.g. "Arp": notes in -> notes out, no audio. Wire MidiIn ->
     // it -> an instrument with NOTE edges.
     handlers_["audio_graph_add_note_op"] = [](const ControlCtx& c, const json& b) {

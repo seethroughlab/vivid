@@ -749,6 +749,27 @@ def audio_graph_connect(track: int, from_node: int, to_node: int, kind: str = "a
 
 
 @mcp.tool
+def graph_connect(from_gnid: int, to_gnid: int, kind: str = "audio") -> dict:
+    """Connect two nodes by session-global id (gnid from get_audio_graph). ONE call whether the
+    endpoints are on the same track (intra-track edge) or different tracks (a cross-track edge) —
+    the session-global way to wire the audio graph. `kind`: "audio" or "note"."""
+    return _post("graph_connect", {"from": from_gnid, "to": to_gnid, "kind": kind})
+
+
+@mcp.tool
+def graph_disconnect(from_gnid: int, to_gnid: int, kind: str = "audio") -> dict:
+    """Remove an edge between two nodes by session-global id (gnid). Intra- or cross-track."""
+    return _post("graph_disconnect", {"from": from_gnid, "to": to_gnid, "kind": kind})
+
+
+@mcp.tool
+def graph_set_node_param(gnid: int, name: str, value: float) -> dict:
+    """Set an audio-graph node's parameter by session-global id (gnid) + param name (names from
+    get_audio_graph's per-node params). Sets the BASE value (survives modulation)."""
+    return _post("graph_set_node_param", {"gnid": gnid, "name": name, "value": value})
+
+
+@mcp.tool
 def audio_graph_add_midi_in(track: int) -> dict:
     """Add the track's NOTE STREAM as a node (ADR-0015): its clips, the musical-typing keyboard,
     live MIDI, and note_on/note_off all flow out of it. Wire it with a NOTE edge (audio_graph_connect
