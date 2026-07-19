@@ -3738,6 +3738,18 @@ int session_track_audio_graph_node_id(Session* s, int t, int i) {
     const auto& n = tr->agraph.nodes();
     return (i >= 0 && i < static_cast<int>(n.size())) ? n[i].id : -1;
 }
+// ADR-0022 P4.4: restore a saved session-global id onto a node (by local id) on LOAD, and keep the
+// session's next_gnid past it so future assignments don't collide. Set before finish_load's republish
+// so assign_node_gnids (which only fills gnid<0) leaves the restored id in place. UI/main thread.
+void session_set_node_gnid(Session* s, int t, int node_id, int gnid) {
+    Track* tr = graph_track(s, t);
+    if (!tr || gnid < 0) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const auto& n = tr->agraph.nodes();
+    for (size_t i = 0; i < tr->agnodes.size() && i < n.size(); ++i)
+        if (n[i].id == node_id) { tr->agnodes[i].gnid = gnid; break; }
+    if (gnid >= s->next_gnid) s->next_gnid = gnid + 1;
+}
 // ADR-0022 P2b.3c: node i's SESSION-GLOBAL id (-1 if unassigned — a derived-chain track's nodes, which
 // aren't cross-addressable). agnodes is parallel to nodes() by index (same lock as node_kind reads it).
 int session_track_audio_graph_node_gnid(Session* s, int t, int i) {

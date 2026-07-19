@@ -159,6 +159,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             for (int i = 0; i < nn; ++i) {
                 const int id = vivid::session::session_track_audio_graph_node_id(s, t, i);
                 json jn; jn["id"] = id;
+                // ADR-0022 P4.4: the node's session-global id, restored on load so gnids survive save/
+                // reload (persistence half of the session-global model). Absent in older files => the
+                // node draws a fresh gnid on rebuild, exactly as before.
+                if (const int gn = vivid::session::session_track_audio_graph_node_gnid(s, t, i); gn >= 0) jn["gnid"] = gn;
                 const int kind = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
                 jn["kind"] = kind;
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
@@ -658,6 +662,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                                   s, t, kind, src, jn.value("op", std::string()).c_str());
                         if (nid < 0) continue;
                         id_map[saved] = nid;
+                        if (jn.contains("gnid"))   // ADR-0022 P4.4: restore the session-global id (before finish_load)
+                            vivid::session::session_set_node_gnid(s, t, nid, jn["gnid"].get<int>());
                         if (jn.contains("x") && jn.contains("y"))   // restore the editor position
                             vivid::session::session_audio_graph_node_set_pos(s, t, nid, jn["x"].get<float>(), jn["y"].get<float>());
                         if (jn.contains("pinned"))   // restore the curated inspector param subset
