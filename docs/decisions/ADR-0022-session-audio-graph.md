@@ -1,8 +1,14 @@
 # ADR-0022: The Session Audio Graph — One Rewireable DAG for the Whole Session
 
-Status: **accepted** — the ADR-0017 dependency cleared (PR #31, `14306ec2`) and implementation has
-begun. **P0 (`EdgeKind::Control` in the pure core) is landed**; P1–P4 are not started. See "As
-built" below for what the code taught us that this ADR did not know.
+Status: **shipped** (2026-07-19) — accepted 2026-07-17 (the ADR-0017 dependency cleared, PR #31,
+`14306ec2`). **All phases P0–P4 are landed.** The per-track audio graphs are now one session-wide
+DAG: a master node sums the track-outs, `EdgeKind::Control` is a first-class signal, cross-track
+audio/note/control edges route across tracks, clips + generators are per-scene graph nodes fronted
+by a Selector, scenes are a named set of `{track-out → enabled node}` bindings, and the node C-API +
+MCP surface address any node by a session-global id (`gnid`). See "As built" below (and the P0.5/P2/
+P3/P4 design blockquotes) for what the code taught us. Guardrails held: the session grid stayed home
+(the graph is a projection), the executor stayed right-sized (not the lane-value compiler), and
+modulation stayed two right-sized models (no lowering pass).
 
 Date: 2026-07-14 (accepted 2026-07-17)
 
@@ -440,20 +446,27 @@ share.
      ✅ **landed 2026-07-17** — host-side control apply (native), ABI v13 + the LFO, params-as-ports
      UI, knob arc/dot, the shape editor; MCP + persist + undo. See "As built — P0.5" above.
    - **P1 — Unify structure + executor + pool + master node**, topology still per-track
-     islands, gated on **bit-identical parity** with today. (Riskiest step; supersedes
-     ADR-0012; updates `app/docs/thread-safety.md`.)
-   - **P2 — Re-scope note routing + enable cross-track Audio/Control edges**; begin
-     serializing Control edges (note-default migration rule). **P2a (cross-track *control*) ✅ SHIPPED**
-     (#50/#51/#52/#54 — engine, control, persist, introspection; editor wires deferred). **P2b
-     (executor unification + cross-track *audio* + note re-scope) is designed — see "Design — P2b"
-     above** (the deferred single-plan executor / one pool / global-id space, now that cross-track
-     audio is its consumer).
-   - **P3 — Clips + generators as first-class nodes + scene reconciliation**; backward-
-     compatible load by synthesizing clip nodes from old `clips[scene]` arrays. **Designed — see
-     "Design — P3" above** (generalize the Sampler's clip-as-node pattern to MIDI, then split into
-     per-clip nodes + a per-track-out selector; hard prereq = P2b.5 note re-scope).
-   - **P4 — Collapse the `(track, node)` C API to session-global** via a parallel
-     `session_graph_*` shim, migrating MCP + persistence + the 96↔96 parity guard last.
+     islands, gated on **bit-identical parity**. ✅ **SHIPPED** (#43–#47: master node, double-buffer
+     publish swap, one track-out pool, solo/mute). Supersedes ADR-0012; `app/docs/thread-safety.md`
+     updated for the pointer-swap contract.
+   - **P2 — Re-scope note routing + cross-track Audio/Control/Note edges + one flat executor.**
+     ✅ **SHIPPED.** P2a cross-track *control* (#50/#51/#52/#54); P2b the flat session executor +
+     one node-id space + is_master/is_track_out (#60/#63/#66/#68) + cross-track *audio* (#70/#71) +
+     cross-track *notes* (#78/#79); derived-track cross-track restore fix (#80). Editor wires live on
+     the ADR-0023 canvas.
+   - **P3 — Clips + generators as first-class nodes + scene reconciliation.** ✅ **SHIPPED.** P3.1
+     note-production-as-nodes (#83/#84: MidiClip + MidiIn → Selector → instrument); P3.2 per-scene clip
+     nodes + Selector (#85/#86); native scene-switch note-off leak fix (#87); P3.3 authoritative
+     add_scene (#88), scene **names** (#89), three **generator ops** — Euclid/Chord/RandMelody (#90),
+     NativeGen scene cells (#91), persist/undo (#92), gen param + introspection (#93). Old projects
+     round-trip; a scene is a named set of `{track-out → enabled node}` bindings; the grid is a projection.
+   - **P4 — Collapse the `(track, node)` C API to session-global.** ✅ **SHIPPED.** Derived tracks get
+     stable gnids by role (#94); the parallel `session_graph_*` shim + unified intra/cross-track connect
+     (#95); the full gnid MCP surface incl. modulation edges (#96); gnid persistence (#97). Plus a fix for
+     a pre-existing gap it surfaced — authoritative graphs now round-trip their P3 note sub-graph
+     (selector/clip/generator nodes). The MCP↔control parity guard (145↔145) stayed green throughout, so
+     the per-track API remains for backward-compat while gnid is the canonical way to act on a node
+     anywhere in the session.
 
 ## Consequences
 
