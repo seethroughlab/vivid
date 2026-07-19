@@ -313,14 +313,23 @@ nodes**. Per-track behavior is preserved as the bit-identical migration case.
 >   (or the Sampler-as-selector is confirmed sufficient as-is); MIDI leads.
 >
 > **Sub-phased, each a PR, gated bit-identical (except the two new-capability steps):**
-> - **Prereq — P2b.5 note re-scope.** Kill the `t.nev` broadcast: every source acquires a note edge (from a
->   MidiIn / clip node); `graph_note_input`'s `n_note_in<=0 => t.nev` fallback (`:779`) is re-scoped to each
->   Track-Out's stream so single-owner nodes stay bit-identical. Without it a clip node's notes and the
->   broadcast would double up.
-> - **P3.1 — MIDI clip stack as ONE node.** A MidiClip-source node per track holding `clips[]`, reading
->   `t.active`, running the (relocated) scheduler, emitting on a note edge into the instrument — the MIDI
->   mirror of the Sampler. Bit-identical: same notes, same timing, same bar-quantized switch; only the
->   *path* (edge, not broadcast) changed. THE pivotal step.
+> - **Prereq status (refined 2026-07-19).** P2b.5 SHIPPED as cross-track *note edges* (the note-domain peer
+>   of P2b.4 audio) — NOT a broadcast kill. In the current per-track model the `t.nev` broadcast already IS
+>   the single track-out's stream, so a global "kill the broadcast" buys nothing standalone and is pervasive;
+>   it therefore **folds into P3.1** below (the derived graph builds the note sub-graph, and the broadcast
+>   fallback simply stops being reached for those tracks). No separate prereq PR.
+> - **P3.1 — note production becomes graph nodes (the re-scope + clip-as-node, together).** The wrinkle: the
+>   instrument reads `t.nev` = **four** sources (clip scheduler + scene-switch releases + live-MIDI + editor
+>   preview), so routing only "clips" to it would drop live/preview and break bit-identity. Resolution: the
+>   derived graph builder (`rebuild_track_graph`) constructs a small note sub-graph feeding the instrument
+>   via note edges instead of the broadcast — a **MidiClip** source node (the clip scheduler + scene releases,
+>   reading `t.active`; the MIDI mirror of the Sampler) **plus** a **MidiIn** node (live-MIDI + preview, which
+>   `GNKind::MidiIn` already emits from `t.nev`) — both merged into the instrument's note-in (`kMaxNoteInputs`
+>   allows it). Bit-identical: MidiClip-clips + MidiIn-live/preview == the original `t.nev`, same offsets;
+>   `graph_note_input`'s broadcast fallback is untouched (just no longer reached once the instrument has note
+>   edges). Pervasive but uniform (every derived track builds the same sub-graph) and now safe — the derived
+>   rebuild re-resolves cross-track edges (the #80 fix), so the added nodes' index shift is handled. THE
+>   pivotal step; split it further if needed (MidiIn-only re-scope first, then add MidiClip).
 > - **P3.2 — split into per-clip nodes + a Selector.** One MidiClip node per scene slot (each its own clip +
 >   scheduler) feeding a per-track-out Selector that passes the active scene. Bit-identical (the active clip
 >   plays identically); clips are now first-class, individually addressable nodes.
