@@ -180,7 +180,7 @@ private:
     int    key_v0      = 0; double key_y0 = 0.0;        // key-range drag: value + grab-y at start
     int    wire_from   = -1;                            // rewire drag: source node id (-1 = none); read by draw
     int    node_drag   = -1; float node_dx = 0.f, node_dy = 0.f;   // node reposition: id + world-unit grab offset
-    bool   panning     = false; double pan_mx0 = 0, pan_my0 = 0; float pan_ox0 = 0, pan_oy0 = 0;   // pan gesture
+    bool   panning     = false; double pan_last_mx = 0, pan_last_my = 0;   // pan gesture (incremental delta, ADR-0023 #3d)
     double last_click_t = -1;                           // double-click-to-reset-view timer
     int    last_node   = -1; double last_node_t = -1;   // double-click a node -> open its plugin editor
 };

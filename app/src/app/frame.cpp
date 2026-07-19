@@ -651,9 +651,9 @@ namespace S = vivid::session;
 
 void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
     // 2i: drag empty space to pan the absolute camera (scale unchanged).
-    if (panning) {
-        canvas_.view().ox = pan_ox0 + static_cast<float>(mx - pan_mx0);
-        canvas_.view().oy = pan_oy0 + static_cast<float>(my - pan_my0);
+    if (panning) {   // ADR-0023 #3d: shared incremental pan on the canvas-owned camera
+        canvas_.pan(static_cast<float>(mx - pan_last_mx), static_cast<float>(my - pan_last_my));
+        pan_last_mx = mx; pan_last_my = my;
         view_init_ = true;
     }
     // UI-3 Stage 1: drag a selected node's param knob (vertical) or a pinned slider row (horizontal).

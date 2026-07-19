@@ -20,14 +20,8 @@ struct NodeView {
     void to_screen(double wx, double wy, double& sx, double& sy) const {
         sx = ox + wx * scale; sy = oy + wy * scale;
     }
-    // Zoom by `factor` about the screen point (sx,sy), keeping that world point under the cursor.
-    void zoom_at(double sx, double sy, float factor) {
-        double wx, wy; to_world(sx, sy, wx, wy);
-        scale = std::clamp(scale * factor, 0.35f, 3.0f);
-        ox = static_cast<float>(sx) - static_cast<float>(wx) * scale;
-        oy = static_cast<float>(sy) - static_cast<float>(wy) * scale;
-    }
     void pan(float dx, float dy) { ox += dx; oy += dy; }
+    // (Zoom-around-cursor lives on GraphCanvas — it carries the shared clamp policy, ADR-0023 #3d.)
 };
 
 // The audio graph stores a zoom + a pan that are RELATIVE to its graph region (so the graph stays

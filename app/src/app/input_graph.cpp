@@ -576,12 +576,11 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     // Empty space: double-click resets the view (2i); otherwise start a pan drag.
     const double now = glfwGetTime();
     if (now - last_click_t < 0.30) {   // double-click resets the camera to the fitted view (panel origin)
-        const Rect gr = graph_region(); canvas_.view() = { gr.x, gr.y, 1.f }; view_init_ = true;
+        canvas_.reset(graph_region()); view_init_ = true;   // ADR-0023 #3d: shared camera reset
         last_click_t = -1; return true;
     }
     last_click_t = now;
-    panning = true; pan_mx0 = mx; pan_my0 = my;
-    pan_ox0 = canvas_.view().ox; pan_oy0 = canvas_.view().oy;   // baseline for the pan drag (absolute camera)
+    panning = true; pan_last_mx = mx; pan_last_my = my;   // ADR-0023 #3d: incremental pan (shared canvas_.pan)
     return true;   // consume other clicks in the graph
 }
 
@@ -649,11 +648,7 @@ void AudioNodeGraph::on_scroll(App& app, Window& win, double yoff, double mx, do
     set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
     const Rect gr = graph_region();
     if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
-        // Zoom the absolute camera around the cursor, keeping the world point under it fixed.
-        double wx, wy; canvas_.view().to_world(mx, my, wx, wy);
-        const float z1 = std::clamp(canvas_.view().scale * std::pow(1.12f, static_cast<float>(yoff)), 0.35f, 4.0f);
-        canvas_.view() = { static_cast<float>(mx) - static_cast<float>(wx) * z1,
-                           static_cast<float>(my) - static_cast<float>(wy) * z1, z1 };
+        canvas_.zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));   // ADR-0023 #3d: shared zoom-around-cursor
         view_init_ = true;
     }
 }

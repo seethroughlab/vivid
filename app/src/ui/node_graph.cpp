@@ -809,13 +809,13 @@ void NodeGraph::on_move(double x, double y) {
         op_pos_[drag_idx_] = { float(wx - dx_), float(wy - dy_) };
         note_edit_("Move Node", "move-node");
     } else if (drag_mode_ == 5) {  // pan: move the view offset (screen-space delta)
-        canvas_.view().pan(float(x) - pan_last_x_, float(y) - pan_last_y_);
+        canvas_.pan(float(x) - pan_last_x_, float(y) - pan_last_y_);   // ADR-0023 #3d: shared camera gesture
         pan_last_x_ = float(x); pan_last_y_ = float(y);
     }
 }
 
 void NodeGraph::zoom_at(double sx, double sy, float factor) {
-    canvas_.view().zoom_at(sx, sy, factor);   // shared: clamp [0.35,3.0] + keep the world point under the cursor
+    canvas_.zoom_at(sx, sy, factor);   // ADR-0023 #3d: shared zoom-around-cursor (clamp on the canvas)
 }
 
 void NodeGraph::on_up(double x, double y) {
