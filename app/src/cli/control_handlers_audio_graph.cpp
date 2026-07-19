@@ -163,6 +163,28 @@ void register_audio_graph_handlers(Handlers& handlers_) {
             return err(code::kNotFound, "no cross-track control edge for that (src, dst, param)");
         return ok();
     };
+    // ADR-0022 P2b.4: cross-track AUDIO edges — a node's output on one track summed into a node on
+    // another. No param/shape (audio is a full signal, not a scalar). Rejected on same-track, a source
+    // destination, a duplicate, or a cross-track cycle.
+    handlers_["session_connect_audio"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        if (!P::session_connect_audio(c.session, src_track, src_node, dst_track, dst_node))
+            return err(code::kBadArg, "cross-track audio edge rejected (unknown track/node, same track, source destination, duplicate, or would cycle)");
+        return ok();
+    };
+    handlers_["session_disconnect_audio"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int src_track = b.value("src_track", 0), src_node = b.value("src_node", -1);
+        const int dst_track = b.value("dst_track", 0), dst_node = b.value("dst_node", -1);
+        json e; if (!need_track(c.session, src_track, e)) return e;
+        if (!need_track(c.session, dst_track, e)) return e;
+        P::session_disconnect_audio(c.session, src_track, src_node, dst_track, dst_node);
+        return ok();
+    };
     // Re-shape an existing modulation edge (ADR-0022) without rewiring.
     handlers_["audio_graph_set_control_shape"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");

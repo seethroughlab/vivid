@@ -135,6 +135,26 @@ struct XCtlApply {
 };
 static_assert(std::is_trivially_copyable<XCtlApply>::value, "XCtlApply must stay POD for the RT xctl swap");
 
+// ADR-0022 P2b.4: a SESSION-LEVEL cross-track AUDIO edge — the output of a node on one track summed
+// into a node on ANOTHER track. `XAudioEdge` is the UI-thread authoritative record (stable ids,
+// survives reorders). `XAudioApply` is its resolved form for the audio thread: the source node's
+// stereo output lives at `node_pool[src_pool_base + src_out_buf·2·frames]` (its track's region of the
+// one session node pool — the same layout the source track renders into), and it is added into the
+// dst node's summed input, matched by (dst_track_id, dst_out_buf). Unlike control (one block-rate
+// number, fixed kGraphMaxBlock stride, sample 0), audio is a full buffer whose per-buffer stride is
+// the block's `frames`, so only the region BASE is precomputed; the intra-region offset is applied
+// live. `src_track_id` is carried so the block's render-order topo-sort can put the source first.
+struct XAudioEdge {
+    int src_track_id = -1, src_node_id = -1;
+    int dst_track_id = -1, dst_node_id = -1;
+};
+struct XAudioApply {
+    int    src_track_id = -1, dst_track_id = -1, dst_out_buf = -1;
+    int    src_out_buf = -1;
+    size_t src_pool_base = 0;   // source track's region base into Session::node_pool (kGraphMaxBlock-strided)
+};
+static_assert(std::is_trivially_copyable<XAudioApply>::value, "XAudioApply must stay POD for the RT xaudio swap");
+
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
     uint32_t frames = 0, sample_rate = 48000;
@@ -155,6 +175,10 @@ struct GraphBlockCtx {
     // ADR-0022 P2a.2: the published cross-track control edges (all of them; each node matches those
     // targeting it by dst_track_id + dst_out_buf). Empty ⇒ zero cost.
     const XCtlApply* xctl = nullptr; uint32_t xctl_count = 0;
+    // ADR-0022 P2b.4: the published cross-track AUDIO edges (all of them; each node matches those
+    // targeting it by dst_track_id + dst_out_buf). Empty ⇒ zero cost. The source track renders before
+    // this one (block render-order topo-sort), so its region holds the rendered output.
+    const XAudioApply* xaudio = nullptr; uint32_t xaudio_count = 0;
 };
 
 struct Session;   // ADR-0022 P2a.2 (Track back-pointer, for re-resolving cross-track edges on recompile)
@@ -428,6 +452,15 @@ struct Session {
     std::mutex             xctl_mtx;
     std::atomic<uint64_t>  xctl_gen{0};
     uint64_t               xctl_gen_seen = 0;
+    // ADR-0022 P2b.4: session-level cross-track AUDIO edges — the exact same handoff shape as the
+    // control edges above. `xaudio_edges` is UI-thread authoritative; `republish_xaudio` resolves it
+    // into `xaudio_ho` and the audio thread swaps that into `xaudio_view`. The render-order topo-sort
+    // (session_process) reads xaudio_view to order source tracks before their consumers.
+    std::vector<XAudioEdge>  xaudio_edges;
+    std::vector<XAudioApply> xaudio_view, xaudio_ho;
+    std::mutex               xaudio_mtx;
+    std::atomic<uint64_t>    xaudio_gen{0};
+    uint64_t                 xaudio_gen_seen = 0;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -475,6 +508,7 @@ struct Session {
 
 static void recompute_mix_scales(Session* s);   // ADR-0022 P1b.4 (defined below)
 static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below)
+static void republish_xaudio(Session* s);        // ADR-0022 P2b.4 (defined below)
 
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
@@ -482,8 +516,9 @@ static void rebuild_track_view(Session* s) {
     // ADR-0022 P1b.4: membership changed — a new track must respect an active solo, and dropping a
     // soloed track must un-silence the rest. Recompute before publishing the new view.
     recompute_mix_scales(s);
-    // ADR-0022 P2a.2: track POSITIONS moved → cross-track source region bases changed → re-resolve.
+    // ADR-0022 P2a.2/P2b.4: track POSITIONS moved → cross-track source region bases changed → re-resolve.
     republish_xctl(s);
+    republish_xaudio(s);
     std::lock_guard<std::mutex> lk(s->tracks_mtx);
     s->tracks_pub.clear();
     for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
@@ -609,10 +644,11 @@ static bool republish_track_graph(Track* t) {
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
     t->gok_edit    = true;
     publish_track_plan(t);
-    // ADR-0022 P2a.2: this track's node indices / control buffers may have moved — re-resolve any
+    // ADR-0022 P2a.2/P2b.4: this track's node indices / buffers may have moved — re-resolve any
     // cross-track edges that reference it. (t->session is null only during initial track construction,
     // before any cross-track edge can exist.)
     republish_xctl(t->session);
+    republish_xaudio(t->session);
     return true;
 }
 
@@ -966,6 +1002,17 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         const float* akL = pool + static_cast<size_t>(s.in_buf[k]) * 2 * stride;
         const float* akR = akL + stride;
         for (uint32_t i = 0; i < frames; ++i) { iL[i] += akL[i]; iR[i] += akR[i]; }
+    }
+    // ADR-0022 P2b.4: cross-track AUDIO edges targeting this node — add the SOURCE track's rendered
+    // node output (another region of the one session node pool) into the summed input. The source
+    // track rendered earlier this block (render-order topo-sort), so its region is current. Reads the
+    // whole buffer at the live `frames` stride (the region base was precomputed at kGraphMaxBlock).
+    for (uint32_t x = 0; x < b.xaudio_count; ++x) {
+        const XAudioApply& xa = b.xaudio[x];
+        if (xa.dst_track_id != t.id || xa.dst_out_buf != s.out_buf) continue;
+        const float* sL = b.node_pool + xa.src_pool_base + static_cast<size_t>(xa.src_out_buf) * 2 * stride;
+        const float* sR = sL + stride;
+        for (uint32_t i = 0; i < frames; ++i) { iL[i] += sL[i]; iR[i] += sR[i]; }
     }
     std::memcpy(oL, iL, frames * sizeof(float));   // start from the summed input
     std::memcpy(oR, iR, frames * sizeof(float));
@@ -1446,6 +1493,7 @@ Session* session_create(uint32_t sample_rate) {
     s->node_pool.assign(static_cast<size_t>(kMaxTracks) * (kGraphMaxNodes + 1) * 2 * kGraphMaxBlock, 0.f);
     s->mod_scratch.assign(static_cast<size_t>(2) * kGraphMaxBlock, 0.f);   // P2a.1b modulator pre-pass scratch
     s->xctl_edges.reserve(256); s->xctl_view.reserve(256); s->xctl_ho.reserve(256);   // P2a.2 cross-track edges
+    s->xaudio_edges.reserve(256); s->xaudio_view.reserve(256); s->xaudio_ho.reserve(256);   // P2b.4 cross-track audio
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -1817,6 +1865,118 @@ bool session_xctl_get(Session* s, int i, int* src_track, int* src_node, int* dst
     if (param) *param = e.dst_param;
     if (amount) *amount = e.shape.amount;  if (curve) *curve = e.shape.curve;
     if (invert) *invert = e.shape.invert ? 1 : 0;   if (bipolar) *bipolar = e.shape.bipolar ? 1 : 0;
+    return true;
+}
+// ADR-0022 P2b.4: resolve every cross-track AUDIO edge into its RT-applicable form. Mirrors
+// republish_xctl: scan `s->tracks` for the endpoint positions, resolve the source to its node-pool
+// REGION BASE (track position · the per-track region stride) and its node index (out_buf), and the
+// dst to its node index. Publishes into `xaudio_ho` via the mutex+gen handoff; the audio thread swaps
+// it into `xaudio_view`. Skips an edge whose endpoints are gone or uncompiled.
+static void republish_xaudio(Session* s) {
+    if (!s) return;
+    std::vector<XAudioApply> resolved;
+    resolved.reserve(s->xaudio_edges.size());
+    for (const XAudioEdge& e : s->xaudio_edges) {
+        int src_pos = -1, dst_pos = -1;
+        for (size_t i = 0; i < s->tracks.size(); ++i) {
+            if (s->tracks[i]->id == e.src_track_id) src_pos = static_cast<int>(i);
+            if (s->tracks[i]->id == e.dst_track_id) dst_pos = static_cast<int>(i);
+        }
+        if (src_pos < 0 || dst_pos < 0) continue;
+        Track* srcT = s->tracks[static_cast<size_t>(src_pos)].get();
+        Track* dstT = s->tracks[static_cast<size_t>(dst_pos)].get();
+        const int src_idx = srcT->agraph.node_index(e.src_node_id);
+        const int dst_idx = dstT->agraph.node_index(e.dst_node_id);
+        if (src_idx < 0 || dst_idx < 0) continue;
+        XAudioApply a;
+        a.src_track_id = e.src_track_id;
+        a.dst_track_id = e.dst_track_id;
+        a.dst_out_buf  = dst_idx;
+        a.src_out_buf  = src_idx;
+        a.src_pool_base = static_cast<size_t>(src_pos) * (kGraphMaxNodes + 1) * 2 * kGraphMaxBlock;
+        resolved.push_back(a);
+    }
+    std::lock_guard<std::mutex> lk(s->xaudio_mtx);
+    s->xaudio_ho = resolved;
+    s->xaudio_gen.fetch_add(1, std::memory_order_release);
+}
+// Would adding src_id -> dst_id (source renders before dst) create a cross-track cycle? A cycle
+// exists iff dst can already reach src by following existing edges (dst →* src), so the render order
+// could not be topo-sorted. UI thread; scans the small edge list.
+static bool xaudio_would_cycle(Session* s, int src_id, int dst_id) {
+    if (src_id == dst_id) return true;
+    std::vector<int> stack{ dst_id };
+    std::vector<int> seen;
+    while (!stack.empty()) {
+        const int n = stack.back(); stack.pop_back();
+        if (n == src_id) return true;
+        if (std::find(seen.begin(), seen.end(), n) != seen.end()) continue;
+        seen.push_back(n);
+        for (const XAudioEdge& e : s->xaudio_edges)
+            if (e.src_track_id == n) stack.push_back(e.dst_track_id);
+    }
+    return false;
+}
+// ADR-0022 P2b.4: create a cross-track audio edge (node `src_node` on `src_track` summed into node
+// `dst_node` on `dst_track`). Tracks are INDICES (stored as stable ids so the edge survives reorders);
+// nodes are stable agraph node ids. Returns 1 on success; 0 on a bad track/node, a same-track edge (use
+// the in-track graph), a dst that is a SOURCE node (no audio input to sum into), a duplicate, or a
+// cross-track cycle.
+int session_connect_audio(Session* s, int src_track, int src_node, int dst_track, int dst_node) {
+    if (!s) return 0;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return 0;
+    if (src_track == dst_track) return 0;   // same track → use the in-track graph, not a cross-track edge
+    Track* srcT = s->tracks[static_cast<size_t>(src_track)].get();
+    Track* dstT = s->tracks[static_cast<size_t>(dst_track)].get();
+    const int src_idx = srcT->agraph.node_index(src_node);
+    const int dst_idx = dstT->agraph.node_index(dst_node);
+    if (src_idx < 0 || dst_idx < 0) return 0;
+    // A source/instrument node has no summed audio input, so it can't be a cross-track destination.
+    const auto& dn = dstT->agraph.nodes();
+    if (dst_idx < static_cast<int>(dn.size()) && dn[static_cast<size_t>(dst_idx)].is_source) return 0;
+    const int src_id = srcT->id, dst_id = dstT->id;
+    for (const XAudioEdge& e : s->xaudio_edges)
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node) return 0;   // duplicate
+    if (xaudio_would_cycle(s, src_id, dst_id)) return 0;
+    XAudioEdge e;
+    e.src_track_id = src_id; e.src_node_id = src_node;
+    e.dst_track_id = dst_id; e.dst_node_id = dst_node;
+    s->xaudio_edges.push_back(e);
+    republish_xaudio(s);
+    return 1;
+}
+void session_disconnect_audio(Session* s, int src_track, int src_node, int dst_track, int dst_node) {
+    if (!s) return;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return;
+    const int src_id = s->tracks[static_cast<size_t>(src_track)]->id;
+    const int dst_id = s->tracks[static_cast<size_t>(dst_track)]->id;
+    bool changed = false;
+    for (size_t i = 0; i < s->xaudio_edges.size();) {
+        const XAudioEdge& e = s->xaudio_edges[i];
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node) {
+            s->xaudio_edges.erase(s->xaudio_edges.begin() + static_cast<long>(i)); changed = true;
+        } else ++i;
+    }
+    if (changed) republish_xaudio(s);
+}
+// ADR-0022 P2b.4: enumerate cross-track audio edges for persist / introspection. Fills the edge at `i`
+// with track INDICES (resolved from stored stable ids); false if `i` out of range or an endpoint gone.
+int session_xaudio_count(Session* s) { return s ? static_cast<int>(s->xaudio_edges.size()) : 0; }
+bool session_xaudio_get(Session* s, int i, int* src_track, int* src_node, int* dst_track, int* dst_node) {
+    if (!s || i < 0 || i >= static_cast<int>(s->xaudio_edges.size())) return false;
+    const XAudioEdge& e = s->xaudio_edges[static_cast<size_t>(i)];
+    int src_idx = -1, dst_idx = -1;
+    for (size_t k = 0; k < s->tracks.size(); ++k) {
+        if (s->tracks[k]->id == e.src_track_id) src_idx = static_cast<int>(k);
+        if (s->tracks[k]->id == e.dst_track_id) dst_idx = static_cast<int>(k);
+    }
+    if (src_idx < 0 || dst_idx < 0) return false;
+    if (src_track) *src_track = src_idx;   if (src_node) *src_node = e.src_node_id;
+    if (dst_track) *dst_track = dst_idx;   if (dst_node) *dst_node = e.dst_node_id;
     return true;
 }
 bool session_track_mute(Session* s, int t) {
@@ -2526,6 +2686,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xctl_mtx.unlock();
         }
     }
+    // ADR-0022 P2b.4: same handoff for the resolved cross-track AUDIO edges.
+    if (s->xaudio_gen.load(std::memory_order_acquire) != s->xaudio_gen_seen) {
+        if (s->xaudio_mtx.try_lock()) {
+            s->xaudio_view.swap(s->xaudio_ho);
+            s->xaudio_gen_seen = s->xaudio_gen.load(std::memory_order_acquire);
+            s->xaudio_mtx.unlock();
+        }
+    }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
     const long long bar = static_cast<long long>(std::floor(beats / bpb));
@@ -2682,6 +2850,49 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // ADR-0022 P2a.2: the cross-track control edges (each node matches those targeting it).
             t.blk.xctl = s->xctl_view.data();
             t.blk.xctl_count = static_cast<uint32_t>(s->xctl_view.size());
+            // ADR-0022 P2b.4: the cross-track audio edges (each node matches those targeting it).
+            t.blk.xaudio = s->xaudio_view.data();
+            t.blk.xaudio_count = static_cast<uint32_t>(s->xaudio_view.size());
+        }
+    }
+
+    // ADR-0022 P2b.4: order the render list so a cross-track audio SOURCE track renders before its
+    // consumer (a stable topological sort by the resolved xaudio edges). With no cross-track audio
+    // edges this is the identity (each track keeps its render_list position), so the master sum order
+    // is unchanged and the block is bit-identical. A cross-track cycle is rejected at connect time, so
+    // the edges here are acyclic; the bounded passes below are a belt-and-braces guard that never
+    // reorders past render_list.size() swaps. Track regions are keyed by tracks_view index (not this
+    // order), so reordering only changes WHEN a track renders, never WHERE.
+    if (!s->xaudio_view.empty() && s->render_list.size() > 1) {
+        const size_t n = s->render_list.size();
+        for (size_t pass = 0; pass < n; ++pass) {
+            bool moved = false;
+            for (const XAudioApply& xa : s->xaudio_view) {
+                int si = -1, di = -1;
+                for (size_t i = 0; i < n; ++i) {
+                    if (s->render_list[i]->id == xa.src_track_id) si = static_cast<int>(i);
+                    if (s->render_list[i]->id == xa.dst_track_id) di = static_cast<int>(i);
+                }
+                if (si >= 0 && di >= 0 && si > di) {   // source after consumer → pull source just before it
+                    Track* src = s->render_list[static_cast<size_t>(si)];
+                    s->render_list.erase(s->render_list.begin() + si);
+                    s->render_list.insert(s->render_list.begin() + di, src);
+                    moved = true;
+                }
+            }
+            if (!moved) break;
+        }
+    }
+    // ADR-0022 P2b.4: a cross-track source that isn't rendering this block (no source / gok=false)
+    // would leave a STALE buffer in its node-pool region for the consumer to read. Zero those source
+    // buffers so an absent/silent source contributes silence, not last block's audio. Bounded by the
+    // (small) edge count; skipped entirely with no cross-track audio.
+    for (const XAudioApply& xa : s->xaudio_view) {
+        bool src_rendering = false;
+        for (Track* rt : s->render_list) if (rt->id == xa.src_track_id) { src_rendering = true; break; }
+        if (!src_rendering) {
+            float* sL = s->node_pool.data() + xa.src_pool_base + static_cast<size_t>(xa.src_out_buf) * 2 * frames;
+            std::memset(sL, 0, 2 * frames * sizeof(float));
         }
     }
 
