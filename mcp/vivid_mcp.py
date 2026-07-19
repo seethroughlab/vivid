@@ -843,6 +843,28 @@ def session_disconnect_audio(src_track: int, src_node: int, dst_track: int, dst_
 
 
 @mcp.tool
+def session_connect_note(src_track: int, src_node: int, dst_track: int, dst_node: int) -> dict:
+    """CROSS-TRACK NOTES (ADR-0022 P2b.5): route the note output of src_node on src_track into a
+    note-consuming node (dst_node) on ANOTHER track (dst_track). The source must EMIT notes (a MidiIn
+    node, a note effect like Arp, or a note-generating plugin); the destination must CONSUME notes (an
+    instrument or note effect). The source's notes are MERGED into the destination's note input (in
+    addition to the destination track's own notes). For now the source should sit on a track that
+    renders (has an instrument) so its note node runs. Rejected on a same-track edge (use the in-track
+    audio_graph_connect kind:"note"), a duplicate, or a cross-track cycle. Tracks are indices; nodes are
+    stable graph node ids (from get_audio_graph)."""
+    return _post("session_connect_note", {"src_track": src_track, "src_node": src_node,
+                                          "dst_track": dst_track, "dst_node": dst_node})
+
+
+@mcp.tool
+def session_disconnect_note(src_track: int, src_node: int, dst_track: int, dst_node: int) -> dict:
+    """Remove a cross-track note edge (ADR-0022 P2b.5). Same (src_track, src_node, dst_track, dst_node)
+    used to create it with session_connect_note."""
+    return _post("session_disconnect_note", {"src_track": src_track, "src_node": src_node,
+                                             "dst_track": dst_track, "dst_node": dst_node})
+
+
+@mcp.tool
 def session_set_control_shape(src_track: int, src_node: int, dst_track: int, dst_node: int, param: int,
                               amount: float = 1.0, curve: float = 0.0,
                               invert: bool = False, bipolar: bool = False) -> dict:

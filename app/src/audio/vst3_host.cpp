@@ -155,6 +155,26 @@ struct XAudioApply {
 };
 static_assert(std::is_trivially_copyable<XAudioApply>::value, "XAudioApply must stay POD for the RT xaudio swap");
 
+// ADR-0022 P2b.5: a SESSION-LEVEL cross-track NOTE edge — a note-emitting node on one track (a
+// MidiIn / note-effect / note-generating plugin) feeding a note-consuming node (an instrument / note
+// effect) on ANOTHER track. `XNoteEdge` is the UI-thread authoritative record (stable ids).
+// `XNoteApply` is its resolved form: `src_notes` points at the source node's note-out buffer (a stable
+// slot in the source track's `npool` — the outer vector is sized once, so the inner-vector address is
+// stable across blocks), which the consumer MERGES into its note input. Notes live in per-track `npool`
+// (not a session pool like audio), so the resolved form carries the buffer pointer directly rather than
+// a pool offset; it is re-resolved (like xaudio) whenever a track's plan or membership changes. The
+// source track renders before the consumer (the block render-order topo-sort covers note edges too), so
+// its buffer is current.
+struct XNoteEdge {
+    int src_track_id = -1, src_node_id = -1;
+    int dst_track_id = -1, dst_node_id = -1;
+};
+struct XNoteApply {
+    int src_track_id = -1, dst_track_id = -1, dst_out_buf = -1;
+    std::vector<NoteEvent>* src_notes = nullptr;   // -> source node's npool note-out buffer (cleared if src idle)
+};
+static_assert(std::is_trivially_copyable<XNoteApply>::value, "XNoteApply must stay POD for the RT xnote swap");
+
 // Per-block audio-thread context shared by a track's node processors this block.
 struct GraphBlockCtx {
     uint32_t frames = 0, sample_rate = 48000;
@@ -179,6 +199,9 @@ struct GraphBlockCtx {
     // targeting it by dst_track_id + dst_out_buf). Empty ⇒ zero cost. The source track renders before
     // this one (block render-order topo-sort), so its region holds the rendered output.
     const XAudioApply* xaudio = nullptr; uint32_t xaudio_count = 0;
+    // ADR-0022 P2b.5: the published cross-track NOTE edges (all of them; a note consumer matches those
+    // targeting it by dst_track_id + dst_out_buf and merges the source's notes). Empty ⇒ zero cost.
+    const XNoteApply* xnote = nullptr; uint32_t xnote_count = 0;
 };
 
 struct Session;   // ADR-0022 P2a.2 (Track back-pointer, for re-resolving cross-track edges on recompile)
@@ -461,6 +484,14 @@ struct Session {
     std::mutex               xaudio_mtx;
     std::atomic<uint64_t>    xaudio_gen{0};
     uint64_t                 xaudio_gen_seen = 0;
+    // ADR-0022 P2b.5: session-level cross-track NOTE edges — same handoff shape as the audio/control
+    // edges above. `xnote_edges` is UI-thread authoritative; `republish_xnote` resolves it into
+    // `xnote_ho` and the audio thread swaps that into `xnote_view`.
+    std::vector<XNoteEdge>   xnote_edges;
+    std::vector<XNoteApply>  xnote_view, xnote_ho;
+    std::mutex               xnote_mtx;
+    std::atomic<uint64_t>    xnote_gen{0};
+    uint64_t                 xnote_gen_seen = 0;
     std::atomic<uint64_t> tracks_gen{0};
     uint64_t              tracks_gen_seen = 0;
     int       next_track_id = 0;   // monotonic source of stable per-track IDs
@@ -509,6 +540,7 @@ struct Session {
 static void recompute_mix_scales(Session* s);   // ADR-0022 P1b.4 (defined below)
 static void republish_xctl(Session* s);         // ADR-0022 P2a.2 (defined below)
 static void republish_xaudio(Session* s);        // ADR-0022 P2b.4 (defined below)
+static void republish_xnote(Session* s);         // ADR-0022 P2b.5 (defined below)
 
 // Republish the current track membership for the audio thread (UI/main thread only).
 // Call after any add/remove; the audio thread picks it up on its next block.
@@ -516,9 +548,10 @@ static void rebuild_track_view(Session* s) {
     // ADR-0022 P1b.4: membership changed — a new track must respect an active solo, and dropping a
     // soloed track must un-silence the rest. Recompute before publishing the new view.
     recompute_mix_scales(s);
-    // ADR-0022 P2a.2/P2b.4: track POSITIONS moved → cross-track source region bases changed → re-resolve.
+    // ADR-0022 P2a.2/P2b.4/P2b.5: track POSITIONS moved → cross-track source regions/buffers changed → re-resolve.
     republish_xctl(s);
     republish_xaudio(s);
+    republish_xnote(s);
     std::lock_guard<std::mutex> lk(s->tracks_mtx);
     s->tracks_pub.clear();
     for (auto& tp : s->tracks) { tp->session = s; s->tracks_pub.push_back(tp.get()); }   // P2a.2 back-pointer
@@ -649,6 +682,7 @@ static bool republish_track_graph(Track* t) {
     // before any cross-track edge can exist.)
     republish_xctl(t->session);
     republish_xaudio(t->session);
+    republish_xnote(t->session);
     return true;
 }
 
@@ -724,6 +758,11 @@ static void rebuild_track_graph(Track* t) {
         t->agnodes.push_back({ GNKind::Vst3Inst, nullptr, t->handle });
         prev = t->agraph.add_node(true, false, nullptr, nullptr, "vst3");
     }
+    // ADR-0022 P2b.5: declare the instrument's NOTE-IN port (it consumes notes) so a cross-track note
+    // edge can target it. Metadata only — bit-identical: graph_note_input resolves note inputs from note
+    // EDGES (n_note_in), not this flag, so a derived instrument with no note edge still reads its own
+    // stream. A Sampler (is_audio) ignores notes, so it is left without a note-in port.
+    if (!t->is_audio) t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
     for (Vst3Handle* fx : t->effects_edit) {                                // VST3 FX first (inline order)
         t->agnodes.push_back({ GNKind::Vst3Fx, nullptr, fx });
         const int n = t->agraph.add_node(false, false, nullptr, nullptr, "vfx");
@@ -775,21 +814,38 @@ static void render_sampler_block(Track& t, double beats, double delta, uint32_t 
 // One note edge => that buffer, by reference (no copy). Several => merged into a reserved scratch,
 // ordered by sample offset (a plugin's event list must be in time order). RT-safe: clear + push_back
 // within reserved capacity, and std::sort is in-place (std::stable_sort would allocate).
-static const std::vector<NoteEvent>& graph_note_input(Track& t, const vivid::audio::CompiledStep& s) {
-    if (s.n_note_in <= 0) return t.nev;
+static const std::vector<NoteEvent>& graph_note_input(Track& t, const vivid::audio::CompiledStep& s,
+                                                      const GraphBlockCtx& b) {
+    // ADR-0022 P2b.5: cross-track NOTE sources targeting this node (merged in ADDITION to local notes).
+    bool has_x = false;
+    for (uint32_t x = 0; x < b.xnote_count; ++x)
+        if (b.xnote[x].dst_track_id == t.id && b.xnote[x].dst_out_buf == s.out_buf) { has_x = true; break; }
     const int n = static_cast<int>(t.npool.size());
-    if (s.n_note_in == 1) {
-        const int b0 = s.note_in_buf[0];
-        return (b0 >= 0 && b0 < n) ? t.npool[static_cast<size_t>(b0)] : t.nev;
+    // Fast path — no cross-track note edge: exactly the pre-P2b.5 behavior (return a buffer by
+    // reference, no copy) for the common single-source cases; multi-input falls through to the merge.
+    if (!has_x) {
+        if (s.n_note_in <= 0) return t.nev;
+        if (s.n_note_in == 1) {
+            const int b0 = s.note_in_buf[0];
+            return (b0 >= 0 && b0 < n) ? t.npool[static_cast<size_t>(b0)] : t.nev;
+        }
     }
+    // Merge path: the node's local note inputs + any cross-track sources, sorted by sample offset.
     t.nmerge.clear();
-    for (int k = 0; k < s.n_note_in; ++k) {
-        const int bk = s.note_in_buf[k];
-        if (bk < 0 || bk >= n) continue;
-        for (const NoteEvent& e : t.npool[static_cast<size_t>(bk)]) {
+    auto append = [&](const std::vector<NoteEvent>& src) {
+        for (const NoteEvent& e : src) {
             if (t.nmerge.size() >= kGraphMaxNotes) break;   // truncate rather than allocate
             t.nmerge.push_back(e);
         }
+    };
+    if (s.n_note_in <= 0) append(t.nev);   // no local note edge, but a cross-track one exists → its own stream + cross-track
+    else for (int k = 0; k < s.n_note_in; ++k) {
+        const int bk = s.note_in_buf[k];
+        if (bk >= 0 && bk < n) append(t.npool[static_cast<size_t>(bk)]);
+    }
+    for (uint32_t x = 0; x < b.xnote_count; ++x) {
+        const XNoteApply& xa = b.xnote[x];
+        if (xa.dst_track_id == t.id && xa.dst_out_buf == s.out_buf && xa.src_notes) append(*xa.src_notes);
     }
     std::sort(t.nmerge.begin(), t.nmerge.end(),
               [](const NoteEvent& a, const NoteEvent& b) { return a.sample_offset < b.sample_offset; });
@@ -913,7 +969,7 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
         // ADR-0015: the notes THIS node consumes — its note edge if it has one, else the
         // track-wide stream (the pre-note-edge behavior, which is what keeps parity).
-        const std::vector<NoteEvent>& nsrc = graph_note_input(t, s);
+        const std::vector<NoteEvent>& nsrc = graph_note_input(t, s, b);
         // MidiIn: the track's note stream AS A NODE. It publishes those notes on its note
         // buffer for whatever it feeds, and makes no sound of its own.
         if (nb.kind == GNKind::MidiIn) {
@@ -1494,6 +1550,7 @@ Session* session_create(uint32_t sample_rate) {
     s->mod_scratch.assign(static_cast<size_t>(2) * kGraphMaxBlock, 0.f);   // P2a.1b modulator pre-pass scratch
     s->xctl_edges.reserve(256); s->xctl_view.reserve(256); s->xctl_ho.reserve(256);   // P2a.2 cross-track edges
     s->xaudio_edges.reserve(256); s->xaudio_view.reserve(256); s->xaudio_ho.reserve(256);   // P2b.4 cross-track audio
+    s->xnote_edges.reserve(256); s->xnote_view.reserve(256); s->xnote_ho.reserve(256);   // P2b.5 cross-track notes
     for (const auto& role : kRoles) {
         load_progress(role.kind == kDrums ? "Loading drums..." : "Loading instruments...");
         std::string name;
@@ -1969,6 +2026,114 @@ int session_xaudio_count(Session* s) { return s ? static_cast<int>(s->xaudio_edg
 bool session_xaudio_get(Session* s, int i, int* src_track, int* src_node, int* dst_track, int* dst_node) {
     if (!s || i < 0 || i >= static_cast<int>(s->xaudio_edges.size())) return false;
     const XAudioEdge& e = s->xaudio_edges[static_cast<size_t>(i)];
+    int src_idx = -1, dst_idx = -1;
+    for (size_t k = 0; k < s->tracks.size(); ++k) {
+        if (s->tracks[k]->id == e.src_track_id) src_idx = static_cast<int>(k);
+        if (s->tracks[k]->id == e.dst_track_id) dst_idx = static_cast<int>(k);
+    }
+    if (src_idx < 0 || dst_idx < 0) return false;
+    if (src_track) *src_track = src_idx;   if (src_node) *src_node = e.src_node_id;
+    if (dst_track) *dst_track = dst_idx;   if (dst_node) *dst_node = e.dst_node_id;
+    return true;
+}
+// ADR-0022 P2b.5: resolve every cross-track NOTE edge into its RT-applicable form. Mirrors
+// republish_xaudio: find the endpoint tracks, resolve the source node's note-out buffer to a stable
+// pointer into the source track's `npool`, and the dst to its node index. Skips an edge whose
+// endpoints are gone, uncompiled, or whose source isn't a note emitter (no note_out_buf).
+static void republish_xnote(Session* s) {
+    if (!s) return;
+    std::vector<XNoteApply> resolved;
+    resolved.reserve(s->xnote_edges.size());
+    for (const XNoteEdge& e : s->xnote_edges) {
+        int src_pos = -1, dst_pos = -1;
+        for (size_t i = 0; i < s->tracks.size(); ++i) {
+            if (s->tracks[i]->id == e.src_track_id) src_pos = static_cast<int>(i);
+            if (s->tracks[i]->id == e.dst_track_id) dst_pos = static_cast<int>(i);
+        }
+        if (src_pos < 0 || dst_pos < 0) continue;
+        Track* srcT = s->tracks[static_cast<size_t>(src_pos)].get();
+        Track* dstT = s->tracks[static_cast<size_t>(dst_pos)].get();
+        const int src_idx = srcT->agraph.node_index(e.src_node_id);
+        const int dst_idx = dstT->agraph.node_index(e.dst_node_id);
+        if (src_idx < 0 || dst_idx < 0) continue;
+        int src_note_buf = -1;   // the source node's note-out buffer, from its compiled plan
+        for (const auto& st : srcT->gcg_edit.steps) if (st.out_buf == src_idx) { src_note_buf = st.note_out_buf; break; }
+        if (src_note_buf < 0 || src_note_buf >= static_cast<int>(srcT->npool.size())) continue;   // not a note emitter
+        XNoteApply a;
+        a.src_track_id = e.src_track_id;
+        a.dst_track_id = e.dst_track_id;
+        a.dst_out_buf  = dst_idx;
+        a.src_notes    = &srcT->npool[static_cast<size_t>(src_note_buf)];
+        resolved.push_back(a);
+    }
+    std::lock_guard<std::mutex> lk(s->xnote_mtx);
+    s->xnote_ho = resolved;
+    s->xnote_gen.fetch_add(1, std::memory_order_release);
+}
+static bool xnote_would_cycle(Session* s, int src_id, int dst_id) {
+    if (src_id == dst_id) return true;
+    std::vector<int> stack{ dst_id };
+    std::vector<int> seen;
+    while (!stack.empty()) {
+        const int n = stack.back(); stack.pop_back();
+        if (n == src_id) return true;
+        if (std::find(seen.begin(), seen.end(), n) != seen.end()) continue;
+        seen.push_back(n);
+        for (const XNoteEdge& e : s->xnote_edges)
+            if (e.src_track_id == n) stack.push_back(e.dst_track_id);
+    }
+    return false;
+}
+// ADR-0022 P2b.5: create a cross-track note edge (note-emitting `src_node` on `src_track` merged into
+// note-consuming `dst_node` on `dst_track`). Returns 1 on success; 0 on a bad track/node, a same-track
+// edge (use the in-track graph), a source that doesn't emit notes / a dst that doesn't consume notes, a
+// duplicate, or a cross-track cycle.
+int session_connect_note(Session* s, int src_track, int src_node, int dst_track, int dst_node) {
+    if (!s) return 0;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return 0;
+    if (src_track == dst_track) return 0;   // same track → use the in-track graph
+    Track* srcT = s->tracks[static_cast<size_t>(src_track)].get();
+    Track* dstT = s->tracks[static_cast<size_t>(dst_track)].get();
+    const int src_idx = srcT->agraph.node_index(src_node);
+    const int dst_idx = dstT->agraph.node_index(dst_node);
+    if (src_idx < 0 || dst_idx < 0) return 0;
+    const auto& sn = srcT->agraph.nodes();
+    const auto& dn = dstT->agraph.nodes();
+    if (src_idx >= static_cast<int>(sn.size()) || !sn[static_cast<size_t>(src_idx)].note_out) return 0;   // src must emit notes
+    if (dst_idx >= static_cast<int>(dn.size()) || !dn[static_cast<size_t>(dst_idx)].note_in) return 0;    // dst must consume notes
+    const int src_id = srcT->id, dst_id = dstT->id;
+    for (const XNoteEdge& e : s->xnote_edges)
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node) return 0;   // duplicate
+    if (xnote_would_cycle(s, src_id, dst_id)) return 0;
+    XNoteEdge e;
+    e.src_track_id = src_id; e.src_node_id = src_node;
+    e.dst_track_id = dst_id; e.dst_node_id = dst_node;
+    s->xnote_edges.push_back(e);
+    republish_xnote(s);
+    return 1;
+}
+void session_disconnect_note(Session* s, int src_track, int src_node, int dst_track, int dst_node) {
+    if (!s) return;
+    const int nt = static_cast<int>(s->tracks.size());
+    if (src_track < 0 || src_track >= nt || dst_track < 0 || dst_track >= nt) return;
+    const int src_id = s->tracks[static_cast<size_t>(src_track)]->id;
+    const int dst_id = s->tracks[static_cast<size_t>(dst_track)]->id;
+    bool changed = false;
+    for (size_t i = 0; i < s->xnote_edges.size();) {
+        const XNoteEdge& e = s->xnote_edges[i];
+        if (e.src_track_id == src_id && e.src_node_id == src_node &&
+            e.dst_track_id == dst_id && e.dst_node_id == dst_node) {
+            s->xnote_edges.erase(s->xnote_edges.begin() + static_cast<long>(i)); changed = true;
+        } else ++i;
+    }
+    if (changed) republish_xnote(s);
+}
+int session_xnote_count(Session* s) { return s ? static_cast<int>(s->xnote_edges.size()) : 0; }
+bool session_xnote_get(Session* s, int i, int* src_track, int* src_node, int* dst_track, int* dst_node) {
+    if (!s || i < 0 || i >= static_cast<int>(s->xnote_edges.size())) return false;
+    const XNoteEdge& e = s->xnote_edges[static_cast<size_t>(i)];
     int src_idx = -1, dst_idx = -1;
     for (size_t k = 0; k < s->tracks.size(); ++k) {
         if (s->tracks[k]->id == e.src_track_id) src_idx = static_cast<int>(k);
@@ -2694,6 +2859,14 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             s->xaudio_mtx.unlock();
         }
     }
+    // ADR-0022 P2b.5: same handoff for the resolved cross-track NOTE edges.
+    if (s->xnote_gen.load(std::memory_order_acquire) != s->xnote_gen_seen) {
+        if (s->xnote_mtx.try_lock()) {
+            s->xnote_view.swap(s->xnote_ho);
+            s->xnote_gen_seen = s->xnote_gen.load(std::memory_order_acquire);
+            s->xnote_mtx.unlock();
+        }
+    }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
     const long long bar = static_cast<long long>(std::floor(beats / bpb));
@@ -2853,40 +3026,45 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // ADR-0022 P2b.4: the cross-track audio edges (each node matches those targeting it).
             t.blk.xaudio = s->xaudio_view.data();
             t.blk.xaudio_count = static_cast<uint32_t>(s->xaudio_view.size());
+            // ADR-0022 P2b.5: the cross-track note edges (each note consumer matches those targeting it).
+            t.blk.xnote = s->xnote_view.data();
+            t.blk.xnote_count = static_cast<uint32_t>(s->xnote_view.size());
         }
     }
 
-    // ADR-0022 P2b.4: order the render list so a cross-track audio SOURCE track renders before its
-    // consumer (a stable topological sort by the resolved xaudio edges). With no cross-track audio
-    // edges this is the identity (each track keeps its render_list position), so the master sum order
-    // is unchanged and the block is bit-identical. A cross-track cycle is rejected at connect time, so
-    // the edges here are acyclic; the bounded passes below are a belt-and-braces guard that never
-    // reorders past render_list.size() swaps. Track regions are keyed by tracks_view index (not this
-    // order), so reordering only changes WHEN a track renders, never WHERE.
-    if (!s->xaudio_view.empty() && s->render_list.size() > 1) {
+    // ADR-0022 P2b.4/P2b.5: order the render list so a cross-track SOURCE track (audio OR note) renders
+    // before its consumer (a stable topological sort by the resolved edges). With no cross-track edges
+    // this is the identity (each track keeps its render_list position), so the master sum order is
+    // unchanged and the block is bit-identical. Cross-track cycles are rejected at connect time, so the
+    // edges here are acyclic; the bounded passes are a belt-and-braces guard that never reorders past
+    // render_list.size() swaps. Track regions are keyed by tracks_view index (not this order), so
+    // reordering only changes WHEN a track renders, never WHERE.
+    if ((!s->xaudio_view.empty() || !s->xnote_view.empty()) && s->render_list.size() > 1) {
         const size_t n = s->render_list.size();
+        auto pull_src_before_dst = [&](int src_track_id, int dst_track_id) -> bool {
+            int si = -1, di = -1;
+            for (size_t i = 0; i < n; ++i) {
+                if (s->render_list[i]->id == src_track_id) si = static_cast<int>(i);
+                if (s->render_list[i]->id == dst_track_id) di = static_cast<int>(i);
+            }
+            if (si >= 0 && di >= 0 && si > di) {   // source after consumer → pull source just before it
+                Track* src = s->render_list[static_cast<size_t>(si)];
+                s->render_list.erase(s->render_list.begin() + si);
+                s->render_list.insert(s->render_list.begin() + di, src);
+                return true;
+            }
+            return false;
+        };
         for (size_t pass = 0; pass < n; ++pass) {
             bool moved = false;
-            for (const XAudioApply& xa : s->xaudio_view) {
-                int si = -1, di = -1;
-                for (size_t i = 0; i < n; ++i) {
-                    if (s->render_list[i]->id == xa.src_track_id) si = static_cast<int>(i);
-                    if (s->render_list[i]->id == xa.dst_track_id) di = static_cast<int>(i);
-                }
-                if (si >= 0 && di >= 0 && si > di) {   // source after consumer → pull source just before it
-                    Track* src = s->render_list[static_cast<size_t>(si)];
-                    s->render_list.erase(s->render_list.begin() + si);
-                    s->render_list.insert(s->render_list.begin() + di, src);
-                    moved = true;
-                }
-            }
+            for (const XAudioApply& xa : s->xaudio_view) moved |= pull_src_before_dst(xa.src_track_id, xa.dst_track_id);
+            for (const XNoteApply&  xn : s->xnote_view)  moved |= pull_src_before_dst(xn.src_track_id, xn.dst_track_id);
             if (!moved) break;
         }
     }
-    // ADR-0022 P2b.4: a cross-track source that isn't rendering this block (no source / gok=false)
+    // ADR-0022 P2b.4: a cross-track AUDIO source that isn't rendering this block (no source / gok=false)
     // would leave a STALE buffer in its node-pool region for the consumer to read. Zero those source
-    // buffers so an absent/silent source contributes silence, not last block's audio. Bounded by the
-    // (small) edge count; skipped entirely with no cross-track audio.
+    // buffers so an absent/silent source contributes silence, not last block's audio.
     for (const XAudioApply& xa : s->xaudio_view) {
         bool src_rendering = false;
         for (Track* rt : s->render_list) if (rt->id == xa.src_track_id) { src_rendering = true; break; }
@@ -2894,6 +3072,16 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             float* sL = s->node_pool.data() + xa.src_pool_base + static_cast<size_t>(xa.src_out_buf) * 2 * frames;
             std::memset(sL, 0, 2 * frames * sizeof(float));
         }
+    }
+    // ADR-0022 P2b.5: same for a cross-track NOTE source that isn't rendering — clear its note buffer so
+    // the consumer merges nothing (not last block's notes). A rendering source repopulates it (its
+    // note-emitter node clears+refills each block), so this only bites an idle/instrument-less source
+    // track. (A dedicated note-generator track with no instrument is gok=false and won't render — like a
+    // modulator-only track; wiring notes from an instrument-bearing track is the supported path for now.)
+    for (const XNoteApply& xn : s->xnote_view) {
+        bool src_rendering = false;
+        for (Track* rt : s->render_list) if (rt->id == xn.src_track_id) { src_rendering = true; break; }
+        if (!src_rendering && xn.src_notes) xn.src_notes->clear();
     }
 
     // ADR-0022 P2b.3b: build the FLAT session plan and drive it with ONE executor, replacing the two
