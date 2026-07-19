@@ -59,6 +59,10 @@ int         session_place_generator(Session*, int track, int scene, const char* 
 int         session_remove_generator(Session*, int track, int scene);
 int         session_cell_is_generator(Session*, int track, int scene);
 const char* session_generator_type(Session*, int track, int scene);
+int         session_generator_param_count(Session*, int track, int scene);
+const char* session_generator_param_name(Session*, int track, int scene, int i);
+float       session_generator_param_value(Session*, int track, int scene, int i);
+int         session_set_generator_param(Session*, int track, int scene, const char* name, float value);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never

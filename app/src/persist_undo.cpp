@@ -62,6 +62,10 @@ nlohmann::json track_topology(const nlohmann::json& tr) {
     if (auto it = t.find("audio_instrument"); it != t.end() && it->is_object()) it->erase("params");
     if (auto it = t.find("audio_fx"); it != t.end() && it->is_array())
         for (auto& f : *it) if (f.is_object()) f.erase("params");
+    // ADR-0022 P3.3: a generator's PARAMS are ParamsOnly (set on the live op); its presence + type
+    // are topology (placing/removing/swapping a generator adds or removes a node => Full rebuild).
+    if (auto it = t.find("gens"); it != t.end() && it->is_object())
+        for (auto& g : *it) if (g.is_object()) g.erase("params");
     if (auto ag = t.find("audio_graph"); ag != t.end() && ag->is_object())
         if (auto ns = ag->find("nodes"); ns != ag->end() && ns->is_array())
             for (auto& n : *ns)
