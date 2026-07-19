@@ -25,6 +25,7 @@ constexpr uint32_t kMaxNotes = 512;
 struct AudioOp {
     OpInstance          inst;
     AudioProcessable*   ap = nullptr;      // cast once at create (RT: no dynamic_cast in process)
+    NoteFlushable*      nf = nullptr;      // ADR-0022 P3.3: cast once; null unless a generator implements it
     bool                is_source = false; // no audio-input port
     std::string         type;
 
@@ -52,6 +53,7 @@ AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
     auto* a = new AudioOp();
     a->inst = std::move(*opt);
     a->ap = dynamic_cast<AudioProcessable*>(a->inst.op.get());   // re-resolve after move
+    a->nf = dynamic_cast<NoteFlushable*>(a->inst.op.get());      // ADR-0022 P3.3: null unless a generator
     a->type = type_name;
     a->nparams = static_cast<int>(a->inst.param_ptrs.size());
 
@@ -132,6 +134,26 @@ const char* audio_mod_op_name(OpRegistry& reg, int idx) {
     }
     return "";
 }
+// ADR-0022 P3.3: the note-generator set (marked at registration; see audio_op_mark_gen_op). Same
+// escape hatch as note/mod ops — a generator declares an audio OUTPUT so descriptor_is_source()
+// calls it a source; marking excludes it from the instrument list and lists it as a generator.
+static std::set<std::string>& gen_ops() { static std::set<std::string> s; return s; }
+void audio_op_mark_gen_op(const std::string& name) { gen_ops().insert(name); }
+bool audio_op_is_gen_op(const std::string& name) { return gen_ops().count(name) != 0; }
+int audio_gen_op_count(OpRegistry& reg) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) if (audio_op_is_gen_op(nm)) ++n;
+    return n;
+}
+const char* audio_gen_op_name(OpRegistry& reg, int idx) {
+    int n = 0;
+    for (const auto& nm : reg.type_names()) {
+        if (!audio_op_is_gen_op(nm) || n++ != idx) continue;
+        const VividOperatorDescriptor* d = reg.descriptor_for(nm);   // registry-owned; nm dangles
+        return d && d->name ? d->name : "";
+    }
+    return "";
+}
 
 int audio_op_registry_count(OpRegistry& reg, bool want_source) {
     int n = 0;
@@ -140,6 +162,7 @@ int audio_op_registry_count(OpRegistry& reg, bool want_source) {
         if (!d || !d->has_process_audio) continue;
         if (audio_op_is_note_op(nm)) continue;   // a note effect is not an instrument
         if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
+        if (audio_op_is_gen_op(nm)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
         if (descriptor_is_source(d) == want_source) ++n;
     }
     return n;
@@ -150,6 +173,7 @@ const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
     for (const auto& nm : reg.type_names()) {
         if (audio_op_is_note_op(nm)) continue;   // excluded: a note effect is not an instrument
         if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
+        if (audio_op_is_gen_op(nm)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
         if (!d || !d->has_process_audio || descriptor_is_source(d) != want_source) continue;
         if (n == idx) return d->name ? d->name : "";   // descriptor name is stable (registry-owned)
@@ -293,6 +317,24 @@ void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t 
 
     std::memcpy(L, outp, sizeof(float) * frames);
     std::memcpy(R, outp + frames, sizeof(float) * frames);
+}
+
+// ADR-0022 P3.3: flush a generator's currently-sounding voices as note-offs (via NoteFlushable).
+// RT-safe: the op writes into the preallocated VividNoteEvent scratch, converted to session events
+// here (same hop as note_out in audio_op_process). count=0 for any op without NoteFlushable (nf null).
+void audio_op_note_flush(AudioOp* a, session::NoteEvent* out, uint32_t cap, uint32_t* count) {
+    if (count) *count = 0;
+    if (!a || !a->nf || !out || cap == 0) return;
+    const uint32_t c = cap < kMaxNotes ? cap : kMaxNotes;
+    uint32_t nout = 0;
+    a->nf->note_flush(a->noutscratch.data(), c, &nout);
+    const uint32_t m = nout < c ? nout : c;
+    for (uint32_t i = 0; i < m; ++i) {
+        const VividNoteEvent& e = a->noutscratch[i];
+        out[i] = session::NoteEvent{ e.sample_offset, e.on != 0, static_cast<int>(e.pitch),
+                                     e.velocity, e.note_id, e.tuning };
+    }
+    if (count) *count = m;
 }
 
 }  // namespace vivid
