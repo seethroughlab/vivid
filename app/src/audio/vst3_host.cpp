@@ -95,7 +95,10 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // nodes) into one note-out feeding the instrument, so instrument note fan-in stays low regardless
 // of scene count. Selection is by SOURCE gating: only the active scene's clip node emits, so the
 // merge is exactly the active clip. Appended to keep prior enumerator values stable.
-enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip, Selector };
+// NativeGen (ADR-0022 P3.3): a note GENERATOR (Euclid/Chord/RandMelody) placed in a scene cell —
+// an algorithmic note SOURCE gated by scene exactly like MidiClip, emitting its own notes from the
+// transport. Reuses GNodeBind.op (the generator instance) + .scene. Appended to keep values stable.
+enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip, Selector, NativeGen };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
 // Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
@@ -372,6 +375,13 @@ struct Track {
     std::vector<MidiClip> edit_clips;
     std::atomic<uint64_t> edit_gen{0};
     uint64_t              edit_gen_seen = 0;
+    // ADR-0022 P3.3: per-scene GENERATOR cells (a scene cell holds a clip OR a note generator).
+    // `op == null` => the cell is a clip (the default; `clips[sc]` is its content). `op != null`
+    // => a generator; the op instance is owned here and reaches the audio thread through the
+    // NativeGen node's gbind (rebuild_track_graph republishes on place/remove). Sized to `scenes`,
+    // reserved to kMaxScenes (append is RT-safe). UI/main-thread only. Retired ops go to op_retired.
+    struct GenCell { vivid::AudioOp* op = nullptr; std::string type; };
+    std::vector<GenCell>  gen_cells;
     // Audio track: no plugin; per-scene samples played transport-locked. `aud_clips` is
     // sized to `scenes` (an empty Sampler = empty cell). Content edits (stash/place a
     // clip) happen on the UI thread under aud_mtx; the audio thread try_locks it around
@@ -816,11 +826,17 @@ static void rebuild_track_graph(Track* t) {
         // individually-addressable node; nscenes ≤ kMaxScenes = kMaxNoteInputs, so the Selector's note
         // fan-in never overflows.
         for (int sc = 0; sc < nscenes; ++sc) {
-            GNodeBind cb; cb.kind = GNKind::MidiClip; cb.scene = sc;
+            // ADR-0022 P3.3: a scene cell is a clip (MidiClip node) unless a generator is placed
+            // (NativeGen node, reusing the op instance owned by gen_cells). Either way it is a
+            // scene-gated note source into the Selector — one source per scene keeps fan-in ≤ 8.
+            vivid::AudioOp* gop = (sc < static_cast<int>(t->gen_cells.size())) ? t->gen_cells[sc].op : nullptr;
+            GNodeBind cb; cb.scene = sc;
+            if (gop) { cb.kind = GNKind::NativeGen; cb.op = gop; }
+            else       cb.kind = GNKind::MidiClip;
             t->agnodes.push_back(cb);
-            const int midi_clip = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
-            t->agraph.set_note_ports(midi_clip, /*note_in*/false, /*note_out*/true);
-            t->agraph.connect(midi_clip, selector, vivid::audio::EdgeKind::Note);
+            const int node = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, gop ? "gen" : "clip");
+            t->agraph.set_note_ports(node, /*note_in*/false, /*note_out*/true);
+            t->agraph.connect(node, selector, vivid::audio::EdgeKind::Note);
         }
         t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
         const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
@@ -1078,6 +1094,29 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
                 for (const NoteEvent& e : nsrc) {
                     if (outn.size() >= kGraphMaxNotes) break;   // truncate, never allocate
                     outn.push_back(e);
+                }
+            }
+            return;
+        }
+        // ADR-0022 P3.3: a NOTE GENERATOR in a scene cell (Euclid / Chord / RandMelody). A scene-gated
+        // note SOURCE — it reads NO input notes and emits its own from the transport into its note-out.
+        // Only the node whose scene == the active scene runs; the rest gate to silence (like MidiClip),
+        // so the Selector's merge is exactly the active cell. Its scene-switch release goes through
+        // t.scene_rel (see the switch block + audio_op_note_flush), like a clip's.
+        if (nb.kind == GNKind::NativeGen && nb.op) {
+            std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
+            std::vector<NoteEvent>* outn = nullptr;
+            if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
+                outn = &t.npool[static_cast<size_t>(s.note_out_buf)];
+            if (outn) {
+                outn->clear();
+                if (nb.scene == t.active.load(std::memory_order_relaxed)) {
+                    uint32_t produced = 0;
+                    outn->resize(kGraphMaxNotes);   // reserved capacity: no allocation
+                    vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
+                                            nullptr, 0,                     // a generator reads no input notes
+                                            outn->data(), kGraphMaxNotes, &produced, ovr, novr);
+                    outn->resize(produced);
                 }
             }
             return;
@@ -1522,6 +1561,8 @@ static Track* make_instrument_track(Vst3Handle* h, const std::string& name, int 
 t->eev.reserve(256);
     t->edit_clips = t->clips;
     t->edit_clips.reserve(kMaxScenes);   // operator= may shrink capacity to size — re-reserve
+    t->gen_cells.reserve(kMaxScenes);    // ADR-0022 P3.3: one cell per scene (all clips by default)
+    t->gen_cells.resize(scenes);
     t->effects.reserve(16); t->effects_edit.reserve(16);
     t->op_effects.reserve(16); t->op_effects_edit.reserve(16);
     reserve_track_graph(t);
@@ -3129,8 +3170,21 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.scene_rel.clear();   // scene-switch note-offs for the CLAP path (parallel to t.vev)
             if (new_bar) {
                 const int q = t.queued.load(std::memory_order_relaxed);
-                if (q >= 0 && q != t.active.load(std::memory_order_relaxed) && q < static_cast<int>(t.clips.size())) {
-                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev); emit_vst3(t.vev, t.nev, t.eev);
+                const int old_scene = t.active.load(std::memory_order_relaxed);
+                if (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size())) {
+                    t.nev.clear(); t.eev.clear(); t.sched.flush(t.nev);   // outgoing CLIP's held notes
+                    // ADR-0022 P3.3: if the outgoing scene's cell is a GENERATOR, release its held
+                    // voices into the same scene_rel path. Found via the audio-thread PLAN (t.gbinds),
+                    // not gen_cells (UI-thread-only). audio_op_note_flush also forgets the op's voices,
+                    // so the generator starts clean when its scene is relaunched.
+                    for (const GNodeBind& gb : t.gbinds)
+                        if (gb.kind == GNKind::NativeGen && gb.scene == old_scene && gb.op) {
+                            NoteEvent gof[64]; uint32_t gn = 0;
+                            vivid::audio_op_note_flush(gb.op, gof, 64, &gn);
+                            for (uint32_t i = 0; i < gn && t.nev.size() < kGraphMaxNotes; ++i) t.nev.push_back(gof[i]);
+                            break;
+                        }
+                    emit_vst3(t.vev, t.nev, t.eev);
                     t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
                     t.sched.reset(&t.clips[q]);
                     t.active.store(q, std::memory_order_relaxed);
@@ -3682,6 +3736,7 @@ int session_track_audio_graph_node_kind(Session* s, int t, int i) {
         case GNKind::NativeMod:    return 5;   // ADR-0022: a modulator (LFO) — no audio, emits control
         case GNKind::MidiClip:     return 6;   // ADR-0022 P3.1b: the clip scheduler as a note source
         case GNKind::Selector:     return 7;   // ADR-0022 P3.2: the per-track-out note selector/mux
+        case GNKind::NativeGen:    return 8;   // ADR-0022 P3.3: a note generator in a scene cell
     }
     return -1;
 }
@@ -4915,6 +4970,7 @@ int session_add_scene(Session* s) {
                 MidiClip c; c.length = 4.0;
                 t->edit_clips.push_back(c);   // reserved to kMaxScenes → no realloc
             }
+            t->gen_cells.push_back({});       // ADR-0022 P3.3: the new scene's cell is a clip by default
             t->edit_gen.fetch_add(1, std::memory_order_release);
         }
     }
@@ -4933,6 +4989,49 @@ int session_add_scene(Session* s) {
     rebuild_track_view(s);
     std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
     return ns - 1;
+}
+
+// ADR-0022 P3.3: the note-generator ops available to place in a scene cell (Euclid/Chord/RandMelody).
+int session_available_generator_count(Session* s) {
+    return (s && s->op_reg) ? vivid::audio_gen_op_count(*s->op_reg) : 0;
+}
+const char* session_available_generator_name(Session* s, int idx) {
+    return (s && s->op_reg) ? vivid::audio_gen_op_name(*s->op_reg, idx) : "";
+}
+// Place a generator of `type` into (track, scene): the cell becomes a GENERATOR cell (its clip is
+// left intact but the graph now voices the generator for that scene). Replaces any generator already
+// there. Returns 1 on success. Derived tracks only for now (an authoritative note graph is rebuilt by
+// republish, not from gen_cells — a documented limitation, like the authoritative add_scene case).
+int session_place_generator(Session* s, int track, int scene, const char* type) {
+    Track* tr = graph_track(s, track);
+    if (!tr || tr->is_audio || !s->op_reg || scene < 0 || scene >= s->scenes) return 0;
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, type);
+    if (!op) return 0;
+    if (scene >= static_cast<int>(tr->gen_cells.size())) tr->gen_cells.resize(scene + 1);
+    if (tr->gen_cells[scene].op) tr->op_retired.push_back(tr->gen_cells[scene].op);   // retire the old (freed at shutdown)
+    tr->gen_cells[scene].op = op;
+    tr->gen_cells[scene].type = type ? type : "";
+    rebuild_track_graph(tr);   // republish: the scene's node becomes a NativeGen
+    return 1;
+}
+// Revert a scene cell to a clip (removes its generator). Returns 1 if a generator was removed.
+int session_remove_generator(Session* s, int track, int scene) {
+    Track* tr = graph_track(s, track);
+    if (!tr || scene < 0 || scene >= static_cast<int>(tr->gen_cells.size()) || !tr->gen_cells[scene].op) return 0;
+    tr->op_retired.push_back(tr->gen_cells[scene].op);   // retire, never free on the audio thread
+    tr->gen_cells[scene].op = nullptr;
+    tr->gen_cells[scene].type.clear();
+    rebuild_track_graph(tr);   // republish: the scene's node reverts to MidiClip
+    return 1;
+}
+int session_cell_is_generator(Session* s, int track, int scene) {
+    Track* tr = graph_track(s, track);
+    return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size()) && tr->gen_cells[scene].op) ? 1 : 0;
+}
+const char* session_generator_type(Session* s, int track, int scene) {
+    Track* tr = graph_track(s, track);
+    return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size()) && tr->gen_cells[scene].op)
+               ? tr->gen_cells[scene].type.c_str() : "";
 }
 
 // Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),

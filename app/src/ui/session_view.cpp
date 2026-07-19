@@ -525,13 +525,18 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             session_clip_cell(ui, r, acc, hov, on, q, tbh);
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
-            char cn[16];
+            char cn[24];
+            // ADR-0022 P3.3: a generator cell shows the generator type (Euclid/Chord/…) and no clip preview.
+            const bool isgen = !vivid::session::session_track_is_audio(s, t) && vivid::session::session_cell_is_generator(s, t, sc) != 0;
             const int abpm = vivid::session::session_track_is_audio(s, t) ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
-            if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
-            else          std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
+            if (isgen)         std::snprintf(cn, sizeof cn, "%s", vivid::session::session_generator_type(s, t, sc));
+            else if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
+            else               std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(tx, r.y + 2.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, sty.fs_value);
-            const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
-            draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
+            if (!isgen) {
+                const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
+                draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
+            }
         }
     }
     // "+ Scene" — append a grid row (a compact cell in the scene column, below the last row).
