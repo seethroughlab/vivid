@@ -503,6 +503,7 @@ void register_introspection_handlers(Handlers& handlers_) {
            << P::session_track_count(c.session) << " tracks";
         r["summary"] = ss.str();
         r["scene"] = scene;
+        r["name"] = safe_cstr(P::session_scene_name(c.session, scene));   // ADR-0022 P3.3
         r["tracks"] = tracks;
         return r;
     };

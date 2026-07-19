@@ -511,7 +511,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const Rect sb = scene_launch_rect(sc);
         const bool sh = hit(sb, mx, my);
         session_scene_button(ui, sb, sty.audio, sh);
-        char sl[4]; std::snprintf(sl, sizeof sl, "%c", 'A' + sc);
+        const char* sl = vivid::session::session_scene_name(s, sc);   // ADR-0022 P3.3 (default "A","B",…)
         ui.draw_text(sb.x + (sb.w - ui.text_width(sl, sty.fs_body)) * 0.5f, sb.y + 5.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         ui.draw_tri(sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 15.f, sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 7.f, sb.x + sb.w * 0.5f + 4.f, sb.y + sb.h - 11.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
         for (int t = 0; t < tracks; ++t) {

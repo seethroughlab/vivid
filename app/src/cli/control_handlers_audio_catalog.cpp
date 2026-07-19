@@ -66,6 +66,15 @@ void register_audio_catalog_handlers(Handlers& handlers_) {
         if (sc < 0) return err(code::kInternal, "add_scene failed (kMaxScenes reached?)");
         json r = ok(); r["scene"] = sc; return r;
     };
+    // ADR-0022 P3.3: rename a scene (the "named" in "a scene is a named set of bindings").
+    handlers_["set_scene_name"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int scene = b.value("scene", -1);
+        if (scene < 0 || scene >= P::session_scene_count(c.session))
+            return err(code::kBadArg, "scene out of range");
+        P::session_set_scene_name(c.session, scene, b.value("name", std::string()).c_str());
+        json r = ok(); r["scene"] = scene; r["name"] = P::session_scene_name(c.session, scene); return r;
+    };
     // Delete a track. Also drops audio->visual mappings whose source encodes the removed
     // track's stable id; surviving mappings do not need index renumbering.
     handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {

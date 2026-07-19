@@ -48,6 +48,9 @@ int  session_add_scene(Session*);
 // recreated, so each track is born with the right number of clip slots. Does not touch
 // existing tracks.
 void session_set_scene_count(Session*, int scenes);
+// ADR-0022 P3.3: per-scene display name (default "A","B",…). UI/main thread only.
+const char* session_scene_name(Session*, int scene);
+void        session_set_scene_name(Session*, int scene, const char* name);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never
