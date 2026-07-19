@@ -9,10 +9,10 @@
 //
 // It owns only the genuinely-shared, behavior-preserving skeleton: the node-card chrome (error border
 // + card + selection ring + error badge), the background grid, and the ghost/drag-preview wire.
-// Everything that legitimately diverges stays in each editor's own draw loop: the coordinate space
-// (visual draws in WORLD space via set_transform; audio bakes SCREEN coords in layout()), wire
-// enumeration/endpoints/color, port + label content, the preview-well contents (GPU thumbnail /
-// sparkline / waveform), and the whole audio param band.
+// Everything that legitimately diverges stays in each editor's own draw loop: wire enumeration/
+// endpoints/color, port + label content, the preview-well contents (GPU thumbnail / sparkline /
+// waveform), and the whole audio param band. (Both editors now draw WORLD-space through the shared
+// NodeView transform — ADR-0023 #3 moved the audio graph off its old screen-space `layout()` baking.)
 namespace vivid::ui {
 
 class GraphCanvas {

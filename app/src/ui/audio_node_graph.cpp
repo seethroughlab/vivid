@@ -310,10 +310,11 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     std::vector<int> fill(max_rank + 1, 0);
     for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
-    // Every node has a stored world position; screen = canvas_.view().to_screen(world) (ADR-0023: the
-    // camera is an absolute NodeView owned by the canvas). An unpositioned node is seeded from the auto-layout
-    // (rank = signal depth, slot = fan-out order) and stuck — so the graph opens tidy, then every node
-    // is freely draggable and the layout persists.
+    // Every node has a stored WORLD position; layout returns world coords and the draw path applies the
+    // canvas NodeView transform (ADR-0023 #3: the audio graph draws world-space through set_transform, like
+    // the visuals graph — one coordinate model, "true zoom"). An unpositioned node is seeded from the
+    // auto-layout (rank = signal depth, slot = fan-out order) and stuck — so the graph opens tidy, then
+    // every node is freely draggable and the layout persists.
     out.reserve(n);
     // Seed spacing uses a generous row pitch — cards are now variable-height (param ports), so the
     // tallest a fresh column can get must not overlap the next row on first open.
@@ -325,11 +326,7 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
             wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
             P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
         }
-        const NodeView& view = canvas_.view();   // the camera lives in the canvas (ADR-0023 #1)
-        double sx, sy; view.to_screen(wx, wy, sx, sy);
-        out.push_back({ kind[i], id[i],
-                        static_cast<float>(sx), static_cast<float>(sy),
-                        kCardW * view.scale, card_height(id[i]) * view.scale });
+        out.push_back({ kind[i], id[i], wx, wy, kCardW, card_height(id[i]) });   // WORLD coords + size
     }
     return out;
 }
@@ -410,11 +407,17 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         return;
     }
 
-    const std::vector<AudioNodeBox> boxes = layout();
+    const std::vector<AudioNodeBox> boxes = layout();   // WORLD coords (ADR-0023 #3)
     // Clip the graph area (2i): with pan/zoom, nodes can fall outside the region — keep them from
-    // bleeding into the param strip or the rest of the dock.
+    // bleeding into the param strip or the rest of the dock. The clip is SCREEN-space (GPU scissor),
+    // unaffected by the world transform we set next.
     const Rect gr = graph_region();
     r.push_clip_rect(gr.x, gr.y, gr.w, gr.h);
+    // ADR-0023 #3: draw the graph content WORLD-space through the canvas camera ("true zoom" — cards,
+    // text, ports and wires all scale with zoom, like the visuals graph). The param strip + "TAB to add"
+    // chrome below reset to identity and stay screen-space.
+    const NodeView& view = canvas_.view();
+    r.set_transform(view.ox, view.oy, view.scale);
     // Edges (behind cards): iterate the raw edges again mapped to laid-out boxes by node index.
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     std::vector<int> id(n);
@@ -496,12 +499,16 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     }
 
     // Ghost wire while dragging a rewire from a node's output port to the cursor (ADR-0023 Layer 2).
+    // Endpoints are WORLD (drawn under the transform): convert the screen cursor to world.
     if (wire_from >= 0) {
+        double wcx, wcy; view.to_world(cx, cy, wcx, wcy);
         for (int i = 0; i < static_cast<int>(boxes.size()); ++i)
             if (id[i] == wire_from) { const Rect p = out_port_rect(boxes[i]);
-                canvas_.ghost_wire(r, p.x + 6.f, p.y + 6.f, cx, cy, sty.gold); break; }
+                canvas_.ghost_wire(r, p.x + 6.f, p.y + 6.f,
+                                   static_cast<float>(wcx), static_cast<float>(wcy), sty.gold); break; }
     }
 
+    r.set_transform(0.f, 0.f, 1.f);   // ADR-0023 #3: back to identity — the chrome below is screen-space
     // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). The old "+ FX" / "+ Src"
     // buttons are gone — they could only ever offer native ops, so they quietly hid half the catalog.
     { const Rect g = graph_region();

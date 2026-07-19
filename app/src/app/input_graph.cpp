@@ -495,19 +495,23 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
             return true;
         }
     }
+    // ADR-0023 #3: the graph draws WORLD-space, so graph-area hit-tests (cards/ports below) compare the
+    // cursor in WORLD coords. The chrome above (dock button, key handles + param strip = the param band,
+    // popover placement) stays screen-space and keeps using mx,my.
+    double wmx, wmy; canvas_.view().to_world(mx, my, wmx, wmy);
     const auto boxes = layout();
     for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
-        if (b.kind != 2 && hit(out_port_rect(b), mx, my)) { wire_from = b.node_id; return true; }
+        if (b.kind != 2 && hit(out_port_rect(b), wmx, wmy)) { wire_from = b.node_id; return true; }
     // ADR-0022: the "+ param" row on a plugin card opens the searchable picker to expose one more param.
     for (const auto& b : boxes)
-        if (hit(add_param_port_rect(b), mx, my)) {
+        if (hit(add_param_port_rect(b), wmx, wmy)) {
             win.sel_audio_node = b.node_id;
             vivid::input::param_chooser_open(win, app, b.node_id, mx, my);
             return true;
         }
     // ADR-0022: clicking a WIRED (magenta) param port opens the modulation shape editor for its edge.
     for (const auto& b : boxes) {
-        const int slot = param_port_hit(b, mx, my);
+        const int slot = param_port_hit(b, wmx, wmy);
         if (slot < 0) continue;
         const std::vector<int> exp = exposed_params(b.node_id);
         if (slot >= static_cast<int>(exp.size())) continue;
@@ -526,13 +530,13 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         return true;
     }
     for (const auto& b : boxes) {   // remove-x (effects) or select — both by node id
-        if (b.kind == 1 && hit(remove_rect(b), mx, my)) {
+        if (b.kind == 1 && hit(remove_rect(b), wmx, wmy)) {
             S::session_audio_graph_remove_node(app.session, tr, b.node_id);
             if (win.sel_audio_node == b.node_id) win.sel_audio_node = vivid::Window::kNoAudioNode;
             if (app.edit_gateway) app.edit_gateway->note_edit("Remove Audio Node", "");   // ADR-0017/G3
             return true;
         }
-        if (mx >= b.x && mx < b.x + b.w && my >= b.y && my < b.y + b.h) {
+        if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
             // Double-click a VST3 node → open its native plugin editor.
             const double now = glfwGetTime();
@@ -545,8 +549,8 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
                 last_node_t = -1;
             } else { last_node = b.node_id; last_node_t = now; }
             node_drag = b.node_id;                                   // start a reposition drag (any node)
-            node_dx = (mx - b.x) / canvas_.view().scale;             // grab offset in world units
-            node_dy = (my - b.y) / canvas_.view().scale;
+            node_dx = wmx - b.x;                                     // grab offset in world units (cursor already world)
+            node_dy = wmy - b.y;
             return true;
         }
     }
@@ -593,13 +597,15 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits. A MidiIn
     // (kind 3) / note effect (kind 4) emit notes (NOTE edge); a modulator (kind 5) emits CONTROL to a
     // PARAM port; everything else is audio. (Unambiguous today because no node emits both.)
+    // ADR-0023 #3: the drop target is a port on a WORLD-space card — hit-test the cursor in world coords.
+    double wmx, wmy; canvas_.view().to_world(mx, my, wmx, wmy);
     int from_kind = -1;
     for (const auto& b : layout()) if (b.node_id == wire_from) { from_kind = b.kind; break; }
     const bool note_wire = (from_kind == 3 || from_kind == 4);
     if (from_kind == 5) {   // modulator -> a param PORT (control edge to that exact param, ADR-0022)
         for (const auto& b : layout()) {
             if (b.node_id == wire_from) continue;
-            const int slot = param_port_hit(b, mx, my);
+            const int slot = param_port_hit(b, wmx, wmy);
             if (slot < 0) continue;
             const std::vector<int> exp = exposed_params(b.node_id);
             if (slot >= static_cast<int>(exp.size())) continue;
@@ -615,7 +621,7 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
         return true;
     }
     for (const auto& b : layout()) {
-        if (b.node_id == wire_from || !hit(in_port_rect(b), mx, my)) continue;
+        if (b.node_id == wire_from || !hit(in_port_rect(b), wmx, wmy)) continue;
         // A note wire may land on an instrument (kind 0) or another note effect; an audio wire may not
         // land on a source.
         if (note_wire) {
