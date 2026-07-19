@@ -331,10 +331,15 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
                 std::fprintf(stderr, "[vivid] load: VST3 source '%s' unavailable — bare graph track (silent source)\n", inst.c_str());
                 added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
             }
-        } else if (jt.contains("audio_graph") || jt.contains("clap_instrument")) {
-            // A rewired (authoritative) track OR a bare CLAP-instrument track: create a bare native
-            // graph track. The authoritative graph block below (if any) rebuilds the topology; the
-            // CLAP instrument itself is loaded async (requested after the id restore below).
+        } else if (jt.contains("audio_graph") || jt.contains("clap_instrument") || jt.contains("audio_instrument")) {
+            // A rewired (authoritative) track, a bare CLAP-instrument track, OR a NON-authoritative
+            // NATIVE-op instrument track (add_graph_track + a native instrument like TestTone, never
+            // rewired): create a bare native graph track — the instrument-shaped shell these all need.
+            // The authoritative graph block below (if any) rebuilds the topology; a CLAP instrument
+            // loads async; the native instrument (audio_instrument) + native FX (audio_fx) are set by
+            // the value-restore below. Keying off `audio_instrument` (written only when the instrument
+            // slot holds a native op) is what keeps a native-op instrument track from falling into the
+            // plugin-catalog branch, which resolves only VST3/CLAP and would drop it to an audio placeholder.
             added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
         } else {
             const std::string inst = jt.value("instrument", jt.value("name", std::string()));
