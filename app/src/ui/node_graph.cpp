@@ -506,6 +506,59 @@ int NodeGraph::selected_node_id() const {
     return (sel_op_ >= 0 && sel_op_ < n) ? vg_->nodes()[sel_op_].id : -1;
 }
 
+// ADR-0023 #3c: the active-output ring, drawn UNDER the card by the shared canvas card loop — a 2px
+// accent frame on the node currently driving the viewer (unless it's the inspector selection, which
+// already gets the blue ring from card()).
+void NodeGraph::before_card(Renderer2D& r, const AdapterNode& a, int i) const {
+    if (!vg_) return;
+    const bool active_out = vg_->nodes()[i].is_output() && i == vg_->output_index();
+    if (i != sel_op_ && active_out)
+        r.draw_rect(a.rect.x - 2.f, a.rect.y - 2.f, a.rect.w + 4.f, a.rect.h + 4.f,
+                    a.accent[0], a.accent[1], a.accent[2], 1.0f);
+}
+
+// ADR-0023 #3c: the visuals-domain overlay drawn OVER each card by the shared canvas card loop — the
+// type label, the "output / -> viewer" tag, the texture-input port stubs, the output port, the ×, and
+// the live thumbnail (with any error note drawn over it).
+void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
+    if (!vg_) return;
+    const Style& sty = style();
+    const vivid::VisualNode& node = vg_->nodes()[i];
+    const float x = a.rect.x, y = a.rect.y, w = a.rect.w, h = a.rect.h;
+    const bool out = node.is_output();
+    const bool active_out = out && i == vg_->output_index();
+    const std::string& node_err = a.error;
+    const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
+    r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
+    if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
+                         active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
+    float px, py;
+    for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per texture input port
+        if (!op_in_port(i, p, px, py)) continue;
+        node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+        const char* lbl = (np <= 1) ? "in" : (p == 0 ? "A" : "B");
+        r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
+    }
+    if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
+    if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
+    // thumbnail: a recessed panel with the node's live output drawn on top via Renderer2D's
+    // textured-quad path (scales/pans with the view, letterboxed to the source aspect).
+    if (op_has_thumb(vg_, i)) {
+        const int rows = std::max(1, op_input_rows_at(vg_, i));
+        const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
+        node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
+        if (WGPUTextureView v = vg_->node_view(i)) {
+            const float srcA = vg_->rt_aspect(), dstA = tw / th;
+            float fw = tw, fh = th;
+            if (srcA > dstA) fh = tw / srcA; else fw = th * srcA;   // letterbox
+            r.draw_texture(tx + (tw - fw) * 0.5f, ty + (th - fh) * 0.5f, fw, fh, v);
+        }
+        // The error goes OVER the thumbnail (the node is still rendering — the last-good pipeline —
+        // so the picture alone would say nothing is wrong).
+        if (!node_err.empty()) node_error_note(r, tx, ty, tw, th, node_err);
+    }
+}
+
 
 void NodeGraph::draw(Renderer2D& r) {
     const Style& sty = style();
@@ -553,57 +606,11 @@ void NodeGraph::draw(Renderer2D& r) {
             const float c[3] = { 0.5f, 0.65f, 0.9f }; canvas_.ghost_wire(r, ox, oy, float(cx_), float(cy_), c); }
     }
 
-    // op-nodes (classic-style cards). ADR-0023 Layer 1: the card-level data (rect/accent/selection/
-    // health/title/error) comes from the shared adapter; the active-output ring, ports and thumbnail
-    // are visuals-domain overlays drawn inline by index (anodes[i] and vg_->nodes()[i] are the same node).
-    const int active_out_idx = vg_ ? vg_->output_index() : -1;
+    // op-nodes: the shared canvas card loop (ADR-0023 #3c) draws each card's chrome and calls
+    // before_card (the active-output ring, under the card) + after_card (label, ports, ×, thumbnail)
+    // for the visuals overlay. The param-input ports + bridge data-nodes are separate passes below.
     if (sel_op_ >= n) sel_op_ = -1;   // drop a stale selection (removed/reloaded) BEFORE the snapshot
-    std::vector<AdapterNode> anodes; collect_nodes(anodes);
-    for (int i = 0; i < n; ++i) {
-        const vivid::VisualNode& node = vg_->nodes()[i];
-        const AdapterNode& a = anodes[i];
-        const float x = a.rect.x, y = a.rect.y, w = a.rect.w, h = a.rect.h;
-        const bool out = node.is_output();
-        const bool active_out = out && i == active_out_idx;   // drives the viewer
-        if (i != sel_op_ && active_out)  // active-output ring (accent) when not the inspector selection
-            r.draw_rect(x - 2.f, y - 2.f, w + 4.f, h + 4.f, a.accent[0], a.accent[1], a.accent[2], 1.0f);
-        // A node that is broken says so ON THE CARD (ADR-0016 / S6): a red frame + the first error line
-        // (the adapter already resolved own-error vs registry hot-reload error). A shader that won't
-        // compile still renders (black / passthrough) — without this the user just sees a black frame.
-        const std::string& node_err = a.error;
-        // ADR-0019: a broken node LOOKS broken (red border + "!" chip); ADR-0023 Layer 2: shared chrome.
-        canvas_.card(r, a.rect, a.accent, a.selected, a.broken);
-        const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
-        r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
-        if (out) r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
-                             active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, 1.0f, 0.72f);
-        float px, py;
-        for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per texture input port
-            if (!op_in_port(i, p, px, py)) continue;
-            node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
-            const char* lbl = (np <= 1) ? "in" : (p == 0 ? "A" : "B");
-            r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, 1.0f, 0.7f);
-        }
-        if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
-        if (!out) r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, 1.0f, 0.95f);
-        // thumbnail: a recessed panel with the node's live output drawn on top via
-        // Renderer2D's textured-quad path (scales/pans with the view, clipped to the
-        // pane by the active clip-rect, letterboxed to the source aspect).
-        if (op_has_thumb(vg_, i)) {
-            const int rows = std::max(1, op_input_rows_at(vg_, i));
-            const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
-            node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
-            if (WGPUTextureView v = vg_->node_view(i)) {
-                const float srcA = vg_->rt_aspect(), dstA = tw / th;
-                float fw = tw, fh = th;
-                if (srcA > dstA) fh = tw / srcA; else fw = th * srcA;   // letterbox
-                r.draw_texture(tx + (tw - fw) * 0.5f, ty + (th - fh) * 0.5f, fw, fh, v);
-            }
-            // The error goes OVER the thumbnail (the node is still rendering — that is the
-            // point of the last-good pipeline — so the picture alone would say nothing is wrong).
-            if (!node_err.empty()) node_error_note(r, tx, ty, tw, th, node_err);
-        }
-    }
+    canvas_.draw_cards(r, *this, *this);
     // param input ports + labels (down each node's left edge)
     for (int i = 0; i < n; ++i) {
         const int pc = node_pcount(vg_, i);
