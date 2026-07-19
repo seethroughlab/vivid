@@ -30,6 +30,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_scene_name",        { "Rename Scene",        false } },
         { "place_generator",       { "Add Generator",       false } },
         { "remove_generator",      { "Remove Generator",    false } },
+        { "set_generator_param",   { "Set Generator Param", true  } },
         { "remove_track",          { "Delete Track",        false } },
         { "add_effect",            { "Add Effect",          false } },
         { "remove_effect",         { "Remove Effect",       false } },

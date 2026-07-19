@@ -101,6 +101,16 @@ void register_audio_catalog_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "remove_generator failed (no generator in that cell)");
         json r = ok(); r["track"] = track; r["scene"] = scene; return r;
     };
+    // Set a param on a scene cell's generator (by param name; see inspect_scene for the params).
+    handlers_["set_generator_param"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", -1), scene = b.value("scene", -1);
+        const std::string name = b.value("name", std::string());
+        const float value = b.value("value", 0.f);
+        if (!P::session_set_generator_param(c.session, track, scene, name.c_str(), value))
+            return err(code::kBadArg, "set_generator_param failed (no generator, or unknown param)");
+        json r = ok(); r["track"] = track; r["scene"] = scene; r["name"] = name; r["value"] = value; return r;
+    };
     // Delete a track. Also drops audio->visual mappings whose source encodes the removed
     // track's stable id; surviving mappings do not need index renumbering.
     handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {
