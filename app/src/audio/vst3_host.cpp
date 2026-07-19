@@ -365,6 +365,11 @@ struct Track {
     // to nodes(), same index) so introspection can report each node's kind + bound op.
     vivid::audio::AudioGraph         agraph;
     std::vector<GNodeBind>           agnodes;
+    // ADR-0022 P4.1: stable session-global ids for DERIVED-track nodes. The derived rebuild
+    // regenerates 0-based local ids each time, so gnids are keyed by node ROLE (inst / sel /
+    // cell:<scene> / midi / vfx:i / nfx:i / cfx:i / out) and cached here — a node keeps its gnid
+    // across rebuilds. UI-thread only; the audio thread never reads gnid.
+    std::unordered_map<std::string, int32_t> derived_gnid_by_role;
     // AG-1 step 2: once the user edits topology directly (connect/disconnect/add/remove a node),
     // the graph — not the linear device chain — is the source of truth. rebuild_track_graph then
     // stops regenerating from op_instrument_edit/op_effects_edit and only recompiles the agraph.
@@ -702,6 +707,37 @@ static void assign_node_gnids(Track* t) {
         if (nb.gnid < 0) nb.gnid = t->session->next_gnid++;
 }
 
+// ADR-0022 P4.1: give a DERIVED track's nodes STABLE session-global ids. The derived rebuild
+// regenerates local ids from scratch, so a monotonic assign would reshuffle gnids every rebuild.
+// Instead each node's gnid is keyed by its ROLE (a stable identity for the derived graph): the
+// instrument, the per-track-out selector, each scene cell (by scene index), MidiIn, each FX (by
+// family + position), and the output. A role keeps its gnid across rebuilds via the per-track
+// cache; a new role (e.g. an added scene cell) draws a fresh gnid. Behaviour-inert — gnid is
+// host/UI addressing only; the audio thread never reads it.
+static void assign_derived_gnids(Track* t) {
+    if (!t->session) return;
+    int vfx = 0, nfx = 0, cfx = 0, note = 0, mod = 0;
+    for (GNodeBind& nb : t->agnodes) {
+        std::string role;
+        switch (nb.kind) {
+            case GNKind::NativeInst: case GNKind::Vst3Inst:
+            case GNKind::ClapInst:   case GNKind::Sampler:   role = "inst"; break;
+            case GNKind::Selector:                           role = "sel";  break;
+            case GNKind::MidiClip:   case GNKind::NativeGen:  role = "cell:" + std::to_string(nb.scene); break;
+            case GNKind::MidiIn:                             role = "midi"; break;
+            case GNKind::Vst3Fx:                             role = "vfx:" + std::to_string(vfx++); break;
+            case GNKind::NativeFx:                           role = "nfx:" + std::to_string(nfx++); break;
+            case GNKind::ClapFx:                             role = "cfx:" + std::to_string(cfx++); break;
+            case GNKind::NativeNoteFx:                       role = "note:" + std::to_string(note++); break;
+            case GNKind::NativeMod:                          role = "mod:" + std::to_string(mod++); break;
+            case GNKind::Output:                             role = "out";  break;
+        }
+        auto it = t->derived_gnid_by_role.find(role);
+        nb.gnid = (it != t->derived_gnid_by_role.end()) ? it->second
+                                                        : (t->derived_gnid_by_role[role] = t->session->next_gnid++);
+    }
+}
+
 static bool republish_track_graph(Track* t) {
     if (!t->agraph.compile(t->gcg_edit)) return false;   // cycle → published plan unchanged
     assign_node_gnids(t);                                 // ADR-0022 P2b.3c: session-global ids
@@ -865,6 +901,7 @@ static void rebuild_track_graph(Track* t) {
     const int out = t->agraph.add_node(false, true, nullptr, nullptr, "out");
     t->agraph.connect(prev, out);
     t->agraph.set_output_id(out);
+    assign_derived_gnids(t);                      // ADR-0022 P4.1: stable session-global ids (by role)
     t->gbinds_edit = t->agnodes;                 // parallel to nodes(): index == out_buf
     t->gok_edit = t->agraph.compile(t->gcg_edit);
     publish_track_plan(t);
