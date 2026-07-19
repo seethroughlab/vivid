@@ -489,6 +489,12 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
     // ADR-0022 P1b: the master node's gain (optional; absent in older files => unity).
     if (restore_audio && !params_only && j.contains("master") && j["master"].is_object())
         vivid::session::session_set_master_gain(s, j["master"].value("gain", 1.0f));
+    // ADR-0022 P2b: a load fully REPLACES the session, so drop any existing cross-track edges before the
+    // document's tracks + edges are restored (else the previous session's edges leak, and a surviving
+    // edge with matching ids would duplicate-reject the restore, leaving it resolved against a stale
+    // graph). The document's own xcontrol/xaudio/xnote arrays are restored by index further below.
+    if (restore_audio && !params_only)
+        vivid::session::session_clear_cross_track_edges(s);
     if (restore_audio && !params_only && file_ver >= 2 && j.contains("tracks") && j["tracks"].is_array())
         rebuild_tracks_from_doc(s, j["tracks"]);
 

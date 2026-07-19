@@ -788,6 +788,14 @@ static void rebuild_track_graph(Track* t) {
     t->gbinds_edit = t->agnodes;                 // parallel to nodes(): index == out_buf
     t->gok_edit = t->agraph.compile(t->gcg_edit);
     publish_track_plan(t);
+    // ADR-0022 P2b.4/P2b.5 FIX: this DERIVED track's graph was just (re)built, so its node indices /
+    // note buffers may have moved — re-resolve any cross-track edges that reference it, exactly as the
+    // authoritative republish_track_graph does. Without this, a cross-track edge restored while this
+    // track had no instrument yet (empty agraph → node_index=-1 → unresolved) is never re-resolved once
+    // the derived graph lands, so it silently fails to route after a session reload.
+    republish_xctl(t->session);
+    republish_xaudio(t->session);
+    republish_xnote(t->session);
 }
 
 // The per-source/effect render primitives (defined below, near session_process); forward-declared
@@ -2143,6 +2151,19 @@ bool session_xnote_get(Session* s, int i, int* src_track, int* src_node, int* ds
     if (src_track) *src_track = src_idx;   if (src_node) *src_node = e.src_node_id;
     if (dst_track) *dst_track = dst_idx;   if (dst_node) *dst_node = e.dst_node_id;
     return true;
+}
+// ADR-0022 P2b: drop every session-level cross-track edge (control / audio / note) and republish the
+// now-empty resolved lists. Called at the start of a session load so a loaded document fully REPLACES
+// the cross-track edges rather than leaking the previous session's; the load then restores the file's
+// edges by index. UI/main thread.
+void session_clear_cross_track_edges(Session* s) {
+    if (!s) return;
+    s->xctl_edges.clear();
+    s->xaudio_edges.clear();
+    s->xnote_edges.clear();
+    republish_xctl(s);
+    republish_xaudio(s);
+    republish_xnote(s);
 }
 bool session_track_mute(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) && s->tracks[t]->mute.load(std::memory_order_relaxed);
