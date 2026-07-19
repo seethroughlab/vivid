@@ -823,6 +823,26 @@ def session_disconnect_control(src_track: int, src_node: int, dst_track: int, ds
 
 
 @mcp.tool
+def session_connect_audio(src_track: int, src_node: int, dst_track: int, dst_node: int) -> dict:
+    """CROSS-TRACK AUDIO (ADR-0022 P2b.4): sum the output of src_node on src_track into dst_node on
+    ANOTHER track (dst_track). Unlike modulation this routes a full audio signal — the source's
+    rendered output is added to the destination node's summed input. The destination must be an
+    effect/output node (not a source/instrument). Rejected on a same-track edge (use the in-track
+    audio_graph_connect), a duplicate, or a cross-track cycle. Tracks are indices; nodes are stable
+    graph node ids (from get_audio_graph)."""
+    return _post("session_connect_audio", {"src_track": src_track, "src_node": src_node,
+                                           "dst_track": dst_track, "dst_node": dst_node})
+
+
+@mcp.tool
+def session_disconnect_audio(src_track: int, src_node: int, dst_track: int, dst_node: int) -> dict:
+    """Remove a cross-track audio edge (ADR-0022 P2b.4). Same (src_track, src_node, dst_track, dst_node)
+    used to create it with session_connect_audio."""
+    return _post("session_disconnect_audio", {"src_track": src_track, "src_node": src_node,
+                                              "dst_track": dst_track, "dst_node": dst_node})
+
+
+@mcp.tool
 def session_set_control_shape(src_track: int, src_node: int, dst_track: int, dst_node: int, param: int,
                               amount: float = 1.0, curve: float = 0.0,
                               invert: bool = False, bipolar: bool = False) -> dict:

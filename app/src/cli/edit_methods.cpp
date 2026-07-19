@@ -48,6 +48,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "audio_graph_disconnect_control", { "Disconnect Modulation", false } },
         { "session_connect_control",        { "Connect Modulation",    false } },
         { "session_disconnect_control",     { "Disconnect Modulation", false } },
+        { "session_connect_audio",          { "Connect Cross-Track Audio",    false } },
+        { "session_disconnect_audio",       { "Disconnect Cross-Track Audio", false } },
         { "session_set_control_shape",      { "Shape Modulation",      true  } },
         { "audio_graph_set_control_shape",  { "Shape Modulation",      true  } },
         { "audio_graph_disconnect", { "Disconnect Audio",   false } },
