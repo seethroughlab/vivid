@@ -5033,6 +5033,32 @@ const char* session_generator_type(Session* s, int track, int scene) {
     return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size()) && tr->gen_cells[scene].op)
                ? tr->gen_cells[scene].type.c_str() : "";
 }
+// ADR-0022 P3.3: a scene cell's generator op params (empty if the cell is a clip). Params are
+// lock-free atomics on the op, so set takes effect without a rebuild.
+static vivid::AudioOp* gen_cell_op(Session* s, int track, int scene) {
+    Track* tr = graph_track(s, track);
+    return (tr && scene >= 0 && scene < static_cast<int>(tr->gen_cells.size())) ? tr->gen_cells[scene].op : nullptr;
+}
+int session_generator_param_count(Session* s, int track, int scene) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    return op ? vivid::audio_op_param_count(op) : 0;
+}
+const char* session_generator_param_name(Session* s, int track, int scene, int i) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    return op ? vivid::audio_op_param_name(op, i) : "";
+}
+float session_generator_param_value(Session* s, int track, int scene, int i) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    return op ? vivid::audio_op_param_get(op, i) : 0.f;
+}
+int session_set_generator_param(Session* s, int track, int scene, const char* name, float v) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    if (!op || !name) return 0;
+    const int n = vivid::audio_op_param_count(op);
+    for (int i = 0; i < n; ++i)
+        if (std::strcmp(vivid::audio_op_param_name(op, i), name) == 0) { vivid::audio_op_param_set(op, i, v); return 1; }
+    return 0;
+}
 
 // Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),
 // so each track is born with the right number of clip slots. Clamped to [1, kMaxScenes].

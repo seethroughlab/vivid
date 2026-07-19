@@ -107,6 +107,16 @@ void test_audio_topology_equal() {
     CHECK(!audio_topology_equal(base, diff_fx));
     json add_node = base; add_node["tracks"][0]["audio_graph"]["nodes"].push_back({{"id",8},{"kind",1},{"op","Gain"}});
     CHECK(!audio_topology_equal(base, add_node));
+
+    // ADR-0022 P3.3: a generator PARAM change is ParamsOnly; place/remove/type-swap is Full.
+    json base_gen = base;
+    base_gen["tracks"][0]["gens"] = {{"1", {{"type","Euclid"},{"params",{{"pulses",4.0}}}}}};
+    json gen_param = base_gen; gen_param["tracks"][0]["gens"]["1"]["params"]["pulses"] = 7.0;
+    CHECK(audio_topology_equal(base_gen, gen_param));    // only a generator param moved -> ParamsOnly
+    json gen_added = base; gen_added["tracks"][0]["gens"] = {{"1", {{"type","Euclid"},{"params",json::object()}}}};
+    CHECK(!audio_topology_equal(base, gen_added));       // a generator appeared -> Full
+    json gen_type = base_gen; gen_type["tracks"][0]["gens"]["1"]["type"] = "Chord";
+    CHECK(!audio_topology_equal(base_gen, gen_type));    // generator type swapped -> Full
 }
 
 void test_audio_block_equal() {

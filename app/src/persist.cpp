@@ -88,6 +88,23 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 clips.push_back(jc);
             }
             jt["clips"] = clips;
+            // ADR-0022 P3.3: per-scene GENERATOR cells — sparse (only cells holding a generator),
+            // keyed by scene index, with the op type + its param values. Absent => every cell is a
+            // clip (the default), so older files round-trip unchanged.
+            {
+                json gens = json::object();
+                for (int sc = 0; sc < ns; ++sc) {
+                    if (!vivid::session::session_cell_is_generator(s, t, sc)) continue;
+                    json params = json::object();
+                    const int np = vivid::session::session_generator_param_count(s, t, sc);
+                    for (int i = 0; i < np; ++i)
+                        params[vivid::session::session_generator_param_name(s, t, sc, i)] =
+                            vivid::session::session_generator_param_value(s, t, sc, i);
+                    gens[std::to_string(sc)] = { {"type", vivid::session::session_generator_type(s, t, sc)},
+                                                 {"params", params} };
+                }
+                if (!gens.empty()) jt["gens"] = gens;
+            }
             // Plugin state (VST3/CLAP getState) — skipped for the undo/dirty projection, which
             // strips it anyway; see include_plugin_state in persist.h. getState on a live plugin
             // races the audio thread's process() and crashes heavy plugins on reload.
@@ -384,6 +401,23 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
 // clip/warp edit is instant (no rebuild_tracks_from_doc, no plugin load). The field set here must
 // match the strip set in persist_undo.cpp's track_topology(). Node params go by id — which, when the
 // topology is unchanged, is the live id (session_to_json serialized the current ids).
+// ADR-0022 P3.3: restore per-scene generator cells. `place` true on a full rebuild (place the
+// generator op, then set its params); false on the ParamsOnly path (the cell already exists — set
+// params only, since place/remove is topology and forces a full rebuild). Absent "gens" => clips.
+static void restore_track_generators(vivid::session::Session* s, int t, const json& jt, bool place) {
+    if (!jt.contains("gens") || !jt["gens"].is_object()) return;
+    for (auto it = jt["gens"].begin(); it != jt["gens"].end(); ++it) {
+        const int sc = std::atoi(it.key().c_str());
+        const json& g = it.value();
+        if (place && g.contains("type"))
+            vivid::session::session_place_generator(s, t, sc, g.value("type", std::string()).c_str());
+        if (g.contains("params") && g["params"].is_object())
+            for (auto p = g["params"].begin(); p != g["params"].end(); ++p)
+                if (p.value().is_number())
+                    vivid::session::session_set_generator_param(s, t, sc, p.key().c_str(), p.value().get<float>());
+    }
+}
+
 static void apply_track_values(vivid::session::Session* s, int t, const json& jt) {
     using namespace vivid::session;
     session_set_track_gain(s, t, jt.value("gain", 0.8f));
@@ -420,6 +454,7 @@ static void apply_track_values(vivid::session::Session* s, int t, const json& jt
                 session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
         }
     }
+    restore_track_generators(s, t, jt, /*place*/false);   // ADR-0022 P3.3: generator params (cells already exist)
     if (jt.contains("fx")) {   // set params on the existing effect devices (device = position+1)
         int i = 0;
         for (const auto& jn : jt["fx"]) {
@@ -563,6 +598,7 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         vivid::session::session_set_clip_loop(s, t, sc, jc.value("loop_start", 0.0), jc.value("loop_end", 0.0));
                 }
             }
+            restore_track_generators(s, t, jt, /*place*/true);   // ADR-0022 P3.3: place generators + set params
             if (jt.contains("state"))
                 vivid::session::session_set_track_state(s, t, jt["state"].get<std::string>());
             if (jt.contains("clap_effects"))   // re-add each CLAP effect (async) + restore its state on land
