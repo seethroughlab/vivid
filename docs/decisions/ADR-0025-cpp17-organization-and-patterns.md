@@ -1,8 +1,17 @@
 # ADR-0025: C++17 Organization and Engineering Patterns
 
-Status: proposed
+Status: accepted (2026-07-19)
 
 Date: 2026-07-18
+
+**As built — first application (2026-07-19).** Pressure-point #2 ("move interaction ownership out of
+`Window` into persistent view objects") was first applied by extracting the floating output-preview panel
+— its state + geometry + the `clamp` that keeps it inside the visuals column — out of the `Window` state
+bag into its own `OutputPreview` type (`app/src/app/output_preview.h`), with a headless test for the pure
+clamp geometry (`app/tests/test_output_preview.cpp`). Pressure-point #1 (splitting the 4803-LOC
+`audio/vst3_host.cpp`) is deferred until the ADR-0022 session-audio-graph work churning that file settles —
+consistent with Decision #7 (split opportunistically, not for style). Further `Window` groups (musical
+typing, session-grid clip drag/drop, plugin-browser state, popovers) extract the same way when touched.
 
 Extends [ADR-0011](ADR-0011-reboot-product-architecture.md),
 [ADR-0017](ADR-0017-every-edit-is-reversible.md),

@@ -18,7 +18,13 @@ The model/view seam (see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) §2).
 - **`window.h`** — `struct Window`: **per-view** state (surface metrics, splitter/dock
   layout, selection/drag/menu/plugin-editor-handle state, frame-side smoothing, its
   `Renderer2D` + `ClipEditor`) + an `App* app` + window-relative geometry methods.
-  `CtxMenu` lives here. The GLFW user pointer is a `Window*`.
+  `CtxMenu` lives here. The GLFW user pointer is a `Window*`. Cohesive interaction groups
+  are being extracted into their own persistent view owners (ADR-0025 pressure-point #2).
+- **`output_preview.h`** — `struct OutputPreview`: the floating output-preview panel
+  (ADR-0014) — position/size/drag state + its pure geometry (`panel`/`viewer`/`header`/
+  `close`/`grip`) and `clamp` (keeps it inside the visuals column). Extracted from `Window`
+  (ADR-0025); renderer-free, so the clamp geometry is headlessly tested
+  (`tests/test_output_preview.cpp`). `Window` holds one as `win.preview`.
 - **`input.cpp`** — the GLFW key/char/scroll/mouse handlers; `install_input_callbacks`
   wires them. Handlers fetch the `Window*` and reach shared state via `win->app->`.
   Cmd+Z/Cmd+Shift+Z route to the gateway; left-press/release bracket edit gestures.

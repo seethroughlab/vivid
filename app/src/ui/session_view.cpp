@@ -743,7 +743,7 @@ void draw_node_menu(Renderer2D& ui, const Window& w) {
 // it. Shadowed, because unlike a region panel this thing floats above the graph canvas.
 void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my) {
     const Style& sty = style();
-    const Rect p = w.preview_panel();
+    const Rect p = w.preview.panel();
     ui.draw_shadow(p.x, p.y, p.w, p.h);
     char title[64];
     std::snprintf(title, sizeof title, "OUTPUT \xC2\xB7 %d\xC3\x97%d",
@@ -751,18 +751,18 @@ void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my) 
                   w.app && w.app->vgraph ? static_cast<int>(w.app->vgraph->rt_h()) : 0);
     panel_frame(ui, p, title, sty.gpu);
     // Pop the output out to its own window (second display / performance screen).
-    { const Rect pb = preview_popout_rect(w.preview_x, w.preview_y, w.preview_w);
+    { const Rect pb = preview_popout_rect(w.preview.x, w.preview.y, w.preview.w);
       const bool pbh = hit(pb, mx, my);
       item_box(ui, pb, sty.gpu, pbh, w.popout != nullptr);
       ui.draw_text(pb.x + 6.f, pb.y + 2.f, w.popout ? "\xE2\x87\xB2 In" : "\xE2\x87\xB1 Out",
                    sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
     // Close × (hides the preview; the output keeps rendering — the graph and the pop-out still show it).
-    { const Rect cb = w.preview_close();
+    { const Rect cb = w.preview.close();
       const bool cbh = hit(cb, mx, my);
       ui.draw_text(cb.x + 2.f, cb.y - 1.f, "\xC3\x97", cbh ? sty.body[0] : sty.dim[0],
                    cbh ? sty.body[1] : sty.dim[1], cbh ? sty.body[2] : sty.dim[2], 1.0f, sty.fs_label); }
     // Bottom-right resize grip: two hard rules, no rounding.
-    { const Rect g = w.preview_grip();
+    { const Rect g = w.preview.grip();
       const bool gh = hit(g, mx, my);
       const float* c = gh ? sty.gpu : sty.border;
       for (int i = 1; i <= 2; ++i) {

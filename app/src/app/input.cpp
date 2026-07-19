@@ -182,26 +182,26 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // ADR-0014: the floating OUTPUT preview. It sits ON TOP of the graph canvas, so its handles are
     // tested BEFORE the graph gets the press (below) — otherwise dragging the preview would pan the
     // canvas underneath it.
-    if (win->preview_show && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+    if (win->preview.show && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         // The Output node's params are the truth for where the output is shown (ADR-0014), so these
         // buttons WRITE THE PARAMS; the frame loop reconciles the actual windows from them.
-        if (hit(win->preview_close(), mx, my)) {
+        if (hit(win->preview.close(), mx, my)) {
             if (app->vgraph) app->vgraph->set_output_param("preview", 0.f);
             return;
         }
-        if (hit(vivid::ui::preview_popout_rect(win->preview_x, win->preview_y, win->preview_w), mx, my)) {
+        if (hit(vivid::ui::preview_popout_rect(win->preview.x, win->preview.y, win->preview.w), mx, my)) {
             if (app->vgraph) app->vgraph->set_output_param("launch", win->popout ? 0.f : 1.f);
             return;
         }
-        if (hit(win->preview_grip(), mx, my)) {
-            win->preview_resize = true; win->preview_grab_x = mx - win->preview_w; return;
+        if (hit(win->preview.grip(), mx, my)) {
+            win->preview.resizing = true; win->preview.grab_x = mx - win->preview.w; return;
         }
-        if (hit(win->preview_header(), mx, my)) {
-            win->preview_drag = true;
-            win->preview_grab_x = mx - win->preview_x; win->preview_grab_y = my - win->preview_y;
+        if (hit(win->preview.header(), mx, my)) {
+            win->preview.dragging = true;
+            win->preview.grab_x = mx - win->preview.x; win->preview.grab_y = my - win->preview.y;
             return;
         }
-        if (hit(win->preview_panel(), mx, my)) return;   // clicks on the output itself: consume, don't pan
+        if (hit(win->preview.panel(), mx, my)) return;   // clicks on the output itself: consume, don't pan
     }
     // The graph "Re-layout" chrome (top-right of the visuals column).
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS && app->graph
@@ -355,7 +355,7 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     if (action == GLFW_RELEASE) {
         win->gain_drag = -1; win->param_drag = -1; win->mod_ed_drag = -1;
-        win->preview_drag = false; win->preview_resize = false;
+        win->preview.dragging = false; win->preview.resizing = false;
         // The audio editor ends its own drag + completes a rewire (ADR-0023 6d); true = a rewire landed.
         if (auto* ag = win->app->audio_graph; ag && ag->on_up(*app, *win, mx, my)) {
             if (app->edit_gateway) app->edit_gateway->end_group(); return;
