@@ -75,6 +75,32 @@ void register_audio_catalog_handlers(Handlers& handlers_) {
         P::session_set_scene_name(c.session, scene, b.value("name", std::string()).c_str());
         json r = ok(); r["scene"] = scene; r["name"] = P::session_scene_name(c.session, scene); return r;
     };
+    // ADR-0022 P3.3: the note-generator ops that can be placed in a scene cell.
+    handlers_["list_generators"] = [](const ControlCtx& c, const json&) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        json gens = json::array();
+        for (int i = 0; i < P::session_available_generator_count(c.session); ++i)
+            gens.push_back(std::string(P::session_available_generator_name(c.session, i)));
+        json r = ok(); r["generators"] = gens; return r;
+    };
+    // Place a note generator (list_generators) into a scene cell — the cell voices the generator for
+    // that scene instead of its clip. Replaces any generator already there.
+    handlers_["place_generator"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", -1), scene = b.value("scene", -1);
+        const std::string type = b.value("type", std::string());
+        if (!P::session_place_generator(c.session, track, scene, type.c_str()))
+            return err(code::kBadArg, "place_generator failed (bad track/scene/type, or audio track)");
+        json r = ok(); r["track"] = track; r["scene"] = scene; r["type"] = type; return r;
+    };
+    // Revert a scene cell to a clip (remove its generator).
+    handlers_["remove_generator"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", -1), scene = b.value("scene", -1);
+        if (!P::session_remove_generator(c.session, track, scene))
+            return err(code::kBadArg, "remove_generator failed (no generator in that cell)");
+        json r = ok(); r["track"] = track; r["scene"] = scene; return r;
+    };
     // Delete a track. Also drops audio->visual mappings whose source encodes the removed
     // track's stable id; surviving mappings do not need index renumbering.
     handlers_["remove_track"] = [](const ControlCtx& c, const json& b) {

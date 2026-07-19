@@ -51,6 +51,14 @@ void session_set_scene_count(Session*, int scenes);
 // ADR-0022 P3.3: per-scene display name (default "A","B",…). UI/main thread only.
 const char* session_scene_name(Session*, int scene);
 void        session_set_scene_name(Session*, int scene, const char* name);
+// ADR-0022 P3.3: note GENERATORS in scene cells. A cell holds a clip (default) or a generator; a
+// generator is an algorithmic note source (Euclid/Chord/RandMelody) gated by scene like a clip.
+int         session_available_generator_count(Session*);
+const char* session_available_generator_name(Session*, int idx);
+int         session_place_generator(Session*, int track, int scene, const char* type);
+int         session_remove_generator(Session*, int track, int scene);
+int         session_cell_is_generator(Session*, int track, int scene);
+const char* session_generator_type(Session*, int track, int scene);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never

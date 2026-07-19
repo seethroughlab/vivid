@@ -28,6 +28,8 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "add_graph_track",       { "Add Track",           false } },
         { "add_scene",             { "Add Scene",           false } },
         { "set_scene_name",        { "Rename Scene",        false } },
+        { "place_generator",       { "Add Generator",       false } },
+        { "remove_generator",      { "Remove Generator",    false } },
         { "remove_track",          { "Delete Track",        false } },
         { "add_effect",            { "Add Effect",          false } },
         { "remove_effect",         { "Remove Effect",       false } },

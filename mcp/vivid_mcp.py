@@ -1319,6 +1319,29 @@ def set_scene_name(scene: int, name: str) -> dict:
 
 
 @mcp.tool
+def list_generators() -> dict:
+    """List the note-GENERATOR ops that can be placed in a scene cell (Euclid, Chord, RandMelody).
+    A generator is an algorithmic note source — it plays that scene like a clip does, but from an
+    algorithm instead of recorded notes."""
+    return _post("list_generators", {})
+
+
+@mcp.tool
+def place_generator(track: int, scene: int, type: str) -> dict:
+    """Put a note generator (from list_generators) into a scene cell on an instrument track. That
+    cell now voices the generator when its scene is active, in place of its clip. Replaces any
+    generator already in the cell. Undoable. (Derived tracks; set params via set_audio_op_param on
+    the node once placed.)"""
+    return _post("place_generator", {"track": track, "scene": scene, "type": type})
+
+
+@mcp.tool
+def remove_generator(track: int, scene: int) -> dict:
+    """Revert a scene cell back to a clip, removing its generator. Undoable."""
+    return _post("remove_generator", {"track": track, "scene": scene})
+
+
+@mcp.tool
 def add_graph_track(instrument: str = "", name: str = "") -> dict:
     """Create a bare NATIVE-instrument track that hosts a native audio node graph (get_audio_graph
     / audio_graph_* edits). Unlike add_track, this makes no VST3/plugin handle, so the track is
