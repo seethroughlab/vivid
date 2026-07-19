@@ -76,7 +76,12 @@ json track_summary(P::Session* s, int track, bool include_scenes) {
         devices.push_back({ {"device", e + 1}, {"kind", "fx"}, {"name", safe_cstr(P::session_effect_name(s, track, e))} });
     jt["devices"] = devices;
 
-    if (P::session_track_audio_graph_ok(s, track)) jt["audio_graph"] = audio_graph_summary(s, track);
+    if (P::session_track_audio_graph_ok(s, track)) {
+        jt["audio_graph"] = audio_graph_summary(s, track);
+        // ADR-0022 P2b.3c: the track-out node's session-global id (is_track_out — the per-track sink,
+        // complement of the master's is_master gnid). -1 on a derived-chain track (not cross-addressable).
+        jt["track_out_gnid"] = P::session_track_out_gnid(s, track);
+    }
 
     if (include_scenes) {
         json clips = json::array();
@@ -798,6 +803,7 @@ void register_introspection_handlers(Handlers& handlers_) {
             jt["gain"] = P::session_track_gain(s, t);
             jt["mute"] = P::session_track_mute(s, t);   // ADR-0022 P1b.4
             jt["solo"] = P::session_track_solo(s, t);
+            jt["track_out_gnid"] = P::session_track_out_gnid(s, t);   // ADR-0022 P2b.3c: this track's sink in the global id space (is_track_out; -1 if none)
             jt["is_audio"] = P::session_track_is_audio(s, t);
             jt["active_clip"] = P::session_active_clip(s, t);
             jt["queued_clip"] = P::session_queued_clip(s, t);

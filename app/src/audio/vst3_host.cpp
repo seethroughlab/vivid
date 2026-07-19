@@ -3182,6 +3182,19 @@ int session_track_audio_graph_output_id(Session* s, int t) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     return tr->agraph.output_id();
 }
+// ADR-0022 P2b.3c: this track's TRACK-OUT node's session-global id — the is_track_out sink of the
+// track, the per-track complement of the master's is_master gnid. -1 if the track has no output node
+// (a non-derivable / empty track) or the node is unassigned (a derived-chain track). This is how a
+// track's sink is named in the one global node-id space.
+int session_track_out_gnid(Session* s, int t) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int oid = tr->agraph.output_id();
+    if (oid < 0) return -1;
+    const int idx = tr->agraph.node_index(oid);
+    return (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[idx].gnid : -1;
+}
 int session_track_audio_graph_edge_count(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return 0;

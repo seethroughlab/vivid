@@ -302,6 +302,7 @@ int         session_track_audio_graph_node_kind(Session*, int track, int i);    
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
 int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
 int         session_track_audio_graph_output_id(Session*, int track);
+int         session_track_out_gnid(Session*, int track);   // ADR-0022 P2b.3c: the track-out node's global id (is_track_out)
 // Node i's live output-waveform scope (oldest→newest) → out[n]; returns samples written. Display-only.
 int         session_track_audio_graph_node_scope(Session*, int track, int i, float* out, int n);
 // The VST3 IEditController behind a graph node (by node id), for opening its plugin editor; null if
