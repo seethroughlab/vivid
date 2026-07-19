@@ -339,6 +339,15 @@ void register_audio_graph_handlers(Handlers& handlers_) {
                              {"param", pr}, {"amount", am}, {"curve", cv}, {"invert", inv != 0}, {"bipolar", bip != 0} });
         }
         r["xcontrol"] = xctl;
+        // ADR-0022 P2b.4: the session-level CROSS-TRACK audio edges (also a session concept, not
+        // per-track). Each is {src_track, src_node, dst_track, dst_node} — no shape (a full signal).
+        json xaudio = json::array();
+        for (int i = 0; i < P::session_xaudio_count(c.session); ++i) {
+            int st = 0, sn = 0, dt = 0, dn = 0;
+            if (!P::session_xaudio_get(c.session, i, &st, &sn, &dt, &dn)) continue;
+            xaudio.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn} });
+        }
+        r["xaudio"] = xaudio;
         return r;
     };
 

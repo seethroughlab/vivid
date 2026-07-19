@@ -225,6 +225,17 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     }
     if (!xctl.empty()) j["xcontrol"] = xctl;
 
+    // ADR-0022 P2b.4: session-level cross-track AUDIO edges (a node's output on one track summed into a
+    // node on another). Referenced by track INDEX + stable graph node id (no shape — audio is a full
+    // signal). Optional; absent in pre-P2b.4 projects.
+    json xaudio = json::array();
+    for (int i = 0; i < vivid::session::session_xaudio_count(s); ++i) {
+        int st = 0, sn = 0, dt = 0, dn = 0;
+        if (!vivid::session::session_xaudio_get(s, i, &st, &sn, &dt, &dn)) continue;
+        xaudio.push_back({ {"src_track", st}, {"src_node", sn}, {"dst_track", dt}, {"dst_node", dn} });
+    }
+    if (!xaudio.empty()) j["xaudio"] = xaudio;
+
     // Clip pool — loose clips stashed outside the track grid (browser sidebar).
     // Audio pool clips are runtime-only (like grid audio content, their PCM isn't persisted).
     json pool = json::array();
@@ -649,6 +660,14 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                 e.value("dst_track", 0), e.value("dst_node", -1), e.value("param", -1),
                 e.value("amount", 1.f), e.value("curve", 0.f),
                 e.value("invert", false) ? 1 : 0, e.value("bipolar", false) ? 1 : 0);
+        }
+    }
+    // ADR-0022 P2b.4: restore cross-track audio edges (same by-index round-trip as xcontrol above).
+    if (restore_audio && !params_only && j.contains("xaudio") && j["xaudio"].is_array()) {
+        for (const auto& e : j["xaudio"]) {
+            vivid::session::session_connect_audio(
+                s, e.value("src_track", 0), e.value("src_node", -1),
+                e.value("dst_track", 0), e.value("dst_node", -1));
         }
     }
 
