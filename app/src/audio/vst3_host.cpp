@@ -737,7 +737,8 @@ static void rebuild_track_graph(Track* t) {
     const bool has_source = t->is_audio || has_clap_inst || has_native_inst || has_vst3_inst;
     const int  node_count = 1 + static_cast<int>(t->effects_edit.size())
                               + static_cast<int>(t->op_effects_edit.size())
-                              + static_cast<int>(t->clap_effects.size()) + 1;   // source + VST3 FX + native FX + CLAP FX + output
+                              + static_cast<int>(t->clap_effects.size()) + 1   // source + VST3 FX + native FX + CLAP FX + output
+                              + (t->is_audio ? 0 : 1);   // ADR-0022 P3.1a: + a MidiIn source on every instrument track
     if (!has_source || node_count > kGraphMaxNodes) {
         t->gbinds_edit.clear();
         t->gok_edit = false;
@@ -762,7 +763,22 @@ static void rebuild_track_graph(Track* t) {
     // edge can target it. Metadata only — bit-identical: graph_note_input resolves note inputs from note
     // EDGES (n_note_in), not this flag, so a derived instrument with no note edge still reads its own
     // stream. A Sampler (is_audio) ignores notes, so it is left without a note-in port.
-    if (!t->is_audio) t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
+    //
+    // ADR-0022 P3.1a — note production becomes a graph node. Insert a MidiIn source feeding the
+    // instrument through a NOTE edge, replacing the invisible per-track t.nev broadcast fallback for
+    // derived instrument tracks. GNKind::MidiIn emits the ENTIRE t.nev (clips + live MIDI + musical
+    // typing + MCP + preview + scene-switch releases), so the instrument receives exactly the same
+    // note stream it read via the broadcast → bit-identical audio. The note edge forces MidiIn to
+    // render before the instrument (all edge kinds constrain topo order). graph_note_input's broadcast
+    // fallback is untouched — it is just no longer reached for this instrument (n_note_in becomes 1).
+    // A Sampler (is_audio) ignores notes, so it gets neither a note-in port nor a MidiIn source.
+    if (!t->is_audio) {
+        t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
+        t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
+        const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
+        t->agraph.set_note_ports(midi_in, /*note_in*/false, /*note_out*/true);
+        t->agraph.connect(midi_in, prev, vivid::audio::EdgeKind::Note);
+    }
     for (Vst3Handle* fx : t->effects_edit) {                                // VST3 FX first (inline order)
         t->agnodes.push_back({ GNKind::Vst3Fx, nullptr, fx });
         const int n = t->agraph.add_node(false, false, nullptr, nullptr, "vfx");
