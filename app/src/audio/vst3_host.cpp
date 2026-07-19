@@ -3758,6 +3758,15 @@ int session_track_audio_graph_node_gnid(Session* s, int t, int i) {
     std::lock_guard<std::mutex> lk(tr->gmtx);
     return (i >= 0 && i < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[i].gnid : -1;
 }
+// ADR-0022 P3.3/P4: the scene a per-scene note node (MidiClip / NativeGen) represents, or -1 for any
+// other node. Persist saves it so an authoritative note sub-graph round-trips (the node kinds the
+// loader recreates need to know which scene they gate).
+int session_track_audio_graph_node_cell_scene(Session* s, int t, int i) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    return (i >= 0 && i < static_cast<int>(tr->agnodes.size())) ? tr->agnodes[i].scene : -1;
+}
 // ADR-0015: does node i take / emit NOTES? (The UI draws note ports from this; an agent needs it to
 // know whether a plugin can drive another instrument.)
 void session_track_audio_graph_node_note_ports(Session* s, int t, int i, int* note_in, int* note_out) {
@@ -4696,7 +4705,7 @@ void session_audio_graph_clear(Session* s, int t) {
       tr->op_fx_gen.fetch_add(1, std::memory_order_release); }
     tr->agraph.reset(); tr->agnodes.clear(); tr->graph_authoritative = false;
 }
-int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, const char* op_type) {
+int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, const char* op_type, int scene) {
     Track* tr = graph_track(s, t); if (!tr || !s->op_reg) return -1;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (static_cast<int>(tr->agraph.nodes().size()) + 1 > kGraphMaxNodes) return -1;
@@ -4719,6 +4728,30 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
         GNodeBind nbm; nbm.kind = GNKind::MidiIn;
         tr->agnodes.push_back(nbm);
         return nid_mi;
+    }
+    if (kind == 7) {   // ADR-0022 P3.2: the per-track-out Selector (note in -> note out; no op/scene)
+        const int nid_se = tr->agraph.add_node(true, false, nullptr, nullptr, "sel");
+        tr->agraph.set_note_ports(nid_se, true, true);
+        GNodeBind nbs; nbs.kind = GNKind::Selector;
+        tr->agnodes.push_back(nbs);
+        return nid_se;
+    }
+    if (kind == 6) {   // ADR-0022 P3.1b: a per-scene MidiClip node (emits the scene's clip stream)
+        const int nid_mc = tr->agraph.add_node(true, false, nullptr, nullptr, "clip");
+        tr->agraph.set_note_ports(nid_mc, false, true);
+        GNodeBind nbc; nbc.kind = GNKind::MidiClip; nbc.scene = scene;
+        tr->agnodes.push_back(nbc);
+        return nid_mc;
+    }
+    if (kind == 8) {   // ADR-0022 P3.3: a per-scene NativeGen node (Euclid/Chord/RandMelody in a cell)
+        vivid::AudioOp* gop = vivid::audio_op_create(*s->op_reg, op_type);
+        if (!gop) return -1;
+        tr->op_retired.push_back(gop);   // owned by the Track; freed at shutdown (audio thread reaches it via the gbind)
+        const int nid_gn = tr->agraph.add_node(true, false, nullptr, nullptr, "gen");
+        tr->agraph.set_note_ports(nid_gn, false, true);
+        GNodeBind nbg; nbg.kind = GNKind::NativeGen; nbg.op = gop; nbg.scene = scene;
+        tr->agnodes.push_back(nbg);
+        return nid_gn;
     }
     if (kind == 5) {   // ADR-0022: a native MODULATOR (LFO) — no audio, emits control
         vivid::AudioOp* mop = vivid::audio_op_create(*s->op_reg, op_type);

@@ -166,6 +166,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                 const int kind = vivid::session::session_track_audio_graph_node_kind(s, t, i);   // 0 inst / 1 fx / 2 out
                 jn["kind"] = kind;
                 jn["op"] = vivid::session::session_track_audio_graph_node_type(s, t, i);
+                // ADR-0022: a per-scene note node (MidiClip=6 / NativeGen=8) records which scene it gates,
+                // so the loader can recreate the note sub-graph faithfully.
+                if (kind == 6 || kind == 8)
+                    if (const int sc = vivid::session::session_track_audio_graph_node_cell_scene(s, t, i); sc >= 0) jn["scene"] = sc;
                 // Binding family so the loader can rebuild a VST3/CLAP source or effect node (whose "op"
                 // is a plugin display name, not a native operator) as a placeholder instead of dropping
                 // it. 0 native (omitted) / 1 vst3 / 2 clap / 3 sampler; the handle rebinds on plugin load.
@@ -659,7 +663,7 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                                   jn.value("uid", std::string()).c_str(),
                                   jn.value("state", std::string()).c_str())
                             : vivid::session::session_audio_graph_load_node(
-                                  s, t, kind, src, jn.value("op", std::string()).c_str());
+                                  s, t, kind, src, jn.value("op", std::string()).c_str(), jn.value("scene", -1));
                         if (nid < 0) continue;
                         id_map[saved] = nid;
                         if (jn.contains("gnid"))   // ADR-0022 P4.4: restore the session-global id (before finish_load)
