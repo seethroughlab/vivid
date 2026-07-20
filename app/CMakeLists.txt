@@ -206,6 +206,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/gpu/file_drop_registry.cpp
     src/gpu/effect_op.cpp
     src/audio/vst3_host.cpp
+    src/audio/vst3_host_render.cpp
     src/audio/plugin_catalog.cpp
     src/audio/plugin_cache.cpp
     src/audio/plugin_probe.cpp

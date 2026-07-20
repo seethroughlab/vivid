@@ -11,6 +11,7 @@
 #include "audio/audio_graph.h"
 #include "audio/clap_host.h"
 #include "audio/plugin_catalog.h"
+#include "audio/vst3_presets.h"   // PresetEntry (Track::preset_cache stores it by value) — keeps this header self-contained
 #include <vector>
 #include <memory>
 #include <string>
@@ -560,5 +561,19 @@ struct Session {
     bool                     clap_worker_stop = false;
     std::string              clap_last_error;    // main-thread only (last failed async load)
 };
+
+// --- Per-source/effect RENDER PRIMITIVES (defined in vst3_host_render.cpp; ADR-0025 split PR-B). Each
+// runs one VST3/CLAP plugin for a block (or drains the notes it generated) — pure DSP over a handle.
+// process_step + session_process (in vst3_host.cpp) call these, so the inline path and the audio-graph
+// node dispatch share identical code (parity by construction). RT-safe: fixed scratch, no heap/lock.
+void emit_vst3(Vst3EventList& events, const std::vector<NoteEvent>& nev, const std::vector<ExprEvent>& eev);
+void filter_notes_by_range(const std::vector<NoteEvent>& src, uint8_t lo, uint8_t hi, std::vector<NoteEvent>& dst);
+void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t hi, std::vector<ExprEvent>& dst);
+void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
+void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R);
+void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out);
+void drain_clap_notes(ClapHandle* h, std::vector<NoteEvent>& out);
 
 }  // namespace vivid::session
