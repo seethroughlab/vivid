@@ -164,6 +164,108 @@ json analyze_pcm(const std::vector<float>& inL, const std::vector<float>& inR, u
     };
 }
 
+namespace {
+// One bandpass biquad (RBJ cookbook, 0 dB peak-gain variant) → RMS of the filtered mono signal.
+double band_rms(const std::vector<float>& mono, uint32_t sr, double f0, double q) {
+    if (f0 <= 0.0 || f0 >= sr * 0.5 || mono.empty()) return 0.0;
+    const double w0 = 2.0 * 3.14159265358979323846 * f0 / sr;
+    const double alpha = std::sin(w0) / (2.0 * q);
+    const double a0 = 1.0 + alpha;
+    const double b0 = alpha / a0, b2 = -alpha / a0;
+    const double a1 = (-2.0 * std::cos(w0)) / a0, a2 = (1.0 - alpha) / a0;
+    double x1 = 0, x2 = 0, y1 = 0, y2 = 0, sum2 = 0.0;
+    for (float xf : mono) {
+        const double x = xf;
+        const double y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;   // b1 == 0 for a bandpass
+        x2 = x1; x1 = x; y2 = y1; y1 = y;
+        sum2 += y * y;
+    }
+    return std::sqrt(sum2 / static_cast<double>(mono.size()));
+}
+double hz_to_mel(double hz) { return 2595.0 * std::log10(1.0 + hz / 700.0); }
+double mel_to_hz(double mel) { return 700.0 * (std::pow(10.0, mel / 2595.0) - 1.0); }
+}  // namespace
+
+json analyze_spectrum_bands(const std::vector<float>& inL, const std::vector<float>& inR, uint32_t sr,
+                            const std::string& mode) {
+    const size_t n = std::min(inL.size(), inR.empty() ? inL.size() : inR.size());
+    if (n == 0 || sr == 0) return { {"ok", false}, {"error", "empty audio"} };
+    const std::vector<float>& R = inR.empty() ? inL : inR;
+    std::vector<float> mono(n);
+    for (size_t i = 0; i < n; ++i) mono[i] = 0.5f * (inL[i] + R[i]);
+    const double nyq = sr * 0.5;
+
+    // Band CENTER frequencies + the [lo,hi] edges reported for each, per mode.
+    std::vector<double> centers, los, his;
+    double q = 4.0;
+    if (mode == "octave") {
+        q = 1.41;   // ~1-octave bandwidth
+        for (double f = 31.25; f < nyq; f *= 2.0) {
+            centers.push_back(f); los.push_back(f / std::sqrt(2.0)); his.push_back(f * std::sqrt(2.0));
+        }
+    } else if (mode == "mel") {
+        const int B = 24;
+        const double m0 = hz_to_mel(40.0), m1 = hz_to_mel(std::min(nyq * 0.98, 18000.0));
+        for (int i = 0; i < B; ++i) {
+            const double c = mel_to_hz(m0 + (m1 - m0) * (i + 0.5) / B);
+            centers.push_back(c);
+            los.push_back(mel_to_hz(m0 + (m1 - m0) * i / B));
+            his.push_back(mel_to_hz(m0 + (m1 - m0) * (i + 1.0) / B));
+        }
+        q = 6.0;
+    } else {   // "linear"
+        const int B = 16;
+        const double top = nyq * 0.98;
+        for (int i = 0; i < B; ++i) {
+            centers.push_back(top * (i + 0.5) / B);
+            los.push_back(top * i / B);
+            his.push_back(top * (i + 1.0) / B);
+        }
+        q = static_cast<double>(B) * 0.5;
+    }
+
+    json bands = json::array();
+    double total2 = 0.0, cw = 0.0;   // energy sum + energy-weighted centroid numerator
+    for (size_t i = 0; i < centers.size(); ++i) {
+        const double e = band_rms(mono, sr, centers[i], q);
+        total2 += e * e; cw += centers[i] * e * e;
+        bands.push_back({ {"center_hz", centers[i]}, {"lo_hz", los[i]}, {"hi_hz", his[i]},
+                          {"rms", e}, {"db", e > 1e-9 ? 20.0 * std::log10(e) : -120.0} });
+    }
+    const double centroid = total2 > 1e-12 ? cw / total2 : 0.0;
+    return {
+        {"ok", true}, {"mode", mode}, {"sample_rate", sr},
+        {"frames", static_cast<int>(n)}, {"duration_seconds", static_cast<double>(n) / sr},
+        {"band_count", static_cast<int>(centers.size())},
+        {"spectral_centroid_hz", centroid},
+        {"bands", bands}
+    };
+}
+
+bool resolve_audio_source(const ControlCtx& c, const json& spec, double fallback_seconds,
+                          std::vector<float>& L, std::vector<float>& R, uint32_t& sr, json& source_json, json& e) {
+    namespace P = vivid::session;
+    if (spec.is_object() && spec.contains("path")) {
+        const std::string path = spec.value("path", std::string());
+        if (!load_pcm_file(path, 48000, L, R, sr)) { e = err(code::kIoError, "could not decode audio file: " + path); return false; }
+        source_json = { {"kind", "file"}, {"path", path} };
+        return true;
+    }
+    if (spec.is_object() && spec.contains("track") && spec.contains("scene")) {
+        if (!c.session) { e = err(code::kNoSession, "no session"); return false; }
+        const int track = spec.value("track", 0), scene = spec.value("scene", 0);
+        if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return false;
+        if (!P::session_track_is_audio(c.session, track)) { e = err(code::kBadArg, "track is not an audio track"); return false; }
+        if (P::session_audio_copy_pcm(c.session, track, scene, L, R, &sr) <= 0) { e = err(code::kBadArg, "audio clip is empty"); return false; }
+        source_json = { {"kind", "clip"}, {"track", track}, {"scene", scene} };
+        return true;
+    }
+    double requested = 0.0;
+    if (!copy_live_capture(c, spec.is_object() ? spec : json::object(), fallback_seconds, L, R, sr, requested, source_json, e)) return false;
+    source_json["requested_seconds"] = requested;
+    return true;
+}
+
 bool load_pcm_file(const std::string& path, uint32_t sr_hint, std::vector<float>& L, std::vector<float>& R, uint32_t& sr) {
     vivid::session::Sampler smp;
     if (!vivid::session::sampler_load_wav(path, sr_hint ? sr_hint : 48000, 120.0, smp)) return false;

@@ -7,6 +7,7 @@
 #include "transport.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -145,6 +146,64 @@ void register_audio_analysis_handlers(Handlers& handlers_) {
                                                 {"mid", c.transport->band_mid.load(std::memory_order_relaxed)},
                                                 {"high", c.transport->band_high.load(std::memory_order_relaxed)} }} };
         }
+        return r;
+    };
+    // ADR-0024 Phase 5: per-band energy spectrum. Source spec is the top-level body ({path} |
+    // {track,scene} | live/master); `bands` = octave|mel|linear.
+    handlers_["analyze_spectrum"] = [](const ControlCtx& c, const json& b) {
+        std::vector<float> L, R; uint32_t sr = 0; json source, e;
+        if (!resolve_audio_source(c, b, 4.0, L, R, sr, source, e)) return e;
+        const std::string mode = b.value("bands", std::string("octave"));
+        if (mode != "octave" && mode != "mel" && mode != "linear")
+            return err(code::kBadArg, "bands must be octave, mel, or linear");
+        json spec = analyze_spectrum_bands(L, R, sr, mode);
+        // Loudest band → a compact summary the agent can read without scanning the array.
+        double best = -1e9; json loudest;
+        for (const auto& band : spec.value("bands", json::array()))
+            if (band.value("rms", 0.0) > best) { best = band.value("rms", 0.0); loudest = band; }
+        json r = ok();
+        r["source"] = source;
+        r["spectrum"] = spec;
+        r["summary"] = "Spectrum (" + mode + "): centroid=" +
+                       std::to_string(spec.value("spectral_centroid_hz", 0.0)) + "Hz, loudest band ~" +
+                       std::to_string(loudest.value("center_hz", 0.0)) + "Hz";
+        return r;
+    };
+    // ADR-0024 Phase 5: before/after comparison. Two source specs `a` and `b` (each {path} |
+    // {track,scene} | live/master); returns each analysis, the deltas, and a plain verdict.
+    handlers_["compare_audio"] = [](const ControlCtx& c, const json& b) {
+        if (!b.contains("a") || !b.contains("b"))
+            return err(code::kBadArg, "need two source specs: a and b (each {path} | {track,scene} | {source:'master',duration_seconds})");
+        std::vector<float> aL, aR, bL, bR; uint32_t asr = 0, bsr = 0; json aSrc, bSrc, e;
+        if (!resolve_audio_source(c, b["a"], 4.0, aL, aR, asr, aSrc, e)) return e;
+        if (!resolve_audio_source(c, b["b"], 4.0, bL, bR, bsr, bSrc, e)) return e;
+        json A = analyze_pcm(aL, aR, asr, b.value("windows", 16));
+        json B = analyze_pcm(bL, bR, bsr, b.value("windows", 16));
+        auto d = [&](const char* k) { return B.value(k, 0.0) - A.value(k, 0.0); };
+        const double loud_db = (A.value("rms", 0.0) > 1e-9 && B.value("rms", 0.0) > 1e-9)
+                             ? 20.0 * std::log10(B.value("rms", 0.0) / A.value("rms", 0.0)) : 0.0;
+        const double d_centroid = d("spectral_centroid_proxy_hz");
+        const double d_trans = d("transient_density_per_second");
+        const json aB = A.value("bands", json::object()), bB = B.value("bands", json::object());
+        json delta = {
+            {"rms", d("rms")}, {"loudness_db", loud_db}, {"peak", d("peak")},
+            {"crest_factor", d("crest_factor")}, {"spectral_centroid_proxy_hz", d_centroid},
+            {"transient_density_per_second", d_trans},
+            {"clipping_samples", B.value("clipping_samples", 0) - A.value("clipping_samples", 0)},
+            {"bands", { {"low", bB.value("low", 0.0) - aB.value("low", 0.0)},
+                        {"mid", bB.value("mid", 0.0) - aB.value("mid", 0.0)},
+                        {"high", bB.value("high", 0.0) - aB.value("high", 0.0)} }}
+        };
+        std::string s = "B vs A: ";
+        s += (loud_db > 0.5 ? "louder" : loud_db < -0.5 ? "quieter" : "similar loudness");
+        s += std::string(", ") + (d_centroid > 50 ? "brighter" : d_centroid < -50 ? "darker" : "similar brightness");
+        s += std::string(", ") + (d_trans > 0.3 ? "more transient-dense" : d_trans < -0.3 ? "less transient-dense" : "similar transient density");
+        if (B.value("clipping_samples", 0) > A.value("clipping_samples", 0)) s += ", MORE clipping";
+        json r = ok();
+        r["a"] = { {"source", aSrc}, {"analysis", A} };
+        r["b"] = { {"source", bSrc}, {"analysis", B} };
+        r["delta"] = delta;
+        r["summary"] = s;
         return r;
     };
 

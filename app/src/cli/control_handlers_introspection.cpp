@@ -994,6 +994,103 @@ void register_introspection_handlers(Handlers& handlers_) {
         r["suggestions"] = suggestions;
         return r;
     };
+    // ADR-0024 Phase 2 straggler: wire a mapping from INTENT words on both sides. Resolves an audio
+    // characteristic from `source_intent` and a destination param from `dest_intent`, then connects it
+    // via the same bridge primitive as connect_mapping. Conservative: picks the best keyword match.
+    handlers_["connect_mapping_by_intent"] = [](const ControlCtx& c, const json& b) {
+        if (!c.graph) return err(code::kNoGraph, "no graph");
+        const std::string si = lower_copy(b.value("source_intent", std::string()));
+        const std::string di = lower_copy(b.value("dest_intent", std::string()));
+        if (si.empty() || di.empty()) return err(code::kBadArg, "need source_intent and dest_intent");
+        auto has = [&](const std::string& hay, std::initializer_list<const char*> kws) {
+            for (auto k : kws) if (hay.find(k) != std::string::npos) return true; return false; };
+        std::string src;
+        if      (has(si, {"transient", "impact", "onset", "kick", "hit", "punch", "attack", "beat", "snare"})) src = "master.transient";
+        else if (has(si, {"bass", "low", "sub"}))                                    src = "master.low";
+        else if (has(si, {"high", "treble", "bright", "hat", "cymbal", "air"}))       src = "master.high";
+        else if (has(si, {"mid", "vocal", "melody", "body"}))                         src = "master.mid";
+        else                                                                          src = "master.level";
+        // Destination: match `dest_intent` against the descriptor's param/op/label (text_match ignores
+        // those fields, so match them directly). Prefer an exact param-name hit, else first substring.
+        auto pmatch = [&](const json& d) {
+            const std::string hay = lower_copy(d.value("param", std::string()) + " " + d.value("op", std::string()) + " " +
+                                               d.value("device_name", std::string()) + " " + d.value("role", std::string()));
+            return hay.find(di) != std::string::npos; };
+        json chosen; bool exact = false;
+        auto consider = [&](const json& d) {
+            if (!pmatch(d)) return;
+            const bool ex = lower_copy(d.value("param", std::string())) == di;
+            if (chosen.is_null() || (ex && !exact)) { chosen = d; exact = ex; } };
+        for (const auto& d : visual_mapping_destinations(c)) consider(d);
+        for (const auto& d : audio_mapping_destinations(c.session)) consider(d);
+        if (chosen.is_null()) return err(code::kNotFound, "no destination matched dest_intent '" + di + "' (try list_mapping_destinations)");
+        const std::string dst = chosen.value("dest", std::string());
+        if (dst.empty()) return err(code::kInternal, "resolved destination has no address");
+        c.graph->add_mapping(src, dst, b.value("amount", 1.0f), b.value("curve", 0.0f), b.value("invert", false), 0.0f, 1.0f);
+        json r = ok();
+        r["src"] = src; r["src_label"] = source_label(c.session, src);
+        r["dst"] = dst; r["dst_label"] = dest_label(c, dst);
+        r["resolved_destination"] = chosen;
+        r["summary"] = "Mapped " + source_label(c.session, src) + " -> " + dest_label(c, dst);
+        return r;
+    };
+    // ADR-0024 Phase 3 straggler: set a param by INTENT. Resolves `intent` (a param name/keyword,
+    // optionally narrowed by `target` = a domain/op/device hint) to a single param across visual +
+    // audio, clamps to its range, and routes the set to the right setter by the descriptor's target.
+    handlers_["set_param_by_intent"] = [](const ControlCtx& c, const json& b) {
+        const std::string target = lower_copy(b.value("target", std::string()));
+        const std::string intent = lower_copy(b.value("intent", std::string()));
+        if (intent.empty()) return err(code::kBadArg, "need intent (a param name/keyword)");
+        if (!b.contains("value")) return err(code::kBadArg, "need value");
+        const float requested = b.value("value", 0.f);
+        auto tgt_ok = [&](const json& d) {
+            if (target.empty()) return true;
+            for (const char* k : {"op", "param", "domain", "target", "device_name", "role"}) {
+                const std::string v = lower_copy(d.value(k, std::string()));
+                if (!v.empty() && v.find(target) != std::string::npos) return true; }
+            return false; };
+        auto pmatch = [&](const json& d) {
+            const std::string hay = lower_copy(d.value("param", std::string()) + " " + d.value("op", std::string()));
+            return hay.find(intent) != std::string::npos; };
+        json chosen; bool exact = false;
+        auto consider = [&](const json& d) {
+            if (!tgt_ok(d) || !pmatch(d)) return;
+            const bool ex = lower_copy(d.value("param", std::string())) == intent;
+            if (chosen.is_null() || (ex && !exact)) { chosen = d; exact = ex; } };
+        for (const auto& d : visual_mapping_destinations(c)) consider(d);
+        for (const auto& d : audio_mapping_destinations(c.session)) consider(d);
+        if (chosen.is_null()) return err(code::kNotFound, "no param matched intent '" + intent + "'" +
+                                          (target.empty() ? "" : (" in target '" + target + "'")) + " (try find_params)");
+        float v = requested;
+        if (chosen.contains("range") && chosen["range"].is_array() && chosen["range"].size() == 2) {
+            const float lo = chosen["range"][0].get<float>(), hi = chosen["range"][1].get<float>();
+            if (hi > lo) v = std::clamp(v, lo, hi);
+        }
+        const std::string tt = chosen.value("target", std::string());
+        bool didset = false;
+        if (tt == "node") {   // visual op param — index by node id, then local param by name
+            const int node_id = chosen.value("node_id", -1);
+            int idx = -1;
+            if (c.vgraph) { auto& ns = c.vgraph->nodes(); for (int i = 0; i < static_cast<int>(ns.size()); ++i) if (ns[i].id == node_id) { idx = i; break; } }
+            const std::string pname = chosen.value("param", std::string());
+            int local = -1;
+            if (idx >= 0) for (int l = 0; l < c.graph->op_param_count_at(idx); ++l)
+                if (pname == c.graph->op_param_label_at(idx, l)) { local = l; break; }
+            if (idx >= 0 && local >= 0) { c.graph->set_op_param_base_at(idx, local, v); didset = true; }
+        } else if (tt == "native_audio_op") {
+            P::session_audio_op_param_set(c.session, chosen.value("track", 0), chosen.value("index", -1), chosen.value("param_index", -1), v); didset = true;
+        } else if (tt == "audio_graph_node") {
+            P::session_audio_graph_node_param_set(c.session, chosen.value("track", 0), chosen.value("node", -1), chosen.value("param_index", -1), v); didset = true;
+        } else if (tt == "hosted_device") {
+            const int track = chosen.value("track", 0), device = chosen.value("device", 0), pi = chosen.value("param_index", -1);
+            P::session_set_param(c.session, track, device, P::session_param_id(c.session, track, device, pi), v); didset = true;
+        }
+        if (!didset) return err(code::kInternal, "resolved a param but could not route the set (target='" + tt + "')");
+        json r = ok();
+        r["set"] = chosen; r["value"] = v; r["requested_value"] = requested;
+        r["summary"] = "Set " + dest_label(c, chosen.value("dest", std::string())) + " = " + std::to_string(v);
+        return r;
+    };
 
     // Mapping affordances: the valid bridge SOURCES an agent can wire to a dest (previously only
     // documented in a docstring). Every audio characteristic — master + per live track (by stable

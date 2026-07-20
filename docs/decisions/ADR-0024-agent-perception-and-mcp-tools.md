@@ -1,8 +1,8 @@
 # ADR-0024: Agent Perception and Higher-Level MCP Tools
 
-Status: proposed
+Status: accepted (implementing incrementally — see "As built" below)
 
-Date: 2026-07-18
+Date: 2026-07-18 (accepted 2026-07-20)
 
 Extends [ADR-0006](ADR-0006-agent-external-mcp.md),
 [ADR-0008](ADR-0008-agent-capability-surface.md),
@@ -10,6 +10,30 @@ Extends [ADR-0006](ADR-0006-agent-external-mcp.md),
 [ADR-0019](ADR-0019-nothing-fails-silently.md),
 [ADR-0022](ADR-0022-session-audio-graph.md), and
 [ADR-0023](ADR-0023-shared-graph-ui-substrate.md).
+
+## As built (2026-07-20)
+
+The layer is being delivered incrementally against the phase plan below; every new handler keeps the
+MCP↔control parity test green (149↔149, `set_playing` intentionally unexposed).
+
+- **Phase 1 (session inspection):** DONE — `inspect_session_overview`, `inspect_scene`, `inspect_track`,
+  `inspect_signal_flow`, `explain_scene`, `explain_signal_flow`.
+- **Phase 2 (bindings/intent):** DONE — `list_mapping_destinations`, `suggest_mappings`, `explain_mapping`,
+  `inspect_bindings`, and `connect_mapping_by_intent` (resolves an audio characteristic + a destination
+  param from intent words, then wires via the same bridge primitive).
+- **Phase 3 (unified discovery + named params):** DONE — `list_operator_catalog`, `find_operators`,
+  `find_params`, `set_audio_op_param_by_name`, `audio_graph_set_node_param_by_name`, and
+  `set_param_by_intent` (resolves one param across visual+audio, clamps to range, routes to the right
+  setter by descriptor target).
+- **Phase 4 (audio capture + offline analysis):** DONE — `capture_audio`, `analyze_audio`,
+  `analyze_audio_clip`, `analyze_audio_file`, `detect_onsets`, `summarize_mix`, over an off-thread
+  `analyze_pcm` (RMS/peak/clipping/crest/3-band/centroid-proxy/flux/transients/energy-windows).
+- **Phase 5 (comparison + spectrum):** DONE — `compare_audio` (two source specs → per-feature deltas +
+  a plain `B vs A` verdict) and `analyze_spectrum` (octave/mel/linear per-band energy via a bandpass
+  biquad filterbank + energy-weighted centroid).
+- **Phases 6–8 (visual perception, project/package workflow, proofs/checks):** NOT YET STARTED. Visual
+  perception needs GPU frame readback (no capture path exists yet); the proof loop composes the now-built
+  inspection + analysis tools once visual analysis lands.
 
 ## Context
 
