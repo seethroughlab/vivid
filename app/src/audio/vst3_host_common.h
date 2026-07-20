@@ -1,6 +1,9 @@
 #pragma once
 // Shared VST3 host infrastructure used by Vst3Instrument and Vst3Effect.
-// Header-only, anonymous namespace. Mirrors clap_host_common.h for VST3.
+// Header-only. Mirrors clap_host_common.h for VST3 — like it, the host TYPES + helpers live in
+// namespace vivid::session with external linkage (types) / `inline` (free functions + globals), so
+// cohesive groups can be split into their own TUs (ADR-0025). It used to be an anonymous namespace,
+// which gave everything internal linkage and is exactly what kept vst3_host.cpp a single TU.
 
 #include "vivid_audio_context.h"
 #include "base64.h"
@@ -31,7 +34,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
-namespace {
+namespace vivid::session {
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -40,7 +43,7 @@ using namespace Steinberg::Vst;
 // unmapping a dylib that a second handle (e.g. from reload_for_rate_change)
 // still depends on. Only call bundle_exit/UnloadExecutable when count → 0.
 // All accesses are main-thread-only (load and destroy both happen on main).
-static std::unordered_map<std::string, int> g_vst3_bundle_refs;
+inline std::unordered_map<std::string, int> g_vst3_bundle_refs;
 
 // ---------------------------------------------------------------------------
 // Base64 encode/decode (RFC 4648, standard alphabet)
@@ -48,10 +51,10 @@ static std::unordered_map<std::string, int> g_vst3_bundle_refs;
 
 // Thin wrappers over the shared canonical base64 (operators/shared/plugin_common/
 // base64.h) — keep the host-local names so call sites are unchanged. (audit 09-F1)
-static std::string vst3_b64_encode(const uint8_t* data, size_t len) {
+inline std::string vst3_b64_encode(const uint8_t* data, size_t len) {
     return vivid::plugin_common::base64_encode(data, len);
 }
-static std::vector<uint8_t> vst3_b64_decode(const std::string& s) {
+inline std::vector<uint8_t> vst3_b64_decode(const std::string& s) {
     return vivid::plugin_common::base64_decode(s);
 }
 
@@ -564,7 +567,7 @@ struct Vst3Handle {
 // UTF-16 → UTF-8 (ASCII fast-path — covers 99% of plugin names and param names)
 // ---------------------------------------------------------------------------
 
-static std::string vst3_tchar_to_utf8(const TChar* src) {
+inline std::string vst3_tchar_to_utf8(const TChar* src) {
     std::string out;
     for (int i = 0; src[i]; ++i) {
         TChar c = src[i];
@@ -586,7 +589,7 @@ static std::string vst3_tchar_to_utf8(const TChar* src) {
 // Cache parameter info from IEditController into Vst3Handle::params
 // ---------------------------------------------------------------------------
 
-static void vst3_cache_params(Vst3Handle* h) {
+inline void vst3_cache_params(Vst3Handle* h) {
     if (!h->controller) return;
     int32 n = h->controller->getParameterCount();
     h->params.clear();
@@ -612,7 +615,7 @@ static void vst3_cache_params(Vst3Handle* h) {
 // Build JSON array from cached params (for _vst3_params hidden param)
 // ---------------------------------------------------------------------------
 
-static std::string vst3_params_to_json(const Vst3Handle* h) {
+inline std::string vst3_params_to_json(const Vst3Handle* h) {
     if (!h || h->params.empty()) return "[]";
     std::string json = "[";
     bool first = true;
@@ -663,7 +666,7 @@ static std::string vst3_params_to_json(const Vst3Handle* h) {
 // Legacy blobs without the "z:" prefix are raw base64 (backward-compatible).
 // ---------------------------------------------------------------------------
 
-static std::string vst3_compress_b64(const uint8_t* data, size_t len) {
+inline std::string vst3_compress_b64(const uint8_t* data, size_t len) {
     uLongf bound = compressBound(static_cast<uLong>(len));
     std::vector<uint8_t> buf(bound);
     if (compress2(buf.data(), &bound, data, static_cast<uLong>(len), Z_BEST_COMPRESSION) != Z_OK)
@@ -671,7 +674,7 @@ static std::string vst3_compress_b64(const uint8_t* data, size_t len) {
     return "z:" + vst3_b64_encode(buf.data(), static_cast<size_t>(bound));
 }
 
-static std::vector<uint8_t> vst3_decompress_b64(const std::string& s) {
+inline std::vector<uint8_t> vst3_decompress_b64(const std::string& s) {
     // s starts after the "z:" prefix
     std::vector<uint8_t> compressed = vst3_b64_decode(s);
     if (compressed.empty()) return {};
@@ -699,7 +702,7 @@ static std::vector<uint8_t> vst3_decompress_b64(const std::string& s) {
     return out;
 }
 
-static std::string vst3_save_state(Vst3Handle* h) {
+inline std::string vst3_save_state(Vst3Handle* h) {
     if (!h || !h->component) return {};
     MemIBStream stream;
     if (h->component->getState(&stream) != kResultOk) return {};
@@ -710,7 +713,7 @@ static std::string vst3_save_state(Vst3Handle* h) {
     return vst3_b64_encode(stream.buf.data(), stream.buf.size());
 }
 
-static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
+inline void vst3_load_state(Vst3Handle* h, const std::string& b64) {
     if (b64.empty() || !h || !h->component) return;
     std::vector<uint8_t> raw;
     if (b64.size() >= 2 && b64[0] == 'z' && b64[1] == ':')
@@ -736,7 +739,7 @@ static void vst3_load_state(Vst3Handle* h, const std::string& b64) {
 // Build ProcessContext from VividAudioContext
 // ---------------------------------------------------------------------------
 
-static ProcessContext vst3_build_process_context(const VividAudioContext* ctx,
+inline ProcessContext vst3_build_process_context(const VividAudioContext* ctx,
                                                    uint64_t steady_sample) {
     ProcessContext pc{};
     pc.sampleRate            = static_cast<SampleRate>(ctx->sample_rate);
@@ -772,7 +775,7 @@ static ProcessContext vst3_build_process_context(const VividAudioContext* ctx,
 
 typedef IPluginFactory* (*GetPluginFactoryFunc)();
 
-static bool vst3_has_subcategory(const char* subcategories, const char* wanted) {
+inline bool vst3_has_subcategory(const char* subcategories, const char* wanted) {
     if (!subcategories || !wanted || !wanted[0]) return false;
     std::string_view cats{subcategories};
     std::string_view needle{wanted};
@@ -787,7 +790,7 @@ static bool vst3_has_subcategory(const char* subcategories, const char* wanted) 
     return false;
 }
 
-static Vst3Handle* vst3_load_plugin(const char* bundle_path,
+inline Vst3Handle* vst3_load_plugin(const char* bundle_path,
                                      const char* uid_hex,
                                      uint32_t sample_rate,
                                      const std::string& saved_state,
@@ -1134,4 +1137,4 @@ static Vst3Handle* vst3_load_plugin(const char* bundle_path,
     return h;
 }
 
-} // namespace
+} // namespace vivid::session

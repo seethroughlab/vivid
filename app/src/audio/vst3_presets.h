@@ -20,8 +20,9 @@
 // so it's bounded (a cap + a name filter) to keep the browse responsive. Program-list /
 // IUnitInfo factory presets are a separate mechanism, not covered yet.
 //
-// Included by vst3_host.cpp AFTER vst3_host_common.h — both live in the TU's single anonymous
-// namespace, so Vst3Handle / MemIBStream / the Steinberg using-directives are already in scope.
+// Included by vst3_host.cpp AFTER vst3_host_common.h — both live in namespace vivid::session
+// (ADR-0025 de-anonymized the host types), so Vst3Handle / MemIBStream / the Steinberg
+// using-directives are already in scope.
 
 #include "vst3_host_common.h"     // Vst3Handle, MemIBStream, ParamQueue
 #include "pluginterfaces/vst/ivstunits.h"   // IUnitInfo / program lists (universal factory presets)
@@ -38,7 +39,7 @@
 #include <string>
 #include <vector>
 
-namespace {
+namespace vivid::session {
 
 using namespace Steinberg;        // ParamID / int32 / String128 / ParameterInfo / kResultOk …
 using namespace Steinberg::Vst;   // IUnitInfo / ProgramListInfo (this block is a distinct scope from
@@ -454,4 +455,4 @@ static bool vst3_load_preset(Vst3Handle* h, const std::string& id) {
     return false;
 }
 
-}  // namespace
+}  // namespace vivid::session
