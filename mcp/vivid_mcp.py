@@ -1622,6 +1622,48 @@ def set_media_root(path: str) -> dict:
     return _post("set_media_root", {"path": path})
 
 
+# ---- ADR-0024 Phase 7: project workflow (inspect / resolve / reload project assets) ----
+
+@mcp.tool
+def validate_project() -> dict:
+    """Structural health of the loaded project: whether it is saved, its session file exists on disk,
+    whether it carries a project-local operator package / shaders dir, and any missing media. Returns
+    `valid` plus a leveled `issues` list."""
+    return _post("validate_project")
+
+
+@mcp.tool
+def list_project_assets() -> dict:
+    """Enumerate the current project folder's co-located assets: session file, operator package
+    (manifest + declared operator sources), shaders, and loose media. Empty for an unsaved or
+    single-file project."""
+    return _post("list_project_assets")
+
+
+@mcp.tool
+def resolve_asset(asset: str) -> dict:
+    """Resolve a project-relative asset reference (e.g. "shaders/foo.glsl" or a bare filename) to an
+    absolute path, reporting whether it exists and its kind. Rejects paths that escape the project dir."""
+    return _post("resolve_asset", {"asset": asset})
+
+
+@mcp.tool
+def reload_project_files() -> dict:
+    """Pick up on-disk edits to the project's authored assets without reverting the live session:
+    re-scan the shaders dir and recompile the project package, registering any newly-authored
+    operator. Needs a saved folder project. (Hot-swapping an existing compiled op is
+    reload_operator_package.)"""
+    return _post("reload_project_files")
+
+
+@mcp.tool
+def diff_project() -> dict:
+    """Structural delta between the live (in-memory) session and its last saved state on disk:
+    per-section counts on each side plus a `differs` flag. Excludes opaque plugin-state so the diff
+    reflects authored structure, not serialized plugin bytes."""
+    return _post("diff_project")
+
+
 @mcp.tool
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""
