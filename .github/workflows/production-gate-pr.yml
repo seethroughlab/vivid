@@ -50,3 +50,20 @@ jobs:
           else
             gh api -X POST "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" -f body="$BODY"
           fi
+
+  # The session audio EXECUTOR test (test_session_executor). The engine reaches CoreFoundation, so it
+  # is macOS-only and needs the full-app configure (VIVID_BUILD_APP=ON) for its VST3/CLAP/signalsmith
+  # deps — hence it can't ride the portable ubuntu headless-tests job. We build ONLY the test target,
+  # so wgpu/glfw and the GUI app are never compiled (the app-ON configure just makes the deps available;
+  # they are cached on the self-hosted runner, which already does app-ON release builds).
+  audio-engine-tests:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (full-app, for the audio deps) + build only the executor test
+        run: |
+          cmake -S app -B app/build-audio -DVIVID_BUILD_APP=ON -DVIVID_BUILD_TESTS=ON \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build app/build-audio --target test_session_executor -j
+      - name: Run session-executor test
+        run: ctest --test-dir app/build-audio -R test_session_executor --output-on-failure
