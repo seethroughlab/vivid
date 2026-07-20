@@ -401,6 +401,12 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
     set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
+    // "Re-layout" button → snap the graph back to the tidy auto-arrangement (undo-noted like a drag).
+    if (hit(dock_audio_relayout_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+        relayout();
+        if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
+        return true;
+    }
     // "Editor" button in the dock header → open the selected VST3 node's native plugin window.
     if (win.sel_audio_node >= 0
         && hit(dock_audio_editor_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {

@@ -284,8 +284,12 @@ float AudioNodeGraph::card_height(int node_id) const {
     return card_ports(node_id, kind).height();
 }
 
-std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
-    std::vector<AudioNodeBox> out;
+// The auto-layout WORLD position for every node (indexed by node order): rank = signal depth
+// (longest path), slot = fan-out order within a rank; the Output sink is pinned to the last column.
+// One source of truth shared by layout() (seeds only unpositioned nodes) and relayout() (overwrites
+// every node) so the tidy arrangement can't drift between "open" and "Re-layout".
+std::vector<std::pair<float, float>> AudioNodeGraph::seed_positions() const {
+    std::vector<std::pair<float, float>> out;
     if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return out;
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     if (n <= 0) return out;
@@ -310,25 +314,55 @@ std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
     std::vector<int> fill(max_rank + 1, 0);
     for (int i = 0; i < n; ++i) slot[i] = fill[rank[i]]++;
 
+    // Seed spacing uses a generous row pitch — cards are variable-height (param ports), so the
+    // tallest a fresh column can get must not overlap the next row.
+    constexpr float kSeedRowPitch = 150.f;
+    out.reserve(n);
+    for (int i = 0; i < n; ++i)
+        out.push_back({ kPad + rank[i] * (kCardW + kGapX),
+                        kPad + slot[i] * (kSeedRowPitch + kGapY) });
+    return out;
+}
+
+std::vector<AudioNodeBox> AudioNodeGraph::layout() const {
+    std::vector<AudioNodeBox> out;
+    if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return out;
+    const int n = P::session_track_audio_graph_node_count(s_, track_);
+    if (n <= 0) return out;
+
+    const std::vector<std::pair<float, float>> seed = seed_positions();
+    if (static_cast<int>(seed.size()) != n) return out;
+
     // Every node has a stored WORLD position; layout returns world coords and the draw path applies the
     // canvas NodeView transform (ADR-0023 #3: the audio graph draws world-space through set_transform, like
     // the visuals graph — one coordinate model, "true zoom"). An unpositioned node is seeded from the
-    // auto-layout (rank = signal depth, slot = fan-out order) and stuck — so the graph opens tidy, then
-    // every node is freely draggable and the layout persists.
+    // auto-layout and stuck — so the graph opens tidy, then every node is freely draggable and persists.
     out.reserve(n);
-    // Seed spacing uses a generous row pitch — cards are now variable-height (param ports), so the
-    // tallest a fresh column can get must not overlap the next row on first open.
-    constexpr float kSeedRowPitch = 150.f;
     for (int i = 0; i < n; ++i) {
+        const int nid = P::session_track_audio_graph_node_id(s_, track_, i);
+        const int knd = P::session_track_audio_graph_node_kind(s_, track_, i);
         float wx = 0.f, wy = 0.f;
         if (!P::session_track_audio_graph_node_pos(s_, track_, i, &wx, &wy)) {
-            wx = kPad + rank[i] * (kCardW + kGapX);
-            wy = kPad + slot[i] * (kSeedRowPitch + kGapY);
-            P::session_audio_graph_node_set_pos(s_, track_, id[i], wx, wy);   // seed → draggable + persisted
+            wx = seed[i].first; wy = seed[i].second;
+            P::session_audio_graph_node_set_pos(s_, track_, nid, wx, wy);   // seed → draggable + persisted
         }
-        out.push_back({ kind[i], id[i], wx, wy, kCardW, card_height(id[i]) });   // WORLD coords + size
+        out.push_back({ knd, nid, wx, wy, kCardW, card_height(nid) });   // WORLD coords + size
     }
     return out;
+}
+
+// "Re-layout" (the audio peer of the visuals graph's button): overwrite every node's stored world
+// position with the tidy auto-layout, so a graph the user has dragged into a mess snaps back to a
+// clean rank/slot arrangement. Positions are persisted (and undo-noted by the caller) like a drag.
+void AudioNodeGraph::relayout() {
+    if (!s_ || track_ < 0 || !P::session_track_audio_graph_ok(s_, track_)) return;
+    const int n = P::session_track_audio_graph_node_count(s_, track_);
+    if (n <= 0) return;
+    const std::vector<std::pair<float, float>> seed = seed_positions();
+    if (static_cast<int>(seed.size()) != n) return;
+    for (int i = 0; i < n; ++i)
+        P::session_audio_graph_node_set_pos(s_, track_, P::session_track_audio_graph_node_id(s_, track_, i),
+                                            seed[i].first, seed[i].second);
 }
 
 std::vector<AudioParamCell> AudioNodeGraph::param_cells(int sel_node) const {
@@ -487,6 +521,11 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     // chrome below reset to identity and stay screen-space.
     const NodeView& view = canvas_.view();
     r.set_transform(view.ox, view.oy, view.scale);
+    // Shared background grid (ADR-0023) — the same node_grid mark the visuals graph draws (via
+    // canvas_.grid), for one consistent look. Drawn in WORLD space under the camera transform just set,
+    // so it pans/zooms with the graph. (draw() is const, so call the free node_grid with the region
+    // directly rather than priming the non-const canvas_.set_region.)
+    node_grid(r, view, gr.x, gr.y, gr.x + gr.w, gr.y + gr.h);
     // Edges (behind cards): iterate the raw edges again mapped to laid-out boxes by node index.
     const int n = P::session_track_audio_graph_node_count(s_, track_);
     std::vector<int> id(n);
@@ -523,10 +562,8 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     }
 
     r.set_transform(0.f, 0.f, 1.f);   // ADR-0023 #3: back to identity — the chrome below is screen-space
-    // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). The old "+ FX" / "+ Src"
-    // buttons are gone — they could only ever offer native ops, so they quietly hid half the catalog.
-    { const Rect g = graph_region();
-      r.draw_text(g.x + g.w - 108.f, g.y + 4.f, "TAB to add", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_kicker); }
+    // Adding a node is Tab (the unified catalog: native ops + VST3 + CLAP). No on-canvas hint — the
+    // visuals graph has none either, and Tab-to-add is the established convention for both.
 
     r.pop_clip_rect();   // end graph-area clip (2i)
 
