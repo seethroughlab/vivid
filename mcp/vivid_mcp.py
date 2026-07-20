@@ -722,6 +722,23 @@ def explain_tradeoffs(a: dict, b: dict, criteria: list[str] | None = None) -> di
 
 
 @mcp.tool
+def analyze_visual_motion(duration_seconds: float = 2.0) -> dict:
+    """Measure motion/change in the visual output over a short window. Each call samples the LIVE output;
+    poll it a few times across your window to accumulate samples (motion = the inter-sample change).
+    Returns motion_score (0..1), inter_frame_change, is_moving, samples, span_seconds. The first call
+    just seeds the window — call again to get a reading."""
+    return _post("analyze_visual_motion", {"duration_seconds": duration_seconds})
+
+
+@mcp.tool
+def summarize_visual_output(duration_seconds: float = 2.0) -> dict:
+    """Rolled-up view of the live visual output in one call: the current frame's perception (brightness,
+    contrast, activity, dominant colors, blank state) plus recent motion. A quick 'what's on screen, and
+    is it moving?' check."""
+    return _post("summarize_visual_output", {"duration_seconds": duration_seconds})
+
+
+@mcp.tool
 def get_audio_graph(track: int) -> dict:
     """Read a track's audio signal graph — the authoritative topology the RT engine runs
     (nodes + edges), distinct from the linear device list (list_audio_ops). Returns
