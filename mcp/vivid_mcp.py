@@ -419,6 +419,30 @@ def disconnect_mapping(dst: str) -> dict:
     return _post("disconnect_mapping", {"dst": dst})
 
 
+@mcp.tool
+def connect_mapping_by_intent(source_intent: str, dest_intent: str, amount: float = 1.0,
+                              curve: float = 0.0, invert: bool = False) -> dict:
+    """Wire a mapping from intent words on both sides. source_intent picks an audio characteristic
+    ('kick'/'punch'/'onset' -> master.transient; 'bass'/'sub' -> master.low; 'bright'/'hat' ->
+    master.high; 'mid'/'vocal' -> master.mid; else master.level). dest_intent matches a visual/audio
+    param by keyword. Conservative best-match; use list_mapping_destinations + connect_mapping for
+    exact control. Returns the resolved src/dst and their labels."""
+    return _post("connect_mapping_by_intent", {"source_intent": source_intent, "dest_intent": dest_intent,
+                                               "amount": amount, "curve": curve, "invert": invert})
+
+
+@mcp.tool
+def set_param_by_intent(intent: str, value: float, target: str = "") -> dict:
+    """Set a param by intent across visual + audio. intent = a param name/keyword; optional target
+    narrows by domain/op/device (e.g. 'visual', an op name, or a device name). Resolves one param
+    (exact name preferred), clamps value to its range, and routes the set to the right setter. Use
+    find_params to inspect candidates first."""
+    payload = {"intent": intent, "value": value}
+    if target:
+        payload["target"] = target
+    return _post("set_param_by_intent", payload)
+
+
 # ---------------- audio authoring ----------------
 @mcp.tool
 def set_bpm(bpm: float) -> dict:
@@ -597,6 +621,36 @@ def summarize_mix(source: str = "master", duration_beats: float | None = None,
     if duration_seconds is not None:
         payload["duration_seconds"] = duration_seconds
     return _post("summarize_mix", payload)
+
+
+@mcp.tool
+def analyze_spectrum(bands: str = "octave", source: str = "master",
+                     track: int | None = None, scene: int | None = None,
+                     path: str = "", duration_seconds: float | None = None) -> dict:
+    """Per-band energy spectrum via a bandpass filterbank (real band energy, no FFT).
+    bands: 'octave' (10 bands 31Hz..16kHz) | 'mel' (24 mel-spaced) | 'linear' (16 equal to Nyquist).
+    Source: track+scene for a clip, path for a file, else recent live master/track audio. Returns
+    bands[{center_hz, rms, db}] + spectral_centroid_hz + the loudest band."""
+    payload = {"bands": bands, "source": source}
+    if track is not None:
+        payload["track"] = track
+    if scene is not None:
+        payload["scene"] = scene
+    if path:
+        payload["path"] = path
+    if duration_seconds is not None:
+        payload["duration_seconds"] = duration_seconds
+    return _post("analyze_spectrum", payload)
+
+
+@mcp.tool
+def compare_audio(a: dict, b: dict, windows: int = 16) -> dict:
+    """Before/after comparison of two audio sources. Each of a, b is a source spec:
+    {"track": t, "scene": s} for a clip, {"path": "..."} for a file, or
+    {"source": "master", "duration_seconds": n} for recent live audio. Returns each analysis, the
+    deltas (loudness_db, brightness, transient density, clipping, low/mid/high bands), and a plain
+    'B vs A' verdict — the core edit→perceive→compare tool."""
+    return _post("compare_audio", {"a": a, "b": b, "windows": windows})
 
 
 @mcp.tool
