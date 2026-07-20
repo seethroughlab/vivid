@@ -380,4 +380,70 @@ void VisualGraph::shutdown() {
     fallback_.release();
 }
 
+// ADR-0024 Phase 6: GPU readback of the active output. The output image is the RT of the node feeding
+// the active Output (exactly what present_to() blits). Copy it into a mappable buffer, poll until the
+// map completes, then swizzle to tightly-packed RGBA8. Main thread only; blocks briefly.
+bool VisualGraph::read_output_pixels(std::vector<uint8_t>& out_rgba, uint32_t& out_w, uint32_t& out_h) {
+    const int oi = output_index();
+    if (oi < 0) return false;
+    const int feed = nodes_[oi].in(0);                       // the node whose RT is the final image
+    if (feed < 0 || feed >= static_cast<int>(rts_.size())) return false;   // nothing feeds Output → blank
+    WGPUTexture src = rts_[feed].tex;
+    if (!src || !dev_ || !q_ || rtW_ == 0 || rtH_ == 0) return false;
+    const uint32_t W = rtW_, H = rtH_;
+    const uint32_t padded = (W * 4u + 255u) & ~255u;         // wgpu: bytesPerRow must be a multiple of 256
+    const uint64_t bufSize = static_cast<uint64_t>(padded) * H;
+
+    WGPUBufferDescriptor bd{};
+    bd.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+    bd.size = bufSize;
+    WGPUBuffer buf = wgpuDeviceCreateBuffer(dev_, &bd);
+    if (!buf) return false;
+
+    WGPUCommandEncoder enc = wgpuDeviceCreateCommandEncoder(dev_, nullptr);
+    WGPUTexelCopyTextureInfo srcInfo{};
+    srcInfo.texture = src; srcInfo.mipLevel = 0; srcInfo.aspect = WGPUTextureAspect_All;
+    WGPUTexelCopyBufferInfo dstInfo{};
+    dstInfo.buffer = buf;
+    dstInfo.layout.offset = 0;
+    dstInfo.layout.bytesPerRow = padded;
+    dstInfo.layout.rowsPerImage = H;
+    WGPUExtent3D ext{ W, H, 1 };
+    wgpuCommandEncoderCopyTextureToBuffer(enc, &srcInfo, &dstInfo, &ext);
+    WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(enc, nullptr);
+    wgpuQueueSubmit(q_, 1, &cmd);
+    wgpuCommandBufferRelease(cmd);
+    wgpuCommandEncoderRelease(enc);
+
+    struct MapState { bool done = false; bool ok = false; } ms;
+    WGPUBufferMapCallbackInfo ci{};
+    ci.mode = WGPUCallbackMode_AllowProcessEvents;           // callback fires during wgpuDevicePoll
+    ci.callback = [](WGPUMapAsyncStatus status, WGPUStringView, void* u1, void*) {
+        auto* m = static_cast<MapState*>(u1);
+        m->done = true; m->ok = (status == WGPUMapAsyncStatus_Success);
+    };
+    ci.userdata1 = &ms;
+    wgpuBufferMapAsync(buf, WGPUMapMode_Read, 0, static_cast<size_t>(bufSize), ci);
+    for (int i = 0; i < 100000 && !ms.done; ++i) wgpuDevicePoll(dev_, true, nullptr);   // bounded: a lost device can't hang the server
+    if (!ms.done || !ms.ok) { wgpuBufferRelease(buf); return false; }
+
+    const uint8_t* mapped = static_cast<const uint8_t*>(wgpuBufferGetConstMappedRange(buf, 0, static_cast<size_t>(bufSize)));
+    if (!mapped) { wgpuBufferUnmap(buf); wgpuBufferRelease(buf); return false; }
+    const bool bgra = (fmt_ == WGPUTextureFormat_BGRA8Unorm || fmt_ == WGPUTextureFormat_BGRA8UnormSrgb);
+    out_rgba.resize(static_cast<size_t>(W) * H * 4);
+    for (uint32_t y = 0; y < H; ++y) {
+        const uint8_t* row = mapped + static_cast<size_t>(y) * padded;
+        uint8_t* dst = out_rgba.data() + static_cast<size_t>(y) * W * 4;
+        for (uint32_t x = 0; x < W; ++x) {
+            const uint8_t* p = row + x * 4; uint8_t* d = dst + x * 4;
+            if (bgra) { d[0] = p[2]; d[1] = p[1]; d[2] = p[0]; d[3] = p[3]; }
+            else      { d[0] = p[0]; d[1] = p[1]; d[2] = p[2]; d[3] = p[3]; }
+        }
+    }
+    wgpuBufferUnmap(buf);
+    wgpuBufferRelease(buf);
+    out_w = W; out_h = H;
+    return true;
+}
+
 }  // namespace vivid

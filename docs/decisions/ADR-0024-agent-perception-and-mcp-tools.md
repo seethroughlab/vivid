@@ -31,9 +31,14 @@ MCP↔control parity test green (149↔149, `set_playing` intentionally unexpose
 - **Phase 5 (comparison + spectrum):** DONE — `compare_audio` (two source specs → per-feature deltas +
   a plain `B vs A` verdict) and `analyze_spectrum` (octave/mel/linear per-band energy via a bandpass
   biquad filterbank + energy-weighted centroid).
-- **Phases 6–8 (visual perception, project/package workflow, proofs/checks):** NOT YET STARTED. Visual
-  perception needs GPU frame readback (no capture path exists yet); the proof loop composes the now-built
-  inspection + analysis tools once visual analysis lands.
+- **Phase 6 (visual perception):** STARTED — `capture_frame` (GPU readback of the active output →
+  a viewable PNG + blank/no-output detection), `analyze_frame` (brightness/contrast/activity/dominant
+  colors/color-spread/average-hash), and `compare_frames` (two saved images or the live output → hash
+  Hamming distance + metric deltas + a verdict) are DONE. The readback is `VisualGraph::read_output_pixels`
+  (copyTextureToBuffer + map, main-thread, BGRA→RGBA); CPU analysis + PNG in `cli/image_analysis_tools`.
+  Still TODO: `analyze_visual_motion` and `summarize_visual_output` (need a short multi-frame capture).
+- **Phases 7–8 (project/package workflow, proofs/checks):** NOT YET STARTED. The proof loop (Phase 8)
+  composes the now-built inspection + audio + visual analysis into pass/warn/fail checks.
 
 ## Context
 

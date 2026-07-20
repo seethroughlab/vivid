@@ -157,6 +157,12 @@ public:
     // frames / at the top of run_chain(), before anything in the encoder references an RT.
     void set_rt_size(uint32_t w, uint32_t h);
 
+    // ADR-0024 Phase 6: read the ACTIVE OUTPUT's last-rendered pixels back to CPU as tightly-packed
+    // RGBA8 (row-major, top-left origin; BGRA source is swizzled to RGBA). Returns false when there is
+    // no output node or nothing feeds it — i.e. a blank frame. MAIN THREAD ONLY (owns device/queue);
+    // it submits a copy + blocks briefly on the GPU readback, so it is not RT-safe and not per-frame.
+    bool read_output_pixels(std::vector<uint8_t>& out_rgba, uint32_t& out_w, uint32_t& out_h);
+
 private:
     void ensure_resources(size_t n);
     bool make_instance(VisualNode& n, const std::string& type);  // create + record inst
