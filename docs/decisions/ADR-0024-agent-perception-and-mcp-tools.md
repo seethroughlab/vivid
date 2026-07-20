@@ -37,12 +37,13 @@ MCP↔control parity test green (149↔149, `set_playing` intentionally unexpose
   Hamming distance + metric deltas + a verdict) are DONE. The readback is `VisualGraph::read_output_pixels`
   (copyTextureToBuffer + map, main-thread, BGRA→RGBA); CPU analysis + PNG in `cli/image_analysis_tools`.
   Still TODO: `analyze_visual_motion` and `summarize_visual_output` (need a short multi-frame capture).
-- **Phase 8 (proofs/checks):** STARTED — `list_quality_checks` + `run_quality_check(name|"all")` are
-  DONE. Four built-in checks compose the perception layer into pass|warn|fail + evidence + a suggested
-  action: `no_audio_clipping` (analyze_pcm clipping/peak), `nonblank_visual_output` (read_output_pixels +
-  analyze_rgba), `mappings_resolve` (every mapping's src/dst still resolves), `no_quarantined_operators`
-  (ADR-0018 scan_quarantine). This closes the edit→perceive→verify loop. Still TODO: `compare_variations`
-  and `explain_tradeoffs` (thin composers over the existing compare_audio / compare_frames).
+- **Phase 8 (proofs/checks):** DONE. `list_quality_checks` + `run_quality_check(name|"all")` — four
+  built-in checks compose the perception layer into pass|warn|fail + evidence + a suggested action:
+  `no_audio_clipping`, `nonblank_visual_output`, `mappings_resolve`, `no_quarantined_operators`. Plus
+  `compare_variations` (compare two variations across audio AND visual at once — each side
+  `{audio: <source spec>, frame: <frame spec>}`) and `explain_tradeoffs` (the same, articulated as
+  measured tradeoffs, optionally narrowed by `criteria`). These reuse extracted cores `compare_audio_specs`
+  / `compare_frame_specs`, so compare_audio/compare_frames are now thin wrappers. Closes edit→perceive→verify.
 - **Phase 7 (project/package workflow):** NOT YET STARTED — validate/diff project, asset discovery,
   package scaffold/validate/build, clone_operator.
 

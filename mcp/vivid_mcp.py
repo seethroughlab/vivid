@@ -702,6 +702,26 @@ def compare_frames(a: dict, b: dict) -> dict:
 
 
 @mcp.tool
+def compare_variations(a: dict, b: dict) -> dict:
+    """Compare two variations across audio AND visual at once. Each of a, b is
+    {"audio": <source spec>, "frame": <frame spec>} — a dimension is compared only when both sides
+    supply it. Composes compare_audio + compare_frames into one before/after verdict spanning both."""
+    return _post("compare_variations", {"a": a, "b": b})
+
+
+@mcp.tool
+def explain_tradeoffs(a: dict, b: dict, criteria: list[str] | None = None) -> dict:
+    """Same inputs as compare_variations, but articulate the notable differences as measured tradeoffs
+    (louder but clips more; brighter but busier; ...). Each tradeoff has an aspect, delta, and a
+    good/bad note. Optional criteria (aspect keywords: 'loudness','brightness','clipping','transients',
+    'change','activity') narrows what to emphasize."""
+    payload: dict = {"a": a, "b": b}
+    if criteria:
+        payload["criteria"] = criteria
+    return _post("explain_tradeoffs", payload)
+
+
+@mcp.tool
 def get_audio_graph(track: int) -> dict:
     """Read a track's audio signal graph — the authoritative topology the RT engine runs
     (nodes + edges), distinct from the linear device list (list_audio_ops). Returns
