@@ -413,3 +413,34 @@ target_copy_webgpu_binaries(vivid)
 # can reference the bundle (for the PlugIns/ copy) + force them to build with the app.
 add_subdirectory(operators)
 add_dependencies(vivid vivid_spike_solid)
+
+# ADR-0025: headless SESSION-EXECUTOR test. Links the audio engine (session_process + native ops +
+# graph) WITHOUT the GPU/window stack, so the executor can be driven directly and its rendered output
+# asserted. The engine reaches CoreFoundation (VST3 bundle loading), so this is macOS-only and lives in
+# the full-app configure (VIVID_BUILD_APP=ON) — not the portable Linux tests tier. Runs via ctest.
+if(VIVID_BUILD_TESTS AND APPLE)
+    find_package(Threads REQUIRED)
+    add_executable(test_session_executor
+        tests/test_session_executor.cpp
+        src/audio/vst3_host.cpp
+        src/audio/vst3_host_render.cpp
+        src/audio/vst3_host_presets.cpp
+        src/audio/vst3_host_params.cpp
+        src/audio/vst3_host_clap_loader.cpp
+        src/audio/audio_op_runtime.cpp
+        src/audio/builtin_audio_ops.cpp
+        src/audio/glitch/glitch_ops.cpp
+        src/audio/sampler.cpp
+        src/audio/audio_graph.cpp
+        src/audio/plugin_catalog.cpp
+        src/gpu/op_runtime.cpp
+        src/operator_api/operator_descriptor_validation.cpp
+        src/audio/vst3_plugin_window_stub.cpp
+        src/miniaudio_impl.c)
+    target_include_directories(test_session_executor PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_session_executor PRIVATE
+        signalsmith_stretch vst3_iids clap_headers miniaudio nlohmann_json::nlohmann_json Threads::Threads z
+        "-framework CoreFoundation")
+    add_test(NAME test_session_executor COMMAND test_session_executor)
+    set_tests_properties(test_session_executor PROPERTIES LABELS "AUDIO_ENGINE")
+endif()
