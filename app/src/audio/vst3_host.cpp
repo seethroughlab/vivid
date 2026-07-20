@@ -2289,7 +2289,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
         // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
-        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument && !t.op_instrument_edit && !t.clap_inst) continue;
+        // A2: a plugin added as a graph NODE (session_audio_graph_add_plugin) lives in a
+        // PluginSlot, NOT the legacy t.handle / t.clap_inst source slots — so a track whose
+        // only instrument is a graph-node plugin would otherwise be skipped here and never
+        // render (silent). Its instrument surfaces in the PUBLISHED plan as a Vst3Inst / ClapInst
+        // node, so detect it there (t.gbinds is the audio-thread copy — reading t.pslots would
+        // race the UI thread's push_back). A pending (still-loading) node already carries its
+        // kind, so the track stays in the list and is live the instant the handle binds.
+        bool graph_plugin_source = false;
+        for (const GNodeBind& gb : t.gbinds)
+            if (gb.kind == GNKind::Vst3Inst || gb.kind == GNKind::ClapInst) { graph_plugin_source = true; break; }
+        if (!t.is_audio && (!t.handle || !t.handle->processing) && !t.op_instrument
+            && !t.op_instrument_edit && !t.clap_inst && !graph_plugin_source) continue;
         s->render_list.push_back(&t);   // renders this block — its index in render_list is its track-out slot
 
         // Apply pending clip edits (element-wise so &clips[sc] — and the
