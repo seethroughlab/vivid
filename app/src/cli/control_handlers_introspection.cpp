@@ -3,7 +3,9 @@
 #include "cli/operator_catalog.h"       // native_audio_ops — shared enumeration (ADR-0023 step 7)
 
 #include "audio/vst3_host.h"
-#include "gpu/visual_graph.h"           // op registry / descriptors
+#include "cli/audio_analysis_tools.h"   // ADR-0024 Phase 8: analyze_pcm / copy_live_capture (proof checks)
+#include "cli/image_analysis_tools.h"   // ADR-0024 Phase 8: analyze_rgba (proof checks)
+#include "gpu/visual_graph.h"           // op registry / descriptors + read_output_pixels
 #include "ui/node_graph.h"              // graph queries + mappings
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "gpu/shader_library.h"         // ADR-0016: the shader library (list/reload/fork)
@@ -651,6 +653,74 @@ void register_introspection_handlers(Handlers& handlers_) {
         if (op.empty()) return err(code::kBadArg, "need op");
         const int removed = vivid::clear_crash_history(c.app->crash_recovery->crash_dir(), op);
         json r = ok(); r["removed"] = removed; r["note"] = "restart to re-enable"; return r;
+    };
+    // ADR-0024 Phase 8: named QUALITY CHECKS — the "did the edit hold up?" proof loop. Each composes
+    // existing perception/state (audio analysis, visual analysis, mappings, quarantine) into
+    // pass|warn|fail + concise evidence + a suggested next action. This closes the edit→perceive→verify
+    // loop the ADR is built around.
+    handlers_["list_quality_checks"] = [](const ControlCtx&, const json&) {
+        json r = ok();
+        r["checks"] = json::array({
+            {{"name", "no_audio_clipping"},      {"description", "recent master audio is not clipping (no clipped samples, peak < 0dBFS)"}},
+            {{"name", "nonblank_visual_output"}, {"description", "the active visual output is rendering something (not a blank / empty canvas)"}},
+            {{"name", "mappings_resolve"},       {"description", "every audio→visual mapping's source and destination still resolve"}},
+            {{"name", "no_quarantined_operators"},{"description", "no operators were quarantined this launch (repeat crashers, auto-disabled)"}},
+        });
+        r["summary"] = "4 built-in quality checks; run with run_quality_check(name) or name='all'";
+        return r;
+    };
+    handlers_["run_quality_check"] = [](const ControlCtx& c, const json& b) {
+        const std::string want = lower_copy(b.value("name", b.value("goal", std::string("all"))));
+        auto run_one = [&](const std::string& name) -> json {
+            json ev = json::object(); std::string status = "warn", suggestion;
+            if (name == "no_audio_clipping") {
+                std::vector<float> L, R; uint32_t sr = 0; double req = 0.0; json src, e;
+                if (!copy_live_capture(c, b, 2.0, L, R, sr, req, src, e)) { status = "warn"; suggestion = "no capturable audio yet — play the transport first"; }
+                else { const json a = analyze_pcm(L, R, sr, 8); const int clips = a.value("clipping_samples", 0); const double peak = a.value("peak", 0.0);
+                    ev = { {"clipping_samples", clips}, {"peak", peak}, {"crest_factor", a.value("crest_factor", 0.0)} };
+                    status = (clips == 0 && peak < 0.999) ? "pass" : (clips < 50 ? "warn" : "fail");
+                    if (status != "pass") suggestion = "lower a track or master gain, or add limiting"; }
+            } else if (name == "nonblank_visual_output") {
+                if (!c.vgraph) { status = "fail"; suggestion = "no visual graph"; }
+                else { std::vector<uint8_t> px; uint32_t w = 0, h = 0;
+                    if (!c.vgraph->read_output_pixels(px, w, h)) { status = "fail"; ev = { {"reason", "no output (nothing feeds the Output node)"} }; suggestion = "add a source op and wire it to Output"; }
+                    else { const json a = analyze_rgba(px.data(), w, h); const bool blank = a.value("is_blank", false);
+                        ev = { {"is_blank", blank}, {"brightness", a.value("brightness", 0.0)}, {"contrast", a.value("contrast", 0.0)} };
+                        status = blank ? "fail" : "pass"; if (blank) suggestion = "output is " + a.value("blank_reason", std::string()) + " — check the source op / its params"; } }
+            } else if (name == "mappings_resolve") {
+                json unresolved = json::array(); int total = 0;
+                if (c.graph) for (const auto& m : c.graph->mappings()) { ++total;
+                    const std::string sl = source_label(c.session, m.source), dl = dest_label(c, m.dest);
+                    if (sl.empty() || dl.empty() || dl == m.dest) unresolved.push_back({ {"src", m.source}, {"dst", m.dest} }); }
+                ev = { {"total", total}, {"unresolved", unresolved} };
+                status = unresolved.empty() ? "pass" : "warn";
+                if (!unresolved.empty()) suggestion = "a mapped node/param was removed or renamed — rewire, or disconnect_mapping the dead dst";
+            } else if (name == "no_quarantined_operators") {
+                json q = json::array();
+                if (c.app && c.app->crash_recovery) for (const auto& e : vivid::scan_quarantine(c.app->crash_recovery->crash_dir()))
+                    q.push_back({ {"operator", e.type_name}, {"crash_count", e.crash_count} });
+                ev = { {"quarantined", q} };
+                status = q.empty() ? "pass" : "warn";
+                if (!q.empty()) suggestion = "an operator crashed repeatedly and was auto-disabled; fix it, then unquarantine + restart";
+            } else return json();   // unknown check → null
+            return json{ {"name", name}, {"status", status}, {"evidence", ev}, {"suggestion", suggestion} };
+        };
+        static const char* kAll[] = { "no_audio_clipping", "nonblank_visual_output", "mappings_resolve", "no_quarantined_operators" };
+        auto rank = [](const std::string& s) { return s == "fail" ? 2 : s == "warn" ? 1 : 0; };
+        json r = ok();
+        if (want.empty() || want == "all") {
+            json results = json::array(); std::string worst = "pass";
+            for (const char* n : kAll) { json one = run_one(n); if (rank(one.value("status", "pass")) > rank(worst)) worst = one.value("status", "pass"); results.push_back(std::move(one)); }
+            r["overall"] = worst; r["checks"] = results;
+            r["summary"] = "Ran 4 checks → " + worst;
+        } else {
+            json one = run_one(want);
+            if (one.is_null()) return err(code::kBadArg, "unknown check '" + want + "' (see list_quality_checks)");
+            r["overall"] = one.value("status", "warn");
+            r["summary"] = want + ": " + one.value("status", "warn");
+            r["check"] = std::move(one);
+        }
+        return r;
     };
     // Full operator catalog for agent discovery: every registered op (built-in AND
     // loaded dylib) with its display_name/summary/keywords + param + port schema.
