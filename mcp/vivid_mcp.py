@@ -1232,6 +1232,17 @@ def pool_remove(index: int) -> dict:
 
 
 @mcp.tool
+def import_audio_clip(track: int, scene: int, path: str, src_bpm: float = 0.0) -> dict:
+    """Import an audio file (.wav/.aif/.flac/.mp3) into a sampler track's scene clip, decoding
+    and resampling to the device rate. `track` must be an audio (sampler) track — make one with
+    add_track(kind="audio"). `src_bpm` (0 = unknown) seeds warp/BPM estimation; follow with
+    audio_auto_warp / audio_set_warp(mode="beats") to lock the loop to the project tempo.
+    Returns {track, scene, length} (length in beats). This is the way to get real recorded audio
+    into the grid so the glitch pack / warp can process it."""
+    return _post("import_audio_clip", {"track": track, "scene": scene, "path": path, "src_bpm": src_bpm})
+
+
+@mcp.tool
 def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
               vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
     """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"
@@ -1620,6 +1631,14 @@ def load_project(path: str) -> dict:
 def set_media_root(path: str) -> dict:
     """Set the project media root used for video discovery. Missing roots are reported, not silent."""
     return _post("set_media_root", {"path": path})
+
+
+@mcp.tool
+def set_video_source(index: int = 0) -> dict:
+    """Select which discovered video clip the shared source texture plays (a Video visual node
+    blits that texture). set_media_root loads only clip 0; use this to pick among the clips by
+    index (wraps). Returns {index, videos, path}. Needs a media root with video files set first."""
+    return _post("set_video_source", {"index": index})
 
 
 # ---- ADR-0024 Phase 7: project workflow (inspect / resolve / reload project assets) ----
