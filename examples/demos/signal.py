@@ -13,49 +13,47 @@ Run with the app running:  uv run examples/demos/signal.py
 (Swap examples/demos/media/loop.mp4 for your own footage; the media root is this folder.)
 """
 import os
-from vivid_demo import Vivid, find, save_geo
+from vivid_demo import Vivid, find, save_geo, surge_preset
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "signal")
 MEDIA = os.path.join(HERE, "media")
-BREAK = os.path.join(MEDIA, "break90.wav")
-TITLE = "SIGNAL"
+CASSETTE = "Cassette Drums"
 
 
 def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(100)
 
-    # --- audio : a bundled break on a native sampler (portable, drives the reactivity) ---
-    drums = v.add_track(kind="audio")
-    v.import_audio(drums, 0, BREAK, src_bpm=90)
-    v.warp(drums, 0, mode="beats")                    # lock the break to 100 BPM
+    # --- audio : Cassette Drums + a Surge sub bass — a groove the footage reacts to ---
+    drums = v.add_track(kind="instrument", instrument=CASSETTE)
+    v.drums(drums, 0, {
+        "kick": "x.......x.......",
+        "snare": "....x.......x...",
+        "hat":  "..x.x...x.x.x...",
+    }, bars=2, vel=0.9)
+    bass = v.add_graph_track("bass")
+    surge_preset(v, bass, "bass", prefer="", gain=0.8)
+    v.bassline(bass, 0, [(33, i * 0.5, 0.45) for i in range(16)], length=8.0, vel=0.85)
 
     # --- visuals : a REAL video clip -> Displace -> Feedback, with a type call-sign over it ---
     out = find(v.graph()["nodes"], "Output")
     v.set_media_root(MEDIA)                            # discover the clips in this folder
     vid = v.video(0)                                   # A3: select clip 0; a Video node blits it
     disp = v.add_node("Displace")                     # hard grid displacement, not a warp field
-    v.set_node_param(disp, "amount", 0.1)
+    v.set_node_param(disp, "amount", 0.08)
     v.set_node_param(disp, "mode", 0.0)
     fb = v.add_node("Feedback")
-    v.set_node_param(fb, "decay", 0.5)                # smear/trails
-    title = v.add_node("VectorText")                  # filled vector glyphs (real geometry)
-    for k, val in dict(size=0.14, x=0.5, y=0.86, r=0.1, g=1.0, b=0.75,
-                       bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
-        v.set_node_param(title, k, val)               # teal call-sign, black bg (keys via ADD)
-    v.set_node_file(title, "file", os.path.join(MEDIA, "signal.txt"))
-    comp = v.add_node("Composite")
+    v.set_node_param(fb, "decay", 0.28)              # light trails — keep the footage legible
     v.connect(disp, vid)                              # Video -> Displace
     v.connect(fb, disp)                               # -> Feedback
-    v.connect(comp, fb, port=0)                       # A = the treated footage
-    v.connect(comp, title, port=1)                    # B = the title
-    v.set_node_param(comp, "mode", 1.0)              # ADD (black bg of the title drops out)
-    v.connect(out, comp)
+    v.connect(out, fb)                                # -> Output
+    # (No type call-sign here: a Video source currently flips the composited output, which would
+    #  render a title upside-down. The cellular-automaton field IS the signal.)
 
     # --- the bridge : the break drives the treatment (smooth params only) ---
-    v.map("master.transient", fb,   "decay",  amount=0.5, lo=0.35, hi=0.72)   # hits lengthen trails
-    v.map("master.high",      disp, "amount", amount=1.0, lo=0.05, hi=0.28)   # hats displace it
+    v.map("master.transient", fb,   "decay",  amount=0.5, lo=0.25, hi=0.6)    # hits lengthen trails
+    v.map("master.high",      disp, "amount", amount=1.0, lo=0.04, hi=0.22)   # hats displace it
 
     v.launch_scene(0)
     v.play()

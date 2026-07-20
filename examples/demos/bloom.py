@@ -30,30 +30,31 @@ def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(124)
 
-    # --- voice : Surge on a bare graph track (the note graph below drives it) ---
-    lead = v.add_graph_track("bloom")                 # empty note-driven track (no instrument yet)
-    inst = surge_preset(v, lead, "pluck", prefer="Sync", gain=0.7)  # a Surge pluck as the voice
-
-    # --- the generative NOTE GRAPH (ADR-0015: notes are a signal in the graph) ---
-    euclid = v.add_generator(lead, "Euclid")          # a rhythmic pulse source
-    for k, val in dict(steps=16, pulses=6, note=45, rate=4, gate=0.4).items():
-        v.set_anode_named(lead, euclid, k, val)       # A2 (45) sixteenth pulses, E(6,16)
-    rand = v.add_generator(lead, "RandMelody")        # an evolving melody source
-    for k, val in dict(root=57, scale=PENTMIN, octaves=2, rate=4, density=0.55, gate=0.5).items():
-        v.set_anode_named(lead, rand, k, val)         # A minor pentatonic, wandering
-    arp = v.add_note_fx(lead, "Arp")                  # arpeggiate the melody (note in -> note out)
-    for k, val in dict(rate=3, mode=UPDOWN, octaves=2, gate=0.5).items():
-        v.set_anode_named(lead, arp, k, val)
+    # --- two voices that WRITE THEMSELVES : a scene-cell note generator per track, no clip ---
+    # A scene-cell generator (place_generator) actually EMITS notes when its scene launches -> the
+    # track's Surge sounds them. A wandering RandMelody lead + a Euclid bass pulse = a whole
+    # arrangement authored by the generators, not by hand. An LFO breathes the lead's filter.
+    lead = v.add_graph_track("lead")
+    inst = surge_preset(v, lead, "pluck", prefer="Sync", gain=0.6)
+    v.place_generator(lead, 0, "RandMelody")
+    for k, val in dict(root=57, scale=PENTMIN, octaves=2, rate=3, density=0.5, gate=0.5).items():
+        v.set_gen_param(lead, 0, k, val)              # A minor pentatonic, 1/8 notes, wandering
     lfo = v.add_mod(lead, "LFO")                      # a modulator (control signal, no audio)
     for k, val in dict(sync=SYNC, division=2).items():
         v.set_anode_named(lead, lfo, k, val)
-
-    # wire the note graph: Euclid -> instrument, RandMelody -> Arp -> instrument (note edges);
-    # LFO -> the instrument's filter cutoff (a control edge).
-    v.connect_audio_nodes(lead, euclid, inst, kind="note")
-    v.connect_audio_nodes(lead, rand, arp, kind="note")
-    v.connect_audio_nodes(lead, arp, inst, kind="note")
     v.connect_mod(lead, lfo, inst, param=SURGE_P["cutoff"], amount=0.5, bipolar=True)
+
+    bass = v.add_graph_track("bass")
+    bnode = surge_preset(v, bass, "bass", prefer="", gain=0.7)
+    v.place_generator(bass, 0, "Euclid")
+    for k, val in dict(note=33, pulses=5, steps=8, rate=3, gate=0.5).items():
+        v.set_gen_param(bass, 0, k, val)              # A1 root, E(5,8) eighth-note pulse
+
+    # --- a third self-writing voice : Cassette Drums, a Euclid kick that generates its own pulse ---
+    drums = v.add_track(kind="instrument", instrument="Cassette Drums")
+    v.place_generator(drums, 0, "Euclid")
+    for k, val in dict(note=36, pulses=5, steps=16, rate=4, gate=0.4).items():
+        v.set_gen_param(drums, 0, k, val)             # kick (36), E(5,16) sixteenth pulse
 
     # --- visuals : real geometry that follows the self-generated notes. No plasma. ---
     out = find(v.graph()["nodes"], "Output")
@@ -65,6 +66,13 @@ def build(v: Vivid, save: bool = True):
     for k, val in dict(shape=0.33, wireframe=1.0, size=0.36, spin=0.3, tilt=0.5,
                        r=1.0, g=0.8, b=0.3, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(mesh, k, val)                # amber wireframe solid
+    # A BLOOM that fires on every generated note: a bright polygon that snaps big + opaque on
+    # each onset (transient), then the Feedback decay leaves it as an expanding ring — so you SEE
+    # each self-generated note bloom outward. The rapid Euclid/Arp stream makes it pulse visibly.
+    burst = v.add_node("Shape")
+    for k, val in dict(sides=0.0, x=0.5, y=0.5, size=0.06, rotation=0.0, softness=0.5,
+                       r=1.0, g=0.9, b=0.55, a=0.0).items():
+        v.set_node_param(burst, k, val)               # amber bloom, invisible until a note hits
     title = v.add_node("VectorText")
     for k, val in dict(size=0.12, x=0.5, y=0.85, r=0.95, g=0.98, b=0.9,
                        bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
@@ -74,19 +82,25 @@ def build(v: Vivid, save: bool = True):
     v.connect(compA, lines, port=0)
     v.connect(compA, mesh, port=1)
     v.set_node_param(compA, "mode", 1.0)              # ADD
+    compBurst = v.add_node("Composite")
+    v.connect(compBurst, compA, port=0)
+    v.connect(compBurst, burst, port=1)
+    v.set_node_param(compBurst, "mode", 1.0)          # ADD the note-bloom in
     fb = v.add_node("Feedback")
-    v.set_node_param(fb, "decay", 0.4)
+    v.set_node_param(fb, "decay", 0.55)               # holds each bloom as an expanding ring
     compB = v.add_node("Composite")
-    v.connect(fb, compA)
+    v.connect(fb, compBurst)
     v.connect(compB, fb, port=0)
     v.connect(compB, title, port=1)
     v.set_node_param(compB, "mode", 1.0)
     v.connect(out, compB)
 
-    # --- the bridge : the self-generated music drives the geometry ---
+    # --- the bridge : the self-generated music drives the geometry (each note blooms) ---
+    v.map("master.transient", burst, "a",        amount=1.0, lo=0.0,  hi=0.95)  # note onset -> flash in
+    v.map("master.transient", burst, "size",     amount=1.0, lo=0.05, hi=0.55)  # -> bloom outward
     v.map("master.transient", mesh,  "size",     amount=0.7, lo=0.28, hi=0.5)
     v.map("master.mid",       lines, "rotation", amount=0.5)
-    v.map("master.low",       fb,    "decay",    amount=0.4, lo=0.35, hi=0.7)
+    v.map("master.low",       fb,    "decay",    amount=0.35, lo=0.4, hi=0.72)
 
     v.launch_scene(0)
     v.play()

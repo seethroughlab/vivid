@@ -15,11 +15,11 @@ DRIVE that value from the kick (forward map) — a static visual param would sen
 Run with the app running:  uv run examples/demos/mirror.py
 """
 import os
-from vivid_demo import Vivid, find, save_geo
+from vivid_demo import Vivid, find, save_geo, surge_preset
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "mirror")
-BREAK = os.path.join(HERE, "media", "break90.wav")
+CASSETTE = "Cassette Drums"
 # SVFilter param indices: 0=type, 1=cutoff, 2=resonance.
 CUTOFF, RES = 1, 2
 
@@ -28,12 +28,26 @@ def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(112)
 
-    # --- audio : a native sampler beat + a native state-variable filter to be driven BACK ---
-    drums = v.add_track(kind="audio")
-    v.import_audio(drums, 0, BREAK, src_bpm=90)
-    v.warp(drums, 0, mode="beats")
-    svf = v.add_audio_fx(drums, "SVFilter")           # native filter (no plugin)
-    v.set_audio_node_param(drums, svf, 1, 900.0)      # base cutoff (Hz); the return leg sweeps it
+    # --- drums : Cassette Drums, a steady 112-BPM pulse ---
+    drums = v.add_track(kind="instrument", instrument=CASSETTE)
+    v.drums(drums, 0, {
+        "kick": "x...x...x...x...",
+        "clap": "....x.......x...",
+        "hat":  "..x...x...x...x.",
+    }, bars=2, vel=0.9)
+
+    # --- bass : Surge XT sub bass on the root ---
+    basst = v.add_graph_track("bass")
+    surge_preset(v, basst, "bass", prefer="", gain=0.8)
+    v.bassline(basst, 0, [(33, i * 1.0, 0.9) for i in range(8)], length=8.0, vel=0.9)
+
+    # --- pad : Surge XT pad through a native SVFilter — the filter the PICTURE drives back ---
+    pad = v.add_graph_track("pad")
+    surge_preset(v, pad, "pad", prefer="", gain=0.6)
+    v.progression(pad, 0, ["i", "VI", "III", "VII"], key="A", scale="minor",
+                  beats_per_chord=4.0, octave=4, vel=0.6, dur_frac=0.95)
+    svf = v.add_audio_fx(pad, "SVFilter")             # native filter on the pad (no extra plugin)
+    v.set_audio_node_param(pad, svf, 1, 900.0)        # base cutoff (Hz); the return leg sweeps it
 
     # --- visuals : wireframe Mesh + ShapeGrid -> Feedback -> Blur, with a call-sign ---
     out = find(v.graph()["nodes"], "Output")
@@ -71,9 +85,9 @@ def build(v: Vivid, save: bool = True):
     v.map("master.low",       fb,   "decay",  amount=0.6, lo=0.4,  hi=0.82)   # kick -> feedback (=viz.feedback)
     v.map("master.mid",       blur, "radius", amount=0.5, lo=0.2,  hi=0.6)    # mids -> blur   (=viz.blur)
 
-    # --- RETURN leg (visual -> audio) : the picture's state sweeps the filter on the drums ---
-    v.map_to_audio("viz.feedback", drums, svf, CUTOFF, amount=1.0, lo=400.0, hi=6000.0)  # feedback -> cutoff
-    v.map_to_audio("viz.blur",     drums, svf, RES,    amount=1.0, lo=0.05,  hi=0.55)     # blur -> resonance
+    # --- RETURN leg (visual -> audio) : the picture's state sweeps the filter on the PAD ---
+    v.map_to_audio("viz.feedback", pad, svf, CUTOFF, amount=1.0, lo=400.0, hi=6000.0)  # feedback -> cutoff
+    v.map_to_audio("viz.blur",     pad, svf, RES,    amount=1.0, lo=0.05,  hi=0.55)     # blur -> resonance
 
     v.launch_scene(0)
     v.play()

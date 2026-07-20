@@ -22,17 +22,18 @@ self-contained** (native audio + bundled `media/`); only **bloom** needs Surge, 
 
 | demo | headlines | sound | visual |
 |------|-----------|-------|--------|
-| **fracture** | the **glitch pack** over a **real imported break** (warped to grid) | a bundled break on a native sampler → BeatRepeat → Stutter → Reverse, all beat-synced | a hex **ShapeGrid** → **Displace** → **Feedback** |
-| **mirror** | the **bidirectional bridge** — the picture drives the sound back | native break + **SVFilter**; `viz.feedback → cutoff`, `viz.blur → resonance` (the return leg) | wireframe **Mesh** + **ShapeGrid** → Feedback → Blur |
-| **bloom** | **note-as-signal** — the music writes itself, *no clip authored* | **Euclid** + **RandMelody → Arp** feed a Surge voice (note edges); an **LFO** breathes the cutoff | **Lines** + wireframe **Mesh** following the generated notes |
-| **signal** | **external pixels** — a real **video clip** into the reactive chain | a bundled break drives the treatment | **Video** → **Displace** → **Feedback**, with a type call-sign |
+| **fracture** | the **glitch pack** over a real **drum machine** | **Cassette Drums** (808 kit) → BeatRepeat → Stutter → Reverse (beat-synced) + Surge acid bass + stabs | a chromatic-split hex **ShapeGrid** → **Transform** → **Displace** → **Feedback** |
+| **mirror** | the **bidirectional bridge** — the picture drives the sound back | Cassette Drums + Surge bass + a Surge **pad through an SVFilter**; `viz.feedback → cutoff`, `viz.blur → resonance` (the return leg) | wireframe **Mesh** + **ShapeGrid** → Feedback → Blur |
+| **bloom** | **note-as-signal** — the music writes itself, *no clip authored* | three scene-cell generators: **RandMelody** lead + **Euclid** bass (Surge) + a **Euclid** kick (Cassette Drums); an **LFO** breathes the lead cutoff | **Lines** + wireframe **Mesh** + a **note-bloom** Shape that flashes per note |
+| **signal** | **external pixels** — a real **video clip** into the reactive chain | Cassette Drums + Surge sub bass drive the treatment | **Video** → **Displace** → **Feedback** |
 
 > **Bidirectional / return leg (mirror):** the `viz.warp/glow/feedback/blur` sources feed a visual
 > param's value *back* to an audio param (`connect_mapping` to a `gnode:`/`aparam:`/`param:` dest).
 > Drive that visual param from audio first, or a static param sends back a constant.
 
-> **Media (fracture / signal):** `media/break90.wav` and `media/loop.mp4` are **placeholders** —
-> swap in a real break / your own footage for a proper showcase. The media root is `examples/demos/media`.
+> **Video (signal):** `media/loop.mp4` is a placeholder (a cellular-automaton "data" clip) — swap in
+> your own footage (media root `examples/demos/media`). A Video source currently flips the composited
+> output, so signal ships without a type call-sign.
 
 Each part's timbre is a **real Surge factory patch** chosen through the generic preset flow
 (`list_presets` → pick by name → `load_preset`). Every demo's picture is built from **real
@@ -45,9 +46,12 @@ with the bass.
 ## Requirements
 - The app running (`app/build/vivid.app/Contents/MacOS/vivid`) — it serves the control
   server on `127.0.0.1:9876`.
-- **[Surge XT](https://surge-synthesizer.github.io/)** installed as a CLAP plugin (free /
-  open-source) — the four songs and **bloom** use it (Vivid now hosts CLAP). EZdrummer 3 plays
-  the songs' drums. **fracture / mirror / signal need no plugin** (native audio + bundled media).
+- **[Surge XT](https://surge-synthesizer.github.io/)** — free CLAP synth, the melodic voices
+  (bass / lead / pad / stabs) across every demo.
+- **[BPB Cassette Drums](https://bedroomproducersblog.com/free-vst-plugins/drums/)** — free VST3
+  drum machine (606/808/909/MFB), the drums in all four showcases. Install both `Cassette Drums.vst3`
+  and its `Cassette Drums.instruments` folder **together** into `~/Library/Audio/Plug-Ins/VST3/`.
+  (The four *songs* additionally use EZdrummer 3 for drums.)
 
 ## Run one
 ```sh

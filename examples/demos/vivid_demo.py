@@ -279,6 +279,17 @@ class Vivid:
     def add_midi_in(self, track: int) -> int:
         return self.call("audio_graph_add_midi_in", track=track)["node"]
 
+    def place_generator(self, track: int, scene: int, gtype: str):
+        """Place a note GENERATOR in a scene cell (Euclid / Chord / RandMelody). Unlike a graph
+        source node, a scene-cell generator actually EMITS notes when its scene is launched — they
+        run through the track's note path into the instrument. This is how 'no clip authored'
+        generative music sounds."""
+        return self.call("place_generator", track=track, scene=scene, type=gtype)
+
+    def set_gen_param(self, track: int, scene: int, name: str, value: float):
+        """Set a placed generator's param by name (e.g. Euclid 'pulses', RandMelody 'density')."""
+        return self.call("set_generator_param", track=track, scene=scene, name=name, value=value)
+
     def connect_audio_nodes(self, track: int, frm: int, to: int, kind: str = "audio"):
         """Wire two nodes on ONE track. kind='note' carries notes, 'audio' sums signal."""
         return self.call("audio_graph_connect", track=track, to=to, kind=kind, **{"from": frm})
@@ -389,6 +400,27 @@ def surge_voice(v: "Vivid", track: int, cutoff=0.6, res=0.1, uni_voices=None, un
         if val is not None:
             v.node_param(track, n, p[key], val)
     return n
+
+
+def surge_drum(v: "Vivid", name: str, patch_filter: str, prefer: str = "", gain: float = 0.9) -> int:
+    """A drum VOICE on its own Surge track: a fresh graph track loaded with a Surge percussion
+    patch (Surge XT ships 60 kicks / 44 snares / 46 hats / claps / toms — all pickable by name via
+    the generic preset flow). Trigger it with `hits()`. Leaning on the one free CLAP plugin for the
+    whole kit keeps the demos reproducible — no sample packs, no per-plugin code."""
+    t = v.add_graph_track(name)
+    surge_preset(v, t, patch_filter, prefer=prefer, gain=gain)
+    return t
+
+
+def hits(v: "Vivid", track: int, scene: int, steps: str, length: float,
+         pitch: int = 60, vel: float = 0.9, dur: float = 0.11) -> list[dict]:
+    """Write a one-note rhythm (a step string like 'x...x...x...x...') into a drum voice's clip —
+    each 'x' is a hit, '.'/'-'/' ' is a rest. `length` beats span the whole string."""
+    n = max(1, len(steps)); step = length / n
+    notes = [{"p": pitch, "s": round(i * step, 6), "d": dur, "v": vel}
+             for i, ch in enumerate(steps) if ch not in ".- "]
+    v.set_clip(track, scene, notes, length)
+    return notes
 
 
 def surge_preset(v: "Vivid", track: int, name_filter: str, prefer: str = "", gain: float = 1.0) -> int:
