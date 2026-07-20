@@ -653,6 +653,38 @@ def compare_audio(a: dict, b: dict, windows: int = 16) -> dict:
     return _post("compare_audio", {"a": a, "b": b, "windows": windows})
 
 
+# ---------------- visual perception (ADR-0024 Phase 6) ----------------
+@mcp.tool
+def capture_frame(path: str = "") -> dict:
+    """Capture the ACTIVE visual output to a PNG you can view, and report whether it is blank.
+    path optional (else saved under the user data dir's captures/). Returns {captured, width, height,
+    path, is_blank, brightness}. captured=false with a reason means nothing feeds the Output node
+    (an empty canvas). The eyes: use it to confirm a visual edit produced something on screen."""
+    payload: dict = {}
+    if path:
+        payload["path"] = path
+    return _post("capture_frame", payload)
+
+
+@mcp.tool
+def analyze_frame(path: str = "") -> dict:
+    """Structured perception of the active visual output (or a saved image via path). Returns
+    {is_blank, blank_reason, brightness, contrast, activity, dominant_colors, color_spread, hash}.
+    Verify 'is it blank?' / how bright / how busy the output is without eyeballing a file."""
+    payload: dict = {}
+    if path:
+        payload["path"] = path
+    return _post("analyze_frame", payload)
+
+
+@mcp.tool
+def compare_frames(a: dict, b: dict) -> dict:
+    """Before/after visual comparison. Each of a, b is a frame spec: {"path": "before.png"} for a saved
+    image, or {} to capture the current output. Returns each analysis, deltas (hash_hamming distance
+    0..64, brightness/contrast/activity), and a plain 'B vs A' verdict — did the look actually change?"""
+    return _post("compare_frames", {"a": a, "b": b})
+
+
 @mcp.tool
 def get_audio_graph(track: int) -> dict:
     """Read a track's audio signal graph — the authoritative topology the RT engine runs

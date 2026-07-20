@@ -244,7 +244,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/packages/hot_reload_manager.cpp
     src/cli/control_server.cpp
     src/cli/audio_analysis_tools.cpp
+    src/cli/image_analysis_tools.cpp
     src/cli/control_handlers_audio_analysis.cpp
+    src/cli/control_handlers_visual_analysis.cpp
     src/cli/control_handlers_audio_clip_pool.cpp
     src/cli/control_handlers_audio_devices.cpp
     src/cli/control_handlers_audio_graph.cpp
