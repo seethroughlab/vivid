@@ -3561,6 +3561,7 @@ int session_add_instrument_track(Session* s, const char* instrument) {
     if (!h) { std::fprintf(stderr, "[Session] add track: no instrument matched '%s'\n", instrument); return -1; }
     s->tracks.emplace_back(make_instrument_track(h, name, s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_graph(s->tracks.back().get());   // derive the source->Output plan NOW (else gok=false → silent)
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + track %d: %s\n", idx, name.c_str());
@@ -3583,7 +3584,8 @@ int session_add_audio_track(Session* s) {
     configure_track_capture(at.get(), s->sample_rate);
     s->tracks.emplace_back(std::move(at));
     s->tracks.back()->id = s->next_track_id++;
-    rebuild_track_view(s);
+    rebuild_track_graph(s->tracks.back().get());   // derive the Sampler->Output plan NOW (else gok=false → silent):
+    rebuild_track_view(s);                          // parity with session_create's line-951 up-front derive.
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);
     return idx;
@@ -3738,6 +3740,7 @@ int session_add_graph_track(Session* s, const char* name) {
     if (!s || static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
     s->tracks.emplace_back(make_instrument_track(nullptr, (name && *name) ? name : "Graph", s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_graph(s->tracks.back().get());   // derive the plan NOW (parity with session_create's line-951 up-front derive)
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + graph track %d: %s\n", idx, s->tracks.back()->name.c_str());
