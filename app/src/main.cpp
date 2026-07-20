@@ -348,6 +348,9 @@ int main(int argc, char** argv) {
     // are queued on the HTTP thread and applied on the main thread each frame.
     vivid::ControlServer control;
     app.control = &control;
+    // Wake the main loop the instant a request is queued, so it drains even when a backgrounded
+    // app's CFRunLoop is App-Nap-throttled (glfwPostEmptyEvent is thread-safe, for exactly this).
+    control.set_wake([]{ glfwPostEmptyEvent(); });
     { const char* pe = std::getenv("VIVID_PORT"); control.start(pe ? std::atoi(pe) : 9876); }
 
     if (app.midi_in.start())   // hardware MIDI input -> armed track (M6.4)

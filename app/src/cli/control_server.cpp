@@ -39,6 +39,7 @@ bool ControlServer::start(int port) {
         Pending p; p.method = method; p.body = std::move(body);
         auto fut = p.reply.get_future();
         { std::lock_guard<std::mutex> lk(mtx_); queue_.push_back(std::move(p)); }
+        if (wake_) wake_();   // nudge a possibly-napping main loop to drain this now (not on its next coalesced tick)
         if (fut.wait_for(std::chrono::seconds(10)) == std::future_status::ready)
             res.set_content(fut.get().dump(), "application/json");
         else

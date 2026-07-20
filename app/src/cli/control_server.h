@@ -44,6 +44,12 @@ public:
     int  port() const { return port_; }
     bool running() const { return running_.load(); }   // bound + listening (health signal)
 
+    // Called (from the HTTP thread) right after a request is queued, so the host can wake a
+    // sleeping main loop to drain it promptly. Without it, a backgrounded app whose CFRunLoop
+    // is App-Nap-throttled drains only on its next (coalesced, seconds-late) tick and requests
+    // time out. Wire to glfwPostEmptyEvent in main. Must be thread-safe.
+    void set_wake(std::function<void()> w) { wake_ = std::move(w); }
+
     // A method handler: (context, request-json) -> response-json. Public so the per-family
     // register_<family>_handlers() free functions (audit #7, in control_handlers*.cpp) can name it.
     using Handler = std::function<nlohmann::json(const ControlCtx&, const nlohmann::json&)>;
@@ -53,6 +59,7 @@ private:
     void register_handlers();
 
     std::unordered_map<std::string, Handler> handlers_;
+    std::function<void()> wake_;   // host hook: wake the main loop after enqueue (main-thread-safe)
     std::mutex          mtx_;
     std::deque<Pending> queue_;
     std::thread         thread_;
