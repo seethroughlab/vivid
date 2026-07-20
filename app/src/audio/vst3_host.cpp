@@ -2555,10 +2555,16 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     const GNodeBind& nb = tr->agnodes[i];
     if (nb.op) return vivid::audio_op_type(nb.op);
     if (nb.clap) return nb.clap->name.c_str();          // CLAP nodes: the plugin's display name
-    switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
-        case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
-        case GNKind::Sampler:                       return "Sampler";
-        default:                                    return "";
+    switch (nb.kind) {                                   // VST3/sampler/internal nodes have no AudioOp
+        case GNKind::Vst3Inst: case GNKind::Vst3Fx:      // VST3: the plugin's own name, not just "VST3"
+            return (nb.handle && !nb.handle->plugin_name.empty()) ? nb.handle->plugin_name.c_str() : "VST3";
+        case GNKind::Sampler:  return "Sampler";
+        // The derived note-path nodes every instrument track carries — label them instead of "?".
+        case GNKind::MidiIn:   return "MIDI In";
+        case GNKind::Selector: return "Notes";
+        case GNKind::MidiClip: return "Clip";
+        case GNKind::Output:   return "Output";
+        default:               return "";
     }
 }
 // Persistence discriminator for a node's binding family (the UI-facing node_type returns the
