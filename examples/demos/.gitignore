@@ -2,4 +2,6 @@
 # but curated, committed bundled examples under projects/ are kept (add a !exception each).
 projects/*
 !projects/generative-fields/
+!projects/geometry/
+!projects/surge-lead/
 __pycache__/
