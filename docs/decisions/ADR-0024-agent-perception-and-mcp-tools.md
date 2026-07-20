@@ -47,8 +47,21 @@ MCP↔control parity test green (149↔149, `set_playing` intentionally unexpose
   `{audio: <source spec>, frame: <frame spec>}`) and `explain_tradeoffs` (the same, articulated as
   measured tradeoffs, optionally narrowed by `criteria`). These reuse extracted cores `compare_audio_specs`
   / `compare_frame_specs`, so compare_audio/compare_frames are now thin wrappers. Closes edit→perceive→verify.
-- **Phase 7 (project/package workflow):** NOT YET STARTED — validate/diff project, asset discovery,
-  package scaffold/validate/build, clone_operator.
+- **Phase 7 (project/package workflow):** DONE. Project inspection (#116, `control_handlers_project.cpp`):
+  `validate_project` (structural health + leveled issues), `list_project_assets` (session + package
+  manifest/sources + shaders + loose media), `resolve_asset` (project-relative → absolute path + kind,
+  rejects `../` escapes), `reload_project_files` (re-scan shaders + recompile the project package,
+  register newly-authored ops, without reverting the live session), `diff_project` (structural
+  live-vs-disk delta, plugin-state excluded). Package/operator authoring (#117/#118,
+  `control_handlers_packages.cpp`): `scaffold_operator_package` (a known-good starter source + manifest,
+  then validate the output), `validate_operator_package` (manifest + source existence, read-only),
+  `build_operator_package` (compile-only to a temp dir, no register), `reload_operator_package`
+  (recompile + register not-yet-live ops; already-live ops hot-reload via the ADR-0020 watcher — never
+  a hand-rolled unregister of an in-use type), and `clone_operator` (fork a compiled op → editable
+  copy, compiled + registered + watched; a built-in clone template or a whole-word source-copy rename,
+  mirroring `fork_shader`).
+
+**🎯 ADR-0024 is fully implemented — Phases 1–8 all DONE.**
 
 ## Context
 

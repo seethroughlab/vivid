@@ -33,7 +33,17 @@ std::string clone_operator_manifest(const std::string& type_name);
 // Clone `builtin_name` into a fresh editable package operator (compiled + registered
 // into `reg`/`loaders`, the live operator catalog). The caller swaps the node + opens
 // the source. Decoupled from App so the compile+register path is headless-testable.
+// `target_name` names the new operator; empty picks a unique "<builtin>Clone" name.
 CloneResult clone_operator(OpRegistry& reg, std::vector<std::unique_ptr<OperatorLoader>>& loaders,
-                           const std::string& builtin_name);
+                           const std::string& builtin_name, const std::string& target_name = "");
+
+// Clone an EXISTING editable package operator by copying its on-disk source: read
+// `source_path`, rename the `old_name` type token to `new_name` (whole-word), scaffold a
+// fresh single-op package, then compile + register it live. Mirrors fork_shader for a
+// compiled operator that has a watched/editable source. `new_name` must be a free,
+// C++-identifier-safe type name (the caller checks reg.has()).
+CloneResult clone_operator_from_source(OpRegistry& reg, std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                       const std::string& old_name, const std::string& source_path,
+                                       const std::string& new_name);
 
 }  // namespace vivid

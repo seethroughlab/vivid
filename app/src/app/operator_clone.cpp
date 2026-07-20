@@ -5,8 +5,10 @@
 #include "gpu/operator_loader.h"
 #include "gpu/op_runtime.h"
 
+#include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 namespace vivid {
 namespace {
@@ -104,10 +106,48 @@ void replace_all(std::string& s, const std::string& from, const std::string& to)
     for (size_t p = s.find(from); p != std::string::npos; p = s.find(from, p + to.size()))
         s.replace(p, from.size(), to);
 }
+
+// Replace only WHOLE-WORD occurrences of `from` (not substrings inside a longer identifier),
+// so renaming an op token doesn't corrupt an unrelated identifier that contains it.
+void replace_word(std::string& s, const std::string& from, const std::string& to) {
+    if (from.empty()) return;
+    auto is_ident = [](char c) { return std::isalnum((unsigned char)c) || c == '_'; };
+    for (size_t p = s.find(from); p != std::string::npos; p = s.find(from, p + to.size())) {
+        const bool left  = (p > 0) && is_ident(s[p - 1]);
+        const bool right = (p + from.size() < s.size()) && is_ident(s[p + from.size()]);
+        if (left || right) { p += from.size() - to.size(); continue; }   // part of a longer identifier — skip
+        s.replace(p, from.size(), to);
+    }
+}
+
 bool write_file(const std::filesystem::path& p, const std::string& s) {
     std::ofstream out(p, std::ios::trunc);
     if (!out) return false;
     out << s; return static_cast<bool>(out);
+}
+
+// Write a single-op package (source + manifest) at <clones>/<name>, compile it (clang++)
+// into the managed operators dir, and register the resulting dylib live. Shared by both
+// clone entry points.
+CloneResult scaffold_compile_register(OpRegistry& reg, std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                      const std::string& name, const std::string& source) {
+    namespace fs = std::filesystem;
+    const std::string data = platform::user_data_dir();
+    if (data.empty()) return { false, "", "", "no user data dir" };
+    const fs::path pkg = fs::path(data) / "clones" / name;
+    std::error_code ec; fs::create_directories(pkg, ec);
+    const fs::path srcpath = pkg / (name + ".cpp");
+    if (!write_file(srcpath, source)) return { false, "", srcpath.string(), "write source failed" };
+    if (!write_file(pkg / "vivid-package.json", clone_operator_manifest(name)))
+        return { false, "", srcpath.string(), "write manifest failed" };
+    PackageInstallResult ir = install_package(pkg.string());
+    if (!ir.ok) return { false, "", srcpath.string(), ir.error.empty() ? "install failed" : ir.error };
+    if (ir.compiles.empty() || !ir.compiles[0].success)
+        return { false, "", srcpath.string(),
+                 ir.compiles.empty() ? "no compile output" : ir.compiles[0].error_output };
+    const std::string regname = load_and_register_operator(ir.compiles[0].dylib_path, reg, loaders);
+    if (regname.empty()) return { false, "", srcpath.string(), "register failed (abi mismatch, or name in use?)" };
+    return { true, regname, srcpath.string(), "" };
 }
 
 }  // namespace
@@ -130,35 +170,36 @@ std::string clone_operator_manifest(const std::string& type_name) {
 }
 
 CloneResult clone_operator(OpRegistry& reg_cat, std::vector<std::unique_ptr<OperatorLoader>>& loaders,
-                           const std::string& builtin) {
-    namespace fs = std::filesystem;
+                           const std::string& builtin, const std::string& target_name) {
     if (!operator_has_clone_template(builtin))
         return { false, "", "", "no clone template for '" + builtin + "'" };
 
-    // A unique, C++-identifier-safe type name not already registered.
-    std::string name = builtin + "Clone";
-    for (int n = 2; reg_cat.has(name); ++n) name = builtin + "Clone" + std::to_string(n);
+    // A unique, C++-identifier-safe type name: the caller's target, or an auto-picked "<builtin>Clone".
+    std::string name = target_name;
+    if (name.empty()) {
+        name = builtin + "Clone";
+        for (int n = 2; reg_cat.has(name); ++n) name = builtin + "Clone" + std::to_string(n);
+    } else if (reg_cat.has(name)) {
+        return { false, "", "", "an operator named '" + name + "' already exists" };
+    }
+    return scaffold_compile_register(reg_cat, loaders, name, clone_operator_source(builtin, name));
+}
 
-    const std::string data = platform::user_data_dir();
-    if (data.empty()) return { false, "", "", "no user data dir" };
-    const fs::path pkg = fs::path(data) / "clones" / name;
-    std::error_code ec; fs::create_directories(pkg, ec);
-
-    const std::string src = clone_operator_source(builtin, name);
-    const fs::path srcpath = pkg / (name + ".cpp");
-    if (!write_file(srcpath, src)) return { false, "", srcpath.string(), "write source failed" };
-    if (!write_file(pkg / "vivid-package.json", clone_operator_manifest(name)))
-        return { false, "", srcpath.string(), "write manifest failed" };
-
-    // Compile (clang++) into the managed operators dir, then register the dylib live.
-    PackageInstallResult ir = install_package(pkg.string());
-    if (!ir.ok) return { false, "", srcpath.string(), ir.error.empty() ? "install failed" : ir.error };
-    if (ir.compiles.empty() || !ir.compiles[0].success)
-        return { false, "", srcpath.string(),
-                 ir.compiles.empty() ? "no compile output" : ir.compiles[0].error_output };
-    const std::string reg = load_and_register_operator(ir.compiles[0].dylib_path, reg_cat, loaders);
-    if (reg.empty()) return { false, "", srcpath.string(), "register failed (abi mismatch?)" };
-    return { true, reg, srcpath.string(), "" };
+CloneResult clone_operator_from_source(OpRegistry& reg, std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                       const std::string& old_name, const std::string& source_path,
+                                       const std::string& new_name) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (!fs::exists(source_path, ec)) return { false, "", source_path, "source not found: " + source_path };
+    if (reg.has(new_name)) return { false, "", source_path, "an operator named '" + new_name + "' already exists" };
+    std::ifstream in(source_path, std::ios::binary);
+    if (!in) return { false, "", source_path, "could not read source: " + source_path };
+    std::string src((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // Rename the operator's type token (its kName / struct / VIVID_REGISTER) to the new name. The
+    // registered name is the descriptor's kName value, so a whole-word rename of `old_name` renames
+    // the live operator without disturbing identifiers that merely contain it.
+    replace_word(src, old_name, new_name);
+    return scaffold_compile_register(reg, loaders, new_name, src);
 }
 
 }  // namespace vivid

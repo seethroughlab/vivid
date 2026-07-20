@@ -1,6 +1,7 @@
 #include "cli/control_handlers_internal.h"
 
 #include "app/app.h"
+#include "app/operator_clone.h"          // clone_operator / clone_operator_from_source (clone_operator tool)
 #include "app/project_paths.h"           // is_folder_project (reload default path)
 #include "gpu/operator_scan.h"           // load_and_register_operator
 #include "packages/package_manager.h"    // install_package / user_operators_dir
@@ -292,6 +293,46 @@ void register_package_handlers(Handlers& handlers_) {
         r["validation"] = validate_manifest(path);   // per ADR: scaffold output is validated
         r["next_tools"] = {"build_operator_package", "reload_operator_package"};
         r["summary"] = "scaffolded gpu_visual operator '" + name + "' at " + path;
+        return r;
+    };
+
+    // clone_operator — fork a compiled operator into a fresh editable copy under `new_name`, compiled
+    // + registered live (the caller can spawn/edit it immediately). Mirrors fork_shader for compiled
+    // ops. Two backed cases: a built-in with a clone template (e.g. Plasma), or any operator whose
+    // source is on disk + watched (a prior clone / installed / project C++ op). A built-in dylib with
+    // no editable source can't be cloned (its source didn't ship) — use fork_shader for shaders.
+    handlers_["clone_operator"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        const std::string op = b.value("op", std::string());
+        const std::string new_name = b.value("new_name", std::string());
+        if (op.empty() || new_name.empty())
+            return err(code::kBadArg, "clone_operator needs \"op\" (the operator to clone) and \"new_name\"");
+        if (!valid_op_name(new_name))
+            return err(code::kBadArg, "new_name must be a C++ identifier (letters/digits/underscore, no leading digit)");
+        if (c.app->op_registry.has(new_name))
+            return err(code::kBadArg, "an operator named '" + new_name + "' already exists");
+
+        CloneResult cr;
+        if (operator_has_clone_template(op)) {
+            cr = clone_operator(c.app->op_registry, c.app->op_loaders, op, new_name);
+        } else {
+            const std::string src = c.app->hot_reload.source_for(op);
+            if (src.empty())
+                return err(code::kBadArg, "no editable source for '" + op + "' to clone — it's a built-in "
+                                          "without a clone template or a shipped dylib; shaders use fork_shader");
+            cr = clone_operator_from_source(c.app->op_registry, c.app->op_loaders, op, src, new_name);
+        }
+        if (!cr.ok) return err(code::kBadArg, cr.error.empty() ? "clone failed" : cr.error);
+        c.app->file_drops.rebuild(c.app->op_loaders);   // pick up any new drop handlers
+        // ADR-0020 W2: watch the fresh clone so editing its source hot-reloads live, and so it can be
+        // re-cloned by source (source_for() now resolves). Mirrors the UI Clone & Edit path.
+        const std::string pkgdir = fs::path(cr.source_path).parent_path().string();
+        c.app->hot_reload.watch_manifest(c.app->op_loaders, parse_package_manifest(pkgdir));
+        json r = ok();
+        r["op"] = cr.name;
+        r["cloned_from"] = op;
+        r["source"] = cr.source_path;
+        r["summary"] = "cloned '" + op + "' -> '" + cr.name + "' (compiled + registered live)";
         return r;
     };
 }

@@ -1704,6 +1704,16 @@ def reload_operator_package(path: str = "") -> dict:
 
 
 @mcp.tool
+def clone_operator(op: str, new_name: str) -> dict:
+    """Fork a compiled operator into a fresh editable copy under `new_name`, compiled + registered
+    live (spawn/edit it immediately). Mirrors fork_shader for compiled ops. Works for a built-in with
+    a clone template (e.g. Plasma) or any operator whose source is on disk + watched (a prior clone /
+    installed / project C++ op). A shipped built-in dylib with no editable source can't be cloned;
+    shaders use fork_shader."""
+    return _post("clone_operator", {"op": op, "new_name": new_name})
+
+
+@mcp.tool
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""
     return {
