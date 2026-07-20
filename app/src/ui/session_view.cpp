@@ -370,8 +370,16 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
     // "Graph" button; the close x (above) returns to the device chain.
     if (w.focus.kind == FocusContext::Kind::AudioGraph) {
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
-        char ah[80]; std::snprintf(ah, sizeof ah, "AUDIO GRAPH \xC2\xB7 %.40s", vivid::session::session_track_name(s, tr));
-        section_header(ui, 12.f, y0 + 7.f, ah, sty.audio);
+        // Minimal, unobtrusive track label — no boxy "AUDIO GRAPH ·" header (the visuals graph has
+        // none). Just the track name, so you still know which track's graph you're editing.
+        ui.draw_text(12.f, y0 + 7.f, vivid::session::session_track_name(s, tr),
+                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.78f);
+        // "Re-layout" button: snap the graph back to the tidy auto-arrangement (the audio peer of the
+        // visuals graph's Re-layout button). Always available.
+        { const Rect rb = dock_audio_relayout_button_rect(w.win_w, w.win_h, w.dock_h);
+          const bool rh = hit(rb, mx, my);
+          item_box(ui, rb, sty.audio, rh);
+          ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
         // "Editor" button: opens the selected VST3 node's own native plugin window (its full param
         // surface). Shown only when the node exposes a plugin editor controller. Double-click still works.
         if (w.sel_audio_node >= 0

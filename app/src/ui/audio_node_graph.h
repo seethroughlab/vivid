@@ -15,6 +15,7 @@
 #include "ui/graph_canvas.h"  // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/graph_adapter.h" // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 
+#include <utility>
 #include <vector>
 
 namespace vivid::session { struct Session; }
@@ -94,6 +95,9 @@ public:
 
     // Deterministic node layout (nodes fitted to the graph sub-region). Shared by draw + input.
     std::vector<AudioNodeBox> layout() const;
+    // Snap every node back to the tidy auto-layout (the "Re-layout" button, mirroring the visuals
+    // graph). Overwrites + persists each node's world position; the caller notes the edit for undo.
+    void relayout();
     // ADR-0023 Layer 1: a laid-out box -> the shared card-chrome shape. The single source of truth for
     // the card data, used by both collect_nodes (the polymorphic surface) and draw()'s own card loop.
     AdapterNode node_from_box(const AudioNodeBox& b, int idx) const;
@@ -162,6 +166,9 @@ private:
     // The shared card port-row layout for a node (its exposed-param count + kind + plugin state).
     // One source of truth for card height, port centres, and the preview well (draw + hit-test).
     CardPorts card_ports(int node_id, int kind) const;
+    // Auto-layout WORLD position per node (rank = signal depth, slot = fan-out order). Shared by
+    // layout() (seeds unpositioned nodes) and relayout() (overwrites all) so they can't drift.
+    std::vector<std::pair<float, float>> seed_positions() const;
 
     vivid::session::Session* s_ = nullptr;
     const NodeGraph* map_ = nullptr;   // the bridge (for the mapped-state dot); not owned

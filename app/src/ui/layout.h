@@ -192,6 +192,9 @@ inline Rect dock_op_editor_button_rect(int win_w, int win_h, float dock_h) { ret
 // The audio-graph dock header "Editor" button — opens the selected VST3 node's own native plugin
 // window (the full param surface). Only drawn when the selected node exposes an IEditController.
 inline Rect dock_audio_editor_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 148.f, dock_top(win_h, dock_h) + 3.f, 60.f, 15.f }; }
+// The audio-graph "Re-layout" button — snaps the graph back to the tidy auto-arrangement (the audio
+// peer of the visuals graph's Re-layout button). Always available; sits left of the Editor button.
+inline Rect dock_audio_relayout_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 228.f, dock_top(win_h, dock_h) + 3.f, 74.f, 15.f }; }
 // ADR-0021/P4: the "Presets" button in the visual-node inspector header (left of Editor/close).
 inline Rect dock_node_presets_button_rect(int win_w, int win_h, float dock_h) { return { win_w - 224.f, dock_top(win_h, dock_h) + 3.f, 68.f, 15.f }; }
 
