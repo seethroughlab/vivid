@@ -22,6 +22,10 @@ json analyze_spectrum_bands(const std::vector<float>& L, const std::vector<float
 bool resolve_audio_source(const ControlCtx& c, const json& spec, double fallback_seconds,
                           std::vector<float>& L, std::vector<float>& R, uint32_t& sr, json& source_json, json& e);
 
+// ADR-0024 Phase 8: the compare_audio CORE — two source specs → {a, b, delta, summary}. Shared by the
+// compare_audio handler and compare_variations. Returns null + sets `e` if a source cannot resolve.
+json compare_audio_specs(const ControlCtx& c, const json& a, const json& b, int windows, json& e);
+
 bool load_pcm_file(const std::string& path, uint32_t sr_hint, std::vector<float>& L, std::vector<float>& R, uint32_t& sr);
 bool copy_live_capture(const ControlCtx& c, const json& b, double fallback_seconds,
                        std::vector<float>& L, std::vector<float>& R, uint32_t& sr,

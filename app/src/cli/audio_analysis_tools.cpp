@@ -266,6 +266,37 @@ bool resolve_audio_source(const ControlCtx& c, const json& spec, double fallback
     return true;
 }
 
+json compare_audio_specs(const ControlCtx& c, const json& a, const json& b, int windows, json& e) {
+    std::vector<float> aL, aR, bL, bR; uint32_t asr = 0, bsr = 0; json aSrc, bSrc;
+    if (!resolve_audio_source(c, a, 4.0, aL, aR, asr, aSrc, e)) return json();
+    if (!resolve_audio_source(c, b, 4.0, bL, bR, bsr, bSrc, e)) return json();
+    const json A = analyze_pcm(aL, aR, asr, windows);
+    const json B = analyze_pcm(bL, bR, bsr, windows);
+    auto d = [&](const char* k) { return B.value(k, 0.0) - A.value(k, 0.0); };
+    const double loud_db = (A.value("rms", 0.0) > 1e-9 && B.value("rms", 0.0) > 1e-9)
+                         ? 20.0 * std::log10(B.value("rms", 0.0) / A.value("rms", 0.0)) : 0.0;
+    const double d_centroid = d("spectral_centroid_proxy_hz");
+    const double d_trans = d("transient_density_per_second");
+    const json aB = A.value("bands", json::object()), bB = B.value("bands", json::object());
+    json delta = {
+        {"rms", d("rms")}, {"loudness_db", loud_db}, {"peak", d("peak")},
+        {"crest_factor", d("crest_factor")}, {"spectral_centroid_proxy_hz", d_centroid},
+        {"transient_density_per_second", d_trans},
+        {"clipping_samples", B.value("clipping_samples", 0) - A.value("clipping_samples", 0)},
+        {"bands", { {"low", bB.value("low", 0.0) - aB.value("low", 0.0)},
+                    {"mid", bB.value("mid", 0.0) - aB.value("mid", 0.0)},
+                    {"high", bB.value("high", 0.0) - aB.value("high", 0.0)} }}
+    };
+    std::string s = "B vs A: ";
+    s += (loud_db > 0.5 ? "louder" : loud_db < -0.5 ? "quieter" : "similar loudness");
+    s += std::string(", ") + (d_centroid > 50 ? "brighter" : d_centroid < -50 ? "darker" : "similar brightness");
+    s += std::string(", ") + (d_trans > 0.3 ? "more transient-dense" : d_trans < -0.3 ? "less transient-dense" : "similar transient density");
+    if (B.value("clipping_samples", 0) > A.value("clipping_samples", 0)) s += ", MORE clipping";
+    return { {"a", { {"source", aSrc}, {"analysis", A} }},
+             {"b", { {"source", bSrc}, {"analysis", B} }},
+             {"delta", delta}, {"summary", s} };
+}
+
 bool load_pcm_file(const std::string& path, uint32_t sr_hint, std::vector<float>& L, std::vector<float>& R, uint32_t& sr) {
     vivid::session::Sampler smp;
     if (!vivid::session::sampler_load_wav(path, sr_hint ? sr_hint : 48000, 120.0, smp)) return false;
