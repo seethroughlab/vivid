@@ -70,7 +70,7 @@ def build(v: Vivid, save: bool = True):
     comp = v.add_node("Composite")
     v.connect(comp, rings, port=0)                # A = the rings
     v.connect(comp, sun, port=1)                  # B = the octahedron
-    v.set_node_param(comp, "mode", 0.25)          # ADD
+    v.set_node_param(comp, "mode", 1.0)          # ADD
     v.connect(fb, comp)                           # Feedback reads the composite (glow) -> Blur -> Output
     v.set_node_param(fb, "decay", 0.55)           # a modest neon bloom (not a haze)
     v.set_node_param(blur, "radius", 0.05)

@@ -61,7 +61,7 @@ def build(v: Vivid, save: bool = True):
     comp = v.add_node("Composite")
     v.connect(comp, lines, port=0)               # A = the grid
     v.connect(comp, mesh, port=1)                # B = the icosahedron
-    v.set_node_param(comp, "mode", 0.25)         # ADD (sharp, no blur/haze — a data-viz look)
+    v.set_node_param(comp, "mode", 1.0)         # ADD (sharp, no blur/haze — a data-viz look)
     v.connect(out, comp)                         # Output <- Composite
 
     # --- the bridge (smooth params only; grid/mesh structure stays baked) ---
