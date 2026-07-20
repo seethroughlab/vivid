@@ -31,12 +31,15 @@ MCP↔control parity test green (149↔149, `set_playing` intentionally unexpose
 - **Phase 5 (comparison + spectrum):** DONE — `compare_audio` (two source specs → per-feature deltas +
   a plain `B vs A` verdict) and `analyze_spectrum` (octave/mel/linear per-band energy via a bandpass
   biquad filterbank + energy-weighted centroid).
-- **Phase 6 (visual perception):** STARTED — `capture_frame` (GPU readback of the active output →
+- **Phase 6 (visual perception):** DONE. `capture_frame` (GPU readback of the active output →
   a viewable PNG + blank/no-output detection), `analyze_frame` (brightness/contrast/activity/dominant
-  colors/color-spread/average-hash), and `compare_frames` (two saved images or the live output → hash
-  Hamming distance + metric deltas + a verdict) are DONE. The readback is `VisualGraph::read_output_pixels`
-  (copyTextureToBuffer + map, main-thread, BGRA→RGBA); CPU analysis + PNG in `cli/image_analysis_tools`.
-  Still TODO: `analyze_visual_motion` and `summarize_visual_output` (need a short multi-frame capture).
+  colors/color-spread/average-hash), `compare_frames` (two saved images or the live output → hash
+  Hamming distance + metric deltas + a verdict), `analyze_visual_motion`, and `summarize_visual_output`.
+  The readback is `VisualGraph::read_output_pixels` (copyTextureToBuffer + map, main-thread, BGRA→RGBA);
+  CPU analysis + PNG in `cli/image_analysis_tools`. Motion is measured ACROSS calls (the output RT only
+  advances once per frame-loop tick and a handler runs synchronously within one), so each call appends
+  the live frame's signature to a rolling window and reports the inter-sample change — poll a few times
+  to fill the window; keeps the render loop untouched.
 - **Phase 8 (proofs/checks):** DONE. `list_quality_checks` + `run_quality_check(name|"all")` — four
   built-in checks compose the perception layer into pass|warn|fail + evidence + a suggested action:
   `no_audio_clipping`, `nonblank_visual_output`, `mappings_resolve`, `no_quarantined_operators`. Plus
