@@ -562,6 +562,10 @@ struct Session {
     std::string              clap_last_error;    // main-thread only (last failed async load)
 };
 
+// Resolve a (session, track index) to the Track (or null). Defined in vst3_host.cpp; declared here so
+// the extracted param TU (vst3_host_params.cpp) can reach it (ADR-0025 split). Caller-facing helper.
+Track* graph_track(Session* s, int t);
+
 // --- Per-source/effect RENDER PRIMITIVES (defined in vst3_host_render.cpp; ADR-0025 split PR-B). Each
 // runs one VST3/CLAP plugin for a block (or drains the notes it generated) — pure DSP over a handle.
 // process_step + session_process (in vst3_host.cpp) call these, so the inline path and the audio-graph
