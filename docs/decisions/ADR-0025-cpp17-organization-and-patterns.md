@@ -8,10 +8,30 @@ Date: 2026-07-18
 `Window` into persistent view objects") was first applied by extracting the floating output-preview panel
 — its state + geometry + the `clamp` that keeps it inside the visuals column — out of the `Window` state
 bag into its own `OutputPreview` type (`app/src/app/output_preview.h`), with a headless test for the pure
-clamp geometry (`app/tests/test_output_preview.cpp`). Pressure-point #1 (splitting the 4803-LOC
-`audio/vst3_host.cpp`) is deferred until the ADR-0022 session-audio-graph work churning that file settles —
-consistent with Decision #7 (split opportunistically, not for style). Further `Window` groups (musical
-typing, session-grid clip drag/drop, plugin-browser state, popovers) extract the same way when touched.
+clamp geometry (`app/tests/test_output_preview.cpp`). Further `Window` groups (musical typing, session-grid
+clip drag/drop, plugin-browser state, popovers) extract the same way when touched.
+
+**As built — pressure-point #1, the `vst3_host.cpp` split (2026-07-19/20).** Applied once the ADR-0022
+session-audio-graph churn on the file settled — consistent with Decision #7 (split opportunistically, not
+for style). The 5290-LOC `audio/vst3_host.cpp` was reduced to **3792 LOC** by extracting cohesive COLD
+(non-real-time) sections into sibling translation units, leaving the RT `audio_callback` + session state in
+the main TU. The sequence, each landed as its own gated green PR:
+- **#100 — the split *enabler*:** extract `vst3_host_internal.h`, the private cross-TU surface (host
+  types + the internal function declarations the siblings need), so sections can move out without exposing
+  them on the public `vst3_host.h` session C API.
+- **#106 — de-anonymize + first extraction:** the host's helper types lived in an anonymous namespace
+  (internal linkage), which blocks referencing them from another TU ("type does not have linkage"). Promote
+  them to `namespace vivid::session` in `vst3_host_common.h` and the col-1 `static` file-locals to `inline`,
+  *then* extract the render primitives into `vst3_host_render.cpp`. De-anonymization is the structural key
+  that makes every later extraction possible.
+- **#107 — `vst3_host_presets.cpp`:** the preset browse/load C API (`.vstpreset` + CLAP + native adapters).
+- **#108 — `vst3_host_params.cpp`:** the node param get/set API.
+- **#109 — `vst3_host_clap_loader.cpp`:** the async CLAP loader (its own thread + queue).
+
+Net: one 5290-LOC file → a 3792-LOC RT-focused core + four cohesive COLD siblings (render 203, params 266,
+clap_loader 174, presets 57) behind two internal headers (`vst3_host_common.h`, `vst3_host_internal.h`).
+No behavior change; each PR passed the production gate + audio-engine tests. The session C API
+(`vst3_host.h`) was untouched, so nothing downstream had to change.
 
 Extends [ADR-0011](ADR-0011-reboot-product-architecture.md),
 [ADR-0017](ADR-0017-every-edit-is-reversible.md),
@@ -111,9 +131,13 @@ domain modules and explicit runtime boundaries:
 
 The remaining organizational costs are concentrated rather than pervasive:
 
-- **`audio/vst3_host.cpp` is too large.** It carries plugin hosting, session state, graph adaptation,
-  CLAP/VST handling, dynamic tracks, audio-graph API, and real-time publication logic. It is the
-  highest-value file to split by cohesive behavior.
+- **`audio/vst3_host.cpp` is too large.** ✅ *Largely addressed (2026-07-19/20) — see "As built —
+  pressure-point #1" above.* The file was 5290 LOC carrying plugin hosting, session state, graph adaptation,
+  CLAP/VST handling, dynamic tracks, audio-graph API, and real-time publication logic. Its COLD sections
+  (render primitives, presets, node param API, async CLAP loader) were extracted into sibling TUs behind
+  `vst3_host_internal.h`, reducing the main TU to 3792 LOC focused on the RT `audio_callback` + session
+  state. Remaining opportunistic targets if the file is touched again: the graph-adaptation / dynamic-track
+  code and the real-time publication logic could move behind the same internal surface.
 
 - **`Window` is a large interaction-state bag.** It is understandable because much state is genuinely
   per-view, but it mixes clip-grid, plugin browser, audio graph, visual graph, popovers, diagnostics,
