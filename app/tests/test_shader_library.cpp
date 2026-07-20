@@ -244,6 +244,32 @@ int main() {
         CHECK(lib.fork("NotAShader", "X", reg, err2).empty());
     }
 
+    // ---- project-scoped operators ------------------------------------------------------------
+    // set_project registers the shaders under a project's shaders/ dir (the mechanism behind an
+    // operator that ships with an EXAMPLE, not the core — e.g. a demoted field generator), and
+    // retires them again on New/close. The user/bundled tiers are untouched throughout.
+    {
+        const fs::path proj = fs::temp_directory_path() / "vivid_shader_proj_test";
+        fs::remove_all(proj, ec);
+        fs::create_directories(proj / "shaders", ec);
+        write_file(proj / "shaders" / "field.wgsl", R"(/*{ "name": "ProjField", "inputs": [], "params": [] }*/
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f { return vec4f(1.0); })");
+
+        CHECK(!reg.has("ProjField"));                                // absent before the project opens
+        CHECK(lib.set_project(reg, proj.string()) == 1);            // opening the project registers it
+        CHECK(reg.has("ProjField"));
+        CHECK(reg.has("TestTint"));                                  // a user-tier op is left alone
+
+        lib.set_project(reg, "");                                    // New / close → project ops retired
+        CHECK(!reg.has("ProjField"));
+        CHECK(reg.has("TestTint"));                                  // user tier still intact
+
+        CHECK(lib.set_project(reg, proj.string()) == 1);           // re-opening re-registers cleanly
+        CHECK(reg.has("ProjField"));
+        lib.set_project(reg, "");
+        fs::remove_all(proj, ec);
+    }
+
     fs::remove_all(dir, ec);
     return vivid::test::summary("shader_library");
 }

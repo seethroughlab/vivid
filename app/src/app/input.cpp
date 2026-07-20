@@ -105,11 +105,6 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 
     // File shortcuts (⌘N/⌘O/⌘S/⇧⌘S) are owned by the native File menu (AppKit intercepts
     // them before GLFW), so they're not handled here.
-    if (key == GLFW_KEY_V && app->vgraph) {  // toggle the visuals generator (also via the generator node)
-        app->vgraph->set_generator(app->vgraph->generator() == "Video" ? "Plasma" : "Video");
-        if (app->edit_gateway) app->edit_gateway->note_edit("Set Generator", "");
-        return;
-    }
     if (key == GLFW_KEY_N) { app->load_video_at(app->video_idx + 1); return; }  // next clip
     if (!app->session) return;
     if (key >= GLFW_KEY_1 && key <= GLFW_KEY_9) {

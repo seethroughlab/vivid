@@ -1,2 +1,5 @@
-projects/
+# Throwaway projects written by the demo .py scripts (save_project output) are ignored,
+# but curated, committed bundled examples under projects/ are kept (add a !exception each).
+projects/*
+!projects/generative-fields/
 __pycache__/
