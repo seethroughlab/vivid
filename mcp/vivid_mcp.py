@@ -1664,6 +1664,55 @@ def diff_project() -> dict:
     return _post("diff_project")
 
 
+# ---- ADR-0024 Phase 7: operator-package authoring (scaffold / validate / build / reload) ----
+
+@mcp.tool
+def scaffold_operator_package(name: str, kind: str = "gpu_visual", path: str = "") -> dict:
+    """Write a fresh single-operator package (a known-good starter source + manifest) and validate the
+    output. `name` becomes the operator type (must be a C++ identifier); `kind` defaults to gpu_visual
+    (the only templated domain today); `path` defaults to <user_data>/scaffold/<name>. Then edit the
+    source and build/reload_operator_package."""
+    payload = {"name": name, "kind": kind}
+    if path:
+        payload["path"] = path
+    return _post("scaffold_operator_package", payload)
+
+
+@mcp.tool
+def validate_operator_package(path: str) -> dict:
+    """Parse a package's vivid-package.json and confirm each declared operator source exists on disk.
+    Read-only pre-flight — no compile, no live mutation. Returns `valid` + per-operator source status."""
+    return _post("validate_operator_package", {"path": path})
+
+
+@mcp.tool
+def build_operator_package(path: str) -> dict:
+    """Compile every operator in the package to a .dylib in a temp build dir WITHOUT registering
+    anything live — a "does it build?" check that never touches the running catalog. Returns per-op
+    success + compiler errors. (Use install_operator_package to compile + register live.)"""
+    return _post("build_operator_package", {"path": path})
+
+
+@mcp.tool
+def reload_operator_package(path: str = "") -> dict:
+    """Recompile the package and register any operator NOT already live (a newly-authored op appears
+    in list_operators immediately). Already-registered ops are reported as live — edit their source to
+    hot-reload (ADR-0020 watcher); this never unregisters a live type. `path` defaults to the open
+    folder project's co-located package."""
+    payload = {"path": path} if path else {}
+    return _post("reload_operator_package", payload)
+
+
+@mcp.tool
+def clone_operator(op: str, new_name: str) -> dict:
+    """Fork a compiled operator into a fresh editable copy under `new_name`, compiled + registered
+    live (spawn/edit it immediately). Mirrors fork_shader for compiled ops. Works for a built-in with
+    a clone template (e.g. Plasma) or any operator whose source is on disk + watched (a prior clone /
+    installed / project C++ op). A shipped built-in dylib with no editable source can't be cloned;
+    shaders use fork_shader."""
+    return _post("clone_operator", {"op": op, "new_name": new_name})
+
+
 @mcp.tool
 def get_authoring_guide() -> dict:
     """How to compose an audiovisual scene with these tools (recipe + gotchas)."""

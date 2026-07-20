@@ -256,6 +256,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_visuals.cpp
     src/cli/control_handlers_audio.cpp
     src/cli/control_handlers_project.cpp
+    src/cli/control_handlers_packages.cpp
     src/cli/control_handlers_edit.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
