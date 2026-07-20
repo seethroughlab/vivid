@@ -51,8 +51,9 @@ void register_project_handlers(Handlers& handlers_) {
             for (int sc = 0; sc < ns; ++sc)
                 P::session_set_clip(c.session, t, sc, nullptr, 0, 4.0);
         c.graph->reset_nodes();                        // data nodes + mappings
-        if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // Plasma->Feedback->Blur->Output
+        if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // clean canvas: just Output
         if (c.app) {
+            c.app->shader_library.set_project(c.app->op_registry, "");   // drop project-scoped operators
             c.app->project.current_project_path.clear();
             c.app->project.media_root.clear();
             c.app->project.missing_media.clear();

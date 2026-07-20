@@ -182,6 +182,39 @@ int ShaderLibrary::rescan(OpRegistry& reg) {
     return registered;
 }
 
+int ShaderLibrary::set_project(OpRegistry& reg, const std::string& project_dir) {
+    // Retire the previous project's shader operators. defs_ is deliberately NOT pruned — a live
+    // node may still hold param-name const char* into a def (see defs_); the entry + registration
+    // go, the def lingers harmlessly (a few KB per project switch). Stale file watches are safe too:
+    // poll() ignores a changed file whose entry is gone (find_by_path -> null -> continue).
+    for (auto it = entries_.begin(); it != entries_.end(); ) {
+        if (it->tier == "project") {
+            if (it->registered) reg.unregister_type(it->name);
+            it = entries_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    project_dir_ = project_dir;
+    if (project_dir.empty()) return 0;
+
+    std::error_code ec;
+    const fs::path dir = fs::path(project_dir) / "shaders";
+    if (!fs::is_directory(dir, ec)) return 0;
+    // Sorted, so the catalog reads the same on every machine and every launch (as rescan does).
+    std::vector<fs::path> files;
+    for (const auto& e : fs::directory_iterator(dir, ec)) {
+        if (ec) break;
+        ShaderDialect d;
+        if (e.is_regular_file(ec) && is_shader_file(e.path(), d)) files.push_back(e.path());
+    }
+    std::sort(files.begin(), files.end());
+    int registered = 0;
+    for (const fs::path& p : files)
+        if (!find_by_path(p.string()) && add_file(p.string(), "project", reg)) ++registered;
+    return registered;
+}
+
 std::vector<ShaderReload> ShaderLibrary::poll(OpRegistry& reg) {
     std::vector<ShaderReload> out;
 

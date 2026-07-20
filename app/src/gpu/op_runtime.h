@@ -63,6 +63,10 @@ public:
 
     void register_type(const std::string& name, Factory f);
     void register_type(const std::string& name, Factory f, OpMeta meta);
+    // Retire a registered type (its factory + cached descriptor + any reload error). Used to drop
+    // project-scoped operators when a project closes. No-op if the name isn't registered; callers
+    // must ensure no live node still references it (the graph is torn down on a project switch).
+    void unregister_type(const std::string& name);
     bool has(const std::string& name) const;
     std::vector<std::string> type_names() const;   // registration order
 
