@@ -96,6 +96,22 @@ def get_health() -> dict:
 
 
 @mcp.tool
+def list_quality_checks() -> dict:
+    """List the built-in quality checks run_quality_check can run: no_audio_clipping,
+    nonblank_visual_output, mappings_resolve, no_quarantined_operators. The proof loop — run a check
+    after an edit to verify the result rather than guessing."""
+    return _post("list_quality_checks")
+
+
+@mcp.tool
+def run_quality_check(name: str = "all") -> dict:
+    """Run a quality check (or 'all') and get pass|warn|fail + concise evidence + a suggested next
+    action. Composes audio analysis, visual analysis, mapping resolution, and quarantine state into a
+    verdict, so an agent can confirm an edit held up (not clipping, not blank, mappings intact)."""
+    return _post("run_quality_check", {"name": name})
+
+
+@mcp.tool
 def list_quarantine() -> dict:
     """ADR-0018: the operators quarantined this launch — repeat crashers (>=3 crashes in 24h),
     disabled by default so they can't brick the session. Each entry has operator, crash_count,
