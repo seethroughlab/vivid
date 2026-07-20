@@ -566,6 +566,15 @@ struct Session {
 // the extracted param TU (vst3_host_params.cpp) can reach it (ADR-0025 split). Caller-facing helper.
 Track* graph_track(Session* s, int t);
 
+// (Re)build a track's audio graph from its native chain + republish to the audio thread. Defined in
+// vst3_host.cpp; declared here so the extracted CLAP-loader TU can rebuild a track when a plugin binds.
+void rebuild_track_graph(Track* t);
+// Async CLAP loader (defined in vst3_host_clap_loader.cpp; ADR-0025 split). enqueue_clap_load is
+// called from the plugin-node add paths in vst3_host.cpp (the default slot marks a non-slot legacy
+// load); stop_clap_loader joins the worker at session teardown.
+int  enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path, const char* state, int slot = -1);
+void stop_clap_loader(Session* s);
+
 // --- Per-source/effect RENDER PRIMITIVES (defined in vst3_host_render.cpp; ADR-0025 split PR-B). Each
 // runs one VST3/CLAP plugin for a block (or drains the notes it generated) — pure DSP over a handle.
 // process_step + session_process (in vst3_host.cpp) call these, so the inline path and the audio-graph

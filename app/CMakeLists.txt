@@ -209,6 +209,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/vst3_host_render.cpp
     src/audio/vst3_host_presets.cpp
     src/audio/vst3_host_params.cpp
+    src/audio/vst3_host_clap_loader.cpp
     src/audio/plugin_catalog.cpp
     src/audio/plugin_cache.cpp
     src/audio/plugin_probe.cpp
