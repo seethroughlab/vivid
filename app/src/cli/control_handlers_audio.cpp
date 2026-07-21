@@ -67,6 +67,15 @@ void register_audio_handlers(Handlers& handlers_) {
         P::session_set_master_gain(c.session, b.value("gain", 1.0f));
         return ok();
     };
+    // Scene-launch quantization in bars: a queued scene switch waits until the next N-bar boundary
+    // (1 = next bar; typically 4 = let the current phrase finish). Persisted per project.
+    handlers_["set_launch_quantize"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int bars = b.value("bars", 1);
+        if (bars < 1) return err(code::kBadArg, "bars must be >= 1");
+        P::session_set_launch_quantum_bars(c.session, bars);
+        json r = ok(); r["bars"] = P::session_launch_quantum_bars(c.session); return r;
+    };
     // ADR-0022 P1b.4: solo/mute. Silence a track in the master mix (mute), or hear only the
     // soloed track(s) (solo). The track's own meter stays pre-mute.
     handlers_["set_track_mute"] = [](const ControlCtx& c, const json& b) {

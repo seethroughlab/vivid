@@ -31,6 +31,11 @@ bool transport_mouse(Window& win, App& app, int button, int action, double mx, d
         S::session_set_metronome(app.session, S::session_get_metronome(app.session) ? 0 : 1);
         return true;
     }
+    if (app.session && hit(transport_quant_rect(), mx, my)) {   // cycle scene-launch quantize 1→2→4→8
+        const int q = S::session_launch_quantum_bars(app.session);
+        S::session_set_launch_quantum_bars(app.session, q < 2 ? 2 : q < 4 ? 4 : q < 8 ? 8 : 1);
+        return true;
+    }
     return false;
 }
 

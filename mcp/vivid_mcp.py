@@ -520,6 +520,17 @@ def set_master_gain(gain: float) -> dict:
 
 
 @mcp.tool
+def set_launch_quantize(bars: int) -> dict:
+    """Set the scene-launch quantization, in bars.
+
+    A queued scene switch (launch_scene / launch_clip) takes effect at the next N-bar
+    boundary instead of switching mid-clip. bars=1 is the default (next bar); 4 is a
+    common phrase length ("let the current phrase finish before switching"). Persisted
+    with the project; reported as 'launch_quantum_bars' in get_session. bars must be >= 1."""
+    return _post("set_launch_quantize", {"bars": bars})
+
+
+@mcp.tool
 def set_track_mute(track: int, mute: bool = True) -> dict:
     """Mute/unmute a track in the master mix. The track's own meter stays pre-mute.
 

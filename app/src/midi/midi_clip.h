@@ -71,11 +71,14 @@ struct MidiClip {
     double loop_hi() const { return (loop_end > loop_start + 1e-9) ? std::min(length, loop_end) : length; }
 };
 
-// Stateless w.r.t. the playhead (it reads absolute transport beats each block);
-// the only carried state is the set of sounding notes awaiting their note-off.
+// The playhead is transport beats measured RELATIVE to `launch_beat_` (the beat the clip was
+// (re)launched on) so a clip launched mid-playback starts from its own beat 0 — Ableton "launch"
+// semantics — instead of inheriting global transport phase. Carried state: the sounding notes
+// awaiting their note-off, plus that launch origin.
 struct ClipScheduler {
     const MidiClip* clip = nullptr;
     int32_t note_id_seq = 0;
+    double  launch_beat_ = 0.0;   // transport beat this clip was launched on (playhead origin)
     // Carries what per-note expression sampling needs: the note's clip-local start +
     // duration, a pointer to its curves, the last value emitted per axis (dedupe), and
     // whether it turned on this block (so its start point emits at the note-on offset,
@@ -89,7 +92,9 @@ struct ClipScheduler {
     };
     std::vector<Active> active;
 
-    void reset(const MidiClip* c) { clip = c; note_id_seq = 0; active.clear(); }
+    void reset(const MidiClip* c, double launch_beat = 0.0) {
+        clip = c; launch_beat_ = launch_beat; note_id_seq = 0; active.clear();
+    }
 
     // Call whenever clip->notes is re-assigned (edit-apply): the `src` pointers in
     // `active` point into the old (now-freed) notes vector. Null them so the expression
@@ -105,7 +110,9 @@ struct ClipScheduler {
         const double lo = clip->loop_lo(), hi = clip->loop_hi();   // in-clip loop region
         const double L = hi - lo;                                  // loop period
         if (L <= 0.0) return;
-        double p0 = lo + std::fmod(block_start_beats, L);          // clip-local playhead within [lo, hi)
+        double rel = block_start_beats - launch_beat_;             // beats since this clip launched
+        if (rel < 0.0) { launch_beat_ = block_start_beats; rel = 0.0; }  // transport rewound → re-anchor
+        double p0 = lo + std::fmod(rel, L);                        // clip-local playhead within [lo, hi)
         if (p0 < lo) p0 += L;
         const double p1 = p0 + delta;  // may exceed hi (block wraps the loop)
 

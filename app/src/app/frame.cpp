@@ -10,6 +10,7 @@
 #include "app/crash_recovery.h"   // ADR-0018 warm crash-attribution snapshot
 #include <ctime>                  // ADR-0018 std::time for the autosave meta stamp
 #include "app/window.h"
+#include "app/project_paths.h"   // is_folder_project — derive the window-title name from the project path
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "gpu/gpu_context.h"
@@ -124,15 +125,21 @@ void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
     const float fx = x + 16.f, fy = y + 44.f, fw = w - 32.f, fh = 30.f;
     ui.draw_rect(fx, fy, fw, fh, 0.055f, 0.065f, 0.080f, 1.0f);
     ui.draw_rect_outline(fx, fy, fw, fh, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    const float tx = fx + 10.f, ty = fy + 8.f;
+    const bool caret_on = std::fmod(glfwGetTime(), 1.0) < 0.55;   // ~1 Hz blink — signals the field is focused
     if (win.gemini_key_buf.empty()) {
-        ui.draw_text(fx + 10.f, fy + 8.f, "paste your key, then press Enter",
+        ui.draw_text(tx, ty, "paste your key (\xE2\x8C\x98V), then press Enter",
                      s.dim[0], s.dim[1], s.dim[2], 0.8f, 0.82f);
+        if (caret_on) ui.draw_rect(tx, ty - 1.f, 1.6f, 16.f, s.body[0], s.body[1], s.body[2], 0.9f);
     } else {
         std::string masked;
-        masked.reserve(win.gemini_key_buf.size() * 3 + 1);
+        masked.reserve(win.gemini_key_buf.size() * 3);
         for (size_t i = 0; i < win.gemini_key_buf.size(); ++i) masked += "\xE2\x80\xA2";  // •
-        masked += "\xE2\x96\x8F";  // ▏ caret
-        ui.draw_text(fx + 10.f, fy + 8.f, masked.c_str(), s.body[0], s.body[1], s.body[2], 1.0f, 0.82f);
+        ui.draw_text(tx, ty, masked.c_str(), s.body[0], s.body[1], s.body[2], 1.0f, 0.82f);
+        if (caret_on) {
+            const float cw = ui.text_width(masked.c_str(), 0.82f);
+            ui.draw_rect(tx + cw + 1.5f, ty - 1.f, 1.6f, 16.f, s.body[0], s.body[1], s.body[2], 0.9f);
+        }
     }
     ui.draw_text(fx, y + 90.f, "Enter to save    \xC2\xB7    Esc to cancel",
                  s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.80f);
@@ -415,6 +422,7 @@ void run_frame_loop(App& app, Window& win) {
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
+    std::string last_title;              // window title = current project name; re-set only when it changes
     double last_autosave = 0.0;          // ADR-0018: throttle periodic autosave (glfwGetTime seconds)
     double last_snapshot = 0.0;          // ADR-0018: throttle the crash-attribution warm snapshot
     auto tick = [&]() -> bool {
@@ -674,6 +682,21 @@ void run_frame_loop(App& app, Window& win) {
             if (cur_dirty != last_dirty) {
                 last_dirty = cur_dirty;
                 vivid::platform::set_document_edited(cur_dirty != 0);
+            }
+            // Show the current project's name in the window title (like a document-based app). The
+            // macOS edited-dot (above) carries the dirty state, so the title stays just the name.
+            {
+                std::string title = "Vivid";
+                const std::string& pp = app.project.current_project_path;
+                if (pp.empty()) {
+                    title += " \xE2\x80\x94 Untitled";
+                } else {
+                    const std::filesystem::path p(pp);
+                    title += " \xE2\x80\x94 " +
+                             (vivid::project_paths::is_folder_project(pp) ? p.filename().string()
+                                                                          : p.stem().string());
+                }
+                if (title != last_title) { last_title = title; glfwSetWindowTitle(window, title.c_str()); }
             }
             // ADR-0018: periodic autosave — every kAutosaveSecs while the document is dirty, so a
             // crash or kill loses at most that interval. Cleared on a real save (file_actions).

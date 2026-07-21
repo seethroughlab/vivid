@@ -526,7 +526,11 @@ struct Session {
     // ADR-0022 P3.3: per-scene display names (the "named" in "a scene is a NAMED set of bindings").
     // UI-thread only; NEVER read on the audio thread. Sized lazily to `scenes`; default "A","B",…
     std::vector<std::string> scene_names;
-    long long last_bar = -1;
+    // Scene-launch quantization: a queued scene switch takes effect at the next `launch_quantum_bars`-
+    // bar boundary (1 = the next bar; typically 4 = let the phrase finish). `last_launch_q` tracks the
+    // last quantum index seen on the audio thread so the boundary is detected once.
+    std::atomic<int> launch_quantum_bars{1};
+    long long        last_launch_q = -1;
     uint32_t  sample_rate = 0;
     // Live MIDI input (M6): monitored/recorded notes flow through `live_in` to the armed
     // track's instrument. `armed_track` is a stable track id (-1 = none). Both are read on
