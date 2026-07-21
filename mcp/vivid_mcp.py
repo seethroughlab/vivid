@@ -10,6 +10,7 @@ joined by a mapping bridge (audio characteristics -> visual params, and back).
 """
 import os
 import sys
+import time
 import httpx
 from fastmcp import FastMCP
 
@@ -1802,6 +1803,78 @@ def get_authoring_guide() -> dict:
             "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
         },
     }
+
+
+# ---- ADR-0026: in-app Gemini music evaluation (semantic, intent-aware) ----
+
+def _meval_poll(job_id: int, timeout_s: float) -> dict:
+    """Poll music_eval_result until the async Gemini job finishes (or times out)."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = _post("music_eval_result", {"job_id": job_id})
+        if r.get("ok") is False or r.get("status") in ("done", "error"):
+            return r
+        time.sleep(1.0)
+    return {"ok": False, "status": "timeout", "error": "music eval timed out"}
+
+
+@mcp.tool
+def configure_music_eval_backend(backend: str = "gemini", api_key: str = "", model: str = "") -> dict:
+    """Configure in-app music evaluation (ADR-0026). backend must be 'gemini'. Pass your Google Gemini
+    api_key (stored in the macOS Keychain, never on disk) and optionally a model (default
+    gemini-2.5-flash). Verify with music_eval_status that has_key is true before trusting any verdict:
+    with no key the eval tools fail closed (no fake results)."""
+    return _post("configure_music_eval_backend", {"backend": backend, "api_key": api_key, "model": model})
+
+
+@mcp.tool
+def music_eval_status() -> dict:
+    """Music-eval backend state: {backend: 'gemini'|'unconfigured', ready, has_key, model}. When
+    has_key is false the evaluators fail closed."""
+    return _post("music_eval_status")
+
+
+@mcp.tool
+def music_eval_result(job_id: int) -> dict:
+    """Poll a music-eval job by id: {status: 'pending'|'done'|'error', ...}. The high-level
+    evaluate_audio_musically / compare_audio_to_intent tools poll this for you."""
+    return _post("music_eval_result", {"job_id": job_id})
+
+
+@mcp.tool
+def evaluate_audio_musically(window_seconds: float = 20.0, mode: str = "caption",
+                             include_payload: bool = False) -> dict:
+    """Capture the live master output and have Gemini analyze it (ADR-0026): key, tempo,
+    instrumentation, mood, structure. mode = caption | theory | reasoning. Requires a configured
+    Gemini key (configure_music_eval_backend) — fails closed otherwise. Blocks ~5-15s while Gemini
+    runs. Returns {ok, key, tempo_bpm, instrumentation, mood, summary}."""
+    started = _post("evaluate_audio_musically", {"window_seconds": window_seconds, "mode": mode})
+    if not started.get("ok") or "job_id" not in started:
+        return started  # fail-closed / capture error passes straight through
+    r = _meval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "mode": r.get("mode", mode), "key": r.get("key"), "tempo_bpm": r.get("tempo_bpm"),
+            "instrumentation": r.get("instrumentation"), "mood": r.get("mood"), "summary": r.get("summary")}
+
+
+@mcp.tool
+def compare_audio_to_intent(intent: str = "", reference_path: str = "", window_seconds: float = 20.0,
+                            include_payload: bool = False) -> dict:
+    """Capture the live master output and have Gemini score it against a free-text intent (and/or a
+    reference clip) — the ADR-0026 quality gate. Returns match_score (0-1) plus harmony/rhythm/timbre/
+    structure sub-scores (include_payload) and ranked key_deviations. Be honest: a part described as
+    melodic that is actually a held/repeated note scores low. Requires a configured Gemini key; fails
+    closed otherwise. Blocks ~5-15s."""
+    started = _post("compare_audio_to_intent",
+                    {"intent": intent, "reference_path": reference_path, "window_seconds": window_seconds})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _meval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "match_score": r.get("match_score"),
+            "key_deviations": r.get("key_deviations", []), "summary": r.get("summary")}
 
 
 if __name__ == "__main__":

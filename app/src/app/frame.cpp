@@ -112,6 +112,34 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     wgpuRenderPassEncoderRelease(pass);
 }
 
+// ADR-0026: the Gemini-key entry modal — a centered panel with a masked field. Input (type / Enter /
+// Esc) is handled in input.cpp while win.show_gemini_key; this only draws.
+void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
+    const Style& s = style();
+    const float w = 480.f, h = 156.f;
+    const float x = (win.win_w - w) * 0.5f, y = (win.win_h - h) * 0.5f;
+    overlay_panel(ui, { x, y, w, h }, "SET GEMINI KEY", s.gold, true,
+                  { 0.f, 0.f, static_cast<float>(win.win_w), static_cast<float>(win.win_h) });
+    // The masked field: a • per typed character, plus a caret. Empty → a dim placeholder.
+    const float fx = x + 16.f, fy = y + 44.f, fw = w - 32.f, fh = 30.f;
+    ui.draw_rect(fx, fy, fw, fh, 0.055f, 0.065f, 0.080f, 1.0f);
+    ui.draw_rect_outline(fx, fy, fw, fh, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    if (win.gemini_key_buf.empty()) {
+        ui.draw_text(fx + 10.f, fy + 8.f, "paste your key, then press Enter",
+                     s.dim[0], s.dim[1], s.dim[2], 0.8f, 0.82f);
+    } else {
+        std::string masked;
+        masked.reserve(win.gemini_key_buf.size() * 3 + 1);
+        for (size_t i = 0; i < win.gemini_key_buf.size(); ++i) masked += "\xE2\x80\xA2";  // •
+        masked += "\xE2\x96\x8F";  // ▏ caret
+        ui.draw_text(fx + 10.f, fy + 8.f, masked.c_str(), s.body[0], s.body[1], s.body[2], 1.0f, 0.82f);
+    }
+    ui.draw_text(fx, y + 90.f, "Enter to save    \xC2\xB7    Esc to cancel",
+                 s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.80f);
+    ui.draw_text(fx, y + 112.f, "Stored in your macOS Keychain (com.vivid.app) \xE2\x80\x94 never written to disk.",
+                 s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.72f);
+}
+
 }  // namespace
 
 void reap_plugin_windows(App& app, Window& win) {
@@ -408,6 +436,33 @@ void run_frame_loop(App& app, Window& win) {
             }
             win.last_toast_id = app.log.next_id() - 1;
         }
+        // ADR-0026: an "Evaluate Output" job (Eval menu) → toast its verdict when it lands. Polled on
+        // the UI thread; the Gemini call itself ran async off it, so this never blocks.
+        if (win.music_eval_job >= 0) {
+            const auto r = app.music_eval.poll(win.music_eval_job);
+            const std::string st = r.value("status", std::string("pending"));
+            if (st != "pending") {
+                win.music_eval_job = -1;
+                std::string msg;
+                vivid::LogLevel lvl = vivid::LogLevel::Info;
+                if (st == "done") {
+                    msg = "Eval: ";
+                    const std::string k = r.value("key", std::string());
+                    if (!k.empty()) msg += k + "  \xC2\xB7  ";
+                    if (r.contains("tempo_bpm") && r["tempo_bpm"].is_number()) {
+                        char b[24]; std::snprintf(b, sizeof b, "%.0f BPM  \xC2\xB7  ", r["tempo_bpm"].get<double>());
+                        msg += b;
+                    }
+                    msg += r.value("summary", std::string());
+                } else {
+                    lvl = vivid::LogLevel::Warning;
+                    msg = "Eval failed: ";
+                    if (r.contains("error") && r["error"].contains("message"))
+                        msg += r["error"]["message"].get<std::string>();
+                }
+                vivid::ui::push_toast(win.toasts, lvl, msg, glfwGetTime(), 12.0);
+            }
+        }
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
         // armed track's instrument (so all Session access stays on the UI thread).
@@ -535,6 +590,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
+            if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);

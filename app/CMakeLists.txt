@@ -228,6 +228,9 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/file_dialog_stub.cpp
     src/platform/menu_bar_stub.cpp
     src/platform/midi_input_stub.cpp
+    src/platform/gemini_client_stub.cpp
+    src/platform/secret_store_stub.cpp
+    src/audio/music_eval.cpp
     src/persist.cpp
     src/persist_undo.cpp
     src/operator_api/operator_descriptor_validation.cpp
@@ -258,6 +261,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_project.cpp
     src/cli/control_handlers_packages.cpp
     src/cli/control_handlers_edit.cpp
+    src/cli/control_handlers_music_eval.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -283,6 +287,8 @@ if(APPLE)
         src/platform/file_dialog.mm
         src/platform/menu_bar.mm
         src/platform/midi_input.mm
+        src/platform/gemini_client_macos.mm
+        src/platform/secret_store_macos.mm
         platform/macos/Vivid.icns)   # app icon (the node-graph "V"), copied into Resources below
     set_source_files_properties(platform/macos/Vivid.icns PROPERTIES
         MACOSX_PACKAGE_LOCATION Resources)
@@ -405,7 +411,7 @@ if(APPLE)
     target_link_libraries(vivid PRIVATE
         "-framework Cocoa" "-framework Metal" "-framework QuartzCore"
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
-        "-framework CoreMIDI" "-framework CoreFoundation"
+        "-framework CoreMIDI" "-framework CoreFoundation" "-framework Security"
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
 endif()
 

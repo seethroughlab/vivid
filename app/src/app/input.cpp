@@ -42,6 +42,25 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
     vivid::App* app = win->app;
+    // ADR-0026: the Gemini-key modal owns the keyboard while open — before every chooser / typing /
+    // shortcut, or the key text would leak into the graph. Enter saves to the Keychain; Esc cancels.
+    if (win->show_gemini_key) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+            if (key == GLFW_KEY_ESCAPE) { win->show_gemini_key = false; win->gemini_key_buf.clear(); }
+            else if (key == GLFW_KEY_BACKSPACE) { if (!win->gemini_key_buf.empty()) win->gemini_key_buf.pop_back(); }
+            else if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+                const std::string k = win->gemini_key_buf;
+                win->show_gemini_key = false; win->gemini_key_buf.clear();
+                if (!k.empty()) {
+                    app->music_eval.configure(k, "");   // writes the Keychain (may prompt on first save)
+                    vivid::ui::push_toast(win->toasts, vivid::LogLevel::Info,
+                        app->music_eval.has_key() ? "Gemini key saved to Keychain" : "Could not save key",
+                        glfwGetTime());
+                }
+            }
+        }
+        return;  // swallow all keys while the modal is up
+    }
     // The operator chooser captures the keyboard while open (repeat allowed for nav).
     if (app->graph && app->graph->chooser_open()) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) {
@@ -119,6 +138,10 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
 void char_callback(GLFWwindow* w, unsigned int cp) {
     auto* win = static_cast<vivid::Window*>(glfwGetWindowUserPointer(w));
     if (!win) return;
+    if (win->show_gemini_key) {   // ADR-0026: type printable ASCII into the key buffer (masked on draw)
+        if (cp >= 0x20 && cp < 0x7f) win->gemini_key_buf.push_back(static_cast<char>(cp));
+        return;
+    }
     if (vivid::input::audio_chooser_char(*win, cp)) return;    // the audio chooser has the keyboard
     if (vivid::input::param_chooser_char(*win, cp)) return;    // ...or the "+ Add param" palette (Phase 2c)
     if (win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);

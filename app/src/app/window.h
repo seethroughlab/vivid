@@ -122,6 +122,12 @@ struct Window {
     HealthSnapshot health;                    // ADR-0019: refreshed once per frame; read by the dot + panel
     std::vector<ui::Toast> toasts;            // ADR-0019: live transient notifications (bottom-right)
     uint64_t last_toast_id = 0;               // highest log id already turned into a toast (gate)
+    // ADR-0026: the Gemini-key entry modal (Eval ▸ Set Gemini Key…) + an in-flight "Evaluate Output"
+    // job whose verdict becomes a toast when it lands. The key itself lives in the Keychain, not here;
+    // `gemini_key_buf` is only the transient text being typed. music_eval_job = -1 means none pending.
+    bool        show_gemini_key = false;
+    std::string gemini_key_buf;
+    int         music_eval_job  = -1;
     CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
     ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover

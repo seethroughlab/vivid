@@ -207,6 +207,7 @@ void register_audio_handlers(Handlers& handlers_) {
     register_audio_device_handlers(handlers_);
     register_audio_graph_handlers(handlers_);
     register_audio_catalog_handlers(handlers_);
+    register_music_eval_handlers(handlers_);
 
 }
 

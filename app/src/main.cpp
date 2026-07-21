@@ -334,6 +334,25 @@ int main(int argc, char** argv) {
         // ADR-0017/G4: Edit > Undo/Redo. app.edit_gateway is created below (read at click time).
         ma.undo            = [&] { if (app.edit_gateway) app.edit_gateway->undo(); };
         ma.redo            = [&] { if (app.edit_gateway) app.edit_gateway->redo(); };
+        // ADR-0026: the Eval menu. "Set Gemini Key…" opens the in-app modal (input.cpp owns the
+        // keyboard while it's up). "Evaluate Output" captures 20s of the live master and kicks off an
+        // async Gemini eval; the frame loop toasts the verdict when the job lands. Fail-closed here too.
+        ma.set_gemini_key  = [&] { win.show_gemini_key = true; win.gemini_key_buf.clear(); };
+        ma.evaluate_output = [&] {
+            if (!app.music_eval.has_key()) {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                    "No Gemini key — Eval \xE2\x96\xB8 Set Gemini Key\xE2\x80\xA6", glfwGetTime());
+                return;
+            }
+            std::vector<float> L, R; uint32_t sr = 0;
+            if (!app.transport || app.transport->capture_snapshot(20.0, L, R, &sr) == 0 || sr == 0) {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                    "Nothing playing to evaluate", glfwGetTime());
+                return;
+            }
+            win.music_eval_job = app.music_eval.start_eval(vivid::pcm16_wav_from_planar(L, R, sr), "caption");
+            vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, "Evaluating output\xE2\x80\xA6", glfwGetTime());
+        };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
