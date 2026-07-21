@@ -1506,6 +1506,9 @@ void session_set_track_solo(Session* s, int t, bool so) {
 float session_master_gain(Session* s) { return s ? s->master.gain.load(std::memory_order_relaxed) : 1.f; }
 int   session_master_gnid(Session* s) { return s ? s->master.gnid : -1; }   // ADR-0022 P2b.3c: the sink's global node id
 void  session_set_master_gain(Session* s, float g) { if (s) s->master.gain.store(std::max(0.f, g), std::memory_order_relaxed); }
+// Scene-launch quantization in bars (1 = next bar; typically 4 = let the phrase finish).
+int   session_launch_quantum_bars(Session* s) { return s ? s->launch_quantum_bars.load(std::memory_order_relaxed) : 1; }
+void  session_set_launch_quantum_bars(Session* s, int bars) { if (s) s->launch_quantum_bars.store(std::max(1, bars), std::memory_order_relaxed); }
 float session_master_level(Session* s) { return s ? s->master.level.load(std::memory_order_relaxed) : 0.f; }
 float session_master_transient(Session* s) { return s ? s->master.transient.load(std::memory_order_relaxed) : 0.f; }
 float session_master_band(Session* s, int b) {
@@ -1996,9 +1999,13 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
     }
 
     const uint32_t bpb = beats_per_bar ? beats_per_bar : 4;
-    const long long bar = static_cast<long long>(std::floor(beats / bpb));
-    const bool new_bar = bar != s->last_bar;
-    s->last_bar = bar;
+    // Scene switches fire on the next launch-quantization boundary (every `launch_quantum_bars` bars;
+    // 1 = every bar). Beat 0 is a boundary (q_idx 0 != initial -1), so a scene queued before playback
+    // starts launches immediately rather than waiting a phrase.
+    const int qbars = std::max(1, s->launch_quantum_bars.load(std::memory_order_relaxed));
+    const long long q_idx = static_cast<long long>(std::floor(beats / (static_cast<double>(bpb) * qbars)));
+    const bool new_launch = q_idx != s->last_launch_q;
+    s->last_launch_q = q_idx;
     const double delta = frames * (bpm / 60.0) / (sample_rate > 0 ? sample_rate : 48000);
 
     // ADR-0022 P2a.1b: apply each track's pending audio-graph plan swap (P1b.2 handoff) for EVERY
@@ -2103,8 +2110,8 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
         }
         if (t.is_audio) {
-            // Bar-quantized scene switch (a transport action the Sampler graph node reads each block).
-            if (new_bar) {
+            // Quantized scene switch (a transport action the Sampler graph node reads each block).
+            if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
@@ -2112,7 +2119,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         } else {
             t.vev.clear();   // this block's VST3 event list (on the Track so the graph node can read it)
             t.scene_rel.clear();   // scene-switch note-offs for the CLAP path (parallel to t.vev)
-            if (new_bar) {
+            if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 const int old_scene = t.active.load(std::memory_order_relaxed);
                 if (q >= 0 && q != old_scene && q < static_cast<int>(t.clips.size())) {
@@ -2130,7 +2137,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                         }
                     emit_vst3(t.vev, t.nev, t.eev);
                     t.scene_rel.assign(t.nev.begin(), t.nev.end());   // keep the releases for CLAP (t.nev is cleared below)
-                    t.sched.reset(&t.clips[q]);
+                    t.sched.reset(&t.clips[q], beats);   // anchor the launched clip to THIS bar so it starts at its beat 0
                     t.active.store(q, std::memory_order_relaxed);
                 }
                 if (q >= 0) t.queued.store(-1, std::memory_order_relaxed);
@@ -2555,10 +2562,16 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
     const GNodeBind& nb = tr->agnodes[i];
     if (nb.op) return vivid::audio_op_type(nb.op);
     if (nb.clap) return nb.clap->name.c_str();          // CLAP nodes: the plugin's display name
-    switch (nb.kind) {                                   // VST3/sampler nodes have no AudioOp
-        case GNKind::Vst3Inst: case GNKind::Vst3Fx: return "VST3";
-        case GNKind::Sampler:                       return "Sampler";
-        default:                                    return "";
+    switch (nb.kind) {                                   // VST3/sampler/internal nodes have no AudioOp
+        case GNKind::Vst3Inst: case GNKind::Vst3Fx:      // VST3: the plugin's own name, not just "VST3"
+            return (nb.handle && !nb.handle->plugin_name.empty()) ? nb.handle->plugin_name.c_str() : "VST3";
+        case GNKind::Sampler:  return "Sampler";
+        // The derived note-path nodes every instrument track carries — label them instead of "?".
+        case GNKind::MidiIn:   return "MIDI In";
+        case GNKind::Selector: return "Notes";
+        case GNKind::MidiClip: return "Clip";
+        case GNKind::Output:   return "Output";
+        default:               return "";
     }
 }
 // Persistence discriminator for a node's binding family (the UI-facing node_type returns the
@@ -3561,6 +3574,7 @@ int session_add_instrument_track(Session* s, const char* instrument) {
     if (!h) { std::fprintf(stderr, "[Session] add track: no instrument matched '%s'\n", instrument); return -1; }
     s->tracks.emplace_back(make_instrument_track(h, name, s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_graph(s->tracks.back().get());   // derive the source->Output plan NOW (else gok=false → silent)
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + track %d: %s\n", idx, name.c_str());
@@ -3583,7 +3597,8 @@ int session_add_audio_track(Session* s) {
     configure_track_capture(at.get(), s->sample_rate);
     s->tracks.emplace_back(std::move(at));
     s->tracks.back()->id = s->next_track_id++;
-    rebuild_track_view(s);
+    rebuild_track_graph(s->tracks.back().get());   // derive the Sampler->Output plan NOW (else gok=false → silent):
+    rebuild_track_view(s);                          // parity with session_create's line-951 up-front derive.
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);
     return idx;
@@ -3738,6 +3753,7 @@ int session_add_graph_track(Session* s, const char* name) {
     if (!s || static_cast<int>(s->tracks.size()) >= kMaxTracks) return -1;
     s->tracks.emplace_back(make_instrument_track(nullptr, (name && *name) ? name : "Graph", s->scenes, s->sample_rate));
     s->tracks.back()->id = s->next_track_id++;
+    rebuild_track_graph(s->tracks.back().get());   // derive the plan NOW (parity with session_create's line-951 up-front derive)
     rebuild_track_view(s);
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + graph track %d: %s\n", idx, s->tracks.back()->name.c_str());

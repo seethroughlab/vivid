@@ -12,6 +12,7 @@
 #include "gpu/file_drop_registry.h" // FileDropRegistry (ADR-0021/P3: drop a file -> the op for it)
 #include "packages/hot_reload_manager.h"   // live operator hot-reload (opt-in/dev)
 #include "platform/midi_input.h"           // hardware MIDI input (M6.4)
+#include "audio/music_eval.h"              // ADR-0026: in-app Gemini music evaluation
 
 namespace vivid {
 class GpuContext;
@@ -56,6 +57,7 @@ struct App {
     HotReloadManager hot_reload;   // watches operator sources + live-swaps (opt-in)
     platform::MidiInput midi_in;   // hardware MIDI input; drained each frame to the armed track (M6.4)
     Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
+    MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
 
     int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline

@@ -40,6 +40,7 @@ inline Rect sidebar_toggle_rect() { return { 96.f, 11.f, 20.f, 18.f }; }
 inline Rect transport_play_rect() { return { 300.f, 11.f, 18.f, 18.f }; }
 inline Rect transport_record_rect() { return { 500.f, 11.f, 18.f, 18.f }; }   // record toggle
 inline Rect transport_metro_rect()  { return { 524.f, 11.f, 18.f, 18.f }; }   // metronome toggle
+inline Rect transport_quant_rect()  { return { 600.f, 10.f, 60.f, 20.f }; }   // scene-launch quantize pill
 // ADR-0019 health rollup: a status dot right-aligned in the transport bar; click opens diagnostics.
 inline Rect health_dot_rect(int win_w) { return { static_cast<float>(win_w) - 26.f, 14.f, 12.f, 12.f }; }
 inline Rect track_header_rect(int t) { return { track_x(t), kHeaderY, kTrackW, kHeaderH }; }

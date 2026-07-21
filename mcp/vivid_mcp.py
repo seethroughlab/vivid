@@ -10,6 +10,7 @@ joined by a mapping bridge (audio characteristics -> visual params, and back).
 """
 import os
 import sys
+import time
 import httpx
 from fastmcp import FastMCP
 
@@ -516,6 +517,17 @@ def set_master_gain(gain: float) -> dict:
     The master node sums every track's output; its gain + meters are reported under
     the 'master' key of list_tracks."""
     return _post("set_master_gain", {"gain": gain})
+
+
+@mcp.tool
+def set_launch_quantize(bars: int) -> dict:
+    """Set the scene-launch quantization, in bars.
+
+    A queued scene switch (launch_scene / launch_clip) takes effect at the next N-bar
+    boundary instead of switching mid-clip. bars=1 is the default (next bar); 4 is a
+    common phrase length ("let the current phrase finish before switching"). Persisted
+    with the project; reported as 'launch_quantum_bars' in get_session. bars must be >= 1."""
+    return _post("set_launch_quantize", {"bars": bars})
 
 
 @mcp.tool
@@ -1232,6 +1244,17 @@ def pool_remove(index: int) -> dict:
 
 
 @mcp.tool
+def import_audio_clip(track: int, scene: int, path: str, src_bpm: float = 0.0) -> dict:
+    """Import an audio file (.wav/.aif/.flac/.mp3) into a sampler track's scene clip, decoding
+    and resampling to the device rate. `track` must be an audio (sampler) track — make one with
+    add_track(kind="audio"). `src_bpm` (0 = unknown) seeds warp/BPM estimation; follow with
+    audio_auto_warp / audio_set_warp(mode="beats") to lock the loop to the project tempo.
+    Returns {track, scene, length} (length in beats). This is the way to get real recorded audio
+    into the grid so the glitch pack / warp can process it."""
+    return _post("import_audio_clip", {"track": track, "scene": scene, "path": path, "src_bpm": src_bpm})
+
+
+@mcp.tool
 def add_chord(track: int, scene: int, symbol: str, beat: float = 0.0, dur: float = 4.0,
               vel: float = 0.8, octave: int = 4, inversion: int = 0, voicing: str = "close") -> dict:
     """Append a chord to a clip by SYMBOL — e.g. "Cmaj7", "Am", "G7", "F#m7b5", "Dsus4", "C/G"
@@ -1622,6 +1645,14 @@ def set_media_root(path: str) -> dict:
     return _post("set_media_root", {"path": path})
 
 
+@mcp.tool
+def set_video_source(index: int = 0) -> dict:
+    """Select which discovered video clip the shared source texture plays (a Video visual node
+    blits that texture). set_media_root loads only clip 0; use this to pick among the clips by
+    index (wraps). Returns {index, videos, path}. Needs a media root with video files set first."""
+    return _post("set_video_source", {"index": index})
+
+
 # ---- ADR-0024 Phase 7: project workflow (inspect / resolve / reload project assets) ----
 
 @mcp.tool
@@ -1783,6 +1814,78 @@ def get_authoring_guide() -> dict:
             "key_context": "set_key is bridge-side + ephemeral (resets if the bridge restarts; not saved).",
         },
     }
+
+
+# ---- ADR-0026: in-app Gemini music evaluation (semantic, intent-aware) ----
+
+def _meval_poll(job_id: int, timeout_s: float) -> dict:
+    """Poll music_eval_result until the async Gemini job finishes (or times out)."""
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        r = _post("music_eval_result", {"job_id": job_id})
+        if r.get("ok") is False or r.get("status") in ("done", "error"):
+            return r
+        time.sleep(1.0)
+    return {"ok": False, "status": "timeout", "error": "music eval timed out"}
+
+
+@mcp.tool
+def configure_music_eval_backend(backend: str = "gemini", api_key: str = "", model: str = "") -> dict:
+    """Configure in-app music evaluation (ADR-0026). backend must be 'gemini'. Pass your Google Gemini
+    api_key (stored in the macOS Keychain, never on disk) and optionally a model (default
+    gemini-2.5-flash). Verify with music_eval_status that has_key is true before trusting any verdict:
+    with no key the eval tools fail closed (no fake results)."""
+    return _post("configure_music_eval_backend", {"backend": backend, "api_key": api_key, "model": model})
+
+
+@mcp.tool
+def music_eval_status() -> dict:
+    """Music-eval backend state: {backend: 'gemini'|'unconfigured', ready, has_key, model}. When
+    has_key is false the evaluators fail closed."""
+    return _post("music_eval_status")
+
+
+@mcp.tool
+def music_eval_result(job_id: int) -> dict:
+    """Poll a music-eval job by id: {status: 'pending'|'done'|'error', ...}. The high-level
+    evaluate_audio_musically / compare_audio_to_intent tools poll this for you."""
+    return _post("music_eval_result", {"job_id": job_id})
+
+
+@mcp.tool
+def evaluate_audio_musically(window_seconds: float = 20.0, mode: str = "caption",
+                             include_payload: bool = False) -> dict:
+    """Capture the live master output and have Gemini analyze it (ADR-0026): key, tempo,
+    instrumentation, mood, structure. mode = caption | theory | reasoning. Requires a configured
+    Gemini key (configure_music_eval_backend) — fails closed otherwise. Blocks ~5-15s while Gemini
+    runs. Returns {ok, key, tempo_bpm, instrumentation, mood, summary}."""
+    started = _post("evaluate_audio_musically", {"window_seconds": window_seconds, "mode": mode})
+    if not started.get("ok") or "job_id" not in started:
+        return started  # fail-closed / capture error passes straight through
+    r = _meval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "mode": r.get("mode", mode), "key": r.get("key"), "tempo_bpm": r.get("tempo_bpm"),
+            "instrumentation": r.get("instrumentation"), "mood": r.get("mood"), "summary": r.get("summary")}
+
+
+@mcp.tool
+def compare_audio_to_intent(intent: str = "", reference_path: str = "", window_seconds: float = 20.0,
+                            include_payload: bool = False) -> dict:
+    """Capture the live master output and have Gemini score it against a free-text intent (and/or a
+    reference clip) — the ADR-0026 quality gate. Returns match_score (0-1) plus harmony/rhythm/timbre/
+    structure sub-scores (include_payload) and ranked key_deviations. Be honest: a part described as
+    melodic that is actually a held/repeated note scores low. Requires a configured Gemini key; fails
+    closed otherwise. Blocks ~5-15s."""
+    started = _post("compare_audio_to_intent",
+                    {"intent": intent, "reference_path": reference_path, "window_seconds": window_seconds})
+    if not started.get("ok") or "job_id" not in started:
+        return started
+    r = _meval_poll(started["job_id"], max(30.0, window_seconds + 90.0))
+    if include_payload or not r.get("ok", True):
+        return r
+    return {"ok": True, "match_score": r.get("match_score"),
+            "key_deviations": r.get("key_deviations", []), "summary": r.get("summary")}
 
 
 if __name__ == "__main__":

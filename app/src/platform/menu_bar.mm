@@ -30,6 +30,8 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 }
 - (void)doUndo:(id)sender { (void)sender; if (vivid::platform::g_actions.undo) vivid::platform::g_actions.undo(); }
 - (void)doRedo:(id)sender { (void)sender; if (vivid::platform::g_actions.redo) vivid::platform::g_actions.redo(); }
+- (void)setGeminiKey:(id)sender   { (void)sender; if (vivid::platform::g_actions.set_gemini_key)  vivid::platform::g_actions.set_gemini_key(); }
+- (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
@@ -99,6 +101,19 @@ void install_menu_bar(const MenuActions& actions) {
         [editItem setSubmenu:editMenu];
         [mainMenu insertItem:editItem atIndex:insertAt + 1];   // right after File
         [editItem release]; [editMenu release];   // retained by mainMenu (items retained by editMenu)
+
+        // Eval menu (ADR-0026). "Set Gemini Key…" opens the in-app key modal; "Evaluate Output" runs
+        // a one-shot Gemini evaluation of the live master and toasts the verdict. No key-equivalents.
+        NSMenu* evalMenu = [[NSMenu alloc] initWithTitle:@"Eval"];
+        [evalMenu setAutoenablesItems:NO];
+        it = [[NSMenuItem alloc] initWithTitle:@"Set Gemini Key…" action:@selector(setGeminiKey:) keyEquivalent:@""];
+        [it setTarget:g_target]; [evalMenu addItem:it]; [it release];
+        it = [[NSMenuItem alloc] initWithTitle:@"Evaluate Output" action:@selector(evaluateOutput:) keyEquivalent:@""];
+        [it setTarget:g_target]; [evalMenu addItem:it]; [it release];
+        NSMenuItem* evalItem = [[NSMenuItem alloc] initWithTitle:@"Eval" action:nil keyEquivalent:@""];
+        [evalItem setSubmenu:evalMenu];
+        [mainMenu insertItem:evalItem atIndex:insertAt + 2];   // right after Edit
+        [evalItem release]; [evalMenu release];   // retained by mainMenu
     }
 }
 

@@ -291,10 +291,14 @@ ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeou
 
     posix_spawn_file_actions_t fa;
     posix_spawn_file_actions_init(&fa);
-    posix_spawn_file_actions_adddup2(&fa, fds[1], kProbeVerdictFd);   // the verdict channel, ours alone
+    posix_spawn_file_actions_adddup2(&fa, fds[1], kProbeVerdictFd);   // the verdict channel
+    // ALSO fold the child's stdout into the same pipe. Some plugins close fd 3 while loading (Sitala
+    // does), which makes the child fall back to writing its verdict on stdout — so if we don't capture
+    // stdout we get an EMPTY verdict and wrongly poison a perfectly good plugin. Banners on stdout are
+    // harmless: the reader scans for the one JSON line carrying our "cls" key.
+    posix_spawn_file_actions_adddup2(&fa, fds[1], STDOUT_FILENO);
     posix_spawn_file_actions_addclose(&fa, fds[0]);
-    // The child's stdout AND stderr stay attached to ours: whatever the plugin prints lands in our
-    // log, where it is useful and — now that the verdict has its own descriptor — harmless.
+    // The child's stderr stays attached to ours (plugin logs land in our log, useful for debugging).
     pid_t pid = -1;
     const int rc = ::posix_spawn(&pid, exe.c_str(), &fa, nullptr,
                                  const_cast<char* const*>(argv), environ);
@@ -309,7 +313,27 @@ ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeou
       while ((n = ::read(fds[0], chunk, sizeof chunk)) > 0) buf.append(chunk, static_cast<std::size_t>(n)); }
     ::close(fds[0]);
 
-    // Reap, with a deadline: a plugin that HANGS would otherwise hang the worker forever.
+    // Parse the verdict the child already emitted (one line, written BEFORE it tears down). A
+    // self-declared-OK verdict means the risky step — reading the plugin's factory descriptor —
+    // already succeeded; a crash or hang on TEARDOWN afterward (Sitala and plenty of others unload
+    // messily) is benign and must NOT poison an otherwise-loadable plugin. So capture an ok verdict
+    // up front and let it stand regardless of how the process finally exits.
+    // The verdict is one JSON line; with the child's stdout folded in, plugin banners may surround
+    // it. Scan for the last line that parses as an object carrying our "cls" key.
+    json verdict;
+    bool parsed = false;
+    for (std::size_t start = 0; start < buf.size();) {
+        const std::size_t nl = buf.find('\n', start);
+        const std::string ln = buf.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
+        start = (nl == std::string::npos) ? buf.size() : nl + 1;
+        if (ln.find("\"cls\"") == std::string::npos) continue;
+        try { json j = json::parse(ln); if (j.is_object() && j.contains("cls")) { verdict = std::move(j); parsed = true; } }
+        catch (...) {}
+    }
+    const bool ok_verdict = parsed && verdict.value("ok", false);
+
+    // Reap, with a deadline: a plugin that HANGS *before* emitting a verdict would otherwise hang the
+    // worker forever. On timeout we SIGKILL — but a verdict it already gave us still counts.
     int status = 0;
     bool reaped = false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -320,21 +344,23 @@ ProbeRun probe_plugin_subprocess(const std::string& path, int format, int timeou
         if (std::chrono::steady_clock::now() >= deadline) {
             ::kill(pid, SIGKILL);
             ::waitpid(pid, &status, 0);
-            out.crashed = true;   // hung: never probe it again on our own
-            return out;
+            break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    // Died on a signal (segfault in the plugin's static initializers, etc.) -> poison.
-    if (!reaped || !WIFEXITED(status) || WEXITSTATUS(status) != 0) { out.crashed = true; return out; }
 
-    try {
-        const json j = json::parse(buf);
-        out.cls    = j.value("cls", static_cast<int>(kClassFailed));
-        out.name   = j.value("name", std::string());
-        out.vendor = j.value("vendor", std::string());
-        out.uid    = j.value("uid", std::string());
-    } catch (...) {
+    // Poison ONLY a plugin that gave us nothing usable AND died/hung — i.e. crashed while reading its
+    // own factory (a real hazard). A clean exit with a definite verdict (even ok:false) is trusted;
+    // so is an ok verdict followed by a messy teardown.
+    const bool clean_exit = reaped && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    if (!ok_verdict && !clean_exit) { out.crashed = true; return out; }
+
+    if (parsed) {
+        out.cls    = verdict.value("cls", static_cast<int>(kClassFailed));
+        out.name   = verdict.value("name", std::string());
+        out.vendor = verdict.value("vendor", std::string());
+        out.uid    = verdict.value("uid", std::string());
+    } else {
         out.cls = kClassFailed;   // it exited cleanly but said nothing useful
     }
     return out;

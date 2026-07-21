@@ -70,6 +70,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "pool_place",            { "Add Clip",            false } },
         { "pool_remove",           { "Remove Clip",         false } },
         { "pool_stash",            { "Stash Clip",          false } },
+        { "import_audio_clip",     { "Import Audio Clip",   false } },
         // ---- audio session (G3): values (coalesce a rapid run into one entry) ----
         { "set_track_gain",        { "Set Gain",            true  } },
         { "set_master_gain",       { "Set Master Gain",     true  } },

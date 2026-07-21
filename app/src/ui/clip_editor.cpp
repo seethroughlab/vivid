@@ -50,9 +50,13 @@ void ClipEditor::set_playhead(double abs_beats) {
     playhead_ = abs_beats;
     if (!follow_ || audio_ || length_ <= 0.0 || beat_px_ <= 0.f) return;
     double p = std::fmod(abs_beats, length_); if (p < 0) p += length_;
-    const double visB = gw() / beat_px_;
-    if (p < view_beat0_ || p > view_beat0_ + visB * 0.92) {
-        view_beat0_ = p - visB * 0.1;
+    const double visB = roll_w() / beat_px_;          // visible beats in the note roll (not gw(), which includes the key sidebar)
+    if (visB >= length_) return;                       // the whole clip fits -> never scroll (view stays put across the loop)
+    // Paged follow: hold the view until the playhead leaves the current page, then jump to the page
+    // that contains it. A loop wrap (p -> ~0) lands cleanly on page 0 instead of yanking the view
+    // mid-clip.
+    if (p < view_beat0_ || p >= view_beat0_ + visB) {
+        view_beat0_ = std::floor(p / visB) * visB;
         clamp_view();
     }
 }

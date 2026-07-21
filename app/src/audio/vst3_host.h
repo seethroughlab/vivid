@@ -157,6 +157,10 @@ int   session_track_capture_snapshot(Session*, int track, double seconds,
 // ADR-0022 P1b: the master node — the session's single sink (sums the track outputs).
 float session_master_gain(Session*);
 void  session_set_master_gain(Session*, float gain);
+// Scene-launch quantization: a queued scene switch takes effect at the next N-bar boundary
+// (1 = next bar, the default; typically 4 = let the current phrase finish). Clamped to >= 1.
+int   session_launch_quantum_bars(Session*);
+void  session_set_launch_quantum_bars(Session*, int bars);
 int   session_master_gnid(Session*);                // ADR-0022 P2b.3c: the master's global node id (0)
 float session_master_level(Session*);               // master output RMS (meters)
 float session_master_transient(Session*);           // master onset detector (0..1)

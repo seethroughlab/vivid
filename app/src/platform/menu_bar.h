@@ -18,6 +18,8 @@ struct MenuActions {
     std::function<void(const std::string&)> open_example; // File > Open Example > <path> (ADR-0021/P2)
     std::function<void()> undo;   // Edit > Undo (ADR-0017/G4)
     std::function<void()> redo;   // Edit > Redo
+    std::function<void()> set_gemini_key;   // Eval > Set Gemini Key… (ADR-0026)
+    std::function<void()> evaluate_output;  // Eval > Evaluate Output
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.

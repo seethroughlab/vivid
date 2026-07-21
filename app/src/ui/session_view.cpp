@@ -459,6 +459,14 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         // a tiny triangular "metronome" glyph
         ui.draw_tri(r.x + r.w * 0.5f, r.y + 3.f, r.x + 3.f, r.y + r.h - 3.f, r.x + r.w - 3.f, r.y + r.h - 3.f, c[0], c[1], c[2], 1.0f);
     }
+    {   // scene-launch quantization pill — click to cycle 1 / 2 / 4 / 8 bars (let the phrase finish)
+        const Rect r = transport_quant_rect();
+        const bool hov = hit(r, mx, my);
+        toolbar_button(ui, r, hov);
+        const int qb = w.app->session ? vivid::session::session_launch_quantum_bars(w.app->session) : 1;
+        char qt[24]; std::snprintf(qt, sizeof qt, "Q %d bar", qb);
+        ui.draw_text(r.x + 7.f, r.y + 4.f, qt, sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label);
+    }
     if (w.typing) {
         ui.draw_rect(550.f, 12.f, 40.f, 16.f, sty.audio[0] * 0.35f, sty.audio[1] * 0.35f, sty.audio[2] * 0.35f, 1.0f);
         ui.draw_text(556.f, 14.f, "TYPE", sty.audio[0], sty.audio[1], sty.audio[2], 1.0f, sty.fs_kicker);
@@ -514,11 +522,22 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         session_header_cell(ui, a, sty.audio, ah);
         ui.draw_text(a.x + 10.f, a.y + 6.f, "+ Track", sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, sty.fs_label);
     }
-    // scene rows + clip cells
+    // scene rows + clip cells. A queued (waiting-to-launch) clip/scene FLASHES and shows a countdown
+    // bar that fills toward the next launch-quantization boundary — Ableton-style pending feedback.
+    const int q_bars = std::max(1, vivid::session::session_launch_quantum_bars(s));
+    const double q_period = 4.0 * q_bars;                              // bpb = 4
+    const float q_prog  = playing ? static_cast<float>(std::fmod(beats, q_period) / q_period) : 0.f;
+    const float q_flash = 0.18f + 0.72f * static_cast<float>(0.5 + 0.5 * std::sin(beats * 6.2831853 * 2.0));
     for (int sc = 0; sc < scenes; ++sc) {
         const Rect sb = scene_launch_rect(sc);
         const bool sh = hit(sb, mx, my);
         session_scene_button(ui, sb, sty.audio, sh);
+        bool scene_q = false;   // any track queued to this scene => the whole scene is pending
+        for (int t = 0; t < tracks && !scene_q; ++t) scene_q = vivid::session::session_queued_clip(s, t) == sc;
+        if (scene_q) {
+            ui.draw_rect_outline(sb.x, sb.y, sb.w, sb.h, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], q_flash);
+            ui.draw_rect(sb.x + 1.f, sb.y + sb.h - 3.f, (sb.w - 2.f) * q_prog, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.9f);
+        }
         const char* sl = vivid::session::session_scene_name(s, sc);   // ADR-0022 P3.3 (default "A","B",…)
         ui.draw_text(sb.x + (sb.w - ui.text_width(sl, sty.fs_body)) * 0.5f, sb.y + 5.f, sl, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_body);
         ui.draw_tri(sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 15.f, sb.x + sb.w * 0.5f - 4.f, sb.y + sb.h - 7.f, sb.x + sb.w * 0.5f + 4.f, sb.y + sb.h - 11.f, sty.dim[0], sty.dim[1], sty.dim[2], 1.0f);
@@ -531,6 +550,10 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             const float tbh = 14.f;  // title bar
             const float acc[3] = { ar, ag, ab };
             session_clip_cell(ui, r, acc, hov, on, q, tbh);
+            if (q) {   // this clip is waiting to launch — flash + a countdown bar to the launch boundary
+                ui.draw_rect_outline(r.x, r.y, r.w, r.h, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], q_flash);
+                ui.draw_rect(r.x + 1.f, r.y + r.h - 3.f, (r.w - 2.f) * q_prog, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.9f);
+            }
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
             char cn[24];

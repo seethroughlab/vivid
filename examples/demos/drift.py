@@ -60,7 +60,7 @@ def build(v: Vivid, save: bool = True):
     comp = v.add_node("Composite")
     v.connect(comp, grad, port=0)                 # A = the gradient field
     v.connect(comp, title, port=1)                # B = the title
-    v.set_node_param(comp, "mode", 0.25)          # ADD (white type glows over the field)
+    v.set_node_param(comp, "mode", 1.0)          # ADD (white type glows over the field)
     v.connect(out, comp)                          # Output <- Composite
 
     # --- the bridge : slow, gentle reactivity (smooth params only) ---

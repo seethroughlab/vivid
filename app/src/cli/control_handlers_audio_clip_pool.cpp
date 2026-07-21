@@ -70,6 +70,25 @@ void register_audio_clip_pool_handlers(Handlers& handlers_) {
         return ok();
     };
 
+    // Import an audio file (.wav/.aif/.flac/.mp3) straight into a sampler track's scene clip,
+    // decoding + resampling to the device rate and swapping it in under the audio lock. This is
+    // the MCP-native path to get REAL recorded audio into the grid (previously only session-load
+    // called the underlying engine op); it's what makes a warp/glitch example possible from a
+    // script. `src_bpm` (0 = unknown) seeds warp/BPM estimation for the imported loop.
+    handlers_["import_audio_clip"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0), scene = b.value("scene", 0);
+        json e; if (!need_track(c.session, track, e) || !need_scene(c.session, scene, e)) return e;
+        if (!P::session_track_is_audio(c.session, track)) return err(code::kBadArg, "import needs an audio (sampler) track");
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "need path");
+        const double src_bpm = b.value("src_bpm", 0.0);
+        if (!P::session_load_audio_clip(c.session, track, scene, path.c_str(), src_bpm))
+            return err(code::kIoError, "could not decode audio file: " + path);
+        json r = ok(); r["track"] = track; r["scene"] = scene;
+        r["length"] = P::session_audio_loop_beats(c.session, track, scene); return r;
+    };
+
 }
 
 }  // namespace vivid

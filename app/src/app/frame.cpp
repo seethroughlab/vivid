@@ -10,6 +10,7 @@
 #include "app/crash_recovery.h"   // ADR-0018 warm crash-attribution snapshot
 #include <ctime>                  // ADR-0018 std::time for the autosave meta stamp
 #include "app/window.h"
+#include "app/project_paths.h"   // is_folder_project — derive the window-title name from the project path
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "gpu/gpu_context.h"
@@ -110,6 +111,40 @@ void clear_pass(WGPUCommandEncoder encoder, WGPUTextureView view, float r, float
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &rp);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+}
+
+// ADR-0026: the Gemini-key entry modal — a centered panel with a masked field. Input (type / Enter /
+// Esc) is handled in input.cpp while win.show_gemini_key; this only draws.
+void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
+    const Style& s = style();
+    const float w = 480.f, h = 156.f;
+    const float x = (win.win_w - w) * 0.5f, y = (win.win_h - h) * 0.5f;
+    overlay_panel(ui, { x, y, w, h }, "SET GEMINI KEY", s.gold, true,
+                  { 0.f, 0.f, static_cast<float>(win.win_w), static_cast<float>(win.win_h) });
+    // The masked field: a • per typed character, plus a caret. Empty → a dim placeholder.
+    const float fx = x + 16.f, fy = y + 44.f, fw = w - 32.f, fh = 30.f;
+    ui.draw_rect(fx, fy, fw, fh, 0.055f, 0.065f, 0.080f, 1.0f);
+    ui.draw_rect_outline(fx, fy, fw, fh, 1.f, s.border[0], s.border[1], s.border[2], 1.0f);
+    const float tx = fx + 10.f, ty = fy + 8.f;
+    const bool caret_on = std::fmod(glfwGetTime(), 1.0) < 0.55;   // ~1 Hz blink — signals the field is focused
+    if (win.gemini_key_buf.empty()) {
+        ui.draw_text(tx, ty, "paste your key (\xE2\x8C\x98V), then press Enter",
+                     s.dim[0], s.dim[1], s.dim[2], 0.8f, 0.82f);
+        if (caret_on) ui.draw_rect(tx, ty - 1.f, 1.6f, 16.f, s.body[0], s.body[1], s.body[2], 0.9f);
+    } else {
+        std::string masked;
+        masked.reserve(win.gemini_key_buf.size() * 3);
+        for (size_t i = 0; i < win.gemini_key_buf.size(); ++i) masked += "\xE2\x80\xA2";  // •
+        ui.draw_text(tx, ty, masked.c_str(), s.body[0], s.body[1], s.body[2], 1.0f, 0.82f);
+        if (caret_on) {
+            const float cw = ui.text_width(masked.c_str(), 0.82f);
+            ui.draw_rect(tx + cw + 1.5f, ty - 1.f, 1.6f, 16.f, s.body[0], s.body[1], s.body[2], 0.9f);
+        }
+    }
+    ui.draw_text(fx, y + 90.f, "Enter to save    \xC2\xB7    Esc to cancel",
+                 s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.80f);
+    ui.draw_text(fx, y + 112.f, "Stored in your macOS Keychain (com.vivid.app) \xE2\x80\x94 never written to disk.",
+                 s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.72f);
 }
 
 }  // namespace
@@ -387,6 +422,7 @@ void run_frame_loop(App& app, Window& win) {
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
+    std::string last_title;              // window title = current project name; re-set only when it changes
     double last_autosave = 0.0;          // ADR-0018: throttle periodic autosave (glfwGetTime seconds)
     double last_snapshot = 0.0;          // ADR-0018: throttle the crash-attribution warm snapshot
     auto tick = [&]() -> bool {
@@ -407,6 +443,33 @@ void run_frame_loop(App& app, Window& win) {
                 vivid::ui::push_toast(win.toasts, e.level, e.msg, tnow);
             }
             win.last_toast_id = app.log.next_id() - 1;
+        }
+        // ADR-0026: an "Evaluate Output" job (Eval menu) → toast its verdict when it lands. Polled on
+        // the UI thread; the Gemini call itself ran async off it, so this never blocks.
+        if (win.music_eval_job >= 0) {
+            const auto r = app.music_eval.poll(win.music_eval_job);
+            const std::string st = r.value("status", std::string("pending"));
+            if (st != "pending") {
+                win.music_eval_job = -1;
+                std::string msg;
+                vivid::LogLevel lvl = vivid::LogLevel::Info;
+                if (st == "done") {
+                    msg = "Eval: ";
+                    const std::string k = r.value("key", std::string());
+                    if (!k.empty()) msg += k + "  \xC2\xB7  ";
+                    if (r.contains("tempo_bpm") && r["tempo_bpm"].is_number()) {
+                        char b[24]; std::snprintf(b, sizeof b, "%.0f BPM  \xC2\xB7  ", r["tempo_bpm"].get<double>());
+                        msg += b;
+                    }
+                    msg += r.value("summary", std::string());
+                } else {
+                    lvl = vivid::LogLevel::Warning;
+                    msg = "Eval failed: ";
+                    if (r.contains("error") && r["error"].contains("message"))
+                        msg += r["error"]["message"].get<std::string>();
+                }
+                vivid::ui::push_toast(win.toasts, lvl, msg, glfwGetTime(), 12.0);
+            }
         }
 
         // Hardware MIDI (M6.4): drain the input queue on the main thread and route to the
@@ -535,6 +598,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
+            if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
@@ -618,6 +682,21 @@ void run_frame_loop(App& app, Window& win) {
             if (cur_dirty != last_dirty) {
                 last_dirty = cur_dirty;
                 vivid::platform::set_document_edited(cur_dirty != 0);
+            }
+            // Show the current project's name in the window title (like a document-based app). The
+            // macOS edited-dot (above) carries the dirty state, so the title stays just the name.
+            {
+                std::string title = "Vivid";
+                const std::string& pp = app.project.current_project_path;
+                if (pp.empty()) {
+                    title += " \xE2\x80\x94 Untitled";
+                } else {
+                    const std::filesystem::path p(pp);
+                    title += " \xE2\x80\x94 " +
+                             (vivid::project_paths::is_folder_project(pp) ? p.filename().string()
+                                                                          : p.stem().string());
+                }
+                if (title != last_title) { last_title = title; glfwSetWindowTitle(window, title.c_str()); }
             }
             // ADR-0018: periodic autosave — every kAutosaveSecs while the document is dirty, so a
             // crash or kill loses at most that interval. Cleared on a real save (file_actions).

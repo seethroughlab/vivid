@@ -70,7 +70,7 @@ def build(v: Vivid, save: bool = True):
     comp = v.add_node("Composite")
     v.connect(comp, sg, port=0)                      # A = the hex grid
     v.connect(comp, m, port=1)                       # B = the octahedron
-    v.set_node_param(comp, "mode", 0.25)             # ADD (black bg of each layer drops out)
+    v.set_node_param(comp, "mode", 1.0)             # ADD (black bg of each layer drops out)
     v.connect(out, comp)                             # Output <- Composite
 
     # --- the bridge : audio -> visual params (only smooth params; structure stays baked) ---
