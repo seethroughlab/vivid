@@ -60,6 +60,11 @@ class Vivid:
     def bpm(self, bpm: float):
         return self.call("set_bpm", bpm=bpm)
 
+    def launch_quantize(self, bars: int):
+        """Scene-launch quantization in bars: a queued scene switch waits until the next N-bar
+        boundary (1 = next bar; 4 = let a 4-bar phrase finish before switching). Persisted."""
+        return self.call("set_launch_quantize", bars=bars)
+
     def play(self):
         return self.call("set_playing", playing=True)
 
@@ -68,6 +73,29 @@ class Vivid:
 
     def launch_scene(self, scene: int):
         return self.call("launch_scene", scene=scene)
+
+    def scenes(self, names: list[str]) -> list[int]:
+        """Lay out song SECTIONS as named scenes (intro/verse/chorus/bridge/outro). Call right after
+        reset() — a fresh session has 1 scene, so this appends the rest and names them all. The song
+        FORM is the order you later launch/perform them; instruments 'leave' a section simply by
+        having no clip in that scene. Returns [0..N-1]. (kMaxScenes = 8.)"""
+        cur = self.call("status").get("scenes", 1)   # new_project keeps the count; add only the deficit
+        for _ in range(max(0, len(names) - cur)):
+            self.call("add_scene")
+        for i, nm in enumerate(names):
+            self.call("set_scene_name", scene=i, name=nm)
+        return list(range(len(names)))
+
+    def perform(self, order: list[int], bars_each: list[int], bpm: float, bar_beats: float = 4.0):
+        """Audition the whole song: step launch_scene through the section `order`, holding each for
+        `bars_each` bars. Launch is bar-quantized in the engine, so switches land on the bar. This is
+        the only way to HEAR the full form (there's no native scene auto-advance); the populated scene
+        grid + saved project remain the durable artifact. Drives entirely over the control server."""
+        spb = 60.0 / max(1e-6, bpm)
+        self.play()
+        for scene, bars in zip(order, bars_each):
+            self.launch_scene(scene)
+            time.sleep(bars * bar_beats * spb)
 
     def save_project(self, path: str):
         return self.call("save_project", path=path)
@@ -229,6 +257,20 @@ class Vivid:
     def map(self, src: str, node_id: int, param: str, amount=1.0, curve=0.0, lo=0.0, hi=1.0, invert=False):
         return self.call("connect_mapping", src=src, dst=f"node:{node_id}.{param}",
                          amount=amount, curve=curve, lo=lo, hi=hi, invert=invert)
+
+    def track_id(self, track: int) -> int:
+        """The STABLE id of a track (by index) — the one used in per-track mapping sources. It is NOT
+        the index (e.g. index 0 may be id 19)."""
+        for t in self.call("list_tracks").get("tracks", []):
+            if t.get("index") == track:
+                return t["id"]
+        raise RuntimeError(f"track {track} not found")
+
+    def track_viz(self, track: int, band: str, node_id: int, param: str, **kw):
+        """Route ONE instrument's audio to ONE visual param, so each instrument has a visibly separate
+        effect. `band` is that track's characteristic: 'low' | 'high' | 'transient' | 'level'. Uses the
+        track's stable id: source = 'track_<id>.<band>'. Same knobs as map() (amount/curve/lo/hi/invert)."""
+        return self.map(f"track_{self.track_id(track)}.{band}", node_id, param, **kw)
 
     # --- the RETURN leg of the bridge (visual -> audio): a viz.* source drives an audio param ---
     # This is what makes the loop bidirectional. Sources: "viz.warp" / "viz.glow" / "viz.feedback"
