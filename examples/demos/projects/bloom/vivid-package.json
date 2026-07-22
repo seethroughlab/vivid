@@ -1,0 +1,7 @@
+{
+  "name": "bloom",
+  "version": "0.1.0",
+  "operators": [
+    { "name": "Petals", "source": "petals.cpp", "gpu": true }
+  ]
+}

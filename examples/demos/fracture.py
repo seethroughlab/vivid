@@ -103,50 +103,49 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.bassline(sfx, S_INTRO, [(48 + i, i * 0.5, 0.4) for i in range(16)], length=8.0, vel=0.5)   # rising run
     v.bassline(sfx, S_OUTRO, [(57 - 2 * i, i * 0.5, 0.4) for i in range(8)], length=8.0, vel=0.5)  # downlifter
 
-    # ================= visuals : layered geometry, one target per instrument =================
+    # ================= visuals : HOT-CHROMATIC glitch — a custom Shatter op is the signature =================
+    # Style: two offset hex ShapeGrids (hot red + electric cyan) ADD into an RGB-split lattice with a
+    # magenta wireframe icosahedron over it; the KICK punches the whole frame, then the custom **Shatter**
+    # op (RGB channel-split + blocky digital tearing) shreds it — driven by the stabs/arp/riser. Feedback
+    # trails on the bass. No fullscreen fields: crisp lattice + solid, shredded by a real glitch op.
     out = find(v.graph()["nodes"], "Output")
-    sgR = v.add_node("ShapeGrid")                         # red hex channel
+    sgR = v.add_node("ShapeGrid")                         # hot-red hex channel
     for k, val in dict(sides=0.6, cols=0.5, rows=0.5, size=0.52, rotation=0.0,
-                       r=1.0, g=0.15, b=0.1, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+                       r=1.0, g=0.08, b=0.04, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(sgR, k, val)
-    sgC = v.add_node("ShapeGrid")                         # cyan hex channel (offset -> chromatic split)
+    sgC = v.add_node("ShapeGrid")                         # electric-cyan hex channel (offset -> chromatic split)
     for k, val in dict(sides=0.6, cols=0.5, rows=0.5, size=0.52, rotation=0.0,
-                       r=0.1, g=0.9, b=1.0, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+                       r=0.04, g=0.85, b=1.0, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(sgC, k, val)
-    split = v.add_node("Transform"); v.set_node_param(split, "tx", 0.01)   # <- chords open the split
+    split = v.add_node("Transform"); v.set_node_param(split, "tx", 0.012)   # <- chords open the chromatic split
     v.connect(split, sgC)
-    comp1 = v.add_node("Composite"); v.set_node_param(comp1, "mode", 1.0)   # ADD
+    comp1 = v.add_node("Composite"); v.set_node_param(comp1, "mode", 1.0)    # ADD
     v.connect(comp1, sgR, port=0); v.connect(comp1, split, port=1)
 
-    mesh = v.add_node("Mesh")                             # <- the LEAD spins this
-    for k, val in dict(wireframe=1.0, shape=0.5, size=0.4, r=0.85, g=0.4, b=1.0, spin=0.0).items():
+    mesh = v.add_node("Mesh")                             # magenta wireframe icosahedron <- the LEAD spins it
+    for k, val in dict(wireframe=1.0, shape=1.0, size=0.42, r=1.0, g=0.15, b=0.9, spin=0.0).items():
         v.set_node_param(mesh, k, val)
     comp2 = v.add_node("Composite"); v.set_node_param(comp2, "mode", 1.0)
     v.connect(comp2, comp1, port=0); v.connect(comp2, mesh, port=1)
 
-    lines = v.add_node("Lines")                           # <- the ARP spins these rings
-    for k, val in dict(mode=0.66, count=0.5, size=0.6, rotation=0.0, r=0.2, g=1.0, b=0.8).items():
-        v.set_node_param(lines, k, val)
-    comp3 = v.add_node("Composite"); v.set_node_param(comp3, "mode", 1.0)
-    v.connect(comp3, comp2, port=0); v.connect(comp3, lines, port=1)
-
-    jolt = v.add_node("Transform"); v.set_node_param(jolt, "tx", 0.5)       # <- the KICK punches the frame
-    v.connect(jolt, comp3)
-    disp = v.add_node("Displace")                          # <- the STABS tear it
-    v.set_node_param(disp, "amount", 0.04); v.set_node_param(disp, "mode", 1.0)
-    v.connect(disp, jolt)
-    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.4)         # <- the BASS swells the trails
-    v.connect(fb, disp)
+    jolt = v.add_node("Transform"); v.set_node_param(jolt, "tx", 0.5)        # <- the KICK punches the frame
+    v.connect(jolt, comp2)
+    shat = v.add_node("Shatter")                          # <- the custom signature: RGB shards + block glitch
+    for k, val in dict(split=0.22, blocks=0.15, jitter=0.5, size=0.38).items():
+        v.set_node_param(shat, k, val)
+    v.connect(shat, jolt)
+    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.42)         # <- the BASS swells the trails
+    v.connect(fb, shat)
     v.connect(out, fb)
 
     # ---- the bridge : ONE instrument -> ONE visual effect (per-track sources, identifiable) ----
-    v.track_viz(drums,  "transient", jolt,  "tx",       amount=1.0, lo=0.5,  hi=0.62)   # kick punch
-    v.track_viz(bass,   "low",       fb,    "decay",    amount=0.6, lo=0.3,  hi=0.72)   # bass -> trails
-    v.track_viz(chords, "level",     split, "tx",       amount=1.0, lo=0.0,  hi=0.06)   # pad -> chromatic split
-    v.track_viz(lead,   "high",      mesh,  "spin",     amount=1.0, lo=0.0,  hi=1.0)    # lead -> mesh spin
-    v.track_viz(stabs,  "transient", disp,  "amount",   amount=1.0, lo=0.03, hi=0.5)    # stabs -> tears
-    v.track_viz(arp,    "high",      lines, "rotation", amount=1.0, lo=0.0,  hi=1.0)    # arp -> rings spin
-    v.track_viz(sfx,    "level",     lines, "size",     amount=1.0, lo=0.5,  hi=0.9)    # riser -> rings swell
+    v.track_viz(drums,  "transient", jolt, "tx",     amount=1.0, lo=0.5,  hi=0.62)   # kick -> frame punch
+    v.track_viz(bass,   "low",       fb,   "decay",  amount=0.6, lo=0.3,  hi=0.72)   # bass -> trails
+    v.track_viz(chords, "level",     split,"tx",     amount=1.0, lo=0.0,  hi=0.06)   # pad  -> chromatic split
+    v.track_viz(lead,   "high",      mesh, "spin",   amount=1.0, lo=0.0,  hi=1.0)    # lead -> mesh spin
+    v.track_viz(stabs,  "transient", shat, "blocks", amount=1.0, lo=0.05, hi=0.85)   # stabs-> the frame shatters
+    v.track_viz(arp,    "high",      shat, "split",  amount=1.0, lo=0.12, hi=0.7)    # arp  -> RGB split widens
+    v.track_viz(sfx,    "level",     shat, "jitter", amount=1.0, lo=0.2,  hi=0.9)    # riser-> shard jitter
 
     if save:
         save_geo(v, PROJECT)

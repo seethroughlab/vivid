@@ -84,36 +84,37 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.bassline(sfx, S_INTRO, [(48 + i, i * 0.5, 0.4) for i in range(16)], length=8.0, vel=0.5)
     v.bassline(sfx, S_OUTRO, [(57 - 2 * i, i * 0.5, 0.4) for i in range(8)], length=8.0, vel=0.5)
 
-    # ================= visuals : the video, plus overlay geometry per instrument =================
+    # ================= visuals : BROADCAST/CRT — the video through a custom CRT op =================
+    # Style: the external footage over a phosphor-green data grid, ghosted by the bass, then the whole
+    # thing pushed through the custom **CRT** op (barrel curve, scanlines, RGB shadow-mask, chromatic
+    # aberration, vignette, rolling hum bar). Deliberately technical/desaturated — a signal on a tube.
     out = find(v.graph()["nodes"], "Output")
     v.set_media_root(MEDIA)
     vid  = v.video(0)                                     # external pixels
-    disp = v.add_node("Displace")                         # <- the KICK shakes the footage
-    v.set_node_param(disp, "amount", 0.06); v.set_node_param(disp, "mode", 0.0)
-    v.connect(disp, vid)
-    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.26)   # <- the BASS swells the trails
-    v.connect(fb, disp)
-    mesh = v.add_node("Mesh")                             # <- the LEAD spins this
-    for k, val in dict(wireframe=1.0, shape=0.5, size=0.35, r=0.2, g=1.0, b=0.9, spin=0.0).items():
-        v.set_node_param(mesh, k, val)
-    comp1 = v.add_node("Composite"); v.set_node_param(comp1, "mode", 1.0)
-    v.connect(comp1, fb, port=0); v.connect(comp1, mesh, port=1)
-    lines = v.add_node("Lines")                           # <- the ARP spins these rings
-    for k, val in dict(mode=0.66, count=0.4, size=0.5, rotation=0.0, r=1.0, g=0.4, b=0.2).items():
+    lines = v.add_node("Lines")                           # a faint phosphor-green data grid under the footage
+    for k, val in dict(mode=0.0, count=0.45, size=0.7, rotation=0.0, r=0.15, g=0.9, b=0.4,
+                       bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(lines, k, val)
-    comp2 = v.add_node("Composite"); v.set_node_param(comp2, "mode", 1.0)
-    v.connect(comp2, comp1, port=0); v.connect(comp2, lines, port=1)
-    warp = v.add_node("Transform"); v.set_node_param(warp, "rot", 0.5)   # <- the PAD pulses the frame
-    v.connect(warp, comp2)
-    v.connect(out, warp)
+    comp = v.add_node("Composite"); v.set_node_param(comp, "mode", 1.0)   # video + grid
+    v.connect(comp, vid, port=0); v.connect(comp, lines, port=1)
+    disp = v.add_node("Displace")                         # <- the KICK shakes the footage
+    v.set_node_param(disp, "amount", 0.05); v.set_node_param(disp, "mode", 0.0)
+    v.connect(disp, comp)
+    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.22)      # <- the BASS ghosts it
+    v.connect(fb, disp)
+    crt = v.add_node("CRT")                               # <- the custom signature: the whole tube
+    for k, val in dict(scan=0.55, mask=0.5, aberration=0.25, vignette=0.45, roll=0.0, curve=0.22).items():
+        v.set_node_param(crt, k, val)
+    v.connect(crt, fb)
+    v.connect(out, crt)
 
     # ---- the bridge : ONE instrument -> ONE visual effect (per-track, identifiable) ----
-    v.track_viz(drums,  "transient", disp,  "amount",   amount=1.0, lo=0.04, hi=0.24)   # kick shakes footage
-    v.track_viz(bass,   "low",       fb,    "decay",    amount=0.6, lo=0.22, hi=0.6)    # bass -> trails
-    v.track_viz(chords, "level",     warp,  "rot",      amount=1.0, lo=0.5,  hi=0.53)   # pad -> frame pulse
-    v.track_viz(lead,   "high",      mesh,  "spin",     amount=1.0, lo=0.0,  hi=1.0)    # lead -> mesh spin
-    v.track_viz(arp,    "high",      lines, "rotation", amount=1.0, lo=0.0,  hi=1.0)    # arp -> rings spin
-    v.track_viz(sfx,    "level",     mesh,  "size",     amount=1.0, lo=0.3,  hi=0.6)    # sfx -> mesh size
+    v.track_viz(drums,  "transient", disp, "amount",     amount=1.0, lo=0.03, hi=0.22)   # kick shakes footage
+    v.track_viz(bass,   "low",       fb,   "decay",      amount=0.6, lo=0.18, hi=0.6)    # bass -> ghost trails
+    v.track_viz(lead,   "high",      crt,  "aberration", amount=1.0, lo=0.15, hi=0.8)    # lead -> chromatic fringing
+    v.track_viz(chords, "level",     crt,  "vignette",   amount=1.0, lo=0.3,  hi=0.7)    # pad  -> breathing vignette
+    v.track_viz(arp,    "high",      crt,  "scan",       amount=1.0, lo=0.35, hi=0.9)    # arp  -> scanline pulse
+    v.track_viz(sfx,    "level",     crt,  "roll",       amount=1.0, lo=0.0,  hi=0.7)    # riser-> hum-bar roll
 
     if save:
         save_geo(v, PROJECT)

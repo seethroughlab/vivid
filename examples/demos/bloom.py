@@ -32,6 +32,18 @@ PENTMIN, SYNC = 2, 1
 
 
 def build(v: Vivid, save: bool = True, perform: bool = False):
+    # The custom **Petals** operator ships WITH this project (projects/bloom/petals.cpp +
+    # vivid-package.json). Opening the project compiles it (clang++) INTO the project folder and
+    # registers it live BEFORE any graph read, so add_node("Petals") below resolves — no core
+    # rebuild. It survives the reset() that follows (new_project does not unregister project ops).
+    try:
+        v.load_project(PROJECT)
+    except RuntimeError as e:
+        # First-ever build: no project.json yet, so the session read fails — but the operator
+        # package already compiled + registered (that runs first). save_geo() writes project.json
+        # below. Any OTHER failure (e.g. a compile error) is real and must surface.
+        if "read failed" not in str(e):
+            raise
     v.reset()
     v.bpm(BPM)
     S_INTRO, S_VERSE, S_CHORUS, S_BRIDGE, S_OUTRO = v.scenes(
@@ -68,41 +80,44 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.progression(pad, S_BRIDGE, ["iv", "VII", "III", "VI"], beats_per_chord=4.0, key="A", scale="minor", octave=4, vel=0.55, dur_frac=0.98)
     v.progression(pad, S_OUTRO,  ["i"],                     beats_per_chord=8.0, key="A", scale="minor", octave=4, vel=0.5,  dur_frac=0.99)
 
-    # ================= visuals : geometry that follows the self-generated notes =================
+    # ================= visuals : ORGANIC BLOOM — a custom SDF Petals op is the signature =================
+    # Style: warm amber radial Lines + a warm wireframe icosahedron, with the custom **Petals** op
+    # (crisp SDF flower petals — real geometry, not a field) blooming outward on every self-generated
+    # LEAD note; the bass holds each bloom as a feedback ring. Soft, radial, growing — warm not neon.
     out = find(v.graph()["nodes"], "Output")
-    lines = v.add_node("Lines")                            # <- PAD rotates these
-    for k, val in dict(mode=0.0, count=0.5, sides=0.0, size=0.4, rotation=0.0,
-                       r=0.2, g=0.95, b=0.7, bg_r=0.02, bg_g=0.03, bg_b=0.05).items():
+    lines = v.add_node("Lines")                            # warm radial burst <- the PAD rotates these
+    for k, val in dict(mode=0.5, count=0.5, sides=0.0, size=0.6, rotation=0.0,
+                       r=1.0, g=0.6, b=0.3, bg_r=0.02, bg_g=0.015, bg_b=0.01).items():
         v.set_node_param(lines, k, val)
-    mesh = v.add_node("Mesh")                              # <- KICK pulses this
-    for k, val in dict(shape=0.33, wireframe=1.0, size=0.36, spin=0.3, tilt=0.5,
-                       r=1.0, g=0.8, b=0.3, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+    mesh = v.add_node("Mesh")                              # warm wireframe icosahedron <- KICK pulses this
+    for k, val in dict(shape=1.0, wireframe=1.0, size=0.34, spin=0.3, tilt=0.5,
+                       r=1.0, g=0.75, b=0.45, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(mesh, k, val)
-    burst = v.add_node("Shape")                            # <- the LEAD blooms this (the signature)
-    for k, val in dict(sides=0.0, x=0.5, y=0.5, size=0.06, rotation=0.0, softness=0.5,
-                       r=1.0, g=0.9, b=0.55, a=0.0).items():
-        v.set_node_param(burst, k, val)
+    compA = v.add_node("Composite"); v.set_node_param(compA, "mode", 1.0)
+    v.connect(compA, lines, port=0); v.connect(compA, mesh, port=1)
+    petals = v.add_node("Petals")                          # <- the custom C++ VERTEX op: real petal geometry, blooms per LEAD note
+    for k, val in dict(count=0.4, size=0.3, spread=0.55, rotation=0.0, glow=0.4,
+                       cx=0.5, cy=0.5, r=1.0, g=0.5, b=0.7, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+        v.set_node_param(petals, k, val)
+    compP = v.add_node("Composite"); v.set_node_param(compP, "mode", 1.0)   # ADD the petals over the geometry
+    v.connect(compP, compA, port=0); v.connect(compP, petals, port=1)
+    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.5)    # <- BASS holds each bloom as a ring
+    v.connect(fb, compP)
     title = v.add_node("VectorText")
-    for k, val in dict(size=0.12, x=0.5, y=0.85, r=0.95, g=0.98, b=0.9,
+    for k, val in dict(size=0.12, x=0.5, y=0.85, r=0.98, g=0.92, b=0.85,
                        bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(title, k, val)
     v.set_node_file(title, "file", os.path.join(HERE, "media", "bloom.txt"))
-    compA = v.add_node("Composite"); v.set_node_param(compA, "mode", 1.0)
-    v.connect(compA, lines, port=0); v.connect(compA, mesh, port=1)
-    compBurst = v.add_node("Composite"); v.set_node_param(compBurst, "mode", 1.0)
-    v.connect(compBurst, compA, port=0); v.connect(compBurst, burst, port=1)
-    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.55)   # <- BASS holds each bloom as a ring
-    v.connect(fb, compBurst)
     compB = v.add_node("Composite"); v.set_node_param(compB, "mode", 1.0)
     v.connect(compB, fb, port=0); v.connect(compB, title, port=1)
     v.connect(out, compB)
 
     # ---- the bridge : each instrument marks the picture differently (per-track sources) ----
-    v.track_viz(lead,  "transient", burst, "a",        amount=1.0, lo=0.0,  hi=0.95)   # lead note -> bloom flash
-    v.track_viz(lead,  "transient", burst, "size",     amount=1.0, lo=0.05, hi=0.55)   # lead note -> bloom outward
-    v.track_viz(drums, "low",       mesh,  "size",     amount=0.7, lo=0.28, hi=0.5)    # kick -> mesh pulse
-    v.track_viz(bass,  "low",       fb,    "decay",    amount=0.4, lo=0.4,  hi=0.72)   # bass -> ring persistence
-    v.track_viz(pad,   "level",     lines, "rotation", amount=0.6, lo=0.0,  hi=1.0)    # pad -> line rotation
+    v.track_viz(lead,  "transient", petals, "size",     amount=1.0, lo=0.15, hi=0.7)    # lead note -> petals bloom outward
+    v.track_viz(lead,  "transient", petals, "glow",     amount=1.0, lo=0.1,  hi=1.0)    # lead note -> petals flash bright
+    v.track_viz(drums, "low",       mesh,   "size",     amount=0.7, lo=0.28, hi=0.5)    # kick -> mesh pulse
+    v.track_viz(bass,  "low",       fb,     "decay",    amount=0.4, lo=0.4,  hi=0.72)   # bass -> ring persistence
+    v.track_viz(pad,   "level",     lines,  "rotation", amount=0.6, lo=0.0,  hi=1.0)    # pad  -> radial rotation
 
     if save:
         save_geo(v, PROJECT)

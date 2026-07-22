@@ -86,20 +86,28 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.bassline(sfx, S_INTRO, [(48 + i, i * 0.5, 0.4) for i in range(16)], length=8.0, vel=0.5)
     v.bassline(sfx, S_OUTRO, [(57 - 2 * i, i * 0.5, 0.4) for i in range(8)], length=8.0, vel=0.5)
 
-    # ================= visuals : wireframe Mesh + ShapeGrid -> Feedback -> Blur + title =================
+    # ================= visuals : SYMMETRIC — a custom Fold op mirrors the geometry =================
+    # Style: a cool blue/white wireframe octahedron over concentric Lines rings, folded through the
+    # custom **Fold** op (crisp axis-aligned mirror symmetry — architectural, not a busy kaleido),
+    # then feedback + blur. The kick->feedback and pad->blur maps ALSO drive the return leg
+    # (viz.feedback -> the pad's filter cutoff, viz.blur -> resonance), so the picture shapes the sound.
     out = find(v.graph()["nodes"], "Output")
-    mesh = v.add_node("Mesh")                              # <- BASS size, LEAD spin
-    for k, val in dict(shape=1.0, wireframe=1.0, size=0.4, spin=0.25, tilt=0.5,
-                       r=1.0, g=0.35, b=0.95, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
+    mesh = v.add_node("Mesh")                              # cool wireframe octahedron <- BASS size, LEAD spin
+    for k, val in dict(shape=0.66, wireframe=1.0, size=0.4, spin=0.25, tilt=0.5,
+                       r=0.55, g=0.8, b=1.0, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
         v.set_node_param(mesh, k, val)
-    sg = v.add_node("ShapeGrid")                           # <- ARP rotation, SFX size
-    for k, val in dict(sides=0.6, cols=0.45, rows=0.45, size=0.5, rotation=0.0,
-                       r=0.2, g=0.9, b=1.0, bg_r=0.01, bg_g=0.02, bg_b=0.04).items():
-        v.set_node_param(sg, k, val)
+    rings = v.add_node("Lines")                            # concentric rings (mode 2), cool
+    for k, val in dict(mode=1.0, count=0.4, size=0.65, rotation=0.0, r=0.3, g=0.65, b=1.0,
+                       bg_r=0.0, bg_g=0.02, bg_b=0.05).items():
+        v.set_node_param(rings, k, val)
     compA = v.add_node("Composite"); v.set_node_param(compA, "mode", 1.0)
-    v.connect(compA, sg, port=0); v.connect(compA, mesh, port=1)
+    v.connect(compA, rings, port=0); v.connect(compA, mesh, port=1)
+    fold = v.add_node("Fold")                              # <- the custom signature: mirror symmetry
+    for k, val in dict(axes=1.0, angle=0.0, cx=0.5, cy=0.5, zoom=0.5).items():   # axes=1 -> quad (2-axis)
+        v.set_node_param(fold, k, val)
+    v.connect(fold, compA)
     fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.42)   # <- KICK (also the return source)
-    v.connect(fb, compA)
+    v.connect(fb, fold)
     blur = v.add_node("Blur"); v.set_node_param(blur, "radius", 0.15)  # <- PAD level (also return source)
     v.connect(blur, fb)
     title = v.add_node("VectorText")
@@ -113,12 +121,12 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
 
     # ---- forward leg : ONE instrument -> ONE visual effect (per-track). The kick->feedback and
     #      pad->blur maps ALSO move the return-leg sources (viz.feedback / viz.blur). ----
-    v.track_viz(drums, "low",   fb,   "decay",    amount=0.7, lo=0.4,  hi=0.82)   # kick -> trails (=viz.feedback)
-    v.track_viz(pad,   "level", blur, "radius",   amount=0.6, lo=0.2,  hi=0.6)    # pad  -> blur   (=viz.blur)
-    v.track_viz(bass,  "low",   mesh, "size",     amount=0.7, lo=0.28, hi=0.5)    # bass -> mesh size
-    v.track_viz(lead,  "high",  mesh, "spin",     amount=1.0, lo=0.1,  hi=0.7)    # lead -> mesh spin
-    v.track_viz(arp,   "high",  sg,   "rotation", amount=1.0, lo=0.0,  hi=1.0)    # arp  -> grid rotation
-    v.track_viz(sfx,   "level", sg,   "size",     amount=1.0, lo=0.5,  hi=0.7)    # sfx  -> grid size
+    v.track_viz(drums, "low",   fb,   "decay",  amount=0.7, lo=0.4,  hi=0.82)   # kick -> trails (=viz.feedback)
+    v.track_viz(pad,   "level", blur, "radius", amount=0.6, lo=0.2,  hi=0.6)    # pad  -> blur   (=viz.blur)
+    v.track_viz(bass,  "low",   mesh, "size",   amount=0.7, lo=0.28, hi=0.5)    # bass -> mesh size
+    v.track_viz(lead,  "high",  mesh, "spin",   amount=1.0, lo=0.1,  hi=0.7)    # lead -> mesh spin
+    v.track_viz(arp,   "high",  fold, "angle",  amount=1.0, lo=0.0,  hi=1.0)    # arp  -> the mirror rotates
+    v.track_viz(sfx,   "level", fold, "zoom",   amount=1.0, lo=0.35, hi=0.75)   # riser-> the mirror zooms
 
     # ---- RETURN leg (visual -> audio) : the picture's state sweeps the filter on the PAD ----
     v.map_to_audio("viz.feedback", pad, svf, CUTOFF, amount=1.0, lo=400.0, hi=6000.0)
