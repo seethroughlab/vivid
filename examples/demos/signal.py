@@ -107,7 +107,8 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     # footage (AFTER the feedback, so it stays legible), then the whole frame goes through the tube.
     model = v.add_node("Model")
     v.set_node_file(model, "file", os.path.join(MEDIA, "frank", "scene.gltf"))
-    for k, val in dict(size=0.62, spin=0.22, tilt=0.5, light=0.5, r=0.85, g=1.0, b=0.9).items():
+    for k, val in dict(size=0.62, spin=0.05, tilt=0.5, light=0.5, nscale=0.28,   # slow drift, not a frantic spin
+                       r=0.85, g=1.0, b=0.9).items():   # nscale low => smooth breathing, not shattering
         v.set_node_param(model, k, val)
     compF = v.add_node("Composite"); v.set_node_param(compF, "mode", 1.0)   # ADD the statue over the footage
     v.connect(compF, fb, port=0); v.connect(compF, model, port=1)
@@ -124,8 +125,9 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.track_viz(chords, "level",     crt,  "vignette",   amount=1.0, lo=0.3,  hi=0.7)    # pad  -> breathing vignette
     v.track_viz(arp,    "high",      crt,  "scan",       amount=1.0, lo=0.35, hi=0.9)    # arp  -> scanline pulse
     v.track_viz(sfx,    "level",     crt,  "roll",       amount=1.0, lo=0.0,  hi=0.7)    # riser-> hum-bar roll
-    # ---- the 3D model reacts too: it turns with the lead, pulses with the bass, nods on the kick ----
-    v.track_viz(lead,   "high",      model, "spin",      amount=1.0, lo=0.1,  hi=0.6)    # lead -> statue spins
+    # ---- the 3D model reacts too: the LEAD melts its surface (3D noise displacement), the bass
+    #      swells it, the kick nods it. It barely spins (a slow drift) instead of whirling. ----
+    v.track_viz(lead,   "high",      model, "noise",     amount=1.0, lo=0.02, hi=0.32)   # lead -> surface distorts/melts
     v.track_viz(bass,   "low",       model, "size",      amount=0.6, lo=0.42, hi=0.68)   # bass -> statue swells
     v.track_viz(drums,  "low",       model, "tilt",      amount=0.5, lo=0.42, hi=0.6)    # kick -> statue nods
 

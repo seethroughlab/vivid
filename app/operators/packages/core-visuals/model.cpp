@@ -308,15 +308,36 @@ bool load_gltf(const std::string& path, ModelData& md, std::string& err) {
 }
 
 const char* kModelWGSL = R"(
-struct U { mvp: mat4x4<f32>, model: mat4x4<f32>, tint: vec4f, light: vec4f };
+struct U { mvp: mat4x4<f32>, model: mat4x4<f32>, tint: vec4f, light: vec4f, misc: vec4f };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
 struct VIn { @location(0) pos: vec3f, @location(1) nrm: vec3f, @location(2) uv: vec2f };
 struct VOut { @builtin(position) pos: vec4f, @location(0) shade: f32, @location(1) uv: vec2f };
+// value noise 3D (trilinear-interpolated lattice hash) — smooth, cheap, for vertex displacement.
+fn hash13(q: vec3f) -> f32 {
+    var p = fract(q * 0.1031);
+    p += dot(p, p.zyx + 31.32);
+    return fract((p.x + p.y) * p.z);
+}
+fn vnoise(x: vec3f) -> f32 {
+    let i = floor(x); let f = fract(x); let s = f * f * (3.0 - 2.0 * f);
+    let n000 = hash13(i);                     let n100 = hash13(i + vec3f(1.0,0.0,0.0));
+    let n010 = hash13(i + vec3f(0.0,1.0,0.0)); let n110 = hash13(i + vec3f(1.0,1.0,0.0));
+    let n001 = hash13(i + vec3f(0.0,0.0,1.0)); let n101 = hash13(i + vec3f(1.0,0.0,1.0));
+    let n011 = hash13(i + vec3f(0.0,1.0,1.0)); let n111 = hash13(i + vec3f(1.0,1.0,1.0));
+    let x00 = mix(n000, n100, s.x); let x10 = mix(n010, n110, s.x);
+    let x01 = mix(n001, n101, s.x); let x11 = mix(n011, n111, s.x);
+    return mix(mix(x00, x10, s.y), mix(x01, x11, s.y), s.z);
+}
 @vertex fn vs_main(v: VIn) -> VOut {
     var o: VOut;
-    o.pos = u.mvp * vec4f(v.pos, 1.0);
+    // misc = (noise_amount, noise_freq, time_drift, _). Displace each vertex along its normal by an
+    // evolving 3D noise field (object-space, so the bumps ride the surface). amount 0 => untouched.
+    let drift = vec3f(u.misc.z * 0.6, u.misc.z, u.misc.z * 1.4);
+    let d = (vnoise(v.pos * u.misc.y + drift) - 0.5) * 2.0;
+    let disp = v.pos + v.nrm * (d * u.misc.x);
+    o.pos = u.mvp * vec4f(disp, 1.0);
     let n = normalize((u.model * vec4f(v.nrm, 0.0)).xyz);
     let l = normalize(u.light.xyz);
     o.shade = u.light.w + (1.0 - u.light.w) * max(dot(n, l), 0.0);
@@ -342,6 +363,8 @@ struct ModelOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> light{"light", 0.35f, 0.f, 1.f};   // ambient floor (1 => flat, unlit)
     vivid::Param<float> r{"r", 1.f, 0.f, 1.f}, g{"g", 1.f, 0.f, 1.f}, b{"b", 1.f, 0.f, 1.f};   // tint multiply
     vivid::Param<float> bg_r{"bg_r", 0.f, 0.f, 1.f}, bg_g{"bg_g", 0.f, 0.f, 1.f}, bg_b{"bg_b", 0.f, 0.f, 1.f};
+    vivid::Param<float> noise{"noise", 0.f, 0.f, 1.f};    // 3D vertex-displacement amount (map an instrument here)
+    vivid::Param<float> nscale{"nscale", 0.4f, 0.f, 1.f}; // displacement spatial frequency (coarse..fine)
 
     ModelOp() {
         vivid::description(path, "3D model file to load (glTF .gltf / .glb)");
@@ -351,6 +374,7 @@ struct ModelOp : vivid::OperatorBase, vivid::GpuProcessable {
         r.display_hint = VIVID_DISPLAY_COLOR; bg_r.display_hint = VIVID_DISPLAY_COLOR;
         o.push_back(&path); o.push_back(&size); o.push_back(&spin); o.push_back(&tilt); o.push_back(&light);
         o.push_back(&r); o.push_back(&g); o.push_back(&b); o.push_back(&bg_r); o.push_back(&bg_g); o.push_back(&bg_b);
+        o.push_back(&noise); o.push_back(&nscale);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
 
@@ -379,11 +403,14 @@ struct ModelOp : vivid::OperatorBase, vivid::GpuProcessable {
         Mat4 view = translate(0.f, 0.f, -3.0f);
         Mat4 proj = perspective(0.7854f, float(c->output_width) / std::max(1.f, float(c->output_height)), 0.05f, 100.f);
         Mat4 mvp = mul(proj, mul(view, modelS));
-        float u[40]{};
+        float u[44]{};
         for (int i = 0; i < 16; ++i) u[i] = mvp[i];
         for (int i = 0; i < 16; ++i) u[16 + i] = model[i];
         u[32] = pv(5, r.value); u[33] = pv(6, g.value); u[34] = pv(7, b.value); u[35] = 1.f;   // tint
         u[36] = 0.4f; u[37] = 0.7f; u[38] = 0.55f; u[39] = pv(4, light.value);                 // light dir + ambient
+        u[40] = pv(11, noise.value) * 0.4f;                    // noise amount -> max ~0.4 unit-radius displacement
+        u[41] = 1.5f + pv(12, nscale.value) * 6.5f;            // noise spatial frequency
+        u[42] = t * 0.5f; u[43] = 0.f;                          // time drift (evolves the field)
         wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
 
         WGPURenderPassColorAttachment cat{};
@@ -441,7 +468,7 @@ private:
     void rebuild_bind_group(const VividGpuContext* c) {
         if (bg_) { wgpuBindGroupRelease(bg_); bg_ = nullptr; }
         WGPUBindGroupEntry be[3]{};
-        be[0].binding = 0; be[0].buffer = ubo_; be[0].size = 160;
+        be[0].binding = 0; be[0].buffer = ubo_; be[0].size = 176;
         be[1].binding = 1; be[1].textureView = tex_view_;
         be[2].binding = 2; be[2].sampler = samp_;
         WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 3; bd.entries = be;
@@ -472,10 +499,10 @@ private:
         std::string err;
         sh_ = vivid::gpu::create_shader_checked(c->device, kModelWGSL, "Model", err);
         if (!sh_ || !err.empty()) { err_ = err.empty() ? "shader null" : err; return false; }
-        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 160, "Model U");
+        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 176, "Model U");
         WGPUBindGroupLayoutEntry e[3]{};
         e[0].binding = 0; e[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-        e[0].buffer.type = WGPUBufferBindingType_Uniform; e[0].buffer.minBindingSize = 160;
+        e[0].buffer.type = WGPUBufferBindingType_Uniform; e[0].buffer.minBindingSize = 176;
         e[1].binding = 1; e[1].visibility = WGPUShaderStage_Fragment;
         e[1].texture.sampleType = WGPUTextureSampleType_Float; e[1].texture.viewDimension = WGPUTextureViewDimension_2D;
         e[2].binding = 2; e[2].visibility = WGPUShaderStage_Fragment; e[2].sampler.type = WGPUSamplerBindingType_Filtering;
