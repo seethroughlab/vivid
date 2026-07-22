@@ -2150,7 +2150,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // blk.notes are unchanged. The instrument now reads BOTH via note edges, merged and
             // time-sorted by graph_note_input.
             t.nev_clip.clear(); t.eev.clear();
-            if (release_all)    t.sched.flush(t.nev_clip);                            // play->stop edge: release held notes
+            if (release_all) {
+                t.sched.flush(t.nev_clip);                            // play->stop edge: release the clip's held notes
+                // ADR-0022 P3.3: also release every generator's held voices (Euclid/RandMelody/…)
+                // into the same stream — otherwise a note a generator is holding hangs on pause.
+                // note_flush also forgets the op's voices, so it resyncs clean when play resumes.
+                for (const GNodeBind& gb : t.gbinds)
+                    if (gb.kind == GNKind::NativeGen && gb.op) {
+                        NoteEvent gof[64]; uint32_t gn = 0;
+                        vivid::audio_op_note_flush(gb.op, gof, 64, &gn);
+                        for (uint32_t i = 0; i < gn && t.nev_clip.size() < kGraphMaxNotes; ++i) t.nev_clip.push_back(gof[i]);
+                    }
+            }
             else if (playing)   t.sched.emit(beats, delta, frames, t.nev_clip, t.eev);  // paused: emit nothing (tails still ring)
             t.nev_live.clear();
             // Live MIDI monitoring (M6): the armed track drains the session live-input
