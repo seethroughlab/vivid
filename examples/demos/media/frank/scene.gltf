@@ -1,0 +1,243 @@
+{
+  "accessors": [
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 32267,
+      "max": [
+        20.027620315551758,
+        21.410890579223633,
+        19.30820083618164
+      ],
+      "min": [
+        -19.256629943847656,
+        -15.056940078735352,
+        -14.540760040283203
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "byteOffset": 387204,
+      "componentType": 5126,
+      "count": 32267,
+      "max": [
+        0.9999159574508667,
+        0.9996429681777954,
+        0.9994334578514099
+      ],
+      "min": [
+        -0.9997113347053528,
+        -0.9996823072433472,
+        -0.9993314146995544
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 32267,
+      "max": [
+        0.9957399964332581,
+        0.9996500015258789
+      ],
+      "min": [
+        0.00039000000106170774,
+        0.003909999970346689
+      ],
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 0,
+      "componentType": 5125,
+      "count": 149994,
+      "type": "SCALAR"
+    }
+  ],
+  "asset": {
+    "extras": {
+      "author": "misterdevious (https://sketchfab.com/misterdevious)",
+      "license": "CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)",
+      "source": "https://sketchfab.com/3d-models/frank-0eb1f1757349489eab05a0f03cff5b46",
+      "title": "Frank"
+    },
+    "generator": "Sketchfab-12.66.0",
+    "version": "2.0"
+  },
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 599976,
+      "name": "floatBufferViews",
+      "target": 34963
+    },
+    {
+      "buffer": 0,
+      "byteLength": 258136,
+      "byteOffset": 599976,
+      "byteStride": 8,
+      "name": "floatBufferViews",
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 774408,
+      "byteOffset": 858112,
+      "byteStride": 12,
+      "name": "floatBufferViews",
+      "target": 34962
+    }
+  ],
+  "buffers": [
+    {
+      "byteLength": 1632520,
+      "uri": "scene.bin"
+    }
+  ],
+  "images": [
+    {
+      "uri": "textures/Franks.C352.SC130k.DC32270k.M2064k_baseColor.jpeg"
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "Franks.C352.SC130k.DC32270k.M2064k",
+      "pbrMetallicRoughness": {
+        "baseColorTexture": {
+          "index": 0
+        },
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.6
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "Franks.C352.SC130k.DC32270k.M2064k_0",
+      "primitives": [
+        {
+          "attributes": {
+            "NORMAL": 1,
+            "POSITION": 0,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0,
+          "mode": 4
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "children": [
+        1
+      ],
+      "matrix": [
+        0.3364940881729126,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        7.471669686796303e-17,
+        -0.3364940881729126,
+        0.0,
+        0.0,
+        0.3364940881729126,
+        7.471669686796303e-17,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Sketchfab_model"
+    },
+    {
+      "children": [
+        2,
+        4
+      ],
+      "name": "Root"
+    },
+    {
+      "children": [
+        3
+      ],
+      "matrix": [
+        -0.29086000000000006,
+        0.60756,
+        0.7391000000000001,
+        0.0,
+        -0.7711,
+        -0.6061700000000001,
+        0.19483000000000003,
+        0.0,
+        0.5663900000000001,
+        -0.51325,
+        0.6448000000000002,
+        0.0,
+        4.076250000000001,
+        -3.9639100000000003,
+        5.903860000000001,
+        1.0
+      ],
+      "name": "Lamp"
+    },
+    {
+      "name": "Lamp"
+    },
+    {
+      "children": [
+        5
+      ],
+      "matrix": [
+        0.11606000000000002,
+        0.14545000000000002,
+        -0.023110000000000006,
+        0.0,
+        0.09848000000000003,
+        -0.09853000000000003,
+        -0.12552,
+        0.0,
+        -0.10951000000000001,
+        0.06555000000000001,
+        -0.13737,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "name": "Franks.C352.SC130k.DC32270k.M2064k"
+    },
+    {
+      "mesh": 0,
+      "name": "Franks.C352.SC130k.DC32270k.M2064k_0"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "scene": 0,
+  "scenes": [
+    {
+      "name": "Sketchfab_Scene",
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ]
+}
