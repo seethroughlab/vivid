@@ -14,7 +14,7 @@ class Renderer2D;
 // from the Window (its metrics + selection, and the shared App behind win.app).
 void draw_clip_preview(Renderer2D& ui, vivid::session::Session* s, int t, int sc,
                        const Rect& b, float ar, float ag, float ab, bool on);
-void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my);
+void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, double my);
 void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my);
 // ADR-0014: the floating OUTPUT preview's chrome (frame + header + pop-out/close + resize grip).
 // Drawn in the overlay pass, AFTER the output FBO has been blitted into its body, so the frame

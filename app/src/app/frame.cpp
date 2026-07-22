@@ -569,7 +569,7 @@ void run_frame_loop(App& app, Window& win) {
             }
             // The bottom dock is the detail region: the clip editor owns it while docked;
             // otherwise it shows the focused device (audio) or visual-node (visual) inspector.
-            if (win.focus.kind != FocusContext::Kind::ClipEditor) draw_device_dock(ui, win, mx, my);
+            if (win.focus.kind != FocusContext::Kind::ClipEditor) draw_device_dock(ui, win, beats, mx, my);
             // Pass 1: DAW + node graph (cards + thumbnails composite in-batch).
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             // The floating OUTPUT preview: blitted OVER the graph canvas (a GPU pass recorded after

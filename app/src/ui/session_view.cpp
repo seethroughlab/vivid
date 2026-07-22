@@ -206,7 +206,7 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
 // of the selected device's params. Full window width; resizable via its top edge.
-void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
+void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
     vivid::session::Session* s = w.app->session;
     if (!s) return;
     const Style& sty = style();
@@ -395,6 +395,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
         ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
+        ag.set_clock(beats);                  // transport position, for live generator-node thumbnails
         ag.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
