@@ -1,0 +1,11 @@
+Model Information:
+* title:	Frank
+* source:	https://sketchfab.com/3d-models/frank-0eb1f1757349489eab05a0f03cff5b46
+* author:	misterdevious (https://sketchfab.com/misterdevious)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Frank" (https://sketchfab.com/3d-models/frank-0eb1f1757349489eab05a0f03cff5b46) by misterdevious (https://sketchfab.com/misterdevious) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
