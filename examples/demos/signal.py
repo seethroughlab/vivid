@@ -84,10 +84,11 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.bassline(sfx, S_INTRO, [(48 + i, i * 0.5, 0.4) for i in range(16)], length=8.0, vel=0.5)
     v.bassline(sfx, S_OUTRO, [(57 - 2 * i, i * 0.5, 0.4) for i in range(8)], length=8.0, vel=0.5)
 
-    # ================= visuals : BROADCAST/CRT — the video through a custom CRT op =================
-    # Style: the external footage over a phosphor-green data grid, ghosted by the bass, then the whole
-    # thing pushed through the custom **CRT** op (barrel curve, scanlines, RGB shadow-mask, chromatic
-    # aberration, vignette, rolling hum bar). Deliberately technical/desaturated — a signal on a tube.
+    # ================= visuals : BROADCAST/CRT — footage + a 3D statue through a custom CRT op ========
+    # Style: the external footage over a phosphor-green data grid, with a real 3D model (glTF — the
+    # **Model** op) turning inside it, ghosted by the bass, then the whole thing pushed through the
+    # custom **CRT** op (barrel curve, scanlines, RGB shadow-mask, chromatic aberration, vignette,
+    # rolling hum bar). Deliberately technical/desaturated — a broadcast on a tube, statue and all.
     out = find(v.graph()["nodes"], "Output")
     v.set_media_root(MEDIA)
     vid  = v.video(0)                                     # external pixels
@@ -102,10 +103,18 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.connect(disp, comp)
     fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.22)      # <- the BASS ghosts it
     v.connect(fb, disp)
+    # a real 3D model (glTF) — a statue turning inside the broadcast. Composited OVER the ghosted
+    # footage (AFTER the feedback, so it stays legible), then the whole frame goes through the tube.
+    model = v.add_node("Model")
+    v.set_node_file(model, "file", os.path.join(MEDIA, "frank", "scene.gltf"))
+    for k, val in dict(size=0.62, spin=0.22, tilt=0.5, light=0.5, r=0.85, g=1.0, b=0.9).items():
+        v.set_node_param(model, k, val)
+    compF = v.add_node("Composite"); v.set_node_param(compF, "mode", 1.0)   # ADD the statue over the footage
+    v.connect(compF, fb, port=0); v.connect(compF, model, port=1)
     crt = v.add_node("CRT")                               # <- the custom signature: the whole tube
     for k, val in dict(scan=0.55, mask=0.5, aberration=0.25, vignette=0.45, roll=0.0, curve=0.22).items():
         v.set_node_param(crt, k, val)
-    v.connect(crt, fb)
+    v.connect(crt, compF)
     v.connect(out, crt)
 
     # ---- the bridge : ONE instrument -> ONE visual effect (per-track, identifiable) ----
@@ -115,6 +124,10 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.track_viz(chords, "level",     crt,  "vignette",   amount=1.0, lo=0.3,  hi=0.7)    # pad  -> breathing vignette
     v.track_viz(arp,    "high",      crt,  "scan",       amount=1.0, lo=0.35, hi=0.9)    # arp  -> scanline pulse
     v.track_viz(sfx,    "level",     crt,  "roll",       amount=1.0, lo=0.0,  hi=0.7)    # riser-> hum-bar roll
+    # ---- the 3D model reacts too: it turns with the lead, pulses with the bass, nods on the kick ----
+    v.track_viz(lead,   "high",      model, "spin",      amount=1.0, lo=0.1,  hi=0.6)    # lead -> statue spins
+    v.track_viz(bass,   "low",       model, "size",      amount=0.6, lo=0.42, hi=0.68)   # bass -> statue swells
+    v.track_viz(drums,  "low",       model, "tilt",      amount=0.5, lo=0.42, hi=0.6)    # kick -> statue nods
 
     if save:
         save_geo(v, PROJECT)
