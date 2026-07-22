@@ -549,17 +549,27 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 14.f;  // title bar
             const float acc[3] = { ar, ag, ab };
-            session_clip_cell(ui, r, acc, hov, on, q, tbh);
+            // Classify the cell up front — this also decides the empty-slot look. ADR-0022 P3.3: a
+            // generator cell shows its type + an operator thumbnail. A MIDI clip with no notes / an
+            // audio slot with no clip is EMPTY: it gets a plain recessed cell (no accent strip, no
+            // title, no preview) so it reads as an empty slot, not a clip whose thumbnail failed.
+            const bool is_audio = vivid::session::session_track_is_audio(s, t);
+            const bool isgen = !is_audio && vivid::session::session_cell_is_generator(s, t, sc) != 0;
+            const int abpm = is_audio ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
+            bool empty = false;
+            if (!isgen) {
+                if (is_audio) empty = abpm <= 0;
+                else { vivid::session::ClipNote nb; empty = vivid::session::session_get_clip(s, t, sc, &nb, 1) == 0; }
+            }
+            session_clip_cell(ui, r, acc, hov, on, q, tbh, empty);
             if (q) {   // this clip is waiting to launch — flash + a countdown bar to the launch boundary
                 ui.draw_rect_outline(r.x, r.y, r.w, r.h, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], q_flash);
                 ui.draw_rect(r.x + 1.f, r.y + r.h - 3.f, (r.w - 2.f) * q_prog, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.9f);
             }
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
+            if (empty) continue;   // blank slot: nothing more to draw — the recessed cell is the empty state
             char cn[24];
-            // ADR-0022 P3.3: a generator cell shows the generator type (Euclid/Chord/…) and no clip preview.
-            const bool isgen = !vivid::session::session_track_is_audio(s, t) && vivid::session::session_cell_is_generator(s, t, sc) != 0;
-            const int abpm = vivid::session::session_track_is_audio(s, t) ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
             if (isgen)         std::snprintf(cn, sizeof cn, "%s", vivid::session::session_generator_type(s, t, sc));
             else if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else               std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
