@@ -88,19 +88,28 @@ struct PulseGenOp : vivid::OperatorBase, vivid::AudioProcessable {
         if (c->note_out_count) *c->note_out_count = on;
     }
 
-    // Thumbnail: evenly-spaced pulse blocks — how many land in a bar (~ 4 / `every`).
+    // Thumbnail: evenly-spaced pulse blocks — how many land in a bar (~ 4 / `every`). ANIMATED: the
+    // current pulse (at the transport position ctx->time) flashes bright while its note sounds
+    // (within the gate window), stepping across the row as the transport plays.
     void draw_thumbnail(const VividThumbnailContext* ctx) override {
         const VividDrawAPI& d = ctx->draw; if (!d.draw_rect) return;
-        const float ev = ctx->param_count > 1 ? ctx->param_values[1] : 1.0f;
+        const auto pv = [&](int i, float def) { return ctx->param_count > (uint32_t)i ? ctx->param_values[i] : def; };
+        const float ev = pv(1, 1.0f);
+        const double gt = pv(2, 0.5f);
+        const double sb = ev < 0.05f ? 0.05 : ev;
         int per = static_cast<int>(std::lround(4.0f / (ev < 0.05f ? 0.05f : ev)));
         per = per < 1 ? 1 : (per > 16 ? 16 : per);
+        const long long curk = (long long)std::floor(ctx->time / sb);
+        const int    cur  = (int)(((curk % per) + per) % per);
+        const double frac = ctx->time / sb - (double)curk;
         const float w = ctx->surface_width, h = ctx->surface_height;
-        const VividColor on = ctx->accent;
+        const VividColor on = ctx->accent, hot = { 1.f, 1.f, 1.f, 1.f };
         const float bw = std::max(2.0f, w / static_cast<float>(per) * 0.5f);
-        const float bh = std::max(2.0f, h * 0.42f), y = h * 0.5f - bh * 0.5f;
         for (int i = 0; i < per; ++i) {
+            const bool active = (i == cur) && frac < gt;
+            const float bh = std::max(2.0f, h * (active ? 0.62f : 0.42f)), y = h * 0.5f - bh * 0.5f;
             const float cx = w * (static_cast<float>(i) + 0.5f) / static_cast<float>(per);
-            d.draw_rect(d.opaque, cx - bw * 0.5f, y, bw, bh, on);
+            d.draw_rect(d.opaque, cx - bw * 0.5f, y, bw, bh, active ? hot : on);
         }
     }
 };
