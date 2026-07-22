@@ -13,6 +13,8 @@
 // writes L/R and may read note events) or an EFFECT (has an audio-input port; it
 // transforms L/R). Param changes are set from the UI/main thread (lock-free atomics);
 // processing is RT-safe (no alloc/lock, block <= kMaxBlock).
+struct VividThumbnailContext;   // operator_api/types.h — global scope (a C struct, not namespaced)
+
 namespace vivid {
 
 class OpRegistry;
@@ -48,6 +50,11 @@ void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (singl
 // instruments) and offered as note effects instead.
 void audio_op_mark_note_op(const std::string& name);
 bool audio_op_is_note_op(const std::string& name);
+// v14 registry-aware overloads: honor a loaded dylib's declared audio_role too, not just the
+// built-in name marks. Prefer these wherever a registry is in hand (a project op has no name mark).
+bool audio_op_is_note_op(OpRegistry& reg, const std::string& name);
+bool audio_op_is_mod_op (OpRegistry& reg, const std::string& name);
+bool audio_op_is_gen_op (OpRegistry& reg, const std::string& name);
 int  audio_note_op_count(OpRegistry& reg);
 const char* audio_note_op_name(OpRegistry& reg, int idx);
 
@@ -75,6 +82,11 @@ const char* audio_gen_op_name(OpRegistry& reg, int idx);
 // NoteFlushable). Used to release a scene-gated generator's held notes on a scene switch. Writes up
 // to `cap` offs into `out`, sets *count. A no-op (count=0) for ops that don't implement NoteFlushable.
 void audio_op_note_flush(AudioOp*, session::NoteEvent* out, uint32_t cap, uint32_t* count);
+
+// v14: draw the op's optional cell thumbnail into `ctx` (a no-op if the op overrides none). UI/main
+// thread, READ-ONLY — the op draws purely from ctx (a param snapshot + the draw API), never live
+// state — so this is safe to call concurrently with the audio thread's process().
+void audio_op_draw_thumbnail(AudioOp*, const ::VividThumbnailContext* ctx);
 
 // ADR-0022: one param driven by a control edge for THIS block. The host resolves the effective
 // value (control_resolve() — base + modulation, see audio/audio_graph.h) and hands it over here;

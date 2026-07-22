@@ -71,6 +71,7 @@ public:
     void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
     void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
+    void set_clock(double beats) { clock_beats_ = beats; }   // transport position, for live generator thumbnails
     void set_bounds(float x0, float y0, float x1, float y1) {
         x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1;
         // Until a gesture or a load sets the camera, seed it to the panel origin so a fresh graph opens
@@ -173,6 +174,7 @@ private:
     vivid::session::Session* s_ = nullptr;
     const NodeGraph* map_ = nullptr;   // the bridge (for the mapped-state dot); not owned
     int   track_ = -1;
+    double clock_beats_ = 0.0;         // transport position (set per frame), for live generator thumbnails
     int   sel_node_ = -1;
     float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
     bool     view_init_ = false; // false until a gesture/load sets it; set_bounds seeds the panel origin meanwhile

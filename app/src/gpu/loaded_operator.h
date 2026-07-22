@@ -31,6 +31,11 @@ public:
     void process_audio(const VividAudioContext* ctx) override;
     void process_frame(const VividFrameContext* ctx) override;
 
+    // v14: forward the dylib's optional thumbnail + declared audio role (dlsym'd), so a project
+    // operator draws its own cell preview and classifies as a generator/note-fx/modulator.
+    void draw_thumbnail(const VividThumbnailContext* ctx) override;
+    VividAudioRole declared_audio_role() const override;
+
     // The dylib's own descriptor — the authority on which process_* stages this op has
     // (this adapter inherits all three interfaces, so a dynamic_cast can't tell them apart).
     const VividOperatorDescriptor* host_capability_descriptor() const override;

@@ -250,14 +250,20 @@ inline void session_meter_track(Renderer2D& r, Rect b) {
 
 inline void session_clip_cell(Renderer2D& r, Rect b, const float* accent,
                               bool hot = false, bool active = false, bool queued = false,
-                              float title_h = 14.f) {
+                              float title_h = 14.f, bool empty = false) {
     const Style& s = style();
-    const float br = active ? 0.115f : s.recess[0] * 0.92f;
-    const float bg = active ? 0.130f : s.recess[1] * 0.88f;
-    const float bb = active ? 0.155f : s.recess[2] * 0.98f;
+    // An EMPTY slot (no clip / generator) reads as empty: a plain recessed rectangle with NO accent
+    // title strip, so it can't be mistaken for a clip whose thumbnail failed to render. Even an
+    // active/queued empty slot drops the strip — its selection ring, ▶ and queued flash still mark
+    // it as the live cell, so the "empty" read and the "active" read don't conflict.
+    const bool blank = empty;
+    const float br = active ? 0.115f : s.recess[0] * (blank ? 0.80f : 0.92f);
+    const float bg = active ? 0.130f : s.recess[1] * (blank ? 0.76f : 0.88f);
+    const float bb = active ? 0.155f : s.recess[2] * (blank ? 0.86f : 0.98f);
     r.draw_rect(b.x, b.y, b.w, b.h, br, bg, bb, 1.0f);
     const float k = (active ? 0.50f : 0.24f) + (hot ? 0.08f : 0.f);
-    r.draw_rect(b.x, b.y, b.w, title_h + 1.f, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
+    if (!blank)   // filled/generator/active cells carry the accent title strip; a blank slot does not
+        r.draw_rect(b.x, b.y, b.w, title_h + 1.f, accent[0] * k, accent[1] * k, accent[2] * k, 1.0f);
     if (queued)
         r.draw_rect(b.x, b.y, b.w, 2.f, s.gold[0], s.gold[1], s.gold[2], 1.0f);
     if (active)

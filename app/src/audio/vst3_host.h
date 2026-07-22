@@ -5,6 +5,7 @@
 #include "midi/midi_clip.h"   // ClipNote (clip editing API)
 
 namespace vivid { class OpRegistry; }   // shared operator registry (native audio ops)
+struct VividThumbnailContext;           // operator_api/types.h — global scope (a C struct, not namespaced)
 
 // Multi-track session façade over the extracted VST3 host (vst3_host_common.h is
 // an anonymous-namespace header, so the work lives in vst3_host.cpp and main only
@@ -63,6 +64,10 @@ int         session_generator_param_count(Session*, int track, int scene);
 const char* session_generator_param_name(Session*, int track, int scene, int i);
 float       session_generator_param_value(Session*, int track, int scene, int i);
 int         session_set_generator_param(Session*, int track, int scene, const char* name, float value);
+// v14: draw the generator cell's operator-supplied thumbnail into `ctx` (returns 0 and draws
+// nothing if the cell is a clip / holds no generator). UI/main thread; the ctx pointer is opaque
+// here and forwarded to the op's draw_thumbnail. See VividThumbnailContext (operator_api/types.h).
+int         session_generator_draw_thumbnail(Session*, int track, int scene, const ::VividThumbnailContext* ctx);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never

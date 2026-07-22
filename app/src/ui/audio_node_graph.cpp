@@ -4,6 +4,7 @@
 #include "ui/node_graph.h"        // NodeGraph::source_of — the bridge mapped-state query
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
+#include "ui/operator_draw_bridge.h"  // v14: Renderer2D -> VividDrawAPI, for live generator thumbnails
 #include "audio/vst3_host.h"
 #include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
@@ -224,6 +225,9 @@ CardPorts AudioNodeGraph::card_ports(int node_id, int kind) const {
     cp.lead_rows = kind_has_sig_in(kind) ? 1 : 0;   // audio: a single signal-in row (or none)
     cp.params   = static_cast<int>(exposed_params(node_id).size());
     cp.add_row  = s_ && P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
+    // A note GENERATOR (kind 8) exposes every param as a row, so a bottom well would sit below the
+    // dock. Give it a TOP preview strip (always visible) for its live thumbnail, and no bottom well.
+    if (kind == 8) { cp.head_h = kCardPrevH; cp.tail_h = 0.f; }
     return cp;
 }
 
@@ -486,14 +490,38 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
         r.draw_text(ab.x, ab.y + 1.f, "+ param", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f * a_small, 0.6f);
     }
 
-    // Live output-waveform preview — the node's real audio — in a recessed well BELOW the ports.
-    const Rect pv = cp.preview({ b.x, b.y, b.w, b.h });
+    // Live preview. For a GENERATOR node (kind 8: Euclid/RandMelody/… — silent audio, so its scope
+    // is flat) it's the operator's own ANIMATED thumbnail — the note pattern with a playhead at the
+    // transport position, the same one the session grid draws — in a TOP strip that stays visible
+    // above the (many) param rows. For every other node it's the real output waveform (a lock-free
+    // scope ring) in the recessed well BELOW the rows. (v14)
+    const bool is_gen = (kind == 8);
+    const Rect pv = is_gen ? cp.head_preview({ b.x, b.y, b.w, b.h }) : cp.preview({ b.x, b.y, b.w, b.h });
     if (pv.h > 6.f) {
         node_preview_panel(r, pv.x, pv.y, pv.w, pv.h);
-        float scope[128];
-        const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
-        if (ns > 1) node_waveform(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, scope, ns, acc[0], acc[1], acc[2]);
-        if (node_err) node_error_note(r, pv.x + 1.f, pv.y + 1.f, pv.w - 2.f, pv.h - 2.f, "plugin unavailable \xE2\x80\x94 silent");
+        const float ix = pv.x + 1.f, iy = pv.y + 1.f, iw = pv.w - 2.f, ih = pv.h - 2.f;
+        const int gen_scene = is_gen ? P::session_track_audio_graph_node_cell_scene(s_, track_, i) : -1;
+        if (gen_scene >= 0 && iw > 6.f && ih > 6.f &&
+            P::session_cell_is_generator(s_, track_, gen_scene) != 0) {
+            const int pc = P::session_generator_param_count(s_, track_, gen_scene);
+            std::vector<float> pvals(pc > 0 ? static_cast<size_t>(pc) : 0);
+            for (int k = 0; k < pc; ++k) pvals[k] = P::session_generator_param_value(s_, track_, gen_scene, k);
+            DrawBridge db{ &r, ix, iy, ix, iy, iw, ih };
+            VividThumbnailContext tc{};
+            tc.surface_width  = iw;
+            tc.surface_height = ih;
+            tc.draw           = make_op_draw_api(&db);
+            tc.param_values   = pvals.empty() ? nullptr : pvals.data();
+            tc.param_count    = static_cast<uint32_t>(pvals.size());
+            tc.accent         = VividColor{ acc[0], acc[1], acc[2], 1.0f };
+            tc.time           = clock_beats_;
+            P::session_generator_draw_thumbnail(s_, track_, gen_scene, &tc);
+        } else if (!is_gen) {
+            float scope[128];
+            const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
+            if (ns > 1) node_waveform(r, ix, iy, iw, ih, scope, ns, acc[0], acc[1], acc[2]);
+        }
+        if (node_err) node_error_note(r, ix, iy, iw, ih, "plugin unavailable \xE2\x80\x94 silent");
     }
     // The signal output nub (right-edge centre; absent on the Output sink).
     if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }

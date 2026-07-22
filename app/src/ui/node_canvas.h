@@ -71,6 +71,9 @@ inline void node_card(Renderer2D& r, float x, float y, float w, float h,
 // rows / a fill-to-bottom waveform well; the visuals graph uses 30 / 18 / a fixed 46px thumbnail.
 struct CardPorts {
     float header_h  = 22.f;   // title-strip height
+    float head_h    = 0.f;    // a preview strip ABOVE the rows, below the header (0 = none). Used for a
+                              // note-generator's always-visible live thumbnail (its rows would push a
+                              // bottom well off the dock). Rows + hit-tests shift down by it.
     float row_h     = 15.f;   // one port-row height
     float tail_h    = 30.f;   // preview/thumbnail region height below the rows (0 = none)
     float tail_pad  = 6.f;    // gap below the tail region to the card bottom
@@ -80,17 +83,21 @@ struct CardPorts {
 
     int   rows()          const { return lead_rows + params + (add_row ? 1 : 0); }
     int   rows_reserved() const { return std::max(1, rows()); }   // a card always reserves >= 1 row
-    float height()        const { return header_h + rows_reserved() * row_h + tail_h + tail_pad; }
+    float height()        const { return header_h + head_h + rows_reserved() * row_h + tail_h + tail_pad; }
 
     int   param_row(int k) const { return lead_rows + k; }   // row index of the k-th param
     int   add_row_index()  const { return lead_rows + params; }
 
     // Centre-y of port row `k` on a card whose top edge is at `card_y` (lead rows are 0..lead_rows-1).
-    float row_cy(float card_y, int k) const { return card_y + header_h + k * row_h + row_h * 0.5f; }
+    float row_cy(float card_y, int k) const { return card_y + header_h + head_h + k * row_h + row_h * 0.5f; }
+    // The head preview strip (below the header, above the rows), within card rect `c`. Empty if head_h==0.
+    Rect  head_preview(const Rect& c) const {
+        return { c.x + 6.f, c.y + header_h + 1.f, c.w - 12.f, head_h - 2.f };
+    }
     // A fill-to-bottom recessed preview well beneath the rows (the audio convention), within card
     // rect `c`. The visuals graph places a fixed-height thumbnail itself — this is not shared.
     Rect  preview(const Rect& c) const {
-        const float y = c.y + header_h + rows_reserved() * row_h + 1.f;
+        const float y = c.y + header_h + head_h + rows_reserved() * row_h + 1.f;
         return { c.x + 6.f, y, c.w - 12.f, (c.y + c.h) - y - 4.f };
     }
 };

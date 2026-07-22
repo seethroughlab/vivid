@@ -78,6 +78,10 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
         d.has_process_frame = (dynamic_cast<FrameProcessable*>(&op) != nullptr) ? 1 : 0;
     }
     d.multiplicity_behavior = VIVID_MULTIPLICITY_SCALAR_ONLY;  // P1: scalar only (no lanes)
+    // v14: audio-runtime role. A loaded dylib returns its vivid_audio_role() export here (via the
+    // LoadedOperator override); a built-in returns DEFAULT (it is classified by the audio_op_mark_*
+    // name tables instead). Sourced from a virtual, never read out of the dylib's descriptor struct.
+    d.audio_role = op.declared_audio_role();
 }
 
 void sync_params(OpInstance& inst, const float* values, int count) {

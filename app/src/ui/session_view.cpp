@@ -206,7 +206,7 @@ void draw_sidebar(Renderer2D& ui, const Window& w, double mx, double my) {
 
 // The bottom device-view dock: device chips for the selected track + a knob grid
 // of the selected device's params. Full window width; resizable via its top edge.
-void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
+void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, double my) {
     vivid::session::Session* s = w.app->session;
     if (!s) return;
     const Style& sty = style();
@@ -395,6 +395,7 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double mx, double my) {
         ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
         ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
         ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
+        ag.set_clock(beats);                  // transport position, for live generator-node thumbnails
         ag.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
@@ -549,24 +550,51 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             float ar, ag, ab; track_accent(t, ar, ag, ab);
             const float tbh = 14.f;  // title bar
             const float acc[3] = { ar, ag, ab };
-            session_clip_cell(ui, r, acc, hov, on, q, tbh);
+            // Classify the cell up front — this also decides the empty-slot look. ADR-0022 P3.3: a
+            // generator cell shows its type + an operator thumbnail. A MIDI clip with no notes / an
+            // audio slot with no clip is EMPTY: it gets a plain recessed cell (no accent strip, no
+            // title, no preview) so it reads as an empty slot, not a clip whose thumbnail failed.
+            const bool is_audio = vivid::session::session_track_is_audio(s, t);
+            const bool isgen = !is_audio && vivid::session::session_cell_is_generator(s, t, sc) != 0;
+            const int abpm = is_audio ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
+            bool empty = false;
+            if (!isgen) {
+                if (is_audio) empty = abpm <= 0;
+                else { vivid::session::ClipNote nb; empty = vivid::session::session_get_clip(s, t, sc, &nb, 1) == 0; }
+            }
+            session_clip_cell(ui, r, acc, hov, on, q, tbh, empty);
             if (q) {   // this clip is waiting to launch — flash + a countdown bar to the launch boundary
                 ui.draw_rect_outline(r.x, r.y, r.w, r.h, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], q_flash);
                 ui.draw_rect(r.x + 1.f, r.y + r.h - 3.f, (r.w - 2.f) * q_prog, 2.f, sty.gold[0], sty.gold[1], sty.gold[2], 0.9f);
             }
             float tx = r.x + 6.f;
             if (on) { ui.draw_tri(r.x + 5.f, r.y + 4.f, r.x + 5.f, r.y + 10.f, r.x + 10.f, r.y + 7.f, sty.green[0], sty.green[1], sty.green[2], 1.0f); tx = r.x + 14.f; }
+            if (empty) continue;   // blank slot: nothing more to draw — the recessed cell is the empty state
             char cn[24];
-            // ADR-0022 P3.3: a generator cell shows the generator type (Euclid/Chord/…) and no clip preview.
-            const bool isgen = !vivid::session::session_track_is_audio(s, t) && vivid::session::session_cell_is_generator(s, t, sc) != 0;
-            const int abpm = vivid::session::session_track_is_audio(s, t) ? vivid::session::session_audio_clip_bpm(s, t, sc) : 0;
             if (isgen)         std::snprintf(cn, sizeof cn, "%s", vivid::session::session_generator_type(s, t, sc));
             else if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else               std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(tx, r.y + 2.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, sty.fs_value);
+            const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
             if (!isgen) {
-                const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
                 draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
+            } else if (pv.w > 6.f && pv.h > 6.f) {
+                // v14: let the generator operator draw its OWN thumbnail into the cell body (Euclid
+                // ring / RandMelody line / ...), through the same Renderer2D->VividDrawAPI bridge the
+                // custom editor uses. The op reads only this snapshot, so the draw is UI-thread-safe.
+                const int pc = vivid::session::session_generator_param_count(s, t, sc);
+                std::vector<float> pvals(pc > 0 ? static_cast<size_t>(pc) : 0);
+                for (int i = 0; i < pc; ++i) pvals[i] = vivid::session::session_generator_param_value(s, t, sc, i);
+                vivid::ui::DrawBridge db{ &ui, pv.x, pv.y, pv.x, pv.y, pv.w, pv.h };
+                VividThumbnailContext tc{};
+                tc.surface_width  = pv.w;
+                tc.surface_height = pv.h;
+                tc.draw           = vivid::ui::make_op_draw_api(&db);
+                tc.param_values   = pvals.empty() ? nullptr : pvals.data();
+                tc.param_count    = static_cast<uint32_t>(pvals.size());
+                tc.accent         = VividColor{ ar, ag, ab, on ? 1.0f : 0.85f };
+                tc.time           = beats;
+                vivid::session::session_generator_draw_thumbnail(s, t, sc, &tc);
             }
         }
     }

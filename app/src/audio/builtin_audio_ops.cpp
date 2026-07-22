@@ -490,6 +490,9 @@ struct LfoOp : OperatorBase, AudioProcessable {
 // sample-accurate offsets, and voice tracking. A subclass only decides which pitches a given step
 // fires (step_notes) plus its rate/gate/velocity.
 struct NoteGenBase : OperatorBase, AudioProcessable, NoteFlushable {
+    // v14: built-in generators carry the role in their descriptor too (not only the audio_op_mark_gen_op
+    // name table), so built-in and loaded-dylib generators classify through the identical path.
+    VividAudioRole declared_audio_role() const override { return VIVID_AUDIO_ROLE_GENERATOR; }
     static constexpr int kRateN = 6;
     static double rate_beats(int i) {   // 1/1 1/2 1/4 1/8 1/16 1/8T, in beats per step
         static const double b[kRateN] = { 4.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0 };
@@ -608,6 +611,41 @@ struct EuclidOp : NoteGenBase {
         out[0] = note.int_value();
         return 1;
     }
+    // Thumbnail: the Euclidean pattern as a ring of `steps` dots, the `pulses` hits filled in the
+    // track accent (same E(pulses,steps) formula as step_notes), rotated by `rotate`. ANIMATED: a
+    // playhead orbits the ring at the transport position (ctx->time in beats) and the current step
+    // flashes bright while its note is sounding (within the gate window).
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        const VividDrawAPI& d = ctx->draw; if (!d.draw_rect) return;
+        const auto pv = [&](int i, float def) { return ctx->param_count > (uint32_t)i ? ctx->param_values[i] : def; };
+        int st = (int)std::lround(pv(0, 16.f)); if (st < 1) st = 1; if (st > 32) st = 32;
+        int pu = (int)std::lround(pv(1, 4.f));  pu = pu < 0 ? 0 : (pu > st ? st : pu);
+        const int   rot = (int)std::lround(pv(2, 0.f));
+        const double gt = pv(5, 0.5f);
+        const double sb = rate_beats((int)std::lround(pv(4, 4.f)));   // beats per step
+        const long long curk = sb > 0.0 ? (long long)std::floor(ctx->time / sb) : 0;
+        const int    cur  = (int)(((curk % st) + st) % st);
+        const double frac = sb > 0.0 ? (ctx->time / sb - (double)curk) : 1.0;   // 0..1 within the step
+        const float w = ctx->surface_width, h = ctx->surface_height;
+        const VividColor on = ctx->accent, off = { 0.42f, 0.44f, 0.48f, 0.55f };
+        const VividColor hot = { 1.f, 1.f, 1.f, 1.f };
+        const float cx = w * 0.5f, cy = h * 0.5f, R = std::min(w, h) * 0.34f;
+        const float ds = std::max(2.0f, std::min(w, h) * 0.11f);
+        for (int i = 0; i < st; ++i) {
+            const float a  = -1.5707963f + 6.2831853f * (float)i / (float)st;
+            const float px = cx + R * std::cos(a), py = cy + R * std::sin(a);
+            const int   j  = ((i + rot) % st + st) % st;
+            const bool  hit = static_cast<int>(((long long)j * pu) % st) < pu;
+            const bool  active = (i == cur) && hit && frac < gt;      // note currently sounding
+            const float s  = active ? ds * 1.5f : (hit ? ds : ds * 0.6f);
+            d.draw_rect(d.opaque, px - s * 0.5f, py - s * 0.5f, s, s, active ? hot : (hit ? on : off));
+        }
+        // the playhead marker orbiting the ring at the current step
+        if (d.draw_circle && st > 0) {
+            const float a = -1.5707963f + 6.2831853f * (float)cur / (float)st;
+            d.draw_circle(d.opaque, cx + R * std::cos(a), cy + R * std::sin(a), ds * 0.95f, 1.5f, on);
+        }
+    }
 };
 
 // Chord: fires a chord stack every step. quality picks the intervals.
@@ -638,6 +676,28 @@ struct ChordOp : NoteGenBase {
         int n = 0;
         for (int i = 0; i < 4; ++i) if (chords[q][i] >= 0) out[n++] = root.int_value() + chords[q][i];
         return n;
+    }
+    // Thumbnail: the chord as stacked horizontal note bars, higher intervals higher on the surface.
+    // ANIMATED: the whole stack flashes bright on each step boundary while the chord sounds (within
+    // the gate window), then dims until the next hit — pulsing at the transport rate.
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        const VividDrawAPI& d = ctx->draw; if (!d.draw_rect) return;
+        static const int chords[5][4] = { {0,4,7,-1}, {0,3,7,-1}, {0,4,7,10}, {0,3,7,10}, {0,5,7,-1} };
+        const auto pv = [&](int i, float def) { return ctx->param_count > (uint32_t)i ? ctx->param_values[i] : def; };
+        int q = (int)std::lround(pv(1, 0.f)); q = q < 0 ? 0 : (q > 4 ? 4 : q);
+        const double sb = rate_beats((int)std::lround(pv(2, 2.f)));   // beats per step
+        const double gt = pv(3, 0.85f);
+        const double frac = sb > 0.0 ? (ctx->time / sb - std::floor(ctx->time / sb)) : 1.0;   // 0..1 in step
+        const bool sounding = frac < gt;
+        const float w = ctx->surface_width, h = ctx->surface_height;
+        VividColor c = ctx->accent; c.a *= sounding ? 1.0f : 0.5f;   // flash on the hit, dim between
+        const float bw = w * (sounding ? 0.72f : 0.58f), bx = (w - bw) * 0.5f, bh = std::max(2.0f, h * 0.13f);
+        for (int i = 0; i < 4; ++i) {
+            if (chords[q][i] < 0) continue;
+            const float t = (float)chords[q][i] / 12.0f;                 // 0..~0.83 within an octave
+            const float y = h - h * (0.12f + 0.72f * t) - bh * 0.5f;     // higher interval -> higher up
+            d.draw_rect(d.opaque, bx, y, bw, bh, c);
+        }
     }
 };
 
@@ -681,6 +741,46 @@ struct RandMelodyOp : NoteGenBase {
         const int deg = static_cast<int>((h >> 16) % static_cast<uint32_t>(len * oc));
         out[0] = root.int_value() + scales[sc][deg % len] + 12 * (deg / len);
         return 1;
+    }
+    // Thumbnail: a wandering note-line — the SAME deterministic per-step hash the generator fires.
+    // ANIMATED: a SCROLLING piano-roll window ending at the current transport step (ctx->time), so
+    // new notes stream in from the right as the generator improvises; the newest note (the one
+    // currently sounding, within gate) flashes bright. density + octaves shape it.
+    void draw_thumbnail(const VividThumbnailContext* ctx) override {
+        const VividDrawAPI& d = ctx->draw; if (!d.draw_rect) return;
+        const auto pv = [&](int i, float def) { return ctx->param_count > (uint32_t)i ? ctx->param_values[i] : def; };
+        int sc = (int)std::lround(pv(1, 0.f)); sc = sc < 0 ? 0 : (sc > 3 ? 3 : sc);
+        const int   oc   = std::max(1, (int)std::lround(pv(2, 2.f)));
+        const float dens = pv(4, 0.7f);
+        const int   sd   = (int)std::lround(pv(6, 1.f));
+        const double sb  = rate_beats((int)std::lround(pv(3, 4.f)));   // beats per step
+        const double gt  = pv(5, 0.6f);
+        const long long curk = sb > 0.0 ? (long long)std::floor(ctx->time / sb) : 0;
+        const double frac = sb > 0.0 ? (ctx->time / sb - (double)curk) : 1.0;
+        static const int lens[4] = { 7, 7, 5, 7 };
+        const int span = std::max(1, lens[sc] * oc);
+        const float w = ctx->surface_width, h = ctx->surface_height;
+        const VividColor on = ctx->accent, off = { 0.42f, 0.44f, 0.48f, 0.4f };
+        const VividColor hot = { 1.f, 1.f, 1.f, 1.f };
+        const int N = 14;
+        const float s = std::max(2.0f, std::min(w, h) * 0.09f);
+        float px = -1.f, py = -1.f;
+        for (int i = 0; i < N; ++i) {
+            const long long step = curk - (N - 1) + i;    // scrolling window: rightmost = current step
+            const float x = w * (0.08f + 0.84f * (N > 1 ? (float)i / (float)(N - 1) : 0.f));
+            uint32_t hh = static_cast<uint32_t>(sd) * 2654435761u ^ static_cast<uint32_t>(step * 40503LL);
+            hh ^= hh >> 15; hh *= 2246822519u; hh ^= hh >> 13; hh *= 3266489917u; hh ^= hh >> 16;
+            if (static_cast<float>(hh & 0xffffu) / 65535.0f > dens) {           // a rest — baseline tick
+                d.draw_rect(d.opaque, x - 1.0f, h * 0.5f - 0.75f, 2.0f, 1.5f, off); px = -1.f; continue;
+            }
+            const int deg = static_cast<int>((hh >> 16) % static_cast<uint32_t>(span));
+            const float y = h - h * (0.14f + 0.72f * ((float)deg / (float)span));
+            const bool active = (i == N - 1) && frac < gt;                      // newest note, sounding
+            if (px >= 0.f && d.draw_line) d.draw_line(d.opaque, px, py, x, y, 1.5f, on);
+            const float sz = active ? s * 1.6f : s;
+            d.draw_rect(d.opaque, x - sz * 0.5f, y - sz * 0.5f, sz, sz, active ? hot : on);
+            px = x; py = y;
+        }
     }
 };
 

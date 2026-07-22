@@ -2150,7 +2150,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // blk.notes are unchanged. The instrument now reads BOTH via note edges, merged and
             // time-sorted by graph_note_input.
             t.nev_clip.clear(); t.eev.clear();
-            if (release_all)    t.sched.flush(t.nev_clip);                            // play->stop edge: release held notes
+            if (release_all) {
+                t.sched.flush(t.nev_clip);                            // play->stop edge: release the clip's held notes
+                // ADR-0022 P3.3: also release every generator's held voices (Euclid/RandMelody/…)
+                // into the same stream — otherwise a note a generator is holding hangs on pause.
+                // note_flush also forgets the op's voices, so it resyncs clean when play resumes.
+                for (const GNodeBind& gb : t.gbinds)
+                    if (gb.kind == GNKind::NativeGen && gb.op) {
+                        NoteEvent gof[64]; uint32_t gn = 0;
+                        vivid::audio_op_note_flush(gb.op, gof, 64, &gn);
+                        for (uint32_t i = 0; i < gn && t.nev_clip.size() < kGraphMaxNotes; ++i) t.nev_clip.push_back(gof[i]);
+                    }
+            }
             else if (playing)   t.sched.emit(beats, delta, frames, t.nev_clip, t.eev);  // paused: emit nothing (tails still ring)
             t.nev_live.clear();
             // Live MIDI monitoring (M6): the armed track drains the session live-input
@@ -3087,7 +3098,7 @@ int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
 int session_audio_graph_add_mod_op(Session* s, int t, const char* op_type) {
     Track* tr = graph_track(s, t);
     if (!tr || !s->op_reg) return -1;
-    if (!op_type || !vivid::audio_op_is_mod_op(op_type)) return -1;   // only a registered modulator
+    if (!op_type || !vivid::audio_op_is_mod_op(*s->op_reg, op_type)) return -1;   // only a registered modulator (built-in mark OR dylib role)
     vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
     if (!op) return -1;
     std::lock_guard<std::mutex> lk(tr->gmtx);
@@ -3736,6 +3747,12 @@ int session_set_generator_param(Session* s, int track, int scene, const char* na
     for (int i = 0; i < n; ++i)
         if (std::strcmp(vivid::audio_op_param_name(op, i), name) == 0) { vivid::audio_op_param_set(op, i, v); return 1; }
     return 0;
+}
+int session_generator_draw_thumbnail(Session* s, int track, int scene, const ::VividThumbnailContext* ctx) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    if (!op || !ctx) return 0;
+    vivid::audio_op_draw_thumbnail(op, ctx);   // op reads only ctx (param snapshot + draw API)
+    return 1;
 }
 
 // Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),

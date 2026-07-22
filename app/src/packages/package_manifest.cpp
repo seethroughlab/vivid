@@ -37,9 +37,11 @@ PackageManifest parse_package_manifest(const std::string& package_dir) {
             m.error = "each operator needs \"name\" and \"source\""; return m;
         }
         if (!op.kind.empty() && op.kind != "gpu_visual" && op.kind != "audio_effect" &&
-            op.kind != "instrument" && op.kind != "frame") {
+            op.kind != "instrument" && op.kind != "frame" && op.kind != "generator" &&
+            op.kind != "note_effect" && op.kind != "modulator") {
             m.error = "operator \"" + op.name + "\" has unknown \"kind\": " + op.kind +
-                      " (expected gpu_visual | audio_effect | instrument | frame)"; return m;
+                      " (expected gpu_visual | audio_effect | instrument | frame | generator | "
+                      "note_effect | modulator)"; return m;
         }
         // wgpu link flag: an explicit "gpu" wins; otherwise derive from kind (only gpu_visual
         // links wgpu); with neither, default to linking (back-compat with kind-less manifests).
