@@ -362,6 +362,11 @@ struct OperatorBase {
     virtual void draw_thumbnail(const VividThumbnailContext*) {}  // optional override
     virtual void draw_inspector(VividInspectorContext*) {}        // optional override
     virtual void main_thread_update(double time) {}               // optional override
+    // Audio-runtime role (v14+). Base = DEFAULT (classify by ports). The loaded-dylib adapter
+    // overrides this to hand back the dylib's vivid_audio_role() export, so build_descriptor can
+    // record it WITHOUT reading an appended field out of the (possibly older) dylib descriptor
+    // struct. Built-in audio ops keep using the audio_op_mark_* tables, so they leave this DEFAULT.
+    virtual VividAudioRole declared_audio_role() const { return VIVID_AUDIO_ROLE_DEFAULT; }
     // Host-internal: a built-in operator's process_* capabilities ARE its C++ interfaces, so the
     // host infers them by dynamic_cast (returns nullptr here). The loaded-dylib adapter implements
     // all three interfaces at once, so it can't be told apart that way — it overrides this to hand
@@ -465,6 +470,22 @@ constexpr bool get_time_dependent() {
         return T::kTimeDependent;
     else
         return false;
+}
+
+// Audio role (v14+). If the operator declares a static constexpr kAudioRole, use it; otherwise
+// DEFAULT (classify by ports). Lets an audio op (esp. a loaded dylib) mark itself a generator /
+// note-effect / modulator the way built-ins are marked via audio_op_mark_* (see audio_op_runtime).
+template <typename T, typename = void>
+struct has_audio_role : std::false_type {};
+template <typename T>
+struct has_audio_role<T, std::void_t<decltype(T::kAudioRole)>> : std::true_type {};
+
+template <typename T>
+constexpr VividAudioRole get_audio_role() {
+    if constexpr (has_audio_role<T>::value)
+        return T::kAudioRole;
+    else
+        return VIVID_AUDIO_ROLE_DEFAULT;
 }
 
 // v3 metadata: display_name, keywords, summary. All optional — operators that
@@ -839,6 +860,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
         desc.ports          = s_ports.data();                                 \
         desc.time_dependent =                                                 \
             vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;           \
+        desc.audio_role =                                                     \
+            vivid::detail::get_audio_role<ClassName>();                       \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \
@@ -932,6 +955,17 @@ extern "C" void vivid_process_audio(void* instance,                           \
 extern "C" void vivid_process_gpu(void* instance,                             \
                                   VividGpuContext* ctx) {                     \
     _vivid_dispatch_gpu<ClassName>(instance, ctx);                            \
+}                                                                             \
+/* v14: optional operator-drawn thumbnail. draw_thumbnail is on OperatorBase  \
+ * (base no-op), so this always resolves — the host dlsym's it and calls it   \
+ * for a loaded dylib's cell preview. */                                      \
+extern "C" void vivid_draw_thumbnail(void* instance,                          \
+                                     const VividThumbnailContext* ctx) {      \
+    static_cast<_VividInstance*>(instance)->op.draw_thumbnail(ctx);           \
+}                                                                             \
+/* v14: optional audio-role hint (generator / note-effect / modulator). */    \
+extern "C" uint32_t vivid_audio_role(void) {                                  \
+    return static_cast<uint32_t>(vivid::detail::get_audio_role<ClassName>()); \
 }                                                                             \
 extern "C" void vivid_main_thread_update(void* instance, double time,         \
                                          std::string** file_param_strings,    \

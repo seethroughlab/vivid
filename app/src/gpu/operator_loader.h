@@ -77,6 +77,16 @@ public:
         return drop_fn_ ? drop_fn_(count) : nullptr;
     }
 
+    // v14: optional operator-drawn thumbnail (vivid_draw_thumbnail, dlsym'd if present).
+    bool has_thumbnail() const { return draw_thumbnail_fn_ != nullptr; }
+    void draw_thumbnail(void* instance, const VividThumbnailContext* ctx) const {
+        if (draw_thumbnail_fn_ && instance) draw_thumbnail_fn_(instance, ctx);
+    }
+    // v14: optional declared audio role (vivid_audio_role, dlsym'd if present). DEFAULT when absent.
+    VividAudioRole audio_role() const {
+        return audio_role_fn_ ? static_cast<VividAudioRole>(audio_role_fn_()) : VIVID_AUDIO_ROLE_DEFAULT;
+    }
+
     const std::string& registration_mode() const { return registration_mode_; }
     bool is_loaded() const { return handle_ != nullptr; }
     const LastError& last_error() const { return last_error_; }
@@ -104,6 +114,8 @@ private:
     VividEditorMetadataFn editor_meta_fn_   = nullptr;   // UI-4b: optional custom-editor ABI
     VividDrawEditorFn    draw_editor_fn_    = nullptr;
     VividFileDropDescriptorFn drop_fn_      = nullptr;   // ADR-0021/P3: optional file-drop handlers
+    VividDrawThumbnailFn draw_thumbnail_fn_ = nullptr;   // v14: optional cell thumbnail
+    VividAudioRoleFn     audio_role_fn_     = nullptr;   // v14: optional declared audio role
     std::string          registration_mode_ = "unknown";
     bool                 reload_required_recompile_ = false;
     LastError            last_error_{};

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "operators": [
     { "name": "Drive", "kind": "audio_effect", "source": "drive.cpp" },
-    { "name": "SineSynth", "kind": "instrument", "source": "sine_synth.cpp" }
+    { "name": "SineSynth", "kind": "instrument", "source": "sine_synth.cpp" },
+    { "name": "PulseGen", "kind": "generator", "source": "pulse_gen.cpp" }
   ]
 }

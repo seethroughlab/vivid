@@ -564,9 +564,26 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
             else if (abpm > 0) std::snprintf(cn, sizeof cn, "%d BPM", abpm);
             else               std::snprintf(cn, sizeof cn, "Clip %c", 'A' + sc);
             ui.draw_text(tx, r.y + 2.f, cn, on ? 0.95f : 0.72f, on ? 0.97f : 0.74f, 1.0f, 1.0f, sty.fs_value);
+            const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
             if (!isgen) {
-                const Rect pv = { r.x + 4.f, r.y + tbh + 3.f, r.w - 8.f, r.h - tbh - 6.f };
                 draw_clip_preview(ui, s, t, sc, pv, ar, ag, ab, on);
+            } else if (pv.w > 6.f && pv.h > 6.f) {
+                // v14: let the generator operator draw its OWN thumbnail into the cell body (Euclid
+                // ring / RandMelody line / ...), through the same Renderer2D->VividDrawAPI bridge the
+                // custom editor uses. The op reads only this snapshot, so the draw is UI-thread-safe.
+                const int pc = vivid::session::session_generator_param_count(s, t, sc);
+                std::vector<float> pvals(pc > 0 ? static_cast<size_t>(pc) : 0);
+                for (int i = 0; i < pc; ++i) pvals[i] = vivid::session::session_generator_param_value(s, t, sc, i);
+                vivid::ui::DrawBridge db{ &ui, pv.x, pv.y, pv.x, pv.y, pv.w, pv.h };
+                VividThumbnailContext tc{};
+                tc.surface_width  = pv.w;
+                tc.surface_height = pv.h;
+                tc.draw           = vivid::ui::make_op_draw_api(&db);
+                tc.param_values   = pvals.empty() ? nullptr : pvals.data();
+                tc.param_count    = static_cast<uint32_t>(pvals.size());
+                tc.accent         = VividColor{ ar, ag, ab, on ? 1.0f : 0.85f };
+                tc.time           = beats;
+                vivid::session::session_generator_draw_thumbnail(s, t, sc, &tc);
             }
         }
     }

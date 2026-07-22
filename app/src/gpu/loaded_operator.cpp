@@ -63,6 +63,13 @@ void LoadedOperator::process_frame(const VividFrameContext* ctx) {
         loader_->process_frame(instance_, const_cast<VividFrameContext*>(ctx));
 }
 
+void LoadedOperator::draw_thumbnail(const VividThumbnailContext* ctx) {
+    if (loader_ && instance_) loader_->draw_thumbnail(instance_, ctx);   // no-op if the dylib exports none
+}
+VividAudioRole LoadedOperator::declared_audio_role() const {
+    return loader_ ? loader_->audio_role() : VIVID_AUDIO_ROLE_DEFAULT;
+}
+
 const VividOperatorDescriptor* LoadedOperator::host_capability_descriptor() const {
     return loader_ ? loader_->descriptor() : nullptr;
 }

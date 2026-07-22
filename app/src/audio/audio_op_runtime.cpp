@@ -92,13 +92,19 @@ static bool descriptor_is_source(const VividOperatorDescriptor* d) {
         if (d->ports[i].type == VIVID_PORT_AUDIO_BUFFER && d->ports[i].direction == VIVID_PORT_INPUT) return false;
     return true;
 }
+// v14 effective-role helpers (defined below, after the three mark sets exist) — a built-in's name
+// mark OR a loaded dylib's declared audio_role. Forward-declared here so the note/mod/gen
+// enumerations that follow can use them.
+static bool role_is_note(const std::string& nm, const VividOperatorDescriptor* d);
+static bool role_is_mod (const std::string& nm, const VividOperatorDescriptor* d);
+static bool role_is_gen (const std::string& nm, const VividOperatorDescriptor* d);
 // ADR-0015: the note-effect set (marked at registration; see audio_op_mark_note_op).
 static std::set<std::string>& note_ops() { static std::set<std::string> s; return s; }
 void audio_op_mark_note_op(const std::string& name) { note_ops().insert(name); }
 bool audio_op_is_note_op(const std::string& name) { return note_ops().count(name) != 0; }
 int audio_note_op_count(OpRegistry& reg) {
     int n = 0;
-    for (const auto& nm : reg.type_names()) if (audio_op_is_note_op(nm)) ++n;
+    for (const auto& nm : reg.type_names()) if (role_is_note(nm, reg.descriptor_for(nm))) ++n;
     return n;
 }
 // Returns the REGISTRY-OWNED name, not `nm.c_str()`: type_names() hands back a vector BY VALUE, so
@@ -108,8 +114,8 @@ int audio_note_op_count(OpRegistry& reg) {
 const char* audio_note_op_name(OpRegistry& reg, int idx) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
-        if (!audio_op_is_note_op(nm) || n++ != idx) continue;
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
+        if (!role_is_note(nm, d) || n++ != idx) continue;
         return d && d->name ? d->name : "";
     }
     return "";
@@ -122,14 +128,14 @@ void audio_op_mark_mod_op(const std::string& name) { mod_ops().insert(name); }
 bool audio_op_is_mod_op(const std::string& name) { return mod_ops().count(name) != 0; }
 int audio_mod_op_count(OpRegistry& reg) {
     int n = 0;
-    for (const auto& nm : reg.type_names()) if (audio_op_is_mod_op(nm)) ++n;
+    for (const auto& nm : reg.type_names()) if (role_is_mod(nm, reg.descriptor_for(nm))) ++n;
     return n;
 }
 const char* audio_mod_op_name(OpRegistry& reg, int idx) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
-        if (!audio_op_is_mod_op(nm) || n++ != idx) continue;
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);   // registry-owned; nm dangles
+        if (!role_is_mod(nm, d) || n++ != idx) continue;
         return d && d->name ? d->name : "";
     }
     return "";
@@ -142,27 +148,46 @@ void audio_op_mark_gen_op(const std::string& name) { gen_ops().insert(name); }
 bool audio_op_is_gen_op(const std::string& name) { return gen_ops().count(name) != 0; }
 int audio_gen_op_count(OpRegistry& reg) {
     int n = 0;
-    for (const auto& nm : reg.type_names()) if (audio_op_is_gen_op(nm)) ++n;
+    for (const auto& nm : reg.type_names()) if (role_is_gen(nm, reg.descriptor_for(nm))) ++n;
     return n;
 }
 const char* audio_gen_op_name(OpRegistry& reg, int idx) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
-        if (!audio_op_is_gen_op(nm) || n++ != idx) continue;
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);   // registry-owned; nm dangles
+        if (!role_is_gen(nm, d) || n++ != idx) continue;
         return d && d->name ? d->name : "";
     }
     return "";
 }
+
+// v14: effective role = a built-in's name mark (audio_op_mark_*) OR a loaded dylib's declared
+// audio_role (from vivid_audio_role, recorded in the host descriptor). Honoring EITHER makes a
+// project-shipped audio op first-class: it lands in the same generator / note-fx / modulator lists
+// as a built-in instead of being mis-offered as a plain instrument.
+static bool role_is_note(const std::string& nm, const VividOperatorDescriptor* d) {
+    return note_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_NOTE_EFFECT);
+}
+static bool role_is_mod(const std::string& nm, const VividOperatorDescriptor* d) {
+    return mod_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_MODULATOR);
+}
+static bool role_is_gen(const std::string& nm, const VividOperatorDescriptor* d) {
+    return gen_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_GENERATOR);
+}
+// Registry-aware public overloads (v14): resolve the descriptor so a loaded dylib's declared role
+// counts, not just the built-in name marks.
+bool audio_op_is_note_op(OpRegistry& reg, const std::string& name) { return role_is_note(name, reg.descriptor_for(name)); }
+bool audio_op_is_mod_op (OpRegistry& reg, const std::string& name) { return role_is_mod (name, reg.descriptor_for(name)); }
+bool audio_op_is_gen_op (OpRegistry& reg, const std::string& name) { return role_is_gen (name, reg.descriptor_for(name)); }
 
 int audio_op_registry_count(OpRegistry& reg, bool want_source) {
     int n = 0;
     for (const auto& nm : reg.type_names()) {
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
         if (!d || !d->has_process_audio) continue;
-        if (audio_op_is_note_op(nm)) continue;   // a note effect is not an instrument
-        if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
-        if (audio_op_is_gen_op(nm)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
+        if (role_is_note(nm, d)) continue;   // a note effect is not an instrument
+        if (role_is_mod(nm, d)) continue;    // ...nor is a modulator (ADR-0022)
+        if (role_is_gen(nm, d)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
         if (descriptor_is_source(d) == want_source) ++n;
     }
     return n;
@@ -171,11 +196,12 @@ const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
     if (idx < 0) return "";
     int n = 0;
     for (const auto& nm : reg.type_names()) {
-        if (audio_op_is_note_op(nm)) continue;   // excluded: a note effect is not an instrument
-        if (audio_op_is_mod_op(nm)) continue;    // ...nor is a modulator (ADR-0022)
-        if (audio_op_is_gen_op(nm)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
         const VividOperatorDescriptor* d = reg.descriptor_for(nm);
-        if (!d || !d->has_process_audio || descriptor_is_source(d) != want_source) continue;
+        if (!d || !d->has_process_audio) continue;
+        if (role_is_note(nm, d)) continue;   // excluded: a note effect is not an instrument
+        if (role_is_mod(nm, d)) continue;    // ...nor is a modulator (ADR-0022)
+        if (role_is_gen(nm, d)) continue;    // ...nor is a note generator (ADR-0022 P3.3)
+        if (descriptor_is_source(d) != want_source) continue;
         if (n == idx) return d->name ? d->name : "";   // descriptor name is stable (registry-owned)
         ++n;
     }
@@ -335,6 +361,11 @@ void audio_op_note_flush(AudioOp* a, session::NoteEvent* out, uint32_t cap, uint
                                      e.velocity, e.note_id, e.tuning };
     }
     if (count) *count = m;
+}
+
+void audio_op_draw_thumbnail(AudioOp* a, const ::VividThumbnailContext* ctx) {
+    if (!a || !ctx) return;
+    if (OperatorBase* op = a->inst.op.get()) op->draw_thumbnail(ctx);   // base no-op unless overridden
 }
 
 }  // namespace vivid

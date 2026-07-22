@@ -18,8 +18,13 @@ extern "C" {
    exactly as it did at v12.
    v12 (ADR-0015): note OUTPUT for note-effect operators (arpeggiator / chord / transpose).
    Purely additive — new fields at the end of VividAudioContext; an operator that ignores them
-   behaves exactly as it did at v11. */
-#define VIVID_OPERATOR_ABI_VERSION 13u
+   behaves exactly as it did at v11.
+   v14: operator-drawn cell thumbnails (vivid_draw_thumbnail + VividThumbnailContext) and an
+   audio-role hint (vivid_audio_role + VividOperatorDescriptor.audio_role) so a loaded audio dylib
+   can declare itself a generator / note-effect / modulator. Purely additive — both are OPTIONAL
+   dlsym'd exports (absent => opt out) and the descriptor field is appended at the END, so an older
+   dylib is unaffected and the host never reads the field out of an older dylib's struct. */
+#define VIVID_OPERATOR_ABI_VERSION 14u
 
 /* The OLDEST operator ABI this runtime can still load.
    An operator built at an older ABI is safe to run iff every change since then was purely
@@ -192,6 +197,19 @@ typedef struct VividPortDescriptor {
 } VividPortDescriptor;
 
 
+// The audio-runtime taxonomy an operator declares (v14+). `has_process_audio` says an op runs at
+// audio cadence; this refines HOW it is offered in the pickers/scene grid. Built-ins are classified
+// by host-internal marks (audio_op_mark_* — see audio_op_runtime); a LOADED dylib has no such hook,
+// so it declares its role via the optional vivid_audio_role() export, which lands in `audio_role`
+// below. DEFAULT keeps the legacy instrument/effect classification (by audio-input port).
+typedef uint32_t VividAudioRole;
+#define VIVID_AUDIO_ROLE_DEFAULT     0u   // classify by ports: source (no audio-in) = instrument, else effect
+#define VIVID_AUDIO_ROLE_GENERATOR   1u   // algorithmic note SOURCE (Euclid-like) — offered as a scene generator
+#define VIVID_AUDIO_ROLE_NOTE_EFFECT 2u   // notes in -> notes out, no sound (Arp-like)
+#define VIVID_AUDIO_ROLE_MODULATOR   3u   // emits a 0..1 control signal, no audio (LFO-like)
+
+typedef uint32_t (*VividAudioRoleFn)(void);   // optional export: an op's declared VividAudioRole
+
 typedef struct VividOperatorDescriptor {
     const char*               name;
     uint32_t                  param_count;
@@ -226,6 +244,11 @@ typedef struct VividOperatorDescriptor {
     // VividMultiplicityBehavior kMultiplicityBehavior`; codegen defaults it to Map
     // (pass-through) when unset.
     VividMultiplicityBehavior multiplicity_behavior;  // 0 = VIVID_MULTIPLICITY_SCALAR_ONLY
+
+    // Audio-runtime role (v14+). Set from the op's optional vivid_audio_role() export (loaded
+    // dylibs) or left DEFAULT. The host builds its OWN descriptor and fills this from a virtual, so
+    // it is never read out of an older dylib's (shorter) struct — appended last, purely additive.
+    VividAudioRole            audio_role;   // 0 = VIVID_AUDIO_ROLE_DEFAULT
 } VividOperatorDescriptor;
 
 typedef struct VividGeneratedUniformMember {
@@ -573,6 +596,22 @@ typedef struct VividDrawAPI {
                            uint32_t point_count, float thickness, VividColor);
 } VividDrawAPI;
 typedef VividDrawAPI VividInspectorDrawAPI;
+
+// Thumbnail context (v14+) — the surface an operator draws a compact cell preview into (the
+// session grid's generator cells today). Read-only + UI-thread: the op draws PURELY from this
+// snapshot (never its live Param<> members), so the draw touches no audio-thread state. Coordinates
+// are surface-LOCAL pixels (0,0 = top-left). `param_values` is in collect_params() order. An op
+// opts in by overriding OperatorBase::draw_thumbnail (built-ins) / exporting vivid_draw_thumbnail
+// (dylibs); the base is a no-op, so a cell whose op supplies none just keeps its name-only look.
+typedef struct VividThumbnailContext {
+    float              surface_width;
+    float              surface_height;
+    VividDrawAPI       draw;
+    const float*       param_values;
+    uint32_t           param_count;
+    VividColor         accent;   // the cell's track accent — tint the thumbnail to match
+    double             time;     // seconds, for optional subtle animation (may be 0)
+} VividThumbnailContext;
 
 typedef struct VividInspectorCommandAPI {
     void* opaque;  // scoped to node_id by the core

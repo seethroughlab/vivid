@@ -3087,7 +3087,7 @@ int session_audio_graph_add_note_op(Session* s, int t, const char* op_type) {
 int session_audio_graph_add_mod_op(Session* s, int t, const char* op_type) {
     Track* tr = graph_track(s, t);
     if (!tr || !s->op_reg) return -1;
-    if (!op_type || !vivid::audio_op_is_mod_op(op_type)) return -1;   // only a registered modulator
+    if (!op_type || !vivid::audio_op_is_mod_op(*s->op_reg, op_type)) return -1;   // only a registered modulator (built-in mark OR dylib role)
     vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_type);
     if (!op) return -1;
     std::lock_guard<std::mutex> lk(tr->gmtx);
@@ -3736,6 +3736,12 @@ int session_set_generator_param(Session* s, int track, int scene, const char* na
     for (int i = 0; i < n; ++i)
         if (std::strcmp(vivid::audio_op_param_name(op, i), name) == 0) { vivid::audio_op_param_set(op, i, v); return 1; }
     return 0;
+}
+int session_generator_draw_thumbnail(Session* s, int track, int scene, const ::VividThumbnailContext* ctx) {
+    vivid::AudioOp* op = gen_cell_op(s, track, scene);
+    if (!op || !ctx) return 0;
+    vivid::audio_op_draw_thumbnail(op, ctx);   // op reads only ctx (param snapshot + draw API)
+    return 1;
 }
 
 // Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),

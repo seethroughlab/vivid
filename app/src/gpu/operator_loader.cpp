@@ -113,6 +113,8 @@ struct OperatorLoader::Resolved {
     VividEditorMetadataFn     editor_meta_fn  = nullptr;
     VividDrawEditorFn         draw_editor_fn  = nullptr;
     VividFileDropDescriptorFn drop_fn         = nullptr;
+    VividDrawThumbnailFn      thumbnail_fn    = nullptr;
+    VividAudioRoleFn          audio_role_fn   = nullptr;
     std::string               mode;
     bool                      reload_required_recompile = false;
 };
@@ -188,6 +190,9 @@ bool OperatorLoader::open_and_check(const char* path, Resolved& out) {
     auto draw_editor_fn = reinterpret_cast<VividDrawEditorFn>(dlsym(h, "vivid_draw_editor"));
     // ADR-0021/P3: optional file-drop handlers.
     out.drop_fn = reinterpret_cast<VividFileDropDescriptorFn>(dlsym(h, "vivid_file_drop_descriptor"));
+    // v14: optional cell thumbnail + declared audio role (both absent => opt out; dlsym-null-safe).
+    out.thumbnail_fn  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(h, "vivid_draw_thumbnail"));
+    out.audio_role_fn = reinterpret_cast<VividAudioRoleFn>(dlsym(h, "vivid_audio_role"));
     out.mode = (mode_fn && mode_fn() && *mode_fn()) ? mode_fn() : "legacy";
     const VividGeneratedUniformLayout* uniform_layout = uniform_fn ? uniform_fn() : nullptr;
 
@@ -240,6 +245,8 @@ bool OperatorLoader::load(const char* path) {
     editor_meta_fn_    = r.editor_meta_fn;
     draw_editor_fn_    = r.draw_editor_fn;
     drop_fn_           = r.drop_fn;
+    draw_thumbnail_fn_ = r.thumbnail_fn;
+    audio_role_fn_     = r.audio_role_fn;
     registration_mode_ = r.mode;
     reload_required_recompile_ = r.reload_required_recompile;
     return true;
