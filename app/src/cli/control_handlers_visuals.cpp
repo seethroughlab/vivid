@@ -19,6 +19,13 @@ int op_index_by_id(VisualGraph* vg, int id) {
     for (int i = 0; i < static_cast<int>(ns.size()); ++i) if (ns[i].id == id) return i;
     return -1;
 }
+// Re-run the tidy layered auto-layout after a topology change made over the control server, so a
+// graph BUILT via MCP (every demo, and any agent) doesn't stack its nodes on top of each other.
+// Positions live in the NodeGraph (c.graph), not the VisualGraph model, and are seeded per-frame as
+// a 60px overlap cascade otherwise; layout_nodes() is the same Sugiyama layout as the "Re-layout"
+// button, is topology-driven + idempotent, and the result persists (persist.cpp saves node x/y).
+// UI-thread-safe: the control server dispatches handlers from process_pending on the main thread.
+void tidy_layout(const ControlCtx& c) { if (c.graph) c.graph->layout_nodes(); }
 }  // namespace
 
 // Node-graph construction: add/remove/connect nodes, set generator/asset/param, data nodes.
@@ -32,6 +39,7 @@ void register_visuals_handlers(Handlers& handlers_) {
             return err(code::kBadArg, "unknown op '" + op + "' (valid: " + types + ")");
         }
         const int idx = c.vgraph->add_node(op);   // operator-driven: any registered op type
+        tidy_layout(c);                            // keep the MCP-built graph organized, not stacked
         json r = ok(); r["id"] = c.vgraph->nodes()[idx].id; r["index"] = idx; return r;
     };
     handlers_["remove_node"] = [](const ControlCtx& c, const json& b) {
@@ -39,6 +47,7 @@ void register_visuals_handlers(Handlers& handlers_) {
         const int idx = op_index_by_id(c.vgraph, b.value("id", -1));
         if (idx < 0) return err(code::kNotFound, "no node with that id");
         c.vgraph->remove_node(idx);
+        tidy_layout(c);
         return ok();
     };
     handlers_["connect_nodes"] = [](const ControlCtx& c, const json& b) {
@@ -53,6 +62,7 @@ void register_visuals_handlers(Handlers& handlers_) {
         if (port < 0 || port >= nports)
             return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
         c.vgraph->set_input(idx, port, in_idx);   // N-input: wire src -> node's texture input `port`
+        tidy_layout(c);                            // re-tidy: node positions depend on the edges
         return ok();
     };
     // Point a node (e.g. a CustomShader) at a data asset — a project-relative .glsl

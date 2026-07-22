@@ -130,29 +130,39 @@ void NodeGraph::layout_nodes() {
 
     const float left = bx0_ + 200.f, colSp = 200.f, gap = 16.f;   // room for data nodes on the left
     const float mid  = (by0_ + by1_) * 0.5f;
-    std::vector<float> cy(n, mid);   // each node's assigned CENTER y (for the next column's barycenter)
 
-    // 3. Column by column (left->right): order by input barycenter, then stack centered.
+    // 3. Coordinate assignment: place each node's CENTER at the barycenter of its inputs, so a chain
+    //    runs in a straight horizontal line (nodes align with the thing feeding them), then resolve
+    //    overlaps within a column by pushing the lower node down. Earlier this RE-CENTERED every
+    //    column on `mid` independently, which left cards ragged (a tall node's top sat higher) and
+    //    pushed a column of tall source nodes off BOTH the top and the bottom of the view.
+    std::vector<float> cy(n, mid);   // assigned CENTER y (a node's inputs have lower rank => placed first)
+    std::vector<float> ch(n, 0.f);   // card height, cached
+    for (int i = 0; i < n; ++i) { float x, y, w, h; op_node_rect(i, x, y, w, h); ch[i] = h; }
     for (int c = 0; c <= maxRank; ++c) {
         auto& col = cols[c];
-        auto bary = [&](int node) {   // barycenter over all connected input ports
+        auto bary = [&](int node) {   // barycenter over all connected input ports (mid for a source)
             float sum = 0.f; int cnt = 0;
             for (int in : vg_->nodes()[node].inputs) if (in >= 0 && in < n) { sum += cy[in]; ++cnt; }
             return cnt ? sum / cnt : mid;
         };
         std::stable_sort(col.begin(), col.end(), [&](int a, int b) { return bary(a) < bary(b); });
-        std::vector<float> hs(col.size());
-        float total = 0.f;
-        for (size_t k = 0; k < col.size(); ++k) { float x, y, w, h; op_node_rect(col[k], x, y, w, h); hs[k] = h; total += h; }
-        if (col.size() > 1) total += gap * (col.size() - 1);
-        const float x = left + c * colSp;
-        float top = mid - total * 0.5f;
-        for (size_t k = 0; k < col.size(); ++k) {
-            op_pos_[col[k]] = { x, top };
-            cy[col[k]] = top + hs[k] * 0.5f;
-            top += hs[k] + gap;
+        float cursor = -1e9f;                         // bottom edge of the previously placed card
+        for (int node : col) {
+            const float half = ch[node] * 0.5f;
+            float center = bary(node);
+            if (center - half < cursor + gap) center = cursor + gap + half;   // don't overlap the card above
+            cy[node] = center;
+            cursor = center + half;
         }
     }
+    // 3b. Normalize vertically so the topmost card sits just below the region top — never above it.
+    float min_top = 1e9f;
+    for (int i = 0; i < n; ++i) min_top = std::min(min_top, cy[i] - ch[i] * 0.5f);
+    const float shift = (by0_ + 24.f) - min_top;
+    for (int c = 0; c <= maxRank; ++c)
+        for (int node : cols[c])
+            op_pos_[node] = { left + c * colSp, cy[node] - ch[node] * 0.5f + shift };
 
     // 4. Park data (audio-source) nodes in a left gutter column.
     float dy = by0_ + 30.f;
