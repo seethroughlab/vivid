@@ -29,14 +29,9 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
         rendered = vivid::session::session_process(a->session, fout, frames,
                                               static_cast<uint32_t>(sr), bpm, beats, 4, playing, release_all);
     if (!rendered) {
-        const double inc = 2.0 * kPi * a->tone_hz / sr;
-        for (ma_uint32 i = 0; i < frames; ++i) {
-            float s = 0.05f * static_cast<float>(std::sin(a->phase));
-            a->phase += inc;
-            if (a->phase > 2.0 * kPi) a->phase -= 2.0 * kPi;
-            fout[i * 2 + 0] = s;
-            fout[i * 2 + 1] = s;
-        }
+        // Nothing to render (an empty session — no instruments) => SILENCE, not the old 110 Hz test
+        // tone. The metronome click below still mixes in over the cleared buffer if it's enabled.
+        std::fill(fout, fout + static_cast<size_t>(frames) * 2, 0.f);
     }
 
     // Metronome click (M6.3): a short decaying sine on each beat while enabled. Mixed into
