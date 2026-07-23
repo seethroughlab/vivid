@@ -2,6 +2,7 @@
 #include "audio/sampler_op.h"        // SamplerLoadable escape hatch
 #include "gpu/op_runtime.h"          // OpRegistry / register_op (includes operator_api)
 #include "audio/audio_op_runtime.h"  // audio_op_mark_note_op (ADR-0015)
+#include "operator_api/movie_audio.h" // the movie-audio bus (MovieAudio source op)
 
 #include <algorithm>
 #include <array>
@@ -173,6 +174,39 @@ struct TestToneOp : OperatorBase, AudioProcessable {
             const VividNoteEvent& e = c->note_events[ei++];
             if (e.on) note_on(e.pitch, e.velocity, e.note_id); else note_off(e.note_id);
         }
+    }
+};
+
+// --- MovieAudio: the audio track of a Video node's movie, as a graph source ------------
+// A source op (audio output only) that DRAINS a movie-audio bus channel filled by a self-decoding
+// Video op on the render thread (operator_api/movie_audio.h). Because it's a real graph node, its
+// output can be wired through effects. The pull is transport-gated at the bus and advances the
+// channel's master A/V clock, which the Video op reads back to keep the picture locked to this sound.
+// Link the two nodes by matching this `source` to the Video node's `audio_bus`.
+struct MovieAudioOp : OperatorBase, AudioProcessable {
+    static constexpr const char* kDisplayName = "Movie Audio";
+    static constexpr const char* kSummary = "Audio track of a Video node's movie, as a graph source (wire through effects).";
+    static constexpr std::array<const char*, 3> kKeywords = { "audio", "movie", "source" };
+
+    Param<int>   source{ "source", 0, 0, VIVID_MOVIE_AUDIO_CHANNELS - 1 };
+    Param<float> gain{ "gain", 1.f, 0.f, 2.f };
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        vivid::description(source, "Movie-audio bus channel to play (match a Video node's 'audio_bus')");
+        o.push_back(&source); o.push_back(&gain);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_out()); }
+
+    void process_audio(const VividAudioContext* c) override {
+        if (!c->output_buffers) return;
+        const uint32_t N = c->buffer_size;
+        float* L = c->output_buffers[0];
+        float* R = c->output_buffers[0] + N;
+        int ch = c->param_values ? static_cast<int>(c->param_values[0] + 0.5f) : source.value;
+        if (ch < 0) ch = 0; if (ch >= VIVID_MOVIE_AUDIO_CHANNELS) ch = VIVID_MOVIE_AUDIO_CHANNELS - 1;
+        vivid_movie_audio_pull(ch, L, R, N);   // silence + frozen clock when the transport is paused
+        const float g = c->param_values ? c->param_values[1] : gain.value;
+        if (g != 1.f) for (uint32_t i = 0; i < N; ++i) { L[i] *= g; R[i] *= g; }
     }
 };
 
@@ -790,6 +824,7 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<BitcrushOp>(reg, "Bitcrush");
     register_op<StateVariableFilterOp>(reg, "SVFilter");
     register_op<TestToneOp>(reg, "TestTone");
+    register_op<MovieAudioOp>(reg, "MovieAudio");   // audio track of a Video movie (drains the movie-audio bus)
     register_op<SamplerOp>(reg, "Sampler");
     register_op<ArpOp>(reg, "Arp");   // ADR-0015: the first note effect
     audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out

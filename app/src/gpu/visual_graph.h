@@ -34,24 +34,22 @@ struct VisualNode {
     // name is the only thing worth carrying over. Consumed by make_instance(), then cleared.
     std::vector<std::pair<std::string, float>> stash;
 
-    // The two ops the host itself must recognize: the chain's sink, and the one node whose
-    // texture comes from outside the graph (the decoded video frame the host injects into its
-    // port 0 — see run_chain). Both are host CONTRACTS, not classification, which is why these
-    // two names appear here and no others do.
+    // The one op the host itself must recognize: the chain's sink. A host CONTRACT, not
+    // classification, which is why this name appears here and no others do. (Video used to be the
+    // second — the host injected its decoded frame — but Video is now an ordinary self-decoding
+    // source op that owns its own file + decoder, so there is no special case for it.)
     bool is_output() const { return op_type == "Output"; }
-    bool is_video()  const { return op_type == "Video"; }
 
     // BROKEN: the node's op type never resolved to a real operator, so it renders nothing and
-    // drops out of the chain. The two host-contract nodes (Output, Video) legitimately carry no
-    // operator, so they are never "missing". The single source of truth for both the node badge
-    // (error()) and the health rollup (VisualGraph::missing_op_count) — ADR-0019.
-    bool op_missing() const { return !inst.op && !is_output() && !is_video(); }
+    // drops out of the chain. The Output sink legitimately carries no operator, so it is never
+    // "missing". The single source of truth for both the node badge (error()) and the health
+    // rollup (VisualGraph::missing_op_count) — ADR-0019.
+    bool op_missing() const { return !inst.op && !is_output(); }
 
     // A SOURCE heads a chain: it makes an image rather than transforming one. Read off the
     // node's own descriptor — no texture inputs to transform — so it is automatically true of
-    // a package op, a shader file, or anything else the catalog grows. Video is a source too,
-    // despite its one port: that port is not a graph edge but the host's frame injection.
-    bool is_source() const { return is_video() || (inst.op && inst.input_port_count == 0); }
+    // a package op (incl. Video/Webcam), a shader file, or anything else the catalog grows.
+    bool is_source() const { return inst.op && inst.input_port_count == 0; }
 
     void stash_params() {   // call BEFORE dropping the instance: param_ptrs holds the names
         stash.clear();
@@ -129,7 +127,7 @@ public:
     // Run the chain: every node's operator renders into its own RenderTarget. Does NOT touch the
     // screen — presenting is a separate step (ADR-0014), so the caller can draw the node graph
     // first and blit the output OVER it (the floating preview sits above the canvas).
-    void run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex);
+    void run_chain(WGPUCommandEncoder enc, float time);
     // Blit the already-rendered output FBO (from the last run_chain()) into a view at a rect —
     // the floating preview, or a pop-out window's surface. Letterboxes per the Output node's fit
     // mode, so every surface shows the output's true aspect. Does NOT re-run the graph.

@@ -271,7 +271,7 @@ std::string VisualGraph::generator() const {
     return {};
 }
 
-void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView video_tex) {
+void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
     apply_output_settings();   // FIRST: may resize every RT, before the encoder references any
     ensure_resources(nodes_.size());
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
@@ -318,7 +318,6 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView 
                 custin.push_back(v);
             } else {
                 WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
-                if (n.is_video() && in_ord == 0) v = video_tex;   // external source feeds the generator's port 0
                 texv.push_back(v ? v : fallback_.view);
             }
             ++in_ord;

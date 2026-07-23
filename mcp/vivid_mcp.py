@@ -1641,16 +1641,10 @@ def load_project(path: str) -> dict:
 
 @mcp.tool
 def set_media_root(path: str) -> dict:
-    """Set the project media root used for video discovery. Missing roots are reported, not silent."""
+    """Set the project media root (the base a Video/Image node's relative path resolves against).
+    Missing roots are reported, not silent. Video is per-node now: add a Video node and set its
+    `file` param (via set_node_file_param) to the movie path — mp4/mov, including HAP-encoded .mov."""
     return _post("set_media_root", {"path": path})
-
-
-@mcp.tool
-def set_video_source(index: int = 0) -> dict:
-    """Select which discovered video clip the shared source texture plays (a Video visual node
-    blits that texture). set_media_root loads only clip 0; use this to pick among the clips by
-    index (wraps). Returns {index, videos, path}. Needs a media root with video files set first."""
-    return _post("set_video_source", {"index": index})
 
 
 # ---- ADR-0024 Phase 7: project workflow (inspect / resolve / reload project assets) ----

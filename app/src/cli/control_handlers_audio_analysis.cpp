@@ -1,6 +1,7 @@
 #include "cli/control_handlers_audio_domains.h"
 #include "cli/audio_analysis_tools.h"
 #include "cli/control_handlers_internal.h"
+#include "operator_api/movie_audio.h"   // movie-audio bus read-back (A/V sync diagnostics)
 
 #include "audio/audio_clip_shared.h"
 #include "audio/vst3_host.h"
@@ -16,6 +17,20 @@ namespace vivid {
 
 void register_audio_analysis_handlers(Handlers& handlers_) {
     namespace P = vivid::session;
+
+    // Movie-audio bus diagnostics (A/V-sync debugging): the master clock a MovieAudio op has advanced
+    // a channel to, plus how much is buffered and whether a drain is active. read_head is the audio's
+    // media time; the Video op locked to it presents the frame at that position.
+    handlers_["movie_audio_status"] = [](const ControlCtx&, const json& b) {
+        const int ch = b.value("channel", 0);
+        json r = ok();
+        r["channel"] = ch;
+        r["read_head"] = vivid_movie_audio_read_head(ch);
+        r["buffered_frames"] = static_cast<int>(vivid_movie_audio_buffered(ch));
+        r["master_active"] = vivid_movie_audio_master_active(ch) != 0;
+        return r;
+    };
+
     handlers_["capture_audio"] = [](const ControlCtx& c, const json& b) {
         std::vector<float> L, R; uint32_t sr = 0; double requested = 0.0; json source; json e;
         if (!copy_live_capture(c, b, 4.0, L, R, sr, requested, source, e)) return e;

@@ -359,18 +359,16 @@ class Vivid:
         return node
 
     # --- external-pixel sources (video clips / webcam / stills) ---
-    def set_media_root(self, path: str) -> int:
-        """Point the app at a folder of video clips; returns how many were discovered."""
-        return self.call("set_media_root", path=path).get("videos", 0)
+    def set_media_root(self, path: str):
+        """Set the project media root (the base relative Video/Image paths resolve against)."""
+        return self.call("set_media_root", path=path)
 
-    def set_video_source(self, index: int = 0):
-        return self.call("set_video_source", index=index)
-
-    def video(self, index: int = 0) -> int:
-        """Add a Video node (it blits the shared source texture) and select clip `index`. Needs a
-        media root with video files (call set_media_root first)."""
-        self.set_video_source(index)
-        return self.add_node("Video")
+    def video(self, path: str) -> int:
+        """Add a self-decoding Video node playing the movie at `path` (mp4/mov, incl. HAP-encoded
+        .mov). Absolute path; make it portable on save. Each Video node owns its own decoder."""
+        nid = self.add_node("Video")
+        self.call("set_node_file_param", node_id=nid, name="file", value=path)
+        return nid
 
     def webcam(self, device: int = 0, resolution: int = 1, fps: int = 2) -> int:
         """Add a live Webcam source node. resolution: 0=480p,1=720p,2=1080p; fps: 0=15..3=60."""

@@ -48,6 +48,7 @@ vivid_add_test(test_audio_op_rt)    # AO-1 native audio-operator runtime: zero-a
 target_sources(test_audio_op_rt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -57,6 +58,7 @@ vivid_add_test(test_sampler_op)     # AO-4 native Sampler: slice-per-note + zero
 target_sources(test_sampler_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -66,6 +68,7 @@ vivid_add_test(test_arp_op)
 target_sources(test_arp_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -74,6 +77,7 @@ vivid_add_test(test_generator_ops)   # ADR-0022 P3.3: the note generators (Eucli
 target_sources(test_generator_ops PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
@@ -82,6 +86,7 @@ vivid_add_test(test_lfo_op)         # ADR-0022 P0.5: the LFO, the first modulato
 target_sources(test_lfo_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
