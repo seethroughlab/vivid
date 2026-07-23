@@ -58,6 +58,13 @@ add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).
 add_vivid_operator(vivid_model packages/core-visuals/model.cpp)
 target_link_libraries(vivid_model PRIVATE nlohmann_json::nlohmann_json)
+# Geometry pipeline (ADR-0025): mesh values flow between nodes. MeshLoad parses glTF (needs json);
+# MeshRender + MeshDisplace are geometry-only (no parser). All three share operator_api/gltf_mesh.h
+# + mesh_render.h with Model.
+add_vivid_operator(vivid_mesh_load packages/core-visuals/mesh_load.cpp)
+target_link_libraries(vivid_mesh_load PRIVATE nlohmann_json::nlohmann_json)
+add_vivid_operator(vivid_mesh_render packages/core-visuals/mesh_render_op.cpp)
+add_vivid_operator(vivid_mesh_displace packages/core-visuals/mesh_displace.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
 add_vivid_operator(vivid_video packages/core-visuals/video.cpp)
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)

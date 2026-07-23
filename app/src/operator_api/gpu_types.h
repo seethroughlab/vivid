@@ -41,6 +41,11 @@ typedef struct VividMesh {
 
     const VividVertexAttribute* attributes;
     uint32_t                    attribute_count;
+
+    // Optional material: the mesh's baseColor texture (RGBA), sampled by the mesh's UVs. Nullable —
+    // a renderer falls back to white when it is null (flat-lit). Owned by the PRODUCER (e.g. MeshLoad
+    // uploads it from the glTF and keeps it alive for the frame); modifiers pass it through unchanged.
+    WGPUTextureView         base_color;
 } VividMesh;
 
 #ifdef __cplusplus
