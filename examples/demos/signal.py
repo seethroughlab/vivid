@@ -14,7 +14,7 @@ intro→verse→chorus→verse→bridge→outro (`v.perform(...)` plays it all).
 
 Deliberately technical, not psychedelic: the footage is grid-displaced and feedback-smeared, with
 overlay geometry so each instrument marks the picture differently (kick shakes the footage, bass
-swells the trails, pad pulses the frame, lead spins a mesh, arp spins rings).
+swells the trails, pad pulses the frame, lead MELTS a 3D statue's surface with animated noise).
 
 Requires Surge XT (free CLAP) + BPB Cassette Drums (free VST3). Media root = examples/demos/media.
 Run with the app running:  uv run examples/demos/signal.py   (append 'perform' to play the whole song)
@@ -103,13 +103,28 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.connect(disp, comp)
     fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.22)      # <- the BASS ghosts it
     v.connect(fb, disp)
-    # a real 3D model (glTF) — a statue turning inside the broadcast. Composited OVER the ghosted
-    # footage (AFTER the feedback, so it stays legible), then the whole frame goes through the tube.
-    model = v.add_node("Model")
-    v.set_node_file(model, "file", os.path.join(MEDIA, "frank", "scene.gltf"))
-    for k, val in dict(size=0.62, spin=0.05, tilt=0.5, light=0.5, nscale=0.28,   # slow drift, not a frantic spin
-                       r=0.85, g=1.0, b=0.9).items():   # nscale low => smooth breathing, not shattering
+    # a real 3D model (glTF) run through the GEOMETRY PIPELINE: MeshLoad -> MeshDisplace -> MeshRender.
+    # An animated NoiseField churns the statue's SURFACE as real per-vertex displacement on the GPU
+    # (the lead drives how far it melts). Composited OVER the ghosted footage (AFTER the feedback, so
+    # it stays legible), then the whole frame goes through the tube.
+    mesh = v.add_node("MeshLoad")                        # glTF -> a mesh VALUE on the graph
+    v.set_node_file(mesh, "file", os.path.join(MEDIA, "frank", "scene.gltf"))
+    nfield = v.add_node("NoiseField")                    # animated FBm displacement map (core primitive)
+    for k, val in dict(scale=0.30, speed=0.28, octaves=0.5, noise_type=0.0).items():
+        v.set_node_param(nfield, k, val)
+    melt = v.add_node("MeshDisplace")                    # <- the LEAD melts the surface (real geometry)
+    for k, val in dict(amount=0.12, scale=0.22, mode=0.0).items():   # base melt; smooth object-space field
+        v.set_node_param(melt, k, val)
+    v.connect(melt, mesh,   port=0)                      # mesh in
+    v.connect(melt, nfield, port=1)                      # displace map in
+    model = v.add_node("MeshRender")                     # displaced mesh -> textured/lit image
+    # tilt fixed at 0.5 => UPRIGHT (0.5 maps to no lean); a slow upright turntable spin, never a
+    # tumble. The mesh carries its glTF baseColor (weathered stone) all the way through the pipeline,
+    # so tint stays near-white to show the true material — it sits right under the ADD composite.
+    for k, val in dict(size=0.62, spin=0.05, tilt=0.5, light=0.5,
+                       r=0.85, g=1.0, b=0.9).items():
         v.set_node_param(model, k, val)
+    v.connect(model, melt, port=0)                       # the displaced mesh feeds the renderer
     compF = v.add_node("Composite"); v.set_node_param(compF, "mode", 1.0)   # ADD the statue over the footage
     v.connect(compF, fb, port=0); v.connect(compF, model, port=1)
     crt = v.add_node("CRT")                               # <- the custom signature: the whole tube
@@ -127,9 +142,9 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.track_viz(sfx,    "level",     crt,  "roll",       amount=1.0, lo=0.0,  hi=0.7)    # riser-> hum-bar roll
     # ---- the 3D model reacts too: the LEAD melts its surface (3D noise displacement), the bass
     #      swells it, the kick nods it. It barely spins (a slow drift) instead of whirling. ----
-    v.track_viz(lead,   "high",      model, "noise",     amount=1.0, lo=0.02, hi=0.32)   # lead -> surface distorts/melts
+    v.track_viz(lead,   "high",      melt,  "amount",    amount=1.0, lo=0.05, hi=0.4)    # lead -> surface melts (real geometry)
     v.track_viz(bass,   "low",       model, "size",      amount=0.6, lo=0.42, hi=0.68)   # bass -> statue swells
-    v.track_viz(drums,  "low",       model, "tilt",      amount=0.5, lo=0.42, hi=0.6)    # kick -> statue nods
+    v.track_viz(drums,  "low",       melt,  "scale",     amount=0.5, lo=0.15, hi=0.5)    # kick -> percussive surface ripple (upright-safe; tilt is NOT modulated)
 
     if save:
         save_geo(v, PROJECT)
