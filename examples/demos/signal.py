@@ -91,7 +91,7 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     # rolling hum bar). Deliberately technical/desaturated — a broadcast on a tube, statue and all.
     out = find(v.graph()["nodes"], "Output")
     v.set_media_root(MEDIA)
-    vid  = v.video(0)                                     # external pixels
+    vid  = v.video(os.path.join(MEDIA, "loop.mp4"))       # external pixels (self-decoding Video op)
     lines = v.add_node("Lines")                           # a faint phosphor-green data grid under the footage
     for k, val in dict(mode=0.0, count=0.45, size=0.7, rotation=0.0, r=0.15, g=0.9, b=0.4,
                        bg_r=0.0, bg_g=0.0, bg_b=0.0).items():

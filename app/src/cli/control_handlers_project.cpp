@@ -125,7 +125,6 @@ void register_project_handlers(Handlers& handlers_) {
         r["media_root"] = c.app->project.media_root;
         r["recent"] = c.app->project.recent_project_paths;
         r["missing_media"] = c.app->project.missing_media;
-        r["videos"] = static_cast<int>(c.app->video_paths.size());
         return r;
     };
     handlers_["save_project"] = [](const ControlCtx& c, const json& b) {
@@ -164,23 +163,10 @@ void register_project_handlers(Handlers& handlers_) {
     handlers_["set_media_root"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kInternal, "no app context");
         c.app->set_media_root(b.value("path", std::string()));
-        json r = ok(); r["media_root"] = c.app->project.media_root; r["videos"] = static_cast<int>(c.app->video_paths.size());
+        json r = ok(); r["media_root"] = c.app->project.media_root;
         r["missing_media"] = c.app->project.missing_media; return r;
     };
-    // Pick which video clip the shared source texture plays (the Video op just blits that
-    // texture). set_media_root only loads clip 0; this selects among the discovered clips by
-    // index (wraps), so a script can drive a Video-based visual example. Not undoable — it's a
-    // playback/source selection, like launch_scene, not a document edit.
-    handlers_["set_video_source"] = [](const ControlCtx& c, const json& b) {
-        if (!c.app) return err(code::kInternal, "no app context");
-        const int n = static_cast<int>(c.app->video_paths.size());
-        if (n == 0) return err(code::kNotFound, "no video clips under the media root (see set_media_root)");
-        const int index = b.value("index", 0);
-        c.app->load_video_at(index);
-        json r = ok(); r["index"] = c.app->video_idx; r["videos"] = n;
-        if (c.app->video_idx >= 0 && c.app->video_idx < n) r["path"] = c.app->video_paths[c.app->video_idx];
-        return r;
-    };
+    // (set_video_source was retired: video is now per-node — set the Video node's `file` param.)
 
     // ===================== ADR-0024 Phase 7: project workflow =====================
     // Read-only-ish tooling over the current project's on-disk folder — so an agent can inspect,

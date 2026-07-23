@@ -52,8 +52,6 @@
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
 #include "gpu/visual_graph.h"
-#include "gpu/texture_source.h"
-#include "gpu/video_player.h"
 #include "gpu/splash.h"          // animated startup splash (nebula + node-graph "V")
 #include "gpu/gpu_util.h"        // kMsaaSamples (splash pipeline must match the frame)
 #include "gpu/operator_scan.h"   // P2.1: load operator dylibs at startup
@@ -248,14 +246,9 @@ int main(int argc, char** argv) {
         app.hot_reload.watch_manifest(app.op_loaders, vivid::parse_package_manifest(pkg));
     }
 
-    // Texture source (image/video) — seeded with a test pattern; P19b feeds video.
-    vivid::TextureSource srcTex;
-    srcTex.init(gpu.device(), 512, 288, gpu.surface_format());
-    { auto pat = vivid::gen_test_pattern(512, 288); srcTex.upload(gpu.queue(), pat.data()); }
-    app.srcTex = &srcTex;
-
-    // Optional project media root (N cycles, V shows video). No hardcoded local paths:
-    // projects/MCP can set this explicitly, and missing roots are reported in health/status.
+    // Optional project media root (the base a Video/Image node's relative path resolves against).
+    // No hardcoded local paths: projects/MCP set this explicitly, and missing roots are reported in
+    // health/status. Video is decoded per-node now (the self-decoding Video op owns its own file).
     if (const char* root = std::getenv("VIVID_MEDIA_ROOT")) app.set_media_root(root);
 
     vivid::ui::NodeGraph graph;
@@ -420,9 +413,7 @@ int main(int argc, char** argv) {
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);
     vivid::session::plugin_scan_stop();   // join the classifier worker before anything it touches dies
     if (app.session) vivid::session::session_destroy(app.session);
-    if (app.video) { video_close(app.video); app.video = nullptr; }
     vgraph.shutdown();
-    srcTex.release();
     ui.shutdown();
     gpu.shutdown();
     glfwDestroyWindow(window);

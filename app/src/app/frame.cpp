@@ -32,8 +32,6 @@
 #include "audio/vst3_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
-#include "gpu/texture_source.h"
-#include "gpu/video_player.h"
 #include "cli/control_server.h"
 #include "platform/frame_loop.h"
 
@@ -366,22 +364,6 @@ void apply_shader_reloads(App& app) {
     }
 }
 
-void update_visual_source_frame(App& app) {
-    if (!app.vgraph || !app.gpu || !app.srcTex) return;
-    app.visual_source = (app.vgraph->generator() == "Video") ? 1 : 0;
-    if (app.video) video_play(app.video, app.visual_source == 1);
-    if (app.visual_source == 1 && app.video) {
-        const uint8_t* px = nullptr; uint32_t vw = 0, vh = 0;
-        if (video_next_frame(app.video, &px, &vw, &vh) && px) {
-            if (vw != app.srcTex->w || vh != app.srcTex->h) {
-                app.srcTex->release();
-                app.srcTex->init(app.gpu->device(), vw, vh, app.gpu->surface_format());
-            }
-            app.srcTex->upload(app.gpu->queue(), px);
-        }
-    }
-}
-
 void run_frame_loop(App& app, Window& win) {
     // Local aliases to the shared engine (App) + this view (Window) so the tick
     // body reads naturally; every object is owned by main(), not here.
@@ -392,7 +374,6 @@ void run_frame_loop(App& app, Window& win) {
     NodeGraph&     graph       = *app.graph;
     Transport&     transport   = *app.transport;
     ClipEditor&    clip_editor = *win.editor;
-    TextureSource& srcTex      = *app.srcTex;
     ControlServer& control     = *app.control;
 
     ControlCtx cctx{ app.session, &graph, &vgraph, &transport, &app,
@@ -515,12 +496,11 @@ void run_frame_loop(App& app, Window& win) {
         const float tsec = static_cast<float>(glfwGetTime());
         FrameState frame;
         if (gpu.begin_frame(frame)) {
-            update_visual_source_frame(app);
             // ADR-0014: run the chain into the node RTs FIRST (so this frame's node thumbnails are
             // current), but do NOT present yet — the output is blitted over the graph further down,
             // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
-            vgraph.run_chain(frame.encoder, tsec, srcTex.view);
+            vgraph.run_chain(frame.encoder, tsec);
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
             // ADR-0014: WHERE the output is shown is also the Output node's business. Reconcile the

@@ -18,14 +18,12 @@ namespace vivid {
 class GpuContext;
 class VisualGraph;
 class ControlServer;
-class TextureSource;
 class EditGateway;
 class CrashRecovery;
 namespace ui { class NodeGraph; class AudioNodeGraph; }
 }
 namespace vivid::session { struct Session; }
 struct Transport;
-struct VideoPlayer;
 
 namespace vivid {
 
@@ -43,7 +41,6 @@ struct App {
     ControlServer*      control   = nullptr;   // MCP loopback server
     EditGateway*        edit_gateway = nullptr; // ADR-0017 undo/redo command sink (a main.cpp local)
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
-    TextureSource*      srcTex    = nullptr;   // shared visuals source texture
     OpRegistry          op_registry;           // built-in + loaded operators
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).
@@ -59,7 +56,6 @@ struct App {
     Logger              log;       // ADR-0019 leveled logger; drained each frame (drain_rt)
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
 
-    int visual_source = 0;   // 0 = plasma shader, 1 = video (mirrors vgraph generator)
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     std::set<std::string> quarantined_ops;   // ADR-0018: ops disabled this launch (repeat crashers / safe mode)
 
@@ -68,12 +64,6 @@ struct App {
     ProjectState project;
     void remember_project_path(const std::string& path);
     void set_media_root(const std::string& root);
-
-    // Video playback (UI/main thread only).
-    VideoPlayer*             video = nullptr;
-    std::vector<std::string> video_paths;
-    int                      video_idx = -1;
-    void load_video_at(int i);   // open clip i (wraps), play if the source is video
 
     // Audio-thread DSP state (touched only inside the audio callback).
     float  m_flt_lo = 0.f, m_flt_hi = 0.f;   // master 3-band crossover states

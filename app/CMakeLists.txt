@@ -164,6 +164,22 @@ FetchContent_Declare(freetype
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(freetype)
 
+# snappy — used by the vendored HAP frame decoder (deps/hap/hap.c). Minimal build:
+# no tests / benchmarks / fuzzing / forced-AVX (matches how classic vendored it).
+set(SNAPPY_BUILD_TESTS      OFF CACHE BOOL "" FORCE)
+set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_FUZZING_BUILD    OFF CACHE BOOL "" FORCE)
+set(SNAPPY_REQUIRE_AVX      OFF CACHE BOOL "" FORCE)
+set(SNAPPY_INSTALL          OFF CACHE BOOL "" FORCE)
+# snappy's CMakeLists declares cmake_minimum_required < 3.5, which CMake 4.x refuses; this floor
+# lets the old-policy subproject configure. Scoped to the deps here (our own targets are modern).
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "policy floor for old vendored deps (snappy)" FORCE)
+FetchContent_Declare(snappy
+    GIT_REPOSITORY https://github.com/google/snappy.git
+    GIT_TAG        1.2.1
+    GIT_SHALLOW    TRUE)
+FetchContent_MakeAvailable(snappy)
+
 # MACOSX_BUNDLE is required so hosted VST3 plugin GUI windows receive mouse
 # events: a non-bundled CLI process can't become a proper foreground app, so its
 # secondary NSWindows render but stay non-interactive.
@@ -198,7 +214,6 @@ add_executable(vivid MACOSX_BUNDLE
     src/miniaudio_impl.c
     src/gpu/gpu_context.cpp
     src/gpu/splash.cpp
-    src/gpu/video_player_stub.cpp
     src/gpu/visual_graph.cpp
     src/gpu/shader_op.cpp
     src/gpu/shader_file_op.cpp
@@ -280,7 +295,6 @@ add_executable(vivid MACOSX_BUNDLE
 # one backend of each is linked per platform.
 if(APPLE)
     target_sources(vivid PRIVATE
-        src/gpu/video_player.mm
         src/audio/vst3_plugin_window.mm
         src/platform/macos_frame_timer.cpp
         src/platform/macos_app_nap.mm

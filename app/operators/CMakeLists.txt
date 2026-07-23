@@ -66,7 +66,33 @@ target_link_libraries(vivid_mesh_load PRIVATE nlohmann_json::nlohmann_json)
 add_vivid_operator(vivid_mesh_render packages/core-visuals/mesh_render_op.cpp)
 add_vivid_operator(vivid_mesh_displace packages/core-visuals/mesh_displace.cpp)
 add_vivid_operator(vivid_feedback packages/core-visuals/feedback.cpp)
-add_vivid_operator(vivid_video packages/core-visuals/video.cpp)
+# Video: a SELF-DECODING movie source op. On macOS it owns the AVFoundation + HAP decoder layer
+# (packages/core-visuals/movie/) and the vendored HAP lib (deps/hap/hap.c + snappy); the classic-
+# ported .mm files use ARC, avf_decoder.mm uses manual retain/release. Off-macOS it degrades to a
+# black source (decoder_factory returns unsupported).
+if(APPLE)
+    add_vivid_operator(vivid_video
+        packages/core-visuals/video.cpp
+        packages/core-visuals/movie/codec_probe.mm
+        packages/core-visuals/movie/avf_decoder.mm
+        packages/core-visuals/movie/hap_decoder.mm
+        packages/core-visuals/movie/decoder_factory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../deps/hap/hap.c)
+    target_include_directories(vivid_video PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../deps/hap
+        ${CMAKE_CURRENT_SOURCE_DIR}/packages/core-visuals/movie)
+    target_link_libraries(vivid_video PRIVATE snappy
+        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework QuartzCore" "-framework Foundation" "-framework CoreGraphics")
+    set_source_files_properties(
+        packages/core-visuals/movie/codec_probe.mm
+        packages/core-visuals/movie/hap_decoder.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+else()
+    add_vivid_operator(vivid_video
+        packages/core-visuals/video.cpp
+        packages/core-visuals/movie/decoder_factory.cpp)
+endif()
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
 add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
 # Text/VectorText need FreeType (the app fetches it) + the bundled font path.
