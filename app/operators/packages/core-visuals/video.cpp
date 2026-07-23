@@ -6,8 +6,9 @@
 //
 // A generator (no inputs). The movie's AUDIO track plays through the host engine, SAMPLE-ACCURATELY
 // locked to the video and following the transport: the op decodes audio on the render thread and
-// writes it to the host movie-audio bus (operator_api/movie_audio.h); the audio callback drains it
-// (only while playing), advancing a master clock the op then presents the video against.
+// writes it to the host movie-audio bus (operator_api/movie_audio.h) FROM A DEDICATED FILL THREAD
+// (not the render thread — so a throttled/occluded render loop never starves the audio); the audio
+// callback drains it (only while playing), advancing a master clock the op presents the video against.
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
@@ -18,8 +19,11 @@
 #include "movie/avf_audio_extractor.h"  // decode the movie's audio track -> stereo samples
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <thread>
 #include <memory>
 #include <string>
 #include <vector>
@@ -88,7 +92,7 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
 
-    ~VideoOp() override { vivid_movie_audio_reset(audio_bus_, 0.0); audio_.close(); if (dec_) dec_->close(); release_gpu(); }
+    ~VideoOp() override { stop_fill(); vivid_movie_audio_reset(audio_bus_, 0.0); audio_.close(); if (dec_) dec_->close(); release_gpu(); }
 
     void process_gpu(const VividGpuContext* c) override {
         if (init_failed_) { vivid_report_gpu_error(c, err_.c_str()); return; }
@@ -99,52 +103,85 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
         const float want_speed = pv(2, speed.value);
         int want_bus = static_cast<int>(pv(3, static_cast<float>(audio_bus.value)) + 0.5f);
         if (want_bus < 0) want_bus = 0; if (want_bus >= VIVID_MOVIE_AUDIO_CHANNELS) want_bus = VIVID_MOVIE_AUDIO_CHANNELS - 1;
-        if (want_bus != audio_bus_) { vivid_movie_audio_reset(audio_bus_, 0.0); audio_bus_ = want_bus; last_read_head_ = -1.0; }
+        if (want_bus != audio_bus_) {   // move to another channel: pause the fill, remap, resume
+            stop_fill();
+            vivid_movie_audio_reset(audio_bus_, 0.0);
+            audio_bus_ = want_bus; last_read_head_ = -1.0;
+            if (has_audio_) start_fill();
+        }
 
         if (file.str_value != loaded_path_) { loaded_path_ = file.str_value; open_decoder(c, want_mode, want_speed); }
         if (dec_ && want_mode != applied_mode_) {
             applied_mode_ = want_mode; dec_->set_loop(want_mode == 0); audio_.set_loop(want_mode == 0);
         }
         if (dec_ && want_speed != applied_speed_) {
-            applied_speed_ = want_speed; dec_->set_speed(want_speed); audio_.set_speed(want_speed);
+            applied_speed_ = want_speed; audio_.set_speed(want_speed);
+            if (video_running_) dec_->set_speed(want_speed);   // keep a paused decoder paused
         }
 
-        // Audio: keep this node's bus channel filled ahead of the audio thread. A MovieAudio op drains
-        // it into the graph; that drain advances the channel's master A/V clock.
-        if (has_audio_) fill_audio();
+        // The fill thread keeps this node's bus channel filled ahead of the audio thread; a MovieAudio
+        // op drains it into the graph, advancing the channel's master A/V clock.
 
-        // Video: lock to the channel's master clock IF a MovieAudio op is draining it (present the
-        // frame at that audio time; hold when the clock is frozen = paused). Otherwise — no audio
-        // track, or no MovieAudio wired yet — self-clock the video so it still plays.
+        // Video sync. When a MovieAudio op drives the channel's master clock, FOLLOW THE TRANSPORT
+        // through it — but play SMOOTHLY on the decoder's own real-time clock rather than chasing the
+        // audio frame-by-frame (which stutters): the two run at the same real-time rate from a common
+        // start, so they track. The audio clock only tells us (a) play vs pause — advancing vs frozen,
+        // so we run/hold the decoder — and (b) where to re-lock on a big drift or loop wrap (a rare
+        // seek). Without a MovieAudio (or a soundless movie), just self-clock so the picture plays.
         DecodeStatus st = DecodeStatus::ReusedFrame;
         if (dec_) {
             const bool audio_master = has_audio_ && audio_dur_ > 0.0 && vivid_movie_audio_master_active(audio_bus_);
             if (audio_master) {
                 const double mono = vivid_movie_audio_read_head(audio_bus_);
-                if (std::abs(mono - last_read_head_) > 1e-6) {
-                    last_read_head_ = mono;
-                    const double local = (want_mode == 0) ? std::fmod(mono, audio_dur_) : std::min(mono, audio_dur_);
-                    st = dec_->present_at(local);
+                const bool advancing = std::abs(mono - last_read_head_) > 1e-6;
+                last_read_head_ = mono;
+                if (advancing) {
+                    // Play forward at the decoder's own real-time rate (smooth) — the audio clock only
+                    // gates play vs pause here, it does NOT drive per-frame seeking (seeking the
+                    // AVPlayer wrecks its frame vending). Video + audio both run at real time and loop
+                    // together, so they track from a common start.
+                    if (!video_running_) { dec_->set_speed(applied_speed_ > 0.f ? applied_speed_ : 1.f); video_running_ = true; }
+                    st = dec_->decode_frame();
+                } else if (video_running_) {
+                    dec_->set_speed(0.f); video_running_ = false;   // transport paused -> hold the frame
                 }
+                was_audio_master_ = true;
             } else {
+                if (!video_running_) { dec_->set_speed(applied_speed_ > 0.f ? applied_speed_ : 1.f); video_running_ = true; }
                 st = dec_->decode_frame();
+                was_audio_master_ = false;
             }
         }
         if (st == DecodeStatus::NewFrame) upload_frame(c);
         blit(c);
     }
 
-    // Decode audio from the movie into this node's bus channel, keeping ~0.5 s buffered ahead of the
-    // audio thread. Render thread = single producer for the channel's ring.
-    void fill_audio() {
-        constexpr uint32_t kTargetAhead = 24000;   // ~0.5 s @ 48 kHz
+    // Background fill loop: keep this node's bus channel ~1 s ahead of the audio thread. Runs off the
+    // render thread so a throttled/occluded render loop never starves the movie audio. Single
+    // producer for the channel's ring (only this thread writes). Started while a decoded audio track
+    // is open on a stable channel; stopped (and joined) before the extractor or channel changes.
+    void fill_loop() {
+        constexpr uint32_t kTargetAhead = 48000;   // ~1 s @ 48 kHz
         float L[4096], R[4096];
-        int guard = 0;
-        while (vivid_movie_audio_buffered(audio_bus_) < kTargetAhead && guard++ < 16) {
-            const uint32_t got = audio_.decode_samples(L, R, 4096);
-            if (got == 0) break;
-            vivid_movie_audio_write(audio_bus_, L, R, got, audio_.write_head_pts(), 48000.f);
+        while (fill_run_.load(std::memory_order_acquire)) {
+            bool did = false;
+            while (fill_run_.load(std::memory_order_acquire) && vivid_movie_audio_buffered(audio_bus_) < kTargetAhead) {
+                const uint32_t got = audio_.decode_samples(L, R, 4096);
+                if (got == 0) break;
+                vivid_movie_audio_write(audio_bus_, L, R, got, audio_.write_head_pts(), 48000.f);
+                did = true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(did ? 3 : 10));
         }
+    }
+    void start_fill() {
+        if (fill_thread_.joinable()) return;
+        fill_run_.store(true, std::memory_order_release);
+        fill_thread_ = std::thread([this]{ fill_loop(); });
+    }
+    void stop_fill() {
+        fill_run_.store(false, std::memory_order_release);
+        if (fill_thread_.joinable()) fill_thread_.join();
     }
 
 private:
@@ -154,6 +191,10 @@ private:
     double audio_dur_ = 0.0;             // media duration (s), for the loop-wrapping master clock
     double last_read_head_ = -1.0;       // last master time presented (detects a frozen/paused clock)
     int    audio_bus_ = 0;               // the movie-audio channel this node writes to (its param)
+    std::thread       fill_thread_;      // background audio-fill (off the render thread)
+    std::atomic<bool> fill_run_{false};
+    bool   video_running_ = false;       // decoder play state (false forces an align on first playback)
+    bool   was_audio_master_ = false;    // were we audio-mastered last frame (detect the transition)
     std::string loaded_path_ = "\x01";   // sentinel != any path so the first open fires (even empty)
     int   applied_mode_  = -1;
     float applied_speed_ = -1.f;
@@ -169,6 +210,7 @@ private:
     bool ycocg_ = false; bool have_frame_ = false;
 
     void open_decoder(const VividGpuContext* /*c*/, int mode, float spd) {
+        stop_fill();                                // join the fill thread before touching the extractor
         if (dec_) { dec_->close(); dec_.reset(); }
         audio_.close(); has_audio_ = false; audio_dur_ = 0.0; last_read_head_ = -1.0;
         vivid_movie_audio_reset(audio_bus_, 0.0);   // clear the channel (also drops any stale master-active)
@@ -189,6 +231,7 @@ private:
             has_audio_ = true; audio_dur_ = static_cast<double>(audio_.duration());
             audio_.set_loop(mode == 0); audio_.set_speed(spd);
             vivid_movie_audio_reset(audio_bus_, 0.0);
+            start_fill();   // begin filling the ring off-thread
         }
         std::fprintf(stderr, "[Video] %s (%s)%s\n", loaded_path_.c_str(), r.diagnostics.c_str(),
                      has_audio_ ? " +audio" : "");

@@ -71,7 +71,8 @@ bool AVFDecoder::open(const std::string& path) {
         AVAssetTrack* vtrack = [asset tracksWithMediaType:AVMediaTypeVideo].firstObject;
         if (vtrack && vtrack.nominalFrameRate > 0.f) impl_->fps = vtrack.nominalFrameRate;
         impl_->apply_end_behaviour();
-        impl_->player.rate = impl_->speed;   // start playing at the current rate
+        impl_->player.rate = 0.f;   // open PAUSED at frame 0; the op starts playback (set_speed) so
+                                    // video + audio both begin from 0 together (A/V-aligned start)
         impl_->opened = true;
         std::fprintf(stderr, "[avf_decoder] opened %s: fps=%.2f dur=%.3f\n", path.c_str(), impl_->fps, impl_->duration);
         return true;
@@ -125,36 +126,21 @@ DecodeStatus AVFDecoder::decode_frame() {
     }
 }
 
-// Audio-master presentation: hand back the frame at media time `t`. The muted AVPlayer plays near
-// `t` in real time so the frame is buffered; if the player's clock drifts from the master beyond a
-// tolerance we seek it back. copyPixelBufferForItemTime is frame-accurate to the requested time.
+// Audio-master presentation: keep the muted AVPlayer's playback position slaved to the master clock
+// `t` (seek only when it drifts past a tolerance — a big divergence or a loop wrap), then fetch the
+// player's CURRENT frame via the normal path. The player already advances in real time like the
+// audio, so between corrections the two track; the seek re-locks them. This reuses the reliable
+// itemTimeForHostTime frame fetch (copyPixelBufferForItemTime at an arbitrary time returns nil).
 DecodeStatus AVFDecoder::present_at(double t) {
-    if (!impl_ || !impl_->output || !impl_->player) return DecodeStatus::NilFrame;
+    if (!impl_ || !impl_->player) return DecodeStatus::NilFrame;
     @autoreleasepool {
         const double cur = CMTimeGetSeconds(impl_->player.currentTime);
-        if (std::abs(cur - t) > 0.25) {   // drifted (or looped) — snap the player back to the master clock
+        if (std::abs(cur - t) > 0.20) {   // drifted (or looped) — snap the player back to the master clock
             [impl_->player seekToTime:CMTimeMakeWithSeconds(t, 600)
-                      toleranceBefore:kCMTimePositiveInfinity toleranceAfter:kCMTimePositiveInfinity];
+                      toleranceBefore:CMTimeMakeWithSeconds(0.03, 600) toleranceAfter:CMTimeMakeWithSeconds(0.03, 600)];
         }
-        const CMTime it = CMTimeMakeWithSeconds(t, 600);
-        CVPixelBufferRef pb = [impl_->output copyPixelBufferForItemTime:it itemTimeForDisplay:nil];
-        if (!pb) return DecodeStatus::ReusedFrame;   // no buffer for this time yet — hold the last frame
-        CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
-        const uint32_t w = static_cast<uint32_t>(CVPixelBufferGetWidth(pb));
-        const uint32_t h = static_cast<uint32_t>(CVPixelBufferGetHeight(pb));
-        const size_t   stride = CVPixelBufferGetBytesPerRow(pb);
-        const uint8_t* base = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddress(pb));
-        bool got = false;
-        if (base && w && h) {
-            impl_->frame.resize(static_cast<size_t>(w) * h * 4);
-            for (uint32_t y = 0; y < h; ++y)
-                std::memcpy(impl_->frame.data() + static_cast<size_t>(y) * w * 4, base + y * stride, static_cast<size_t>(w) * 4);
-            impl_->w = w; impl_->h = h; got = true;
-        }
-        CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
-        CVPixelBufferRelease(pb);
-        return got ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
     }
+    return decode_frame();   // present the now-playing frame (≈ the master time after correction)
 }
 
 const uint8_t* AVFDecoder::pixel_data() const { return impl_->frame.empty() ? nullptr : impl_->frame.data(); }
