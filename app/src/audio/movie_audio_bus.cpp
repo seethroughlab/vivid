@@ -85,7 +85,8 @@ struct Channel {
 };
 
 std::array<Channel, VIVID_MOVIE_AUDIO_CHANNELS> g_channels;
-std::atomic<int> g_playing{0};
+std::atomic<int>   g_playing{0};
+std::atomic<float> g_device_rate{48000.0f};
 
 inline bool ok_channel(int c) { return c >= 0 && c < VIVID_MOVIE_AUDIO_CHANNELS; }
 
@@ -124,5 +125,7 @@ uint32_t vivid_movie_audio_pull(int channel, float* left, float* right, uint32_t
 }
 
 void vivid_movie_audio_set_playing(int playing) { g_playing.store(playing, std::memory_order_release); }
+void  vivid_movie_audio_set_device_rate(float sr) { if (sr > 0.f) g_device_rate.store(sr, std::memory_order_release); }
+float vivid_movie_audio_device_rate(void) { return g_device_rate.load(std::memory_order_acquire); }
 
 }  // extern "C"

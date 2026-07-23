@@ -29,6 +29,7 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
     // only drains (and advances its movie's master A/V clock) while playing, so paused freezes both
     // the movie sound and — via the shared clock — the video frame, in sync.
     vivid_movie_audio_set_playing(playing ? 1 : 0);
+    vivid_movie_audio_set_device_rate(static_cast<float>(sr));   // the Video op must decode audio at this rate
 
     bool rendered = false;
     if (a->session)

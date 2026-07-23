@@ -25,6 +25,7 @@ BRIDGE = ROOT / "mcp" / "vivid_mcp.py"
 # future omission fails loudly instead of hiding here.
 INTENTIONALLY_UNEXPOSED = {
     "set_playing": "exposed as the higher-level play()/stop() tools",
+    "movie_audio_status": "internal A/V-sync diagnostic (movie-audio bus read-back), not an authoring tool",
 }
 
 

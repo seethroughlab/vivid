@@ -45,6 +45,12 @@ uint32_t vivid_movie_audio_pull(int channel, float* left, float* right, uint32_t
 // Publish whether the transport is playing (called by the audio callback each block); gates pull().
 void     vivid_movie_audio_set_playing(int playing);
 
+// Publish the audio device's sample rate (called by the audio callback). The producer (Video op)
+// MUST decode the movie audio at this rate — decoding at a different rate makes it play at the wrong
+// speed and drift from the video (the ring clock advances at the device rate, not the decode rate).
+void     vivid_movie_audio_set_device_rate(float sample_rate);
+float    vivid_movie_audio_device_rate(void);   // last published rate (48000 until the audio thread runs)
+
 #ifdef __cplusplus
 }
 #endif

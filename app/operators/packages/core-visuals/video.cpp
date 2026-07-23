@@ -75,7 +75,7 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "video", "movie"};
 
     vivid::Param<vivid::FilePath> file{"file", ""};
-    vivid::Param<int>   play_mode{"play_mode", 0, {"Loop", "Once"}};   // Once holds the last frame
+    vivid::Param<int>   play_mode{"play_mode", 0, {"Loop", "Once", "Hold Last"}};   // end: loop / black / freeze
     vivid::Param<float> speed{"speed", 1.0f, 0.0f, 4.0f};
     vivid::Param<int>   audio_bus{"audio_bus", 0, 0, VIVID_MOVIE_AUDIO_CHANNELS - 1};   // movie-audio channel
 
@@ -122,12 +122,10 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
         // The fill thread keeps this node's bus channel filled ahead of the audio thread; a MovieAudio
         // op drains it into the graph, advancing the channel's master A/V clock.
 
-        // Video sync. When a MovieAudio op drives the channel's master clock, FOLLOW THE TRANSPORT
-        // through it — but play SMOOTHLY on the decoder's own real-time clock rather than chasing the
-        // audio frame-by-frame (which stutters): the two run at the same real-time rate from a common
-        // start, so they track. The audio clock only tells us (a) play vs pause — advancing vs frozen,
-        // so we run/hold the decoder — and (b) where to re-lock on a big drift or loop wrap (a rare
-        // seek). Without a MovieAudio (or a soundless movie), just self-clock so the picture plays.
+        // Video sync. When a MovieAudio op drives the channel's master clock, follow the transport
+        // through it: advancing = playing (run the decoder), frozen = paused (hold the frame). While
+        // playing, the video is phase-locked to the audio by a smooth RATE PLL (below) rather than
+        // seeks — no stutter. Without a MovieAudio (or a soundless movie), just self-clock the video.
         DecodeStatus st = DecodeStatus::ReusedFrame;
         if (dec_) {
             const bool audio_master = has_audio_ && audio_dur_ > 0.0 && vivid_movie_audio_master_active(audio_bus_);
@@ -136,11 +134,23 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
                 const bool advancing = std::abs(mono - last_read_head_) > 1e-6;
                 last_read_head_ = mono;
                 if (advancing) {
-                    // Play forward at the decoder's own real-time rate (smooth) — the audio clock only
-                    // gates play vs pause here, it does NOT drive per-frame seeking (seeking the
-                    // AVPlayer wrecks its frame vending). Video + audio both run at real time and loop
-                    // together, so they track from a common start.
-                    if (!video_running_) { dec_->set_speed(applied_speed_ > 0.f ? applied_speed_ : 1.f); video_running_ = true; }
+                    // Play smoothly, and lock phase to the audio with a RATE PLL rather than seeking
+                    // (seeking wrecks the AVPlayer's frame vending). Each frame, nudge the decoder's
+                    // rate slightly up/down to drive the video position toward the audio's — no jumps,
+                    // gently self-correcting drift + startup offset.
+                    const float base = applied_speed_ > 0.f ? applied_speed_ : 1.f;
+                    if (!video_running_) { dec_->set_speed(base); video_running_ = true; }
+                    else {
+                        const double local = (want_mode == 0) ? std::fmod(mono, audio_dur_) : std::min(mono, audio_dur_);
+                        double e = static_cast<double>(dec_->current_time()) - local;   // + = video ahead of audio
+                        while (e >  audio_dur_ * 0.5) e -= audio_dur_;                   // unwrap around the loop
+                        while (e < -audio_dur_ * 0.5) e += audio_dur_;
+                        if (std::abs(e) < audio_dur_ * 0.45) {                           // in lock range: proportional trim
+                            float rate = base * static_cast<float>(1.0 - 0.6 * e);
+                            const float lo = base * 0.9f, hi = base * 1.1f;
+                            dec_->set_speed(rate < lo ? lo : (rate > hi ? hi : rate));
+                        }
+                    }
                     st = dec_->decode_frame();
                 } else if (video_running_) {
                     dec_->set_speed(0.f); video_running_ = false;   // transport paused -> hold the frame
@@ -153,7 +163,11 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
             }
         }
         if (st == DecodeStatus::NewFrame) upload_frame(c);
-        blit(c);
+        // End-of-clip (non-looping modes): Once (1) blacks out; Hold Last (2) keeps the final frame.
+        const double dur = dec_ ? dec_->duration() : 0.0;
+        const bool at_end = dec_ && want_mode != 0 && dur > 0.0 &&
+                            static_cast<double>(dec_->current_time()) >= dur - 0.05;
+        blit(c, at_end && want_mode == 1);
     }
 
     // Background fill loop: keep this node's bus channel ~1 s ahead of the audio thread. Runs off the
@@ -168,7 +182,7 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
             while (fill_run_.load(std::memory_order_acquire) && vivid_movie_audio_buffered(audio_bus_) < kTargetAhead) {
                 const uint32_t got = audio_.decode_samples(L, R, 4096);
                 if (got == 0) break;
-                vivid_movie_audio_write(audio_bus_, L, R, got, audio_.write_head_pts(), 48000.f);
+                vivid_movie_audio_write(audio_bus_, L, R, got, audio_.write_head_pts(), static_cast<float>(audio_sr_));
                 did = true;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(did ? 3 : 10));
@@ -189,6 +203,7 @@ private:
     AVFAudioExtractor audio_;            // the movie's audio track (empty when the file has none)
     bool   has_audio_ = false;
     double audio_dur_ = 0.0;             // media duration (s), for the loop-wrapping master clock
+    uint32_t audio_sr_ = 48000;          // decode/publish rate = the audio DEVICE rate (else audio drifts)
     double last_read_head_ = -1.0;       // last master time presented (detects a frozen/paused clock)
     int    audio_bus_ = 0;               // the movie-audio channel this node writes to (its param)
     std::thread       fill_thread_;      // background audio-fill (off the render thread)
@@ -226,8 +241,11 @@ private:
         dec_->set_loop(mode == 0);
         dec_->set_speed(spd);
         applied_mode_ = mode; applied_speed_ = spd;
-        // The audio track (optional): if present, it plays through the host bus and drives A/V sync.
-        if (audio_.open(loaded_path_, 48000) && audio_.has_audio()) {
+        // The audio track (optional): decode at the audio DEVICE rate (published by the audio thread),
+        // so it plays at the right speed and its ring clock advances at real time — else it drifts.
+        audio_sr_ = static_cast<uint32_t>(vivid_movie_audio_device_rate() + 0.5f);
+        if (audio_sr_ < 8000) audio_sr_ = 48000;
+        if (audio_.open(loaded_path_, audio_sr_) && audio_.has_audio()) {
             has_audio_ = true; audio_dur_ = static_cast<double>(audio_.duration());
             audio_.set_loop(mode == 0); audio_.set_speed(spd);
             vivid_movie_audio_reset(audio_bus_, 0.0);
@@ -278,7 +296,7 @@ private:
         have_frame_ = true;
     }
 
-    void blit(const VividGpuContext* c) {
+    void blit(const VividGpuContext* c, bool force_black = false) {
         const float u[4] = { ycocg_ ? 1.f : 0.f, 0.f, 0.f, 0.f };
         wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
         WGPURenderPassColorAttachment cat{};
@@ -286,7 +304,7 @@ private:
         cat.loadOp = WGPULoadOp_Clear; cat.storeOp = WGPUStoreOp_Store; cat.clearValue = { 0, 0, 0, 1 };
         WGPURenderPassDescriptor rpd{}; rpd.colorAttachmentCount = 1; rpd.colorAttachments = &cat;
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(c->command_encoder, &rpd);
-        if (have_frame_ && bg_) {
+        if (have_frame_ && bg_ && !force_black) {   // force_black => the cleared (black) frame, for Once at EOF
             wgpuRenderPassEncoderSetPipeline(pass, pipe_);
             wgpuRenderPassEncoderSetBindGroup(pass, 0, bg_, 0, nullptr);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
