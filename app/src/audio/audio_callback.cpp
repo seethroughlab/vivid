@@ -4,6 +4,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "operator_api/movie_audio.h"   // vivid_movie_audio_set_playing (gates the movie-audio bus)
+#include "audio/movie_audio_bus.h"      // movie_audio_begin_block / movie_audio_mix_master
 
 #include <algorithm>
 #include <cmath>
@@ -30,6 +31,7 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
     // the movie sound and — via the shared clock — the video frame, in sync.
     vivid_movie_audio_set_playing(playing ? 1 : 0);
     vivid_movie_audio_set_device_rate(static_cast<float>(sr));   // the Video op must decode audio at this rate
+    vivid::movie_audio_begin_block();                            // reset per-block MovieAudio-drained flags
 
     bool rendered = false;
     if (a->session)
@@ -40,6 +42,11 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
         // tone. The metronome click below still mixes in over the cleared buffer if it's enabled.
         std::fill(fout, fout + static_cast<size_t>(frames) * 2, 0.f);
     }
+
+    // A lone Video node (no MovieAudio op) still plays its movie's audio: mix any movie channel the
+    // graph didn't already drain straight into the master. Adding a MovieAudio node reroutes that
+    // channel through the graph (and its effects) instead — this fallback then leaves it alone.
+    vivid::movie_audio_mix_master(fout, frames, playing);
 
     // Metronome click (M6.3): a short decaying sine on each beat while enabled. Mixed into
     // the master before metering. The downbeat (every 4th beat) is accented higher.

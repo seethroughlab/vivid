@@ -81,7 +81,8 @@ struct Ring {
 
 struct Channel {
     Ring                 ring;
-    std::atomic<uint8_t> ever_drained{0};   // a MovieAudio op has drained this channel this file-load
+    std::atomic<uint8_t> ever_drained{0};        // the clock has advanced this file-load (video locks to it)
+    std::atomic<uint8_t> drained_this_block{0};  // a MovieAudio op pulled this channel this audio block
 };
 
 std::array<Channel, VIVID_MOVIE_AUDIO_CHANNELS> g_channels;
@@ -121,6 +122,7 @@ uint32_t vivid_movie_audio_pull(int channel, float* left, float* right, uint32_t
     }
     const uint32_t got = g_channels[channel].ring.read(left, right, frames);
     g_channels[channel].ever_drained.store(1, std::memory_order_release);
+    g_channels[channel].drained_this_block.store(1, std::memory_order_release);   // suppress the master fallback
     return got;
 }
 
@@ -129,3 +131,36 @@ void  vivid_movie_audio_set_device_rate(float sr) { if (sr > 0.f) g_device_rate.
 float vivid_movie_audio_device_rate(void) { return g_device_rate.load(std::memory_order_acquire); }
 
 }  // extern "C"
+
+// ---- host-side, called from the audio callback (see audio/movie_audio_bus.h) ------------------
+namespace vivid {
+
+void movie_audio_begin_block() {
+    for (auto& s : g_channels) s.drained_this_block.store(0, std::memory_order_release);
+}
+
+// Mix every movie channel that a MovieAudio op did NOT drain this block straight into the master —
+// so a lone Video node (no MovieAudio) still plays its movie's sound. Draining advances the channel
+// clock (ever_drained), so the Video op stays frame-locked to it either way. Gated on `playing`, so
+// paused freezes the movie sound + frame in sync. Called AFTER session_process (its MovieAudio pulls
+// have set drained_this_block on the channels they route through the graph).
+void movie_audio_mix_master(float* out, uint32_t frames, bool playing) {
+    if (!out || frames == 0 || !playing) return;
+    static thread_local float tmpL[8192];
+    static thread_local float tmpR[8192];
+    for (auto& s : g_channels) {
+        if (s.drained_this_block.load(std::memory_order_acquire)) continue;   // a MovieAudio routed it
+        if (s.ring.available_read() == 0) continue;                           // no movie feeding this channel
+        for (uint32_t off = 0; off < frames; off += 8192) {
+            const uint32_t n = std::min<uint32_t>(8192, frames - off);
+            s.ring.read(tmpL, tmpR, n);
+            s.ever_drained.store(1, std::memory_order_release);
+            for (uint32_t i = 0; i < n; ++i) {
+                out[(off + i) * 2 + 0] += tmpL[i];
+                out[(off + i) * 2 + 1] += tmpR[i];
+            }
+        }
+    }
+}
+
+}  // namespace vivid
