@@ -115,51 +115,32 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
             applied_mode_ = want_mode; dec_->set_loop(want_mode == 0); audio_.set_loop(want_mode == 0);
         }
         if (dec_ && want_speed != applied_speed_) {
-            applied_speed_ = want_speed; audio_.set_speed(want_speed);
-            if (video_running_) dec_->set_speed(want_speed);   // keep a paused decoder paused
+            applied_speed_ = want_speed; audio_.set_speed(want_speed); dec_->set_speed(want_speed);
         }
 
         // The fill thread keeps this node's bus channel filled ahead of the audio thread; a MovieAudio
         // op drains it into the graph, advancing the channel's master A/V clock.
 
         // Video sync. When a MovieAudio op drives the channel's master clock, follow the transport
-        // through it: advancing = playing (run the decoder), frozen = paused (hold the frame). While
-        // playing, the video is phase-locked to the audio by a smooth RATE PLL (below) rather than
-        // seeks — no stutter. Without a MovieAudio (or a soundless movie), just self-clock the video.
+        // through it: advancing = playing (present the frame AT that time), frozen = paused (hold the
+        // frame). AVAssetReader decodes forward to the exact audio time — frame-accurate, no seeking
+        // or rate control. Without a MovieAudio (or a soundless movie), just self-clock the video.
         DecodeStatus st = DecodeStatus::ReusedFrame;
         if (dec_) {
             const bool audio_master = has_audio_ && audio_dur_ > 0.0 && vivid_movie_audio_master_active(audio_bus_);
             if (audio_master) {
+                // Present the EXACT frame at the audio master clock (AVAssetReader decodes forward to
+                // it) — frame-accurate A/V lock, no seeking or rate control. When the clock is frozen
+                // (transport paused) we present nothing, so the last frame holds.
                 const double mono = vivid_movie_audio_read_head(audio_bus_);
                 const bool advancing = std::abs(mono - last_read_head_) > 1e-6;
                 last_read_head_ = mono;
                 if (advancing) {
-                    // Play smoothly, and lock phase to the audio with a RATE PLL rather than seeking
-                    // (seeking wrecks the AVPlayer's frame vending). Each frame, nudge the decoder's
-                    // rate slightly up/down to drive the video position toward the audio's — no jumps,
-                    // gently self-correcting drift + startup offset.
-                    const float base = applied_speed_ > 0.f ? applied_speed_ : 1.f;
-                    if (!video_running_) { dec_->set_speed(base); video_running_ = true; }
-                    else {
-                        const double local = (want_mode == 0) ? std::fmod(mono, audio_dur_) : std::min(mono, audio_dur_);
-                        double e = static_cast<double>(dec_->current_time()) - local;   // + = video ahead of audio
-                        while (e >  audio_dur_ * 0.5) e -= audio_dur_;                   // unwrap around the loop
-                        while (e < -audio_dur_ * 0.5) e += audio_dur_;
-                        if (std::abs(e) < audio_dur_ * 0.45) {                           // in lock range: proportional trim
-                            float rate = base * static_cast<float>(1.0 - 0.6 * e);
-                            const float lo = base * 0.9f, hi = base * 1.1f;
-                            dec_->set_speed(rate < lo ? lo : (rate > hi ? hi : rate));
-                        }
-                    }
-                    st = dec_->decode_frame();
-                } else if (video_running_) {
-                    dec_->set_speed(0.f); video_running_ = false;   // transport paused -> hold the frame
+                    const double local = (want_mode == 0) ? std::fmod(mono, audio_dur_) : std::min(mono, audio_dur_);
+                    st = dec_->present_at(local);
                 }
-                was_audio_master_ = true;
             } else {
-                if (!video_running_) { dec_->set_speed(applied_speed_ > 0.f ? applied_speed_ : 1.f); video_running_ = true; }
-                st = dec_->decode_frame();
-                was_audio_master_ = false;
+                st = dec_->decode_frame();   // no audio master: self-clock the picture
             }
         }
         if (st == DecodeStatus::NewFrame) upload_frame(c);
@@ -208,8 +189,6 @@ private:
     int    audio_bus_ = 0;               // the movie-audio channel this node writes to (its param)
     std::thread       fill_thread_;      // background audio-fill (off the render thread)
     std::atomic<bool> fill_run_{false};
-    bool   video_running_ = false;       // decoder play state (false forces an align on first playback)
-    bool   was_audio_master_ = false;    // were we audio-mastered last frame (detect the transition)
     std::string loaded_path_ = "\x01";   // sentinel != any path so the first open fires (even empty)
     int   applied_mode_  = -1;
     float applied_speed_ = -1.f;

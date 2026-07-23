@@ -85,10 +85,11 @@ if(APPLE)
     target_link_libraries(vivid_video PRIVATE snappy
         "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework CoreVideo"
         "-framework QuartzCore" "-framework Foundation" "-framework CoreGraphics")
-    # classic-ported .mm files assume ARC (avf_decoder.mm is manual retain/release)
+    # the AVFoundation .mm files use ARC
     set_source_files_properties(
         packages/core-visuals/movie/codec_probe.mm
         packages/core-visuals/movie/hap_decoder.mm
+        packages/core-visuals/movie/avf_decoder.mm
         packages/core-visuals/movie/avf_audio_extractor.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 else()

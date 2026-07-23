@@ -1,9 +1,9 @@
 #pragma once
-// AVFoundation video decoder implementing the VideoDecoder interface: an AVPlayer +
-// AVPlayerItemVideoOutput vends the current frame as tightly-packed BGRA8. The standard-codec
-// path (H.264/HEVC/ProRes/…); HAP files route to HAPDecoder instead (see decoder_factory).
-// Lean port of the app's video_player.mm behaviour into the decoder abstraction — no async queue,
-// no Metal. Main-thread use for the decode/query methods (owns an AVPlayer).
+// AVFoundation video decoder implementing the VideoDecoder interface via AVAssetReader — sequential
+// frame decode to tightly-packed BGRA8. The standard-codec path (H.264/HEVC/ProRes/…); HAP files
+// route to HAPDecoder instead (see decoder_factory). AVAssetReader (not AVPlayer) so present_at(t)
+// can hand back the EXACT frame at the audio master clock — frame-accurate A/V lock, no seeking or
+// rate control. Single-thread use for the decode methods (called from the op's render thread).
 #include "video_decoder.h"
 #include <memory>
 
