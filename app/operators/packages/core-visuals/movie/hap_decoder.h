@@ -14,6 +14,7 @@ public:
     void close() override;
     bool is_open() const override;
     DecodeStatus decode_frame() override;
+    DecodeStatus present_at(double t) override;
     const uint8_t* pixel_data() const override;
     uint32_t width() const override;
     uint32_t height() const override;

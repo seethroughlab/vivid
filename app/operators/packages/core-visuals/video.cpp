@@ -4,16 +4,21 @@
 // AVFoundation and HAP through the direct BC-texture path (deps/hap + snappy), decoding on the
 // render thread and uploading each frame to a wgpu texture it blits into the graph.
 //
-// A generator (no inputs). Video-only for now; the decoder abstraction keeps current_time/seek/
-// duration so A/V-synced audio can be layered on later (see movie/video_decoder.h).
+// A generator (no inputs). The movie's AUDIO track plays through the host engine, SAMPLE-ACCURATELY
+// locked to the video and following the transport: the op decodes audio on the render thread and
+// writes it to the host movie-audio bus (operator_api/movie_audio.h); the audio callback drains it
+// (only while playing), advancing a master clock the op then presents the video against.
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
+#include "operator_api/movie_audio.h"   // host movie-audio bus (A/V-synced audio track)
 
-#include "movie/decoder_factory.h"   // load_video_decoder_for_path (probe -> AVF | HAP)
-#include "movie/hap_codec.h"         // VideoCompressedFormat + bytes_per_block
+#include "movie/decoder_factory.h"      // load_video_decoder_for_path (probe -> AVF | HAP)
+#include "movie/hap_codec.h"            // VideoCompressedFormat + bytes_per_block
+#include "movie/avf_audio_extractor.h"  // decode the movie's audio track -> stereo samples
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -68,19 +73,22 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<vivid::FilePath> file{"file", ""};
     vivid::Param<int>   play_mode{"play_mode", 0, {"Loop", "Once"}};   // Once holds the last frame
     vivid::Param<float> speed{"speed", 1.0f, 0.0f, 4.0f};
+    vivid::Param<int>   audio_bus{"audio_bus", 0, 0, VIVID_MOVIE_AUDIO_CHANNELS - 1};   // movie-audio channel
 
     VideoOp() {
         vivid::description(file, "Movie file to play (mp4/mov/… and HAP-encoded .mov)");
         vivid::asset_kind(file, "video");
         vivid::semantic_tag(file, "path_video");
         vivid::description(speed, "Playback rate multiplier (1 = normal, 0 = pause)");
+        vivid::description(audio_bus, "Movie-audio bus channel: add a MovieAudio node with the same "
+                                      "'source' to hear this movie's audio through the audio graph");
     }
     void collect_params(std::vector<vivid::ParamBase*>& o) override {
-        o.push_back(&file); o.push_back(&play_mode); o.push_back(&speed);
+        o.push_back(&file); o.push_back(&play_mode); o.push_back(&speed); o.push_back(&audio_bus);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
 
-    ~VideoOp() override { if (dec_) dec_->close(); release_gpu(); }
+    ~VideoOp() override { vivid_movie_audio_reset(audio_bus_, 0.0); audio_.close(); if (dec_) dec_->close(); release_gpu(); }
 
     void process_gpu(const VividGpuContext* c) override {
         if (init_failed_) { vivid_report_gpu_error(c, err_.c_str()); return; }
@@ -89,17 +97,63 @@ struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
         const float* p = c->param_values; auto pv = [&](int i, float d){ return p ? p[i] : d; };
         const int   want_mode  = static_cast<int>(pv(1, static_cast<float>(play_mode.value)) + 0.5f);
         const float want_speed = pv(2, speed.value);
+        int want_bus = static_cast<int>(pv(3, static_cast<float>(audio_bus.value)) + 0.5f);
+        if (want_bus < 0) want_bus = 0; if (want_bus >= VIVID_MOVIE_AUDIO_CHANNELS) want_bus = VIVID_MOVIE_AUDIO_CHANNELS - 1;
+        if (want_bus != audio_bus_) { vivid_movie_audio_reset(audio_bus_, 0.0); audio_bus_ = want_bus; last_read_head_ = -1.0; }
 
         if (file.str_value != loaded_path_) { loaded_path_ = file.str_value; open_decoder(c, want_mode, want_speed); }
-        if (dec_ && want_mode  != applied_mode_)  { applied_mode_  = want_mode;  dec_->set_loop(want_mode == 0); }
-        if (dec_ && want_speed != applied_speed_) { applied_speed_ = want_speed; dec_->set_speed(want_speed); }
+        if (dec_ && want_mode != applied_mode_) {
+            applied_mode_ = want_mode; dec_->set_loop(want_mode == 0); audio_.set_loop(want_mode == 0);
+        }
+        if (dec_ && want_speed != applied_speed_) {
+            applied_speed_ = want_speed; dec_->set_speed(want_speed); audio_.set_speed(want_speed);
+        }
 
-        if (dec_ && dec_->decode_frame() == DecodeStatus::NewFrame) upload_frame(c);
+        // Audio: keep this node's bus channel filled ahead of the audio thread. A MovieAudio op drains
+        // it into the graph; that drain advances the channel's master A/V clock.
+        if (has_audio_) fill_audio();
+
+        // Video: lock to the channel's master clock IF a MovieAudio op is draining it (present the
+        // frame at that audio time; hold when the clock is frozen = paused). Otherwise — no audio
+        // track, or no MovieAudio wired yet — self-clock the video so it still plays.
+        DecodeStatus st = DecodeStatus::ReusedFrame;
+        if (dec_) {
+            const bool audio_master = has_audio_ && audio_dur_ > 0.0 && vivid_movie_audio_master_active(audio_bus_);
+            if (audio_master) {
+                const double mono = vivid_movie_audio_read_head(audio_bus_);
+                if (std::abs(mono - last_read_head_) > 1e-6) {
+                    last_read_head_ = mono;
+                    const double local = (want_mode == 0) ? std::fmod(mono, audio_dur_) : std::min(mono, audio_dur_);
+                    st = dec_->present_at(local);
+                }
+            } else {
+                st = dec_->decode_frame();
+            }
+        }
+        if (st == DecodeStatus::NewFrame) upload_frame(c);
         blit(c);
+    }
+
+    // Decode audio from the movie into this node's bus channel, keeping ~0.5 s buffered ahead of the
+    // audio thread. Render thread = single producer for the channel's ring.
+    void fill_audio() {
+        constexpr uint32_t kTargetAhead = 24000;   // ~0.5 s @ 48 kHz
+        float L[4096], R[4096];
+        int guard = 0;
+        while (vivid_movie_audio_buffered(audio_bus_) < kTargetAhead && guard++ < 16) {
+            const uint32_t got = audio_.decode_samples(L, R, 4096);
+            if (got == 0) break;
+            vivid_movie_audio_write(audio_bus_, L, R, got, audio_.write_head_pts(), 48000.f);
+        }
     }
 
 private:
     std::unique_ptr<VideoDecoder> dec_;
+    AVFAudioExtractor audio_;            // the movie's audio track (empty when the file has none)
+    bool   has_audio_ = false;
+    double audio_dur_ = 0.0;             // media duration (s), for the loop-wrapping master clock
+    double last_read_head_ = -1.0;       // last master time presented (detects a frozen/paused clock)
+    int    audio_bus_ = 0;               // the movie-audio channel this node writes to (its param)
     std::string loaded_path_ = "\x01";   // sentinel != any path so the first open fires (even empty)
     int   applied_mode_  = -1;
     float applied_speed_ = -1.f;
@@ -116,6 +170,8 @@ private:
 
     void open_decoder(const VividGpuContext* /*c*/, int mode, float spd) {
         if (dec_) { dec_->close(); dec_.reset(); }
+        audio_.close(); has_audio_ = false; audio_dur_ = 0.0; last_read_head_ = -1.0;
+        vivid_movie_audio_reset(audio_bus_, 0.0);   // clear the channel (also drops any stale master-active)
         have_frame_ = false;
         tex_fmt_ = WGPUTextureFormat_Undefined; tex_w_ = tex_h_ = 0;   // force a texture rebuild on next frame
         if (loaded_path_.empty()) return;
@@ -128,7 +184,14 @@ private:
         dec_->set_loop(mode == 0);
         dec_->set_speed(spd);
         applied_mode_ = mode; applied_speed_ = spd;
-        std::fprintf(stderr, "[Video] %s (%s)\n", loaded_path_.c_str(), r.diagnostics.c_str());
+        // The audio track (optional): if present, it plays through the host bus and drives A/V sync.
+        if (audio_.open(loaded_path_, 48000) && audio_.has_audio()) {
+            has_audio_ = true; audio_dur_ = static_cast<double>(audio_.duration());
+            audio_.set_loop(mode == 0); audio_.set_speed(spd);
+            vivid_movie_audio_reset(audio_bus_, 0.0);
+        }
+        std::fprintf(stderr, "[Video] %s (%s)%s\n", loaded_path_.c_str(), r.diagnostics.c_str(),
+                     has_audio_ ? " +audio" : "");
     }
 
     void ensure_texture(const VividGpuContext* c, WGPUTextureFormat fmt, uint32_t w, uint32_t h) {

@@ -24,6 +24,10 @@ public:
     virtual void close() = 0;
     virtual bool is_open() const = 0;
     virtual DecodeStatus decode_frame() = 0;
+    // Present the frame at media time `t` seconds (audio-master A/V lock): make pixel_data() /
+    // compressed_data() hold the frame nearest `t`, correcting drift as needed. Default self-clocks
+    // (ignores t) for decoders without a seekable presentation model.
+    virtual DecodeStatus present_at(double t) { (void)t; return decode_frame(); }
     virtual const uint8_t* pixel_data() const = 0;  // BGRA8
     virtual uint32_t width() const = 0;
     virtual uint32_t height() const = 0;

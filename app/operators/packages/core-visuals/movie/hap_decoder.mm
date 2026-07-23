@@ -269,6 +269,17 @@ DecodeStatus HAPDecoder::decode_frame() {
     return DecodeStatus::NewFrame;
 }
 
+// Audio-master presentation: decode sequentially (real-time throttle in decode_frame tracks the
+// audio when both play at speed), snapping back with a seek when the decode drifts from `t` beyond a
+// couple of frames or `t` jumped backwards (a loop wrap).
+DecodeStatus HAPDecoder::present_at(double t) {
+    if (!impl_ || !impl_->opened) return DecodeStatus::NilFrame;
+    const double cur = static_cast<double>(impl_->current_time_s);
+    const double frame_dt = 1.0 / std::max(1.0f, impl_->frame_rate);
+    if (t + 0.001 < cur || t - cur > 2.0 * frame_dt) seek(t);
+    return decode_frame();
+}
+
 const uint8_t* HAPDecoder::pixel_data() const { return nullptr; }
 uint32_t HAPDecoder::width() const { return impl_->frame_width; }
 uint32_t HAPDecoder::height() const { return impl_->frame_height; }

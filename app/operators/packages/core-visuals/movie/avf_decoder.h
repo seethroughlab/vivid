@@ -16,6 +16,7 @@ public:
     void close() override;
     bool is_open() const override;
     DecodeStatus decode_frame() override;
+    DecodeStatus present_at(double t) override;    // audio-master: fetch the frame at media time t
     const uint8_t* pixel_data() const override;   // BGRA8, valid until the next NewFrame
     uint32_t width() const override;
     uint32_t height() const override;

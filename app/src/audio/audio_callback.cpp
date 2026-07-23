@@ -3,6 +3,7 @@
 #include "app/app.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
+#include "operator_api/movie_audio.h"   // vivid_movie_audio_set_playing (gates the movie-audio bus)
 
 #include <algorithm>
 #include <cmath>
@@ -23,6 +24,11 @@ void audio_callback(ma_device* device, void* out, const void* /*in*/, ma_uint32 
     static bool was_playing = true;                    // audio thread only (single device)
     const bool release_all = was_playing && !playing;  // play->stop edge: flush held notes
     was_playing = playing;
+
+    // Gate the movie-audio bus on transport state BEFORE the graph runs: a MovieAudio op's pull()
+    // only drains (and advances its movie's master A/V clock) while playing, so paused freezes both
+    // the movie sound and — via the shared clock — the video frame, in sync.
+    vivid_movie_audio_set_playing(playing ? 1 : 0);
 
     bool rendered = false;
     if (a->session)

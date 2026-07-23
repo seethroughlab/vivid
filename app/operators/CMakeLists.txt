@@ -76,17 +76,20 @@ if(APPLE)
         packages/core-visuals/movie/codec_probe.mm
         packages/core-visuals/movie/avf_decoder.mm
         packages/core-visuals/movie/hap_decoder.mm
+        packages/core-visuals/movie/avf_audio_extractor.mm
         packages/core-visuals/movie/decoder_factory.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../deps/hap/hap.c)
     target_include_directories(vivid_video PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../deps/hap
         ${CMAKE_CURRENT_SOURCE_DIR}/packages/core-visuals/movie)
     target_link_libraries(vivid_video PRIVATE snappy
-        "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+        "-framework AVFoundation" "-framework AVFAudio" "-framework CoreMedia" "-framework CoreVideo"
         "-framework QuartzCore" "-framework Foundation" "-framework CoreGraphics")
+    # classic-ported .mm files assume ARC (avf_decoder.mm is manual retain/release)
     set_source_files_properties(
         packages/core-visuals/movie/codec_probe.mm
         packages/core-visuals/movie/hap_decoder.mm
+        packages/core-visuals/movie/avf_audio_extractor.mm
         PROPERTIES COMPILE_FLAGS "-fobjc-arc")
 else()
     add_vivid_operator(vivid_video

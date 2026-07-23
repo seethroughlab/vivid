@@ -62,6 +62,7 @@ bool AVFDecoder::open(const std::string& path) {
         [item addOutput:output];
         AVPlayer* player = [AVPlayer playerWithPlayerItem:item];
         player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
+        player.muted = YES;   // the movie's audio plays through OUR engine (the movie-audio bus), not CoreAudio
 
         impl_->player = [player retain];
         impl_->item   = [item retain];
@@ -106,6 +107,38 @@ DecodeStatus AVFDecoder::decode_frame() {
         }
         CVPixelBufferRef pb = [impl_->output copyPixelBufferForItemTime:t itemTimeForDisplay:nil];
         if (!pb) return DecodeStatus::ReusedFrame;
+        CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+        const uint32_t w = static_cast<uint32_t>(CVPixelBufferGetWidth(pb));
+        const uint32_t h = static_cast<uint32_t>(CVPixelBufferGetHeight(pb));
+        const size_t   stride = CVPixelBufferGetBytesPerRow(pb);
+        const uint8_t* base = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddress(pb));
+        bool got = false;
+        if (base && w && h) {
+            impl_->frame.resize(static_cast<size_t>(w) * h * 4);
+            for (uint32_t y = 0; y < h; ++y)
+                std::memcpy(impl_->frame.data() + static_cast<size_t>(y) * w * 4, base + y * stride, static_cast<size_t>(w) * 4);
+            impl_->w = w; impl_->h = h; got = true;
+        }
+        CVPixelBufferUnlockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
+        CVPixelBufferRelease(pb);
+        return got ? DecodeStatus::NewFrame : DecodeStatus::ReusedFrame;
+    }
+}
+
+// Audio-master presentation: hand back the frame at media time `t`. The muted AVPlayer plays near
+// `t` in real time so the frame is buffered; if the player's clock drifts from the master beyond a
+// tolerance we seek it back. copyPixelBufferForItemTime is frame-accurate to the requested time.
+DecodeStatus AVFDecoder::present_at(double t) {
+    if (!impl_ || !impl_->output || !impl_->player) return DecodeStatus::NilFrame;
+    @autoreleasepool {
+        const double cur = CMTimeGetSeconds(impl_->player.currentTime);
+        if (std::abs(cur - t) > 0.25) {   // drifted (or looped) — snap the player back to the master clock
+            [impl_->player seekToTime:CMTimeMakeWithSeconds(t, 600)
+                      toleranceBefore:kCMTimePositiveInfinity toleranceAfter:kCMTimePositiveInfinity];
+        }
+        const CMTime it = CMTimeMakeWithSeconds(t, 600);
+        CVPixelBufferRef pb = [impl_->output copyPixelBufferForItemTime:it itemTimeForDisplay:nil];
+        if (!pb) return DecodeStatus::ReusedFrame;   // no buffer for this time yet — hold the last frame
         CVPixelBufferLockBaseAddress(pb, kCVPixelBufferLock_ReadOnly);
         const uint32_t w = static_cast<uint32_t>(CVPixelBufferGetWidth(pb));
         const uint32_t h = static_cast<uint32_t>(CVPixelBufferGetHeight(pb));
