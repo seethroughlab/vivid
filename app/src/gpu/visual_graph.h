@@ -183,6 +183,11 @@ private:
     int                       next_id_ = 0;
     int                       active_output_id_ = -1;
     std::vector<RenderTarget> rts_;          // node output (parallel to nodes_)
+    // The VALUE channel analogue of rts_ (custom-ref ports, e.g. a VividMesh): per node, one slot per
+    // custom-ref OUTPUT port. A producer op writes a pointer into its slot in process_gpu; a
+    // downstream op reads its upstream's slot — resolved the same topo-ordered pass. The producer
+    // owns the pointed-to value (its wgpu buffers are op members that outlive the frame). See run_chain.
+    std::vector<std::vector<void*>> published_custom_;
     RenderTarget              fallback_;      // black input for disconnected ports
     bool                      fb_cleared_ = false;
 

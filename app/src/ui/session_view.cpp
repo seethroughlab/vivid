@@ -264,9 +264,18 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
                                                 g->op_param_label_at(selop, i), g->op_param_label_at(selop, i + 1));
                     draw_xy_pad(ui, cr, g->op_param_base_at(selop, i), g->op_param_base_at(selop, i + 1), sty.gpu, lbl);
                 } else if (hint == VIVID_DISPLAY_COLOR) {
+                    // The swatch spans the group's rows in the LABEL column. Params wrap into columns
+                    // (node_param_row), so a color group can straddle a column boundary (e.g. Lines'
+                    // bg_r/bg_g/bg_b). Spanning r0->r2 blindly then yields a misplaced/garbage rect,
+                    // so grow the swatch only across channels that stay in r0's column.
                     const Rect r0 = node_param_row(i, w.win_w, w.win_h, w.dock_h);
-                    const Rect r2 = node_param_row(i + 2, w.win_w, w.win_h, w.dock_h);
-                    const Rect sw = { r0.x, r0.y + 2.f, kNodeLabelW - 12.f, (r2.y + r2.h) - r0.y - 4.f };
+                    Rect rlast = r0;
+                    for (int k = 1; k < 3; ++k) {
+                        const Rect rk = node_param_row(i + k, w.win_w, w.win_h, w.dock_h);
+                        if (rk.x != r0.x || rk.y < r0.y) break;   // wrapped to another column — stop here
+                        rlast = rk;
+                    }
+                    const Rect sw = { r0.x, r0.y + 2.f, kNodeLabelW - 12.f, (rlast.y + rlast.h) - r0.y - 4.f };
                     draw_color_swatch(ui, sw, g->op_param_base_at(selop, i), g->op_param_base_at(selop, i + 1), g->op_param_base_at(selop, i + 2));
                     static const char* ch[3] = { "R", "G", "B" };
                     for (int k = 0; k < 3; ++k) {

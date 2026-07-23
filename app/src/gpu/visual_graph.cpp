@@ -286,19 +286,45 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView 
     for (int i = 0; i < nnodes; ++i) adj[i] = nodes_[i].inputs;
     const std::vector<int> order = topo_order(adj, feed);
 
+    // Per-node published custom-ref OUTPUT slots (the value channel, parallel to rts_): size each to
+    // the node's custom-ref output-port count so a producer has a stable slot to write into.
+    auto is_custom_transport = [](VividPortTransport t) {
+        return t == VIVID_PORT_TRANSPORT_CUSTOM_REF || t == VIVID_PORT_TRANSPORT_CUSTOM_VALUE;
+    };
+    published_custom_.assign(nnodes, {});
+    for (int i = 0; i < nnodes; ++i) {
+        int co = 0;
+        for (const auto& pd : nodes_[i].inst.ports)
+            if (pd.direction == VIVID_PORT_OUTPUT && is_custom_transport(pd.transport)) ++co;
+        published_custom_[i].assign(co, nullptr);
+    }
+
     for (int idx : order) {
         VisualNode& n = nodes_[idx];
         if (!n.inst.op) continue;
-        // One texture view per declared input port (fallback = black), resolved from the node's
-        // edges. Storage lives for the process_gpu call below.
-        const int nin = n.inst.input_port_count;
-        std::vector<WGPUTextureView> inview(nin > 0 ? nin : 0, fallback_.view);
-        for (int p = 0; p < nin; ++p) {
-            const int e = n.in(p);
-            WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
-            if (n.is_video() && p == 0) v = video_tex;          // external source feeds the generator's port 0
-            inview[p] = v ? v : fallback_.view;
+        // Split the node's input ports by transport: TEXTURE inputs feed input_texture_views[]
+        // (fallback = black); CUSTOM_REF inputs (e.g. a VividMesh) feed custom_inputs[], resolved
+        // from the upstream node's published value slot. Ordinals are per-transport, so a
+        // texture-only op is byte-for-byte unchanged (texv == the old inview). Storage lives for the
+        // process_gpu call below; the edge `inputs[k]` is indexed by input-PORT ordinal (all inputs).
+        std::vector<WGPUTextureView> texv;
+        std::vector<void*>           custin;
+        int in_ord = 0;
+        for (const auto& pd : n.inst.ports) {
+            if (pd.direction != VIVID_PORT_INPUT) continue;
+            const int e = n.in(in_ord);
+            if (is_custom_transport(pd.transport)) {
+                void* v = (e >= 0 && e < nnodes && !published_custom_[e].empty()) ? published_custom_[e][0] : nullptr;
+                custin.push_back(v);
+            } else {
+                WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
+                if (n.is_video() && in_ord == 0) v = video_tex;   // external source feeds the generator's port 0
+                texv.push_back(v ? v : fallback_.view);
+            }
+            ++in_ord;
         }
+        std::vector<void*>& pub = published_custom_[idx];   // this node's custom-ref output slots
+        std::fill(pub.begin(), pub.end(), nullptr);
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
@@ -307,8 +333,12 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time, WGPUTextureView 
         ctx.output_texture = rts_[idx].tex;
         ctx.output_texture_view = rts_[idx].view;
         ctx.output_width = rtW_; ctx.output_height = rtH_; ctx.output_format = fmt_;
-        ctx.input_texture_views = inview.empty() ? nullptr : inview.data();
-        ctx.input_texture_count = static_cast<uint32_t>(nin);
+        ctx.input_texture_views = texv.empty() ? nullptr : texv.data();
+        ctx.input_texture_count = static_cast<uint32_t>(texv.size());
+        ctx.custom_inputs = custin.empty() ? nullptr : custin.data();
+        ctx.custom_input_count = static_cast<uint32_t>(custin.size());
+        ctx.custom_outputs = pub.empty() ? nullptr : pub.data();
+        ctx.custom_output_count = static_cast<uint32_t>(pub.size());
 
         // FILE/TEXT params: hand the op a dense array of its file-param strings (in param
         // order), project-resolved for FILE params. Storage lives for the process_gpu call.
