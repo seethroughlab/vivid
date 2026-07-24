@@ -212,9 +212,11 @@ Rect AudioNodeGraph::out_port_rect(const AudioNodeBox& b) const {
 }
 
 // A node has a SIGNAL input (drawn as row 0 of the left edge) iff it consumes a signal: an effect
-// or the output take audio; a note effect takes notes. Instruments, MidiIn, and modulators are
-// pure sources — no signal-in row, so their param ports start at row 0.
-static bool kind_has_sig_in(int kind) { return kind == 1 || kind == 2 || kind == 4; }
+// (1) or the output (2) take audio; a note effect (4) or an INSTRUMENT (0) take notes. MidiIn and
+// modulators are pure sources — no signal-in row. Instruments were missing here, so a note edge into
+// them had no port to land on and fell to the card's vertical centre — which on a tall node (the
+// Sampler) reads as landing on a param row ("attack"). Now they get a "notes" input port at row 0.
+static bool kind_has_sig_in(int kind) { return kind == 0 || kind == 1 || kind == 2 || kind == 4; }
 
 // The shared card port-row layout for a node — the one place that knows a card's row composition
 // (signal-in? + exposed params + plugin "+param" row). Draw + hit-test both read it, so a port's
@@ -478,7 +480,7 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
         const float cy = cp.row_cy(b.y, 0);
         node_port(r, b.x, cy, 4.f, sty.dim[0], sty.dim[1], sty.dim[2]);
         if (a_small > 0.01f)
-            r.draw_text(b.x + 9.f, cy - 5.f, b.kind == 4 ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f * a_small, 0.6f);
+            r.draw_text(b.x + 9.f, cy - 5.f, (b.kind == 0 || b.kind == 4) ? "notes" : "in", sty.dim[0], sty.dim[1], sty.dim[2], 0.9f * a_small, 0.6f);
     }
     const float a_param = canvas_.text_alpha(0.62f);
     const std::vector<int> exp = exposed_params(b.node_id);
@@ -603,7 +605,12 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
         // (control gray — "data, not sound", ADR-0015), control/modulation (magenta, ADR-0022).
         const int ek = P::session_track_audio_graph_edge_kind(s_, track_, e);
         const float* wc = ek == 2 ? sty.mod : (ek == 1 ? sty.control : sty.audio);
-        wire(r, a->x + a->w, a->y + a->h * 0.5f, b->x, b->y + b->h * 0.5f, wc);
+        // Land the wire on the destination's INPUT PORT (row 0: audio "in" or note "notes") when it has
+        // one, not the card's vertical centre — otherwise a note edge into a tall instrument reads as
+        // hitting a param row. Falls back to left-centre for a node with no signal-in port.
+        float bx = b->x, by = b->y + b->h * 0.5f;
+        if (const Rect ip = in_port_rect(*b); ip.w > 0.f) { bx = ip.x + 6.f; by = ip.y + 6.f; }
+        wire(r, a->x + a->w, a->y + a->h * 0.5f, bx, by, wc);
     }
 
     // Cards: the shared canvas card loop (ADR-0023 #3c) draws each card's chrome and calls after_card
