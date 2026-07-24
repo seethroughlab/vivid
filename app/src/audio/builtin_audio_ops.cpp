@@ -222,7 +222,7 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
 //     transposes the sample — a playable melodic instrument.
 //   - slice→MIDI  (nslices  > 0): one single-note region per slice at base_note+i (drum-rack),
 //     now click-free with an envelope.
-struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable {
+struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPreviewable {
     static constexpr const char* kDisplayName = "Sampler";
     static constexpr const char* kSummary = "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "instrument", "sampler", "slice" };
@@ -250,6 +250,11 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable {
     std::atomic<sample_engine::SampleBank*> bank_{nullptr};   // current bank (audio thread: acquire)
     static constexpr int kV = 32;
     sample_engine::Voice v_[kV];
+
+    // A downsampled peak envelope of the loaded sample, computed once per load on the UI thread and
+    // read by the UI to draw the node's waveform thumbnail (SamplerPreviewable). UI-thread-only.
+    static constexpr int kPeakBins = 128;
+    std::vector<float> peaks_;
 
     void collect_params(std::vector<ParamBase*>& o) override {
         o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate);
@@ -294,9 +299,42 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable {
             }
         }
         for (auto& v : v_) { v.active = false; v.gate = false; }   // reload clears ringing voices (load contract)
+        compute_peaks(regions);                      // cache the waveform thumbnail (UI thread)
         sample_engine::SampleBank* raw = bank.get();
         banks_.push_back(std::move(bank));           // retain (freed at op destroy, never on the audio thread)
         bank_.store(raw, std::memory_order_release); // publish
+    }
+
+    // Downsample the loaded regions (concatenated in order — the whole break, or one melodic sample)
+    // to kPeakBins absolute-peak bins for the node thumbnail. Runs on the UI thread inside load_pcm.
+    void compute_peaks(const std::vector<sample_engine::SampleRegion>& regions) {
+        peaks_.assign(kPeakBins, 0.f);
+        size_t total = 0;
+        for (const auto& r : regions) if (r.data) total += r.data->samples_L.size();
+        if (total == 0) { peaks_.clear(); return; }
+        for (int i = 0; i < kPeakBins; ++i) {
+            const size_t a = total * static_cast<size_t>(i) / kPeakBins;
+            const size_t b = total * static_cast<size_t>(i + 1) / kPeakBins;
+            float peak = 0.f;
+            size_t base = 0;
+            for (const auto& r : regions) {
+                if (!r.data) continue;
+                const auto& L = r.data->samples_L;
+                const size_t len = L.size();
+                const size_t lo = std::max(a, base), hi = std::min(b, base + len);
+                for (size_t j = lo; j < hi; ++j) peak = std::max(peak, std::fabs(L[j - base]));
+                base += len;
+            }
+            peaks_[i] = std::min(1.f, peak);
+        }
+    }
+
+    // SamplerPreviewable: copy the cached peak envelope, nearest-resampled to `n` bins.
+    int copy_peaks(float* out, int n) const override {
+        if (!out || n <= 0 || peaks_.empty()) return 0;
+        const int have = static_cast<int>(peaks_.size());
+        for (int i = 0; i < n; ++i) out[i] = peaks_[std::min(have - 1, i * have / n)];
+        return n;
     }
 
     // --- voice allocation over v_[0..nv) : note-id keyed, bounded by the `voices` param ---

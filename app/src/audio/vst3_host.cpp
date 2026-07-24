@@ -2794,6 +2794,19 @@ int session_audio_graph_load_sampler(Session* s, int t, int node_id, const char*
     return static_cast<int>(n);
 }
 
+// Copy a Sampler node's loaded-sample peak envelope for its waveform thumbnail (the UI node card).
+// Resolves the node's op under gmtx, then reads the cached peaks via the SamplerPreviewable escape
+// hatch. Returns bins written, 0 for a non-Sampler node or an empty sampler.
+int session_audio_graph_node_sampler_peaks(Session* s, int t, int node_id, float* out, int n) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !out || n <= 0) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_peaks(op, out, n) : 0;
+}
+
 // A2: add a VST3/CLAP plugin as a first-class graph NODE — the thing that was impossible before
 // (the graph could only ever *represent* plugin nodes derived from the linear chain, so no add path
 // could put one anywhere). An instrument fans in to Output (parallel source → key-splits, layers);

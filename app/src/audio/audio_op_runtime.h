@@ -29,6 +29,9 @@ AudioOp*    audio_op_create(OpRegistry& reg, const char* type_name);  // null if
 bool        audio_op_load_sampler(AudioOp*, const float* L, const float* R, size_t n, uint32_t sr,
                                   const uint32_t* slice_starts, const uint32_t* slice_ends,
                                   int nslices, int base_note);
+// Copy the loaded sample's peak envelope (0..1) for the node waveform thumbnail — RTTI cross-cast to
+// SamplerPreviewable. Returns bins written (0 if not a sampler / nothing loaded). UI/main thread.
+int         audio_op_sampler_peaks(const AudioOp*, float* out, int n);
 // Enumerate registered audio operators for the device pickers. want_source: true =
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);

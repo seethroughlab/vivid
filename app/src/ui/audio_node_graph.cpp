@@ -227,7 +227,16 @@ CardPorts AudioNodeGraph::card_ports(int node_id, int kind) const {
     cp.add_row  = s_ && P::session_audio_graph_node_is_plugin(s_, track_, node_id) != 0;
     // A note GENERATOR (kind 8) exposes every param as a row, so a bottom well would sit below the
     // dock. Give it a TOP preview strip (always visible) for its live thumbnail, and no bottom well.
+    // A Sampler instrument (kind 0) with a sample loaded has the same problem — many param rows push a
+    // bottom well off-screen — so give it the same top strip for its waveform thumbnail. (A 1-bin probe
+    // via the peaks accessor doubles as the "is a Sampler with a sample?" test.)
     if (kind == 8) { cp.head_h = kCardPrevH; cp.tail_h = 0.f; }
+    else if (kind == 0 && s_) {
+        float probe[1];
+        if (P::session_audio_graph_node_sampler_peaks(s_, track_, node_id, probe, 1) > 0) {
+            cp.head_h = kCardPrevH; cp.tail_h = 0.f;
+        }
+    }
     return cp;
 }
 
@@ -496,7 +505,10 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     // above the (many) param rows. For every other node it's the real output waveform (a lock-free
     // scope ring) in the recessed well BELOW the rows. (v14)
     const bool is_gen = (kind == 8);
-    const Rect pv = is_gen ? cp.head_preview({ b.x, b.y, b.w, b.h }) : cp.preview({ b.x, b.y, b.w, b.h });
+    // Generators and loaded Samplers get their preview in the TOP strip (stays visible above many param
+    // rows); everything else uses the recessed well below the rows. card_ports sets head_h for both.
+    const Rect pv = (cp.head_h > 0.f) ? cp.head_preview({ b.x, b.y, b.w, b.h })
+                                      : cp.preview({ b.x, b.y, b.w, b.h });
     if (pv.h > 6.f) {
         node_preview_panel(r, pv.x, pv.y, pv.w, pv.h);
         const float ix = pv.x + 1.f, iy = pv.y + 1.f, iw = pv.w - 2.f, ih = pv.h - 2.f;
@@ -517,9 +529,18 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             tc.time           = clock_beats_;
             P::session_generator_draw_thumbnail(s_, track_, gen_scene, &tc);
         } else if (!is_gen) {
-            float scope[128];
-            const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
-            if (ns > 1) node_waveform(r, ix, iy, iw, ih, scope, ns, acc[0], acc[1], acc[2]);
+            // A Sampler node shows its LOADED SAMPLE (a static peak-bar waveform) so you can see what
+            // it will play; every other node shows its live output scope. Fall back to the scope if the
+            // Sampler has nothing loaded yet.
+            float peaks[96];
+            const int nb = P::session_audio_graph_node_sampler_peaks(s_, track_, b.node_id, peaks, 96);
+            if (nb > 0) {
+                node_sample_peaks(r, ix, iy, iw, ih, peaks, nb, acc[0], acc[1], acc[2]);
+            } else {
+                float scope[128];
+                const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
+                if (ns > 1) node_waveform(r, ix, iy, iw, ih, scope, ns, acc[0], acc[1], acc[2]);
+            }
         }
         if (node_err) node_error_note(r, ix, iy, iw, ih, "plugin unavailable \xE2\x80\x94 silent");
     }
