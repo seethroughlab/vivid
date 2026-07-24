@@ -513,6 +513,17 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
     // split gutter instead of bleeding into the visuals pane. (screen coords)
     ui.push_clip_rect(SW + spanel.x, spanel.y, spanel.w, spanel.h);
 
+    // Selected-column wash: the track whose audio graph the dock is showing (win.sel_track) gets a
+    // faint selection-blue tint spanning its whole column — header, clip cells, mixer — so it's clear
+    // which track's graph is open. Drawn first so it sits behind the cells; the header gets an
+    // explicit outline below. (sty.sel is the same focus-frame blue as the active-clip outline.)
+    if (w.sel_track >= 0 && w.sel_track < tracks) {
+        const float cx = track_x(w.sel_track);
+        const float ctop = kHeaderY;
+        const float cbot = mixer_y(scenes) + 66.f;   // just past the ARM/VIZ button row (mixer_y+48+16)
+        ui.draw_rect(cx - 3.f, ctop - 3.f, kTrackW + 6.f, cbot - ctop + 6.f, sty.sel[0], sty.sel[1], sty.sel[2], 0.08f);
+    }
+
     // track headers (accent left edge, ellipsised name, remove ×) + a "+ Track" cell
     for (int t = 0; t < tracks; ++t) {
         const Rect h = track_header_rect(t);
@@ -520,6 +531,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         const bool hov = hit(h, mx, my);
         const float acc[3] = { ar, ag, ab };
         session_header_cell(ui, h, acc, hov);
+        if (t == w.sel_track)   // the open-graph track: a selection-blue frame on its header
+            ui.draw_rect_outline(h.x, h.y, h.w, h.h, 2.f, sty.sel[0], sty.sel[1], sty.sel[2], 0.95f);
         std::string nm = fit_text(ui, vivid::session::session_track_name(s, t), h.w - 28.f, sty.fs_label);
         ui.draw_text(h.x + 10.f, h.y + 6.f, nm.c_str(), sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_label);
         const Rect xb = track_header_x_rect(t);
