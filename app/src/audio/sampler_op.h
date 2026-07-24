@@ -29,6 +29,9 @@ struct SamplerPreviewable {
     // Fill out[0..n) with the loaded sample's per-bin absolute-peak envelope (0..1), across all
     // regions/slices in order. Returns bins written (0 if nothing loaded). UI/main thread.
     virtual int copy_peaks(float* out, int n) const = 0;
+    // The most-recent active voice's playback position (0..1 across the whole sample) for the animated
+    // waveform playhead, or -1 when nothing is sounding. Published by the audio thread (atomic).
+    virtual float playhead() const = 0;
 };
 
 }  // namespace vivid

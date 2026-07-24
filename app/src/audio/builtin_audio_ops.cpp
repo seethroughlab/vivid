@@ -255,6 +255,13 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     // read by the UI to draw the node's waveform thumbnail (SamplerPreviewable). UI-thread-only.
     static constexpr int kPeakBins = 128;
     std::vector<float> peaks_;
+    // For the animated playhead: the concatenated start frame of each region (parallel to peaks_) and
+    // the total frame count, cached at load. The audio thread publishes the most-recent active voice's
+    // normalized position (0..1 across the whole waveform, -1 = nothing playing) for the UI to draw.
+    std::vector<uint32_t>  region_base_;
+    uint64_t               total_frames_ = 0;
+    uint32_t               voice_base_[kV] = {};       // concatenated base frame of each voice's region
+    std::atomic<float>     playhead_{ -1.f };
 
     void collect_params(std::vector<ParamBase*>& o) override {
         o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate);
@@ -309,8 +316,13 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
     // to kPeakBins absolute-peak bins for the node thumbnail. Runs on the UI thread inside load_pcm.
     void compute_peaks(const std::vector<sample_engine::SampleRegion>& regions) {
         peaks_.assign(kPeakBins, 0.f);
+        region_base_.assign(regions.size(), 0u);
         size_t total = 0;
-        for (const auto& r : regions) if (r.data) total += r.data->samples_L.size();
+        for (size_t k = 0; k < regions.size(); ++k) {
+            region_base_[k] = static_cast<uint32_t>(total);           // concatenated start of region k
+            if (regions[k].data) total += regions[k].data->samples_L.size();
+        }
+        total_frames_ = total;
         if (total == 0) { peaks_.clear(); return; }
         for (int i = 0; i < kPeakBins; ++i) {
             const size_t a = total * static_cast<size_t>(i) / kPeakBins;
@@ -362,6 +374,8 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
         const double rate = std::pow(2.0, semis / 12.0) * (src_sr / dev_sr);
         sample_engine::voice_note_on(v_[idx], pitch, vel, reg, rate, frame, one_shot);
         v_[idx].note_id = vid(id);             // for note-off matching (voice_note_on doesn't set it)
+        const size_t ri = static_cast<size_t>(reg - grp.regions.data());   // region index → its base frame
+        voice_base_[idx] = ri < region_base_.size() ? region_base_[ri] : 0u;
     }
 
     void handle_off(int32_t id, int nv) {
@@ -413,7 +427,22 @@ struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable, SamplerPrevi
         }
         while (ei < c->note_event_count)                    // events at/after the block end
             on_event(c->note_events[ei++], N);
+
+        // Publish the most-recent active voice's position for the UI playhead (0..1 across the whole
+        // waveform, -1 = nothing playing). Newest voice = largest start_frame among the active ones.
+        int newest = -1;
+        for (int k = 0; k < nv; ++k)
+            if (v_[k].active && (newest < 0 || v_[k].start_frame > v_[newest].start_frame)) newest = k;
+        float ph = -1.f;
+        if (newest >= 0 && total_frames_ > 0) {
+            const double pos = static_cast<double>(voice_base_[newest]) + v_[newest].playback_pos;
+            ph = std::clamp(static_cast<float>(pos / static_cast<double>(total_frames_)), 0.f, 1.f);
+        }
+        playhead_.store(ph, std::memory_order_release);
     }
+
+    // SamplerPreviewable: the current playhead position (0..1), or -1 when nothing is sounding.
+    float playhead() const override { return playhead_.load(std::memory_order_acquire); }
 };
 
 

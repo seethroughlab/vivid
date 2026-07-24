@@ -370,6 +370,8 @@ int         session_audio_graph_load_sampler(Session*, int track, int node_id, c
 // Copy a Sampler node's loaded-sample peak envelope (0..1) into out[0..n) for its waveform thumbnail.
 // Returns bins written, 0 if the node isn't a Sampler / has no sample.
 int         session_audio_graph_node_sampler_peaks(Session*, int track, int node_id, float* out, int n);
+// The Sampler node's playhead position (0..1) for the animated waveform thumbnail, or -1 if silent.
+float       session_audio_graph_node_sampler_playhead(Session*, int track, int node_id);
 // A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
 // `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
 // vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a

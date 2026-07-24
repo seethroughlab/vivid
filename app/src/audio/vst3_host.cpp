@@ -2807,6 +2807,17 @@ int session_audio_graph_node_sampler_peaks(Session* s, int t, int node_id, float
     return op ? vivid::audio_op_sampler_peaks(op, out, n) : 0;
 }
 
+// The Sampler node's playhead position (0..1) for its animated waveform thumbnail, or -1 if silent.
+float session_audio_graph_node_sampler_playhead(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return -1.f;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    return op ? vivid::audio_op_sampler_playhead(op) : -1.f;
+}
+
 // A2: add a VST3/CLAP plugin as a first-class graph NODE — the thing that was impossible before
 // (the graph could only ever *represent* plugin nodes derived from the linear chain, so no add path
 // could put one anywhere). An instrument fans in to Output (parallel source → key-splits, layers);

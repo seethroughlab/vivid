@@ -536,6 +536,10 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             const int nb = P::session_audio_graph_node_sampler_peaks(s_, track_, b.node_id, peaks, 96);
             if (nb > 0) {
                 node_sample_peaks(r, ix, iy, iw, ih, peaks, nb, acc[0], acc[1], acc[2]);
+                // Animated playhead: a bright line sweeping the waveform where the newest voice is
+                // playing (-1 = silent → no line). Makes the thumbnail read as live, like the gens.
+                const float ph = P::session_audio_graph_node_sampler_playhead(s_, track_, b.node_id);
+                if (ph >= 0.f) r.draw_rect(ix + iw * ph, iy, 1.5f, ih, 1.f, 1.f, 1.f, 0.85f);
             } else {
                 float scope[128];
                 const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);

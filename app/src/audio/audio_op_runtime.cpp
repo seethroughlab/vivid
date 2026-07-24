@@ -91,6 +91,12 @@ int audio_op_sampler_peaks(const AudioOp* a, float* out, int n) {
     return sp ? sp->copy_peaks(out, n) : 0;
 }
 
+float audio_op_sampler_playhead(const AudioOp* a) {
+    if (!a) return -1.f;
+    auto* sp = dynamic_cast<const SamplerPreviewable*>(a->inst.op.get());
+    return sp ? sp->playhead() : -1.f;
+}
+
 // Registry inspection (UI thread) — enumerate audio operators for the device pickers.
 // want_source: true = instruments/generators (no audio input), false = effects.
 static bool descriptor_is_source(const VividOperatorDescriptor* d) {
