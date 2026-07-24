@@ -2,7 +2,7 @@
 
 #include "cli/control_handlers_internal.h"
 #include "audio/audio_clip_shared.h"
-#include "audio/sampler.h"
+#include "audio/audio_clip.h"
 #include "audio/vst3_host.h"
 #include "transport.h"
 
@@ -298,8 +298,8 @@ json compare_audio_specs(const ControlCtx& c, const json& a, const json& b, int 
 }
 
 bool load_pcm_file(const std::string& path, uint32_t sr_hint, std::vector<float>& L, std::vector<float>& R, uint32_t& sr) {
-    vivid::session::Sampler smp;
-    if (!vivid::session::sampler_load_wav(path, sr_hint ? sr_hint : 48000, 120.0, smp)) return false;
+    vivid::session::AudioClip smp;
+    if (!vivid::session::audio_clip_load_wav(path, sr_hint ? sr_hint : 48000, 120.0, smp)) return false;
     L = smp.L;
     R = smp.R.empty() ? smp.L : smp.R;
     sr = smp.sr ? smp.sr : (sr_hint ? sr_hint : 48000);

@@ -1,4 +1,4 @@
-#include "audio/sampler.h"
+#include "audio/audio_clip.h"
 #include "miniaudio.h"
 #include <cstdio>
 #include <algorithm>
@@ -13,8 +13,8 @@ static size_t bar_samples(uint32_t sr, double bpm) {
     return static_cast<size_t>(static_cast<double>(sr) * 4.0 * 60.0 / (bpm > 0 ? bpm : 120.0));
 }
 
-Sampler gen_sub_pulse(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Sub Pulse"; s.loop_beats = 4.0; s.sr = sr;
+AudioClip gen_sub_pulse(uint32_t sr, double bpm) {
+    AudioClip s; s.name = "Sub Pulse"; s.loop_beats = 4.0; s.sr = sr;
     const double spb = 60.0 / bpm;
     const size_t total = bar_samples(sr, bpm);
     s.L.resize(total);
@@ -27,8 +27,8 @@ Sampler gen_sub_pulse(uint32_t sr, double bpm) {
     return s;
 }
 
-Sampler gen_noise_sweep(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Noise Sweep"; s.loop_beats = 4.0; s.sr = sr;
+AudioClip gen_noise_sweep(uint32_t sr, double bpm) {
+    AudioClip s; s.name = "Noise Sweep"; s.loop_beats = 4.0; s.sr = sr;
     const size_t total = bar_samples(sr, bpm);
     s.L.resize(total);
     uint32_t rng = 2246822519u; float lp = 0.f;
@@ -43,8 +43,8 @@ Sampler gen_noise_sweep(uint32_t sr, double bpm) {
     return s;
 }
 
-Sampler gen_bell_loop(uint32_t sr, double bpm) {
-    Sampler s; s.name = "Bell Loop"; s.loop_beats = 4.0; s.sr = sr;
+AudioClip gen_bell_loop(uint32_t sr, double bpm) {
+    AudioClip s; s.name = "Bell Loop"; s.loop_beats = 4.0; s.sr = sr;
     const double spb = 60.0 / bpm;
     const size_t total = bar_samples(sr, bpm);
     s.L.assign(total, 0.f);
@@ -64,11 +64,11 @@ Sampler gen_bell_loop(uint32_t sr, double bpm) {
     return s;
 }
 
-bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sampler& out) {
+bool audio_clip_load_wav(const std::string& path, uint32_t sr_hint, double bpm, AudioClip& out) {
     ma_decoder_config cfg = ma_decoder_config_init(ma_format_f32, 2, sr_hint);
     ma_decoder dec;
     if (ma_decoder_init_file(path.c_str(), &cfg, &dec) != MA_SUCCESS) {
-        std::fprintf(stderr, "[Sampler] failed to decode %s\n", path.c_str());
+        std::fprintf(stderr, "[AudioClip] failed to decode %s\n", path.c_str());
         return false;
     }
     ma_uint64 frames = 0;
@@ -93,7 +93,7 @@ bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sam
     out.src_bpm = bpm;
     out.src_path = path;   // persisted so the loop reloads on session open
     out.name = path.substr(path.find_last_of('/') + 1);
-    std::fprintf(stderr, "[Sampler] loaded %s (%.2fs, %.0f beats)\n", out.name.c_str(), secs, out.loop_beats);
+    std::fprintf(stderr, "[AudioClip] loaded %s (%.2fs, %.0f beats)\n", out.name.c_str(), secs, out.loop_beats);
     return true;
 }
 

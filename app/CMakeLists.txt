@@ -235,7 +235,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/audio_graph.cpp
     src/audio/builtin_audio_ops.cpp
     src/audio/glitch/glitch_ops.cpp
-    src/audio/sampler.cpp
+    src/audio/audio_clip.cpp
     src/audio/vst3_plugin_window_stub.cpp
     src/platform/platform.cpp
     src/platform/frame_loop_generic.cpp
@@ -455,7 +455,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/audio/builtin_audio_ops.cpp
         src/audio/movie_audio_bus.cpp
         src/audio/glitch/glitch_ops.cpp
-        src/audio/sampler.cpp
+        src/audio/audio_clip.cpp
         src/audio/audio_graph.cpp
         src/audio/plugin_catalog.cpp
         src/gpu/op_runtime.cpp

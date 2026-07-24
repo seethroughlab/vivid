@@ -4,8 +4,8 @@
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
-#include "audio/sampler.h"
-#include "audio/sample_engine/sample_decode.h"        // decode_audio_native (direct WAV→Sampler-node load)
+#include "audio/audio_clip.h"
+#include "audio/sample_engine/sample_decode.h"        // decode_audio_native (direct WAV→AudioClip-node load)
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
@@ -74,7 +74,7 @@ static bool name_has(const std::string& path, const char* lower_needle) {
     return p.find(lower_needle) != std::string::npos;
 }
 
-// An audio track keeps exactly `scenes` clip slots (an empty Sampler = empty cell), so
+// An audio track keeps exactly `scenes` clip slots (an empty AudioClip = empty cell), so
 // stash/place/launch address any scene by a stable index.
 static void pad_aud_clips(Track* t, int scenes) {
     t->aud_clips.reserve(kMaxScenes);   // append within reserved capacity → no realloc (RT-safe growth)
@@ -209,7 +209,7 @@ static bool republish_track_graph(Track* t) {
 // (session_poll_plugin_loads) their handles must be threaded back into those nodes before the plan
 // republishes, or the graph keeps a null source/effect and stays silent. Matches placeholders to
 // handles by kind + node order (the seed built them in the same order the plugins are saved/loaded).
-// Caller MUST hold t->gmtx. Non-plugin nodes (native ops / Sampler / Output) are left untouched.
+// Caller MUST hold t->gmtx. Non-plugin nodes (native ops / AudioClip / Output) are left untouched.
 static void rebind_authoritative_plugins(Track* t) {
     size_t vfx = 0, cfx = 0;                          // next VST3/CLAP effect to bind (node order)
     for (GNodeBind& nb : t->agnodes) {
@@ -282,12 +282,12 @@ void rebuild_track_graph(Track* t) {   // ADR-0025: external (declared in vst3_h
     // ADR-0022 P2b.5: declare the instrument's NOTE-IN port (it consumes notes) so a cross-track note
     // edge can target it. Metadata only — bit-identical: graph_note_input resolves note inputs from note
     // EDGES (n_note_in), not this flag, so a derived instrument with no note edge still reads its own
-    // stream. A Sampler (is_audio) ignores notes, so it is left without a note-in port.
+    // stream. A AudioClip (is_audio) ignores notes, so it is left without a note-in port.
     //
     // ADR-0022 P3.1a/b + P3.2a — note production becomes graph nodes. Build the derived note
     // sub-graph feeding the instrument through NOTE edges, replacing the invisible per-track t.nev
     // broadcast fallback for derived instrument tracks:
-    //   MidiClip (t.nev_clip = clip scheduler + release flush; the MIDI mirror of the Sampler)
+    //   MidiClip (t.nev_clip = clip scheduler + release flush; the MIDI mirror of the AudioClip)
     //       → Selector (per-track-out note MUX) → instrument
     //   MidiIn   (t.nev_live = live MIDI + typing + MCP + preview) → instrument  (live is NOT
     //                                                                scene-gated, so it bypasses
@@ -298,7 +298,7 @@ void rebuild_track_graph(Track* t) {   // ADR-0025: external (declared in vst3_h
     // — every event keeps its exact pitch/vel/offset/id. All edge kinds constrain topo order, so
     // each node renders before its consumer; the instrument reads via graph_note_input's merge path,
     // which TIME-SORTS by sample offset (what plugins and scanning native ops require). The broadcast
-    // fallback is untouched — just no longer reached. A Sampler (is_audio) gets none of this.
+    // fallback is untouched — just no longer reached. A AudioClip (is_audio) gets none of this.
     if (!t->is_audio) {
         t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
         t->agnodes.push_back({ GNKind::Selector, nullptr, nullptr });
@@ -947,7 +947,7 @@ Session* session_create(uint32_t sample_rate) {
     s->xnote_edges.reserve(256); s->xnote_view.reserve(256); s->xnote_ho.reserve(256);   // P2b.5 cross-track notes
     rebuild_track_view(s);   // publish the initial set to the audio thread
     // AG-0: build each track's derived audio graph up front so gok tracks (native + VST3) run through
-    // the graph from the first block — not only after a device edit. Sampler tracks stay inline until
+    // the graph from the first block — not only after a device edit. AudioClip tracks stay inline until
     // Stage 4. Parity-by-construction (same source/FX helpers, same order).
     for (auto& t : s->tracks) rebuild_track_graph(t.get());
     std::fprintf(stderr, "[Session] %zu tracks, %d scenes\n", s->tracks.size(), s->scenes);
@@ -1609,7 +1609,7 @@ static bool aud_valid(Session* s, int t, int sc) {
 }
 int session_audio_waveform(Session* s, int t, int sc, float* out, int n) {
     if (!aud_valid(s, t, sc) || !out || n <= 0) return 0;
-    const Sampler& smp = s->tracks[t]->aud_clips[sc];
+    const AudioClip& smp = s->tracks[t]->aud_clips[sc];
     if (!smp.ok()) return 0;
     const size_t N = smp.L.size();
     for (int i = 0; i < n; ++i) {
@@ -1626,7 +1626,7 @@ int session_audio_copy_pcm(Session* s, int t, int sc, std::vector<float>& outL, 
     if (out_sample_rate) *out_sample_rate = 0;
     if (!aud_valid(s, t, sc)) return 0;
     std::lock_guard<std::mutex> lk(s->tracks[t]->aud_mtx);
-    const Sampler& smp = s->tracks[t]->aud_clips[sc];
+    const AudioClip& smp = s->tracks[t]->aud_clips[sc];
     if (!smp.ok()) return 0;
     outL = smp.L;
     outR = smp.R.empty() ? smp.L : smp.R;
@@ -1690,7 +1690,7 @@ float session_get_audio_gain(Session* s, int t, int sc) {
     return s->tracks[t]->aud_clips[sc].gain;
 }
 // Persistence: the loop's source WAV path + tempo (empty path = a generated loop, not persisted).
-// Read on the UI thread; src_path is only ever written on the UI thread (sampler_load_wav / the swap
+// Read on the UI thread; src_path is only ever written on the UI thread (audio_clip_load_wav / the swap
 // below), so no lock is needed for the read.
 const char* session_get_audio_path(Session* s, int t, int sc) {
     return aud_valid(s, t, sc) ? s->tracks[t]->aud_clips[sc].src_path.c_str() : "";
@@ -1702,8 +1702,8 @@ double session_get_audio_src_bpm(Session* s, int t, int sc) {
 // aud_mtx (the RT-safe pattern from session_pool_place_audio). Used by session load to restore loops.
 bool session_load_audio_clip(Session* s, int t, int sc, const char* path, double src_bpm) {
     if (!aud_valid(s, t, sc) || !path || !*path) return false;
-    Sampler smp;
-    if (!sampler_load_wav(path, s->sample_rate, src_bpm > 0.0 ? src_bpm : 120.0, smp)) return false;
+    AudioClip smp;
+    if (!audio_clip_load_wav(path, s->sample_rate, src_bpm > 0.0 ? src_bpm : 120.0, smp)) return false;
     Track& tr = *s->tracks[t];
     { std::lock_guard<std::mutex> lk(tr.aud_mtx); tr.aud_clips[sc] = std::move(smp); }
     return true;
@@ -1879,7 +1879,7 @@ void session_pool_remove(Session* s, int i) { if (pool_valid(s, i)) s->pool.eras
 void session_pool_clear(Session* s) { if (s) s->pool.clear(); }
 
 // --- Audio clips in the pool (Samplers). Mirrors the MIDI pool; stash = MOVE. ---
-static int sampler_waveform(const Sampler& smp, float* out, int n) {
+static int sampler_waveform(const AudioClip& smp, float* out, int n) {
     if (!smp.ok() || !out || n <= 0) return 0;
     const size_t N = smp.L.size();
     for (int i = 0; i < n; ++i) {
@@ -1898,7 +1898,7 @@ int  session_pool_audio_waveform(Session* s, int i, float* out, int n) {
     return (pool_valid(s, i) && s->pool[i].is_audio) ? sampler_waveform(s->pool[i].audio, out, n) : 0;
 }
 // MOVE an audio grid clip into the pool: the source cell is cleared (under aud_mtx so the
-// audio thread never sees a torn Sampler). Returns the new pool index, or -1.
+// audio thread never sees a torn AudioClip). Returns the new pool index, or -1.
 int session_pool_stash_audio(Session* s, int t, int sc, const char* name) {
     if (!aud_valid(s, t, sc)) return -1;
     Track& tr = *s->tracks[t];
@@ -1907,7 +1907,7 @@ int session_pool_stash_audio(Session* s, int t, int sc, const char* name) {
     {
         std::lock_guard<std::mutex> lk(tr.aud_mtx);
         pc.audio = std::move(tr.aud_clips[sc]);   // O(1) move out
-        tr.aud_clips[sc] = Sampler{};             // leave an empty cell
+        tr.aud_clips[sc] = AudioClip{};             // leave an empty cell
     }
     pc.name = name ? name : "";
     s->pool.push_back(std::move(pc));
@@ -1917,7 +1917,7 @@ int session_pool_stash_audio(Session* s, int t, int sc, const char* name) {
 bool session_pool_place_audio(Session* s, int i, int t, int sc) {
     if (!pool_valid(s, i) || !s->pool[i].is_audio || !aud_valid(s, t, sc)) return false;
     Track& tr = *s->tracks[t];
-    Sampler copy = s->pool[i].audio;   // copy the PCM on the UI thread before locking
+    AudioClip copy = s->pool[i].audio;   // copy the PCM on the UI thread before locking
     {
         std::lock_guard<std::mutex> lk(tr.aud_mtx);
         tr.aud_clips[sc] = std::move(copy);
@@ -1927,7 +1927,7 @@ bool session_pool_place_audio(Session* s, int i, int t, int sc) {
     return true;
 }
 
-// Sampler-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
+// AudioClip-loop source: render the active-scene clip into L/R (silence if not playing / no clip /
 // contended). Re-reads the scene-dependent state (t.active / aud_clips / aud_dsp / aud_trim*) and
 // keeps the aud_mtx try_lock skip-on-contention — the caller performs the bar-quantized scene switch
 // BEFORE calling this (it mutates t.active, a transport action, not a node op).
@@ -2055,7 +2055,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
         Track& t = *s->tracks_view[tv_i];
         // Skip a MIDI track only if it has NO source at all: no processing VST3 instrument
         // AND no native instrument operator (live or pending). A native-instrument-only track
-        // (e.g. the Sampler from slice-to-MIDI) has no VST3 handle but still must run.
+        // (e.g. the AudioClip from slice-to-MIDI) has no VST3 handle but still must run.
         // A2: a plugin added as a graph NODE (session_audio_graph_add_plugin) lives in a
         // PluginSlot, NOT the legacy t.handle / t.clap_inst source slots — so a track whose
         // only instrument is a graph-node plugin would otherwise be skipped here and never
@@ -2111,7 +2111,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             }
         }
         if (t.is_audio) {
-            // Quantized scene switch (a transport action the Sampler graph node reads each block).
+            // Quantized scene switch (a transport action the AudioClip graph node reads each block).
             if (new_launch) {
                 const int q = t.queued.load(std::memory_order_relaxed);
                 if (q >= 0 && q != t.active.load(std::memory_order_relaxed)) t.active.store(q, std::memory_order_relaxed);
@@ -2588,7 +2588,7 @@ const char* session_track_audio_graph_node_type(Session* s, int t, int i) {
 }
 // Persistence discriminator for a node's binding family (the UI-facing node_type returns the
 // plugin's display name, which the loader can't map back to a plugin family). Stable codes:
-// 0 = native op (createable via audio_op_create) or Output, 1 = VST3, 2 = CLAP, 3 = Sampler.
+// 0 = native op (createable via audio_op_create) or Output, 1 = VST3, 2 = CLAP, 3 = AudioClip.
 // The loader uses this to build the right placeholder agnode for a source/effect whose op isn't
 // a native operator (VST3/CLAP handles are bound later; see rebind_authoritative_plugins).
 int session_track_audio_graph_node_plugin_kind(Session* s, int t, int i) {
@@ -2769,13 +2769,13 @@ int session_audio_graph_add_source(Session* s, int t, const char* op_type) {
     return nid;
 }
 
-// Load an audio file directly into an existing Sampler node's PCM (the thing the op has no file param
+// Load an audio file directly into an existing AudioClip node's PCM (the thing the op has no file param
 // for — audio nodes can't carry file paths). Decodes any miniaudio format (WAV/AIFF/MP3/FLAC/OGG) at
 // its native rate off the audio thread, then injects it through the SamplerLoadable escape hatch with
 // no slices → one keyboard-spanning region (a melodic instrument). SamplerOp swaps its sample bank
 // ATOMICALLY, so this is safe on a LIVE, published node: no topology change, no graph rebuild, no lost
 // params — the audio thread just picks up the new bank on its next block. Returns frames loaded, or 0
-// (node not found / not a Sampler / decode failed).
+// (node not found / not a AudioClip / decode failed).
 int session_audio_graph_load_sampler(Session* s, int t, int node_id, const char* path, int base_note) {
     Track* tr = graph_track(s, t);
     if (!tr || !path || !*path) return 0;
@@ -2783,7 +2783,7 @@ int session_audio_graph_load_sampler(Session* s, int t, int node_id, const char*
     { std::lock_guard<std::mutex> lk(tr->gmtx);          // resolve the node's op (topology guard)
       const int idx = tr->agraph.node_index(node_id);
       if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
-    if (!op || std::strcmp(vivid::audio_op_type(op), "Sampler") != 0) return 0;   // must be a Sampler node
+    if (!op || std::strcmp(vivid::audio_op_type(op), "Sampler") != 0) return 0;   // must be a AudioClip node
     auto data = vivid::sample_engine::decode_audio_native(path);                  // native-rate decode (off RT)
     if (!data || data->samples_L.empty()) return 0;
     const float* L = data->samples_L.data();
@@ -3318,7 +3318,7 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
     }
     if (kind == 2) { is_out = true; }   // output sink: no op
     else if (plugin_kind != 0) {
-        // Plugin source/effect (VST3/CLAP) or the audio-loop Sampler: no native op. Create the
+        // Plugin source/effect (VST3/CLAP) or the audio-loop AudioClip: no native op. Create the
         // placeholder binding — its handle is filled once the (async) plugin load lands, via
         // rebind_authoritative_plugins on the next rebuild/finish_load. This keeps the topology
         // node (and its edges) intact instead of dropping it because audio_op_create can't make it.
@@ -3448,11 +3448,11 @@ void session_audio_graph_finish_load(Session* s, int t, int output_id) {
     republish_track_graph(tr);
 }
 
-// A6: slice an audio clip into a new MIDI track driven by a native Sampler. Computes the
+// A6: slice an audio clip into a new MIDI track driven by a native AudioClip. Computes the
 // clip's slices (`slice_mode`: 1=transients, 3=16-grid), creates a paired instrument track
-// whose native instrument is a Sampler loaded with the clip's PCM + those slices, and writes
+// whose native instrument is a AudioClip loaded with the clip's PCM + those slices, and writes
 // a MIDI clip mapping ascending pitches (base C1=36) → slices at their beat positions. The
-// Sampler is loaded BEFORE it is published to the audio thread (no RT race). Returns the new
+// AudioClip is loaded BEFORE it is published to the audio thread (no RT race). Returns the new
 // track index, or -1. Runs on the UI thread (control-server drain / editor req).
 int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mode) {
     if (!aud_valid(s, src_track, src_scene) || !s->op_reg) return -1;
@@ -3464,7 +3464,7 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     double loop_beats = 4.0; uint32_t sr = 0, N = 0;
     {
         std::lock_guard<std::mutex> lk(s->tracks[src_track]->aud_mtx);
-        const Sampler& c = s->tracks[src_track]->aud_clips[src_scene];
+        const AudioClip& c = s->tracks[src_track]->aud_clips[src_scene];
         if (c.L.empty()) return -1;
         L = c.L; R = c.R; N = static_cast<uint32_t>(c.L.size()); sr = c.sr;
         loop_beats = c.loop_beats > 0 ? c.loop_beats : 4.0;
@@ -3483,7 +3483,7 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     const int new_track = static_cast<int>(s->tracks.size()) - 1;
     Track& tr = *s->tracks[new_track];
 
-    // 3. Set its native instrument to a Sampler + inject PCM/slices, then publish it.
+    // 3. Set its native instrument to a AudioClip + inject PCM/slices, then publish it.
     if (vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, "Sampler")) {
         if (vivid::audio_op_is_source(op) &&
             vivid::audio_op_load_sampler(op, L.data(), R.empty() ? nullptr : R.data(), N, sr,
@@ -3634,7 +3634,7 @@ int session_add_audio_track(Session* s) {
     configure_track_capture(at.get(), s->sample_rate);
     s->tracks.emplace_back(std::move(at));
     s->tracks.back()->id = s->next_track_id++;
-    rebuild_track_graph(s->tracks.back().get());   // derive the Sampler->Output plan NOW (else gok=false → silent):
+    rebuild_track_graph(s->tracks.back().get());   // derive the AudioClip->Output plan NOW (else gok=false → silent):
     rebuild_track_view(s);                          // parity with session_create's line-951 up-front derive.
     const int idx = static_cast<int>(s->tracks.size()) - 1;
     std::fprintf(stderr, "[Session] + audio track %d\n", idx);

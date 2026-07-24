@@ -5,7 +5,7 @@
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
-#include "audio/sampler.h"
+#include "audio/audio_clip.h"
 #include "audio/clip_dsp.h"
 #include "audio/audio_op_runtime.h"
 #include "audio/audio_graph.h"
@@ -78,7 +78,7 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
 // the old invisible per-track broadcast.
 // MidiClip (ADR-0022 P3.1b): the clip scheduler + play-stop release flush AS A NODE — the MIDI
-// mirror of the Sampler, reading t.active. Split out of MidiIn so clips and live/preview are
+// mirror of the AudioClip, reading t.active. Split out of MidiIn so clips and live/preview are
 // distinct note SOURCES; both feed the instrument's note-in (merged, time-sorted). Appended to
 // keep every prior enumerator's value stable.
 // Selector (ADR-0022 P3.2): a per-track-out note MUX — merges its note inputs (the scene clip
@@ -91,7 +91,7 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 enum class GNKind : uint8_t { NativeInst, NativeFx, Vst3Inst, Vst3Fx, ClapInst, ClapFx, Sampler, Output, MidiIn, NativeNoteFx, NativeMod, MidiClip, Selector, NativeGen };
 // POD; trivially copyable (required for the try_lock swap of gbinds). `op` = native inst/fx;
 // `handle` = VST3 inst/fx; `clap` = CLAP inst/fx (all raw, non-owning — Track owns them).
-// Sampler carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
+// AudioClip carries no pointer (its active clip is scene-dependent, re-read from Track& at process).
 // `key_lo`/`key_hi` = the MIDI key range a *source* node voices (0..127 = full range = no
 // filtering). Two source nodes with disjoint ranges = a key-split; the audio thread filters the
 // shared note stream per source (run_track_graph). Ignored for effect/output nodes.
@@ -378,11 +378,11 @@ struct Track {
     struct GenCell { vivid::AudioOp* op = nullptr; std::string type; };
     std::vector<GenCell>  gen_cells;
     // Audio track: no plugin; per-scene samples played transport-locked. `aud_clips` is
-    // sized to `scenes` (an empty Sampler = empty cell). Content edits (stash/place a
+    // sized to `scenes` (an empty AudioClip = empty cell). Content edits (stash/place a
     // clip) happen on the UI thread under aud_mtx; the audio thread try_locks it around
     // render (skips a block on contention) — the UI critical section is an O(1) move.
     bool                  is_audio = false;
-    std::vector<Sampler>  aud_clips;
+    std::vector<AudioClip>  aud_clips;
     std::vector<std::unique_ptr<ClipDsp>> aud_dsp;   // A2: per-slot warp stretcher (null until warp on)
     std::mutex            aud_mtx;
     std::atomic<float>    aud_trim0[kMaxScenes];   // per-scene loop window (fractions)
@@ -390,9 +390,9 @@ struct Track {
 };
 
 // A loose clip in the session-level pool (lives outside the track grid). Holds either a
-// MIDI clip or an audio clip (Sampler). UI-thread-only storage: the audio thread never
+// MIDI clip or an audio clip (AudioClip). UI-thread-only storage: the audio thread never
 // reads `Session::pool`, so no edit-mirror is needed.
-struct PoolClip { bool is_audio = false; MidiClip clip; Sampler audio; std::string name; };
+struct PoolClip { bool is_audio = false; MidiClip clip; AudioClip audio; std::string name; };
 
 // Live monitored/recorded notes carry a note_id in a reserved range so their offs match
 // their ons and never collide with clip-scheduled note_ids (which start at 0).

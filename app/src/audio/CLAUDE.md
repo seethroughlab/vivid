@@ -45,6 +45,8 @@ before changing anything the audio callback reaches.**
 - **`audio_callback.{h,cpp}`** — the miniaudio RT callback; `device->pUserData` is an
   `App*`. Renders the session (or a test tone), advances the transport, publishes
   level/3-band/transient as atomics. No allocation, no blocking locks.
-- **`sampler.*`** — the audio (loop) track. **`vst3_plugin_window.*`** (.mm) — hosts a
+- **`audio_clip.*`** — the audio (loop) clip value (`AudioClip`: decoded PCM + warp), played
+  transport-locked; distinct from the note-triggered `Sampler` instrument op (`builtin_audio_ops.cpp`,
+  on the shared `sample_engine/` voice). **`vst3_plugin_window.*`** (.mm) — hosts a
   plugin's native Cocoa GUI (needs the `.app` bundle + foreground run loop to be
   interactive). **`vst3_vstiids.cpp`** — VST3 interface IIDs.
