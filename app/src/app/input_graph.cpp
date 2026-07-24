@@ -506,8 +506,14 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     // popover placement) stays screen-space and keeps using mx,my.
     double wmx, wmy; canvas_.view().to_world(mx, my, wmx, wmy);
     const auto boxes = layout();
-    for (const auto& b : boxes)   // start a rewire drag from an output port (release connects)
-        if (b.kind != 2 && hit(out_port_rect(b), wmx, wmy)) { wire_from = b.node_id; return true; }
+    for (const auto& b : boxes) {   // start a rewire drag from an output port (release connects)
+        // No user-drawable output on ENGINE-MANAGED nodes: the Output sink (2) and the note-source
+        // infrastructure — MIDI In (3), Clip (6), Selector (7), Gen (8). reconcile_note_subgraph owns
+        // and recomputes their note fan-out every publish, so a hand-drawn edge from them wouldn't
+        // survive. Only instruments/FX (0/1), note effects (4), and modulators (5) start a wire.
+        if (b.kind == 2 || b.kind == 3 || b.kind == 6 || b.kind == 7 || b.kind == 8) continue;
+        if (hit(out_port_rect(b), wmx, wmy)) { wire_from = b.node_id; return true; }
+    }
     // ADR-0022: the "+ param" row on a plugin card opens the searchable picker to expose one more param.
     for (const auto& b : boxes)
         if (hit(add_param_port_rect(b), wmx, wmy)) {

@@ -548,8 +548,15 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
         }
         if (node_err) node_error_note(r, ix, iy, iw, ih, "plugin unavailable \xE2\x80\x94 silent");
     }
-    // The signal output nub (right-edge centre; absent on the Output sink).
-    if (b.kind != 2) { const Rect p = out_port_rect(b); node_port(r, p.x + 6.f, p.y + 6.f, 4.f, sty.audio[0], sty.audio[1], sty.audio[2]); }
+    // The signal output nub (right-edge centre; absent on the Output sink). Engine-managed note
+    // sources — MIDI In (3), Clip (6), Selector (7), Gen (8) — get a DIMMED nub: their note fan-out is
+    // owned by reconcile_note_subgraph, so it can't be re-wired by hand (the drag is refused too).
+    if (b.kind != 2) {
+        const Rect p = out_port_rect(b);
+        const bool locked = (b.kind == 3 || b.kind == 6 || b.kind == 7 || b.kind == 8);
+        const float* pc = locked ? sty.dim : sty.audio;
+        node_port(r, p.x + 6.f, p.y + 6.f, 4.f, pc[0], pc[1], pc[2]);
+    }
 }
 
 void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const {
