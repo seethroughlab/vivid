@@ -75,6 +75,15 @@ void stash_clip(vivid::App& app, int st, int ss) {
 
 namespace vivid::input {
 
+// Select a track's column: this makes the bottom dock show that track's audio node graph, because
+// the per-frame focus recompute (frame.cpp) falls through to Kind::AudioGraph for win.sel_track when
+// no visual op is selected. Deselecting the visual op is what triggers that fall-through. Called from
+// anywhere a click lands inside a track's column (header, clip cells, mixer strip).
+static inline void select_track_column(Window& win, App& app, int t) {
+    win.sel_track = t;
+    if (app.graph) app.graph->select_op(-1);
+}
+
 // On mouse release, complete a clip drag: pool->cell places, cell->cell moves (Alt = copy),
 // cell->pool-bar stashes; a plain (non-drag) click on a grid clip launches it. Returns true when
 // a clip/pool drag was in progress (it always clears the drag state).
@@ -138,7 +147,7 @@ bool clipgrid_track_header(Window& win, App& app, double mx, double my, int trac
             }
             return true;
         }
-        if (hit(track_header_rect(t), dmx, my)) { win.sel_track = t; if (app.graph) app.graph->select_op(-1); return true; }
+        if (hit(track_header_rect(t), dmx, my)) { select_track_column(win, app, t); return true; }
     }
     if (tracks < S::kMaxTracks && hit(track_add_rect(tracks), dmx, my)) {
         // "+ Track" opens the SAME chooser, filtered to instruments — so a new track can be started
@@ -156,6 +165,7 @@ bool clipgrid_mixer(Window& win, App& app, double mx, double my, int tracks, int
     const double dmx = mx - win.sidebar_w;
     for (int t = 0; t < tracks; ++t) {
         if (hit(track_arm_rect(t, scenes), dmx, my)) {
+            select_track_column(win, app, t);   // the mixer strip is part of the column → open its audio graph
             const bool armed = S::session_armed_track(app.session) == t;
             S::session_set_armed_track(app.session, armed ? -1 : t);
             return true;
@@ -164,6 +174,7 @@ bool clipgrid_mixer(Window& win, App& app, double mx, double my, int tracks, int
     for (int t = 0; t < tracks; ++t) {
         const Rect gr = track_gain_rect(t, scenes);
         if (hit(gr, dmx, my)) {
+            select_track_column(win, app, t);   // the mixer strip is part of the column → open its audio graph
             win.gain_drag = t;
             S::session_set_track_gain(app.session, t, std::min(1.0, std::max(0.0, (dmx - gr.x) / gr.w)));
             return true;
@@ -179,6 +190,7 @@ bool clipgrid_cells(Window& win, App& app, double mx, double my, int tracks, int
     for (int t = 0; t < tracks; ++t)
         for (int sc = 0; sc < scenes; ++sc)
             if (hit(clip_cell_rect(t, sc), dmx, my)) {
+                select_track_column(win, app, t);   // click anywhere in a column → open that track's audio graph
                 const double now = glfwGetTime();
                 if (win.editor && win.last_clip_track == t && win.last_clip_scene == sc && now - win.last_clip_t < 0.35) {
                     editor_open_clip(win, app, t, sc, tracks);   // double-click opens the docked editor
