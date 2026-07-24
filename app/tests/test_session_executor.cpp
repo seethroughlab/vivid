@@ -64,6 +64,30 @@ int main() {
         session_destroy(s);
     }
 
+    // --- 1b. An AUTHORITATIVE instrument (built via add_source, not the derived device chain) is fed by
+    //         the ENGINE-MANAGED note sub-graph (reconcile), uniformly with the derived path: an empty
+    //         scene slot has NO Clip node and is silent; putting a clip in it adds exactly one Clip node
+    //         and the note routes through it to the instrument. ---
+    {
+        int t = -1; Session* s = make_session(reg, sr, t);
+        const int nid = session_audio_graph_add_source(s, t, "TestTone");   // authoritative graph
+        CHECK(nid >= 0);
+        auto clip_nodes = [&]() {
+            int n = 0, cnt = session_track_audio_graph_node_count(s, t);
+            for (int i = 0; i < cnt; ++i) if (session_track_audio_graph_node_kind(s, t, i) == 6) ++n;  // 6 = MidiClip
+            return n;
+        };
+        CHECK(clip_nodes() == 0);                                        // empty slots -> no Clip node
+        double beats = 0.0;
+        CHECK(render_span(s, sr, 120.0, beats, 200, frames) < 1e-4f);    // empty slot -> silence
+        ClipNote n = note(60); session_set_clip(s, t, 0, &n, 1, 100.0);
+        CHECK(clip_nodes() == 1);                                        // populated slot -> exactly one Clip node
+        session_launch_scene(s, 0);
+        beats = 0.0;
+        CHECK(render_span(s, sr, 120.0, beats, 200, frames) > 0.01f);    // note routes via the note sub-graph
+        session_destroy(s);
+    }
+
     // --- 2. The SAME instrument with an EMPTY clip stays silent — proves it is note-DRIVEN and that no
     //        notes => no sound. The #105-class assertion (a source that renders regardless of, or never
     //        receives, its notes would fail here). ---

@@ -188,7 +188,125 @@ static void assign_derived_gnids(Track* t) {
     }
 }
 
+// ADR-0022 P3.x uniformity: the note sub-graph (per-scene Clip/Gen source → Selector, live MidiIn) is
+// ENGINE-MANAGED infrastructure, exactly like the Output node — reconciled to match current state on
+// every graph publish, so note sources appear and route identically on derived AND authoritative
+// graphs (a bare `add_source` instrument no longer routes notes through the invisible t.nev fallback).
+// Pure agraph/agnodes mutation; caller holds t->gmtx; no compile/publish. Idempotent.
+//
+// Infra note fan-out is engine-OWNED (mirrors Output's fan-in): a user cannot hand-wire a Selector/
+// MidiIn source edge and have it persist — reconcile recomputes those two nodes' fan-out each publish,
+// wiring them to every note consumer that has no OTHER (user) note source, and dropping them from any
+// consumer a user note-fx (Arp/chord) now feeds. Returns false and changes NOTHING if the full
+// sub-graph won't fit kGraphMaxNodes (a partial one would route through a broken Selector instead of
+// falling back to t.nev).
+static bool reconcile_note_subgraph(Track* t) {
+    using EK = vivid::audio::EdgeKind;
+    auto& g = t->agraph;
+    auto& an = t->agnodes;
+    auto id_at   = [&](int idx) { return g.nodes()[idx].id; };
+    auto is_infra = [](GNKind k) { return k == GNKind::Selector || k == GNKind::MidiIn ||
+                                          k == GNKind::MidiClip || k == GNKind::NativeGen; };
+    auto is_inst  = [](GNKind k) { return k == GNKind::NativeInst || k == GNKind::Sampler ||
+                                          k == GNKind::Vst3Inst   || k == GNKind::ClapInst; };
+    auto find_kind = [&](GNKind k) -> int {
+        for (size_t i = 0; i < an.size(); ++i) if (an[i].kind == k) return static_cast<int>(i);
+        return -1;
+    };
+    auto find_scene = [&](int sc) -> int {
+        for (size_t i = 0; i < an.size(); ++i)
+            if ((an[i].kind == GNKind::MidiClip || an[i].kind == GNKind::NativeGen) && an[i].scene == sc)
+                return static_cast<int>(i);
+        return -1;
+    };
+    auto has_user_note_src = [&](int id, int sel, int mid) -> bool {   // a note edge into id NOT from infra
+        for (const auto& e : g.edges())
+            if (e.to_id == id && e.kind == EK::Note && e.from_id != sel && e.from_id != mid) return true;
+        return false;
+    };
+    auto remove_at = [&](int idx) { g.remove_node(id_at(idx)); an.erase(an.begin() + idx); };
+    auto scene_gen = [&](int sc) -> vivid::AudioOp* {
+        return sc < static_cast<int>(t->gen_cells.size()) ? t->gen_cells[sc].op : nullptr;
+    };
+    // A scene "slot" is POPULATED iff it holds a clip with notes or a placed generator. An empty slot
+    // has no Clip node in the graph — that is the first-class "empty slot".
+    auto scene_populated = [&](int sc) -> bool {
+        if (scene_gen(sc)) return true;
+        return sc < static_cast<int>(t->edit_clips.size()) && !t->edit_clips[sc].notes.empty();
+    };
+
+    // Note-consuming instruments present in the graph (by kind).
+    std::vector<int> insts;
+    if (!t->is_audio)
+        for (size_t i = 0; i < an.size(); ++i) if (is_inst(an[i].kind)) insts.push_back(id_at(static_cast<int>(i)));
+
+    // Audio track, or no instrument yet → tear down any infra note nodes and return.
+    if (t->is_audio || insts.empty()) {
+        for (int i = static_cast<int>(an.size()) - 1; i >= 0; --i) if (is_infra(an[i].kind)) remove_at(i);
+        return true;
+    }
+
+    const int nscenes = std::clamp(static_cast<int>(t->edit_clips.size()), 1, kMaxScenes);
+
+    // All-or-nothing budget preflight: count infra nodes we'd ADD (flips/edges cost no nodes).
+    int need = (find_kind(GNKind::Selector) < 0 ? 1 : 0) + (find_kind(GNKind::MidiIn) < 0 ? 1 : 0);
+    for (int sc = 0; sc < nscenes; ++sc) if (scene_populated(sc) && find_scene(sc) < 0) ++need;
+    if (static_cast<int>(g.nodes().size()) + need > kGraphMaxNodes) return false;
+
+    // Ensure the instruments declare a note-in port (so the fan-out below recognizes them).
+    for (int id : insts) g.set_note_ports(id, /*note_in*/true, /*note_out*/false);
+
+    // Ensure at least one Selector + one MidiIn (adopt an existing/manual one; never delete extras).
+    int sel = find_kind(GNKind::Selector);
+    if (sel < 0) { an.push_back({ GNKind::Selector, nullptr, nullptr });
+                   const int id = g.add_node(true, false, nullptr, nullptr, "sel"); g.set_note_ports(id, true, true);
+                   sel = static_cast<int>(an.size()) - 1; }
+    int mid = find_kind(GNKind::MidiIn);
+    if (mid < 0) { an.push_back({ GNKind::MidiIn, nullptr, nullptr });
+                   const int id = g.add_node(true, false, nullptr, nullptr, "midi"); g.set_note_ports(id, false, true);
+                   mid = static_cast<int>(an.size()) - 1; }
+    const int sel_id = id_at(sel), mid_id = id_at(mid);
+
+    // One scene node per POPULATED scene in 0..nscenes-1 (empty slots get none): NativeGen if a
+    // generator is placed, else MidiClip. Flip the kind IN PLACE (same AudioGraph node → id +
+    // scene→Selector edge survive). Wire → Selector.
+    for (int sc = 0; sc < nscenes; ++sc) {
+        if (!scene_populated(sc)) continue;
+        vivid::AudioOp* gop = scene_gen(sc);
+        int idx = find_scene(sc);
+        if (idx < 0) {
+            GNodeBind cb; cb.scene = sc; cb.kind = gop ? GNKind::NativeGen : GNKind::MidiClip; cb.op = gop;
+            an.push_back(cb);
+            const int id = g.add_node(true, false, nullptr, nullptr, gop ? "gen" : "clip");
+            g.set_note_ports(id, false, true);
+            idx = static_cast<int>(an.size()) - 1;
+        } else {
+            an[idx].kind = gop ? GNKind::NativeGen : GNKind::MidiClip; an[idx].op = gop;   // in-place flip
+        }
+        g.connect(id_at(idx), sel_id, EK::Note);   // idempotent
+    }
+    // Drop scene nodes for EMPTY or out-of-range scenes (empty-slot + orphan cleanup).
+    for (int i = static_cast<int>(an.size()) - 1; i >= 0; --i) {
+        if (an[i].kind != GNKind::MidiClip && an[i].kind != GNKind::NativeGen) continue;
+        const int sc = an[i].scene;
+        if (sc < 0 || sc >= nscenes || !scene_populated(sc)) remove_at(i);
+    }
+
+    // Fan-out (per-node, minimal-touch): wire Selector+MidiIn into every note consumer with no OTHER
+    // note source; drop them from any that a user note-fx now feeds. Only ever touches the two infra
+    // edges — never a user edge.
+    for (size_t i = 0; i < an.size(); ++i) {
+        if (is_infra(an[i].kind)) continue;
+        if (!g.nodes()[i].note_in) continue;           // instruments + note-fx (Arp/chord/transpose)
+        const int nid = id_at(static_cast<int>(i));
+        if (has_user_note_src(nid, sel_id, mid_id)) { g.disconnect(sel_id, nid, EK::Note); g.disconnect(mid_id, nid, EK::Note); }
+        else                                        { g.connect(sel_id, nid, EK::Note);    g.connect(mid_id, nid, EK::Note); }
+    }
+    return true;
+}
+
 static bool republish_track_graph(Track* t) {
+    reconcile_note_subgraph(t);                          // engine-managed note sources (uniform on every publish)
     if (!t->agraph.compile(t->gcg_edit)) return false;   // cycle → published plan unchanged
     assign_node_gnids(t);                                 // ADR-0022 P2b.3c: session-global ids
     t->gbinds_edit = t->agnodes;                          // parallel to nodes(): index == out_buf
@@ -299,36 +417,12 @@ void rebuild_track_graph(Track* t) {   // ADR-0025: external (declared in vst3_h
     // each node renders before its consumer; the instrument reads via graph_note_input's merge path,
     // which TIME-SORTS by sample offset (what plugins and scanning native ops require). The broadcast
     // fallback is untouched — just no longer reached. A AudioClip (is_audio) gets none of this.
-    if (!t->is_audio) {
-        t->agraph.set_note_ports(prev, /*note_in*/true, /*note_out*/false);
-        t->agnodes.push_back({ GNKind::Selector, nullptr, nullptr });
-        const int selector = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "sel");
-        t->agraph.set_note_ports(selector, /*note_in*/true, /*note_out*/true);
-        t->agraph.connect(selector, prev, vivid::audio::EdgeKind::Note);
-        // ADR-0022 P3.2b: one MidiClip node per scene slot, each feeding the Selector. Only the node
-        // whose scene == the active scene emits (t.nev_clip, driven by the shared scheduler already
-        // pointed at the active clip); the rest gate to silence, so the Selector's merge is exactly the
-        // active clip — bit-identical to P3.2a's single MidiClip. This makes each scene's clip an
-        // individually-addressable node; nscenes ≤ kMaxScenes = kMaxNoteInputs, so the Selector's note
-        // fan-in never overflows.
-        for (int sc = 0; sc < nscenes; ++sc) {
-            // ADR-0022 P3.3: a scene cell is a clip (MidiClip node) unless a generator is placed
-            // (NativeGen node, reusing the op instance owned by gen_cells). Either way it is a
-            // scene-gated note source into the Selector — one source per scene keeps fan-in ≤ 8.
-            vivid::AudioOp* gop = (sc < static_cast<int>(t->gen_cells.size())) ? t->gen_cells[sc].op : nullptr;
-            GNodeBind cb; cb.scene = sc;
-            if (gop) { cb.kind = GNKind::NativeGen; cb.op = gop; }
-            else       cb.kind = GNKind::MidiClip;
-            t->agnodes.push_back(cb);
-            const int node = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, gop ? "gen" : "clip");
-            t->agraph.set_note_ports(node, /*note_in*/false, /*note_out*/true);
-            t->agraph.connect(node, selector, vivid::audio::EdgeKind::Note);
-        }
-        t->agnodes.push_back({ GNKind::MidiIn, nullptr, nullptr });
-        const int midi_in = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "midi");
-        t->agraph.set_note_ports(midi_in, /*note_in*/false, /*note_out*/true);
-        t->agraph.connect(midi_in, prev, vivid::audio::EdgeKind::Note);
-    }
+    // Note sources are ENGINE-MANAGED infrastructure — build them via the shared reconcile so the
+    // derived and authoritative paths are identical: a Selector fed by one Clip/Gen node per POPULATED
+    // scene (an empty slot gets no node), plus a live MidiIn, wired into the instrument. Runs here —
+    // right after the instrument, before the FX loops — so agnodes/node order is unchanged. reconcile
+    // no-ops for an audio track (is_audio) and when there is no note-consuming instrument.
+    reconcile_note_subgraph(t);
     for (Vst3Handle* fx : t->effects_edit) {                                // VST3 FX first (inline order)
         t->agnodes.push_back({ GNKind::Vst3Fx, nullptr, fx });
         const int n = t->agraph.add_node(false, false, nullptr, nullptr, "vfx");
@@ -1828,12 +1922,20 @@ double session_clip_length(Session* s, int t, int sc) {
 void session_set_clip(Session* s, int t, int sc, const ClipNote* notes, int n, double length) {
     if (!clip_valid(s, t, sc)) return;
     Track& tr = *s->tracks[t];
+    bool was_empty, now_empty;
     {
         std::lock_guard<std::mutex> lk(tr.edit_mtx);
+        was_empty = tr.edit_clips[sc].notes.empty();
         tr.edit_clips[sc].notes.assign(notes, notes + (n > 0 ? n : 0));
         tr.edit_clips[sc].length = length > 0 ? length : tr.edit_clips[sc].length;
+        now_empty = tr.edit_clips[sc].notes.empty();
     }
     tr.edit_gen.fetch_add(1, std::memory_order_release);
+    // An empty scene slot has NO Clip node in the audio graph; a populated one does. When a slot flips
+    // empty<->populated, REPUBLISH (reconcile + recompile the existing graph in place) so its Clip node
+    // is added/removed — NOT a full rebuild_track_graph, which would reset a derived graph and wipe
+    // per-node edits like key-splits.
+    if (!tr.is_audio && was_empty != now_empty) { std::lock_guard<std::mutex> lk(tr.gmtx); republish_track_graph(&tr); }
 }
 
 // In-clip loop region (M2-followup). loop_end <= loop_start disables it (whole-clip loop).
@@ -2329,6 +2431,7 @@ void session_destroy(Session* s) {
         for (vivid::AudioOp* op : t->op_effects_edit) vivid::audio_op_destroy(op);   // native audio ops
         for (vivid::AudioOp* op : t->op_sources_edit) vivid::audio_op_destroy(op);   // extra graph sources
         for (vivid::AudioOp* op : t->op_retired)      vivid::audio_op_destroy(op);
+        for (auto& gc : t->gen_cells) vivid::audio_op_destroy(gc.op);   // per-scene generator ops (owned here)
         vivid::audio_op_destroy(t->op_instrument_edit);
         delete t->clap_inst;                                    // CLAP instrument + FX + retired
         for (ClapHandle* c : t->clap_effects) delete c;
@@ -3322,7 +3425,14 @@ int session_audio_graph_load_node(Session* s, int t, int kind, int plugin_kind, 
     if (kind == 8) {   // ADR-0022 P3.3: a per-scene NativeGen node (Euclid/Chord/RandMelody in a cell)
         vivid::AudioOp* gop = vivid::audio_op_create(*s->op_reg, op_type);
         if (!gop) return -1;
-        tr->op_retired.push_back(gop);   // owned by the Track; freed at shutdown (audio thread reaches it via the gbind)
+        // Own the op in gen_cells (parity with place_generator) — NOT op_retired — so gen_cells is the
+        // single source of truth for "which scenes hold a generator". reconcile_note_subgraph keys the
+        // scene node's kind off gen_cells; leaving this empty would make it flip the loaded generator
+        // back to a plain clip on the first republish and orphan the op.
+        if (scene >= static_cast<int>(tr->gen_cells.size())) tr->gen_cells.resize(scene + 1);
+        if (tr->gen_cells[scene].op) tr->op_retired.push_back(tr->gen_cells[scene].op);   // retire any prior
+        tr->gen_cells[scene].op   = gop;
+        tr->gen_cells[scene].type = op_type ? op_type : "";
         const int nid_gn = tr->agraph.add_node(true, false, nullptr, nullptr, "gen");
         tr->agraph.set_note_ports(nid_gn, false, true);
         GNodeBind nbg; nbg.kind = GNKind::NativeGen; nbg.op = gop; nbg.scene = scene;
@@ -3519,9 +3629,9 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
         }
     }
     tr.op_fx_gen.fetch_add(1, std::memory_order_release);
-    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain
-
-    // 4. Write the MIDI clip: one ascending-pitch note per slice at its beat position.
+    // 4. Write the MIDI clip: one ascending-pitch note per slice at its beat position. Do this BEFORE
+    //    building the graph so reconcile_note_subgraph sees scene `src_scene` as populated and gives it
+    //    a Clip node (an empty slot gets none).
     {
         std::lock_guard<std::mutex> lk(tr.edit_mtx);
         MidiClip& clip = tr.edit_clips[src_scene];
@@ -3540,7 +3650,8 @@ int session_slice_to_midi(Session* s, int src_track, int src_scene, int slice_mo
     }
     tr.edit_gen.fetch_add(1, std::memory_order_release);
 
-    rebuild_track_view(s);   // publish the fully-formed track to the audio thread
+    rebuild_track_graph(&tr);   // AG-0: recompile the audio graph from the new native chain (with the clip)
+    rebuild_track_view(s);      // publish the fully-formed track to the audio thread
     return new_track;
 }
 
@@ -3672,27 +3783,6 @@ int session_add_audio_track(Session* s) {
 //     audio-owned `clips` to match in its mirror-apply, keeping sched's &clips[q] valid.
 // Bump s->scenes LAST (after every track has the slot), so a launch of the new scene is gated
 // off until the row exists everywhere. UI/main thread only.
-// ADR-0022 P3.3 (PR-1): give an AUTHORITATIVE instrument track's note sub-graph the new scene's
-// MidiClip node. The derived path regenerates the whole per-scene fan from scratch, but an
-// authoritative graph is the user's topology — so we surgically append ONE MidiClip node (scene =
-// the new index) wired into the existing per-track-out Selector, then republish. This works while
-// the canonical MidiClip -> Selector shape is intact; a fully-rewired note graph with no Selector
-// is left as-is (a documented limitation: its new scene has no clip node until the user wires one).
-static void add_authoritative_scene_clip_node(Track* t, int scene) {
-    std::lock_guard<std::mutex> lk(t->gmtx);
-    int selector_id = -1;
-    for (size_t i = 0; i < t->agnodes.size(); ++i)
-        if (t->agnodes[i].kind == GNKind::Selector) { selector_id = t->agraph.nodes()[i].id; break; }
-    if (selector_id < 0) return;                                          // no Selector: documented limitation
-    if (static_cast<int>(t->agraph.nodes().size()) + 1 > kGraphMaxNodes) return;
-    GNodeBind cb; cb.kind = GNKind::MidiClip; cb.scene = scene;
-    t->agnodes.push_back(cb);                                            // keep agnodes parallel to nodes()
-    const int mc = t->agraph.add_node(/*is_source*/true, false, nullptr, nullptr, "clip");
-    t->agraph.set_note_ports(mc, /*note_in*/false, /*note_out*/true);
-    t->agraph.connect(mc, selector_id, vivid::audio::EdgeKind::Note);
-    republish_track_graph(t);
-}
-
 int session_add_scene(Session* s) {
     if (!s || s->scenes >= kMaxScenes) return -1;
     const int ns = s->scenes + 1;
@@ -3714,16 +3804,10 @@ int session_add_scene(Session* s) {
         }
     }
     s->scenes = ns;
-    // ADR-0022 P3.2b/P3.3: the note sub-graph has one MidiClip node per scene, so a new scene needs
-    // a new clip node on every instrument track. A DERIVED track regenerates its whole fan; an
-    // AUTHORITATIVE track keeps its user topology and gets one node surgically appended to its
-    // Selector (P3.3 PR-1 — was previously skipped, leaving authoritative tracks silent on the new scene).
-    for (auto& tp : s->tracks) {
-        Track* t = tp.get();
-        if (t->is_audio) continue;
-        if (!t->graph_authoritative) rebuild_track_graph(t);
-        else                         add_authoritative_scene_clip_node(t, ns - 1);
-    }
+    // The new scene is an EMPTY slot — it gets no Clip node in any track's audio graph (empty slots
+    // aren't shown). Its node materializes later, when the user puts a clip or generator in it
+    // (session_set_clip / place_generator both republish → reconcile_note_subgraph adds it). So there
+    // is nothing to do to the note graph here.
     ensure_scene_names(s);   // ADR-0022 P3.3: the new scene gets a default name ("A","B",…)
     rebuild_track_view(s);
     std::fprintf(stderr, "[Session] + scene %d (now %d scenes)\n", ns - 1, ns);
