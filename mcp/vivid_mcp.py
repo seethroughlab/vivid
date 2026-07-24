@@ -874,6 +874,19 @@ def audio_graph_add_source(track: int, op: str) -> dict:
 
 
 @mcp.tool
+def load_sampler(track: int, node_id: int, path: str, base_note: int = 60) -> dict:
+    """Load an audio file (WAV/AIFF/MP3/FLAC/OGG) into an existing Sampler node so it plays that
+    sample pitched across the keyboard — the note `base_note` plays it at original pitch, others
+    transpose it (linear interpolation, amplitude ADSR, polyphony). `node_id` must be a Sampler
+    node (add one with audio_graph_add_source(track, op="Sampler"); node ids from get_audio_graph).
+    This is how you set a Sampler's sample — audio nodes carry no file param. The load is live-safe
+    (no graph rebuild, params preserved). Returns {frames} loaded. For a drum-rack (one slice per
+    note) instead, use slice_to_midi on an audio clip."""
+    return _post("audio_graph_load_sampler",
+                 {"track": track, "node_id": node_id, "path": path, "base_note": base_note})
+
+
+@mcp.tool
 def audio_graph_set_node_key_range(track: int, node: int, lo: int = 0, hi: int = 127) -> dict:
     """Set the MIDI key range [lo,hi] (0..127) a source node voices (node id from
     get_audio_graph). The audio thread then hands that source only its in-range notes, so two

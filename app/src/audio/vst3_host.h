@@ -364,6 +364,9 @@ int         session_track_audio_graph_edge_control_shape(Session*, int track, in
 // and the graph itself becomes the source of truth. Each edit republishes to the audio thread.
 int         session_audio_graph_add_op(Session*, int track, const char* op_type);   // -> new node id, -1 fail
 int         session_audio_graph_add_source(Session*, int track, const char* op_type);   // instrument source node, fan-in to Output
+// Load an audio file (WAV/AIFF/MP3/FLAC/OGG) into an existing Sampler node → one keyboard-spanning
+// region (melodic). Live-safe (atomic bank swap in the op). Returns frames loaded, 0 on failure.
+int         session_audio_graph_load_sampler(Session*, int track, int node_id, const char* path, int base_note);
 // A2: add a VST3/CLAP plugin as a graph NODE (the peer of add_op/add_source, which are native-only).
 // `format` is a PluginFormat (audio/plugin_catalog.h); `is_source` = instrument (fans in to Output)
 // vs effect (splices before Output) — take it from the plugin's CLASS, never from its port counts (a

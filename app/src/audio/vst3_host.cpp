@@ -5,6 +5,7 @@
 #include "vst3_host.h"
 #include "midi/midi_clip.h"
 #include "audio/sampler.h"
+#include "audio/sample_engine/sample_decode.h"        // decode_audio_native (direct WAV→Sampler-node load)
 #include "audio/clip_dsp.h"                           // A2: per-clip warp stretcher (ClipDsp + process_clip)
 #include "audio/audio_op_runtime.h"                   // AO-1: native audio operators (opaque; no operator_api leak)
 #include "audio/audio_graph.h"                        // AG-0: per-track audio signal graph (ADR-0012)
@@ -2766,6 +2767,31 @@ int session_audio_graph_add_source(Session* s, int t, const char* op_type) {
     tr->graph_authoritative = true;
     republish_track_graph(tr);
     return nid;
+}
+
+// Load an audio file directly into an existing Sampler node's PCM (the thing the op has no file param
+// for — audio nodes can't carry file paths). Decodes any miniaudio format (WAV/AIFF/MP3/FLAC/OGG) at
+// its native rate off the audio thread, then injects it through the SamplerLoadable escape hatch with
+// no slices → one keyboard-spanning region (a melodic instrument). SamplerOp swaps its sample bank
+// ATOMICALLY, so this is safe on a LIVE, published node: no topology change, no graph rebuild, no lost
+// params — the audio thread just picks up the new bank on its next block. Returns frames loaded, or 0
+// (node not found / not a Sampler / decode failed).
+int session_audio_graph_load_sampler(Session* s, int t, int node_id, const char* path, int base_note) {
+    Track* tr = graph_track(s, t);
+    if (!tr || !path || !*path) return 0;
+    vivid::AudioOp* op = nullptr;
+    { std::lock_guard<std::mutex> lk(tr->gmtx);          // resolve the node's op (topology guard)
+      const int idx = tr->agraph.node_index(node_id);
+      if (idx >= 0 && idx < static_cast<int>(tr->agnodes.size())) op = tr->agnodes[idx].op; }
+    if (!op || std::strcmp(vivid::audio_op_type(op), "Sampler") != 0) return 0;   // must be a Sampler node
+    auto data = vivid::sample_engine::decode_audio_native(path);                  // native-rate decode (off RT)
+    if (!data || data->samples_L.empty()) return 0;
+    const float* L = data->samples_L.data();
+    const float* R = data->stereo ? data->samples_R.data() : nullptr;
+    const uint32_t n = static_cast<uint32_t>(data->samples_L.size());
+    if (!vivid::audio_op_load_sampler(op, L, R, n, data->sample_rate, nullptr, nullptr, 0, base_note))
+        return 0;   // atomic bank swap inside the op — live-safe, no republish
+    return static_cast<int>(n);
 }
 
 // A2: add a VST3/CLAP plugin as a first-class graph NODE — the thing that was impossible before

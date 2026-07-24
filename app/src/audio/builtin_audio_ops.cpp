@@ -3,12 +3,15 @@
 #include "gpu/op_runtime.h"          // OpRegistry / register_op (includes operator_api)
 #include "audio/audio_op_runtime.h"  // audio_op_mark_note_op (ADR-0015)
 #include "operator_api/movie_audio.h" // the movie-audio bus (MovieAudio source op)
+#include "audio/sample_engine/voice.h" // ported sample-playback engine (ADSR/interp/loop/poly)
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace vivid {
@@ -210,80 +213,168 @@ struct MovieAudioOp : OperatorBase, AudioProcessable {
     }
 };
 
-// --- Sampler: slice-per-note PCM instrument (drum-rack / slicer) -----------------------
-// A source instrument that plays one slice of in-memory PCM per note: pitch `base_note`
-// triggers slice 0, `base_note+1` slice 1, and so on (the A6 slice→MIDI payoff). PCM +
-// slices arrive via the SamplerLoadable escape hatch, not params (see sampler_op.h).
+// --- Sampler: polyphonic, pitched sample-playback instrument ---------------------------
+// A source instrument that plays in-memory PCM per note through the shared sample-engine
+// voice (audio/sample_engine/voice.h): real repitch with linear interpolation, an amplitude
+// ADSR, optional loop, and polyphony with oldest-voice stealing. PCM arrives via the
+// SamplerLoadable escape hatch (slice→MIDI or a direct file load), not params:
+//   - direct load (nslices == 0): one region spanning the whole keyboard, so every note
+//     transposes the sample — a playable melodic instrument.
+//   - slice→MIDI  (nslices  > 0): one single-note region per slice at base_note+i (drum-rack),
+//     now click-free with an envelope.
 struct SamplerOp : OperatorBase, AudioProcessable, SamplerLoadable {
     static constexpr const char* kDisplayName = "Sampler";
-    static constexpr const char* kSummary = "Plays one PCM slice per note (drum-rack / slicer).";
+    static constexpr const char* kSummary = "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "instrument", "sampler", "slice" };
 
-    Param<int>   base_note{ "base_note", 36, 0, 127 };   // MIDI pitch that maps to slice 0
+    // Params 0..2 keep their original identity/order so control-edge overrides and saved
+    // projects stay valid; the ADSR / voices / tuning params are appended (ABI is additive).
+    Param<int>   base_note{ "base_note", 36, 0, 127 };    // root pitch (direct load plays it 1:1; slice 0 maps here)
     Param<float> gain{ "gain", 1.f, 0.f, 2.f };
-    Param<int>   gate{ "gate", 0, 0, 1 };                 // 0 = one-shot, 1 = hold-to-gate
+    Param<int>   gate{ "gate", 0, 0, 1 };                 // 0 = one-shot (ignore note-off), 1 = gate (ADSR release on note-off)
+    Param<float> attack { "attack",  0.001f, 0.f, 4.f };
+    Param<float> decay  { "decay",   0.0f,   0.f, 4.f };
+    Param<float> sustain{ "sustain", 1.0f,   0.f, 1.f };
+    Param<float> release{ "release", 0.05f,  0.f, 8.f };  // default > 0 so gated note-off fades, not clicks
+    Param<int>   voices { "voices",  16, 1, 32 };
+    Param<int>   transpose{ "transpose", 0, -48, 48 };    // semitones
+    Param<int>   tune    { "tune", 0, -100, 100 };        // cents
 
-    std::vector<float>    pcmL_, pcmR_;                   // planar PCM (device rate)
-    std::vector<uint32_t> ss_, se_;                       // slice [start,end) sample regions
-    bool                  stereo_ = false;
-
-    struct Voice { bool on = false; int slice = -1; uint32_t pos = 0; float vel = 0.f; int32_t id = 0; };
+    // The sample bank is swapped ATOMICALLY so load_pcm is safe on a LIVE op (loading a new sample
+    // into an already-running node): the audio thread reads bank_ via one acquire load per block, and
+    // a load publishes a fresh bank with a release store. Old banks are RETAINED in banks_ (never
+    // freed on the audio thread) so a voice still playing an old region — or an in-flight block — stays
+    // valid; everything is released when the op is destroyed (UI/shutdown thread). banks_ holds heap
+    // SampleBanks, so pushing a new one never moves the existing bank objects (only the owning vector).
+    std::vector<std::unique_ptr<sample_engine::SampleBank>> banks_;
+    std::atomic<sample_engine::SampleBank*> bank_{nullptr};   // current bank (audio thread: acquire)
     static constexpr int kV = 32;
-    Voice v_[kV];
+    sample_engine::Voice v_[kV];
 
-    void collect_params(std::vector<ParamBase*>& o) override { o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate); }
+    void collect_params(std::vector<ParamBase*>& o) override {
+        o.push_back(&base_note); o.push_back(&gain); o.push_back(&gate);
+        o.push_back(&attack); o.push_back(&decay); o.push_back(&sustain); o.push_back(&release);
+        o.push_back(&voices); o.push_back(&transpose); o.push_back(&tune);
+    }
     void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(aud_out()); }
 
-    void load_pcm(const float* L, const float* R, size_t n, uint32_t /*sr*/,
+    // Build a fresh bank from injected PCM and publish it atomically. Each region owns its own
+    // SampleData (a slice is copied out of the shared buffer) so the voice engine plays it from frame 0
+    // with no start-offset concept. Runs on the UI thread — either before the op is published (the
+    // slice→MIDI path) or on a live op (the direct file-load path); the atomic publish makes both safe.
+    void load_pcm(const float* L, const float* R, size_t n, uint32_t sr,
                   const uint32_t* starts, const uint32_t* ends, int nslices, int base) override {
-        pcmL_.assign(L, L + n);
-        stereo_ = (R != nullptr);
-        pcmR_.assign(stereo_ ? R : L, (stereo_ ? R : L) + n);
-        ss_.assign(starts, starts + (nslices > 0 ? nslices : 0));
-        se_.assign(ends,   ends   + (nslices > 0 ? nslices : 0));
         base_note.value = static_cast<float>(base);
-        for (auto& v : v_) v.on = false;
+        auto bank = std::make_unique<sample_engine::SampleBank>();
+        bank->groups.emplace_back();
+        auto& regions = bank->groups[0].regions;
+        const bool stereo = (R != nullptr);
+        auto make_data = [&](size_t a, size_t b) {
+            auto d = std::make_shared<sample_engine::SampleData>();
+            d->sample_rate = sr;              // 0 => resolved to the device rate at note-on (ratio 1.0)
+            d->stereo = stereo;
+            d->samples_L.assign(L + a, L + b);
+            if (stereo) d->samples_R.assign(R + a, R + b);
+            return d;
+        };
+        if (nslices <= 0) {                    // whole sample mapped across the keyboard (melodic)
+            sample_engine::SampleRegion r;
+            r.root_note = base; r.lo_note = 0; r.hi_note = 127;
+            r.data = make_data(0, n);
+            regions.push_back(std::move(r));
+        } else {                               // one single-note region per slice (drum-rack)
+            for (int i = 0; i < nslices; ++i) {
+                const size_t a = std::min<size_t>(starts[i], n);
+                const size_t b = std::min<size_t>(ends[i], n);
+                if (b <= a) continue;
+                sample_engine::SampleRegion r;
+                r.root_note = r.lo_note = r.hi_note = base + i;
+                r.data = make_data(a, b);
+                regions.push_back(std::move(r));
+            }
+        }
+        for (auto& v : v_) { v.active = false; v.gate = false; }   // reload clears ringing voices (load contract)
+        sample_engine::SampleBank* raw = bank.get();
+        banks_.push_back(std::move(bank));           // retain (freed at op destroy, never on the audio thread)
+        bank_.store(raw, std::memory_order_release); // publish
     }
 
-    void note_on(int pitch, float vel, int32_t id, int base) {
-        const int slice = pitch - base;
-        if (slice < 0 || slice >= static_cast<int>(ss_.size())) return;
-        for (auto& v : v_) if (!v.on) { v = Voice{ true, slice, 0u, vel, id }; return; }
+    // --- voice allocation over v_[0..nv) : note-id keyed, bounded by the `voices` param ---
+    static uint64_t vid(int32_t id) { return static_cast<uint64_t>(static_cast<uint32_t>(id)); }
+    int find_by_id(int32_t id, int nv) const {
+        for (int i = 0; i < nv; ++i) if (v_[i].active && v_[i].note_id == vid(id)) return i;
+        return -1;
     }
-    void note_off(int32_t id, bool gated) {
-        if (!gated) return;                                // one-shot voices ring out
-        for (auto& v : v_) if (v.on && v.id == id) v.on = false;
+
+    void handle_on(const sample_engine::SampleGroup& grp,
+                   int pitch, float vel, int32_t id, float tuning, int transp, int cents,
+                   bool one_shot, double dev_sr, uint64_t frame, int nv) {
+        // No nearest-region fallback: a drum-rack note outside its slice map stays silent, and the
+        // melodic path already covers 0..127 with one region. (Nearest-fallback is a multisample-zone
+        // feature for a later phase.)
+        const sample_engine::SampleRegion* reg = sample_engine::find_region(grp, pitch, vel);
+        if (!reg || !reg->data || reg->data->samples_L.empty()) return;
+        int idx = find_by_id(id, nv);
+        if (idx < 0) idx = sample_engine::find_free_voice(v_, nv);
+        if (idx < 0) idx = sample_engine::steal_oldest_voice(v_, nv);
+        if (idx < 0) return;
+        const double src_sr = reg->data->sample_rate > 0 ? static_cast<double>(reg->data->sample_rate) : dev_sr;
+        const double semis = (pitch - reg->root_note) + transp + tuning
+                             + (cents + reg->tune_cents) / 100.0;
+        const double rate = std::pow(2.0, semis / 12.0) * (src_sr / dev_sr);
+        sample_engine::voice_note_on(v_[idx], pitch, vel, reg, rate, frame, one_shot);
+        v_[idx].note_id = vid(id);             // for note-off matching (voice_note_on doesn't set it)
+    }
+
+    void handle_off(int32_t id, int nv) {
+        const int idx = find_by_id(id, nv);
+        if (idx >= 0) sample_engine::voice_note_off(v_[idx]);   // no-op for one-shot voices (ring out)
     }
 
     void process_audio(const VividAudioContext* c) override {
         if (!c->output_buffers) return;
         const uint32_t N = c->buffer_size;
-        const int   base  = c->param_values ? static_cast<int>(std::lround(c->param_values[0])) : base_note.int_value();
-        const float g     = c->param_values ? c->param_values[1] : gain.value;
-        const bool  gated = (c->param_values ? c->param_values[2] : gate.value) > 0.5f;
+        const double dev_sr = c->sample_rate > 0 ? static_cast<double>(c->sample_rate) : 48000.0;
+        const float  dt = static_cast<float>(1.0 / dev_sr);
+        const float* pv = c->param_values;
+        const float g        = pv ? pv[1] : gain.value;
+        const bool  one_shot = (pv ? pv[2] : gate.value) < 0.5f;   // gate == 0 => one-shot
+        const float a        = pv ? pv[3] : attack.value;
+        const float d        = pv ? pv[4] : decay.value;
+        const float s        = pv ? pv[5] : sustain.value;
+        const float rel      = pv ? pv[6] : release.value;
+        const int   nv       = std::clamp(pv ? static_cast<int>(std::lround(pv[7])) : voices.int_value(), 1, kV);
+        const int   transp   = pv ? static_cast<int>(std::lround(pv[8])) : transpose.int_value();
+        const int   cents    = pv ? static_cast<int>(std::lround(pv[9])) : tune.int_value();
         float* L = c->output_buffers[0];
         float* R = c->output_buffers[0] + N;
+
+        // One acquire load of the current bank for the whole block (the direct file-load path may
+        // publish a new one concurrently). A note-on needs a loaded group; a note-off is honored
+        // regardless (voices from a prior bank stay valid and must still release).
+        sample_engine::SampleBank* bank = bank_.load(std::memory_order_acquire);
+        const sample_engine::SampleGroup* grp =
+            (bank && !bank->groups.empty()) ? &bank->groups[0] : nullptr;
+
+        auto on_event = [&](const VividNoteEvent& e, uint32_t i) {
+            if (e.on) { if (grp) handle_on(*grp, e.pitch, e.velocity, e.note_id, e.tuning,
+                                           transp, cents, one_shot, dev_sr, c->frame + i, nv); }
+            else handle_off(e.note_id, nv);
+        };
+
         uint32_t ei = 0;
         for (uint32_t i = 0; i < N; ++i) {
-            while (ei < c->note_event_count && c->note_events[ei].sample_offset <= i) {
-                const VividNoteEvent& e = c->note_events[ei++];
-                if (e.on) note_on(e.pitch, e.velocity, e.note_id, base); else note_off(e.note_id, gated);
-            }
-            float sl = 0.f, sr = 0.f;
-            for (auto& v : v_) if (v.on) {
-                const uint32_t rp = ss_[v.slice] + v.pos;
-                if (rp >= se_[v.slice] || rp >= pcmL_.size()) { v.on = false; continue; }
-                sl += pcmL_[rp] * v.vel;
-                sr += pcmR_[rp] * v.vel;
-                ++v.pos;
-            }
-            L[i] = sl * g;
-            R[i] = sr * g;
+            while (ei < c->note_event_count && c->note_events[ei].sample_offset <= i)
+                on_event(c->note_events[ei++], i);
+            float ml = 0.f, mr = 0.f;
+            for (int k = 0; k < nv; ++k)
+                if (v_[k].active)
+                    sample_engine::voice_render_frame(v_[k], ml, mr, dt, a, d, s, rel);
+            L[i] = ml * g;
+            R[i] = mr * g;
         }
-        while (ei < c->note_event_count) {                 // events at/after the block end
-            const VividNoteEvent& e = c->note_events[ei++];
-            if (e.on) note_on(e.pitch, e.velocity, e.note_id, base); else note_off(e.note_id, gated);
-        }
+        while (ei < c->note_event_count)                    // events at/after the block end
+            on_event(c->note_events[ei++], N);
     }
 };
 
