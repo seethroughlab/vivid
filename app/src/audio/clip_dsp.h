@@ -1,5 +1,5 @@
 #pragma once
-#include "audio/sampler.h"              // AudioClip + WarpMode
+#include "audio/audio_clip.h"              // AudioClip + WarpMode
 #include "audio/audio_clip_shared.h"    // source_for_warp_beat
 #include "signalsmith-stretch.h"        // pitch-preserving time-stretch
 #include <cstring>

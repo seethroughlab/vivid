@@ -19,14 +19,14 @@ namespace vivid::session {
 
 enum class WarpMode { Complex = 0, Beats = 1, Repitch = 2 };
 
-struct Sampler {
+struct AudioClip {
     std::vector<float> L, R;       // PCM (R empty => mono)
     double             loop_beats = 4.0;
     double             src_bpm = 0.0;   // source tempo (0 = generated / unknown)
     uint32_t           sr = 0;          // sample rate the PCM is at (device rate; for fades/ms)
     std::string        name;
     std::string        src_path;        // absolute WAV path (empty = generated); persisted so the
-                                        // loop reloads on session open (sampler_load_wav sets it).
+                                        // loop reloads on session open (audio_clip_load_wav sets it).
 
     // --- clip shaping ---
     float  gain            = 1.0f;
@@ -88,15 +88,12 @@ struct Sampler {
     }
 };
 
-// Intent-revealing alias for the audio-clip value type (the warp engine's "AudioClip").
-using AudioClip = Sampler;
-
 // Procedural demo loops, one bar (4 beats) at the given sample rate / tempo.
-Sampler gen_sub_pulse(uint32_t sr, double bpm);
-Sampler gen_noise_sweep(uint32_t sr, double bpm);
-Sampler gen_bell_loop(uint32_t sr, double bpm);
+AudioClip gen_sub_pulse(uint32_t sr, double bpm);
+AudioClip gen_noise_sweep(uint32_t sr, double bpm);
+AudioClip gen_bell_loop(uint32_t sr, double bpm);
 
 // Decode a WAV (via miniaudio); warps the loop length to the nearest whole bar.
-bool sampler_load_wav(const std::string& path, uint32_t sr_hint, double bpm, Sampler& out);
+bool audio_clip_load_wav(const std::string& path, uint32_t sr_hint, double bpm, AudioClip& out);
 
 }  // namespace vivid::session

@@ -157,4 +157,17 @@ inline void node_waveform(Renderer2D& r, float x, float y, float w, float h,
     r.draw_polyline(xs, ys, static_cast<uint32_t>(n), 1.2f, cr, cg, cb, 0.95f);
 }
 
+// Draw a per-bin peak envelope (n bins, each 0..1) as centred mirrored bars — a static waveform
+// thumbnail of a loaded sample (Sampler node), distinct from the live scope polyline above.
+inline void node_sample_peaks(Renderer2D& r, float x, float y, float w, float h,
+                              const float* bins, int n, float cr, float cg, float cb) {
+    if (!bins || n < 1 || w <= 1.f) return;
+    const float midY = y + h * 0.5f, amp = h * 0.5f - 1.f;
+    const float colw = w / static_cast<float>(n);
+    for (int i = 0; i < n; ++i) {
+        const float a = std::clamp(bins[i], 0.f, 1.f) * amp;
+        r.draw_rect(x + colw * i, midY - a, std::max(1.f, colw - 0.5f), a * 2.f + 1.f, cr, cg, cb, 0.9f);
+    }
+}
+
 }  // namespace vivid::ui

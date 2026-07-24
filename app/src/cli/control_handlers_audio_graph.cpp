@@ -52,6 +52,21 @@ void register_audio_graph_handlers(Handlers& handlers_) {
         if (nid < 0) return err(code::kBadArg, "could not add audio source node: '" + op + "' (unknown or not an instrument)");
         json r = ok(); r["node"] = nid; return r;
     };
+    // Load an audio file (WAV/AIFF/MP3/FLAC/OGG) into an existing Sampler node so it plays that sample
+    // pitched across the keyboard. Audio nodes carry no file param, so this is the load path.
+    handlers_["audio_graph_load_sampler"] = [](const ControlCtx& c, const json& b) {
+        if (!c.session) return err(code::kNoSession, "no session");
+        const int track = b.value("track", 0);
+        json e; if (!need_track(c.session, track, e)) return e;
+        const int node = b.value("node_id", -1);
+        const std::string path = b.value("path", std::string());
+        if (path.empty()) return err(code::kBadArg, "audio_graph_load_sampler needs \"path\"");
+        const int base = b.value("base_note", 60);
+        const int frames = P::session_audio_graph_load_sampler(c.session, track, node, path.c_str(), base);
+        if (frames <= 0)
+            return err(code::kBadArg, "load failed: node_id must be a Sampler and the file must decode");
+        json r = ok(); r["frames"] = frames; return r;
+    };
     handlers_["audio_graph_set_node_key_range"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), node = b.value("node", -1);
