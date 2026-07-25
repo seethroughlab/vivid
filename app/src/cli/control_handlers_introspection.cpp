@@ -949,8 +949,8 @@ void register_introspection_handlers(Handlers& handlers_) {
         }
         json dnodes = json::array();
         for (int i = 0; i < g.node_count(); ++i) {
-            float x = 0, y = 0; int cid = 0; std::string title; g.get_node(i, x, y, cid, title);
-            dnodes.push_back({ {"char_id", cid}, {"title", title} });
+            float x = 0, y = 0; std::string source, title; g.get_node(i, x, y, source, title);
+            dnodes.push_back({ {"source", source}, {"title", title} });
         }
         json r = ok();
         r["nodes"] = nodes;

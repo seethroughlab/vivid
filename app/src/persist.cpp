@@ -300,9 +300,9 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     jg["shader"] = { sx, sy };
     json nodes = json::array();
     for (int i = 0; i < g.node_count(); ++i) {
-        float x = 0.f, y = 0.f; int cid = 0; std::string title;
-        g.get_node(i, x, y, cid, title);
-        nodes.push_back({ {"char_id", cid}, {"title", title}, {"x", x}, {"y", y} });
+        float x = 0.f, y = 0.f; std::string source, title;
+        g.get_node(i, x, y, source, title);
+        nodes.push_back({ {"source", source}, {"title", title}, {"x", x}, {"y", y} });
     }
     jg["nodes"] = nodes;
     json maps = json::array();
@@ -811,9 +811,14 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             }
         }
         if (jg.contains("nodes"))
-            for (const auto& jn : jg["nodes"])
-                g.add_node_raw(jn.value("title", std::string("node")), jn.value("char_id", 0),
-                               jn.value("x", 560.f), jn.value("y", 488.f));
+            for (const auto& jn : jg["nodes"]) {
+                const std::string title = jn.value("title", std::string("node"));
+                const float x = jn.value("x", 560.f), y = jn.value("y", 488.f);
+                if (jn.contains("source"))                                  // new: canonical string source id
+                    g.add_node_raw(title, jn.value("source", std::string()), x, y);
+                else                                                        // legacy: packed integer char_id
+                    g.add_node_raw(title, jn.value("char_id", 0), x, y);
+            }
         if (jg.contains("shader") && jg["shader"].size() >= 2)
             g.set_shader(jg["shader"][0].get<float>(), jg["shader"][1].get<float>());
         if (jg.contains("view")) {

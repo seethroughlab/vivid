@@ -123,6 +123,35 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_TAB) {
         double mx, my; glfwGetCursorPos(w, &mx, &my);
         if (app->graph && mx >= win->split_x && my >= vivid::ui::kTopBarH && my < win->dock_top()) {
+            // Build the full audio→visual source catalog from the live session so the Tab chooser can
+            // spawn ANY source as a bridge node: master + each track's characteristics (incl. notes +
+            // fft bands) + each audio-graph node's rms. (String source ids; the 5 master audio sources
+            // are already listed statically in chooser_show via kSources.)
+            namespace S = vivid::session;
+            std::vector<std::pair<std::string, std::string>> cat;
+            if (app->session) {
+                for (int k = 0; k < S::kFftBands; ++k)
+                    cat.push_back({ "Master FFT " + std::to_string(k), "master.fft." + std::to_string(k) });
+                static const char* KL[8] = { "Level", "Transient", "Low", "Mid", "High", "Note", "Velocity", "Gate" };
+                static const char* KS[8] = { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
+                for (int t = 0; t < S::session_track_count(app->session); ++t) {
+                    const int tid = S::session_track_id(app->session, t);
+                    const char* nm = S::session_track_name(app->session, t);
+                    const std::string base = nm ? std::string(nm) : ("track " + std::to_string(tid));
+                    for (int k = 0; k < 8; ++k)
+                        cat.push_back({ base + " " + KL[k], "track_" + std::to_string(tid) + "." + KS[k] });
+                    for (int k = 0; k < S::kFftBands; ++k)
+                        cat.push_back({ base + " FFT " + std::to_string(k), "track_" + std::to_string(tid) + ".fft." + std::to_string(k) });
+                    const int nn = S::session_track_audio_graph_node_count(app->session, t);
+                    for (int i = 0; i < nn; ++i) {
+                        const int nid = S::session_track_audio_graph_node_id(app->session, t, i);
+                        if (nid < 0) continue;
+                        cat.push_back({ base + " \xC2\xB7 node " + std::to_string(nid) + " RMS",
+                                        "node_" + std::to_string(tid) + "_" + std::to_string(nid) + ".rms" });
+                    }
+                }
+            }
+            app->graph->set_bridge_catalog(std::move(cat));
             app->graph->chooser_show(mx, my); return;
         }
         if (vivid::input::audio_chooser_open_at(*win, *app, mx, my)) return;

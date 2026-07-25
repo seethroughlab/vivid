@@ -881,6 +881,7 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
             cap_filled = std::min(cap, cap_filled + 1);
         }
         sum_sq += static_cast<double>(l) * l;
+        t.an_ring[t.an_pos] = l; t.an_pos = (t.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
         t.flt_lo += (l - t.flt_lo) * a_lo;
         t.flt_hi += (l - t.flt_hi) * a_hi;
         const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
@@ -925,6 +926,7 @@ static void master_mix(Session* s, float* out, uint32_t frames, uint32_t sample_
         const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
         out[2 * i] = l; out[2 * i + 1] = r;
         sum_sq += static_cast<double>(l) * l;
+        m.an_ring[m.an_pos] = l; m.an_pos = (m.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
         m.flt_lo += (l - m.flt_lo) * a_lo;
         m.flt_hi += (l - m.flt_hi) * a_hi;
         const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
@@ -1634,6 +1636,22 @@ float session_track_note_velocity(Session* s, int t) {
 }
 float session_track_note_gate(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_gate.load(std::memory_order_relaxed) : 0.f;
+}
+// Copy the last min(n,kAnalysisN) mono samples (oldest→newest) from a track's spectrum ring into `out`.
+// Lock-free snapshot (a torn read is a harmless 1-frame spectral blip). Returns the count copied.
+static int copy_analysis_ring(const float* ring, uint32_t pos, float* out, int n) {
+    const int cnt = std::min(n, kAnalysisN);
+    const uint32_t start = (pos + static_cast<uint32_t>(kAnalysisN) - static_cast<uint32_t>(cnt)) & (kAnalysisN - 1);
+    for (int i = 0; i < cnt; ++i) out[i] = ring[(start + static_cast<uint32_t>(i)) & (kAnalysisN - 1)];
+    return cnt;
+}
+int session_track_analysis_copy(Session* s, int t, float* out, int n) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
+    return copy_analysis_ring(s->tracks[t]->an_ring, s->tracks[t]->an_pos, out, n);
+}
+int session_master_analysis_copy(Session* s, float* out, int n) {
+    if (!s || !out || n <= 0) return 0;
+    return copy_analysis_ring(s->master.an_ring, s->master.an_pos, out, n);
 }
 int session_track_capture_snapshot(Session* s, int t, double seconds, std::vector<float>& outL,
                                    std::vector<float>& outR, uint32_t* out_sample_rate) {

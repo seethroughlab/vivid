@@ -38,9 +38,11 @@ public:
     void before_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
     void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
-    void set_value(int char_id, float v);
+    void set_value(int char_id, float v);   // legacy int-char_id publish (master/track scalar); wraps set_source_by_id
+    void set_source_by_id(const std::string& source, float v);   // canonical: publish a source value by its string id
     void apply_params();   // resolve each node's params from the registry; publish viz.* sources
-    void add_data_node(const std::string& title, int char_id);
+    void add_data_node(const std::string& title, const std::string& source);
+    void add_data_node(const std::string& title, int char_id);   // legacy (packed master/track char_id)
 
     void set_bounds(float x0, float y0, float x1, float y1);
     void set_frame(float x0, float y0, float x1, float y1);   // full visuals-column rect (grid + clip)
@@ -48,10 +50,11 @@ public:
 
     // Persistence + inspection.
     int  node_count() const { return static_cast<int>(data_.size()); }
-    void get_node(int i, float& x, float& y, int& char_id, std::string& title) const;
+    void get_node(int i, float& x, float& y, std::string& source, std::string& title) const;
     void get_shader(float& x, float& y) const { x = sx_; y = sy_; }
     void reset_nodes();
-    void add_node_raw(const std::string& title, int char_id, float x, float y);
+    void add_node_raw(const std::string& title, const std::string& source, float x, float y);
+    void add_node_raw(const std::string& title, int char_id, float x, float y);   // legacy load (decodes char_id)
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt,
@@ -139,6 +142,10 @@ public:
     // ADR-0017: the undo command sink, so UI graph edits are captured (nullptr = no undo, e.g. tests).
     void set_edit_gateway(vivid::EditGateway* g) { edit_gateway_ = g; }
     void note_edit(const char* label, const char* key = "") { note_edit_(label, key); }   // for op-editor callbacks
+    // The full audio→visual source catalog (label, canonical source id) the Tab chooser offers as
+    // spawnable bridge nodes — built by the app from the live session (tracks × characteristics incl.
+    // notes + fft, and per-node rms), since NodeGraph doesn't own the session. Set before chooser_show.
+    void set_bridge_catalog(std::vector<std::pair<std::string, std::string>> cat) { bridge_catalog_ = std::move(cat); }
     void chooser_show(double sx, double sy);  // open at the cursor
     void chooser_hide() { chooser_.hide(); }
     void chooser_move(int dir) { chooser_.move(dir); }
@@ -154,9 +161,10 @@ public:
 
 private:
     static constexpr int kHistN = 64;   // data-node value history (rolling sparkline)
-    struct DataNode { float x, y, w, h; std::string title; int char_id; float value; int flash;
+    struct DataNode { float x, y, w, h; std::string title; std::string source; float value; int flash;
                       float hist[kHistN]; int hist_head; };
     std::vector<DataNode> data_;
+    std::vector<std::pair<std::string, std::string>> bridge_catalog_;   // (label, source id) — Tab chooser sources
     vivid::MappingRegistry reg_;
     float sx_ = 900.f, sy_ = 488.f;   // persisted shader-node position (get_shader/set_shader)
     float bx0_ = 520.f, by0_ = 448.f, bx1_ = 1272.f, by1_ = 792.f;  // node-layout / hit-test bounds (inset)

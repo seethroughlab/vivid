@@ -90,8 +90,10 @@ inline void track_accent(int t, float& r, float& g, float& b) {
 // Right/left-click the MASTER meter opens a menu of audio characteristics (the bridge).
 struct CharItem { const char* label; int id; };
 constexpr CharItem kChars[] = {
-    { "Level (RMS)", 0 }, { "Transient", 1 }, { "Low band", 2 }, { "Mid band", 3 }, { "High band", 4 } };
-constexpr int kNumChars = 5;
+    { "Level (RMS)", 0 }, { "Transient", 1 }, { "Low band", 2 }, { "Mid band", 3 }, { "High band", 4 },
+    { "Note (pitch)", 5 }, { "Note velocity", 6 }, { "Note gate", 7 } };   // 5-7 are TRACK-only (no master notes)
+constexpr int kNumChars       = 8;   // full per-track list
+constexpr int kNumCharsMaster = 5;   // master has no note sources; show only the audio kinds
 // Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
 inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
 

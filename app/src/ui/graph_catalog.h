@@ -34,7 +34,8 @@ struct CatalogSpawn {
     SpawnKind   kind    = SpawnKind::None;
     std::string type;         // op type name OR plugin bundle path
     int         format  = 0;  // session plugin-format constant (plugin kinds only)
-    int         char_id = 0;  // bridge data node (master-characteristic id)
+    int         char_id = 0;  // bridge data node — legacy packed master/track characteristic id
+    std::string source;       // bridge data node — canonical string source id (empty = use char_id); e.g. "track_5.fft.2"
 };
 
 }  // namespace vivid::ui

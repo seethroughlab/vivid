@@ -793,8 +793,9 @@ void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track) {
     const Style& sty = style();
     const float w = 184.f;
     char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", track && *track ? track : "track");
-    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + kNumChars * 26.f }, hdr, sty.teal);
-    for (int j = 0; j < kNumChars; ++j) {
+    const int nc = m.src < 0 ? kNumCharsMaster : kNumChars;   // master has no note sources
+    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + nc * 26.f }, hdr, sty.teal);
+    for (int j = 0; j < nc; ++j) {
         const float iy = m.y + j * 26.f;
         item_box(ui, { m.x, iy, w, 26.f }, sty.teal);  // teal = audio->visual
         ui.draw_text(m.x + 14.f, iy + 6.f, kChars[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);

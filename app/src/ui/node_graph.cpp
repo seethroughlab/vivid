@@ -68,7 +68,7 @@ static const vivid::ParamBase* node_pb(const vivid::VisualGraph* vg, int i, int 
 }
 
 NodeGraph::NodeGraph() {
-    data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", 0, 0.f, 0 });
+    data_.push_back({ 560.f, 540.f, 168.f, 72.f, "Output \xC2\xB7 Level", "master.level", 0.f, 0, {}, 0 });
     // out-of-box reactivity is seeded in set_visual_graph (needs the default chain's ids).
 }
 
@@ -82,7 +82,7 @@ void NodeGraph::set_visual_graph(vivid::VisualGraph* vg) {
 
 int NodeGraph::find_source_node(const std::string& src) const {
     for (int i = 0; i < int(data_.size()); ++i)
-        if (source_id_for(data_[i].char_id) == src) return i;
+        if (data_[i].source == src) return i;
     return -1;
 }
 
@@ -282,13 +282,14 @@ void NodeGraph::set_frame(float x0, float y0, float x1, float y1) {
     fx0_ = x0; fy0_ = y0; fx1_ = x1; fy1_ = y1;   // the full visuals-column rect (grid + clip reach the edges)
 }
 
-void NodeGraph::set_value(int char_id, float v) {
-    for (auto& n : data_) if (n.char_id == char_id) {
+void NodeGraph::set_value(int char_id, float v) { set_source_by_id(source_id_for(char_id), v); }
+void NodeGraph::set_source_by_id(const std::string& source, float v) {
+    for (auto& n : data_) if (n.source == source) {
         n.value = v;
         n.hist[n.hist_head] = v;                       // push into the rolling history
         n.hist_head = (n.hist_head + 1) % kHistN;
     }
-    reg_.set_source(source_id_for(char_id), v);
+    reg_.set_source(source, v);
 }
 void NodeGraph::apply_params() {
     if (!vg_) return;
@@ -319,15 +320,16 @@ void NodeGraph::apply_params() {
         reg_.set_source(std::string("viz.") + kShaderUniformNames[u], v);
     }
 }
-void NodeGraph::add_data_node(const std::string& title, int char_id) {
+void NodeGraph::add_data_node(const std::string& title, const std::string& source) {
     float y = by0_ + 150.f + data_.size() * 84.f;
     if (y > by1_ - 72.f) y = by1_ - 72.f;
-    data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, char_id, 0.f, 90 });
+    data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, source, 0.f, 90, {}, 0 });
     note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
-void NodeGraph::get_node(int i, float& x, float& y, int& char_id, std::string& title) const {
+void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
+void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::string& title) const {
     if (i < 0 || i >= int(data_.size())) return;
-    x = data_[i].x; y = data_[i].y; char_id = data_[i].char_id; title = data_[i].title;
+    x = data_[i].x; y = data_[i].y; source = data_[i].source; title = data_[i].title;
 }
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); }
 
@@ -479,8 +481,12 @@ bool NodeGraph::swap_op_type(int i, const std::string& type) {
     if (ok) { sel_op_ = i; note_edit_("Swap Operator"); }
     return ok;
 }
+void NodeGraph::add_node_raw(const std::string& title, const std::string& source, float x, float y) {
+    data_.push_back({ x, y, 168.f, 72.f, title, source, 0.f, 0, {}, 0 });
+}
+// Legacy load path: a saved session that stored the packed integer char_id (pre string-source migration).
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {
-    data_.push_back({ x, y, 168.f, 72.f, title, char_id, 0.f, 0 });
+    add_node_raw(title, source_id_for(char_id), x, y);
 }
 
 void NodeGraph::data_out(const DataNode& n, float& px, float& py) { px = n.x + n.w; py = n.y + n.h * 0.5f; }
@@ -713,6 +719,15 @@ void NodeGraph::chooser_show(double sx, double sy) {
         e.accent = style().audio;
         entries.push_back(std::move(e));
     }
+    for (const auto& [label, source] : bridge_catalog_) {   // per-track/note/fft/node sources (string ids)
+        Chooser::Entry e;
+        e.label = label;
+        e.summary = "audio source \xC2\xB7 " + source;
+        e.badge = "src";
+        e.spawn = { Domain::Bridge, SpawnKind::BridgeNode, "", 0, 0, source };
+        e.accent = style().audio;
+        entries.push_back(std::move(e));
+    }
     chooser_.set_entries(std::move(entries));
     chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);
 }
@@ -729,7 +744,7 @@ void NodeGraph::chooser_spawn(const Chooser::Entry& e) {
             op_pos_[ni] = { chooser_.spawn_x() - kCardW * 0.5f, chooser_.spawn_y() - 15.f };
         note_edit_("Add Node");
     } else if (e.spawn.kind == SpawnKind::BridgeNode) {   // a bridge data node (add_data_node notes the edit)
-        add_data_node(e.label, e.spawn.char_id);
+        add_data_node(e.label, e.spawn.source.empty() ? source_id_for(e.spawn.char_id) : e.spawn.source);
         if (!data_.empty()) { data_.back().x = chooser_.spawn_x() - 84.f; data_.back().y = chooser_.spawn_y() - 36.f; }
     }
 }
@@ -845,7 +860,7 @@ void NodeGraph::on_up(double x, double y) {
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
         if (nearest_param(wx, wy, 18.0 / canvas_.view().scale, pni, pl)) {
-            reg_.connect(source_id_for(data_[wire_from_].char_id),
+            reg_.connect(data_[wire_from_].source,
                          node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
             note_edit_("Connect Mapping");
         }
