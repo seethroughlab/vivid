@@ -15,6 +15,7 @@
 #include "ui/graph_canvas.h"  // GraphCanvas — the shared graph-area draw skeleton (ADR-0023 Layer 2)
 #include "ui/graph_adapter.h" // GraphModelAdapter — the shared node-enumeration contract (ADR-0023 Layer 1)
 
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -70,7 +71,10 @@ public:
     int  selected_node_id() const override { return sel_node_; }
     void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
-    void set_source(vivid::session::Session* s, int track) { s_ = s; track_ = track; }
+    void set_source(vivid::session::Session* s, int track) {
+        if (track != track_) sampler_glow_.clear();   // afterglow is per-track node ids; drop stale on switch
+        s_ = s; track_ = track;
+    }
     void set_clock(double beats) { clock_beats_ = beats; }   // transport position, for live generator thumbnails
     void set_bounds(float x0, float y0, float x1, float y1) {
         x0_ = x0; y0_ = y0; x1_ = x1; y1_ = y1;
@@ -170,6 +174,13 @@ private:
     // Auto-layout WORLD position per node (rank = signal depth, slot = fan-out order). Shared by
     // layout() (seeds unpositioned nodes) and relayout() (overwrites all) so they can't drift.
     std::vector<std::pair<float, float>> seed_positions() const;
+
+    // Sampler-thumbnail afterglow (per node id): the last playhead position + the wall-clock time it
+    // was last sounding, so the playhead line holds and fades over kGlowSeconds after a voice ends —
+    // turning a drum rack's staccato per-hit blips into a legible pulse. Display-only, mutable because
+    // after_card is const; cleared on track switch (ids are per-track) in set_source.
+    struct SamplerGlow { float pos = 0.f; double t = -1.0; };
+    mutable std::unordered_map<int, SamplerGlow> sampler_glow_;
 
     vivid::session::Session* s_ = nullptr;
     const NodeGraph* map_ = nullptr;   // the bridge (for the mapped-state dot); not owned
