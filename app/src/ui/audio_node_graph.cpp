@@ -8,6 +8,7 @@
 #include "audio/vst3_host.h"
 #include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
+#include <GLFW/glfw3.h>           // glfwGetTime — the wall clock the sampler-playhead afterglow fades on
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -538,10 +539,26 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             const int nb = P::session_audio_graph_node_sampler_peaks(s_, track_, b.node_id, peaks, 96);
             if (nb > 0) {
                 node_sample_peaks(r, ix, iy, iw, ih, peaks, nb, acc[0], acc[1], acc[2]);
-                // Animated playhead: a bright line sweeping the waveform where the newest voice is
-                // playing (-1 = silent → no line). Makes the thumbnail read as live, like the gens.
+                // Animated playhead with afterglow: a bright head sweeps the waveform where the newest
+                // voice plays (-1 = silent). On a drum rack the slices are ~130ms one-shots, so a bare
+                // line just blips per hit; instead we hold the last position and fade it over
+                // kGlowSeconds, turning the staccato into a legible pulse. An accent-tinted halo gives
+                // the head body. Wall-clock timed (glfwGetTime) so it fades correctly whether the
+                // transport is playing, stopped, or looping.
+                constexpr double kGlowSeconds = 0.22;
                 const float ph = P::session_audio_graph_node_sampler_playhead(s_, track_, b.node_id);
-                if (ph >= 0.f) r.draw_rect(ix + iw * ph, iy, 1.5f, ih, 1.f, 1.f, 1.f, 0.85f);
+                const double now = glfwGetTime();
+                SamplerGlow& gl = sampler_glow_[b.node_id];
+                if (ph >= 0.f) { gl.pos = ph; gl.t = now; }
+                const double age = now - gl.t;
+                const float glow = (ph >= 0.f) ? 1.f
+                                 : (gl.t >= 0.0 && age < kGlowSeconds) ? 1.f - static_cast<float>(age / kGlowSeconds)
+                                 : 0.f;
+                if (glow > 0.f) {
+                    const float px = ix + iw * gl.pos;
+                    r.draw_rect(px - 2.f, iy, 5.f, ih, acc[0], acc[1], acc[2], 0.20f * glow);   // accent halo
+                    r.draw_rect(px - 0.75f, iy, 1.75f, ih, 1.f, 1.f, 1.f, 0.92f * glow);        // white head
+                }
             } else {
                 float scope[128];
                 const int ns = P::session_track_audio_graph_node_scope(s_, track_, i, scope, 128);
