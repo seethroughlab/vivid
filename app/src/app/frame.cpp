@@ -30,6 +30,7 @@
 #include "transport.h"
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
+#include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
 #include "audio/vst3_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
@@ -221,6 +222,14 @@ void publish_bridge_sources(App& app, Window& win) {
             graph.set_source_by_id("node_" + std::to_string(tid) + "_" + std::to_string(nid) + ".rms",
                                    std::min(1.0f, rms * 5.0f));
         }
+        // Publish this track's held notes to the active-notes bus (keyed by track INDEX = the
+        // instancer op's `track` param), so a note-instancer GPU op can draw one instance per live note.
+        S::ActiveNote an[S::kMaxHeld];
+        const int na = S::session_track_active_notes(app.session, t, an, S::kMaxHeld);
+        VividActiveNote vn[VIVID_MAX_ACTIVE_NOTES];
+        const int m = std::min(na, VIVID_MAX_ACTIVE_NOTES);
+        for (int k = 0; k < m; ++k) { vn[k].pitch = an[k].pitch; vn[k].velocity = an[k].vel; }
+        vivid_note_bus_publish(t, vn, static_cast<uint32_t>(m));
     }
     graph.apply_params();
 }
