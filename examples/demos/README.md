@@ -14,11 +14,12 @@ the bridge, authored in ~60 readable lines.
 | **neon** | synthwave, 100 BPM | *Sync Pluck* arp + *Square Bass*, backbeat | retro-vector: cyan **Lines** rings + a magenta wireframe **Mesh** → Feedback glow |
 | **grid** | glitch / IDM, 90 BPM | *Digi* lead (bitcrushed) + *FM Bass* | technical/wireframe: a teal **Lines** grid + a wireframe **Mesh** icosahedron |
 
-## The four mechanism showcases (breadth of the engine)
+## The five mechanism showcases (breadth of the engine)
 
-Where the songs show genre range over one pattern (audio→visual reactivity), these four each
-headline a *distinct Vivid mechanism* that the songs don't exercise. Three are **plugin-free and
-self-contained** (native audio + bundled `media/`); only **bloom** needs Surge, for its voice.
+Where the songs show genre range over one pattern (audio→visual reactivity), these five each
+headline a *distinct Vivid mechanism* that the songs don't exercise. Most lean on bundled `media/` +
+native audio; **bloom** needs Surge for its voice, and **chop** needs Surge only for its sub (its
+drums are the plugin-free native Sampler).
 
 | demo | headlines | sound | visual |
 |------|-----------|-------|--------|
@@ -26,6 +27,7 @@ self-contained** (native audio + bundled `media/`); only **bloom** needs Surge, 
 | **mirror** | the **bidirectional bridge** — the picture drives the sound back | Cassette Drums + Surge bass + a Surge **pad through an SVFilter**; `viz.feedback → cutoff`, `viz.blur → resonance` (the return leg) | wireframe **Mesh** + **ShapeGrid** → Feedback → Blur |
 | **bloom** | **note-as-signal** — the music writes itself, *no clip authored* | three scene-cell generators: **RandMelody** lead + **Euclid** bass (Surge) + a **Euclid** kick (Cassette Drums); an **LFO** breathes the lead cutoff | **Lines** + wireframe **Mesh** + a **note-bloom** Shape that flashes per note |
 | **signal** | **external pixels** — a real **video clip** into the reactive chain | Cassette Drums + Surge sub bass drive the treatment | **Video** → **Displace** → **Feedback** |
+| **chop** | **sample-slicing** — a real break chopped into a **drum-rack Sampler** + re-sequenced | the bundled `break90.wav` sliced (`slice_to_midi`, 1/16 grid) into a native **Sampler**, re-chopped per section, under a Surge sub — **drums are plugin-free** | a square **ShapeGrid** + solid **Mesh** → **Feedback**, punched per slice hit |
 
 > **Bidirectional / return leg (mirror):** the `viz.warp/glow/feedback/blur` sources feed a visual
 > param's value *back* to an audio param (`connect_mapping` to a `gnode:`/`aparam:`/`param:` dest).
@@ -56,7 +58,7 @@ with the bass.
 ## Run one
 ```sh
 uv run examples/demos/pulse.py       # the songs: pulse / drift / neon / grid
-uv run examples/demos/fracture.py    # the showcases: fracture / mirror / bloom / signal
+uv run examples/demos/fracture.py    # the showcases: fracture / mirror / bloom / signal / chop
 ```
 Each script clears the session, authors the scene + visual graph + bridge, starts playback,
 and saves a loadable project under `projects/<name>/`. Load a saved one anytime with the
