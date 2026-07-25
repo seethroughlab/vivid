@@ -583,7 +583,10 @@ void register_introspection_handlers(Handlers& handlers_) {
                             "track_" + std::to_string(P::session_track_id(c.session, t)) + ".transient",
                             "track_" + std::to_string(P::session_track_id(c.session, t)) + ".low",
                             "track_" + std::to_string(P::session_track_id(c.session, t)) + ".mid",
-                            "track_" + std::to_string(P::session_track_id(c.session, t)) + ".high"
+                            "track_" + std::to_string(P::session_track_id(c.session, t)) + ".high",
+                            "track_" + std::to_string(P::session_track_id(c.session, t)) + ".note",
+                            "track_" + std::to_string(P::session_track_id(c.session, t)) + ".velocity",
+                            "track_" + std::to_string(P::session_track_id(c.session, t)) + ".gate"
                         }} };
             if (P::session_track_audio_graph_ok(c.session, t)) jt["audio_graph"] = audio_graph_summary(c.session, t);
             audio.push_back(jt);
@@ -1168,20 +1171,26 @@ void register_introspection_handlers(Handlers& handlers_) {
     // params from list_operators / list_audio_ops (build "node:<id>.<param>" or "param:t:d:i").
     handlers_["list_mapping_sources"] = [](const ControlCtx& c, const json&) {
         if (!c.session) return err(code::kNoSession, "no session");
-        static const char* kKinds[] = { "level", "transient", "low", "mid", "high" };
+        // Kinds 0-4 are audio analysis (master + track). Kinds 5-7 are per-track NOTE sources: they
+        // read the track's MIDI note stream directly (pitch/velocity/note-on), so a note can drive a
+        // visual param by WHICH note it is, not just how loud it sounds. Master has no notes.
+        static const char* kKinds[] = { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
         static const char* kDescs[] = { "overall loudness", "attack/onset energy",
-                                        "low-band energy", "mid-band energy", "high-band energy" };
+                                        "low-band energy", "mid-band energy", "high-band energy",
+                                        "most-recent note pitch, 0..1 over MIDI 0..127 (held)",
+                                        "most-recent note velocity, 0..1 (held)",
+                                        "note-on flash (pulses to 1 on each note-on)" };
         json sources = json::array();
-        auto emit = [&](const std::string& prefix, const std::string& label) {
-            for (int k = 0; k < 5; ++k)
+        auto emit = [&](const std::string& prefix, const std::string& label, bool with_notes) {
+            for (int k = 0; k < (with_notes ? 8 : 5); ++k)
                 sources.push_back({ {"source", prefix + "." + kKinds[k]}, {"kind", kKinds[k]},
                                     {"label", label + " " + kKinds[k]}, {"range", {0.0, 1.0}},
                                     {"description", kDescs[k]} });
         };
-        emit("master", "master");
+        emit("master", "master", false);
         for (int t = 0; t < P::session_track_count(c.session); ++t)
             emit("track_" + std::to_string(P::session_track_id(c.session, t)),
-                 P::session_track_name(c.session, t));
+                 P::session_track_name(c.session, t), true);
         json r = ok(); r["sources"] = sources; return r;
     };
 

@@ -189,6 +189,7 @@ struct Window {
     // Frame-side display smoothing (per window).
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
     float trkReact[vivid::session::kMaxTracks] = {0}, trkTrHold[vivid::session::kMaxTracks] = {0};
+    float trkNoteHold[vivid::session::kMaxTracks] = {0};   // decayed note-on flash (per-track note.gate source)
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }

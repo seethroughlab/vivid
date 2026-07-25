@@ -155,6 +155,9 @@ void  session_clear_cross_track_edges(Session*);
 float session_track_level(Session*, int track);      // per-track output RMS (meters)
 float session_track_transient(Session*, int track);  // per-track onset detector (0..1)
 float session_track_band(Session*, int track, int band);  // 0=low 1=mid 2=high energy
+float session_track_note_pitch(Session*, int track);      // last note-on pitch/127, held (0..1)
+float session_track_note_velocity(Session*, int track);   // last note-on velocity, held (0..1)
+float session_track_note_gate(Session*, int track);       // 1.0 on a block with a note-on (frame decays to a flash)
 int   session_track_capture_snapshot(Session*, int track, double seconds,
                                      std::vector<float>& outL, std::vector<float>& outR,
                                      uint32_t* out_sample_rate);  // recent post-gain track audio

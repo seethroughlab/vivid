@@ -14,12 +14,12 @@ the bridge, authored in ~60 readable lines.
 | **neon** | synthwave, 100 BPM | *Sync Pluck* arp + *Square Bass*, backbeat | retro-vector: cyan **Lines** rings + a magenta wireframe **Mesh** → Feedback glow |
 | **grid** | glitch / IDM, 90 BPM | *Digi* lead (bitcrushed) + *FM Bass* | technical/wireframe: a teal **Lines** grid + a wireframe **Mesh** icosahedron |
 
-## The five mechanism showcases (breadth of the engine)
+## The six mechanism showcases (breadth of the engine)
 
-Where the songs show genre range over one pattern (audio→visual reactivity), these five each
+Where the songs show genre range over one pattern (audio→visual reactivity), these six each
 headline a *distinct Vivid mechanism* that the songs don't exercise. Most lean on bundled `media/` +
-native audio; **bloom** needs Surge for its voice, and **chop** needs Surge only for its sub (its
-drums are the plugin-free native Sampler).
+native audio; **bloom** needs Surge for its voice, **chop** needs Surge only for its sub (its drums
+are the plugin-free native Sampler), and **prism** needs Surge for its melodic voice.
 
 | demo | headlines | sound | visual |
 |------|-----------|-------|--------|
@@ -28,6 +28,7 @@ drums are the plugin-free native Sampler).
 | **bloom** | **note-as-signal** — the music writes itself, *no clip authored* | three scene-cell generators: **RandMelody** lead + **Euclid** bass (Surge) + a **Euclid** kick (Cassette Drums); an **LFO** breathes the lead cutoff | **Lines** + wireframe **Mesh** + a **note-bloom** Shape that flashes per note |
 | **signal** | **external pixels** — a real **video clip** into the reactive chain | Cassette Drums + Surge sub bass drive the treatment | **Video** → **Displace** → **Feedback** |
 | **chop** | **sample-slicing** — a real break chopped into a **drum-rack Sampler** + re-sequenced | the bundled `break90.wav` sliced (`slice_to_midi`, 1/16 grid) into a native **Sampler**, re-chopped per section, under a Surge sub — **drums are plugin-free** | a square **ShapeGrid** + solid **Mesh** → **Feedback**, punched per slice hit |
+| **prism** | **notes drive the picture directly** — pitch becomes colour (audio analysis can't know *which* note) | a Surge pluck plays an ascending A-minor pentatonic run + a kick | a solid **Mesh** whose hue tracks `track.note` (blue→red by pitch), size tracks `.velocity`, spin flashes on `.gate`; the **ShapeGrid** tracks `master.transient` (loudness) for contrast |
 
 > **Bidirectional / return leg (mirror):** the `viz.warp/glow/feedback/blur` sources feed a visual
 > param's value *back* to an audio param (`connect_mapping` to a `gnode:`/`aparam:`/`param:` dest).

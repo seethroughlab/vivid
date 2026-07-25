@@ -233,6 +233,14 @@ struct Track {
     std::atomic<float>    transient{0.f};
     float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
     std::atomic<float>    band_low{0.f}, band_mid{0.f}, band_high{0.f};  // 3-band energy
+    // Note-derived bridge sources (the note peer of level/transient): the audio thread scans this
+    // block's t.nev note stream and publishes the most-recent note-on's pitch/velocity + a note-on
+    // flag, so MIDI notes can drive visual params DIRECTLY (pitch->colour etc.), not just via the
+    // rendered signal. pitch/vel are HELD (a sustained note keeps its value); gate is a per-block
+    // note-on pulse (the frame side decays it into a flash). Written audio-thread, read UI-thread.
+    std::atomic<float>    note_pitch{0.f};   // last note-on pitch / 127 (0..1)
+    std::atomic<float>    note_vel{0.f};     // last note-on velocity (0..1)
+    std::atomic<float>    note_gate{0.f};    // 1.0 in a block containing a note-on, else 0.0
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::mutex            capture_mtx;      // audio thread uses try_lock; UI snapshots may block

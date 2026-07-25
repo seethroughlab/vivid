@@ -182,6 +182,14 @@ void publish_bridge_sources(App& app, Window& win) {
         graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f));
         graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f));
         graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f));
+        // Note-derived sources (kinds 5/6/7): pitch + velocity are already 0..1 and HELD (no gain, no
+        // decay — a sustained note keeps its colour). gate is a note-on flag decayed into a flash,
+        // exactly like the transient hold above.
+        graph.set_value(char_id_for(tid, 5), vivid::session::session_track_note_pitch(app.session, t));
+        graph.set_value(char_id_for(tid, 6), vivid::session::session_track_note_velocity(app.session, t));
+        win.trkNoteHold[t] *= 0.85f;
+        win.trkNoteHold[t] = std::max(win.trkNoteHold[t], vivid::session::session_track_note_gate(app.session, t));
+        graph.set_value(char_id_for(tid, 7), std::min(1.0f, win.trkNoteHold[t]));
     }
     graph.apply_params();
 }

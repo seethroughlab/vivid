@@ -13,11 +13,13 @@ namespace vivid::ui {
 
 
 // ---- data-source identity + uniform routing ----
-static const char* kKindName[5] = { "level", "transient", "low", "mid", "high" };
+// Kinds 0-4 are audio analysis (master + track); 5-7 are per-track NOTE sources (the char_id stride
+// is 8, so they slot into the reserved gap). Master has no notes, so only tracks ever use 5-7.
+static const char* kKindName[8] = { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
 static std::string source_id_for(int char_id) {  // master=kind, track t = 100+t*8+kind
     if (char_id < 100) return std::string("master.") + (char_id >= 0 && char_id < 5 ? kKindName[char_id] : "level");
     const int t = (char_id - 100) / 8, kind = (char_id - 100) % 8;
-    return "track_" + std::to_string(t) + "." + (kind >= 0 && kind < 5 ? kKindName[kind] : "level");
+    return "track_" + std::to_string(t) + "." + (kind >= 0 && kind < 8 ? kKindName[kind] : "level");
 }
 
 // ---- Tab chooser: the op entries come from the operator registry (so new ops
