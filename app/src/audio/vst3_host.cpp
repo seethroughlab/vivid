@@ -842,6 +842,19 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
                 t.node_scope_head[s.out_buf] = h;
             }
         }
+        // Gated per-node FFT capture: for each WATCHED node (mask bit set, set by the UI when its fft
+        // source is consumed), copy this block's CONTIGUOUS output samples into its analysis ring. The
+        // frame side FFTs it. Ring is UI-allocated; the acquire-load of the mask pairs with that.
+        if (const uint64_t am = t.node_analyze_mask.load(std::memory_order_acquire); am && !t.node_an_ring.empty()) {
+            for (const vivid::audio::CompiledStep& s : cg.steps) {
+                if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes || !(am & (uint64_t(1) << s.out_buf))) continue;
+                const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
+                float* ring = t.node_an_ring.data() + static_cast<size_t>(s.out_buf) * kAnalysisN;
+                uint32_t h = t.node_an_pos[s.out_buf];
+                for (uint32_t i = 0; i < frames; ++i) { ring[h & (kAnalysisN - 1)] = nl[i]; ++h; }
+                t.node_an_pos[s.out_buf] = h;
+            }
+        }
         const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
         std::memcpy(L, outL, frames * sizeof(float));
         std::memcpy(R, outL + stride, frames * sizeof(float));
@@ -1652,6 +1665,29 @@ int session_track_analysis_copy(Session* s, int t, float* out, int n) {
 int session_master_analysis_copy(Session* s, float* out, int n) {
     if (!s || !out || n <= 0) return 0;
     return copy_analysis_ring(s->master.an_ring, s->master.an_pos, out, n);
+}
+// Set which of a track's audio-graph nodes to capture for FFT (bit i == node index i). UI thread:
+// allocate the per-node ring on the first non-zero mask (before the release-store the RT thread reads),
+// so the audio thread only ever touches a stable, fully-allocated buffer.
+void session_set_track_node_analyze_mask(Session* s, int t, uint64_t mask) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
+    Track& tr = *s->tracks[t];
+    if (mask && tr.node_an_ring.empty()) {
+        tr.node_an_ring.assign(static_cast<size_t>(kGraphMaxNodes) * kAnalysisN, 0.f);
+        tr.node_an_pos.assign(kGraphMaxNodes, 0u);
+    }
+    tr.node_analyze_mask.store(mask, std::memory_order_release);
+}
+// Snapshot a watched node's recent samples (oldest→newest) for the frame-side FFT. 0 if the node isn't
+// being captured (ring unallocated / bit clear / unknown id).
+int session_track_node_analysis_copy(Session* s, int t, int node_id, float* out, int n) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
+    Track& tr = *s->tracks[t];
+    if (tr.node_an_ring.empty()) return 0;
+    int idx;
+    { std::lock_guard<std::mutex> lk(tr.gmtx); idx = tr.agraph.node_index(node_id); }
+    if (idx < 0 || idx >= kGraphMaxNodes) return 0;
+    return copy_analysis_ring(tr.node_an_ring.data() + static_cast<size_t>(idx) * kAnalysisN, tr.node_an_pos[idx], out, n);
 }
 // Snapshot a track's currently-held notes (lock-free: read count then array; a torn read is benign).
 int session_track_active_notes(Session* s, int t, ActiveNote* out, int max) {

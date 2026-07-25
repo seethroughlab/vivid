@@ -167,6 +167,8 @@ float session_track_note_gate(Session*, int track);       // 1.0 on a block with
 int   session_track_analysis_copy(Session*, int track, float* out, int n);  // recent mono samples (frame-side FFT)
 int   session_master_analysis_copy(Session*, float* out, int n);            // recent master samples (frame-side FFT)
 int   session_track_active_notes(Session*, int track, ActiveNote* out, int max);  // currently-held notes; returns count
+void  session_set_track_node_analyze_mask(Session*, int track, uint64_t mask);    // gate per-node FFT capture (bit=node idx)
+int   session_track_node_analysis_copy(Session*, int track, int node_id, float* out, int n);  // watched node's recent samples
 int   session_track_capture_snapshot(Session*, int track, double seconds,
                                      std::vector<float>& outL, std::vector<float>& outR,
                                      uint32_t* out_sample_rate);  // recent post-gain track audio

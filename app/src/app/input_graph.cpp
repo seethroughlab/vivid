@@ -332,6 +332,28 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
     return false;
 }
 
+// Right-click an AUDIO-GRAPH node → open the "→ visuals" menu carrying (track, node id). Mirrors the
+// audio editor's own on_down setup (resolve the selected track, prime the camera/bounds) so the
+// cursor→world hit-test lands on the same boxes the editor draws.
+bool audio_node_rclick(Window& win, App& app, int button, int action, double mx, double my) {
+    if (button != GLFW_MOUSE_BUTTON_RIGHT || action != GLFW_PRESS || !app.audio_graph || !app.session) return false;
+    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top())) return false;
+    AudioNodeGraph* ag = app.audio_graph;
+    const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+    ag->set_source(app.session, tr);
+    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    ag->set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    double wmx, wmy; ag->view().to_world(mx, my, wmx, wmy);
+    for (const AudioNodeBox& b : ag->layout()) {
+        if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
+            win.audio_node_menu = { true, static_cast<float>(mx), static_cast<float>(my), tr, b.node_id };
+            win.menu.open = false; win.node_menu.open = false;   // one menu at a time
+            return true;
+        }
+    }
+    return false;
+}
+
 // Complete an audio-graph rewire: a release over another node's input port connects the edge.
 // Returns true when a rewire drag was in progress (consumes the release).
 // Node context menu press: "Open source" (custom nodes) or "Clone & Edit" (built-ins). Returns

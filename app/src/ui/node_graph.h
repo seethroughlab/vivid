@@ -40,6 +40,9 @@ public:
 
     void set_value(int char_id, float v);   // legacy int-char_id publish (master/track scalar); wraps set_source_by_id
     void set_source_by_id(const std::string& source, float v);   // canonical: publish a source value by its string id
+    // True if any source id starting with `prefix` is CONSUMED — wired to a param (a mapping) or shown
+    // as a spawned data node. Lets the engine gate expensive per-node analysis (FFT) to what's on screen.
+    bool source_consumed(const std::string& prefix) const;
     void apply_params();   // resolve each node's params from the registry; publish viz.* sources
     void add_data_node(const std::string& title, const std::string& source);
     void add_data_node(const std::string& title, int char_id);   // legacy (packed master/track char_id)
