@@ -47,6 +47,32 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
     return true;
 }
 
+// Click in the audio-node "→ visuals" menu: spawn a bridge data-node in the VISUALS graph sourced from
+// this audio node (node_<track-stable-id>_<node>.<rms|fft.k>). Cross-surface, exactly like dock_char_menu.
+bool audio_node_menu_click(Window& win, App& app, double mx, double my) {
+    if (!win.audio_node_menu.open) return false;
+    const AudioNodeMenu m = win.audio_node_menu;
+    for (int j = 0; j < kNumAudioNodeChars; ++j) {
+        const Rect r = { m.x, m.y + j * 26.f, 184.f, 26.f };
+        if (hit(r, mx, my) && app.graph && app.session) {
+            const int tid = S::session_track_id(app.session, m.track);
+            const std::string src = "node_" + std::to_string(tid) + "_" + std::to_string(m.node) + "." + kAudioNodeChars[j].suffix;
+            const char* nm = "node";   // node op type, for the label
+            const int nn = S::session_track_audio_graph_node_count(app.session, m.track);
+            for (int i = 0; i < nn; ++i)
+                if (S::session_track_audio_graph_node_id(app.session, m.track, i) == m.node) {
+                    const char* t = S::session_track_audio_graph_node_type(app.session, m.track, i);
+                    if (t && *t) nm = t; break;
+                }
+            app.graph->add_data_node(std::string(nm) + " " + kAudioNodeChars[j].label, src);
+            std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' -> %s\n", nm, kAudioNodeChars[j].label, src.c_str());
+            break;
+        }
+    }
+    win.audio_node_menu.open = false;
+    return true;
+}
+
 // The mapping-source picker (the bridge return path) — the only dock menu left. The "+ FX"/"+ Src"
 // pickers and the "+ Track" instrument menu are gone: adding anything is the Tab chooser now.
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {

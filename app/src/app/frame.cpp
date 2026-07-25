@@ -208,20 +208,27 @@ void publish_bridge_sources(App& app, Window& win) {
         graph.set_value(char_id_for(tid, 7), std::min(1.0f, win.trkNoteHold[t]));
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
             publish_fft("track_" + std::to_string(tid), ns);
-        // Per-audio-graph-node output level: node_<track>_<nodeid>.rms, from the node's output scope
-        // ring. Lets any node in a track's audio graph (an instrument/effect/output) drive a visual.
-        // (Per-node FFT + a modulator/LFO control-out source are follow-ons.)
+        // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
+        // ring). FFT (node_<t>_<nid>.fft.k) is CONNECTION-GATED: only nodes whose fft source is consumed
+        // (wired/spawned) get a capture bit set + get FFT'd — so an unwatched node costs nothing.
         const int nn = S::session_track_audio_graph_node_count(app.session, t);
+        uint64_t analyze_mask = 0;
         for (int i = 0; i < nn; ++i) {
             const int nid = S::session_track_audio_graph_node_id(app.session, t, i);
             if (nid < 0) continue;
-            float sc[S::kAnalysisN < 256 ? S::kAnalysisN : 256];
+            const std::string nsrc = "node_" + std::to_string(tid) + "_" + std::to_string(nid);
+            float sc[256];
             const int nsc = S::session_track_audio_graph_node_scope(app.session, t, i, sc, 256);
             double ss = 0; for (int j = 0; j < nsc; ++j) ss += static_cast<double>(sc[j]) * sc[j];
             const float rms = nsc > 0 ? static_cast<float>(std::sqrt(ss / nsc)) : 0.f;
-            graph.set_source_by_id("node_" + std::to_string(tid) + "_" + std::to_string(nid) + ".rms",
-                                   std::min(1.0f, rms * 5.0f));
+            graph.set_source_by_id(nsrc + ".rms", std::min(1.0f, rms * 5.0f));
+            if (i < 64 && graph.source_consumed(nsrc + ".fft")) {   // gated: capture + FFT only when watched
+                analyze_mask |= (uint64_t(1) << i);
+                if (int nns = S::session_track_node_analysis_copy(app.session, t, nid, an_buf, S::kAnalysisN); nns > 1)
+                    publish_fft(nsrc, nns);
+            }
         }
+        S::session_set_track_node_analyze_mask(app.session, t, analyze_mask);
         // Publish this track's held notes to the active-notes bus (keyed by track INDEX = the
         // instancer op's `track` param), so a note-instancer GPU op can draw one instance per live note.
         S::ActiveNote an[S::kMaxHeld];
@@ -619,6 +626,7 @@ void run_frame_loop(App& app, Window& win) {
             draw_map_menu(ui, win.map_menu);
             draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor
             draw_node_menu(ui, win);
+            draw_audio_node_menu(ui, win);   // right-click audio-graph node "→ visuals"
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top

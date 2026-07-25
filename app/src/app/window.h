@@ -28,6 +28,10 @@ struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };
 // amount / curve / bipolar / invert, or removes it. Geometry is shared by draw + input via the
 // mod_editor_* helpers below so the hit-rects match what's drawn.
 struct ModEditor { bool open = false; float x = 0, y = 0; int node = -1; int param = -1; int from = -1; };
+
+// Right-click "→ visuals" menu on an AUDIO-GRAPH node: spawns bridge data-nodes in the visuals graph
+// for this node's sources (node_<track-stable-id>_<node>.rms / .fft.k). `track` is the track index.
+struct AudioNodeMenu { bool open = false; float x = 0, y = 0; int track = -1; int node = -1; };
 namespace ui {
 constexpr float kModEdW = 184.f, kModEdRowH = 26.f, kModEdHdr = 24.f;
 inline Rect mod_editor_panel(const ModEditor& m) { return { m.x, m.y, kModEdW, kModEdHdr + 5.f * kModEdRowH + 6.f }; }
@@ -130,6 +134,7 @@ struct Window {
     int         music_eval_job  = -1;
     CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
+    AudioNodeMenu audio_node_menu;                 // right-click on an audio-graph node ("→ visuals")
     ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;

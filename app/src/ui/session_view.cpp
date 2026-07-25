@@ -825,6 +825,31 @@ void draw_node_menu(Renderer2D& ui, const Window& w) {
     ui.draw_text(m.x + 12.f, m.y + 5.f, label, c[0], c[1], c[2], 1.0f, enabled ? 0.88f : 0.82f);
 }
 
+// Right-click "→ visuals" menu on an audio-graph node: RMS + FFT-band shortcuts to send to the visuals graph.
+void draw_audio_node_menu(Renderer2D& ui, const Window& w) {
+    const AudioNodeMenu& m = w.audio_node_menu;
+    if (!m.open) return;
+    const Style& sty = style();
+    const float ww = 184.f;
+    const char* nm = "node";
+    if (w.app && w.app->session) {   // header = the node's op type
+        const int nn = vivid::session::session_track_audio_graph_node_count(w.app->session, m.track);
+        for (int i = 0; i < nn; ++i)
+            if (vivid::session::session_track_audio_graph_node_id(w.app->session, m.track, i) == m.node) {
+                const char* t = vivid::session::session_track_audio_graph_node_type(w.app->session, m.track, i);
+                if (t && *t) nm = t;
+                break;
+            }
+    }
+    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", nm);
+    overlay_panel(ui, { m.x, m.y - 22.f, ww, 22.f + kNumAudioNodeChars * 26.f }, hdr, sty.teal);
+    for (int j = 0; j < kNumAudioNodeChars; ++j) {
+        const float iy = m.y + j * 26.f;
+        item_box(ui, { m.x, iy, ww, 26.f }, sty.teal);
+        ui.draw_text(m.x + 14.f, iy + 6.f, kAudioNodeChars[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+    }
+}
+
 // ADR-0014: the floating OUTPUT preview's chrome. The body is NOT filled here — the output FBO was
 // already blitted into it by the GPU pass — so this only draws the frame, header and handles over
 // it. Shadowed, because unlike a region panel this thing floats above the graph canvas.

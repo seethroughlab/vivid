@@ -360,6 +360,14 @@ struct Track {
     // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
     std::vector<float>               node_scope;       // kGraphMaxNodes * kScopeN
     std::vector<uint32_t>            node_scope_head;  // kGraphMaxNodes write positions
+    // Gated per-node FFT: the UI sets a bit per node whose fft source is CONSUMED (wired/spawned); the
+    // audio thread then captures that node's CONTIGUOUS block samples into node_an_ring for the
+    // frame-side FFT. Allocated ONCE on the UI thread when the mask first goes non-zero (the mask store
+    // is the release barrier), so the RT thread only ever reads a stable, fully-allocated buffer.
+    // Unwatched nodes (mask bit clear) cost nothing.
+    std::atomic<uint64_t>            node_analyze_mask{0};   // bit i (== out_buf == node index) → capture node i
+    std::vector<float>               node_an_ring;           // kGraphMaxNodes * kAnalysisN (lazy)
+    std::vector<uint32_t>            node_an_pos;             // kGraphMaxNodes write positions
     // ADR-0022: each modulator node's latest 0..1 output, published for the UI (indexed by node
     // index == out_buf). The UI applies the SAME control_resolve() the audio thread uses, so the
     // live dot on a modulated knob never drifts from what you hear. Display-only, single float —

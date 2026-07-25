@@ -39,12 +39,14 @@ bool param_chooser_click(Window& win, App& app, double mx, double my);
 // ---- node graphs: visuals + audio-graph deep view (input_graph.cpp) ----
 void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   // zoom (never consumes)
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
+bool audio_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click audio node → visuals menu
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
 bool mod_editor_press(Window& win, App& app, double mx, double my);                            // ADR-0022 shape editor press (modal)
 void mod_editor_drag(Window& win, App& app, double mx, double my);                             // ...its slider drag (frame loop)
 
 // ---- bottom dock: menus + device chain + node inspector (input_dock.cpp) ----
 bool dock_char_menu(Window& win, App& app, double mx, double my);              // characteristics -> data node
+bool audio_node_menu_click(Window& win, App& app, double mx, double my);       // audio-node "→ visuals" item -> data node
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks);     // fx / +Track / map pickers
 bool dock_inspector(Window& win, App& app, double mx, double my);             // visual-node param inspector
 

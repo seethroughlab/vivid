@@ -146,8 +146,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
                     for (int i = 0; i < nn; ++i) {
                         const int nid = S::session_track_audio_graph_node_id(app->session, t, i);
                         if (nid < 0) continue;
-                        cat.push_back({ base + " \xC2\xB7 node " + std::to_string(nid) + " RMS",
-                                        "node_" + std::to_string(tid) + "_" + std::to_string(nid) + ".rms" });
+                        const std::string np = "node_" + std::to_string(tid) + "_" + std::to_string(nid);
+                        const std::string nb = base + " \xC2\xB7 node " + std::to_string(nid) + " ";
+                        cat.push_back({ nb + "RMS", np + ".rms" });
+                        for (int k = 0; k < S::kFftBands; ++k)   // gated: FFT only runs once one is wired/spawned
+                            cat.push_back({ nb + "FFT " + std::to_string(k), np + ".fft." + std::to_string(k) });
                     }
                 }
             }
@@ -398,6 +401,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     // Right-click a visuals op node -> its context menu (open source / clone).
     if (vivid::input::graph_node_rclick(*win, *app, button, action, mx, my)) return;
+    // Right-click an audio-graph node -> its "→ visuals" menu (send rms/fft to the visuals graph).
+    if (vivid::input::audio_node_rclick(*win, *app, button, action, mx, my)) return;
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         const int src = app->session ? meter_hit(tracks, scenes, mx - win->sidebar_w, my) : -2;
@@ -438,6 +443,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
 
     // Characteristics menu: pick a characteristic -> spawn a bridge data node in the graph.
     if (vivid::input::dock_char_menu(*win, *app, mx, my)) return;
+    // Audio-node "→ visuals" menu: pick rms/fft -> spawn a node-source data node in the visuals graph.
+    if (vivid::input::audio_node_menu_click(*win, *app, mx, my)) return;
     // Node context menu: "Open source" (custom nodes) or "Clone & Edit" (built-ins).
     if (vivid::input::graph_nodemenu(*win, *app, mx, my)) return;
     // Device pickers (priority): FX effect / +Track instrument / mapping source.

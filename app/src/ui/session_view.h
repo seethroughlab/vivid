@@ -24,6 +24,7 @@ void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
 void draw_mod_editor(Renderer2D& ui, const ModEditor& m, vivid::session::Session* s, int track);
 void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
 void draw_node_menu(Renderer2D& ui, const Window& w);   // right-click op-node menu (open source / clone)
+void draw_audio_node_menu(Renderer2D& ui, const Window& w);   // right-click audio-node "→ visuals" menu
 
 // Which visuals source is under (mx,my): -1 = master, >=0 = track, -2 = none.
 int meter_hit(int tracks, int scenes, double mx, double my);

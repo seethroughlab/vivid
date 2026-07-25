@@ -85,6 +85,11 @@ int NodeGraph::find_source_node(const std::string& src) const {
         if (data_[i].source == src) return i;
     return -1;
 }
+bool NodeGraph::source_consumed(const std::string& prefix) const {
+    for (const auto& m : reg_.mappings()) if (m.source.rfind(prefix, 0) == 0) return true;   // wired to a param
+    for (const auto& d : data_)           if (d.source.rfind(prefix, 0) == 0) return true;   // spawned as a data node
+    return false;
+}
 
 // ---- op-node layout (positions parallel to vg_->nodes()) ----
 void NodeGraph::sync_op_pos() {
