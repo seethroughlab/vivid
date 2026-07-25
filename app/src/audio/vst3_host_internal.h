@@ -73,6 +73,7 @@ constexpr double   kTrackCaptureSeconds = 30.0;
 constexpr size_t   kGraphMaxNotes = 512;
 constexpr int      kScopeN        = 128;   // per-node output-waveform ring length (UI preview)
 constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
+// kAnalysisN / kFftBands live in the public vst3_host.h (shared with the frame-side FFT publisher).
 
 // MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
@@ -241,6 +242,11 @@ struct Track {
     std::atomic<float>    note_pitch{0.f};   // last note-on pitch / 127 (0..1)
     std::atomic<float>    note_vel{0.f};     // last note-on velocity (0..1)
     std::atomic<float>    note_gate{0.f};    // 1.0 in a block containing a note-on, else 0.0
+    // Frame-side spectrum: the audio thread copies each block's mono samples into this ring (cheap,
+    // lock-free); the UI thread snapshots it and runs the FFT (see mini_fft.h). Torn read = a harmless
+    // 1-frame spectral blip, like node_scope.
+    float                 an_ring[kAnalysisN] = {0};
+    uint32_t              an_pos = 0;
     float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
     std::vector<float>    bl, br;          // planar scratch
     std::mutex            capture_mtx;      // audio thread uses try_lock; UI snapshots may block
@@ -422,6 +428,7 @@ struct Master {
     std::atomic<float> gain{1.f};
     std::atomic<float> level{0.f}, transient{0.f};
     std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};
+    float an_ring[kAnalysisN] = {0}; uint32_t an_pos = 0;   // mono sample ring for the frame-side FFT
     float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
     // ADR-0022 P2b.3c: the master's SESSION-GLOBAL node id — the sink of the one session graph, and
     // the first citizen of the global id space (assigned 0 at session init). `is_master` marks it as

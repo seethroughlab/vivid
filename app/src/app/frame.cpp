@@ -29,6 +29,7 @@
 #include "ui/clip_editor.h"
 #include "transport.h"
 #include "audio/vst3_host.h"
+#include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "audio/vst3_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
@@ -162,6 +163,18 @@ void publish_bridge_sources(App& app, Window& win) {
     if (!app.transport || !app.graph) return;
     Transport& transport = *app.transport;
     NodeGraph& graph = *app.graph;
+    namespace S = vivid::session;
+    // Frame-side spectrum: snapshot a source's recent samples and publish <src>.fft.0..N-1. Static
+    // scratch is fine — this runs once per frame on the UI thread. (The audio thread only paid for a
+    // ring copy.) sr is fixed at 48k for the bin→Hz band mapping; a device-rate mismatch only nudges
+    // band edges cosmetically.
+    static float an_buf[S::kAnalysisN], an_re[S::kAnalysisN], an_im[S::kAnalysisN];
+    auto publish_fft = [&](const std::string& src_prefix, int nsamp) {
+        float bands[S::kFftBands];
+        vivid::audio::spectrum_log_bands(an_buf, nsamp, 48000.f, bands, S::kFftBands, an_re, an_im);
+        for (int k = 0; k < S::kFftBands; ++k)
+            graph.set_source_by_id(src_prefix + ".fft." + std::to_string(k), bands[k]);
+    };
     const float level = transport.level.load(std::memory_order_relaxed);
     win.react += (std::min(1.0f, level * 5.0f) - win.react) * 0.3f;
     win.trHold *= 0.85f;
@@ -171,6 +184,8 @@ void publish_bridge_sources(App& app, Window& win) {
     graph.set_value(2, std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
     graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
     graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
+    if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
+        publish_fft("master", nm);
     for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
         const float lv = vivid::session::session_track_level(app.session, t);
         win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
@@ -190,6 +205,22 @@ void publish_bridge_sources(App& app, Window& win) {
         win.trkNoteHold[t] *= 0.85f;
         win.trkNoteHold[t] = std::max(win.trkNoteHold[t], vivid::session::session_track_note_gate(app.session, t));
         graph.set_value(char_id_for(tid, 7), std::min(1.0f, win.trkNoteHold[t]));
+        if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
+            publish_fft("track_" + std::to_string(tid), ns);
+        // Per-audio-graph-node output level: node_<track>_<nodeid>.rms, from the node's output scope
+        // ring. Lets any node in a track's audio graph (an instrument/effect/output) drive a visual.
+        // (Per-node FFT + a modulator/LFO control-out source are follow-ons.)
+        const int nn = S::session_track_audio_graph_node_count(app.session, t);
+        for (int i = 0; i < nn; ++i) {
+            const int nid = S::session_track_audio_graph_node_id(app.session, t, i);
+            if (nid < 0) continue;
+            float sc[S::kAnalysisN < 256 ? S::kAnalysisN : 256];
+            const int nsc = S::session_track_audio_graph_node_scope(app.session, t, i, sc, 256);
+            double ss = 0; for (int j = 0; j < nsc; ++j) ss += static_cast<double>(sc[j]) * sc[j];
+            const float rms = nsc > 0 ? static_cast<float>(std::sqrt(ss / nsc)) : 0.f;
+            graph.set_source_by_id("node_" + std::to_string(tid) + "_" + std::to_string(nid) + ".rms",
+                                   std::min(1.0f, rms * 5.0f));
+        }
     }
     graph.apply_params();
 }

@@ -30,7 +30,8 @@ namespace vivid::input {
 // node in the visuals graph, encoded by the track's STABLE id so the wire follows the track.
 bool dock_char_menu(Window& win, App& app, double mx, double my) {
     if (!win.menu.open) return false;
-    for (int j = 0; j < kNumChars; ++j) {
+    const int nc = win.menu.src < 0 ? kNumCharsMaster : kNumChars;   // master has no note sources
+    for (int j = 0; j < nc; ++j) {
         const Rect r = { win.menu.x, win.menu.y + j * 26.f, 184.f, 26.f };
         if (hit(r, mx, my) && app.graph) {
             const int src = win.menu.src;   // -1 master, else a session track index
