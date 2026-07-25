@@ -41,13 +41,17 @@ def build(v: Vivid, save: bool = True):
         notes.append({"p": arp_pitches[i % 8] + 12, "s": i * 0.5, "d": 0.4, "v": 0.7})  # trailing sweep
     v.set_clip(lead, 0, notes, 8.0)
 
-    # Visual: NoteInstancer (track 0) → Feedback (soft trails) → Output.
+    # Visual (composable): a Notes source node (track 0's live notes) DRIVES a generic Instancer node
+    # through a graph edge → Feedback (soft trails) → Output. The Notes node is first-class + visible;
+    # the Instancer just consumes whatever note-set it's fed.
     out = find(v.graph()["nodes"], "Output")
-    ni = v.add_node("NoteInstancer")
-    for k, val in dict(track=0.0, size=0.6, spread=0.85, trail=0.4).items():
-        v.set_node_param(ni, k, val)
+    notes = v.add_node("Notes"); v.set_node_param(notes, "track", 0.0)
+    inst = v.add_node("Instancer")
+    for k, val in dict(size=0.6, spread=0.85, trail=0.4).items():
+        v.set_node_param(inst, k, val)
+    v.connect(inst, notes)          # Notes → Instancer (the driving edge)
     fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.3)   # light trails; keep dots distinct
-    v.connect(fb, ni)
+    v.connect(fb, inst)
     v.connect(out, fb)
 
     v.launch_scene(0)

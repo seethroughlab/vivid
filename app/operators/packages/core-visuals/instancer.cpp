@@ -1,13 +1,13 @@
-// Core visual package operator: NoteInstancer — draws one glowing instance per LIVE MIDI note of a
-// track (the polyphonic note→visual payoff). Reads the active-notes bus (operator_api/note_bus.h),
-// which the engine fills each frame from the track's currently-held notes. Pitch → x position + hue,
-// velocity → size + brightness; a note-on spawns an instance, a note-off fades it out (arps trail,
-// chords bloom). Vivid's first TRUE GPU-instanced op: one static unit-quad + a per-instance buffer,
-// drawn with a single instanced draw. Additive blend over black so it composites (ADD) cleanly.
+// Core visual package operator: Instancer — draws one glowing instance per note of an incoming
+// NOTE-SET value (from a Notes node, or any VividNoteSet producer, on its input edge). Pitch → x +
+// hue, velocity → size + brightness; a note-on spawns an instance, a note-off fades it out (chords
+// bloom, arps trail). DRIVEN by the graph edge, not by reading notes internally — so the note source
+// is a first-class, visible, re-wireable node. Vivid's first TRUE GPU-instanced op (a static unit
+// quad + a per-instance buffer, one instanced draw). Additive over black so it composites (ADD) cleanly.
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_common.h"
-#include "operator_api/note_bus.h"
+#include "operator_api/note_geom.h"   // VividNoteSet, input_notes
 
 #include <algorithm>
 #include <array>
@@ -47,12 +47,11 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1
 )";
 }  // namespace
 
-struct NoteInstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
-    static constexpr const char* kName = "NoteInstancer";
-    static constexpr const char* kDisplayName = "Note Instancer";
-    static constexpr const char* kSummary = "One glowing instance per live MIDI note of a track (pitch->colour, velocity->size); chords bloom, arps trail.";
+struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
+    static constexpr const char* kName = "Instancer";
+    static constexpr const char* kDisplayName = "Instancer";
+    static constexpr const char* kSummary = "Draws one glowing instance per note of an incoming Notes value (pitch->colour, velocity->size); chords bloom, arps trail.";
     static constexpr std::array<const char*, 3> kKeywords = {"notes", "instancer", "geometry"};
-    vivid::Param<float> track{"track", 0.f, 0.f, 31.f};      // which track's held notes (index)
     vivid::Param<float> size{"size", 0.5f, 0.f, 1.f};        // base dot radius
     vivid::Param<float> spread{"spread", 0.8f, 0.f, 1.f};    // horizontal pitch spread
     vivid::Param<float> trail{"trail", 0.35f, 0.f, 1.f};     // note-off fade time
@@ -62,27 +61,29 @@ struct NoteInstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     WGPURenderPipeline pipe_ = nullptr; WGPUBuffer ubo_ = nullptr; WGPUBindGroup bg_ = nullptr;
     WGPUBuffer quad_ = nullptr;                              // static unit quad (6 verts)
     WGPUBuffer inst_ = nullptr; uint32_t inst_cap_ = 0;      // per-instance buffer (grows)
-    // Op-local aging set: a live persists while the note is held (age reset each frame it's in the bus)
-    // and fades over `trail` seconds after release. Keyed by pitch (a held note owns its pitch).
+    // Op-local aging set: a live persists while its note is present on the input edge (age reset each
+    // frame it's in the set) and fades over `trail` seconds after it leaves. Keyed by pitch.
     struct Live { int pitch; float vel; float age; };
     std::vector<Live> lives_;
 
-    ~NoteInstancerOp() override {
+    ~InstancerOp() override {
         if (inst_) wgpuBufferRelease(inst_); if (quad_) wgpuBufferRelease(quad_);
         if (bg_) wgpuBindGroupRelease(bg_); if (ubo_) wgpuBufferRelease(ubo_);
         if (pipe_) wgpuRenderPipelineRelease(pipe_); if (pl_) wgpuPipelineLayoutRelease(pl_);
         if (bgl_) wgpuBindGroupLayoutRelease(bgl_); if (sh_) wgpuShaderModuleRelease(sh_);
     }
     void collect_params(std::vector<vivid::ParamBase*>& o) override {
-        o.push_back(&track); o.push_back(&size); o.push_back(&spread); o.push_back(&trail);
+        o.push_back(&size); o.push_back(&spread); o.push_back(&trail);
     }
-    void collect_ports(std::vector<VividPortDescriptor>& o) override { o.push_back(tex_port("texture", VIVID_PORT_OUTPUT)); }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(VIVID_CUSTOM_REF_PORT("notes", VIVID_PORT_INPUT, VividNoteSet));   // driven by a Notes node
+        o.push_back(tex_port("texture", VIVID_PORT_OUTPUT));
+    }
 
     bool lazy_init(const VividGpuContext* c) {
-        std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "NoteInstancer", err);
+        std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Instancer", err);
         if (!sh_ || !err.empty()) return false;
-        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 16, "NoteInstancer U");
-        // static unit quad
+        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 16, "Instancer U");
         const QVert quad[6] = { {-1,-1},{1,-1},{1,1}, {-1,-1},{1,1},{-1,1} };
         WGPUBufferDescriptor qd{}; qd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; qd.size = sizeof(quad);
         quad_ = wgpuDeviceCreateBuffer(c->device, &qd);
@@ -93,7 +94,6 @@ struct NoteInstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
         WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
         pl_ = wgpuDeviceCreatePipelineLayout(c->device, &pld);
-        // two vertex buffers: [0] the unit quad (per-vertex), [1] the per-instance records
         WGPUVertexAttribute qa[1]{}; qa[0].format = WGPUVertexFormat_Float32x2; qa[0].offset = 0; qa[0].shaderLocation = 0;
         WGPUVertexAttribute ia[3]{};
         ia[0].format = WGPUVertexFormat_Float32x2; ia[0].offset = offsetof(Inst, px);    ia[0].shaderLocation = 1;
@@ -129,20 +129,21 @@ struct NoteInstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         if (!tried_) { tried_ = true; lazy_init(c); }
         if (!pipe_) return;
         const float* p = c->param_values; auto pv = [&](int i, float d) { return p ? p[i] : d; };
-        const int trk = std::clamp(static_cast<int>(std::lround(pv(0, 0.f))), 0, VIVID_NOTE_BUS_TRACKS - 1);
-        const float base = 0.02f + 0.22f * pv(1, size.value);
-        const float spr  = pv(2, spread.value);
-        const float maxAge = 0.04f + 1.4f * pv(3, trail.value);   // fade seconds
+        const float base = 0.02f + 0.22f * pv(0, size.value);
+        const float spr  = pv(1, spread.value);
+        const float maxAge = 0.04f + 1.4f * pv(2, trail.value);   // fade seconds
         const float dt = static_cast<float>(c->delta_time);
 
-        // --- update the aging set from the bus ---
-        VividActiveNote bus[VIVID_MAX_ACTIVE_NOTES];
-        const uint32_t nb = vivid_track_active_notes(trk, bus, VIVID_MAX_ACTIVE_NOTES);
+        // --- update the aging set from the incoming Notes value (the driving edge) ---
+        const VividNoteSet* ns = vivid::notes::input_notes(c, 0);
         for (auto& L : lives_) L.age += dt;
-        for (uint32_t i = 0; i < nb; ++i) {
-            auto it = std::find_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.pitch == bus[i].pitch; });
-            if (it != lives_.end()) { it->age = 0.f; it->vel = bus[i].velocity; }
-            else if (lives_.size() < 64) lives_.push_back({ bus[i].pitch, bus[i].velocity, 0.f });
+        if (ns && ns->notes) {
+            for (uint32_t i = 0; i < ns->count; ++i) {
+                const int pitch = ns->notes[i].pitch; const float vel = ns->notes[i].velocity;
+                auto it = std::find_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.pitch == pitch; });
+                if (it != lives_.end()) { it->age = 0.f; it->vel = vel; }
+                else if (lives_.size() < 64) lives_.push_back({ pitch, vel, 0.f });
+            }
         }
         lives_.erase(std::remove_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.age > maxAge; }), lives_.end());
 
@@ -187,4 +188,4 @@ struct NoteInstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
 };
 
-VIVID_REGISTER(NoteInstancerOp)
+VIVID_REGISTER(InstancerOp)
