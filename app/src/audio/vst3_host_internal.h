@@ -242,6 +242,13 @@ struct Track {
     std::atomic<float>    note_pitch{0.f};   // last note-on pitch / 127 (0..1)
     std::atomic<float>    note_vel{0.f};     // last note-on velocity (0..1)
     std::atomic<float>    note_gate{0.f};    // 1.0 in a block containing a note-on, else 0.0
+    // Polyphonic active-notes channel (the note instancer): the persistent set of currently-HELD notes,
+    // maintained incrementally from t.nev's on/off events (audio thread). held_n_ is the working count;
+    // held_count_ is its published atomic (UI reads count-then-array; a torn read is a 1-frame glitch).
+    struct HeldNote { int pitch; float vel; int32_t note_id; };
+    HeldNote              held_[kMaxHeld];
+    uint32_t              held_n_ = 0;
+    std::atomic<uint32_t> held_count_{0};
     // Frame-side spectrum: the audio thread copies each block's mono samples into this ring (cheap,
     // lock-free); the UI thread snapshots it and runs the FFT (see mini_fft.h). Torn read = a harmless
     // 1-frame spectral blip, like node_scope.

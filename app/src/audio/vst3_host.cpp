@@ -1653,6 +1653,14 @@ int session_master_analysis_copy(Session* s, float* out, int n) {
     if (!s || !out || n <= 0) return 0;
     return copy_analysis_ring(s->master.an_ring, s->master.an_pos, out, n);
 }
+// Snapshot a track's currently-held notes (lock-free: read count then array; a torn read is benign).
+int session_track_active_notes(Session* s, int t, ActiveNote* out, int max) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || max <= 0) return 0;
+    const Track& tr = *s->tracks[t];
+    const int n = std::min<int>(max, std::min<uint32_t>(tr.held_count_.load(std::memory_order_acquire), kMaxHeld));
+    for (int i = 0; i < n; ++i) { out[i].pitch = tr.held_[i].pitch; out[i].vel = tr.held_[i].vel; }
+    return n;
+}
 int session_track_capture_snapshot(Session* s, int t, double seconds, std::vector<float>& outL,
                                    std::vector<float>& outR, uint32_t* out_sample_rate) {
     outL.clear(); outR.clear();
@@ -2281,6 +2289,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // time-sorted by graph_note_input.
             t.nev_clip.clear(); t.eev.clear();
             if (release_all) {
+                t.held_n_ = 0; t.held_count_.store(0, std::memory_order_release);   // stop → no notes held (instancer clears)
                 t.sched.flush(t.nev_clip);                            // play->stop edge: release the clip's held notes
                 // ADR-0022 P3.3: also release every generator's held voices (Euclid/RandMelody/…)
                 // into the same stream — otherwise a note a generator is holding hangs on pause.
@@ -2332,6 +2341,18 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 } else {
                     t.note_gate.store(0.f, std::memory_order_relaxed);   // pitch/vel left held
                 }
+                // Polyphonic active-notes: maintain the persistent held set from this block's on/off
+                // events (dedup/replace by note_id on on; swap-remove on off). Published for the instancer.
+                for (const NoteEvent& e : t.nev) {
+                    if (e.on) {
+                        uint32_t j = 0; for (; j < t.held_n_; ++j) if (t.held_[j].note_id == e.note_id) break;
+                        if (j < t.held_n_) { t.held_[j].pitch = e.pitch; t.held_[j].vel = e.vel; }
+                        else if (t.held_n_ < static_cast<uint32_t>(kMaxHeld)) t.held_[t.held_n_++] = { e.pitch, e.vel, e.note_id };
+                    } else {
+                        for (uint32_t j = 0; j < t.held_n_; ++j) if (t.held_[j].note_id == e.note_id) { t.held_[j] = t.held_[--t.held_n_]; break; }
+                    }
+                }
+                t.held_count_.store(t.held_n_, std::memory_order_release);
             }
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }

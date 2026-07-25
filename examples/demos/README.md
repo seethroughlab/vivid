@@ -14,9 +14,9 @@ the bridge, authored in ~60 readable lines.
 | **neon** | synthwave, 100 BPM | *Sync Pluck* arp + *Square Bass*, backbeat | retro-vector: cyan **Lines** rings + a magenta wireframe **Mesh** → Feedback glow |
 | **grid** | glitch / IDM, 90 BPM | *Digi* lead (bitcrushed) + *FM Bass* | technical/wireframe: a teal **Lines** grid + a wireframe **Mesh** icosahedron |
 
-## The six mechanism showcases (breadth of the engine)
+## The seven mechanism showcases (breadth of the engine)
 
-Where the songs show genre range over one pattern (audio→visual reactivity), these six each
+Where the songs show genre range over one pattern (audio→visual reactivity), these seven each
 headline a *distinct Vivid mechanism* that the songs don't exercise. Most lean on bundled `media/` +
 native audio; **bloom** needs Surge for its voice, **chop** needs Surge only for its sub (its drums
 are the plugin-free native Sampler), and **prism** needs Surge for its melodic voice.
@@ -29,6 +29,7 @@ are the plugin-free native Sampler), and **prism** needs Surge for its melodic v
 | **signal** | **external pixels** — a real **video clip** into the reactive chain | Cassette Drums + Surge sub bass drive the treatment | **Video** → **Displace** → **Feedback** |
 | **chop** | **sample-slicing** — a real break chopped into a **drum-rack Sampler** + re-sequenced | the bundled `break90.wav` sliced (`slice_to_midi`, 1/16 grid) into a native **Sampler**, re-chopped per section, under a Surge sub — **drums are plugin-free** | a square **ShapeGrid** + solid **Mesh** → **Feedback**, punched per slice hit |
 | **prism** | **notes drive the picture directly** — pitch becomes colour (audio analysis can't know *which* note) | a Surge pluck plays an ascending A-minor pentatonic run + a kick | a solid **Mesh** whose hue tracks `track.note` (blue→red by pitch), size tracks `.velocity`, spin flashes on `.gate`; the **ShapeGrid** tracks `master.transient` (loudness) for contrast |
+| **constellation** | **polyphonic notes → geometry** — a **Notes** node drives a generic **Instancer** | a Surge pad plays A-minor chords + an arp | a **Notes** source (track's live notes) → **Instancer** draws one instance per held note (pitch → x + colour, velocity → size); chords bloom, the arp trails → **Feedback** |
 
 > **Bidirectional / return leg (mirror):** the `viz.warp/glow/feedback/blur` sources feed a visual
 > param's value *back* to an audio param (`connect_mapping` to a `gnode:`/`aparam:`/`param:` dest).

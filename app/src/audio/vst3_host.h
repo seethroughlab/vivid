@@ -30,6 +30,10 @@ constexpr int kMaxTracks = 32;
 constexpr int kMaxScenes = 8;
 constexpr int kAnalysisN  = 1024;  // per-track/master mono sample ring for the frame-side FFT (power of two)
 constexpr int kFftBands   = 8;     // log-spaced spectrum bands published as <src>.fft.0..N-1
+constexpr int kMaxHeld    = 32;    // max simultaneously-held notes tracked per track (the note instancer)
+
+// One currently-held note of a track, for the polyphonic active-notes channel (the note instancer).
+struct ActiveNote { int pitch; float vel; };
 
 // Optional startup load-progress hook: session_create blocks while it scans + loads the
 // default project's VST3 instruments (seconds). Set this before session_create to drive a
@@ -162,6 +166,7 @@ float session_track_note_velocity(Session*, int track);   // last note-on veloci
 float session_track_note_gate(Session*, int track);       // 1.0 on a block with a note-on (frame decays to a flash)
 int   session_track_analysis_copy(Session*, int track, float* out, int n);  // recent mono samples (frame-side FFT)
 int   session_master_analysis_copy(Session*, float* out, int n);            // recent master samples (frame-side FFT)
+int   session_track_active_notes(Session*, int track, ActiveNote* out, int max);  // currently-held notes; returns count
 int   session_track_capture_snapshot(Session*, int track, double seconds,
                                      std::vector<float>& outL, std::vector<float>& outR,
                                      uint32_t* out_sample_rate);  // recent post-gain track audio
