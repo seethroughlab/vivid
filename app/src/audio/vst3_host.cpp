@@ -1626,6 +1626,15 @@ float session_track_band(Session* s, int t, int band) {
          : band == 1 ? tr.band_mid.load(std::memory_order_relaxed)
                      : tr.band_high.load(std::memory_order_relaxed);
 }
+float session_track_note_pitch(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_pitch.load(std::memory_order_relaxed) : 0.f;
+}
+float session_track_note_velocity(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_vel.load(std::memory_order_relaxed) : 0.f;
+}
+float session_track_note_gate(Session* s, int t) {
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_gate.load(std::memory_order_relaxed) : 0.f;
+}
 int session_track_capture_snapshot(Session* s, int t, double seconds, std::vector<float>& outL,
                                    std::vector<float>& outR, uint32_t* out_sample_rate) {
     outL.clear(); outR.clear();
@@ -2288,6 +2297,24 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             t.nev.clear();
             t.nev.insert(t.nev.end(), t.nev_clip.begin(), t.nev_clip.end());
             t.nev.insert(t.nev.end(), t.nev_live.begin(), t.nev_live.end());
+            // Note-derived bridge sources: t.nev is now the authoritative track-wide note union for
+            // this block (clip ++ live), assembled once regardless of how many instrument/key-split
+            // nodes consume filtered subsets — so scan it here, not the per-node graph_note_input. Take
+            // the most-recent note-ON (greatest sample_offset; the two sub-streams aren't globally
+            // offset-sorted, so compare rather than take the last element). pitch/vel HOLD across
+            // note-less blocks (sustain keeps its colour); gate pulses only on a note-on.
+            {
+                const NoteEvent* newest = nullptr;
+                for (const NoteEvent& e : t.nev)
+                    if (e.on && (!newest || e.sample_offset >= newest->sample_offset)) newest = &e;
+                if (newest) {
+                    t.note_pitch.store(std::clamp(newest->pitch / 127.f, 0.f, 1.f), std::memory_order_relaxed);
+                    t.note_vel.store(std::clamp(newest->vel, 0.f, 1.f), std::memory_order_relaxed);
+                    t.note_gate.store(1.f, std::memory_order_relaxed);
+                } else {
+                    t.note_gate.store(0.f, std::memory_order_relaxed);   // pitch/vel left held
+                }
+            }
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }
 

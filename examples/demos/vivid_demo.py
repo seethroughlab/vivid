@@ -267,9 +267,11 @@ class Vivid:
         raise RuntimeError(f"track {track} not found")
 
     def track_viz(self, track: int, band: str, node_id: int, param: str, **kw):
-        """Route ONE instrument's audio to ONE visual param, so each instrument has a visibly separate
-        effect. `band` is that track's characteristic: 'low' | 'high' | 'transient' | 'level'. Uses the
-        track's stable id: source = 'track_<id>.<band>'. Same knobs as map() (amount/curve/lo/hi/invert)."""
+        """Route ONE instrument to ONE visual param, so each instrument has a visibly separate effect.
+        `band` is that track's characteristic — audio analysis: 'low' | 'high' | 'transient' | 'level';
+        or NOTE-derived (drives visuals by WHICH note, not just loudness): 'note' (last pitch, 0..1 over
+        MIDI 0..127) | 'velocity' | 'gate' (a note-on flash). Uses the track's stable id: source =
+        'track_<id>.<band>'. Same knobs as map() (amount/curve/lo/hi/invert)."""
         return self.map(f"track_{self.track_id(track)}.{band}", node_id, param, **kw)
 
     # --- the RETURN leg of the bridge (visual -> audio): a viz.* source drives an audio param ---
