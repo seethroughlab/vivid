@@ -354,6 +354,7 @@ void        session_set_node_gnid(Session*, int track, int node_id, int gnid);  
 int         session_track_audio_graph_node_cell_scene(Session*, int track, int i); // scene a MidiClip/NativeGen node gates (-1 else)
 int         session_track_audio_graph_node_kind(Session*, int track, int i);       // 0 inst / 1 fx / 2 output
 const char* session_track_audio_graph_node_type(Session*, int track, int i);       // bound op's registry name ("" for output)
+float       session_track_audio_graph_node_control_out(Session*, int track, int i); // a modulator/LFO node's 0..1 output (0 else)
 int         session_track_audio_graph_node_plugin_kind(Session*, int track, int i);// binding family: 0 native/1 vst3/2 clap/3 sampler
 int         session_track_audio_graph_output_id(Session*, int track);
 int         session_track_out_gnid(Session*, int track);   // ADR-0022 P2b.3c: the track-out node's global id (is_track_out)

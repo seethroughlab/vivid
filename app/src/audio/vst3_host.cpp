@@ -1669,6 +1669,14 @@ int session_master_analysis_copy(Session* s, float* out, int n) {
 // Set which of a track's audio-graph nodes to capture for FFT (bit i == node index i). UI thread:
 // allocate the per-node ring on the first non-zero mask (before the release-store the RT thread reads),
 // so the audio thread only ever touches a stable, fully-allocated buffer.
+// A modulator/LFO node's latest 0..1 control output (published by run_modulator_step into ctl_pub,
+// indexed by node index == out_buf). 0 for non-modulator nodes (they never write it). `i` is the node
+// enumeration index (as node_scope/node_kind take).
+float session_track_audio_graph_node_control_out(Session* s, int t, int i) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || i < 0 || i >= kGraphMaxNodes) return 0.f;
+    Track& tr = *s->tracks[t];
+    return tr.ctl_pub ? tr.ctl_pub[i].load(std::memory_order_relaxed) : 0.f;
+}
 void session_set_track_node_analyze_mask(Session* s, int t, uint64_t mask) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
     Track& tr = *s->tracks[t];

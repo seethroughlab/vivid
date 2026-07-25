@@ -831,22 +831,25 @@ void draw_audio_node_menu(Renderer2D& ui, const Window& w) {
     if (!m.open) return;
     const Style& sty = style();
     const float ww = 184.f;
-    const char* nm = "node";
-    if (w.app && w.app->session) {   // header = the node's op type
+    const char* nm = "node"; bool ismod = false;
+    if (w.app && w.app->session) {   // header = the node's op type; a modulator gets the control item
         const int nn = vivid::session::session_track_audio_graph_node_count(w.app->session, m.track);
         for (int i = 0; i < nn; ++i)
             if (vivid::session::session_track_audio_graph_node_id(w.app->session, m.track, i) == m.node) {
                 const char* t = vivid::session::session_track_audio_graph_node_type(w.app->session, m.track, i);
                 if (t && *t) nm = t;
+                ismod = vivid::session::session_track_audio_graph_node_kind(w.app->session, m.track, i) == 5;
                 break;
             }
     }
+    const AudioNodeChar* items = ismod ? kModNodeChars : kAudioNodeChars;
+    const int nitems = ismod ? kNumModNodeChars : kNumAudioNodeChars;
     char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", nm);
-    overlay_panel(ui, { m.x, m.y - 22.f, ww, 22.f + kNumAudioNodeChars * 26.f }, hdr, sty.teal);
-    for (int j = 0; j < kNumAudioNodeChars; ++j) {
+    overlay_panel(ui, { m.x, m.y - 22.f, ww, 22.f + nitems * 26.f }, hdr, sty.teal);
+    for (int j = 0; j < nitems; ++j) {
         const float iy = m.y + j * 26.f;
         item_box(ui, { m.x, iy, ww, 26.f }, sty.teal);
-        ui.draw_text(m.x + 14.f, iy + 6.f, kAudioNodeChars[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+        ui.draw_text(m.x + 14.f, iy + 6.f, items[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
     }
 }
 

@@ -222,6 +222,10 @@ void publish_bridge_sources(App& app, Window& win) {
             double ss = 0; for (int j = 0; j < nsc; ++j) ss += static_cast<double>(sc[j]) * sc[j];
             const float rms = nsc > 0 ? static_cast<float>(std::sqrt(ss / nsc)) : 0.f;
             graph.set_source_by_id(nsrc + ".rms", std::min(1.0f, rms * 5.0f));
+            // A modulator/LFO node emits a 0..1 CONTROL signal (no audio) — publish it as node_<...>.ctl
+            // so an LFO can drive a visual param directly. Cheap (an atomic read), so always-on like rms.
+            if (S::session_track_audio_graph_node_kind(app.session, t, i) == 5)   // 5 = NativeMod
+                graph.set_source_by_id(nsrc + ".ctl", S::session_track_audio_graph_node_control_out(app.session, t, i));
             if (i < 64 && graph.source_consumed(nsrc + ".fft")) {   // gated: capture + FFT only when watched
                 analyze_mask |= (uint64_t(1) << i);
                 if (int nns = S::session_track_node_analysis_copy(app.session, t, nid, an_buf, S::kAnalysisN); nns > 1)

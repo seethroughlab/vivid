@@ -100,6 +100,9 @@ struct AudioNodeChar { const char* label; const char* suffix; };
 constexpr AudioNodeChar kAudioNodeChars[] = {
     { "Level (RMS)", "rms" }, { "FFT Low", "fft.1" }, { "FFT Mid", "fft.4" }, { "FFT High", "fft.6" } };
 constexpr int kNumAudioNodeChars = 4;
+// A modulator (LFO) node has no audio output — it emits a 0..1 control signal instead.
+constexpr AudioNodeChar kModNodeChars[] = { { "Control (LFO)", "ctl" } };
+constexpr int kNumModNodeChars = 1;
 // Characteristic id encoding: master uses kind (0..4); track t uses 100 + t*8 + kind.
 inline int char_id_for(int src, int kind) { return src < 0 ? kind : 100 + src * 8 + kind; }
 

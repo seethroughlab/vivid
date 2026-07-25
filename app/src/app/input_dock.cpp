@@ -52,22 +52,26 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
 bool audio_node_menu_click(Window& win, App& app, double mx, double my) {
     if (!win.audio_node_menu.open) return false;
     const AudioNodeMenu m = win.audio_node_menu;
-    for (int j = 0; j < kNumAudioNodeChars; ++j) {
-        const Rect r = { m.x, m.y + j * 26.f, 184.f, 26.f };
-        if (hit(r, mx, my) && app.graph && app.session) {
-            const int tid = S::session_track_id(app.session, m.track);
-            const std::string src = "node_" + std::to_string(tid) + "_" + std::to_string(m.node) + "." + kAudioNodeChars[j].suffix;
-            const char* nm = "node";   // node op type, for the label
-            const int nn = S::session_track_audio_graph_node_count(app.session, m.track);
-            for (int i = 0; i < nn; ++i)
-                if (S::session_track_audio_graph_node_id(app.session, m.track, i) == m.node) {
-                    const char* t = S::session_track_audio_graph_node_type(app.session, m.track, i);
-                    if (t && *t) nm = t; break;
-                }
-            app.graph->add_data_node(std::string(nm) + " " + kAudioNodeChars[j].label, src);
-            std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' -> %s\n", nm, kAudioNodeChars[j].label, src.c_str());
-            break;
-        }
+    if (app.graph && app.session) {
+        const char* nm = "node"; bool ismod = false;   // node op type (label) + is-it-a-modulator
+        const int nn = S::session_track_audio_graph_node_count(app.session, m.track);
+        for (int i = 0; i < nn; ++i)
+            if (S::session_track_audio_graph_node_id(app.session, m.track, i) == m.node) {
+                const char* t = S::session_track_audio_graph_node_type(app.session, m.track, i);
+                if (t && *t) nm = t;
+                ismod = S::session_track_audio_graph_node_kind(app.session, m.track, i) == 5;
+                break;
+            }
+        const AudioNodeChar* items = ismod ? kModNodeChars : kAudioNodeChars;
+        const int nitems = ismod ? kNumModNodeChars : kNumAudioNodeChars;
+        const int tid = S::session_track_id(app.session, m.track);
+        for (int j = 0; j < nitems; ++j)
+            if (hit({ m.x, m.y + j * 26.f, 184.f, 26.f }, mx, my)) {
+                const std::string src = "node_" + std::to_string(tid) + "_" + std::to_string(m.node) + "." + items[j].suffix;
+                app.graph->add_data_node(std::string(nm) + " " + items[j].label, src);
+                std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' -> %s\n", nm, items[j].label, src.c_str());
+                break;
+            }
     }
     win.audio_node_menu.open = false;
     return true;

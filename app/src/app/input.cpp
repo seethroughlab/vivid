@@ -148,9 +148,13 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
                         if (nid < 0) continue;
                         const std::string np = "node_" + std::to_string(tid) + "_" + std::to_string(nid);
                         const std::string nb = base + " \xC2\xB7 node " + std::to_string(nid) + " ";
-                        cat.push_back({ nb + "RMS", np + ".rms" });
-                        for (int k = 0; k < S::kFftBands; ++k)   // gated: FFT only runs once one is wired/spawned
-                            cat.push_back({ nb + "FFT " + std::to_string(k), np + ".fft." + std::to_string(k) });
+                        if (S::session_track_audio_graph_node_kind(app->session, t, i) == 5) {   // modulator (LFO): control out
+                            cat.push_back({ nb + "Control", np + ".ctl" });
+                        } else {
+                            cat.push_back({ nb + "RMS", np + ".rms" });
+                            for (int k = 0; k < S::kFftBands; ++k)   // gated: FFT only runs once one is wired/spawned
+                                cat.push_back({ nb + "FFT " + std::to_string(k), np + ".fft." + std::to_string(k) });
+                        }
                     }
                 }
             }
