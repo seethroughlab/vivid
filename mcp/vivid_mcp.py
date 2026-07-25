@@ -848,7 +848,7 @@ def slice_to_midi(track: int, scene: int, slice_mode: int = 3) -> dict:
     """Slice an audio clip into a new MIDI track driven by a native Sampler loaded with the
     clip's slices (ascending pitches from C1 trigger successive slices). slice_mode: 1 =
     transients, 3 = 16-step grid. Returns the new track index."""
-    return _post("slice_to_midi", {"track": track, "scene": scene, "slice_mode": slice_mode})
+    return _post("slice_to_midi", {"track": track, "scene": scene, "mode": slice_mode})
 
 
 # ---------------- audio node graph (authoritative topology) ----------------

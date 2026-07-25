@@ -352,7 +352,8 @@ void register_audio_graph_handlers(Handlers& handlers_) {
     handlers_["slice_to_midi"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const int track = b.value("track", 0), scene = b.value("scene", 0);
-        const int mode = b.value("mode", 1);   // 1=transients, 3=16-grid
+        // Accept either key: the native UI path + demos post `mode`; the MCP tool posts `slice_mode`.
+        const int mode = b.value("mode", b.value("slice_mode", 1));   // 1=transients, 3=16-grid
         json e; if (!need_track(c.session, track, e)) return e;
         const int nt = P::session_slice_to_midi(c.session, track, scene, mode);
         if (nt < 0) return err(code::kBadArg, "slice-to-MIDI failed (not an audio clip, or no slices)");
