@@ -2245,7 +2245,7 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
             // time-sorted by graph_note_input.
             t.nev_clip.clear(); t.eev.clear();
             if (release_all) {
-                t.held_n_ = 0; t.held_count_.store(0, std::memory_order_release);   // stop → no notes held (instancer clears)
+                t.held.clear();                                      // stop → no notes held (instancer clears)
                 t.sched.flush(t.nev_clip);                            // play->stop edge: release the clip's held notes
                 // ADR-0022 P3.3: also release every generator's held voices (Euclid/RandMelody/…)
                 // into the same stream — otherwise a note a generator is holding hangs on pause.
@@ -2300,15 +2300,9 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 // Polyphonic active-notes: maintain the persistent held set from this block's on/off
                 // events (dedup/replace by note_id on on; swap-remove on off). Published for the instancer.
                 for (const NoteEvent& e : t.nev) {
-                    if (e.on) {
-                        uint32_t j = 0; for (; j < t.held_n_; ++j) if (t.held_[j].note_id == e.note_id) break;
-                        if (j < t.held_n_) { t.held_[j].pitch = e.pitch; t.held_[j].vel = e.vel; }
-                        else if (t.held_n_ < static_cast<uint32_t>(kMaxHeld)) t.held_[t.held_n_++] = { e.pitch, e.vel, e.note_id };
-                    } else {
-                        for (uint32_t j = 0; j < t.held_n_; ++j) if (t.held_[j].note_id == e.note_id) { t.held_[j] = t.held_[--t.held_n_]; break; }
-                    }
+                    if (e.on) t.held.add(e.note_id, e.pitch, e.vel);
+                    else      t.held.remove(e.note_id);
                 }
-                t.held_count_.store(t.held_n_, std::memory_order_release);
             }
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.
         }
