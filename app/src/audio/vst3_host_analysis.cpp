@@ -45,14 +45,6 @@ float session_track_note_velocity(Session* s, int t) {
 float session_track_note_gate(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_gate.load(std::memory_order_relaxed) : 0.f;
 }
-// Copy the last min(n,kAnalysisN) mono samples (oldest→newest) from a track's spectrum ring into `out`.
-// Lock-free snapshot (a torn read is a harmless 1-frame spectral blip). Returns the count copied.
-static int copy_analysis_ring(const float* ring, uint32_t pos, float* out, int n) {
-    const int cnt = std::min(n, kAnalysisN);
-    const uint32_t start = (pos + static_cast<uint32_t>(kAnalysisN) - static_cast<uint32_t>(cnt)) & (kAnalysisN - 1);
-    for (int i = 0; i < cnt; ++i) out[i] = ring[(start + static_cast<uint32_t>(i)) & (kAnalysisN - 1)];
-    return cnt;
-}
 int session_track_analysis_copy(Session* s, int t, float* out, int n) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
     return s->tracks[t]->meter.an_ring.snapshot(out, n);   // atomic-slot ring (ADR-0029)
@@ -75,10 +67,7 @@ float session_track_audio_graph_node_control_out(Session* s, int t, int i) {
 void session_set_track_node_analyze_mask(Session* s, int t, uint64_t mask) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return;
     Track& tr = *s->tracks[t];
-    if (mask && tr.node_an_ring.empty()) {
-        tr.node_an_ring.assign(static_cast<size_t>(kGraphMaxNodes) * kAnalysisN, 0.f);
-        tr.node_an_pos.assign(kGraphMaxNodes, 0u);
-    }
+    if (mask) tr.node_an.allocate(kGraphMaxNodes, kAnalysisN);   // once, before the mask release-store below
     tr.node_analyze_mask.store(mask, std::memory_order_release);
 }
 // Snapshot a watched node's recent samples (oldest→newest) for the frame-side FFT. 0 if the node isn't
@@ -86,11 +75,11 @@ void session_set_track_node_analyze_mask(Session* s, int t, uint64_t mask) {
 int session_track_node_analysis_copy(Session* s, int t, int node_id, float* out, int n) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
     Track& tr = *s->tracks[t];
-    if (tr.node_an_ring.empty()) return 0;
+    if (!tr.node_an.allocated()) return 0;
     int idx;
     { std::lock_guard<std::mutex> lk(tr.gmtx); idx = tr.agraph.node_index(node_id); }
     if (idx < 0 || idx >= kGraphMaxNodes) return 0;
-    return copy_analysis_ring(tr.node_an_ring.data() + static_cast<size_t>(idx) * kAnalysisN, tr.node_an_pos[idx], out, n);
+    return tr.node_an.snapshot(idx, out, n);
 }
 // Snapshot a track's currently-held notes (lock-free: read count then array; a torn read is benign).
 int session_track_active_notes(Session* s, int t, ActiveNote* out, int max) {
