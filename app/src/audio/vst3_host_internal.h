@@ -619,8 +619,12 @@ void filter_notes_by_range(const std::vector<NoteEvent>& src, uint8_t lo, uint8_
 void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t hi, std::vector<ExprEvent>& dst);
 void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
 void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx, uint32_t frames, float* L, float* R);
-void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R);
-void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R);
+// `mod`/`mod_n` (ADR-0034): control-edge modulation resolved for this block — injected as param events
+// after the param_q drain (so a wired param's modulation wins). nullptr/0 for an unmodulated node.
+void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes, uint32_t frames, float* L, float* R,
+                            const ClapParamMsg* mod = nullptr, uint32_t mod_n = 0);
+void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R,
+                        const ClapParamMsg* mod = nullptr, uint32_t mod_n = 0);
 void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out);
 void drain_clap_notes(ClapHandle* h, std::vector<NoteEvent>& out);
 

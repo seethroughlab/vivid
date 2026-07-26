@@ -161,9 +161,11 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
 // full-range source, or a key-range-filtered list) plus this block's scene-switch note-offs.
 // RT-safe (fixed scratch, no alloc/lock).
 void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent>& notes,
-                            uint32_t frames, float* L, float* R) {
+                            uint32_t frames, float* L, float* R,
+                            const ClapParamMsg* mod, uint32_t mod_n) {
     h->events.clear();
     clap_flush_params(h);
+    for (uint32_t k = 0; k < mod_n; ++k) h->events.add_param(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     for (const NoteEvent& ne : t.scene_rel)   // scene-switch note-offs first, so held voices release
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     for (const NoteEvent& ne : notes)         // this source's notes (full range = t.nev; key-split = filtered)
@@ -175,10 +177,12 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
 
 // CLAP effect. Transforms L/R in place via the track's fx scratch (t.fxl/t.fxr), like the VST3
 // effect path. Caller guards `clap && clap->processing`.
-void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R) {
+void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R,
+                        const ClapParamMsg* mod, uint32_t mod_n) {
     if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
     h->events.clear();
     clap_flush_params(h);
+    for (uint32_t k = 0; k < mod_n; ++k) h->events.add_param(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     float* in[2]  = { L, R };
     float* out[2] = { t.fxl.data(), t.fxr.data() };
     clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2);
