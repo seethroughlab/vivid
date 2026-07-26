@@ -15,6 +15,9 @@ namespace vivid::ui {
 // ---- data-source identity + uniform routing ----
 // Kinds 0-4 are audio analysis (master + track); 5-7 are per-track NOTE sources (the char_id stride
 // is 8, so they slot into the reserved gap). Master has no notes, so only tracks ever use 5-7.
+// ADR-0028: the LIVE publisher no longer uses char_id — every source is emitted as a string id via
+// bridge_source.h. This decoder survives ONLY as a load-time persistence shim for saved sessions +
+// catalog entries that still carry the packed integer (add_data_node(int) / add_node_raw(int)).
 static const char* kKindName[8] = { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
 static std::string source_id_for(int char_id) {  // master=kind, track t = 100+t*8+kind
     if (char_id < 100) return std::string("master.") + (char_id >= 0 && char_id < 5 ? kKindName[char_id] : "level");
@@ -287,7 +290,6 @@ void NodeGraph::set_frame(float x0, float y0, float x1, float y1) {
     fx0_ = x0; fy0_ = y0; fx1_ = x1; fy1_ = y1;   // the full visuals-column rect (grid + clip reach the edges)
 }
 
-void NodeGraph::set_value(int char_id, float v) { set_source_by_id(source_id_for(char_id), v); }
 void NodeGraph::set_source_by_id(const std::string& source, float v) {
     for (auto& n : data_) if (n.source == source) {
         n.value = v;

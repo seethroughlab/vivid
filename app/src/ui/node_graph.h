@@ -38,8 +38,7 @@ public:
     void before_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
     void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
-    void set_value(int char_id, float v);   // legacy int-char_id publish (master/track scalar); wraps set_source_by_id
-    void set_source_by_id(const std::string& source, float v);   // canonical: publish a source value by its string id
+    void set_source_by_id(const std::string& source, float v);   // canonical (sole) live publish, by string id (ADR-0028)
     // True if any source id starting with `prefix` is CONSUMED — wired to a param (a mapping) or shown
     // as a spawned data node. Lets the engine gate expensive per-node analysis (FFT) to what's on screen.
     bool source_consumed(const std::string& prefix) const;

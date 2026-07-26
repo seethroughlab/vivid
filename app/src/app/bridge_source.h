@@ -29,6 +29,7 @@ inline std::string node_prefix(int track_id, int node_id) {
 }
 
 // Full ids.
+inline std::string master_source(const char* kind)    { return master_prefix() + "." + kind; }
 inline std::string track_source(int track_id, const char* kind) { return track_prefix(track_id) + "." + kind; }
 inline std::string track_fft(int track_id, int band)  { return track_prefix(track_id) + ".fft." + std::to_string(band); }
 inline std::string master_fft(int band)               { return master_prefix() + ".fft." + std::to_string(band); }
