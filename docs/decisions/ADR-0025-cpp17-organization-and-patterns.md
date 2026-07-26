@@ -33,6 +33,23 @@ clap_loader 174, presets 57) behind two internal headers (`vst3_host_common.h`, 
 No behavior change; each PR passed the production gate + audio-engine tests. The session C API
 (`vst3_host.h`) was untouched, so nothing downstream had to change.
 
+**Regrowth + next chunk (2026-07-25).** The audio→visual bridge work (per-track/master FFT, per-node RMS +
+connection-gated FFT, the polyphonic note channel, and modulator control-out) added its real-time
+*publication* taps and the state they read back onto the main TU, taking it from 3792 back to **4069 LOC**.
+This is precisely the "real-time publication logic" named as a remaining target below — now concrete enough
+to extract. Two coupled moves, each landing as its own gated green PR when the file is next touched, staying
+faithful to Decision #7 (split when adding related work, not for style):
+- **Extract the per-frame publication/analysis surface** — `session_track/master_analysis_copy`, the
+  per-node analyze mask + gated capture, the note-bus fill, and the modulator control-out accessor — into a
+  `vst3_host_analysis.cpp` sibling behind `vst3_host_internal.h`, leaving the RT `audio_callback` + session
+  state in the core TU. These are UI/frame-thread reads over published atomics/rings, so they extract the
+  same way the render/preset/param siblings did.
+- **Hoist the shared analysis/scope/note/ctl cluster into one sub-struct** reused by both `Track` and
+  `Master`. `Master` today duplicates the `an_ring`/`an_pos` sample ring, the band-filter state, and the
+  band atomics that `Track` also carries; a single `TrackAnalysis`/`MeterState` member removes the
+  copy-paste meter code and gives the TU extraction one cohesive type to move rather than a scattered set of
+  fields. This is a specific instance of the "reduce large state hubs incrementally" decision.
+
 Extends [ADR-0011](ADR-0011-reboot-product-architecture.md),
 [ADR-0017](ADR-0017-every-edit-is-reversible.md),
 [ADR-0018](ADR-0018-a-bad-operator-must-not-cost-you-your-work.md),
@@ -137,7 +154,10 @@ The remaining organizational costs are concentrated rather than pervasive:
   (render primitives, presets, node param API, async CLAP loader) were extracted into sibling TUs behind
   `vst3_host_internal.h`, reducing the main TU to 3792 LOC focused on the RT `audio_callback` + session
   state. Remaining opportunistic targets if the file is touched again: the graph-adaptation / dynamic-track
-  code and the real-time publication logic could move behind the same internal surface.
+  code and the real-time publication logic could move behind the same internal surface. *(As of 2026-07-25
+  the file is back to 4069 LOC after the audio→visual bridge features; the concrete next extraction — a
+  `vst3_host_analysis.cpp` publication sibling + a shared `Track`/`Master` analysis sub-struct — is captured
+  under "Regrowth + next chunk" above.)*
 
 - **`Window` is a large interaction-state bag.** It is understandable because much state is genuinely
   per-view, but it mixes clip-grid, plugin browser, audio graph, visual graph, popovers, diagnostics,
