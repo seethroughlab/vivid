@@ -29,9 +29,6 @@ namespace vivid {
 // mod_editor_* helpers below so the hit-rects match what's drawn.
 struct ModEditor { bool open = false; float x = 0, y = 0; int node = -1; int param = -1; int from = -1; };
 
-// Right-click "→ visuals" menu on an AUDIO-GRAPH node: spawns bridge data-nodes in the visuals graph
-// for this node's sources (node_<track-stable-id>_<node>.rms / .fft.k). `track` is the track index.
-struct AudioNodeMenu { bool open = false; float x = 0, y = 0; int track = -1; int node = -1; };
 namespace ui {
 constexpr float kModEdW = 184.f, kModEdRowH = 26.f, kModEdHdr = 24.f;
 inline Rect mod_editor_panel(const ModEditor& m) { return { m.x, m.y, kModEdW, kModEdHdr + 5.f * kModEdRowH + 6.f }; }
@@ -43,16 +40,6 @@ inline Rect mod_editor_widget(const ModEditor& m, int row) {   // the control co
     return { r.x + 66.f, r.y, r.w - 66.f, r.h };
 }
 }  // namespace ui
-// A right-click context menu on a visuals op node. ADR-0020: one contextual edit action per node —
-// Fork&edit a shipped (read-only) shader, Open the editable source of a user shader / cloned C++ op,
-// or Clone&edit a compiled built-in. `target` is the shader op-type to fork (ForkEdit) or the file
-// path to open (OpenSource).
-struct NodeMenu {
-    enum class Action { None, OpenSource, ForkEdit, CloneEdit };
-    bool open = false; float x = 0, y = 0; int node = -1;
-    Action action = Action::None;
-    std::string target;
-};
 
 // The one deep view the detail region is showing (ADR-0013, UI-1). Explicit focus is the
 // single source of truth for that region — recomputed once per frame — replacing the old
@@ -132,9 +119,8 @@ struct Window {
     bool        show_gemini_key = false;
     std::string gemini_key_buf;
     int         music_eval_job  = -1;
-    vivid::ui::PopupMenu menu, map_menu;   // ADR-0027: characteristics menu + bridge map-source picker
-    NodeMenu node_menu;                            // right-click on a visuals op node
-    AudioNodeMenu audio_node_menu;                 // right-click on an audio-graph node ("→ visuals")
+    // ADR-0027: characteristics menu · bridge map-source picker · op-node menu · audio-node "→ visuals"
+    vivid::ui::PopupMenu menu, map_menu, node_menu, audio_node_menu;
     ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;

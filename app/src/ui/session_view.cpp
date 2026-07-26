@@ -785,7 +785,8 @@ void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m) {
     const float* acc = m.accent == vivid::ui::PopupMenu::Gold ? sty.gold
                      : m.accent == vivid::ui::PopupMenu::Gpu  ? sty.gpu : sty.teal;
     const int n = static_cast<int>(m.items.size());
-    overlay_panel(ui, { m.x, m.y - 22.f, m.width, 22.f + n * m.row_h }, m.header.c_str(), acc);
+    const std::string hdr = fit_text(ui, m.header, m.width - 16.f, sty.fs_label);   // truncate long op names
+    overlay_panel(ui, { m.x, m.y - 22.f, m.width, 22.f + n * m.row_h }, hdr.c_str(), acc);
     for (int j = 0; j < n; ++j) {
         const float iy = m.y + j * m.row_h;
         item_box(ui, { m.x, iy, m.width, m.row_h }, acc);
@@ -794,56 +795,7 @@ void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m) {
     }
 }
 
-// Right-click op-node menu: open its editable source (custom nodes) — a built-in
-// shows a disabled hint (Clone & Edit lands in P2b).
-void draw_node_menu(Renderer2D& ui, const Window& w) {
-    const NodeMenu& m = w.node_menu;
-    if (!m.open) return;
-    const Style& sty = style();
-    const float ww = 172.f;
-    const char* nm = (w.app && w.app->graph) ? w.app->graph->op_kind_name(m.node) : "node";
-    const std::string title = fit_text(ui, nm, ww - 16.f, 0.82f);
-    overlay_panel(ui, { m.x, m.y - 22.f, ww, 44.f }, title.c_str(), sty.gpu);
-    const bool enabled = m.action != NodeMenu::Action::None;
-    item_box(ui, { m.x, m.y, ww, 22.f }, sty.gpu);
-    const char* label = "built-in \xC2\xB7 no editable source";
-    switch (m.action) {
-        case NodeMenu::Action::OpenSource: label = "Open source in editor"; break;
-        case NodeMenu::Action::ForkEdit:   label = "Fork & edit";           break;   // shipped shader
-        case NodeMenu::Action::CloneEdit:  label = "Clone & Edit";          break;   // built-in operator
-        case NodeMenu::Action::None:       break;
-    }
-    const float* c = enabled ? sty.text : sty.dim;
-    ui.draw_text(m.x + 12.f, m.y + 5.f, label, c[0], c[1], c[2], 1.0f, enabled ? 0.88f : 0.82f);
-}
-
-// Right-click "→ visuals" menu on an audio-graph node: RMS + FFT-band shortcuts to send to the visuals graph.
-void draw_audio_node_menu(Renderer2D& ui, const Window& w) {
-    const AudioNodeMenu& m = w.audio_node_menu;
-    if (!m.open) return;
-    const Style& sty = style();
-    const float ww = 184.f;
-    const char* nm = "node"; bool ismod = false;
-    if (w.app && w.app->session) {   // header = the node's op type; a modulator gets the control item
-        const int nn = vivid::session::session_track_audio_graph_node_count(w.app->session, m.track);
-        for (int i = 0; i < nn; ++i)
-            if (vivid::session::session_track_audio_graph_node_id(w.app->session, m.track, i) == m.node) {
-                const char* t = vivid::session::session_track_audio_graph_node_type(w.app->session, m.track, i);
-                if (t && *t) nm = t;
-                ismod = vivid::session::session_track_audio_graph_node_kind(w.app->session, m.track, i) == 5;
-                break;
-            }
-    }
-    const AudioNodeChar* items = ismod ? kModNodeChars : kAudioNodeChars;
-    const int nitems = ismod ? kNumModNodeChars : kNumAudioNodeChars;
-    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", nm);
-    overlay_panel(ui, { m.x, m.y - 22.f, ww, 22.f + nitems * 26.f }, hdr, sty.teal);
-    for (int j = 0; j < nitems; ++j) {
-        const float iy = m.y + j * 26.f;
-        item_box(ui, { m.x, iy, ww, 26.f }, sty.teal);
-        ui.draw_text(m.x + 14.f, iy + 6.f, items[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
-    }
-}
+// (draw_node_menu + draw_audio_node_menu retired — both now draw through draw_popup, ADR-0027.)
 
 // ADR-0014: the floating OUTPUT preview's chrome. The body is NOT filled here — the output FBO was
 // already blitted into it by the GPU pass — so this only draws the frame, header and handles over

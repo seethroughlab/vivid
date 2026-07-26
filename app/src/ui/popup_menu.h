@@ -20,8 +20,12 @@ struct PopupItem {
     bool        enabled = true;
 };
 
+// A visuals op-node menu's single action (resolved at open time from the node's shader/source tier).
+enum class NodeAction { None, OpenSource, ForkEdit, CloneEdit };
+
 struct PopupMenu {
-    enum class Kind { None, TrackChars, MapSource };   // what the menu acts on (grows per migrated menu)
+    // What the menu acts on (grows as menus migrate); drives the click dispatch.
+    enum class Kind { None, TrackChars, MapSource, AudioNode, VisualNode };
     enum Accent { Teal = 0, Gold = 1, Gpu = 2 };       // panel/item accent (resolved to a Style colour)
 
     bool  open = false;
@@ -31,7 +35,8 @@ struct PopupMenu {
     float  width = 176.f, row_h = 26.f;
     Accent accent = Teal;
     Kind   kind = Kind::None;
-    int    a = -1, b = -1;   // kind-specific payload (e.g. a = track index, or an audio-graph node id)
+    int    a = -1, b = -1;      // kind-specific int payload (track index / audio node id / (track,node))
+    std::string data;           // kind-specific string payload (VisualNode: the source path to edit)
 
     Rect row_rect(int j) const { return { x, y + static_cast<float>(j) * row_h, width, row_h }; }
     int  hit_row(float mx, float my) const {   // the row under the cursor, or -1 (used by the click path)
@@ -64,6 +69,32 @@ inline PopupMenu popup_map_sources(float x, float y, int node_id) {
     m.kind = PopupMenu::Kind::MapSource; m.a = node_id;
     m.header = "map param from:";
     for (int j = 0; j < kNumMapSources; ++j) m.items.push_back({ kMapSources[j].label, j, true });
+    return m;
+}
+// The "→ visuals" menu on an audio-graph node: RMS/FFT (or a modulator's control) shortcuts. `is_mod`
+// picks the catalog; `type_name` is the node's op type (header + spawned-node label). a = track, b = node;
+// each item's id is its index into the chosen catalog (kAudioNodeChars / kModNodeChars).
+inline PopupMenu popup_audio_node(float x, float y, int track, int node_id, bool is_mod, const char* type_name) {
+    PopupMenu m;
+    m.open = true; m.x = x; m.y = y; m.width = 184.f; m.row_h = 26.f; m.accent = PopupMenu::Teal;
+    m.kind = PopupMenu::Kind::AudioNode; m.a = track; m.b = node_id;
+    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", type_name && *type_name ? type_name : "node");
+    m.header = hdr;
+    const AudioNodeChar* items = is_mod ? kModNodeChars : kAudioNodeChars;
+    const int nitems = is_mod ? kNumModNodeChars : kNumAudioNodeChars;
+    for (int j = 0; j < nitems; ++j) m.items.push_back({ items[j].label, j, true });
+    return m;
+}
+// The right-click op-node menu (open/fork/clone its editable source). One item whose label + enabled +
+// dispatch come from the resolved `action`; `target` is the source path the action acts on (in `data`);
+// `header` is the node's op type. a = the visual node id.
+inline PopupMenu popup_visual_node(float x, float y, int node_id, NodeAction action,
+                                   const char* label, const char* header, const std::string& target) {
+    PopupMenu m;
+    m.open = true; m.x = x; m.y = y; m.width = 172.f; m.row_h = 22.f; m.accent = PopupMenu::Gpu;
+    m.kind = PopupMenu::Kind::VisualNode; m.a = node_id; m.data = target;
+    m.header = header ? header : "node";
+    m.items.push_back({ label ? label : "", static_cast<int>(action), action != NodeAction::None });
     return m;
 }
 

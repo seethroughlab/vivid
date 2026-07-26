@@ -306,25 +306,32 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS && app.graph && mx >= win.split_x) {
         const int on = app.graph->op_at(mx, my);
         if (on >= 0) {
-            // ADR-0020: resolve ONE contextual edit action for this node.
+            // ADR-0020: resolve ONE contextual edit action for this node (ADR-0027: into a PopupMenu).
             const std::string op_type = app.graph->op_type_at(on);
-            NodeMenu m; m.open = true; m.x = static_cast<float>(mx); m.y = static_cast<float>(my); m.node = on;
+            vivid::ui::NodeAction act = vivid::ui::NodeAction::None;
+            std::string target;
             std::string shader_path, shader_tier;
             for (const auto& e : app.shader_library.entries())
                 if (e.name == op_type) { shader_path = e.path; shader_tier = e.tier; break; }
             std::string watched, asset;
             if (shader_tier == "bundled") {          // shipped shader is read-only → fork a copy to edit
-                m.action = NodeMenu::Action::ForkEdit; m.target = op_type;
+                act = vivid::ui::NodeAction::ForkEdit; target = op_type;
             } else if (!shader_tier.empty()) {       // user/project shader → open its .wgsl (watcher reloads)
-                m.action = NodeMenu::Action::OpenSource; m.target = shader_path;
+                act = vivid::ui::NodeAction::OpenSource; target = shader_path;
             } else if (watched = app.hot_reload.source_for(op_type), !watched.empty()) {
-                m.action = NodeMenu::Action::OpenSource; m.target = watched;   // cloned/user C++ op source
+                act = vivid::ui::NodeAction::OpenSource; target = watched;   // cloned/user C++ op source
             } else if (asset = app.graph->op_source_path(on), !asset.empty()) {
-                m.action = NodeMenu::Action::OpenSource; m.target = asset;      // CustomShader .glsl asset
+                act = vivid::ui::NodeAction::OpenSource; target = asset;      // CustomShader .glsl asset
             } else if (vivid::operator_has_clone_template(app.graph->op_kind_name(on))) {
-                m.action = NodeMenu::Action::CloneEdit;                          // built-in → clone to edit
+                act = vivid::ui::NodeAction::CloneEdit;                       // built-in → clone to edit
             }
-            win.node_menu = m;
+            const char* label =
+                act == vivid::ui::NodeAction::OpenSource ? "Open source in editor"
+              : act == vivid::ui::NodeAction::ForkEdit   ? "Fork & edit"
+              : act == vivid::ui::NodeAction::CloneEdit  ? "Clone & Edit"
+                                                         : "built-in \xC2\xB7 no editable source";
+            win.node_menu = vivid::ui::popup_visual_node(static_cast<float>(mx), static_cast<float>(my),
+                                                         on, act, label, app.graph->op_kind_name(on), target);
             win.menu.open = false;
             return true;
         }
@@ -346,8 +353,19 @@ bool audio_node_rclick(Window& win, App& app, int button, int action, double mx,
     double wmx, wmy; ag->view().to_world(mx, my, wmx, wmy);
     for (const AudioNodeBox& b : ag->layout()) {
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
-            win.audio_node_menu = { true, static_cast<float>(mx), static_cast<float>(my), tr, b.node_id };
-            win.menu.open = false; win.node_menu.open = false;   // one menu at a time
+            // resolve the node's op type (header/label) + whether it's a modulator (control-only) at open
+            const char* nm = "node"; bool ismod = false;
+            const int nn = S::session_track_audio_graph_node_count(app.session, tr);
+            for (int i = 0; i < nn; ++i)
+                if (S::session_track_audio_graph_node_id(app.session, tr, i) == b.node_id) {
+                    const char* t = S::session_track_audio_graph_node_type(app.session, tr, i);
+                    if (t && *t) nm = t;
+                    ismod = S::session_track_audio_graph_node_kind(app.session, tr, i) == 5;
+                    break;
+                }
+            win.audio_node_menu = vivid::ui::popup_audio_node(static_cast<float>(mx), static_cast<float>(my),
+                                                              tr, b.node_id, ismod, nm);
+            win.menu.close(); win.node_menu.close();   // one menu at a time
             return true;
         }
     }
@@ -360,16 +378,16 @@ bool audio_node_rclick(Window& win, App& app, int button, int action, double mx,
 // true when the menu was open (it always closes + consumes the click).
 bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     if (!win.node_menu.open) return false;
-    const int nn = win.node_menu.node;
-    if (app.graph && hit(Rect{ win.node_menu.x, win.node_menu.y, 172.f, 22.f }, mx, my)) {
-        switch (win.node_menu.action) {
-            case NodeMenu::Action::OpenSource:
-                if (!win.node_menu.target.empty()) vivid::platform::open_in_editor(win.node_menu.target);
+    const int nn = win.node_menu.a;   // the visual node id (ADR-0027 payload)
+    if (app.graph && win.node_menu.hit_row(static_cast<float>(mx), static_cast<float>(my)) >= 0) {
+        switch (static_cast<vivid::ui::NodeAction>(win.node_menu.items[0].id)) {
+            case vivid::ui::NodeAction::OpenSource:
+                if (!win.node_menu.data.empty()) vivid::platform::open_in_editor(win.node_menu.data);
                 break;
-            case NodeMenu::Action::ForkEdit: {
+            case vivid::ui::NodeAction::ForkEdit: {
                 // ADR-0020: fork a shipped (read-only) shader into the user tier, swap the node to
                 // the copy, and open it — the always-on shader watcher live-updates saved edits.
-                const std::string& base = win.node_menu.target;
+                const std::string& base = win.node_menu.data;
                 auto& reg = app.op_registry;
                 const std::string nn2 = vivid::ui::shader_fork_name(base, [&](const std::string& c) { return reg.has(c); });
                 std::string err;
@@ -382,7 +400,7 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
                 } else VLOG_ERR(app, "fork shader '%s' failed: %s", base.c_str(), err.c_str());
                 break;
             }
-            case NodeMenu::Action::CloneEdit: {
+            case vivid::ui::NodeAction::CloneEdit: {
                 vivid::CloneResult cr = vivid::clone_operator(app.op_registry, app.op_loaders, app.graph->op_kind_name(nn));
                 if (cr.ok) {
                     app.graph->swap_op_type(nn, cr.name);
@@ -394,10 +412,10 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
                 } else VLOG_ERR(app, "clone failed: %s", cr.error.c_str());
                 break;
             }
-            case NodeMenu::Action::None: break;
+            case vivid::ui::NodeAction::None: break;
         }
     }
-    win.node_menu.open = false;
+    win.node_menu.close();
     return true;
 }
 

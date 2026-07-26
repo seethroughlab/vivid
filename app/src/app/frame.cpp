@@ -655,8 +655,8 @@ void run_frame_loop(App& app, Window& win) {
             draw_popup(ui, win.menu);       // ADR-0027: characteristics menu (header baked in at open)
             draw_popup(ui, win.map_menu);   // ADR-0027: bridge map-source picker
             draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor
-            draw_node_menu(ui, win);
-            draw_audio_node_menu(ui, win);   // right-click audio-graph node "→ visuals"
+            draw_popup(ui, win.node_menu);        // ADR-0027: op-node menu (open/fork/clone)
+            draw_popup(ui, win.audio_node_menu);  // ADR-0027: audio-graph node "→ visuals"
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
