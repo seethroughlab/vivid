@@ -224,6 +224,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/vst3_host_render.cpp
     src/audio/vst3_host_presets.cpp
     src/audio/vst3_host_params.cpp
+    src/audio/vst3_host_analysis.cpp
     src/audio/vst3_host_clap_loader.cpp
     src/audio/plugin_catalog.cpp
     src/audio/plugin_cache.cpp
@@ -451,6 +452,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/audio/vst3_host_render.cpp
         src/audio/vst3_host_presets.cpp
         src/audio/vst3_host_params.cpp
+        src/audio/vst3_host_analysis.cpp
         src/audio/vst3_host_clap_loader.cpp
         src/audio/audio_op_runtime.cpp
         src/audio/builtin_audio_ops.cpp
