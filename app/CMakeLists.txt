@@ -471,6 +471,21 @@ if(VIVID_BUILD_TESTS AND APPLE)
         signalsmith_stretch vst3_iids clap_headers miniaudio nlohmann_json::nlohmann_json Threads::Threads z
         "-framework CoreFoundation")
 
+    # ADR-0030/0034: a minimal CLAP plugin built from source, as a .clap bundle, so tests can load a
+    # REAL plugin without anything installed on CI. CLAP's ABI is MIT + header-only (clap_headers,
+    # already vendored), so the whole plugin is one file. The bundle layout (Contents/MacOS/<exe> +
+    # Info.plist) is what clap_host.h's CFBundle loader expects. Defined before the test targets so any
+    # of them can depend on it. Consumers add: add_dependencies(<t> vivid_test_clap) +
+    # target_compile_definitions(<t> PRIVATE VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>").
+    add_library(vivid_test_clap MODULE tests/fixtures/vivid_test_clap.cpp)
+    target_link_libraries(vivid_test_clap PRIVATE clap_headers)
+    set_target_properties(vivid_test_clap PROPERTIES
+        BUNDLE TRUE
+        BUNDLE_EXTENSION "clap"
+        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/clap_bundle.plist.in
+        MACOSX_BUNDLE_BUNDLE_NAME "vivid_test_clap"
+        MACOSX_BUNDLE_EXECUTABLE_NAME "vivid_test_clap")
+
     add_executable(test_session_executor tests/test_session_executor.cpp ${_audio_engine_srcs})
     target_include_directories(test_session_executor PRIVATE src src/audio src/gpu tests)
     target_link_libraries(test_session_executor PRIVATE ${_audio_engine_libs})
@@ -482,6 +497,10 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_executable(test_session_concurrency tests/test_session_concurrency.cpp ${_audio_engine_srcs})
     target_include_directories(test_session_concurrency PRIVATE src src/audio src/gpu tests)
     target_link_libraries(test_session_concurrency PRIVATE ${_audio_engine_libs})
+    # ADR-0034: the harness loads the in-tree CLAP fixture to race the plugin base mirror under TSan.
+    add_dependencies(test_session_concurrency vivid_test_clap)
+    target_compile_definitions(test_session_concurrency PRIVATE
+        VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
     add_test(NAME test_session_concurrency COMMAND test_session_concurrency)
     set_tests_properties(test_session_concurrency PROPERTIES LABELS "AUDIO_ENGINE;AUDIO_THREAD")
 
@@ -501,20 +520,6 @@ if(VIVID_BUILD_TESTS AND APPLE)
     add_test(NAME test_bridge_undo_stability COMMAND test_bridge_undo_stability)
     set_tests_properties(test_bridge_undo_stability PROPERTIES LABELS "AUDIO_ENGINE")
 
-    # ADR-0030 Phase 3 (real-plugin coverage): a minimal CLAP plugin built from source, as a .clap
-    # bundle, so the round-trip test can load a REAL plugin without anything installed on CI. CLAP's
-    # ABI is MIT-licensed + header-only (clap_headers, already vendored), so the whole plugin is one
-    # file. The bundle layout (Contents/MacOS/<exe> + Info.plist) is what clap_host.h's CFBundle
-    # loader expects.
-    add_library(vivid_test_clap MODULE tests/fixtures/vivid_test_clap.cpp)
-    target_link_libraries(vivid_test_clap PRIVATE clap_headers)
-    set_target_properties(vivid_test_clap PROPERTIES
-        BUNDLE TRUE
-        BUNDLE_EXTENSION "clap"
-        MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/clap_bundle.plist.in
-        MACOSX_BUNDLE_BUNDLE_NAME "vivid_test_clap"
-        MACOSX_BUNDLE_EXECUTABLE_NAME "vivid_test_clap")
-
     add_executable(test_clap_plugin_roundtrip tests/test_clap_plugin_roundtrip.cpp ${_audio_engine_srcs})
     target_include_directories(test_clap_plugin_roundtrip PRIVATE src src/audio src/gpu tests)
     target_link_libraries(test_clap_plugin_roundtrip PRIVATE ${_audio_engine_libs})
@@ -523,4 +528,14 @@ if(VIVID_BUILD_TESTS AND APPLE)
         VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
     add_test(NAME test_clap_plugin_roundtrip COMMAND test_clap_plugin_roundtrip)
     set_tests_properties(test_clap_plugin_roundtrip PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0034 Phase 1: control-edge modulation reaches a CLAP plugin param (uses the same fixture).
+    add_executable(test_clap_modulation tests/test_clap_modulation.cpp ${_audio_engine_srcs})
+    target_include_directories(test_clap_modulation PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_clap_modulation PRIVATE ${_audio_engine_libs})
+    add_dependencies(test_clap_modulation vivid_test_clap)
+    target_compile_definitions(test_clap_modulation PRIVATE
+        VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
+    add_test(NAME test_clap_modulation COMMAND test_clap_modulation)
+    set_tests_properties(test_clap_modulation PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

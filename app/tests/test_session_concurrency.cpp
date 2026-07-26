@@ -19,6 +19,8 @@
 #include <atomic>
 #include <cmath>
 #include <thread>
+#include <chrono>
+#include <string>
 #include <vector>
 
 using namespace vivid::session;
@@ -37,6 +39,27 @@ int main() {
     ClipNote n0{}; n0.pitch = 60; n0.start = 0.0; n0.dur = 1000.0; n0.vel = 0.9f;
     session_set_clip(s, t0, 0, &n0, 1, 1000.0);
     session_launch_scene(s, 0);
+
+    // ADR-0034: a real CLAP plugin (the in-tree fixture) on t0, modulated by an LFO, so the render
+    // thread reads the plugin base mirror (ClapHandle::abase, via resolve_clap_control) while the
+    // mutator authors it below — racing that channel under TSan. Loaded here, before the threads
+    // start; skipped gracefully if the fixture is unavailable.
+    int plug_nid = -1, plug_gp = -1;
+#ifdef VIVID_TEST_CLAP_PATH
+    plug_nid = session_audio_graph_add_plugin(s, t0, VIVID_TEST_CLAP_PATH, /*kFmtCLAP*/1, /*is_source*/0, "");
+    for (int i = 0; i < 2000 && plug_nid >= 0; ++i) {
+        session_poll_plugin_loads(s);
+        if (session_audio_graph_node_plugin_ready(s, t0, plug_nid) == 1) break;
+        if (session_audio_graph_node_plugin_failed(s, t0, plug_nid)) { plug_nid = -1; break; }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+    }
+    if (plug_nid >= 0) {
+        for (int p = 0, pc = session_audio_graph_node_param_count(s, t0, plug_nid); p < pc; ++p)
+            if (std::string(session_audio_graph_node_param_name(s, t0, plug_nid, p)) == "gain") { plug_gp = p; break; }
+        if (const int lfo = session_audio_graph_add_mod_op(s, t0, "LFO"); lfo >= 0 && plug_gp >= 0)
+            session_audio_graph_connect_control(s, t0, lfo, plug_nid, plug_gp, 0.3f, 0.f, 0, 0);   // capture-on-wire
+    }
+#endif
 
     std::atomic<bool> stop{false};
     std::atomic<bool> ui_done{false};
@@ -64,7 +87,7 @@ int main() {
         for (int k = 0; k < 3000; ++k) {
             const int nt = session_track_count(s);
             const int tr = nt > 0 ? (k % nt) : -1;
-            switch (k % 14) {
+            switch (k % 15) {
                 case 0: if (nt < kMaxTracks) session_add_graph_track(s, "Tx"); break;   // tracks_gen
                 case 1: if (nt > 1) session_remove_track(s, nt - 1); break;             // tracks_gen + tracks_retired
                 case 2: if (tr >= 0) session_set_track_audio_instrument(s, tr, "TestTone"); break;  // op_fx_gen + ggen
@@ -87,6 +110,11 @@ int main() {
                                         if (nn > 0) session_audio_graph_node_param_deliver(s, tr, session_track_audio_graph_node_id(s, tr, nn - 1), 0, static_cast<float>(k % 100) / 100.f); } break;
                 case 13: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);
                                         if (nn > 0) session_audio_graph_node_param_override_clear(s, tr, session_track_audio_graph_node_id(s, tr, nn - 1), 0); } break;
+                // ADR-0034: author the modulated plugin's base (base_author → ClapHandle::abase write)
+                // while the render thread resolves modulation off it — the race the atomic base guards.
+                case 14: if (plug_nid >= 0 && plug_gp >= 0)
+                             session_audio_graph_node_param_set(s, t0, plug_nid, plug_gp, static_cast<float>(k % 100) / 100.f);
+                         break;
             }
             if ((k & 63) == 0) std::this_thread::yield();
         }

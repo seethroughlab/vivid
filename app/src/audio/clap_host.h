@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
 
 namespace vivid::session {
 
@@ -160,13 +161,37 @@ struct ClapHandle {
     // the new base). Main/UI thread only. See the Vst3Handle twin for the rationale.
     std::vector<double>  host_base;
     std::vector<uint8_t> has_base;
-    void base_size_to_params() { host_base.assign(params.size(), 0.0); has_base.assign(params.size(), 0u); }
+    // ADR-0034: an audio-thread-readable MIRROR of the authored base (plain units), so the render
+    // thread can resolve control-edge modulation against a plugin param's base. Fixed-size, allocated
+    // once with the param table (never resized while the audio thread runs — mirrors native `pvals`).
+    // Written on the main thread alongside host_base; read on the audio thread via `abase_load`.
+    std::unique_ptr<std::atomic<double>[]>  abase;
+    std::unique_ptr<std::atomic<uint8_t>[]> ahas;
+    int abase_n = 0;
+    void base_size_to_params() {
+        host_base.assign(params.size(), 0.0); has_base.assign(params.size(), 0u);
+        abase_n = static_cast<int>(params.size());
+        abase.reset(new std::atomic<double>[params.size()]);
+        ahas.reset(new std::atomic<uint8_t>[params.size()]);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.0, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed); }
+    }
     void base_author(int i, double val) {
         if (i < 0 || i >= static_cast<int>(params.size())) return;
         if (host_base.size() != params.size()) base_size_to_params();
         host_base[static_cast<size_t>(i)] = val; has_base[static_cast<size_t>(i)] = 1u;
+        if (i < abase_n) { abase[i].store(val, std::memory_order_relaxed); ahas[i].store(1u, std::memory_order_release); }
     }
-    void base_forget_all() { has_base.assign(params.size(), 0u); }
+    void base_forget_all() {
+        has_base.assign(params.size(), 0u);
+        for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
+    }
+    // Audio thread: the authored base for param `i`, or false if none authored (unmodulatable until
+    // the host captures one — see capture-on-wire in session_audio_graph_connect_control).
+    bool abase_load(int i, double& out) const {
+        if (i < 0 || i >= abase_n || !ahas[i].load(std::memory_order_acquire)) return false;
+        out = abase[i].load(std::memory_order_relaxed);
+        return true;
+    }
     ClapEventScratch events;     // audio-thread scratch (built each block)
 
     void destroy() {

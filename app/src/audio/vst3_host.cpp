@@ -542,6 +542,40 @@ static uint32_t resolve_control_inputs(const vivid::audio::CompiledStep& s, cons
     return novr;
 }
 
+// ADR-0034: resolve this block's control inputs for a CLAP plugin node into param events (plain
+// units, keyed by clap_id), reading the audio-thread base mirror (`abase_load`) instead of the native
+// op's pvals. Same combine as native — in-track edges + cross-track edges, stacking on one param —
+// but the output is delivered through the plugin's event list (render_clap_*), not the native
+// override array. Returns the count; 0 for an unmodulated node or one with no captured base yet.
+static uint32_t resolve_clap_control(const vivid::audio::CompiledStep& s, const GNodeBind& nb,
+                                     const GraphBlockCtx& b, int dst_track_id, ClapParamMsg* out) {
+    if (!nb.clap) return 0;
+    uint32_t n = 0;
+    auto stack = [&](int pidx, float src, const vivid::audio::ControlShape& sh) {
+        if (pidx < 0 || pidx >= static_cast<int>(nb.clap->params.size())) return;
+        double base; if (!nb.clap->abase_load(pidx, base)) return;   // no anchor captured → not modulatable
+        const clap_id id = nb.clap->params[pidx].id;
+        const float lo = static_cast<float>(nb.clap->params[pidx].min), hi = static_cast<float>(nb.clap->params[pidx].max);
+        int slot = -1;
+        for (uint32_t j = 0; j < n; ++j) if (out[j].id == id) { slot = static_cast<int>(j); break; }
+        const float cur = slot >= 0 ? static_cast<float>(out[slot].value) : static_cast<float>(base);
+        const float v = vivid::audio::control_resolve(cur, src, sh, lo, hi);
+        if (slot >= 0) out[slot].value = v;
+        else if (n < vivid::audio::kMaxControlInputs) out[n++] = { id, static_cast<double>(v) };
+    };
+    for (int k = 0; k < s.n_control_in; ++k) {   // in-track control edges
+        const vivid::audio::ControlIn& ci = s.control_in[k];
+        if (ci.src_buf < 0 || ci.param < 0) continue;
+        stack(ci.param, b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock], ci.shape);
+    }
+    for (uint32_t x = 0; x < b.xctl_count; ++x) {   // cross-track control edges targeting this node
+        const XCtlApply& xa = b.xctl[x];
+        if (xa.dst_track_id != dst_track_id || xa.dst_out_buf != s.out_buf || xa.dst_param < 0) continue;
+        stack(xa.dst_param, b.ctl_pool[xa.src_pool_index], xa.shape);
+    }
+    return n;
+}
+
 // ADR-0022 P2a.1b: run one MODULATOR step — resolve its own control inputs (a modulator can be
 // modulated), run the op into its control-pool region, publish the UI live dot. `scL`/`scR` receive
 // its (discarded) silent audio output. Pure DSP + atomics; no alloc/lock.
@@ -612,6 +646,11 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
             else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { xa.dst_param, v };
         }
     }
+    // ADR-0034: the CLAP twin of the native override resolve above — a plugin node's modulation,
+    // delivered as param events by render_clap_*. Empty (cmod_n == 0) unless a control edge drives a
+    // CLAP node (and it has a captured base anchor). VST3 modulation lands in Phase 2.
+    ClapParamMsg cmod[vivid::audio::kMaxControlInputs];
+    const uint32_t cmod_n = nb.clap ? resolve_clap_control(s, nb, b, t.id, cmod) : 0;
 
     if (s.n_in == 0) {   // source node
         const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
@@ -749,9 +788,9 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         }
         else if (nb.kind == GNKind::ClapInst && nb.clap) {
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));
-            if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR);
+            if (full_range) render_clap_instrument(t, nb.clap, nsrc, frames, oL, oR, cmod, cmod_n);
             else { filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);   // key-split
-                   render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR); }
+                   render_clap_instrument(t, nb.clap, t.src_nev, frames, oL, oR, cmod, cmod_n); }
             // ADR-0015 (M2): a CLAP that GENERATES notes publishes them on its note output.
             if (s.note_out_buf >= 0 && s.note_out_buf < static_cast<int>(t.npool.size()))
                 drain_clap_notes(nb.clap, t.npool[static_cast<size_t>(s.note_out_buf)]);
@@ -793,7 +832,7 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
         render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
     else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
-        render_clap_effect(t, nb.clap, frames, oL, oR);
+        render_clap_effect(t, nb.clap, frames, oL, oR, cmod, cmod_n);
     else if (nb.kind == GNKind::Output) {
         // ADR-0022 P1a — the Track-Out node applies the track GAIN, so its buffer IS the track's
         // final output. (Was applied downstream in session_process's mix; relocated here so P1b's
@@ -3293,6 +3332,17 @@ int session_audio_graph_connect_control(Session* s, int t, int from_id, int to_i
     sh.amount = amount; sh.curve = curve; sh.invert = invert != 0; sh.bipolar = bipolar != 0;
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (!tr->agraph.connect_control(from_id, to_id, dest_param, sh)) return 0;
+    // ADR-0034: capture-on-wire. A modulator wired onto a plugin param that has no authored base yet
+    // captures the plugin's current value as the base, so the audio thread has a stable anchor to
+    // resolve modulation against (and disconnect has a value to restore). Main thread — reading plugin
+    // state here is safe. (VST3 capture lands with its audio-thread base mirror in Phase 2.)
+    if (const int nidx = tr->agraph.node_index(to_id);
+        nidx >= 0 && nidx < static_cast<int>(tr->agnodes.size()) && dest_param >= 0) {
+        const GNodeBind& nb = tr->agnodes[static_cast<size_t>(nidx)];
+        if (nb.clap && dest_param < static_cast<int>(nb.clap->params.size()) &&
+            (dest_param >= static_cast<int>(nb.clap->has_base.size()) || !nb.clap->has_base[dest_param]))
+            nb.clap->base_author(dest_param, clap_param_value(nb.clap, nb.clap->params[dest_param].id));
+    }
     if (!republish_track_graph(tr)) { tr->agraph.disconnect_control(from_id, to_id, dest_param); return 0; }  // cycle: revert
     tr->agraph.clear_positions();   // a modulator adds an upstream column: re-seed the layout
     tr->graph_authoritative = true;
