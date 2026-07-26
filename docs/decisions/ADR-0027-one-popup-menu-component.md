@@ -7,6 +7,25 @@ Date: 2026-07-25
 Extends [ADR-0025](ADR-0025-cpp17-organization-and-patterns.md) (pressure-point #2: move interaction
 ownership out of `Window`) and [ADR-0023](ADR-0023-shared-graph-ui-substrate.md) (shared UI substrate).
 
+**As built (2026-07-26) — DONE.** Landed as two PRs. `ui/popup_menu.h` holds the `PopupMenu` component:
+`{open, x, y, header, items, width, row_h, accent}` + a typed `{kind, a, b, data}` payload, with
+`row_rect(j)` / `hit_row(mx,my)` giving it the geometry that one `draw_popup` (session_view.cpp) and the
+click hit-test now share. Self-contained builders construct each menu at open time.
+- **#148** — the `PopupMenu` seed + the two `CtxMenu` uses (the characteristics menu + the map-source
+  picker). The overloaded `CtxMenu.src` (a track index for one, a node id for the other) is replaced by
+  the typed payload; `CtxMenu` deleted.
+- **#149** — `NodeMenu` (op-node open/fork/clone; carries a `NodeAction` + a source path in `data`) and
+  `AudioNodeMenu` (the audio-node "→ visuals" menu; `a`=track, `b`=node) migrated; both structs deleted.
+
+The four *row* menus are now one component. The fifth item on the original list, **`ModEditor`, was
+intentionally left as-is** — it is a param-editor popover (sliders / toggles / a curve), not a row-list
+menu, and it already shares its draw + hit geometry through the `mod_editor_*` helpers (the same
+draw/hit-can't-drift discipline `PopupMenu` embodies) and draws through `overlay_panel`. It has none of
+the duplication or overloaded-payload problems this ADR targets, so folding its custom body into the
+row-based component would add coupling for no benefit — consistent with the decision below that the shared
+part is the popup *frame*, not the contents. A headless `test_popup_menu` locks the builders' payloads +
+the `hit_row`↔`row_rect` invariant.
+
 ## Context
 
 Right-click / contextual popups accreted one at a time as features landed, and there are now five
