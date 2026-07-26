@@ -60,6 +60,54 @@ Key points:
 - The `release`/`acquire` pair is what makes the edited data visible to the audio
   thread when it observes the new generation.
 
+## Cross-thread channels (the enumerated contract)
+
+Every channel that crosses a thread boundary, with the ordering invariant it relies on. The three
+patterns above are the *mechanisms*; this is the *inventory* — review a change against it, and add a row
+when you add a channel (ADR-0029).
+
+| Channel | Producer → Consumer | Mechanism | Ordering invariant |
+|---|---|---|---|
+| Transport scalars (`beats`/`bpm`/`level`/bands/`transient`) | audio → frame | `std::atomic`, relaxed per field | single writer + reader per field; no cross-field consistency needed |
+| Plugin param queue (per VST3/CLAP handle) | UI → audio | lock-free SPSC ring | producer `push`, consumer `pop` at top of `process`; full → drop (never blocks audio) |
+| Structural edits (MIDI clips, FX chain, graph binds) | UI → audio | generation counter + `try_lock` copy | edit under the mutex, then `gen.fetch_add(release)`; audio `acquire`-loads `gen`, `try_lock`-copies or retries next block |
+| Live MIDI ring (`LiveMidi`) | UI + CoreMIDI → audio | SPSC ring; producers serialize on `push_mtx`, consumer lock-free | `head`/`tail` release/acquire; full → drop |
+| Node-analyze mask (gated per-node FFT) | UI → audio | `std::atomic<uint64_t>`, release/acquire | ring allocated on the UI thread **before** the release-store; audio `acquire`-loads the mask, then reads the now-stable ring |
+| Active-notes bus (`note_bus`) | frame → render-thread op | atomic note slots + `count`/`track_id` release/acquire | `track_id` published **last** gates `count`+notes; each note is one atomic word, so a torn snapshot mixes whole notes (well-defined — ADR-0029) |
+| Modulator control-out (`ctl_pub[]`) | audio → frame | `std::atomic<float>`, relaxed per node | single writer + reader |
+| Per-track note scalars (`note_pitch`/`note_vel`/`note_gate`) | audio → frame | `std::atomic<float>`, relaxed | single writer + reader; values HELD until the next note |
+| Control-server work | server thread → UI | enqueue + `std::promise`, applied on the main loop | **all** session/graph mutation happens on the UI thread |
+| Analysis / scope sample rings (`an_ring`, `node_an_ring`, `held_[]`) | audio → frame | plain array snapshot + atomic `count`/`pos` | **benign torn read** — not yet atomic-hardened; see below |
+
+### Benign torn reads — and hardening them
+
+A few *array-snapshot* channels let the consumer read a buffer the producer may be mid-writing (the
+per-track/master analysis rings, the per-node scope/FFT rings, and the held-note array). A torn read is a
+1-frame visual glitch, explicitly acceptable. But when the array is **plain memory**, that concurrent
+read/write is a technical data race (UB) that ThreadSanitizer rightly flags.
+
+The active-notes bus was hardened (ADR-0029): each note slot is a `std::atomic<uint64_t>` (pitch+velocity
+packed into one word), written/read relaxed, with `count`/`track_id` release/acquire for grouping. The
+torn read is now **well-defined** (whole notes from adjacent frames, never a half-written note) and
+TSan-clean. Extend the same pattern — atomic array elements, not a lock — to `an_ring` / `node_an_ring` /
+`held_[]` when the macOS audio-engine TSan run (below) is turned on.
+
+## ThreadSanitizer is a gate, not a ritual (ADR-0029)
+
+TSan only finds a race on code it actually **runs with threads racing**, so the model is verified by tests
+that drive a channel from two threads, not by reading the code.
+
+- **CI leg `tests (thread-sanitizer)`** builds with `-DVIVID_SANITIZE_THREAD=ON` (`VIVID_BUILD_APP=OFF`)
+  and runs the **`THREAD`-labelled** tests (`ctest -L THREAD`) under `TSAN_OPTIONS=halt_on_error=1` — TSan's
+  value is racing tests, and the package/dlopen tests SEGV under it (loading a non-instrumented dylib), so
+  the leg opts in the concurrency tests rather than the whole suite. `test_note_bus` races a publisher
+  against a reader over the active-notes bus, so a regression that drops the bus's atomics (or its
+  ordering) turns the leg red. Give a new threaded test the `THREAD` label to join.
+- **Next phase:** the full audio engine is macOS + heavy-dep (`VIVID_BUILD_APP=ON`), so its concurrency
+  lives in `test_session_executor`. Running *that* under TSan (and hardening the remaining benign-torn
+  rings above) is the follow-up that closes the loop on the audio thread itself; it needs a curated
+  suppression list for the third-party libraries (miniaudio/wgpu/GLFW) first.
+
 ## Checklist for new audio-reachable code
 
 1. Does the audio thread only read atomics / pop SPSC / `try_lock`-copy? (no `new`,
@@ -68,3 +116,6 @@ Key points:
 3. New MCP/handler mutations: route through the **main-thread** apply path, not the
    server thread.
 4. Run the change under `-DVIVID_SANITIZE_THREAD=ON` and exercise live editing.
+5. **A new cross-thread channel isn't done until** it has a row in the channel table above (with its
+   ordering invariant) **and** a headless test that drives it concurrently, so the TSan CI leg exercises
+   it (ADR-0029). If it's an array snapshot, make the elements atomic — don't ship a plain-memory race.

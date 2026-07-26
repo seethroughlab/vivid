@@ -29,3 +29,27 @@ jobs:
         run: cmake --build build -j
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # ADR-0029: the concurrency tests under ThreadSanitizer — a separate job because TSan uses a different
+  # (mutually exclusive) flag than the ASan/UBSan matrix above. Runs only the THREAD-labelled tests
+  # (`-L THREAD`): TSan's value is racing tests, and the package/dlopen tests SEGV under it (loading a
+  # non-instrumented dylib). test_note_bus races a publisher against a reader over the active-notes bus,
+  # so a dropped atomic or a broken release/acquire turns it red. halt_on_error=1 fails on the first race.
+  thread-sanitizer:
+    runs-on: ubuntu-latest
+    name: tests (thread-sanitizer)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S app -B build-tsan
+          -DVIVID_BUILD_APP=OFF
+          -DVIVID_BUILD_TESTS=ON
+          -DVIVID_SANITIZE_THREAD=ON
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - name: Build
+        run: cmake --build build-tsan --target test_note_bus -j
+      - name: Test
+        run: ctest --test-dir build-tsan -L THREAD --output-on-failure
+        env:
+          TSAN_OPTIONS: halt_on_error=1

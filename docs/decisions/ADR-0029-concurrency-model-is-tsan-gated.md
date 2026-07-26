@@ -7,6 +7,21 @@ Date: 2026-07-25
 Extends [ADR-0025](ADR-0025-cpp17-organization-and-patterns.md) (real-time safety) and the thread-safety
 model documented in `app/docs/thread-safety.md`.
 
+**As built — phase 1 (2026-07-26).** Landed as one PR: (1) `app/docs/thread-safety.md` gained the
+enumerated **cross-thread channel table** (every producer→consumer channel + its ordering invariant) and
+a "benign torn reads" section (decision #1). (2) The **active-notes bus was hardened** — each note slot is
+now a `std::atomic<uint64_t>` (pitch+velocity packed), so the deliberately-tolerated torn read is a
+*well-defined* data race on atomics instead of UB on plain memory, and it is TSan-clean (decision #4).
+(3) A portable multithreaded driver `test_note_bus` races a publisher against a reader over the bus
+(decision #3). (4) A **`tests (thread-sanitizer)` CI job** builds with `-DVIVID_SANITIZE_THREAD=ON`
+(`VIVID_BUILD_APP=OFF`) and runs the `THREAD`-labelled concurrency tests (`ctest -L THREAD`) under
+`TSAN_OPTIONS=halt_on_error=1` (decision #2) — the leg opts *in* the racing tests because the
+package/dlopen tests SEGV under TSan (loading a non-instrumented dylib), a known limitation, not a race.
+Marking the job *required* in branch protection is a one-time repo-settings toggle. **Phase 2 (not yet done):** run the
+macOS audio engine (`VIVID_BUILD_APP=ON`, `test_session_executor`) under TSan — it needs a curated
+third-party suppression list (miniaudio/wgpu/GLFW) — and harden the remaining plain-memory array-snapshot
+rings (`an_ring` / `node_an_ring` / `held_[]`) the same way the note bus was.
+
 ## Context
 
 Vivid runs a hard real-time audio thread alongside a UI/frame thread, a control-server worker, a CoreMIDI
