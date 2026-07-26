@@ -98,6 +98,13 @@ vivid_add_test(test_audio_clip)     # A1 clip playback shaping (gain/reverse/fad
 target_link_libraries(test_audio_clip PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_clip_dsp)       # A2 warp engine smoke (signalsmith stretch path)
 target_link_libraries(test_clip_dsp PRIVATE signalsmith_stretch nlohmann_json::nlohmann_json)
+vivid_add_test(test_note_bus)       # ADR-0029: active-notes bus correctness + concurrent TSan target
+target_sources(test_note_bus PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/note_bus.cpp)
+target_link_libraries(test_note_bus PRIVATE Threads::Threads)
+# The THREAD label is what the ThreadSanitizer CI leg runs (`ctest -L THREAD`): TSan's value is racing
+# tests, and the package/dlopen tests SEGV under it (loading a non-instrumented dylib), so the leg opts
+# IN the concurrency tests rather than running the whole suite. A new threaded test adds this label.
+set_tests_properties(test_note_bus PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_control_parse)
 
 # ADR-0014: the visual output's format — the aspect/size preset tables + the Fit/Fill/Stretch UV
