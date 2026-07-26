@@ -4,6 +4,7 @@
 // public C API is vst3_host.h. All these types are RT-reachable: read docs/thread-safety.md.
 #include "vst3_host_common.h"
 #include "vst3_host.h"
+#include "audio/analysis_ring.h"   // ADR-0029: atomic-slot spectrum ring (MeterState::an_ring)
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
 #include "audio/clip_dsp.h"
@@ -87,8 +88,7 @@ constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the 
 struct MeterState {
     std::atomic<float> level{0.f}, transient{0.f};
     std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};   // 3-band energy
-    float              an_ring[kAnalysisN] = {0};   // mono sample ring for the frame-side FFT
-    uint32_t           an_pos = 0;
+    vivid::audio::AnalysisRing<kAnalysisN> an_ring;   // mono sample ring (frame-side FFT); atomic slots (ADR-0029)
     float              flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;   // audio-thread running state
 };
 

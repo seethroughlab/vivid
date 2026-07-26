@@ -55,11 +55,11 @@ static int copy_analysis_ring(const float* ring, uint32_t pos, float* out, int n
 }
 int session_track_analysis_copy(Session* s, int t, float* out, int n) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
-    return copy_analysis_ring(s->tracks[t]->meter.an_ring, s->tracks[t]->meter.an_pos, out, n);
+    return s->tracks[t]->meter.an_ring.snapshot(out, n);   // atomic-slot ring (ADR-0029)
 }
 int session_master_analysis_copy(Session* s, float* out, int n) {
     if (!s || !out || n <= 0) return 0;
-    return copy_analysis_ring(s->master.meter.an_ring, s->master.meter.an_pos, out, n);
+    return s->master.meter.an_ring.snapshot(out, n);
 }
 // A modulator/LFO node's latest 0..1 control output (published by run_modulator_step into ctl_pub,
 // indexed by node index == out_buf). 0 for non-modulator nodes (they never write it). `i` is the node

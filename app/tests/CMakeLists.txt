@@ -105,6 +105,9 @@ target_link_libraries(test_note_bus PRIVATE Threads::Threads)
 # tests, and the package/dlopen tests SEGV under it (loading a non-instrumented dylib), so the leg opts
 # IN the concurrency tests rather than running the whole suite. A new threaded test adds this label.
 set_tests_properties(test_note_bus PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
+vivid_add_test(test_analysis_ring)  # ADR-0029 phase 2: atomic-slot spectrum ring, concurrent TSan target
+target_link_libraries(test_analysis_ring PRIVATE Threads::Threads)
+set_tests_properties(test_analysis_ring PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_popup_menu)     # ADR-0027: PopupMenu builders + draw/hit-test geometry invariant
 vivid_add_test(test_control_parse)
 

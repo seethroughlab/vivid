@@ -17,10 +17,20 @@ now a `std::atomic<uint64_t>` (pitch+velocity packed), so the deliberately-toler
 (`VIVID_BUILD_APP=OFF`) and runs the `THREAD`-labelled concurrency tests (`ctest -L THREAD`) under
 `TSAN_OPTIONS=halt_on_error=1` (decision #2) — the leg opts *in* the racing tests because the
 package/dlopen tests SEGV under TSan (loading a non-instrumented dylib), a known limitation, not a race.
-Marking the job *required* in branch protection is a one-time repo-settings toggle. **Phase 2 (not yet done):** run the
-macOS audio engine (`VIVID_BUILD_APP=ON`, `test_session_executor`) under TSan — it needs a curated
-third-party suppression list (miniaudio/wgpu/GLFW) — and harden the remaining plain-memory array-snapshot
-rings (`an_ring` / `node_an_ring` / `held_[]`) the same way the note bus was.
+Marking the job *required* in branch protection is a one-time repo-settings toggle.
+
+**As built — phase 2 (2026-07-26).** Hardened the **spectrum sample ring** (`MeterState::an_ring`) into a
+portable `AnalysisRing` (`audio/analysis_ring.h`) — atomic-float slots + a release/acquire `pos` — so its
+benign torn read is well-defined and TSan-clean, covered by a new portable `test_analysis_ring` on the
+`THREAD` leg. **Correction to the phase-1 note above:** running `test_session_executor` under TSan is *not*
+the right lever — it drives `session_process` synchronously on one thread (no device, no `std::thread`), so
+TSan finds no races and no third-party (miniaudio/wgpu/GLFW) threads even start; a suppression list is moot
+for it. The real audio↔UI race surface only exists when the miniaudio callback thread runs concurrently
+with UI mutations, which needs a **dedicated concurrent harness** (render on one thread while another edits
+the session). That harness — plus hardening the remaining plain-memory channels (`node_an_ring` /
+`node_scope`, and the `held_[]` set) — is the outstanding phase-2 work. Those don't drop into `AnalysisRing`
+as-is: the per-node rings are lazily-allocated `std::vector`s (need `unique_ptr<atomic<float>[]>`, since
+`vector<atomic>` isn't movable) and `held_[]` is a 12-byte-element set (no single-word pack).
 
 ## Context
 
