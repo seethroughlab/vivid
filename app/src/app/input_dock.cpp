@@ -48,29 +48,27 @@ bool dock_char_menu(Window& win, App& app, double mx, double my) {
 // this audio node (node_<track-stable-id>_<node>.<rms|fft.k>). Cross-surface, exactly like dock_char_menu.
 bool audio_node_menu_click(Window& win, App& app, double mx, double my) {
     if (!win.audio_node_menu.open) return false;
-    const AudioNodeMenu m = win.audio_node_menu;
-    if (app.graph && app.session) {
-        const char* nm = "node"; bool ismod = false;   // node op type (label) + is-it-a-modulator
-        const int nn = S::session_track_audio_graph_node_count(app.session, m.track);
+    const int track = win.audio_node_menu.a, node = win.audio_node_menu.b;   // ADR-0027 payload
+    const int row = win.audio_node_menu.hit_row(static_cast<float>(mx), static_cast<float>(my));
+    if (row >= 0 && app.graph && app.session) {
+        // re-resolve op type (label) + is-modulator to pick the catalog the row indexes into
+        const char* nm = "node"; bool ismod = false;
+        const int nn = S::session_track_audio_graph_node_count(app.session, track);
         for (int i = 0; i < nn; ++i)
-            if (S::session_track_audio_graph_node_id(app.session, m.track, i) == m.node) {
-                const char* t = S::session_track_audio_graph_node_type(app.session, m.track, i);
+            if (S::session_track_audio_graph_node_id(app.session, track, i) == node) {
+                const char* t = S::session_track_audio_graph_node_type(app.session, track, i);
                 if (t && *t) nm = t;
-                ismod = S::session_track_audio_graph_node_kind(app.session, m.track, i) == 5;
+                ismod = S::session_track_audio_graph_node_kind(app.session, track, i) == 5;
                 break;
             }
         const AudioNodeChar* items = ismod ? kModNodeChars : kAudioNodeChars;
-        const int nitems = ismod ? kNumModNodeChars : kNumAudioNodeChars;
-        const int tid = S::session_track_id(app.session, m.track);
-        for (int j = 0; j < nitems; ++j)
-            if (hit({ m.x, m.y + j * 26.f, 184.f, 26.f }, mx, my)) {
-                const std::string src = "node_" + std::to_string(tid) + "_" + std::to_string(m.node) + "." + items[j].suffix;
-                app.graph->add_data_node(std::string(nm) + " " + items[j].label, src);
-                std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' -> %s\n", nm, items[j].label, src.c_str());
-                break;
-            }
+        const int j = win.audio_node_menu.items[row].id;   // index into the chosen catalog
+        const int tid = S::session_track_id(app.session, track);
+        const std::string src = "node_" + std::to_string(tid) + "_" + std::to_string(node) + "." + items[j].suffix;
+        app.graph->add_data_node(std::string(nm) + " " + items[j].label, src);
+        std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' -> %s\n", nm, items[j].label, src.c_str());
     }
-    win.audio_node_menu.open = false;
+    win.audio_node_menu.close();
     return true;
 }
 

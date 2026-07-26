@@ -45,6 +45,28 @@ int main() {
     // far to the side misses (outside the width)
     assert(track.hit_row(track.x + track.width + 20.f, track.y + track.row_h * 0.5f) == -1);
 
+    // --- builder: the audio-graph node "→ visuals" menu --------------------------------------------
+    PopupMenu an = vivid::ui::popup_audio_node(0.f, 0.f, /*track=*/1, /*node=*/9, /*is_mod=*/false, "Filter");
+    assert(an.kind == PopupMenu::Kind::AudioNode);
+    assert(an.a == 1 && an.b == 9);                          // (track, node) payload
+    assert(static_cast<int>(an.items.size()) == vivid::ui::kNumAudioNodeChars);   // rms + 3 fft bands
+    assert(std::strstr(an.header.c_str(), "Filter") != nullptr);
+    PopupMenu mod = vivid::ui::popup_audio_node(0.f, 0.f, 0, 3, /*is_mod=*/true, "LFO");
+    assert(static_cast<int>(mod.items.size()) == vivid::ui::kNumModNodeChars);    // just the control item
+
+    // --- builder: the op-node menu (open/fork/clone) -----------------------------------------------
+    PopupMenu vn = vivid::ui::popup_visual_node(0.f, 0.f, /*node=*/4, vivid::ui::NodeAction::OpenSource,
+                                                "Open source in editor", "Plasma", "/path/to.wgsl");
+    assert(vn.kind == PopupMenu::Kind::VisualNode);
+    assert(vn.a == 4);
+    assert(vn.data == "/path/to.wgsl");                       // the source path travels in `data`
+    assert(vn.items.size() == 1);
+    assert(vn.items[0].id == static_cast<int>(vivid::ui::NodeAction::OpenSource));
+    assert(vn.items[0].enabled);
+    PopupMenu vn_none = vivid::ui::popup_visual_node(0.f, 0.f, 4, vivid::ui::NodeAction::None,
+                                                     "built-in", "Blur", "");
+    assert(!vn_none.items[0].enabled);                       // a no-action node's row is disabled
+
     // a closed menu never hits, even at a valid point
     track.close();
     assert(!track.open);
