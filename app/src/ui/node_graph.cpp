@@ -298,6 +298,36 @@ void NodeGraph::set_source_by_id(const std::string& source, float v) {
     }
     reg_.set_source(source, v);
 }
+// ADR-0028: intern `source` to a stable publish handle (build the string once). Idempotent — the same
+// id always maps to the same handle. Cold path (called on the first frame a source appears).
+int NodeGraph::source_handle(const std::string& source) {
+    auto it = handle_by_id_.find(source);
+    if (it != handle_by_id_.end()) return it->second;
+    const int h = static_cast<int>(pubs_.size());
+    pubs_.push_back({ reg_.intern_source(source), -1, data_gen_ - 1, source });  // stale gen -> resolve on 1st publish
+    handle_by_id_.emplace(source, h);
+    return h;
+}
+// Hot path: write a source's value by handle. Updates the registry cell directly (no string hash) and
+// the matching data node's sparkline (index cached, re-resolved only when the data-node set changed).
+void NodeGraph::publish(int handle, float v) {
+    if (handle < 0 || handle >= static_cast<int>(pubs_.size())) return;
+    Pub& p = pubs_[handle];
+    *p.cell = v;
+    if (p.data_gen != data_gen_) { p.data_idx = find_source_node(p.id); p.data_gen = data_gen_; }
+    if (p.data_idx >= 0) {
+        DataNode& n = data_[p.data_idx];
+        n.value = v;
+        n.hist[n.hist_head] = v;
+        n.hist_head = (n.hist_head + 1) % kHistN;
+    }
+}
+// Consumption gate by handle: does any mapping/data-node reference this (interned) source's id as a
+// prefix? Lets the frame publisher gate per-node FFT capture without rebuilding the prefix string.
+bool NodeGraph::consumed(int handle) const {
+    if (handle < 0 || handle >= static_cast<int>(pubs_.size())) return false;
+    return source_consumed(pubs_[handle].id);
+}
 void NodeGraph::apply_params() {
     if (!vg_) return;
     auto& nodes = vg_->nodes();
@@ -331,6 +361,7 @@ void NodeGraph::add_data_node(const std::string& title, const std::string& sourc
     float y = by0_ + 150.f + data_.size() * 84.f;
     if (y > by1_ - 72.f) y = by1_ - 72.f;
     data_.push_back({ bx0_ + 20.f, y, 168.f, 72.f, title, source, 0.f, 90, {}, 0 });
+    ++data_gen_;   // ADR-0028: invalidate cached publish->data-node indices (a source may now have a node)
     note_edit_("Add Data Node");   // covers both the Tab chooser and the inspector menu
 }
 void NodeGraph::add_data_node(const std::string& title, int char_id) { add_data_node(title, source_id_for(char_id)); }
@@ -338,7 +369,7 @@ void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::st
     if (i < 0 || i >= int(data_.size())) return;
     x = data_[i].x; y = data_[i].y; source = data_[i].source; title = data_[i].title;
 }
-void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); }
+void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); ++data_gen_; }   // ADR-0028: drop cached indices
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
 void NodeGraph::get_op(int i, int& input, int& id, float& x, float& y) const {
@@ -490,6 +521,7 @@ bool NodeGraph::swap_op_type(int i, const std::string& type) {
 }
 void NodeGraph::add_node_raw(const std::string& title, const std::string& source, float x, float y) {
     data_.push_back({ x, y, 168.f, 72.f, title, source, 0.f, 0, {}, 0 });
+    ++data_gen_;   // ADR-0028: invalidate cached publish->data-node indices
 }
 // Legacy load path: a saved session that stored the packed integer char_id (pre string-source migration).
 void NodeGraph::add_node_raw(const std::string& title, int char_id, float x, float y) {

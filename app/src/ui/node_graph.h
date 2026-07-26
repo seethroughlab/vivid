@@ -11,6 +11,8 @@
 #include "gpu/shader_library.h"  // ADR-0016: badge a shader row SHADER, not OP
 #include <vector>
 #include <string>
+#include <cstdint>
+#include <unordered_map>
 #include <set>
 #include <utility>
 
@@ -38,7 +40,13 @@ public:
     void before_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
     void after_card(Renderer2D& r, const AdapterNode& n, int idx) const override;
 
-    void set_source_by_id(const std::string& source, float v);   // canonical (sole) live publish, by string id (ADR-0028)
+    void set_source_by_id(const std::string& source, float v);   // one-shot publish by string id (cold path)
+    // ADR-0028: intern a source id to a stable HANDLE, then publish by handle each frame — no per-frame
+    // string build (caller keys the handle by a cheap integer) and no string hash (the registry cell +
+    // the matching data-node are resolved once). `source_handle` builds the string once; `publish` is hot.
+    int  source_handle(const std::string& source);
+    void publish(int handle, float v);
+    bool consumed(int handle) const;   // source_consumed(id) for an interned handle — no per-frame string
     // True if any source id starting with `prefix` is CONSUMED — wired to a param (a mapping) or shown
     // as a spawned data node. Lets the engine gate expensive per-node analysis (FFT) to what's on screen.
     bool source_consumed(const std::string& prefix) const;
@@ -166,6 +174,14 @@ private:
     struct DataNode { float x, y, w, h; std::string title; std::string source; float value; int flash;
                       float hist[kHistN]; int hist_head; };
     std::vector<DataNode> data_;
+    // ADR-0028 interning: one Pub per distinct published source. `cell` is a stable pointer into the
+    // registry's value map (see MappingRegistry::intern_source); `data_idx` caches the matching data
+    // node (for its live sparkline), re-resolved whenever `data_gen_` changes (the data-node set grew or
+    // was cleared — indices only ever append or clear, never shift, so an index stays valid otherwise).
+    struct Pub { float* cell; int data_idx; uint32_t data_gen; std::string id; };
+    std::vector<Pub> pubs_;
+    std::unordered_map<std::string, int> handle_by_id_;   // dedup: source id -> pubs_ index (idempotent)
+    uint32_t data_gen_ = 0;                                // bumped on any data_ add/clear
     std::vector<std::pair<std::string, std::string>> bridge_catalog_;   // (label, source id) — Tab chooser sources
     vivid::MappingRegistry reg_;
     float sx_ = 900.f, sy_ = 488.f;   // persisted shader-node position (get_shader/set_shader)
