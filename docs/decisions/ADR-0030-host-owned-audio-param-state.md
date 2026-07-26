@@ -20,8 +20,13 @@ Implementation:
   (`test_bridge_undo_stability`) proves the getter persistence/undo serialize with keeps returning the
   authored base while a MOVING override drives the param, so a save/undo snapshot taken mid-automation
   stays stable, and clearing returns the node to base. The real-plugin save/load-while-mapped
-  round-trip stays a MANUAL check — it needs an installed plugin (CI has none; Surge stalls), and the
-  plugin base-cache mechanics are already unit-tested (`test_plugin_param_base`).
+  round-trip is automated for CLAP by an in-tree fixture: `tests/fixtures/vivid_test_clap.cpp` is a
+  minimal gain plugin built from source into a `.clap` bundle (CLAP's ABI is MIT + header-only, so CI
+  needs nothing installed), and `test_clap_plugin_roundtrip` loads it and checks base authoring,
+  base-stability under a moving `deliver`, and a save→reload round-trip. The `audio-engine-tests` CI
+  job runs the whole non-TSan AUDIO_ENGINE tier. A real VST3 fixture is deliberately skipped — the
+  vendored SDK lacks the `public.sdk` helpers, and the host-side base-cache/deliver logic is
+  structurally shared with CLAP; the VST3-specific delivery stays on `test_plugin_param_base` + manual.
 
 Extends [ADR-0022](ADR-0022-session-audio-graph.md), [ADR-0028](ADR-0028-one-source-id-language.md),
 and [ADR-0017](ADR-0017-every-edit-is-reversible.md).

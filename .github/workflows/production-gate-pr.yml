@@ -60,13 +60,17 @@ jobs:
     runs-on: [self-hosted, macOS]
     steps:
       - uses: actions/checkout@v4
-      - name: Configure (full-app, for the audio deps) + build only the executor test
+      - name: Configure (full-app, for the audio deps) + build the audio-engine test tier
         run: |
           cmake -S app -B app/build-audio -DVIVID_BUILD_APP=ON -DVIVID_BUILD_TESTS=ON \
                 -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build app/build-audio --target test_session_executor -j
-      - name: Run session-executor test
-        run: ctest --test-dir app/build-audio -R test_session_executor --output-on-failure
+          # The non-TSan AUDIO_ENGINE tests. test_clap_plugin_roundtrip pulls in the in-tree CLAP
+          # fixture (vivid_test_clap) via add_dependencies, so it is built too. test_session_concurrency
+          # is TSan-only and runs in the audio-thread-sanitizer job below.
+          cmake --build app/build-audio -j --target \
+            test_session_executor test_plugin_param_base test_bridge_undo_stability test_clap_plugin_roundtrip
+      - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)
+        run: ctest --test-dir app/build-audio -L AUDIO_ENGINE -E test_session_concurrency --output-on-failure
 
   # ADR-0029 phase 2: the audio↔UI concurrency harness under ThreadSanitizer. Races a render thread
   # (session_process) against a UI/mutator thread over the real gen-counter/try_lock/SPSC/atomic-ring
