@@ -78,7 +78,8 @@ when you add a channel (ADR-0029).
 | Modulator control-out (`ctl_pub[]`) | audio → frame | `std::atomic<float>`, relaxed per node | single writer + reader |
 | Per-track note scalars (`note_pitch`/`note_vel`/`note_gate`) | audio → frame | `std::atomic<float>`, relaxed | single writer + reader; values HELD until the next note |
 | Control-server work | server thread → UI | enqueue + `std::promise`, applied on the main loop | **all** session/graph mutation happens on the UI thread |
-| Per-node scope / FFT rings (`node_an_ring`, `node_scope`) + held-note set (`held_[]`) | audio → frame | plain array snapshot + atomic `count`/`pos`/mask | **benign torn read** — not yet atomic-hardened; see below |
+| Per-node scope / FFT ring bank (`node_scope`, `node_an`) | audio → frame | `NodeRingBank` — atomic-float slots + release/acquire per-node head | lapped slot tears benignly, well-defined (ADR-0029) |
+| Held-note set (`held`) | audio → frame | `HeldNoteSet` — atomic packed {pitch,vel} slots + release/acquire `count` | swap-remove rewrites a slot; a torn snapshot mixes whole notes (ADR-0029) |
 
 ### Benign torn reads — and hardening them
 
@@ -87,15 +88,17 @@ per-track/master analysis rings, the per-node scope/FFT rings, and the held-note
 1-frame visual glitch, explicitly acceptable. But when the array is **plain memory**, that concurrent
 read/write is a technical data race (UB) that ThreadSanitizer rightly flags.
 
-Two channels are now hardened this way (ADR-0029): the **active-notes bus** (each note slot a
-`std::atomic<uint64_t>`, pitch+velocity packed) and the **spectrum sample ring** (`MeterState::an_ring`,
-an `AnalysisRing` of atomic-float slots — see `audio/analysis_ring.h`). Both torn reads are now
-well-defined (whole values from adjacent frames, never a half-written one) and TSan-clean, each covered by
-a portable concurrent test (`test_note_bus`, `test_analysis_ring`) on the `THREAD` leg. Extend the same
-pattern — atomic array elements, not a lock — to the **remaining** plain-memory channels: the per-node
-`node_an_ring` / `node_scope` rings and the `held_[]` note set. These are the fiddly ones — the per-node
-rings are lazily-allocated `std::vector`s (so they need a `unique_ptr<atomic<float>[]>` rather than
-`vector<atomic>`, which isn't movable), and `held_[]` is a 12-byte-element set (no single-word pack).
+All five such channels are now hardened this way (ADR-0029), each a header-only atomic-slot type with a
+portable `THREAD`-leg race test:
+- **active-notes bus** — each note slot a `std::atomic<uint64_t>` (pitch+velocity packed). `note_bus.cpp`.
+- **spectrum sample ring** — `MeterState::an_ring`, an `AnalysisRing` of atomic-float slots. `analysis_ring.h`.
+- **per-node scope + FFT rings** — `node_scope` / `node_an`, a `NodeRingBank` of per-node atomic-float
+  rings over `unique_ptr<atomic<float>[]>` (since `vector<atomic>` isn't movable). `node_ring_bank.h`.
+- **held-note set** — `held`, a `HeldNoteSet` of atomic packed-{pitch,vel} slots. `held_note_set.h`.
+
+Every torn read is now well-defined (whole values from adjacent frames, never a half-written one) and
+TSan-clean. Add a new such channel the same way — atomic array elements, not a lock — with a `THREAD`
+race test.
 
 ## ThreadSanitizer is a gate, not a ritual (ADR-0029)
 
@@ -108,10 +111,16 @@ that drive a channel from two threads, not by reading the code.
   the leg opts in the concurrency tests rather than the whole suite. `test_note_bus` races a publisher
   against a reader over the active-notes bus, so a regression that drops the bus's atomics (or its
   ordering) turns the leg red. Give a new threaded test the `THREAD` label to join.
-- **Next phase:** the full audio engine is macOS + heavy-dep (`VIVID_BUILD_APP=ON`), so its concurrency
-  lives in `test_session_executor`. Running *that* under TSan (and hardening the remaining benign-torn
-  rings above) is the follow-up that closes the loop on the audio thread itself; it needs a curated
-  suppression list for the third-party libraries (miniaudio/wgpu/GLFW) first.
+- **macOS CI gate `tests (audio-thread-sanitizer)`** closes the loop on the audio thread itself. The
+  engine is macOS + heavy-dep, so this runs on the self-hosted runner: it TSan-builds only
+  `test_session_concurrency` (`-DVIVID_SANITIZE_THREAD=ON`, app-ON for the audio deps) and runs
+  `ctest -L AUDIO_THREAD` under `halt_on_error=1`. That harness races a **render thread** (looping
+  `session_process`) against a single **UI/mutator thread** (add/remove tracks, edit clips, mutate the
+  graph, set params, launch scenes, and read the published snapshots) — the actual gen-counter / `try_lock`
+  / SPSC / atomic-ring surface. No third-party suppression list is needed: `session_process` starts no
+  device / GPU / CLAP thread, so the only threads are the harness's two. `test_session_executor` (its
+  single-threaded sibling — one thread, so TSan finds nothing) stays on the plain `audio-engine-tests` job.
+  A surviving report is triaged per decision #4 (real → harden; benign → a named suppression + a table row).
 
 ## Checklist for new audio-reachable code
 
