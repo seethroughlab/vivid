@@ -1,8 +1,9 @@
 // ADR-0029 (phase 2): the concurrent audio↔UI harness. `test_session_executor` drives session_process on
 // ONE thread, so ThreadSanitizer finds nothing there. This races the two roles the whole gen-counter +
 // try_lock + SPSC machinery exists to keep safe: a RENDER thread looping session_process, and a single
-// UI/MUTATOR thread that adds/removes tracks, edits clips, mutates the graph, sets params, launches scenes,
-// and reads the published snapshots. Under TSan (the macOS AUDIO_THREAD leg) this proves the audio↔UI
+// UI/MUTATOR thread that adds/removes tracks, edits clips, mutates the graph, sets params, delivers and
+// clears frame-bridge param overrides (ADR-0030 P2), launches scenes, and reads the published snapshots.
+// Under TSan (the macOS AUDIO_THREAD leg) this proves the audio↔UI
 // channels are race-clean; the assertions (finite output, sane snapshots) are secondary to TSan observing
 // the races. Model per app/docs/thread-safety.md: all mutation on one UI thread; the audio thread only
 // reads (via gen/try_lock/SPSC) and never touches s->tracks (removed tracks park in tracks_retired, freed
@@ -63,7 +64,7 @@ int main() {
         for (int k = 0; k < 3000; ++k) {
             const int nt = session_track_count(s);
             const int tr = nt > 0 ? (k % nt) : -1;
-            switch (k % 12) {
+            switch (k % 14) {
                 case 0: if (nt < kMaxTracks) session_add_graph_track(s, "Tx"); break;   // tracks_gen
                 case 1: if (nt > 1) session_remove_track(s, nt - 1); break;             // tracks_gen + tracks_retired
                 case 2: if (tr >= 0) session_set_track_audio_instrument(s, tr, "TestTone"); break;  // op_fx_gen + ggen
@@ -79,6 +80,13 @@ int main() {
                 case 10: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);         // read node scope
                                         if (nn > 0) (void)session_track_audio_graph_node_scope(s, tr, 0, scope, 128); } break;
                 case 11: if (tr >= 0) (void)session_track_analysis_copy(s, tr, spec, 1024); break;    // read spectrum ring
+                // ADR-0030 P2: race the non-destructive frame-bridge override channel (AudioOp::fovr,
+                // read on the render thread in audio_op_process / resolve_control_inputs) against the
+                // UI writing it — deliver a value, then clear it, exactly as apply_audio_param_mappings does.
+                case 12: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);
+                                        if (nn > 0) session_audio_graph_node_param_deliver(s, tr, session_track_audio_graph_node_id(s, tr, nn - 1), 0, static_cast<float>(k % 100) / 100.f); } break;
+                case 13: if (tr >= 0) { const int nn = session_track_audio_graph_node_count(s, tr);
+                                        if (nn > 0) session_audio_graph_node_param_override_clear(s, tr, session_track_audio_graph_node_id(s, tr, nn - 1), 0); } break;
             }
             if ((k & 63) == 0) std::this_thread::yield();
         }
