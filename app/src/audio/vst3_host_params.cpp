@@ -61,16 +61,23 @@ int session_audio_graph_node_param_hint(Session* s, int t, int node_id, int p) {
     return 0;   // VST3 params → DEFAULT (a knob)
 }
 // Base/min/max WITHOUT taking gmtx — for callers already holding it (the resolved accessor below).
-// Base for a native op is its `pvals` (never written by the audio thread); for a plugin it is the
-// plugin's own current value (there is no host-side base for plugins yet — ADR-0022, a P2 gap).
+// Base for a native op is its `pvals` (never written by the audio thread). ADR-0030: for a plugin
+// it is the HOST-OWNED authored base (`host_base`) when the host has authored the param, otherwise
+// the plugin's own live value. That fallback is why an un-touched plugin still reports its patch
+// value, while an authored/modulated param reports what the USER set — never what modulation is
+// currently delivering — so save/undo record the authored value, not a moving target.
 static float graph_param_base_nolock(Track* tr, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_get(op, p);
-    if (Vst3Handle* h = graph_node_handle(tr, node_id))
-        return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
-                   ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
-    if (ClapHandle* c = graph_node_clap(tr, node_id))
-        return (p >= 0 && p < static_cast<int>(c->params.size()))
-                   ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
+    if (Vst3Handle* h = graph_node_handle(tr, node_id)) {
+        if (p < 0 || p >= static_cast<int>(h->params.size())) return 0.f;
+        if (p < static_cast<int>(h->has_base.size()) && h->has_base[p]) return h->host_base[p];
+        return h->controller ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id)) {
+        if (p < 0 || p >= static_cast<int>(c->params.size())) return 0.f;
+        if (p < static_cast<int>(c->has_base.size()) && c->has_base[p]) return static_cast<float>(c->host_base[p]);
+        return static_cast<float>(clap_param_value(c, c->params[p].id));
+    }
     return 0.f;
 }
 static float graph_param_min_nolock(Track* tr, int node_id, int p) {
@@ -129,6 +136,9 @@ int session_audio_graph_node_param_wired(Session* s, int t, int node_id, int p) 
         if (e.kind == vivid::audio::EdgeKind::Control && e.to_id == node_id && e.dest_param == p) return 1;
     return 0;
 }
+// ADR-0030: a param SET is an authored BASE edit. It updates the host-owned base cache (so save/undo
+// see the user's value) AND delivers to the plugin (an authored edit should be heard). Modulation and
+// bridge mappings must NOT come through here — they deliver resolved overrides without touching base.
 void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, float v) {
     Track* tr = graph_track(s, t); if (!tr) return;
     std::lock_guard<std::mutex> lk(tr->gmtx);
@@ -136,13 +146,15 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
     if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
         const ParamID id = h->params[p].id;
         v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+        h->base_author(p, v);                                              // host-owned authored base
         h->param_q.push(id, v);                                            // → audio thread (RT-safe SPSC)
         if (h->controller) h->controller->setParamNormalized(id, v);       // → plugin GUI reflection
         return;
     }
     if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
         double val = std::clamp(static_cast<double>(v), c->params[p].min, c->params[p].max);
-        c->param_q.push(c->params[p].id, val);   // plain value → audio thread emits a CLAP param event
+        c->base_author(p, val);                   // host-owned authored base (plain units)
+        c->param_q.push(c->params[p].id, val);    // plain value → audio thread emits a CLAP param event
     }
 }
 // --- Richer param metadata (widget-by-type + curated inspector). VST3 + CLAP. ---

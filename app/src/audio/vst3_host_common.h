@@ -29,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <functional>
 #include <zlib.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -366,6 +367,10 @@ struct Vst3ComponentHandler : IComponentHandler, IComponentHandler2 {
     // plugin state has changed so save_state() can persist it without polling every frame.
     // Only accessed from the UI/main thread (VST3 spec requirement for performEdit).
     bool* state_dirty = nullptr;
+    // ADR-0030: a plugin-GUI param edit authors the host-owned base. vst3_cache_params installs
+    // this after the param table exists; null before then (and for the probe, which has no base
+    // cache). Main/UI thread only, exactly like performEdit. (id, normalized) -> update base cache.
+    std::function<void(ParamID, ParamValue)> on_authored_edit;
 
     tresult PLUGIN_API queryInterface(const TUID _iid, void** obj) override {
         if (!obj) return kInvalidArgument;
@@ -386,8 +391,9 @@ struct Vst3ComponentHandler : IComponentHandler, IComponentHandler2 {
 
     // IComponentHandler
     tresult PLUGIN_API beginEdit(ParamID)                         override { return kResultOk; }
-    tresult PLUGIN_API performEdit(ParamID, ParamValue)           override {
+    tresult PLUGIN_API performEdit(ParamID id, ParamValue v)      override {
         if (state_dirty) *state_dirty = true;
+        if (on_authored_edit) on_authored_edit(id, v);   // ADR-0030: GUI edit -> authored base
         return kResultOk;
     }
     tresult PLUGIN_API endEdit(ParamID)                           override { return kResultOk; }
@@ -536,6 +542,28 @@ struct Vst3Handle {
     };
     std::vector<ParamEntry> params;
 
+    // ADR-0030: host-owned AUTHORED base for each param, index-aligned with `params`. `has_base[i]`
+    // == 0 means "not authored yet" → the base reader falls back to the plugin's live value; it
+    // flips to 1 the moment Vivid authors the param (a knob edit, a project restore, or the plugin's
+    // own GUI via performEdit). This is what lets save/undo record what the user authored separately
+    // from what the plugin currently hears, and is the P2 prerequisite ADR-0022 named for safe
+    // plugin modulation. Normalized 0..1, matching the param setter. Main/UI thread only.
+    std::vector<float>   host_base;
+    std::vector<uint8_t> has_base;
+    void base_size_to_params() { host_base.assign(params.size(), 0.f); has_base.assign(params.size(), 0u); }
+    int  base_index_of(ParamID pid) const {
+        for (size_t i = 0; i < params.size(); ++i) if (params[i].id == pid) return static_cast<int>(i);
+        return -1;
+    }
+    void base_author(int i, float norm) {
+        if (i < 0 || i >= static_cast<int>(params.size())) return;
+        if (host_base.size() != params.size()) base_size_to_params();
+        host_base[static_cast<size_t>(i)] = norm; has_base[static_cast<size_t>(i)] = 1u;
+    }
+    // A preset/state load replaces the authored patch wholesale: forget every cached base so the
+    // reader falls back to the plugin's (newly loaded) values until the user authors again.
+    void base_forget_all() { has_base.assign(params.size(), 0u); }
+
     void destroy() {
         if (component && component->setActive(false) != kResultOk)
             fprintf(stderr, "[Vst3] setActive(false) failed during teardown\n");
@@ -609,6 +637,13 @@ inline void vst3_cache_params(Vst3Handle* h) {
         e.units       = vst3_tchar_to_utf8(info.units);
         h->params.push_back(std::move(e));
     }
+    // ADR-0030: the base cache is index-aligned with `params`, so (re)size it here and route the
+    // plugin's own GUI edits into it. Re-caching params (e.g. after restartComponent) resets the
+    // cache to "not authored"; that is correct — the host hasn't authored the new table yet.
+    h->base_size_to_params();
+    h->component_handler.on_authored_edit = [h](ParamID pid, ParamValue v) {
+        h->base_author(h->base_index_of(pid), static_cast<float>(v));
+    };
 }
 
 // ---------------------------------------------------------------------------

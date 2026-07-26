@@ -152,6 +152,21 @@ struct ClapHandle {
     struct ParamEntry { clap_id id; double min, max, def; std::string name, module; uint32_t flags = 0; };
     std::vector<ParamEntry> params;
     ClapParamQueue param_q;      // UI -> audio
+
+    // ADR-0030: host-owned AUTHORED base for each param (plain units, index-aligned with `params`).
+    // `has_base[i]`==0 → the base reader falls back to the plugin's live value; it flips to 1 once
+    // Vivid authors the param (a knob edit or a project restore). CLAP GUIs are not hosted yet, so
+    // there is no performEdit-style callback; a preset load forgets the cache (plugin values become
+    // the new base). Main/UI thread only. See the Vst3Handle twin for the rationale.
+    std::vector<double>  host_base;
+    std::vector<uint8_t> has_base;
+    void base_size_to_params() { host_base.assign(params.size(), 0.0); has_base.assign(params.size(), 0u); }
+    void base_author(int i, double val) {
+        if (i < 0 || i >= static_cast<int>(params.size())) return;
+        if (host_base.size() != params.size()) base_size_to_params();
+        host_base[static_cast<size_t>(i)] = val; has_base[static_cast<size_t>(i)] = 1u;
+    }
+    void base_forget_all() { has_base.assign(params.size(), 0u); }
     ClapEventScratch events;     // audio-thread scratch (built each block)
 
     void destroy() {
@@ -276,6 +291,7 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
             if (!h->ext_params->get_info(h->plugin, i, &pi)) continue;
             h->params.push_back({ pi.id, pi.min_value, pi.max_value, pi.default_value, pi.name, pi.module, pi.flags });
         }
+        h->base_size_to_params();   // ADR-0030: host base cache is index-aligned with params
     }
 
     h->max_block = max_frames;
