@@ -171,69 +171,89 @@ void publish_bridge_sources(App& app, Window& win) {
     // ring copy.) sr is fixed at 48k for the bin→Hz band mapping; a device-rate mismatch only nudges
     // band edges cosmetically.
     static float an_buf[S::kAnalysisN], an_re[S::kAnalysisN], an_im[S::kAnalysisN];
-    auto publish_fft = [&](const std::string& src_prefix, int nsamp) {
+    namespace B = vivid::bridge;   // the one source-id grammar (ADR-0028)
+    // ADR-0028: publish by INTERNED HANDLE. `H` resolves a source's handle from the per-window cache by a
+    // cheap integer identity, building the id string only on the first frame a source appears; thereafter
+    // the hot path is an integer lookup + a pointer write (graph.publish) — no per-frame string or hash.
+    auto H = [&](uint64_t k, auto&& build) -> int {
+        auto it = win.bridge_handles.find(k);
+        if (it != win.bridge_handles.end()) return it->second;
+        const int h = graph.source_handle(build());
+        win.bridge_handles.emplace(k, h);
+        return h;
+    };
+    // identity key: tag (top byte) | track_id (24b) | node_id (24b) | kind/band (8b) — collision-free.
+    auto key = [](uint64_t tag, uint64_t a, uint64_t b, uint64_t c) { return (tag << 56) | (a << 32) | (b << 8) | c; };
+    constexpr uint64_t kMaster = 1, kMasterFft = 2, kTrack = 3, kTrackFft = 4, kNodeRms = 5, kNodeCtl = 6, kNodeFft = 7, kNodeFftGate = 8;
+    // Frame-side spectrum: snapshot recent samples (already in an_buf), publish <src>.fft.0..N-1 by handle.
+    // Static scratch is fine — once per frame on the UI thread. sr fixed at 48k (a device-rate mismatch
+    // only nudges band edges cosmetically).
+    auto do_fft = [&](int nsamp, auto&& publish_band) {
         float bands[S::kFftBands];
         vivid::audio::spectrum_log_bands(an_buf, nsamp, 48000.f, bands, S::kFftBands, an_re, an_im);
-        for (int k = 0; k < S::kFftBands; ++k)
-            graph.set_source_by_id(src_prefix + ".fft." + std::to_string(k), bands[k]);
+        for (int k = 0; k < S::kFftBands; ++k) publish_band(k, bands[k]);
     };
-    const float level = transport.level.load(std::memory_order_relaxed);
+    constexpr auto rel = std::memory_order_relaxed;
+    const float level = transport.level.load(rel);
     win.react += (std::min(1.0f, level * 5.0f) - win.react) * 0.3f;
     win.trHold *= 0.85f;
-    win.trHold = std::max(win.trHold, transport.transient.load(std::memory_order_relaxed));
-    namespace B = vivid::bridge;   // the one source-id grammar (ADR-0028) — master/track scalars now
-                                   // publish as string ids like fft/node, not the legacy packed char_id.
-    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[0]), win.react);
-    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[1]), std::min(1.0f, win.trHold));
-    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[2]), std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
-    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[3]), std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
-    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[4]), std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
+    win.trHold = std::max(win.trHold, transport.transient.load(rel));
+    // Master scalars (kinds 0..4); the kind-suffix table is the grammar's single source of truth.
+    const float mvals[5] = { win.react, std::min(1.0f, win.trHold),
+                             std::min(1.0f, transport.band_low.load(rel) * 5.0f),
+                             std::min(1.0f, transport.band_mid.load(rel) * 8.0f),
+                             std::min(1.0f, transport.band_high.load(rel) * 12.0f) };
+    for (int k = 0; k < 5; ++k)
+        graph.publish(H(key(kMaster, 0, 0, k), [k] { return B::master_source(B::kTrackKindSuffixes[k]); }), mvals[k]);
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
-        publish_fft(vivid::bridge::master_prefix(), nm);
+        do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)
     for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
         const float lv = vivid::session::session_track_level(app.session, t);
         win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
         win.trkTrHold[t] *= 0.85f;
         win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid::session::session_track_transient(app.session, t));
-        const int tid = vivid::session::session_track_id(app.session, t);
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[0]), win.trkReact[t]);
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[1]), std::min(1.0f, win.trkTrHold[t]));
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[2]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f));
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[3]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f));
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[4]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f));
-        // Note-derived sources (kinds 5/6/7): pitch + velocity are already 0..1 and HELD (no gain, no
-        // decay — a sustained note keeps its colour). gate is a note-on flag decayed into a flash,
-        // exactly like the transient hold above.
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[5]), vivid::session::session_track_note_pitch(app.session, t));
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[6]), vivid::session::session_track_note_velocity(app.session, t));
-        win.trkNoteHold[t] *= 0.85f;
+        win.trkNoteHold[t] *= 0.85f;   // decay the note-on flash before reading it into the gate source below
         win.trkNoteHold[t] = std::max(win.trkNoteHold[t], vivid::session::session_track_note_gate(app.session, t));
-        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[7]), std::min(1.0f, win.trkNoteHold[t]));
+        const uint64_t tid = static_cast<uint64_t>(vivid::session::session_track_id(app.session, t));
+        // Track scalars (kinds 0..7). 5/6/7 = note/velocity/gate: pitch + velocity are already 0..1 and
+        // HELD (a sustained note keeps its colour); gate is the note-on flash decayed above.
+        const float tvals[8] = { win.trkReact[t], std::min(1.0f, win.trkTrHold[t]),
+                                 std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f),
+                                 std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f),
+                                 std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f),
+                                 vivid::session::session_track_note_pitch(app.session, t),
+                                 vivid::session::session_track_note_velocity(app.session, t),
+                                 std::min(1.0f, win.trkNoteHold[t]) };
+        for (int k = 0; k < 8; ++k)
+            graph.publish(H(key(kTrack, tid, 0, k), [tid, k] { return B::track_source(static_cast<int>(tid), B::kTrackKindSuffixes[k]); }), tvals[k]);
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
-            publish_fft(vivid::bridge::track_prefix(tid), ns);
+            do_fft(ns, [&](int k, float v) { graph.publish(H(key(kTrackFft, tid, 0, k), [tid, k] { return B::track_fft(static_cast<int>(tid), k); }), v); });
         // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
         // ring). FFT (node_<t>_<nid>.fft.k) is CONNECTION-GATED: only nodes whose fft source is consumed
         // (wired/spawned) get a capture bit set + get FFT'd — so an unwatched node costs nothing.
         const int nn = S::session_track_audio_graph_node_count(app.session, t);
         uint64_t analyze_mask = 0;
         for (int i = 0; i < nn; ++i) {
-            const int nid = S::session_track_audio_graph_node_id(app.session, t, i);
-            if (nid < 0) continue;
-            const std::string nsrc = vivid::bridge::node_prefix(tid, nid);
+            const int nidi = S::session_track_audio_graph_node_id(app.session, t, i);
+            if (nidi < 0) continue;
+            const uint64_t nid = static_cast<uint64_t>(nidi);
             float sc[256];
             const int nsc = S::session_track_audio_graph_node_scope(app.session, t, i, sc, 256);
             double ss = 0; for (int j = 0; j < nsc; ++j) ss += static_cast<double>(sc[j]) * sc[j];
             const float rms = nsc > 0 ? static_cast<float>(std::sqrt(ss / nsc)) : 0.f;
-            graph.set_source_by_id(nsrc + ".rms", std::min(1.0f, rms * 5.0f));
-            // A modulator/LFO node emits a 0..1 CONTROL signal (no audio) — publish it as node_<...>.ctl
-            // so an LFO can drive a visual param directly. Cheap (an atomic read), so always-on like rms.
+            graph.publish(H(key(kNodeRms, tid, nid, 0), [tid, nid] { return B::node_prefix(static_cast<int>(tid), static_cast<int>(nid)) + ".rms"; }),
+                          std::min(1.0f, rms * 5.0f));
+            // A modulator/LFO node emits a 0..1 CONTROL signal (no audio) as node_<...>.ctl — an LFO can
+            // drive a visual param directly. Cheap (an atomic read), so always-on like rms.
             if (S::session_track_audio_graph_node_kind(app.session, t, i) == 5)   // 5 = NativeMod
-                graph.set_source_by_id(nsrc + ".ctl", S::session_track_audio_graph_node_control_out(app.session, t, i));
-            if (i < 64 && graph.source_consumed(nsrc + ".fft")) {   // gated: capture + FFT only when watched
-                analyze_mask |= (uint64_t(1) << i);
-                if (int nns = S::session_track_node_analysis_copy(app.session, t, nid, an_buf, S::kAnalysisN); nns > 1)
-                    publish_fft(nsrc, nns);
+                graph.publish(H(key(kNodeCtl, tid, nid, 0), [tid, nid] { return B::node_prefix(static_cast<int>(tid), static_cast<int>(nid)) + ".ctl"; }),
+                              S::session_track_audio_graph_node_control_out(app.session, t, i));
+            if (i < 64 && graph.consumed(H(key(kNodeFftGate, tid, nid, 0), [tid, nid] { return B::node_prefix(static_cast<int>(tid), static_cast<int>(nid)) + ".fft"; }))) {
+                analyze_mask |= (uint64_t(1) << i);   // gated: capture + FFT only when watched
+                if (int nns = S::session_track_node_analysis_copy(app.session, t, nidi, an_buf, S::kAnalysisN); nns > 1)
+                    do_fft(nns, [&](int k, float v) { graph.publish(H(key(kNodeFft, tid, nid, k),
+                        [tid, nid, k] { return B::node_prefix(static_cast<int>(tid), static_cast<int>(nid)) + ".fft." + std::to_string(k); }), v); });
             }
         }
         S::session_set_track_node_analyze_mask(app.session, t, analyze_mask);
@@ -245,7 +265,7 @@ void publish_bridge_sources(App& app, Window& win) {
         VividActiveNote vn[VIVID_MAX_ACTIVE_NOTES];
         const int m = std::min(na, VIVID_MAX_ACTIVE_NOTES);
         for (int k = 0; k < m; ++k) { vn[k].pitch = an[k].pitch; vn[k].velocity = an[k].vel; }
-        vivid_note_bus_publish(t, tid, vn, static_cast<uint32_t>(m));
+        vivid_note_bus_publish(t, static_cast<int>(tid), vn, static_cast<uint32_t>(m));
         ntracks = t + 1;
     }
     for (int s = ntracks; s < VIVID_NOTE_BUS_TRACKS; ++s)   // free slots no live track occupies this frame

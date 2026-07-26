@@ -1,6 +1,8 @@
 #pragma once
 #include <algorithm>          // std::min / std::max (preview placement)
+#include <cstdint>
 #include <string>
+#include <unordered_map>
 #include "ui/chooser.h"       // the shared Tab palette (the audio graph's lives here)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
 #include "app/output_preview.h" // the floating output-preview panel (ADR-0025 pressure-point #2)
@@ -195,6 +197,11 @@ struct Window {
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
     float trkReact[vivid::session::kMaxTracks] = {0}, trkTrHold[vivid::session::kMaxTracks] = {0};
     float trkNoteHold[vivid::session::kMaxTracks] = {0};   // decayed note-on flash (per-track note.gate source)
+    // ADR-0028: bridge source-id -> interned publish handle, keyed by a cheap integer identity so the
+    // frame publisher never rebuilds the constant id STRING. Miss (first frame for a source) builds the
+    // string once via bridge_source.h + NodeGraph::source_handle; thereafter it's an integer-keyed lookup.
+    // Stale entries after a track/node is removed simply stop being hit (harmless).
+    std::unordered_map<uint64_t, int> bridge_handles;
 
     // Window-relative geometry — each window computes its own from its metrics.
     float        dock_top()        const { return ui::dock_top(win_h, dock_h); }

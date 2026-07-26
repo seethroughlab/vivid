@@ -51,6 +51,11 @@ inline float mapping_shape(float s, float curve) { return shape_curve(s, curve);
 class MappingRegistry {
 public:
     void  set_source(const std::string& id, float v) { sources_[id] = v; }
+    // ADR-0028: intern a source id to a STABLE value cell. std::unordered_map never invalidates
+    // pointers/references to its elements on insert or rehash (only on erase — and sources are never
+    // erased), so the returned pointer stays valid for the registry's lifetime. A hot publisher resolves
+    // the id once and writes `*cell = v` each frame instead of re-hashing the string.
+    float* intern_source(const std::string& id) { return &sources_[id]; }
     float source_value(const std::string& id) const {
         auto it = sources_.find(id);
         return it != sources_.end() ? it->second : 0.f;
