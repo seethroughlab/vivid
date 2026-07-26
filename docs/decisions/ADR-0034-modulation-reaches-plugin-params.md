@@ -4,10 +4,21 @@ Status: accepted
 
 Date: 2026-07-26
 
-Implementation: Phase 1 is a complete CLAP vertical slice (atomic base + capture-on-wire + CLAP
-resolve/deliver, tested end to end with the in-tree `vivid_test_clap` fixture and TSan-gated on branch
-`adr-0034-plugin-modulation`). Phase 2 adds VST3 delivery; Phase 3 hardens precedence and
-restore-on-disconnect across both formats.
+Implementation:
+- Phase 1 (#159) — a complete CLAP vertical slice: atomic base mirror + capture-on-wire + CLAP
+  resolve/deliver, tested end to end with the in-tree `vivid_test_clap` fixture and TSan-gated.
+- Phase 2 — VST3 delivery. Investigating it surfaced a pre-existing bug: the VST3 process-time param
+  path (`Vst3ParamChanges`) never carried values — `drain_params` used `addParameterData` +
+  `addPoint`, but `SinglePointQueue::addPoint` is a no-op and the value-setting `add()` was unused, so
+  the queue held only the param id. VST3 knob edits worked only via `setParamNormalized` (which drives
+  the DSP directly on single-component/JUCE plugins). Verified against a real plugin (CHOWTapeModel):
+  with `setParamNormalized` disabled, no param reached the DSP until `drain_params` was fixed to use
+  `pc.add(id, value)`. That fix is a general VST3 automation-correctness win and the prerequisite for
+  modulation, which is delivered by injecting the resolved points into `Vst3ParamChanges` after the
+  drain (raising `kMaxParams` 8 → 64). Confirmed end to end: an LFO on a VST3 param swings the output.
+  No VST3 fixture (SDK lacks `public.sdk`), so CI covers the base mirror via `test_plugin_param_base`;
+  the delivery is manually verified.
+- Phase 3 hardens precedence and restore-on-disconnect across both formats.
 
 Extends [ADR-0022](ADR-0022-session-audio-graph.md), [ADR-0030](ADR-0030-host-owned-audio-param-state.md),
 and [ADR-0029](ADR-0029-concurrency-model-is-tsan-gated.md).

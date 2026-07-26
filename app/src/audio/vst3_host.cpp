@@ -576,6 +576,38 @@ static uint32_t resolve_clap_control(const vivid::audio::CompiledStep& s, const 
     return n;
 }
 
+// ADR-0034: the VST3 twin of resolve_clap_control — resolve a VST3 node's control edges into
+// normalized param points (VST3 params are 0..1), keyed by ParamID, injected into the plugin's
+// Vst3ParamChanges by render_vst3_*. Reads the atomic base mirror (`abase_load`). Empty (0) for an
+// unmodulated node or one without a captured base.
+static uint32_t resolve_vst3_control(const vivid::audio::CompiledStep& s, const GNodeBind& nb,
+                                     const GraphBlockCtx& b, int dst_track_id, ParamMsg* out) {
+    if (!nb.handle) return 0;
+    uint32_t n = 0;
+    auto stack = [&](int pidx, float src, const vivid::audio::ControlShape& sh) {
+        if (pidx < 0 || pidx >= static_cast<int>(nb.handle->params.size())) return;
+        float base; if (!nb.handle->abase_load(pidx, base)) return;   // no anchor captured → not modulatable
+        const ParamID id = nb.handle->params[pidx].id;
+        int slot = -1;
+        for (uint32_t j = 0; j < n; ++j) if (out[j].id == id) { slot = static_cast<int>(j); break; }
+        const float cur = slot >= 0 ? out[slot].value : base;
+        const float v = vivid::audio::control_resolve(cur, src, sh, 0.f, 1.f);   // VST3: normalized range
+        if (slot >= 0) out[slot].value = v;
+        else if (n < vivid::audio::kMaxControlInputs) out[n++] = { id, v };
+    };
+    for (int k = 0; k < s.n_control_in; ++k) {
+        const vivid::audio::ControlIn& ci = s.control_in[k];
+        if (ci.src_buf < 0 || ci.param < 0) continue;
+        stack(ci.param, b.ctl_pool[b.ctl_base + static_cast<size_t>(ci.src_buf) * kGraphMaxBlock], ci.shape);
+    }
+    for (uint32_t x = 0; x < b.xctl_count; ++x) {
+        const XCtlApply& xa = b.xctl[x];
+        if (xa.dst_track_id != dst_track_id || xa.dst_out_buf != s.out_buf || xa.dst_param < 0) continue;
+        stack(xa.dst_param, b.ctl_pool[xa.src_pool_index], xa.shape);
+    }
+    return n;
+}
+
 // ADR-0022 P2a.1b: run one MODULATOR step — resolve its own control inputs (a modulator can be
 // modulated), run the op into its control-pool region, publish the UI live dot. `scL`/`scR` receive
 // its (discarded) silent audio output. Pure DSP + atomics; no alloc/lock.
@@ -651,6 +683,10 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
     // CLAP node (and it has a captured base anchor). VST3 modulation lands in Phase 2.
     ClapParamMsg cmod[vivid::audio::kMaxControlInputs];
     const uint32_t cmod_n = nb.clap ? resolve_clap_control(s, nb, b, t.id, cmod) : 0;
+    // ADR-0034 Phase 2: the VST3 twin — resolved param points injected into the plugin's
+    // Vst3ParamChanges by render_vst3_*. Empty unless a control edge drives a VST3 node.
+    ParamMsg vmod[vivid::audio::kMaxControlInputs];
+    const uint32_t vmod_n = nb.handle ? resolve_vst3_control(s, nb, b, t.id, vmod) : 0;
 
     if (s.n_in == 0) {   // source node
         const bool full_range = (nb.key_lo == 0 && nb.key_hi == 127);
@@ -773,13 +809,13 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
             std::memset(oL, 0, frames * sizeof(float)); std::memset(oR, 0, frames * sizeof(float));  // silent input, matches inline
             if (full_range) {   // t.vev is primed with scene-switch releases (identical to today)
                 emit_vst3(t.vev, nsrc, t.eev);
-                render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR);
+                render_vst3_instrument(t, nb.handle, t.vev, gctx, frames, oL, oR, vmod, vmod_n);
             } else {            // key-split: independent filtered event list for this source
                 filter_notes_by_range(nsrc, nb.key_lo, nb.key_hi, t.src_nev);
                 filter_expr_by_range(t.eev, nb.key_lo, nb.key_hi, t.src_eev);
                 t.src_vev.clear();
                 emit_vst3(t.src_vev, t.src_nev, t.src_eev);
-                render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR);
+                render_vst3_instrument(t, nb.handle, t.src_vev, gctx, frames, oL, oR, vmod, vmod_n);
             }
             // ADR-0015 (M3): a plugin that GENERATES notes (a chord generator, an arpeggiator)
             // publishes them on its note output, so they can drive another instrument.
@@ -830,7 +866,7 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
         vivid::audio_op_process(nb.op, oL, oR, frames, b.sample_rate, b.bpm, b.bpb, b.beats, nullptr, 0,
                                 nullptr, 0, nullptr, ovr, novr);
     else if (nb.kind == GNKind::Vst3Fx && nb.handle && nb.handle->processing)  // non-processing = passthrough (matches inline skip)
-        render_vst3_effect(t, nb.handle, gctx, frames, oL, oR);
+        render_vst3_effect(t, nb.handle, gctx, frames, oL, oR, vmod, vmod_n);
     else if (nb.kind == GNKind::ClapFx && nb.clap && nb.clap->processing)
         render_clap_effect(t, nb.clap, frames, oL, oR, cmod, cmod_n);
     else if (nb.kind == GNKind::Output) {
@@ -3335,13 +3371,17 @@ int session_audio_graph_connect_control(Session* s, int t, int from_id, int to_i
     // ADR-0034: capture-on-wire. A modulator wired onto a plugin param that has no authored base yet
     // captures the plugin's current value as the base, so the audio thread has a stable anchor to
     // resolve modulation against (and disconnect has a value to restore). Main thread — reading plugin
-    // state here is safe. (VST3 capture lands with its audio-thread base mirror in Phase 2.)
+    // state here is safe.
     if (const int nidx = tr->agraph.node_index(to_id);
         nidx >= 0 && nidx < static_cast<int>(tr->agnodes.size()) && dest_param >= 0) {
         const GNodeBind& nb = tr->agnodes[static_cast<size_t>(nidx)];
         if (nb.clap && dest_param < static_cast<int>(nb.clap->params.size()) &&
             (dest_param >= static_cast<int>(nb.clap->has_base.size()) || !nb.clap->has_base[dest_param]))
             nb.clap->base_author(dest_param, clap_param_value(nb.clap, nb.clap->params[dest_param].id));
+        else if (nb.handle && nb.handle->controller && dest_param < static_cast<int>(nb.handle->params.size()) &&
+                 (dest_param >= static_cast<int>(nb.handle->has_base.size()) || !nb.handle->has_base[dest_param]))
+            nb.handle->base_author(dest_param,
+                static_cast<float>(nb.handle->controller->getParamNormalized(nb.handle->params[dest_param].id)));
     }
     if (!republish_track_graph(tr)) { tr->agraph.disconnect_control(from_id, to_id, dest_param); return 0; }  // cycle: revert
     tr->agraph.clear_positions();   // a modulator adds an upstream column: re-seed the layout

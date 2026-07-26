@@ -8,6 +8,8 @@
 #include "audio/clap_host.h"
 #include "test_helpers.h"
 
+#include <cmath>
+
 using namespace vivid::test;
 using vivid::session::Vst3Handle;
 using vivid::session::ClapHandle;
@@ -61,10 +63,18 @@ static void test_vst3_base_cache() {
     h.component_handler.performEdit(/*id*/ 424242, 0.5);
     CHECK(h.has_base[1] == 0);
 
+    // ADR-0034: the audio-thread base mirror tracks base_author. Authored params read back through
+    // abase_load; un-authored params return false (not modulatable until captured on wire).
+    float ab = -1.f;
+    CHECK(h.abase_load(0, ab) && std::fabs(ab - 0.9f) < 1e-6f);    // authored via performEdit
+    CHECK(h.abase_load(2, ab) && std::fabs(ab - 0.42f) < 1e-6f);   // authored via base_author
+    CHECK(!h.abase_load(1, ab));                                   // never authored
+
     // A preset load forgets every cached base — the reader falls back to the plugin's (freshly
     // loaded) values until the user authors again. host_base bytes may linger but has_base gates it.
     h.base_forget_all();
     for (int i = 0; i < 4; ++i) CHECK(h.has_base[i] == 0);
+    CHECK(!h.abase_load(0, ab) && !h.abase_load(2, ab));           // mirror cleared too
 
     // Re-caching params (restartComponent path) resets the cache to the new table size, unauthored.
     seed_vst3(h, 2);
@@ -97,8 +107,14 @@ static void test_clap_base_cache() {
     CHECK_NEAR(h.host_base[1], -0.25, 1e-9);
     CHECK(h.has_base[0] == 0 && h.has_base[2] == 0);
 
+    // ADR-0034: the audio-thread base mirror tracks it (plain units for CLAP).
+    double ab = 0.0;
+    CHECK(h.abase_load(1, ab) && std::fabs(ab - (-0.25)) < 1e-9);
+    CHECK(!h.abase_load(0, ab));
+
     h.base_forget_all();
     for (int i = 0; i < 3; ++i) CHECK(h.has_base[i] == 0);
+    CHECK(!h.abase_load(1, ab));   // mirror cleared
 }
 
 int main() {
