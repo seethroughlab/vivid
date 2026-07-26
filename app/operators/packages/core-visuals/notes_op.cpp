@@ -3,7 +3,8 @@
 // (Notes -> Instancer -> ...). Like MeshLoad only PRODUCES geometry, Notes only produces the note
 // stream; a downstream node decides how to draw it. This is the visible "Note node" that drives an
 // instancer (or any note consumer) through a graph edge, rather than a monolithic op reading notes
-// internally. It reads the engine's active-notes bus by track INDEX (its `track` param).
+// internally. It reads the engine's active-notes bus by track STABLE id (its `track` param) — so it
+// follows its track across reorder/delete, like every other per-track bridge source.
 //
 // A source (no inputs). Its output is a VividNoteSet custom-ref, NOT a texture, so it has no visible
 // thumbnail — the render happens downstream.
@@ -22,7 +23,7 @@ struct NotesOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kSummary = "A track's live MIDI notes as a value — drives an Instancer (or any note consumer) through an edge.";
     static constexpr std::array<const char*, 3> kKeywords = {"notes", "midi", "source"};
 
-    vivid::Param<float> track{"track", 0.f, 0.f, 31.f};   // which track's held notes (index)
+    vivid::Param<float> track{"track", 0.f, 0.f, 127.f};   // which track's held notes, by STABLE id
 
     void collect_params(std::vector<vivid::ParamBase*>& o) override { o.push_back(&track); }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
@@ -31,9 +32,8 @@ struct NotesOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     void process_gpu(const VividGpuContext* c) override {
         const float* p = c->param_values;
-        const int trk = std::max(0, std::min(VIVID_NOTE_BUS_TRACKS - 1,
-                                             static_cast<int>(std::lround(p ? p[0] : track.value))));
-        set_.count = vivid_track_active_notes(trk, notes_, VIVID_MAX_ACTIVE_NOTES);
+        const int track_id = static_cast<int>(std::lround(p ? p[0] : track.value));   // stable id (the bus searches)
+        set_.count = vivid_track_active_notes(track_id, notes_, VIVID_MAX_ACTIVE_NOTES);
         set_.notes = notes_;
         vivid::notes::publish_notes(c, 0, &set_);   // downstream reads it this frame
     }

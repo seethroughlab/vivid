@@ -65,6 +65,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     // frame it's in the set) and fades over `trail` seconds after it leaves. Keyed by pitch.
     struct Live { int pitch; float vel; float age; };
     std::vector<Live> lives_;
+    std::vector<Inst> insts_;   // per-frame instance scratch, reused (cleared each frame)
 
     ~InstancerOp() override {
         if (inst_) wgpuBufferRelease(inst_); if (quad_) wgpuBufferRelease(quad_);
@@ -82,7 +83,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
 
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Instancer", err);
-        if (!sh_ || !err.empty()) return false;
+        if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Instancer WGSL: " + err).c_str()); return false; }
         ubo_ = vivid::gpu::create_uniform_buffer(c->device, 16, "Instancer U");
         const QVert quad[6] = { {-1,-1},{1,-1},{1,1}, {-1,-1},{1,1},{-1,1} };
         WGPUBufferDescriptor qd{}; qd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; qd.size = sizeof(quad);
@@ -147,8 +148,8 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         }
         lives_.erase(std::remove_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.age > maxAge; }), lives_.end());
 
-        // --- build the instance records ---
-        std::vector<Inst> insts; insts.reserve(lives_.size());
+        // --- build the instance records (reused member scratch, no per-frame alloc) ---
+        insts_.clear();
         for (const auto& L : lives_) {
             const float alpha = std::clamp(1.f - L.age / maxAge, 0.f, 1.f);
             const float h = std::clamp((L.pitch - 24) / 84.f, 0.f, 1.f);   // ~C1..C7 across the range
@@ -157,18 +158,18 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
             const float sc = base * (0.45f + L.vel) * (0.5f + 0.5f * alpha);
             float r, g, b; pitch_colour(h, r, g, b);
             const float bright = (0.35f + 0.65f * L.vel) * alpha;
-            insts.push_back({ x, y, sc, r * bright, g * bright, b * bright });
+            insts_.push_back({ x, y, sc, r * bright, g * bright, b * bright });
         }
 
         float u[4] = { float(c->output_width), float(c->output_height), float(c->time), 0.f };
         wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
-        const uint32_t bytes = static_cast<uint32_t>(insts.size() * sizeof(Inst));
+        const uint32_t bytes = static_cast<uint32_t>(insts_.size() * sizeof(Inst));
         if (bytes > inst_cap_) {
             if (inst_) wgpuBufferRelease(inst_);
             WGPUBufferDescriptor bd{}; bd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; bd.size = bytes;
             inst_ = wgpuDeviceCreateBuffer(c->device, &bd); inst_cap_ = bytes;
         }
-        if (inst_ && bytes) wgpuQueueWriteBuffer(c->queue, inst_, 0, insts.data(), bytes);
+        if (inst_ && bytes) wgpuQueueWriteBuffer(c->queue, inst_, 0, insts_.data(), bytes);
 
         WGPURenderPassColorAttachment att{};
         att.view = c->output_texture_view; att.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
@@ -178,10 +179,10 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(c->command_encoder, &rpd);
         wgpuRenderPassEncoderSetPipeline(pass, pipe_);
         wgpuRenderPassEncoderSetBindGroup(pass, 0, bg_, 0, nullptr);
-        if (inst_ && !insts.empty()) {
+        if (inst_ && !insts_.empty()) {
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, quad_, 0, sizeof(QVert) * 6);
             wgpuRenderPassEncoderSetVertexBuffer(pass, 1, inst_, 0, bytes);
-            wgpuRenderPassEncoderDraw(pass, 6, static_cast<uint32_t>(insts.size()), 0, 0);
+            wgpuRenderPassEncoderDraw(pass, 6, static_cast<uint32_t>(insts_.size()), 0, 0);
         }
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);

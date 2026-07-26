@@ -20,6 +20,7 @@
 #include "platform/platform.h"      // open_in_editor
 #include "audio/vst3_host.h"
 #include "app/frame.h"   // open_popout / close_popout
+#include "app/bridge_source.h"   // the audio→visual source-id grammar (shared with frame.cpp's publisher)
 #include "transport.h"   // Transport play/stop (toggle_playing)
 #include "gpu/visual_graph.h"           // VOp, VisualGraph
 
@@ -130,23 +131,22 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
             namespace S = vivid::session;
             std::vector<std::pair<std::string, std::string>> cat;
             if (app->session) {
+                namespace B = vivid::bridge;
                 for (int k = 0; k < S::kFftBands; ++k)
-                    cat.push_back({ "Master FFT " + std::to_string(k), "master.fft." + std::to_string(k) });
-                static const char* KL[8] = { "Level", "Transient", "Low", "Mid", "High", "Note", "Velocity", "Gate" };
-                static const char* KS[8] = { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
+                    cat.push_back({ "Master FFT " + std::to_string(k), B::master_fft(k) });
                 for (int t = 0; t < S::session_track_count(app->session); ++t) {
                     const int tid = S::session_track_id(app->session, t);
                     const char* nm = S::session_track_name(app->session, t);
                     const std::string base = nm ? std::string(nm) : ("track " + std::to_string(tid));
-                    for (int k = 0; k < 8; ++k)
-                        cat.push_back({ base + " " + KL[k], "track_" + std::to_string(tid) + "." + KS[k] });
+                    for (int k = 0; k < B::kNumTrackKinds; ++k)
+                        cat.push_back({ base + " " + B::kTrackKindLabels[k], B::track_source(tid, B::kTrackKindSuffixes[k]) });
                     for (int k = 0; k < S::kFftBands; ++k)
-                        cat.push_back({ base + " FFT " + std::to_string(k), "track_" + std::to_string(tid) + ".fft." + std::to_string(k) });
+                        cat.push_back({ base + " FFT " + std::to_string(k), B::track_fft(tid, k) });
                     const int nn = S::session_track_audio_graph_node_count(app->session, t);
                     for (int i = 0; i < nn; ++i) {
                         const int nid = S::session_track_audio_graph_node_id(app->session, t, i);
                         if (nid < 0) continue;
-                        const std::string np = "node_" + std::to_string(tid) + "_" + std::to_string(nid);
+                        const std::string np = B::node_prefix(tid, nid);
                         const std::string nb = base + " \xC2\xB7 node " + std::to_string(nid) + " ";
                         if (S::session_track_audio_graph_node_kind(app->session, t, i) == 5) {   // modulator (LFO): control out
                             cat.push_back({ nb + "Control", np + ".ctl" });
