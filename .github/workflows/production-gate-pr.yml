@@ -67,3 +67,23 @@ jobs:
           cmake --build app/build-audio --target test_session_executor -j
       - name: Run session-executor test
         run: ctest --test-dir app/build-audio -R test_session_executor --output-on-failure
+
+  # ADR-0029 phase 2: the audio↔UI concurrency harness under ThreadSanitizer. Races a render thread
+  # (session_process) against a UI/mutator thread over the real gen-counter/try_lock/SPSC/atomic-ring
+  # machinery — the races test_session_executor (single-threaded) can't reach. macOS-only + app-ON for the
+  # audio deps, so it runs on the self-hosted runner; we build ONLY the harness target (TSan-instrumented).
+  # No third-party suppression list: session_process starts no device/GPU/CLAP thread — only the harness's
+  # own two threads race.
+  audio-thread-sanitizer:
+    runs-on: [self-hosted, macOS]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (full-app, TSan) + build only the concurrency harness
+        run: |
+          cmake -S app -B app/build-tsan-audio -DVIVID_BUILD_APP=ON -DVIVID_BUILD_TESTS=ON \
+                -DVIVID_SANITIZE_THREAD=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake --build app/build-tsan-audio --target test_session_concurrency -j
+      - name: Run the audio↔UI harness under ThreadSanitizer
+        run: ctest --test-dir app/build-tsan-audio -L AUDIO_THREAD --output-on-failure
+        env:
+          TSAN_OPTIONS: halt_on_error=1

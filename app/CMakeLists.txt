@@ -446,8 +446,9 @@ add_dependencies(vivid vivid_spike_solid)
 # the full-app configure (VIVID_BUILD_APP=ON) — not the portable Linux tests tier. Runs via ctest.
 if(VIVID_BUILD_TESTS AND APPLE)
     find_package(Threads REQUIRED)
-    add_executable(test_session_executor
-        tests/test_session_executor.cpp
+    # The audio-engine sibling TUs both these tests link (no GPU/window). Shared so the concurrency
+    # harness stays in lockstep with the executor test.
+    set(_audio_engine_srcs
         src/audio/vst3_host.cpp
         src/audio/vst3_host_render.cpp
         src/audio/vst3_host_presets.cpp
@@ -466,10 +467,21 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/operator_api/operator_descriptor_validation.cpp
         src/audio/vst3_plugin_window_stub.cpp
         src/miniaudio_impl.c)
-    target_include_directories(test_session_executor PRIVATE src src/audio src/gpu tests)
-    target_link_libraries(test_session_executor PRIVATE
+    set(_audio_engine_libs
         signalsmith_stretch vst3_iids clap_headers miniaudio nlohmann_json::nlohmann_json Threads::Threads z
         "-framework CoreFoundation")
+
+    add_executable(test_session_executor tests/test_session_executor.cpp ${_audio_engine_srcs})
+    target_include_directories(test_session_executor PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_session_executor PRIVATE ${_audio_engine_libs})
     add_test(NAME test_session_executor COMMAND test_session_executor)
     set_tests_properties(test_session_executor PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0029 phase 2: the concurrent audio↔UI harness — a render thread racing a UI/mutator thread over
+    # the same engine. The AUDIO_THREAD label is what the macOS ThreadSanitizer CI gate runs (-L AUDIO_THREAD).
+    add_executable(test_session_concurrency tests/test_session_concurrency.cpp ${_audio_engine_srcs})
+    target_include_directories(test_session_concurrency PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_session_concurrency PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_session_concurrency COMMAND test_session_concurrency)
+    set_tests_properties(test_session_concurrency PROPERTIES LABELS "AUDIO_ENGINE;AUDIO_THREAD")
 endif()

@@ -19,18 +19,26 @@ now a `std::atomic<uint64_t>` (pitch+velocity packed), so the deliberately-toler
 package/dlopen tests SEGV under TSan (loading a non-instrumented dylib), a known limitation, not a race.
 Marking the job *required* in branch protection is a one-time repo-settings toggle.
 
-**As built — phase 2 (2026-07-26).** Hardened the **spectrum sample ring** (`MeterState::an_ring`) into a
-portable `AnalysisRing` (`audio/analysis_ring.h`) — atomic-float slots + a release/acquire `pos` — so its
-benign torn read is well-defined and TSan-clean, covered by a new portable `test_analysis_ring` on the
-`THREAD` leg. **Correction to the phase-1 note above:** running `test_session_executor` under TSan is *not*
-the right lever — it drives `session_process` synchronously on one thread (no device, no `std::thread`), so
-TSan finds no races and no third-party (miniaudio/wgpu/GLFW) threads even start; a suppression list is moot
-for it. The real audio↔UI race surface only exists when the miniaudio callback thread runs concurrently
-with UI mutations, which needs a **dedicated concurrent harness** (render on one thread while another edits
-the session). That harness — plus hardening the remaining plain-memory channels (`node_an_ring` /
-`node_scope`, and the `held_[]` set) — is the outstanding phase-2 work. Those don't drop into `AnalysisRing`
-as-is: the per-node rings are lazily-allocated `std::vector`s (need `unique_ptr<atomic<float>[]>`, since
-`vector<atomic>` isn't movable) and `held_[]` is a 12-byte-element set (no single-word pack).
+**As built — phase 2, COMPLETE (2026-07-26).** All five benign-torn-read channels are now hardened to
+atomic slots, each a header-only type with a portable `THREAD`-leg race test: the active-notes bus (phase 1)
++ the **spectrum ring** (`AnalysisRing`, `analysis_ring.h`), the **per-node scope/FFT rings** (`NodeRingBank`
+of `unique_ptr<atomic<float>[]>` per-node rings, `node_ring_bank.h`), and the **held-note set** (`HeldNoteSet`
+of packed-{pitch,vel} atomic slots, `held_note_set.h`). And the **audio↔UI concurrency gate** now exists:
+`test_session_concurrency` races a render thread (`session_process`) against a single UI/mutator thread
+(add/remove tracks, edit clips, mutate the graph, set params, launch scenes, read snapshots) over the real
+gen-counter/`try_lock`/SPSC surface, run under TSan on a per-PR macOS CI job (`ctest -L AUDIO_THREAD`). It
+is **clean** — the model holds under real render+mutation racing.
+
+**Corrections this phase made to the phase-1 note above:** (1) running `test_session_executor` under TSan is
+*not* the lever — it's single-threaded, so TSan finds nothing; the concurrent harness is. (2) **No
+third-party suppression list is needed** — `session_process` starts no device/GPU/CLAP thread, so only the
+harness's two threads race (the phase-1 note's miniaudio/wgpu/GLFW suppression assumption was wrong).
+
+**Not yet triggered:** the native-op param write (`session_audio_graph_node_param_set` →
+`audio_op_param_set` writes op memory under `gmtx`; the audio thread reads it via `gbinds` during render
+without `gmtx`) is a plain-memory channel absent from the channel table. The harness did not surface it, so
+it is either benign in practice or the race window wasn't hit; a deeper audit (a targeted harness that holds
+a note while hammering that op's param) could confirm — a small future follow-up, not a gap in the gate.
 
 ## Context
 
