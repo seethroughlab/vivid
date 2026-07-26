@@ -775,30 +775,22 @@ void draw_mod_editor(Renderer2D& ui, const ModEditor& m, vivid::session::Session
       ui.draw_text(r.x + 10.f, r.y + 4.f, "remove modulation", sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.72f); }
 }
 
-void draw_map_menu(Renderer2D& ui, const CtxMenu& m) {
+// ADR-0027: the one row-menu draw. Every hand-rolled panel+item loop (the characteristics menu, the
+// map-source picker, and — as they migrate — the node menus) routes through here, so draw geometry lives
+// in ONE place and matches PopupMenu::row_rect that the click path hit-tests against. Accent + width +
+// row height + the item list all come off the menu; the header is baked in at open time.
+void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m) {
     if (!m.open) return;
     const Style& sty = style();
-    const float w = 168.f;
-    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + kNumMapSources * 24.f }, "map param from:", sty.gold);
-    for (int j = 0; j < kNumMapSources; ++j) {
-        const float iy = m.y + j * 24.f;
-        item_box(ui, { m.x, iy, w, 24.f }, sty.gold);  // gold = return path
-        ui.draw_text(m.x + 12.f, iy + 5.f, kMapSources[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.88f);
-    }
-}
-
-// The characteristic context menu (the bridge entry point).
-void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track) {
-    if (!m.open) return;
-    const Style& sty = style();
-    const float w = 184.f;
-    char hdr[96]; std::snprintf(hdr, sizeof hdr, "%s  \xE2\x86\x92  visuals", track && *track ? track : "track");
-    const int nc = m.src < 0 ? kNumCharsMaster : kNumChars;   // master has no note sources
-    overlay_panel(ui, { m.x, m.y - 22.f, w, 22.f + nc * 26.f }, hdr, sty.teal);
-    for (int j = 0; j < nc; ++j) {
-        const float iy = m.y + j * 26.f;
-        item_box(ui, { m.x, iy, w, 26.f }, sty.teal);  // teal = audio->visual
-        ui.draw_text(m.x + 14.f, iy + 6.f, kChars[j].label, sty.text[0], sty.text[1], sty.text[2], 1.0f);
+    const float* acc = m.accent == vivid::ui::PopupMenu::Gold ? sty.gold
+                     : m.accent == vivid::ui::PopupMenu::Gpu  ? sty.gpu : sty.teal;
+    const int n = static_cast<int>(m.items.size());
+    overlay_panel(ui, { m.x, m.y - 22.f, m.width, 22.f + n * m.row_h }, m.header.c_str(), acc);
+    for (int j = 0; j < n; ++j) {
+        const float iy = m.y + j * m.row_h;
+        item_box(ui, { m.x, iy, m.width, m.row_h }, acc);
+        const float* c = m.items[j].enabled ? sty.text : sty.dim;
+        ui.draw_text(m.x + 14.f, iy + m.row_h * 0.5f - 7.f, m.items[j].label.c_str(), c[0], c[1], c[2], 1.0f);
     }
 }
 

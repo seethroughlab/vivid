@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include "ui/chooser.h"       // the shared Tab palette (the audio graph's lives here)
 #include "ui/layout.h"        // vivid::ui::Rect / DockGeom + window-relative geometry
+#include "ui/popup_menu.h"    // ADR-0027: the shared PopupMenu component (menu + map_menu)
 #include "app/output_preview.h" // the floating output-preview panel (ADR-0025 pressure-point #2)
 #include "audio/vst3_host.h"  // vivid::session::kMaxTracks (per-track array sizing)
 #include "app/runtime_health.h" // ADR-0019: HealthSnapshot cached per-frame (drives the status dot + panel)
@@ -21,9 +22,6 @@ namespace ui { class Renderer2D; class ClipEditor; }
 
 namespace vivid {
 
-// A right-click context menu of a track's audio characteristics (the bridge).
-// src: -1 = master, >= 0 = track.
-struct CtxMenu { bool open = false; float x = 0, y = 0; int src = -1; };
 
 // ADR-0022: the modulation shape editor — a floating popover for one control edge (`from` -> the
 // param `param` of node `node`). Opened by clicking a wired (magenta) param port; edits the edge's
@@ -134,7 +132,7 @@ struct Window {
     bool        show_gemini_key = false;
     std::string gemini_key_buf;
     int         music_eval_job  = -1;
-    CtxMenu menu, map_menu;   // the characteristics menu + the bridge map-source picker
+    vivid::ui::PopupMenu menu, map_menu;   // ADR-0027: characteristics menu + bridge map-source picker
     NodeMenu node_menu;                            // right-click on a visuals op node
     AudioNodeMenu audio_node_menu;                 // right-click on an audio-graph node ("→ visuals")
     ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover
