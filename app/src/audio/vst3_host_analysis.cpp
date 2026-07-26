@@ -81,12 +81,12 @@ int session_track_node_analysis_copy(Session* s, int t, int node_id, float* out,
     if (idx < 0 || idx >= kGraphMaxNodes) return 0;
     return tr.node_an.snapshot(idx, out, n);
 }
-// Snapshot a track's currently-held notes (lock-free: read count then array; a torn read is benign).
+// Snapshot a track's currently-held notes (lock-free atomic-slot set; a torn read is benign — ADR-0029).
 int session_track_active_notes(Session* s, int t, ActiveNote* out, int max) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || max <= 0) return 0;
-    const Track& tr = *s->tracks[t];
-    const int n = std::min<int>(max, std::min<uint32_t>(tr.held_count_.load(std::memory_order_acquire), kMaxHeld));
-    for (int i = 0; i < n; ++i) { out[i].pitch = tr.held_[i].pitch; out[i].vel = tr.held_[i].vel; }
+    vivid::audio::HeldSnapshot tmp[kMaxHeld];
+    const int n = s->tracks[t]->held.snapshot(tmp, std::min(max, kMaxHeld));
+    for (int i = 0; i < n; ++i) { out[i].pitch = tmp[i].pitch; out[i].vel = tmp[i].velocity; }
     return n;
 }
 
