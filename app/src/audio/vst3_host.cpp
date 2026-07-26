@@ -815,6 +815,33 @@ static inline VividAudioContext block_gctx(const GraphBlockCtx& b) {
 
 // ADR-0022 P2b.3b: the per-track FINALIZE step of the flat plan. The track's node steps have already
 // run (writing into its node-pool region); this copies its output node into its track-out slot
+// ADR-0025: one sample into a signal's running analysis — push the spectrum ring, advance the crossover
+// one-poles, accumulate the 3-band + total energy. Inlined; shared by finalize_track (a track's output)
+// and master_mix (the summed mix) so the per-sample meter math lives in ONE place. Bit-identical to the
+// two loops it replaces (same operations, same order).
+static inline void analyze_sample(MeterState& a, float l, float a_lo, float a_hi,
+                                  double& sum_sq, double& slo, double& smi, double& shi) {
+    sum_sq += static_cast<double>(l) * l;
+    a.an_ring[a.an_pos] = l; a.an_pos = (a.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
+    a.flt_lo += (l - a.flt_lo) * a_lo;
+    a.flt_hi += (l - a.flt_hi) * a_hi;
+    const float lo = a.flt_lo, mi = a.flt_hi - a.flt_lo, hi = l - a.flt_hi;
+    slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+}
+// ADR-0025: publish a block's accumulated analysis into the atomics — 3-band RMS, overall level, and the
+// onset transient over a slow baseline. Called once per block; shared by finalize_track + master_mix.
+static inline void publish_meters(MeterState& a, double sum_sq, double slo, double smi, double shi, uint32_t frames) {
+    const float inv = 1.f / (frames > 0 ? frames : 1);
+    a.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
+    a.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
+    a.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
+    const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
+    a.level.store(rms, std::memory_order_relaxed);
+    const float tr = std::max(0.f, (rms - a.tr_baseline) * 6.f);  // onset over baseline
+    a.tr_baseline += (rms - a.tr_baseline) * 0.04f;
+    a.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+}
+
 // (`slotL`/`slotL+kGraphMaxBlock`), taps the per-node waveform scope, and computes the track meters.
 // `valid` is the RT bail-net verdict decided once at plan-build time: a valid track's output is
 // copied out (and its scope tapped); an invalid or gok=false track's slot is silenced. Bit-identical
@@ -893,27 +920,14 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
             cap_pos = (cap_pos + 1) % cap;
             cap_filled = std::min(cap, cap_filled + 1);
         }
-        sum_sq += static_cast<double>(l) * l;
-        t.an_ring[t.an_pos] = l; t.an_pos = (t.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
-        t.flt_lo += (l - t.flt_lo) * a_lo;
-        t.flt_hi += (l - t.flt_hi) * a_hi;
-        const float lo = t.flt_lo, mi = t.flt_hi - t.flt_lo, hi = l - t.flt_hi;
-        slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        analyze_sample(t.meter, l, a_lo, a_hi, sum_sq, slo, smi, shi);
     }
     if (cap_locked) {
         t.capture_write_pos = cap_pos;
         t.capture_filled = cap_filled;
         t.capture_mtx.unlock();
     }
-    const float inv = 1.f / (frames > 0 ? frames : 1);
-    t.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
-    t.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
-    t.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
-    const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
-    t.level.store(rms, std::memory_order_relaxed);
-    const float tr = std::max(0.f, (rms - t.tr_baseline) * 6.f);  // onset over baseline
-    t.tr_baseline += (rms - t.tr_baseline) * 0.04f;
-    t.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+    publish_meters(t.meter, sum_sq, slo, smi, shi, frames);
 }
 
 // ADR-0022 P2b.3b: the MASTER step of the flat plan (one, after every track's finalize). Sums each
@@ -938,22 +952,9 @@ static void master_mix(Session* s, float* out, uint32_t frames, uint32_t sample_
     for (uint32_t i = 0; i < frames; ++i) {
         const float l = out[2 * i] * mg, r = out[2 * i + 1] * mg;
         out[2 * i] = l; out[2 * i + 1] = r;
-        sum_sq += static_cast<double>(l) * l;
-        m.an_ring[m.an_pos] = l; m.an_pos = (m.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
-        m.flt_lo += (l - m.flt_lo) * a_lo;
-        m.flt_hi += (l - m.flt_hi) * a_hi;
-        const float lo = m.flt_lo, mi = m.flt_hi - m.flt_lo, hi = l - m.flt_hi;
-        slo += static_cast<double>(lo) * lo; smi += static_cast<double>(mi) * mi; shi += static_cast<double>(hi) * hi;
+        analyze_sample(m.meter, l, a_lo, a_hi, sum_sq, slo, smi, shi);
     }
-    const float inv = 1.f / (frames > 0 ? frames : 1);
-    m.band_low.store(static_cast<float>(std::sqrt(slo * inv)), std::memory_order_relaxed);
-    m.band_mid.store(static_cast<float>(std::sqrt(smi * inv)), std::memory_order_relaxed);
-    m.band_high.store(static_cast<float>(std::sqrt(shi * inv)), std::memory_order_relaxed);
-    const float rms = static_cast<float>(std::sqrt(sum_sq / (frames > 0 ? frames : 1)));
-    m.level.store(rms, std::memory_order_relaxed);
-    const float tr = std::max(0.f, (rms - m.tr_baseline) * 6.f);
-    m.tr_baseline += (rms - m.tr_baseline) * 0.04f;
-    m.transient.store(std::min(1.f, tr), std::memory_order_relaxed);
+    publish_meters(m.meter, sum_sq, slo, smi, shi, frames);
 }
 
 static void list_vst3(const std::string& dir, std::vector<std::string>& out) {

@@ -78,6 +78,20 @@ constexpr int      kScopeN        = 128;   // per-node output-waveform ring leng
 constexpr int      kScopePerBlock = 8;     // decimated samples pushed into the ring each block
 // kAnalysisN / kFftBands live in the public vst3_host.h (shared with the frame-side FFT publisher).
 
+// ADR-0025: the per-signal meter + spectral-analysis state, shared by a Track (its rendered output) and
+// the Master (the summed mix) — one type instead of two identical field clusters. The audio thread writes
+// it each block (see analyze_sample / publish_meters in vst3_host.cpp); the frame thread reads the atomics
+// for meters + audio-reactive params, and snapshots `an_ring` for the FFT (mini_fft.h). `flt_lo`/`flt_hi`/
+// `tr_baseline` are audio-thread-only running state (the crossover one-poles + the onset baseline). A torn
+// read of an_ring is a harmless 1-frame spectral blip.
+struct MeterState {
+    std::atomic<float> level{0.f}, transient{0.f};
+    std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};   // 3-band energy
+    float              an_ring[kAnalysisN] = {0};   // mono sample ring for the frame-side FFT
+    uint32_t           an_pos = 0;
+    float              flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;   // audio-thread running state
+};
+
 // MidiIn (ADR-0015): the track's note stream as an explicit NODE — clips + live MIDI + musical
 // typing + MCP + preview, i.e. exactly what fills t.nev. It emits notes on a note edge instead of
 // the old invisible per-track broadcast.
@@ -233,10 +247,7 @@ struct Track {
     // in the master sum. Meters stay PRE-mute — a muted track still shows its own level.
     std::atomic<bool>     mute{false}, solo{false};
     std::atomic<float>    mix_scale{1.f};
-    std::atomic<float>    level{0.f};
-    std::atomic<float>    transient{0.f};
-    float                 tr_baseline = 0.f;  // onset detector baseline (audio thread)
-    std::atomic<float>    band_low{0.f}, band_mid{0.f}, band_high{0.f};  // 3-band energy
+    MeterState            meter;   // ADR-0025: level/transient/3-band/spectrum ring (shared with Master)
     // Note-derived bridge sources (the note peer of level/transient): the audio thread scans this
     // block's t.nev note stream and publishes the most-recent note-on's pitch/velocity + a note-on
     // flag, so MIDI notes can drive visual params DIRECTLY (pitch->colour etc.), not just via the
@@ -252,12 +263,7 @@ struct Track {
     HeldNote              held_[kMaxHeld];
     uint32_t              held_n_ = 0;
     std::atomic<uint32_t> held_count_{0};
-    // Frame-side spectrum: the audio thread copies each block's mono samples into this ring (cheap,
-    // lock-free); the UI thread snapshots it and runs the FFT (see mini_fft.h). Torn read = a harmless
-    // 1-frame spectral blip, like node_scope.
-    float                 an_ring[kAnalysisN] = {0};
-    uint32_t              an_pos = 0;
-    float                 flt_lo = 0.f, flt_hi = 0.f;  // one-pole crossover states
+    // (spectrum ring + crossover state now live in `meter` above — MeterState, shared with Master.)
     std::vector<float>    bl, br;          // planar scratch
     std::mutex            capture_mtx;      // audio thread uses try_lock; UI snapshots may block
     std::vector<float>    capture_l, capture_r;
@@ -439,15 +445,11 @@ struct RecNote { int pitch; double beat_on; double beat_off; float vel; bool ope
 // this block, applies the master gain, and publishes the master meters. This is the seed of the
 // compiled master step (P1b.3): today's per-track mix loop no longer accumulates into `out`; it
 // renders + meters each track, and this node does the summation. `gain` defaults to 1.0, which
-// keeps the mix bit-identical with the pre-P1b inline sum. The meter fields are the master's own
-// state block: `flt_lo/flt_hi/tr_baseline` are audio-thread-only running state; the atomics are
-// UI-read (same layout + math as a Track's meters).
+// keeps the mix bit-identical with the pre-P1b inline sum. The meters are `MeterState` — the same type
+// a Track uses (ADR-0025) — since the master's analysis is identical to a track's.
 struct Master {
     std::atomic<float> gain{1.f};
-    std::atomic<float> level{0.f}, transient{0.f};
-    std::atomic<float> band_low{0.f}, band_mid{0.f}, band_high{0.f};
-    float an_ring[kAnalysisN] = {0}; uint32_t an_pos = 0;   // mono sample ring for the frame-side FFT
-    float flt_lo = 0.f, flt_hi = 0.f, tr_baseline = 0.f;
+    MeterState         meter;   // ADR-0025: level/transient/3-band/spectrum ring (shared with Track)
     // ADR-0022 P2b.3c: the master's SESSION-GLOBAL node id — the sink of the one session graph, and
     // the first citizen of the global id space (assigned 0 at session init). `is_master` marks it as
     // the single session sink, as distinct from a track's `is_track_out` node (AudioGraph::is_output).
