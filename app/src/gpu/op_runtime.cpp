@@ -84,10 +84,26 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
     d.audio_role = op.declared_audio_role();
 }
 
-void sync_params(OpInstance& inst, const float* values, int count) {
-    if (!values) return;
-    const int n = std::min(count, static_cast<int>(inst.param_ptrs.size()));
-    for (int i = 0; i < n; ++i) inst.param_ptrs[i]->value = values[i];
+void sync_params(OpInstance& inst, const float* values, int count,
+                 const char** file_param_values, uint32_t file_param_count) {
+    const bool sync_file_params = inst.op && inst.op->host_syncs_file_params();
+    uint32_t file_idx = 0;
+    for (size_t i = 0; i < inst.param_ptrs.size(); ++i) {
+        ParamBase* pb = inst.param_ptrs[i];
+        if (!pb) continue;
+        if (pb->type == VIVID_PARAM_FILE || pb->type == VIVID_PARAM_TEXT) {
+            if (sync_file_params && file_param_values && file_idx < file_param_count && file_param_values[file_idx]) {
+                if (pb->type == VIVID_PARAM_FILE) {
+                    static_cast<Param<FilePath>*>(pb)->str_value = file_param_values[file_idx];
+                } else {
+                    static_cast<Param<TextValue>*>(pb)->str_value = file_param_values[file_idx];
+                }
+            }
+            ++file_idx;
+        } else if (values && i < static_cast<size_t>(count)) {
+            pb->value = values[i];
+        }
+    }
 }
 
 void OpRegistry::register_type(const std::string& name, Factory f) {

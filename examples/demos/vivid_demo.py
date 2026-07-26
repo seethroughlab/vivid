@@ -272,7 +272,13 @@ class Vivid:
         or NOTE-derived (drives visuals by WHICH note, not just loudness): 'note' (last pitch, 0..1 over
         MIDI 0..127) | 'velocity' | 'gate' (a note-on flash). Uses the track's stable id: source =
         'track_<id>.<band>'. Same knobs as map() (amount/curve/lo/hi/invert)."""
-        return self.map(f"track_{self.track_id(track)}.{band}", node_id, param, **kw)
+        return self.call("map_audio_to_visual_param", source="track", track=track,
+                         characteristic=band, node_id=node_id, param=param, **kw)
+
+    def master_viz(self, band: str, node_id: int, param: str, **kw):
+        """Route a master-bus characteristic to one visual param through the first-class MCP helper."""
+        return self.call("map_audio_to_visual_param", source="master", characteristic=band,
+                         node_id=node_id, param=param, **kw)
 
     # --- the RETURN leg of the bridge (visual -> audio): a viz.* source drives an audio param ---
     # This is what makes the loop bidirectional. Sources: "viz.warp" / "viz.glow" / "viz.feedback"

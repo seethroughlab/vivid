@@ -35,6 +35,7 @@ public:
     // operator draws its own cell preview and classifies as a generator/note-fx/modulator.
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
     VividAudioRole declared_audio_role() const override;
+    bool host_syncs_file_params() const override { return false; }
 
     // The dylib's own descriptor — the authority on which process_* stages this op has
     // (this adapter inherits all three interfaces, so a dynamic_cast can't tell them apart).

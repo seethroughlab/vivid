@@ -4,6 +4,7 @@
 - ~~The background grid of the graph doesn't extend to the edges of the container it's in.~~ → **DONE (PR #30)** — `NodeGraph::set_frame` draws the grid to the column edges.
 - ~~The paramter sliders look terrrible still.~~ → **DONE (PR #30)** — `slider()` restyle + the curated param inspector.
 - Retrieve the general website structure from classic but start over with a single placeholder page
+  → captured in `docs/roadmap/website-revival.md`; implement in the website worktree.
 - How are we going to deal with community-contributed packages with vivid-4? (Partly answered: **ADR-0018 ✅ shipped** — a package operator that repeatedly crashes is attributed + quarantined; **ADR-0021** covers local content scopes. A *remote* catalog/registry is still open and needs its own ADR.)
 - Note operators in the audio graph need better thumbnails
 - ~~Resizing the vertical split shouldn't move the visuals graph.~~ → **DONE (PR #30)** — removed the per-frame node shift in `NodeGraph::set_bounds`.

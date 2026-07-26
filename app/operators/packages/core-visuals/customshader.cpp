@@ -10,6 +10,7 @@
 #include <webgpu/wgpu.h>   // native extension: WGPUShaderSourceGLSL
 
 #include <array>
+#include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <string>
@@ -52,6 +53,7 @@ struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> p2{"density", 0.5f, 0.f, 1.f};
     vivid::Param<float> p3{"glow", 0.5f, 0.f, 1.f};
     std::string loaded_ = "\x01";   // sentinel so an empty path is handled once
+    uint64_t loaded_generation_ = 0;
     bool failed_ = false;
     WGPUShaderModule vert_ = nullptr, frag_ = nullptr;
     WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
@@ -74,7 +76,9 @@ struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
     }
     void reload(const VividGpuContext* c) {
         release_pipeline();
-        loaded_ = file.str_value; failed_ = true;   // pessimistic until compiled
+        loaded_ = file.str_value;
+        loaded_generation_ = c ? c->file_param_generation : 0;
+        failed_ = true;   // pessimistic until compiled
         if (file.str_value.empty()) return;
         std::ifstream f(file.str_value, std::ios::binary);
         if (!f) { std::fprintf(stderr, "[CustomShader] cannot open %s\n", file.str_value.c_str()); return; }
@@ -106,7 +110,8 @@ struct CustomShaderOp : vivid::OperatorBase, vivid::GpuProcessable {
         if (failed_) std::fprintf(stderr, "[CustomShader] compile failed: %s\n", file.str_value.c_str());
     }
     void process_gpu(const VividGpuContext* c) override {
-        if (file.str_value != loaded_) reload(c);
+        const uint64_t generation = c ? c->file_param_generation : 0;
+        if (file.str_value != loaded_ || generation != loaded_generation_) reload(c);
         if (failed_ || !pipe_) return;
         const float* p = c->param_values;   // file, warp, hue, density, glow (file slot ignored here)
         Uniforms u{}; u.res[0] = float(c->output_width); u.res[1] = float(c->output_height); u.time = float(c->time);

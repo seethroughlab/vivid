@@ -381,11 +381,16 @@ int main(int argc, char** argv) {
     // undo baseline seeds (app.recovered_unsaved, consumed in the frame loop) so quit/save prompt.
     {
         vivid::autosave::Recovery rec = vivid::autosave::check();
-        // Escape hatch for headless / automated launches: the recovery MODAL blocks the frame loop
+        // Escape hatches for headless / automated launches: the recovery MODAL blocks the frame loop
         // (and the control server it pumps) until dismissed, so a leftover autosave slot hangs an
-        // unattended launch. VIVID_NO_RECOVER skips the prompt entirely and starts clean; the slot is
-        // left intact so a later interactive launch can still offer to recover it.
-        if (rec.available && std::getenv("VIVID_NO_RECOVER")) {
+        // unattended launch. VIVID_NO_RECOVER skips the prompt but leaves the slot intact for a later
+        // interactive recovery. VIVID_DISCARD_RECOVERY is stronger: it explicitly discards the slot,
+        // useful for disposable tutorial/test launches that must start clean.
+        if (rec.available && std::getenv("VIVID_DISCARD_RECOVERY")) {
+            vivid::autosave::clear();
+            VLOG_WARN(app, "VIVID_DISCARD_RECOVERY set — discarded autosave recovery state");
+            rec.available = false;
+        } else if (rec.available && std::getenv("VIVID_NO_RECOVER")) {
             VLOG_WARN(app, "VIVID_NO_RECOVER set — skipping the autosave-recovery prompt");
             rec.available = false;
         }

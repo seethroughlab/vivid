@@ -253,7 +253,9 @@ void register_project_handlers(Handlers& handlers_) {
             package["present"] = false;
         }
         r["package"] = package;
-        // Loose files in the project dir + its shaders/ subdir.
+        // Loose files in the project dir + conventional authored-asset dirs. `shaders/` is for
+        // shader-operator sources with JSON headers; `assets/` carries raw files consumed by FILE
+        // params (including CustomShader fragments).
         for (const auto& base : { fs::path(dir), fs::path(dir) / "shaders" }) {
             if (!fs::is_directory(base, ec)) continue;
             for (const auto& e : fs::directory_iterator(base, ec)) {
@@ -261,6 +263,13 @@ void register_project_handlers(Handlers& handlers_) {
                 const std::string kind = asset_kind(e.path());
                 if (kind == "package_manifest") continue;   // already added above
                 add(e.path(), kind);
+            }
+        }
+        const fs::path assets_dir = fs::path(dir) / "assets";
+        if (fs::is_directory(assets_dir, ec)) {
+            for (const auto& e : fs::recursive_directory_iterator(assets_dir, ec)) {
+                if (!e.is_regular_file(ec)) continue;
+                add(e.path(), asset_kind(e.path()));
             }
         }
         r["assets"] = assets;
@@ -308,6 +317,8 @@ void register_project_handlers(Handlers& handlers_) {
         // Shaders: re-scan the project's shaders (registers new files; hot-reload handles edits live).
         const int shader_ops = c.app->shader_library.set_project(c.app->op_registry, dir);
         r["shader_operators"] = shader_ops;
+        const int file_param_nodes = c.vgraph ? c.vgraph->bump_all_file_param_generations() : 0;
+        r["file_param_nodes_reloaded"] = file_param_nodes;
         // Package: recompile + register any newly-authored operator.
         json ops = json::array();
         int registered = 0;
@@ -330,6 +341,7 @@ void register_project_handlers(Handlers& handlers_) {
         r["operators"] = ops;
         r["newly_registered"] = registered;
         r["summary"] = "reloaded project files: " + std::to_string(shader_ops) + " shader op(s), " +
+                       std::to_string(file_param_nodes) + " file-param node(s), " +
                        std::to_string(registered) + " new package op(s)";
         return r;
     };

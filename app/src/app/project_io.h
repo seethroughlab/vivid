@@ -34,7 +34,8 @@ struct SaveResult {
 
 // Write the session. For a folder project, creates the directory and writes
 // "<dir>/project.json"; for a .json path, writes it directly. Does NOT touch
-// co-located assets (they are authored in place). Updates app.project on success.
+// co-located assets (they are authored in place). Updates app.project and the live project asset
+// root on success, so project-relative FILE params resolve immediately after first save.
 SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float split_x, float dock_h,
                 const std::string& path);
 

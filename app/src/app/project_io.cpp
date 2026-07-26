@@ -28,6 +28,9 @@ SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float spli
         return r;
     }
     app.remember_project_path(path);   // remember the folder (or the .json), not the inner file
+    const std::string project_dir = fs::path(r.session_file).parent_path().string();
+    app.shader_library.set_project(app.op_registry, project_dir);
+    if (app.vgraph) app.vgraph->set_asset_dir(project_dir);
     r.ok = true;
     return r;
 }
