@@ -48,7 +48,10 @@ jobs:
           -DVIVID_SANITIZE_THREAD=ON
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - name: Build
-        run: cmake --build build-tsan --target test_note_bus -j
+        # Build the whole (small) suite so every THREAD-labelled test exists, then run only those — the
+        # package/dlopen tests get built but not run (they SEGV under TSan). Avoids the "forgot to add the
+        # new THREAD target" foot-gun.
+        run: cmake --build build-tsan -j
       - name: Test
         run: ctest --test-dir build-tsan -L THREAD --output-on-failure
         env:
