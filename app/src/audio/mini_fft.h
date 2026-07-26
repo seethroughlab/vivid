@@ -3,6 +3,7 @@
 // radix-2 Cooley-Tukey FFT + a reduction to log-spaced magnitude bands. Header-only, no allocation
 // in the hot path beyond the caller's scratch, no external deps. Used FRAME-SIDE (UI thread) on a
 // snapshot of a track's recent samples, so the audio thread only pays for a cheap ring copy.
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
@@ -64,10 +65,16 @@ inline void spectrum_log_bands(const float* in, int n, float sample_rate,
         const float mag = std::sqrt(scratch_re[k] * scratch_re[k] + scratch_im[k] * scratch_im[k]);
         out[band] += mag; counts[band]++;
     }
-    // average per band, then a gentle compression into a visual 0..1 (the raw magnitudes are small).
+    // Average per band, then map to a visual 0..1 through a PERCEPTUAL (dB) curve instead of a linear
+    // gain + hard clamp. A flat `*8` pinned every moderately-loud band to 1.0 (no visible variation on
+    // real material); mapping a ~54 dB window above a reference magnitude into 0..1 keeps loud bands off
+    // the ceiling and lets quiet detail register, matching how loudness is actually perceived.
+    constexpr float kRefMag  = 0.12f;    // magnitude that reaches full scale (was the old *8 knee, 1/8)
+    constexpr float kRangeDb = 54.f;     // visible dynamic window below the reference
     for (int i = 0; i < nbands; ++i) {
         if (counts[i] > 0) out[i] /= static_cast<float>(counts[i]);
-        out[i] = std::min(1.f, out[i] * 8.f);   // display gain (matches the *5/*8/*12 band scaling style)
+        const float db = 20.f * std::log10(std::max(out[i], 1e-6f) / kRefMag);   // 0 dB at kRefMag
+        out[i] = std::clamp(1.f + db / kRangeDb, 0.f, 1.f);                       // -kRangeDb..0 dB -> 0..1
     }
 }
 

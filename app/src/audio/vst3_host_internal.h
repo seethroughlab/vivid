@@ -66,6 +66,9 @@ struct LiveMidi {
 // reserved working buffers — no RT alloc/free. A node's index == its out_buf (see
 // AudioGraph::compile), so bindings are addressed by out_buf.
 constexpr int      kGraphMaxNodes = 64;
+// The per-node FFT-capture gate (Track::node_analyze_mask) packs one bit per node into a uint64_t, so a
+// node index must fit in 64 bits. Raising kGraphMaxNodes past 64 needs a wider mask.
+static_assert(kGraphMaxNodes <= 64, "node_analyze_mask is a uint64_t bitset over node indices");
 constexpr uint32_t kGraphMaxBlock = 4096;
 constexpr double   kTrackCaptureSeconds = 30.0;
 // ADR-0015: capacity of ONE note buffer. Matches audio_op_runtime's kMaxNotes — a block that

@@ -11,6 +11,7 @@
 #include <ctime>                  // ADR-0018 std::time for the autosave meta stamp
 #include "app/window.h"
 #include "app/project_paths.h"   // is_folder_project — derive the window-title name from the project path
+#include "app/bridge_source.h"   // the audio→visual source-id grammar (shared with input.cpp's catalog)
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
 #include "gpu/gpu_context.h"
@@ -186,7 +187,8 @@ void publish_bridge_sources(App& app, Window& win) {
     graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
     graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
-        publish_fft("master", nm);
+        publish_fft(vivid::bridge::master_prefix(), nm);
+    int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)
     for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
         const float lv = vivid::session::session_track_level(app.session, t);
         win.trkReact[t] += (std::min(1.0f, lv * 5.0f) - win.trkReact[t]) * 0.3f;
@@ -207,7 +209,7 @@ void publish_bridge_sources(App& app, Window& win) {
         win.trkNoteHold[t] = std::max(win.trkNoteHold[t], vivid::session::session_track_note_gate(app.session, t));
         graph.set_value(char_id_for(tid, 7), std::min(1.0f, win.trkNoteHold[t]));
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
-            publish_fft("track_" + std::to_string(tid), ns);
+            publish_fft(vivid::bridge::track_prefix(tid), ns);
         // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
         // ring). FFT (node_<t>_<nid>.fft.k) is CONNECTION-GATED: only nodes whose fft source is consumed
         // (wired/spawned) get a capture bit set + get FFT'd — so an unwatched node costs nothing.
@@ -216,7 +218,7 @@ void publish_bridge_sources(App& app, Window& win) {
         for (int i = 0; i < nn; ++i) {
             const int nid = S::session_track_audio_graph_node_id(app.session, t, i);
             if (nid < 0) continue;
-            const std::string nsrc = "node_" + std::to_string(tid) + "_" + std::to_string(nid);
+            const std::string nsrc = vivid::bridge::node_prefix(tid, nid);
             float sc[256];
             const int nsc = S::session_track_audio_graph_node_scope(app.session, t, i, sc, 256);
             double ss = 0; for (int j = 0; j < nsc; ++j) ss += static_cast<double>(sc[j]) * sc[j];
@@ -233,15 +235,19 @@ void publish_bridge_sources(App& app, Window& win) {
             }
         }
         S::session_set_track_node_analyze_mask(app.session, t, analyze_mask);
-        // Publish this track's held notes to the active-notes bus (keyed by track INDEX = the
-        // instancer op's `track` param), so a note-instancer GPU op can draw one instance per live note.
+        // Publish this track's held notes to the active-notes bus for a note-instancer GPU op. Into
+        // position slot `t`, TAGGED with the stable id `tid` — so the op (which addresses by stable id)
+        // follows the track across reorder/delete, like every other source above.
         S::ActiveNote an[S::kMaxHeld];
         const int na = S::session_track_active_notes(app.session, t, an, S::kMaxHeld);
         VividActiveNote vn[VIVID_MAX_ACTIVE_NOTES];
         const int m = std::min(na, VIVID_MAX_ACTIVE_NOTES);
         for (int k = 0; k < m; ++k) { vn[k].pitch = an[k].pitch; vn[k].velocity = an[k].vel; }
-        vivid_note_bus_publish(t, vn, static_cast<uint32_t>(m));
+        vivid_note_bus_publish(t, tid, vn, static_cast<uint32_t>(m));
+        ntracks = t + 1;
     }
+    for (int s = ntracks; s < VIVID_NOTE_BUS_TRACKS; ++s)   // free slots no live track occupies this frame
+        vivid_note_bus_publish(s, -1, nullptr, 0);
     graph.apply_params();
 }
 

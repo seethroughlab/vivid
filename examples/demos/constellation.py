@@ -1,12 +1,14 @@
 """Constellation — MIDI notes become glowing geometry: chords bloom, arps trail (100 BPM, A minor).
 
-The polyphonic note→visual payoff. The new **NoteInstancer** op draws ONE glowing instance per LIVE
-note of a track — pitch → x-position + colour (blue low → red high), velocity → size + brightness — so
-a chord blooms into a coloured cluster and an arpeggio sweeps a trail (each note fades out on release).
-Unlike the audio-analysis bridge, this reads the actual note stream: the picture knows WHICH notes.
+The polyphonic note→visual payoff. A composable **Notes** node (a track's live notes as a value) DRIVES
+a generic **Instancer** node through a graph edge; the Instancer draws ONE glowing instance per live
+note — pitch → x-position + colour (blue low → red high), velocity → size + brightness — so a chord
+blooms into a coloured cluster and an arpeggio sweeps a trail (each note fades out on release). Unlike
+the audio-analysis bridge, this reads the actual note stream: the picture knows WHICH notes.
 
-The op pulls the track's held notes directly from the engine's active-notes bus by track INDEX (its
-`track` param), so no wire is needed — just point it at the track. Requires Surge XT for the voice.
+The Notes node pulls the track's held notes from the engine's active-notes bus by track STABLE id (its
+`track` param), so it follows the track across reorder/delete — just point it at the track. Requires
+Surge XT for the voice.
 
 Run with the app running:  uv run examples/demos/constellation.py
 """
@@ -24,7 +26,7 @@ def build(v: Vivid, save: bool = True):
 
     # A lush pad (chords sustain → bloom) + an arp overlay (fast single notes → trail), both on ONE
     # Surge track so the instancer shows a cluster that breathes with an arpeggio sweeping through it.
-    lead = v.add_graph_track("lead")            # track INDEX 0 → the NoteInstancer's `track` param
+    lead = v.add_graph_track("lead")            # track index 0; its STABLE id feeds the Notes node below
     surge_preset(v, lead, "pad", prefer="", gain=0.55)
 
     # A minor progression, held nearly full-length so each chord blooms as a colour-by-pitch cluster,
@@ -45,7 +47,7 @@ def build(v: Vivid, save: bool = True):
     # through a graph edge → Feedback (soft trails) → Output. The Notes node is first-class + visible;
     # the Instancer just consumes whatever note-set it's fed.
     out = find(v.graph()["nodes"], "Output")
-    notes = v.add_node("Notes"); v.set_node_param(notes, "track", 0.0)
+    notes = v.add_node("Notes"); v.set_node_param(notes, "track", float(v.track_id(lead)))   # the lead's STABLE id
     inst = v.add_node("Instancer")
     for k, val in dict(size=0.6, spread=0.85, trail=0.4).items():
         v.set_node_param(inst, k, val)
