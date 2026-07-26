@@ -484,4 +484,12 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_session_concurrency PRIVATE ${_audio_engine_libs})
     add_test(NAME test_session_concurrency COMMAND test_session_concurrency)
     set_tests_properties(test_session_concurrency PROPERTIES LABELS "AUDIO_ENGINE;AUDIO_THREAD")
+
+    # ADR-0030 Phase 1: host-owned authored base cache on the plugin handles. Header-only usage of
+    # Vst3Handle/ClapHandle (no plugin loaded), so it needs the SDK libs but not the engine TUs.
+    add_executable(test_plugin_param_base tests/test_plugin_param_base.cpp)
+    target_include_directories(test_plugin_param_base PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_plugin_param_base PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_plugin_param_base COMMAND test_plugin_param_base)
+    set_tests_properties(test_plugin_param_base PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

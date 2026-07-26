@@ -49,8 +49,11 @@ const char* session_track_preset_tag(Session* s, int t, int i, int k) {
 bool session_track_preset_load(Session* s, int t, const char* id) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !id) return false;
     Track& tr = *s->tracks[t];
-    if (tr.clap_inst) return clap_load_preset(tr.clap_inst, id);
-    if (tr.handle)    return vst3_load_preset(tr.handle, id);
+    // ADR-0030: a preset replaces the authored patch wholesale, so forget the host base cache on a
+    // successful load — the base reader then falls back to the preset's (freshly loaded) values
+    // until the user authors again, and save/undo record the preset, not the pre-preset knobs.
+    if (tr.clap_inst) { const bool ok = clap_load_preset(tr.clap_inst, id); if (ok) tr.clap_inst->base_forget_all(); return ok; }
+    if (tr.handle)    { const bool ok = vst3_load_preset(tr.handle, id);    if (ok) tr.handle->base_forget_all();    return ok; }
     return false;
 }
 
