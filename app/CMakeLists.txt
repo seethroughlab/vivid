@@ -492,4 +492,12 @@ if(VIVID_BUILD_TESTS AND APPLE)
     target_link_libraries(test_plugin_param_base PRIVATE ${_audio_engine_libs})
     add_test(NAME test_plugin_param_base COMMAND test_plugin_param_base)
     set_tests_properties(test_plugin_param_base PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # ADR-0030 Phase 3: save/undo stay stable under a moving frame-bridge override (session-level,
+    # native ops — the getter persist serializes keeps returning the authored base under automation).
+    add_executable(test_bridge_undo_stability tests/test_bridge_undo_stability.cpp ${_audio_engine_srcs})
+    target_include_directories(test_bridge_undo_stability PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_bridge_undo_stability PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_bridge_undo_stability COMMAND test_bridge_undo_stability)
+    set_tests_properties(test_bridge_undo_stability PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

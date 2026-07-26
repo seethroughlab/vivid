@@ -14,8 +14,14 @@ Implementation:
   Plugins deliver via `param_q` without authoring base, capturing the pre-automation value once so
   disconnect restores it. Legacy linear-device dests (`param:`/`aparam:`, pre-ADR-0022) stay on the
   old path.
-- Phase 3 — the follow-up test matrix (real-plugin save/load while mapped, undo under a moving
-  modulator) + TSan coverage for the new channel — is tracked separately.
+- Phase 3 — follow-up test coverage — landed on `adr-0030-phase3-tests`. The audio↔UI concurrency
+  harness (`test_session_concurrency`) now races `deliver`/`clear` on the native `fovr` channel against
+  the render thread under the macOS `audio-thread-sanitizer` gate (TSan-clean). A session-level test
+  (`test_bridge_undo_stability`) proves the getter persistence/undo serialize with keeps returning the
+  authored base while a MOVING override drives the param, so a save/undo snapshot taken mid-automation
+  stays stable, and clearing returns the node to base. The real-plugin save/load-while-mapped
+  round-trip stays a MANUAL check — it needs an installed plugin (CI has none; Surge stalls), and the
+  plugin base-cache mechanics are already unit-tested (`test_plugin_param_base`).
 
 Extends [ADR-0022](ADR-0022-session-audio-graph.md), [ADR-0028](ADR-0028-one-source-id-language.md),
 and [ADR-0017](ADR-0017-every-edit-is-reversible.md).
