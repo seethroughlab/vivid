@@ -149,7 +149,10 @@ Likely gaps to pressure-test first:
 **Golden Path A artifact.** The first shader-only artifact lives at
 `examples/tutorials/mcp-native-first-project/`. It assumes Surge XT but is intentionally free of C++
 toolchain requirements so the first pass can test the MCP/project-local shader loop without making
-the user compile code. The follow-up C++ artifact should use or simplify `examples/song-sketch`.
+the user compile code. Its preflight reports missing Vivid/control-server and Surge XT setup before
+deleting the generated project, and `examples/tutorials/free-plugin-starter-list.md` keeps the
+required/optional free plugin story explicit. The follow-up C++ artifact should use or simplify
+`examples/song-sketch`.
 
 **First friction result.** The initial live run successfully authored the project through the control
 server, loaded Surge XT, produced audio/visual output, and wrote proof hooks. It also exposed a core

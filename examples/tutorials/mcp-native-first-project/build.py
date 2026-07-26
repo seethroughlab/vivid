@@ -33,6 +33,21 @@ SHADER_PATH = ASSET_SHADER_DIR / SHADER_NAME
 FRICTION_LOG = PROJECT / "FRICTION-LOG.md"
 PROOF_JSON = PROJECT / "proof.json"
 CAPTURE_PNG = PROJECT / "capture.png"
+PLUGIN_LIST = REPO / "examples" / "tutorials" / "free-plugin-starter-list.md"
+SURGE_DOWNLOAD = "https://surge-synthesizer.github.io/"
+
+SURGE_HELP = f"""Surge XT is required for this tutorial.
+
+Expected macOS CLAP bundle:
+  {SURGE}
+
+Install options:
+  - Download: {SURGE_DOWNLOAD}
+  - Homebrew: brew install --cask surge-xt
+
+After installing, relaunch Vivid so its plugin catalog refreshes.
+More free plugin context: {PLUGIN_LIST}
+"""
 
 SHADER_SOURCE = """#version 450
 // ADR-0034 Golden Path A: project-local CustomShader source.
@@ -97,8 +112,8 @@ def ensure_friction_log() -> None:
         "    path after reload.\n"
         "- Visual verification issues: post-reload capture should be nonblank; current visual is a proof\n"
         "  artifact, not yet a website-grade showcase image.\n"
-        "- Audio verification issues: Surge XT is assumed installed; tutorial prose needs download and\n"
-        "  missing-plugin recovery instructions.\n"
+        "- Audio verification issues: Surge XT is assumed installed; builder preflight now prints\n"
+        "  install/relaunch instructions before touching the generated project.\n"
         "- Mapping/discovery issues: builder uses `map_audio_to_visual_param`; tutorial prose shows\n"
         "  `list_mapping_sources` and `list_mapping_destinations` immediately before the helper call.\n"
         "- Follow-up bugs: decide whether proof artifacts are checked in, regenerated in CI, or ignored\n"
@@ -119,25 +134,50 @@ def call_optional(v: Vivid, method: str, **payload) -> dict | None:
         return None
 
 
-def require_control_server(v: Vivid) -> None:
+def check_control_server(v: Vivid) -> str | None:
     try:
         v.call("status")
     except Exception as exc:
-        raise SystemExit(
-            "Vivid must be running before building this tutorial project. "
-            f"Could not reach the control server at {v.base}: {exc}"
-        ) from exc
+        return (
+            "Vivid must be running before building this tutorial project.\n"
+            f"Could not reach the control server at {v.base}: {exc}\n"
+            "Launch Vivid and confirm the control server is listening. If you changed ports, set VIVID_PORT."
+        )
+    return None
+
+
+def surge_catalog_note(v: Vivid) -> str:
+    try:
+        plugins = v.call("list_plugins").get("plugins", [])
+    except Exception as exc:
+        return f"Could not read Vivid's plugin catalog yet: {exc}"
+    matches = [
+        f"{p.get('format', '?')} {p.get('class', '?')} {p.get('name', '?')} -> {p.get('path', '?')}"
+        for p in plugins
+        if "surge" in str(p.get("name", "")).lower() or "surge" in str(p.get("path", "")).lower()
+    ]
+    if matches:
+        return "Vivid currently sees Surge-related plugins:\n  " + "\n  ".join(matches[:8])
+    return "Vivid's plugin catalog did not report Surge XT. Relaunch Vivid after installing it."
+
+
+def preflight(v: Vivid) -> None:
+    issues: list[str] = []
+    control_issue = check_control_server(v)
+    if control_issue:
+        issues.append(control_issue)
+
+    if not Path(SURGE).exists():
+        note = "" if control_issue else "\n" + surge_catalog_note(v)
+        issues.append(SURGE_HELP + note)
+
+    if issues:
+        raise SystemExit("\n\n---\n\n".join(issues))
 
 
 def build() -> None:
-    if not Path(SURGE).exists():
-        raise SystemExit(
-            "Surge XT is required for this tutorial. Expected CLAP bundle at "
-            f"{SURGE!r}."
-        )
-
     v = Vivid()
-    require_control_server(v)
+    preflight(v)
 
     remove_generated_project()
     ensure_project_shader()

@@ -27,6 +27,17 @@ Install Surge XT so the CLAP bundle exists here:
 /Library/Audio/Plug-Ins/CLAP/Surge XT.clap
 ```
 
+Official download: https://surge-synthesizer.github.io/
+
+Homebrew:
+
+```sh
+brew install --cask surge-xt
+```
+
+The broader free-plugin starter list is one folder up:
+`examples/tutorials/free-plugin-starter-list.md`.
+
 Launch Vivid before running the builder. The app must expose the control server on
 `127.0.0.1:9876`; set `VIVID_PORT` if you use a different port.
 
@@ -48,7 +59,9 @@ From the repo root:
 uv run examples/tutorials/mcp-native-first-project/build.py
 ```
 
-The script checks the control server and the Surge XT path before regenerating `project/`.
+The script checks the control server, the expected Surge XT CLAP path, and Vivid's visible plugin
+catalog before regenerating `project/`. If something is missing, it prints a checklist and exits
+without deleting the previous generated project.
 
 After it finishes, open this folder project in Vivid:
 
@@ -135,7 +148,7 @@ does not need to construct `track_<id>.*` or `node:<id>.*` manually.
 If the builder cannot reach Vivid, launch the app and confirm the control server port.
 
 If Surge XT is missing, install Surge XT and rerun the builder. The tutorial intentionally fails
-early instead of creating a silent project.
+early with install paths and links instead of creating a silent project.
 
 If the visual output is blank after reload, inspect `project/proof.json`, then check whether
 `assets/shaders/pulse_field.glsl` is present and whether `project.json` stores that relative path.
