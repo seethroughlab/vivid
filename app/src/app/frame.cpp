@@ -181,11 +181,13 @@ void publish_bridge_sources(App& app, Window& win) {
     win.react += (std::min(1.0f, level * 5.0f) - win.react) * 0.3f;
     win.trHold *= 0.85f;
     win.trHold = std::max(win.trHold, transport.transient.load(std::memory_order_relaxed));
-    graph.set_value(0, win.react);
-    graph.set_value(1, std::min(1.0f, win.trHold));
-    graph.set_value(2, std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
-    graph.set_value(3, std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
-    graph.set_value(4, std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
+    namespace B = vivid::bridge;   // the one source-id grammar (ADR-0028) — master/track scalars now
+                                   // publish as string ids like fft/node, not the legacy packed char_id.
+    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[0]), win.react);
+    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[1]), std::min(1.0f, win.trHold));
+    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[2]), std::min(1.0f, transport.band_low.load(std::memory_order_relaxed) * 5.0f));
+    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[3]), std::min(1.0f, transport.band_mid.load(std::memory_order_relaxed) * 8.0f));
+    graph.set_source_by_id(B::master_source(B::kTrackKindSuffixes[4]), std::min(1.0f, transport.band_high.load(std::memory_order_relaxed) * 12.0f));
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
         publish_fft(vivid::bridge::master_prefix(), nm);
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)
@@ -195,19 +197,19 @@ void publish_bridge_sources(App& app, Window& win) {
         win.trkTrHold[t] *= 0.85f;
         win.trkTrHold[t] = std::max(win.trkTrHold[t], vivid::session::session_track_transient(app.session, t));
         const int tid = vivid::session::session_track_id(app.session, t);
-        graph.set_value(char_id_for(tid, 0), win.trkReact[t]);
-        graph.set_value(char_id_for(tid, 1), std::min(1.0f, win.trkTrHold[t]));
-        graph.set_value(char_id_for(tid, 2), std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f));
-        graph.set_value(char_id_for(tid, 3), std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f));
-        graph.set_value(char_id_for(tid, 4), std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[0]), win.trkReact[t]);
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[1]), std::min(1.0f, win.trkTrHold[t]));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[2]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 0) * 5.0f));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[3]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 1) * 8.0f));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[4]), std::min(1.0f, vivid::session::session_track_band(app.session, t, 2) * 12.0f));
         // Note-derived sources (kinds 5/6/7): pitch + velocity are already 0..1 and HELD (no gain, no
         // decay — a sustained note keeps its colour). gate is a note-on flag decayed into a flash,
         // exactly like the transient hold above.
-        graph.set_value(char_id_for(tid, 5), vivid::session::session_track_note_pitch(app.session, t));
-        graph.set_value(char_id_for(tid, 6), vivid::session::session_track_note_velocity(app.session, t));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[5]), vivid::session::session_track_note_pitch(app.session, t));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[6]), vivid::session::session_track_note_velocity(app.session, t));
         win.trkNoteHold[t] *= 0.85f;
         win.trkNoteHold[t] = std::max(win.trkNoteHold[t], vivid::session::session_track_note_gate(app.session, t));
-        graph.set_value(char_id_for(tid, 7), std::min(1.0f, win.trkNoteHold[t]));
+        graph.set_source_by_id(B::track_source(tid, B::kTrackKindSuffixes[7]), std::min(1.0f, win.trkNoteHold[t]));
         if (int ns = S::session_track_analysis_copy(app.session, t, an_buf, S::kAnalysisN); ns > 1)
             publish_fft(vivid::bridge::track_prefix(tid), ns);
         // Per-audio-graph-node sources. RMS (node_<t>_<nid>.rms) is always-on + cheap (from the scope
