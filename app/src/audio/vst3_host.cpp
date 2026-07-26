@@ -822,7 +822,7 @@ static inline VividAudioContext block_gctx(const GraphBlockCtx& b) {
 static inline void analyze_sample(MeterState& a, float l, float a_lo, float a_hi,
                                   double& sum_sq, double& slo, double& smi, double& shi) {
     sum_sq += static_cast<double>(l) * l;
-    a.an_ring[a.an_pos] = l; a.an_pos = (a.an_pos + 1) & (kAnalysisN - 1);   // spectrum ring (frame-side FFT)
+    a.an_ring.push(l);   // spectrum ring (frame-side FFT) — atomic slots (ADR-0029)
     a.flt_lo += (l - a.flt_lo) * a_lo;
     a.flt_hi += (l - a.flt_hi) * a_hi;
     const float lo = a.flt_lo, mi = a.flt_hi - a.flt_lo, hi = l - a.flt_hi;

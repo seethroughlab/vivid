@@ -74,10 +74,11 @@ when you add a channel (ADR-0029).
 | Live MIDI ring (`LiveMidi`) | UI + CoreMIDI → audio | SPSC ring; producers serialize on `push_mtx`, consumer lock-free | `head`/`tail` release/acquire; full → drop |
 | Node-analyze mask (gated per-node FFT) | UI → audio | `std::atomic<uint64_t>`, release/acquire | ring allocated on the UI thread **before** the release-store; audio `acquire`-loads the mask, then reads the now-stable ring |
 | Active-notes bus (`note_bus`) | frame → render-thread op | atomic note slots + `count`/`track_id` release/acquire | `track_id` published **last** gates `count`+notes; each note is one atomic word, so a torn snapshot mixes whole notes (well-defined — ADR-0029) |
+| Spectrum sample ring (`MeterState::an_ring`) | audio → frame | `AnalysisRing` — atomic-float slots + `pos` release/acquire | push writes the slot (relaxed) then `pos` (release); snapshot loads `pos` (acquire) then the slots — a lapped slot tears benignly, well-defined (ADR-0029) |
 | Modulator control-out (`ctl_pub[]`) | audio → frame | `std::atomic<float>`, relaxed per node | single writer + reader |
 | Per-track note scalars (`note_pitch`/`note_vel`/`note_gate`) | audio → frame | `std::atomic<float>`, relaxed | single writer + reader; values HELD until the next note |
 | Control-server work | server thread → UI | enqueue + `std::promise`, applied on the main loop | **all** session/graph mutation happens on the UI thread |
-| Analysis / scope sample rings (`an_ring`, `node_an_ring`, `held_[]`) | audio → frame | plain array snapshot + atomic `count`/`pos` | **benign torn read** — not yet atomic-hardened; see below |
+| Per-node scope / FFT rings (`node_an_ring`, `node_scope`) + held-note set (`held_[]`) | audio → frame | plain array snapshot + atomic `count`/`pos`/mask | **benign torn read** — not yet atomic-hardened; see below |
 
 ### Benign torn reads — and hardening them
 
@@ -86,11 +87,15 @@ per-track/master analysis rings, the per-node scope/FFT rings, and the held-note
 1-frame visual glitch, explicitly acceptable. But when the array is **plain memory**, that concurrent
 read/write is a technical data race (UB) that ThreadSanitizer rightly flags.
 
-The active-notes bus was hardened (ADR-0029): each note slot is a `std::atomic<uint64_t>` (pitch+velocity
-packed into one word), written/read relaxed, with `count`/`track_id` release/acquire for grouping. The
-torn read is now **well-defined** (whole notes from adjacent frames, never a half-written note) and
-TSan-clean. Extend the same pattern — atomic array elements, not a lock — to `an_ring` / `node_an_ring` /
-`held_[]` when the macOS audio-engine TSan run (below) is turned on.
+Two channels are now hardened this way (ADR-0029): the **active-notes bus** (each note slot a
+`std::atomic<uint64_t>`, pitch+velocity packed) and the **spectrum sample ring** (`MeterState::an_ring`,
+an `AnalysisRing` of atomic-float slots — see `audio/analysis_ring.h`). Both torn reads are now
+well-defined (whole values from adjacent frames, never a half-written one) and TSan-clean, each covered by
+a portable concurrent test (`test_note_bus`, `test_analysis_ring`) on the `THREAD` leg. Extend the same
+pattern — atomic array elements, not a lock — to the **remaining** plain-memory channels: the per-node
+`node_an_ring` / `node_scope` rings and the `held_[]` note set. These are the fiddly ones — the per-node
+rings are lazily-allocated `std::vector`s (so they need a `unique_ptr<atomic<float>[]>` rather than
+`vector<atomic>`, which isn't movable), and `held_[]` is a 12-byte-element set (no single-word pack).
 
 ## ThreadSanitizer is a gate, not a ritual (ADR-0029)
 
