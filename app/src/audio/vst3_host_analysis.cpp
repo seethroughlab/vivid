@@ -14,27 +14,27 @@
 
 namespace vivid::session {
 
-float session_master_level(Session* s) { return s ? s->master.level.load(std::memory_order_relaxed) : 0.f; }
-float session_master_transient(Session* s) { return s ? s->master.transient.load(std::memory_order_relaxed) : 0.f; }
+float session_master_level(Session* s) { return s ? s->master.meter.level.load(std::memory_order_relaxed) : 0.f; }
+float session_master_transient(Session* s) { return s ? s->master.meter.transient.load(std::memory_order_relaxed) : 0.f; }
 float session_master_band(Session* s, int b) {
     if (!s) return 0.f;
-    switch (b) { case 0: return s->master.band_low.load(std::memory_order_relaxed);
-                 case 1: return s->master.band_mid.load(std::memory_order_relaxed);
-                 case 2: return s->master.band_high.load(std::memory_order_relaxed);
+    switch (b) { case 0: return s->master.meter.band_low.load(std::memory_order_relaxed);
+                 case 1: return s->master.meter.band_mid.load(std::memory_order_relaxed);
+                 case 2: return s->master.meter.band_high.load(std::memory_order_relaxed);
                  default: return 0.f; }
 }
 float session_track_level(Session* s, int t) {
-    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->level.load(std::memory_order_relaxed) : 0.f;
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->meter.level.load(std::memory_order_relaxed) : 0.f;
 }
 float session_track_transient(Session* s, int t) {
-    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->transient.load(std::memory_order_relaxed) : 0.f;
+    return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->meter.transient.load(std::memory_order_relaxed) : 0.f;
 }
 float session_track_band(Session* s, int t, int band) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size())) return 0.f;
     Track& tr = *s->tracks[t];
-    return band == 0 ? tr.band_low.load(std::memory_order_relaxed)
-         : band == 1 ? tr.band_mid.load(std::memory_order_relaxed)
-                     : tr.band_high.load(std::memory_order_relaxed);
+    return band == 0 ? tr.meter.band_low.load(std::memory_order_relaxed)
+         : band == 1 ? tr.meter.band_mid.load(std::memory_order_relaxed)
+                     : tr.meter.band_high.load(std::memory_order_relaxed);
 }
 float session_track_note_pitch(Session* s, int t) {
     return (s && t >= 0 && t < static_cast<int>(s->tracks.size())) ? s->tracks[t]->note_pitch.load(std::memory_order_relaxed) : 0.f;
@@ -55,11 +55,11 @@ static int copy_analysis_ring(const float* ring, uint32_t pos, float* out, int n
 }
 int session_track_analysis_copy(Session* s, int t, float* out, int n) {
     if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || n <= 0) return 0;
-    return copy_analysis_ring(s->tracks[t]->an_ring, s->tracks[t]->an_pos, out, n);
+    return copy_analysis_ring(s->tracks[t]->meter.an_ring, s->tracks[t]->meter.an_pos, out, n);
 }
 int session_master_analysis_copy(Session* s, float* out, int n) {
     if (!s || !out || n <= 0) return 0;
-    return copy_analysis_ring(s->master.an_ring, s->master.an_pos, out, n);
+    return copy_analysis_ring(s->master.meter.an_ring, s->master.meter.an_pos, out, n);
 }
 // A modulator/LFO node's latest 0..1 control output (published by run_modulator_step into ctl_pub,
 // indexed by node index == out_buf). 0 for non-modulator nodes (they never write it). `i` is the node
