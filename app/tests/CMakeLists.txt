@@ -108,6 +108,9 @@ set_tests_properties(test_note_bus PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_analysis_ring)  # ADR-0029 phase 2: atomic-slot spectrum ring, concurrent TSan target
 target_link_libraries(test_analysis_ring PRIVATE Threads::Threads)
 set_tests_properties(test_analysis_ring PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
+vivid_add_test(test_node_ring_bank)  # ADR-0029 phase 2: atomic-slot per-node ring bank, concurrent TSan target
+target_link_libraries(test_node_ring_bank PRIVATE Threads::Threads)
+set_tests_properties(test_node_ring_bank PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_popup_menu)     # ADR-0027: PopupMenu builders + draw/hit-test geometry invariant
 vivid_add_test(test_control_parse)
 

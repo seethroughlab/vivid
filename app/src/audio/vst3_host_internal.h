@@ -5,6 +5,7 @@
 #include "vst3_host_common.h"
 #include "vst3_host.h"
 #include "audio/analysis_ring.h"   // ADR-0029: atomic-slot spectrum ring (MeterState::an_ring)
+#include "audio/node_ring_bank.h"  // ADR-0029: atomic-slot per-node capture rings (node_scope, node_an)
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
 #include "audio/clip_dsp.h"
@@ -366,17 +367,14 @@ struct Track {
     // into this track's region; a consumer reads it via `blk.ctl_pool[blk.ctl_base + src_buf·...]`.
     // Per-node output-waveform scope (UI preview): the audio thread pushes kScopePerBlock decimated
     // samples of each node's output into a fixed ring (indexed by out_buf); the UI reads a snapshot to
-    // draw a live waveform. Display-only — no alloc/lock; a torn head read is a harmless visual blip.
-    std::vector<float>               node_scope;       // kGraphMaxNodes * kScopeN
-    std::vector<uint32_t>            node_scope_head;  // kGraphMaxNodes write positions
+    // draw a live waveform. Display-only; atomic-slot ring (ADR-0029), allocated eagerly at track init.
+    vivid::audio::NodeRingBank        node_scope;       // kGraphMaxNodes rings of kScopeN
     // Gated per-node FFT: the UI sets a bit per node whose fft source is CONSUMED (wired/spawned); the
-    // audio thread then captures that node's CONTIGUOUS block samples into node_an_ring for the
-    // frame-side FFT. Allocated ONCE on the UI thread when the mask first goes non-zero (the mask store
-    // is the release barrier), so the RT thread only ever reads a stable, fully-allocated buffer.
-    // Unwatched nodes (mask bit clear) cost nothing.
+    // audio thread then captures that node's CONTIGUOUS block samples into node_an for the frame-side FFT.
+    // Allocated ONCE on the UI thread when the mask first goes non-zero (the mask store is the release
+    // barrier), so the RT thread only ever reads a stable, fully-allocated buffer. Unwatched nodes cost 0.
     std::atomic<uint64_t>            node_analyze_mask{0};   // bit i (== out_buf == node index) → capture node i
-    std::vector<float>               node_an_ring;           // kGraphMaxNodes * kAnalysisN (lazy)
-    std::vector<uint32_t>            node_an_pos;             // kGraphMaxNodes write positions
+    vivid::audio::NodeRingBank        node_an;                // kGraphMaxNodes rings of kAnalysisN (lazy)
     // ADR-0022: each modulator node's latest 0..1 output, published for the UI (indexed by node
     // index == out_buf). The UI applies the SAME control_resolve() the audio thread uses, so the
     // live dot on a modulated knob never drifts from what you hear. Display-only, single float —

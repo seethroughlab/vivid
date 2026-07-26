@@ -90,8 +90,7 @@ static void reserve_track_graph(Track* t) {
     t->gbinds_ho.reserve(kGraphMaxNodes);    t->gcg_ho.steps.reserve(kGraphMaxNodes);   // P1b.2 publish handoff
     // ADR-0022 P2b.1: the node-buffer pool is now session-owned (Session::node_pool, per-track
     // regions), sized once at session init — no per-track allocation here.
-    t->node_scope.assign(static_cast<size_t>(kGraphMaxNodes) * kScopeN, 0.f);
-    t->node_scope_head.assign(kGraphMaxNodes, 0u);
+    t->node_scope.allocate(kGraphMaxNodes, kScopeN);   // ADR-0029: atomic-slot per-node scope rings
     t->src_nev.reserve(256);   t->src_eev.reserve(256);   // key-range filter scratch (>= any block's note count)
     t->ni_nev.reserve(kGraphMaxNotes);   // native-instrument scene-release prepend scratch (RT: no alloc)
     // ADR-0015: the note pool — one note list per possible note-emitting node, each reserved to
@@ -855,31 +854,26 @@ static void finalize_track(Track& t, float* slotL, bool valid, uint32_t frames, 
         float* pool = t.blk.node_pool + t.blk.node_base;   // this track's region of the session node pool
         // Tap each node's output (L) into its waveform-scope ring for the UI preview. Display-only:
         // fixed buffers, no alloc/lock; a few decimated samples per block advance the rolling scope.
-        if (!t.node_scope.empty()) {
+        if (t.node_scope.allocated()) {
             for (const vivid::audio::CompiledStep& s : cg.steps) {
                 if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes) continue;
                 const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
-                float* ring = t.node_scope.data() + static_cast<size_t>(s.out_buf) * kScopeN;
-                uint32_t h = t.node_scope_head[s.out_buf];
+                float dec[kScopePerBlock];
                 for (int c = 0; c < kScopePerBlock; ++c) {
                     uint32_t si = static_cast<uint32_t>((2 * c + 1)) * frames / (2u * kScopePerBlock);
-                    ring[h % kScopeN] = nl[si < frames ? si : frames - 1];
-                    ++h;
+                    dec[c] = nl[si < frames ? si : frames - 1];
                 }
-                t.node_scope_head[s.out_buf] = h;
+                t.node_scope.push_block(s.out_buf, dec, kScopePerBlock);
             }
         }
         // Gated per-node FFT capture: for each WATCHED node (mask bit set, set by the UI when its fft
         // source is consumed), copy this block's CONTIGUOUS output samples into its analysis ring. The
         // frame side FFTs it. Ring is UI-allocated; the acquire-load of the mask pairs with that.
-        if (const uint64_t am = t.node_analyze_mask.load(std::memory_order_acquire); am && !t.node_an_ring.empty()) {
+        if (const uint64_t am = t.node_analyze_mask.load(std::memory_order_acquire); am && t.node_an.allocated()) {
             for (const vivid::audio::CompiledStep& s : cg.steps) {
                 if (s.out_buf < 0 || s.out_buf >= kGraphMaxNodes || !(am & (uint64_t(1) << s.out_buf))) continue;
                 const float* nl = pool + static_cast<size_t>(s.out_buf) * 2 * stride;
-                float* ring = t.node_an_ring.data() + static_cast<size_t>(s.out_buf) * kAnalysisN;
-                uint32_t h = t.node_an_pos[s.out_buf];
-                for (uint32_t i = 0; i < frames; ++i) { ring[h & (kAnalysisN - 1)] = nl[i]; ++h; }
-                t.node_an_pos[s.out_buf] = h;
+                t.node_an.push_block(s.out_buf, nl, static_cast<int>(frames));
             }
         }
         const float* outL = pool + static_cast<size_t>(cg.output_buf) * 2 * stride;
@@ -2735,18 +2729,12 @@ int session_track_audio_graph_node_plugin_kind(Session* s, int t, int i) {
     }
 }
 // Copy node i's output-waveform scope (oldest→newest) into out[n]; returns samples written (0 if
-// unavailable). Display-only: node_scope is a fixed-size ring the audio thread writes lock-free, so a
-// concurrent read is benign (a torn value = a one-pixel blip). node index i == the compiled out_buf.
+// unavailable). Display-only: the audio thread writes the atomic-slot ring lock-free, so a concurrent read
+// is a benign 1-pixel blip (well-defined — ADR-0029). node index i == the compiled out_buf.
 int session_track_audio_graph_node_scope(Session* s, int t, int i, float* out, int n) {
     Track* tr = graph_track(s, t);
-    if (!tr || !out || n <= 0 || i < 0 || i >= kGraphMaxNodes ||
-        static_cast<size_t>(i + 1) * kScopeN > tr->node_scope.size()) return 0;
-    const float* ring = tr->node_scope.data() + static_cast<size_t>(i) * kScopeN;
-    const uint32_t head = tr->node_scope_head[i];   // next write position; newest is head-1
-    const int cnt = std::min(n, kScopeN);
-    for (int k = 0; k < cnt; ++k)
-        out[k] = ring[(head + kScopeN - static_cast<uint32_t>(cnt) + static_cast<uint32_t>(k)) % kScopeN];
-    return cnt;
+    if (!tr) return 0;
+    return tr->node_scope.snapshot(i, out, n);
 }
 
 // The VST3 IEditController behind a graph node (Vst3Inst / Vst3Fx), so the audio graph can open the
