@@ -410,8 +410,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // Right-click a meter (master or per-track) -> open its characteristic menu.
     if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS) {
         const int src = app->session ? meter_hit(tracks, scenes, mx - win->sidebar_w, my) : -2;
-        if (src != -2) win->menu = { true, static_cast<float>(mx), static_cast<float>(my), src };
-        else win->menu.open = false;
+        if (src != -2) {   // ADR-0027: build the PopupMenu at open time
+            const char* name = src < 0 ? "Master" : vivid::session::session_track_name(app->session, src);
+            win->menu = vivid::ui::popup_track_chars(static_cast<float>(mx), static_cast<float>(my), src, name);
+        } else win->menu.close();
         return;
     }
     if (button != GLFW_MOUSE_BUTTON_LEFT) return;

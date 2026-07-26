@@ -124,7 +124,11 @@ bool clipgrid_pool_press(Window& win, App& app, double mx, double my) {
 // Left-click a meter (master or per-track) -> open its characteristic menu. Returns true on hit.
 bool clipgrid_meter_menu(Window& win, App& app, double mx, double my, int tracks, int scenes) {
     const int src = meter_hit(tracks, scenes, mx - win.sidebar_w, my);
-    if (src != -2) { win.menu = { true, static_cast<float>(mx), static_cast<float>(my), src }; return true; }
+    if (src != -2) {   // ADR-0027: build the PopupMenu (header + items) at open time
+        const char* name = src < 0 ? "Master" : S::session_track_name(app.session, src);
+        win.menu = vivid::ui::popup_track_chars(static_cast<float>(mx), static_cast<float>(my), src, name);
+        return true;
+    }
     return false;
 }
 

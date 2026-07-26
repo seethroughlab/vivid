@@ -652,10 +652,8 @@ void run_frame_loop(App& app, Window& win) {
             if (win.preview.show) draw_output_preview(ui, win, mx, my);
             graph.draw_overlays(ui);      // the visuals Tab chooser
             win.audio_chooser.draw(ui);   // the audio Tab chooser (A3) — same widget, one catalog
-            draw_menu(ui, win.menu,
-                      win.menu.src < 0 ? "Master"
-                      : (app.session ? vivid::session::session_track_name(app.session, win.menu.src) : "track"));
-            draw_map_menu(ui, win.map_menu);
+            draw_popup(ui, win.menu);       // ADR-0027: characteristics menu (header baked in at open)
+            draw_popup(ui, win.map_menu);   // ADR-0027: bridge map-source picker
             draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor
             draw_node_menu(ui, win);
             draw_audio_node_menu(ui, win);   // right-click audio-graph node "→ visuals"

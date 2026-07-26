@@ -30,20 +30,17 @@ namespace vivid::input {
 // node in the visuals graph, encoded by the track's STABLE id so the wire follows the track.
 bool dock_char_menu(Window& win, App& app, double mx, double my) {
     if (!win.menu.open) return false;
-    const int nc = win.menu.src < 0 ? kNumCharsMaster : kNumChars;   // master has no note sources
-    for (int j = 0; j < nc; ++j) {
-        const Rect r = { win.menu.x, win.menu.y + j * 26.f, 184.f, 26.f };
-        if (hit(r, mx, my) && app.graph) {
-            const int src = win.menu.src;   // -1 master, else a session track index
-            const char* sname = src < 0 ? "Master" : S::session_track_name(app.session, src);
-            const int sid = src < 0 ? -1 : S::session_track_id(app.session, src);
-            std::string title = std::string(sname) + "  " + kChars[j].label;
-            app.graph->add_data_node(title, char_id_for(sid, kChars[j].id));
-            std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[j].label);
-            break;
-        }
+    const int row = win.menu.hit_row(static_cast<float>(mx), static_cast<float>(my));
+    if (row >= 0 && app.graph) {
+        const int src = win.menu.a;   // -1 master, else a session track index (ADR-0027 payload)
+        const char* sname = src < 0 ? "Master" : S::session_track_name(app.session, src);
+        const int sid = src < 0 ? -1 : S::session_track_id(app.session, src);
+        const int cj = win.menu.items[row].id;   // index into kChars
+        std::string title = std::string(sname) + "  " + kChars[cj].label;
+        app.graph->add_data_node(title, char_id_for(sid, kChars[cj].id));
+        std::fprintf(stderr, "[vivid] bridge: spawned '%s %s' node\n", sname, kChars[cj].label);
     }
-    win.menu.open = false;
+    win.menu.close();
     return true;
 }
 
@@ -82,20 +79,17 @@ bool audio_node_menu_click(Window& win, App& app, double mx, double my) {
 bool dock_menus(Window& win, App& app, double mx, double my, int tracks) {
     if (win.map_menu.open) {
         const int seltr = std::min(std::max(win.sel_track, 0), tracks - 1);
-        const DevSlot seldev = dock_resolve(app.session, seltr, std::max(0, win.sel_device));
-        for (int j = 0; j < kNumMapSources; ++j) {
-            const Rect rr = { win.map_menu.x, win.map_menu.y + j * 24.f, 168.f, 24.f };
-            if (hit(rr, mx, my) && app.graph) {
-                // The map dot is only ever opened from an audio-graph node, so the dest addresses
-                // that node by its STABLE id ("gnode:"). (The linear device-param dest went away
-                // with the device chain.) map_menu.src = the node id.
-                const std::string d = gnode_param_dest(seltr, win.map_menu.src, win.map_param);
-                if (kMapSources[j].id[0] == '\0') app.graph->disconnect_dest(d);
-                else app.graph->add_mapping(kMapSources[j].id, d, 1.0f);
-                break;
-            }
+        const int row = win.map_menu.hit_row(static_cast<float>(mx), static_cast<float>(my));
+        if (row >= 0 && app.graph) {
+            // The map dot is only ever opened from an audio-graph node, so the dest addresses that node
+            // by its STABLE id ("gnode:"). (The linear device-param dest went away with the device
+            // chain.) map_menu.a = the node id; the item id indexes kMapSources.
+            const int mj = win.map_menu.items[row].id;
+            const std::string d = gnode_param_dest(seltr, win.map_menu.a, win.map_param);
+            if (kMapSources[mj].id[0] == '\0') app.graph->disconnect_dest(d);
+            else app.graph->add_mapping(kMapSources[mj].id, d, 1.0f);
         }
-        win.map_menu.open = false;
+        win.map_menu.close();
         return true;
     }
     return false;

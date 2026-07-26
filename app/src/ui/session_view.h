@@ -1,9 +1,10 @@
 #pragma once
 #include "ui/layout.h"   // Rect
+#include "ui/popup_menu.h"   // ADR-0027: PopupMenu (draw_popup param)
 #include <string>
 #include <vector>
 
-namespace vivid { struct Window; struct CtxMenu; struct ModEditor; }
+namespace vivid { struct Window; struct ModEditor; }
 namespace vivid::session { struct Session; }
 
 namespace vivid::ui {
@@ -20,9 +21,8 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
 // Drawn in the overlay pass, AFTER the output FBO has been blitted into its body, so the frame
 // sits above both the graph canvas and the rendered output.
 void draw_output_preview(Renderer2D& ui, const Window& w, double mx, double my);
-void draw_map_menu(Renderer2D& ui, const CtxMenu& m);
+void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m);   // ADR-0027: one row-menu draw
 void draw_mod_editor(Renderer2D& ui, const ModEditor& m, vivid::session::Session* s, int track);
-void draw_menu(Renderer2D& ui, const CtxMenu& m, const char* track);
 void draw_node_menu(Renderer2D& ui, const Window& w);   // right-click op-node menu (open source / clone)
 void draw_audio_node_menu(Renderer2D& ui, const Window& w);   // right-click audio-node "→ visuals" menu
 
