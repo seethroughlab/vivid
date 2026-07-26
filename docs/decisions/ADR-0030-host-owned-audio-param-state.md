@@ -4,9 +4,18 @@ Status: accepted
 
 Date: 2026-07-26
 
-Implementation: Phase 1 (host-owned base cache for plugin nodes — decision points 1, 2, 4, 6 for
-plugins) landed on branch `adr-0030-plugin-host-base`. Phase 2 (non-destructive bridge delivery,
-decision point 5) and Phase 3 (the follow-up test matrix + TSan coverage) are tracked separately.
+Implementation:
+- Phase 1 — host-owned base cache for plugin nodes (decision points 1, 2, 4, 6 for plugins) — landed
+  on branch `adr-0030-plugin-host-base` (PR #155).
+- Phase 2 — non-destructive bridge delivery (decision point 5) — landed on `adr-0030-phase2-bridge`.
+  Native ops gain a lock-free frame-override channel (`AudioOp::fovr`/`fovr_on`) applied as the
+  effective base at process time; the frame bridge (`apply_audio_param_mappings`) DELIVERS through it
+  instead of the base setter, and clears it on disconnect so the knob returns to the authored base.
+  Plugins deliver via `param_q` without authoring base, capturing the pre-automation value once so
+  disconnect restores it. Legacy linear-device dests (`param:`/`aparam:`, pre-ADR-0022) stay on the
+  old path.
+- Phase 3 — the follow-up test matrix (real-plugin save/load while mapped, undo under a moving
+  modulator) + TSan coverage for the new channel — is tracked separately.
 
 Extends [ADR-0022](ADR-0022-session-audio-graph.md), [ADR-0028](ADR-0028-one-source-id-language.md),
 and [ADR-0017](ADR-0017-every-edit-is-reversible.md).

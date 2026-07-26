@@ -48,6 +48,14 @@ float       audio_op_param_get(const AudioOp*, int i);
 float       audio_op_param_min(const AudioOp*, int i);      // Param<> range (for UI normalization)
 float       audio_op_param_max(const AudioOp*, int i);
 void        audio_op_param_set(AudioOp*, int i, float v);   // any thread (single UI producer); lock-free
+// ADR-0030 Phase 2: the frame-side bridge's non-destructive override channel. `override_set` makes v
+// the param's EFFECTIVE base for the render while leaving the authored base (pvals) untouched;
+// `override_clear` removes it so the op returns to the authored base on mapping disconnect;
+// `effective` reads what the render actually starts from (override if active, else base). Same
+// lock-free single-UI-producer discipline as audio_op_param_set.
+void        audio_op_param_override_set(AudioOp*, int i, float v);
+void        audio_op_param_override_clear(AudioOp*, int i);
+float       audio_op_param_effective(const AudioOp*, int i);
 
 // ADR-0015: which registered audio operators are NOTE EFFECTS (notes in -> notes out, no sound).
 // The descriptor can't say so yet — an op declares audio ports, not note ports — so note ops mark

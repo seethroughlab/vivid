@@ -54,6 +54,14 @@ target_sources(test_audio_op_rt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 vivid_add_test(test_audio_graph)    # AG-0 per-track audio DAG: topo/sum/cycle + zero-alloc
 target_sources(test_audio_graph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_graph.cpp)
+vivid_add_test(test_bridge_override)  # ADR-0030 P2: native frame-override channel (non-destructive bridge)
+target_sources(test_bridge_override PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/builtin_audio_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/movie_audio_bus.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/glitch/glitch_ops.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 vivid_add_test(test_sampler_op)     # AO-4 native Sampler: slice-per-note + zero-alloc
 target_sources(test_sampler_op PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/audio/audio_op_runtime.cpp

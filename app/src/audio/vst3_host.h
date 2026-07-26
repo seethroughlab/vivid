@@ -465,6 +465,13 @@ float       session_audio_graph_node_param_get  (Session*, int track, int node_i
 float       session_audio_graph_node_param_min  (Session*, int track, int node_id, int p);
 float       session_audio_graph_node_param_max  (Session*, int track, int node_id, int p);
 void        session_audio_graph_node_param_set  (Session*, int track, int node_id, int p, float v);
+// ADR-0030 Phase 2: non-destructive delivery for the frame-side audio↔visual bridge. `_deliver` makes
+// the node HEAR v without recording it as the authored base (native: a frame override on top of the
+// base; plugin: a param delivery, capturing the pre-automation value as base on first use). `_override_
+// clear` removes it and returns the node to its authored base (native drops the override; plugin re-
+// delivers the captured base). See apply_audio_param_mappings.
+void        session_audio_graph_node_param_deliver        (Session*, int track, int node_id, int p, float v);
+void        session_audio_graph_node_param_override_clear  (Session*, int track, int node_id, int p);
 // ADR-0022: a param has a BASE (the user's value, above) and a RESOLVED value (base + live
 // modulation from control edges). `_resolved` is what the DSP is actually using this instant — the
 // UI's live dot, MCP's "value"; `_wired` is 1 iff a control edge drives it (the modulated ring).

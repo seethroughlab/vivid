@@ -531,7 +531,9 @@ static uint32_t resolve_control_inputs(const vivid::audio::CompiledStep& s, cons
             const float hi  = vivid::audio_op_param_max(nb.op, ci.param);
             int slot = -1;
             for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == ci.param) { slot = static_cast<int>(j); break; }
-            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, ci.param);
+            // ADR-0030 Phase 2: resolve on top of the EFFECTIVE base — a frame-bridge override when
+            // active, else the authored base — so a mapped param the user also modulates composes.
+            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_effective(nb.op, ci.param);
             const float v = vivid::audio::control_resolve(base, src, ci.shape, lo, hi);
             if (slot >= 0) ovr[slot].value = v;
             else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { ci.param, v };
@@ -604,7 +606,7 @@ static void process_step(const vivid::audio::CompiledStep& s, Track& t, float* p
             const float hi = vivid::audio_op_param_max(nb.op, xa.dst_param);
             int slot = -1;
             for (uint32_t j = 0; j < novr; ++j) if (ovr[j].param == xa.dst_param) { slot = static_cast<int>(j); break; }
-            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_get(nb.op, xa.dst_param);
+            const float base = slot >= 0 ? ovr[slot].value : vivid::audio_op_param_effective(nb.op, xa.dst_param);   // ADR-0030 P2: effective base
             const float v = vivid::audio::control_resolve(base, srcv, xa.shape, lo, hi);
             if (slot >= 0) ovr[slot].value = v;
             else if (novr < vivid::audio::kMaxControlInputs) ovr[novr++] = { xa.dst_param, v };
