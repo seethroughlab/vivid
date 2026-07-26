@@ -109,14 +109,30 @@ float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) 
     return graph_param_max_nolock(tr, node_id, p);
 }
 
-// ADR-0022: the RESOLVED value — base + every control edge driving this param, right now. The UI
-// draws the live dot with this; MCP reports it as "value". It runs the same control_resolve() the
-// audio thread runs, reading each modulator's published output (ctl_pub), so the dot cannot drift
-// from what you hear. For an unmodulated param it is exactly the base.
+// The value the DSP is actually STARTING from this instant (before control edges) — distinct from the
+// authored base once a frame-bridge override is active (ADR-0030 Phase 2). Native: the effective base
+// (frame override if active, else pvals). Plugin: the LIVE plugin value, which already reflects any
+// delivered automation (base cache is the authored value, not what the plugin currently hears).
+static float graph_param_effective_nolock(Track* tr, int node_id, int p) {
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_effective(op, p);
+    if (Vst3Handle* h = graph_node_handle(tr, node_id))
+        return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
+                   ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    if (ClapHandle* c = graph_node_clap(tr, node_id))
+        return (p >= 0 && p < static_cast<int>(c->params.size()))
+                   ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
+    return 0.f;
+}
+
+// ADR-0022: the RESOLVED value — the effective value + every control edge driving this param, right
+// now. The UI draws the live dot with this; MCP reports it as "value". It runs the same
+// control_resolve() the audio thread runs, reading each modulator's published output (ctl_pub), so the
+// dot cannot drift from what you hear. ADR-0030 Phase 2: it starts from the EFFECTIVE value (a
+// frame-bridge override, or the plugin's live value), so a mapped param's dot follows the automation.
 float session_audio_graph_node_param_resolved(Session* s, int t, int node_id, int p) {
     Track* tr = graph_track(s, t); if (!tr) return 0.f;
     std::lock_guard<std::mutex> lk(tr->gmtx);
-    float v = graph_param_base_nolock(tr, node_id, p);
+    float v = graph_param_effective_nolock(tr, node_id, p);
     const float lo = graph_param_min_nolock(tr, node_id, p);
     const float hi = graph_param_max_nolock(tr, node_id, p);
     for (const vivid::audio::AudioGraphEdge& e : tr->agraph.edges()) {
@@ -155,6 +171,51 @@ void session_audio_graph_node_param_set(Session* s, int t, int node_id, int p, f
         double val = std::clamp(static_cast<double>(v), c->params[p].min, c->params[p].max);
         c->base_author(p, val);                   // host-owned authored base (plain units)
         c->param_q.push(c->params[p].id, val);    // plain value → audio thread emits a CLAP param event
+    }
+}
+
+// ADR-0030 Phase 2: NON-DESTRUCTIVE delivery for the frame-side bridge. Unlike the setter above, this
+// does NOT record `v` as the authored base — it only makes the node HEAR `v` (a native op's frame
+// override, or a plugin param delivery). `v` is in the same space the setter takes (native raw units;
+// VST3 normalized; CLAP plain). For plugins there is no separate override channel, so on the FIRST
+// delivery we capture the param's current (pre-automation) value as the host base — that is what
+// `_override_clear` restores when the mapping disconnects, so the authored value survives automation.
+void session_audio_graph_node_param_deliver(Session* s, int t, int node_id, int p, float v) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) { vivid::audio_op_param_override_set(op, p, v); return; }
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const ParamID id = h->params[p].id;
+        v = v < 0.f ? 0.f : (v > 1.f ? 1.f : v);
+        if (p >= static_cast<int>(h->has_base.size()) || !h->has_base[p])          // capture base once, before it moves
+            h->base_author(p, h->controller ? static_cast<float>(h->controller->getParamNormalized(id)) : v);
+        h->param_q.push(id, v);                                              // deliver automation (NOT authored)
+        if (h->controller) h->controller->setParamNormalized(id, v);        // GUI reflects the automated value
+        return;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
+        const double val = std::clamp(static_cast<double>(v), c->params[p].min, c->params[p].max);
+        if (p >= static_cast<int>(c->has_base.size()) || !c->has_base[p])          // capture base once
+            c->base_author(p, clap_param_value(c, c->params[p].id));
+        c->param_q.push(c->params[p].id, val);
+    }
+}
+// Remove the bridge override on `p` and return the node to its authored base. Native: drop the frame
+// override (the render falls back to `pvals`). Plugin: re-deliver the host base captured at first
+// delivery, so what the plugin hears returns to the authored value.
+void session_audio_graph_node_param_override_clear(Session* s, int t, int node_id, int p) {
+    Track* tr = graph_track(s, t); if (!tr) return;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    if (vivid::AudioOp* op = graph_node_op(tr, node_id)) { vivid::audio_op_param_override_clear(op, p); return; }
+    if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        const float base = graph_param_base_nolock(tr, node_id, p);   // host base (captured at first delivery)
+        h->param_q.push(h->params[p].id, base);
+        if (h->controller) h->controller->setParamNormalized(h->params[p].id, base);
+        return;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
+        const double base = graph_param_base_nolock(tr, node_id, p);
+        c->param_q.push(c->params[p].id, base);
     }
 }
 // --- Richer param metadata (widget-by-type + curated inspector). VST3 + CLAP. ---

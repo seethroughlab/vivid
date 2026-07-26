@@ -58,6 +58,10 @@ struct App {
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
     std::set<std::string> quarantined_ops;   // ADR-0018: ops disabled this launch (repeat crashers / safe mode)
+    // ADR-0030 Phase 2: audio-graph param dests ("gnode:T:NID:I") the frame bridge drove last frame.
+    // A dest that drops out (mapping disconnected) is cleared once so the node returns to its authored
+    // base. Main/UI thread only; see apply_audio_param_mappings.
+    std::set<std::string> bridge_active_audio_dests;
 
     // Minimal project workflow (UI/main thread only). The session JSON remains the
     // document format; these fields remember where it lives and where relative media starts.

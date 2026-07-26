@@ -30,6 +30,13 @@ struct AudioOp {
     std::string         type;
 
     std::unique_ptr<std::atomic<float>[]> pvals;   // UI-set param values (lock-free)
+    // ADR-0030 Phase 2: the frame-side bridge's non-destructive override. `fovr_on[i]` gates it: when
+    // set, the render uses `fovr[i]` as the param's EFFECTIVE base (an absolute automation value the
+    // control edges still modulate on top) instead of `pvals[i]`. `pvals` — the authored base — is
+    // never written, so disconnecting a mapping just clears `fovr_on[i]` and the knob returns to base.
+    // Same lock-free single-UI-producer discipline as `pvals`.
+    std::unique_ptr<std::atomic<float>[]>   fovr;
+    std::unique_ptr<std::atomic<uint8_t>[]> fovr_on;
     int                 nparams = 0;
     std::vector<float>  pscratch;                  // param_values for the context
     std::vector<float>  in_planar, out_planar;     // [2 * kMaxBlock] planar stereo
@@ -64,8 +71,13 @@ AudioOp* audio_op_create(OpRegistry& reg, const char* type_name) {
     a->is_source = !has_audio_in;
 
     a->pvals.reset(new std::atomic<float>[a->nparams]);
-    for (int i = 0; i < a->nparams; ++i)
+    a->fovr.reset(new std::atomic<float>[a->nparams]);
+    a->fovr_on.reset(new std::atomic<uint8_t>[a->nparams]);
+    for (int i = 0; i < a->nparams; ++i) {
         a->pvals[i].store(a->inst.param_ptrs[i]->value, std::memory_order_relaxed);   // seed with defaults
+        a->fovr[i].store(0.f, std::memory_order_relaxed);
+        a->fovr_on[i].store(0u, std::memory_order_relaxed);   // no bridge override until one is delivered
+    }
     a->pscratch.assign(a->nparams > 0 ? a->nparams : 1, 0.f);
     a->in_planar.assign(2 * kMaxBlock, 0.f);
     a->out_planar.assign(2 * kMaxBlock, 0.f);
@@ -249,6 +261,25 @@ void audio_op_param_set(AudioOp* a, int i, float v) {
     if (!a || i < 0 || i >= a->nparams) return;
     a->pvals[i].store(v, std::memory_order_relaxed);
 }
+// ADR-0030 Phase 2: the frame bridge's non-destructive delivery. set makes `v` the param's effective
+// base for the render (the authored `pvals` is untouched); clear removes it so the op returns to the
+// authored base. Same lock-free single-UI-producer contract as audio_op_param_set.
+void audio_op_param_override_set(AudioOp* a, int i, float v) {
+    if (!a || i < 0 || i >= a->nparams) return;
+    a->fovr[i].store(v, std::memory_order_relaxed);
+    a->fovr_on[i].store(1u, std::memory_order_release);   // publish value before the gate
+}
+void audio_op_param_override_clear(AudioOp* a, int i) {
+    if (!a || i < 0 || i >= a->nparams) return;
+    a->fovr_on[i].store(0u, std::memory_order_relaxed);
+}
+// The EFFECTIVE base the render should start from: the bridge override when active, else the authored
+// base. Reads the gate with acquire so a set's value is visible once the gate reads 1.
+float audio_op_param_effective(const AudioOp* a, int i) {
+    if (!a || i < 0 || i >= a->nparams) return 0.f;
+    if (a->fovr_on[i].load(std::memory_order_acquire)) return a->fovr[i].load(std::memory_order_relaxed);
+    return a->pvals[i].load(std::memory_order_relaxed);
+}
 
 void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t sr,
                       float bpm, uint32_t bpb, double beats,
@@ -258,10 +289,13 @@ void audio_op_process(AudioOp* a, float* L, float* R, uint32_t frames, uint32_t 
                       float* control_out, uint32_t control_out_cap) {
     if (!a || !a->ap || frames == 0 || frames > kMaxBlock) return;
 
-    // Pull the latest UI-set param values into the op's Param<> members + the context array.
-    // `pvals` is the BASE — the user's value. It is read here and never written on this thread.
+    // Pull the latest UI-set param values into the op's Param<> members + the context array. The
+    // starting point is the EFFECTIVE base (ADR-0030 Phase 2): the frame-bridge override when active,
+    // else `pvals` — the user's authored value. Neither `pvals` nor `fovr` is written on this thread.
     for (int i = 0; i < a->nparams; ++i) {
-        const float v = a->pvals[i].load(std::memory_order_relaxed);
+        const float v = a->fovr_on[i].load(std::memory_order_acquire)
+                            ? a->fovr[i].load(std::memory_order_relaxed)
+                            : a->pvals[i].load(std::memory_order_relaxed);
         a->pscratch[i] = v;
         a->inst.param_ptrs[i]->value = v;
     }

@@ -275,14 +275,15 @@ void publish_bridge_sources(App& app, Window& win) {
 
 void apply_audio_param_mappings(App& app) {
     if (!app.session || !app.graph) return;
+    std::set<std::string> active;   // gnode dests driven this frame (for disconnect detection below)
     for (const auto& m : app.graph->mappings()) {
         int T = -1, D = 0, I = 0;
-        if (m.dest.rfind("param:", 0) == 0) {                 // VST3 device param (normalized)
-            if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)
-                vivid::session::session_set_param(app.session, T, D,
+        if (m.dest.rfind("param:", 0) == 0) {                 // legacy VST3 linear-DEVICE param (pre-ADR-0022;
+            if (std::sscanf(m.dest.c_str(), "param:%d:%d:%d", &T, &D, &I) == 3 && T >= 0)   // not a graph node, so
+                vivid::session::session_set_param(app.session, T, D,                        // left on the old path)
                                              vivid::session::session_param_id(app.session, T, D, I),
                                              app.graph->dest_value(m.dest));
-        } else if (m.dest.rfind("aparam:", 0) == 0) {         // native audio-op param (IDX=-1 instrument)
+        } else if (m.dest.rfind("aparam:", 0) == 0) {         // legacy native linear-DEVICE param (see above)
             if (std::sscanf(m.dest.c_str(), "aparam:%d:%d:%d", &T, &D, &I) == 3 && T >= 0) {
                 const float lo = vivid::session::session_audio_op_param_min(app.session, T, D, I);
                 const float hi = vivid::session::session_audio_op_param_max(app.session, T, D, I);
@@ -294,11 +295,24 @@ void apply_audio_param_mappings(App& app) {
             if (std::sscanf(m.dest.c_str(), "gnode:%d:%d:%d", &T, &NID, &I) == 3 && T >= 0) {
                 const float lo = vivid::session::session_audio_graph_node_param_min(app.session, T, NID, I);
                 const float hi = vivid::session::session_audio_graph_node_param_max(app.session, T, NID, I);
-                vivid::session::session_audio_graph_node_param_set(app.session, T, NID, I,
+                // ADR-0030 P2: DELIVER (non-destructive) instead of the base setter — the mapped value
+                // is heard without overwriting the user's authored knob.
+                vivid::session::session_audio_graph_node_param_deliver(app.session, T, NID, I,
                                              lo + std::clamp(app.graph->dest_value(m.dest), 0.f, 1.f) * (hi - lo));
+                active.insert(m.dest);
             }
         }
     }
+    // ADR-0030 P2: a gnode dest we drove last frame but not this one was disconnected — clear its
+    // override once so the node returns to its authored base (native drops the override; a plugin
+    // gets the captured base re-delivered).
+    for (const std::string& d : app.bridge_active_audio_dests) {
+        if (active.count(d)) continue;
+        int T = -1, NID = -1, I = 0;
+        if (std::sscanf(d.c_str(), "gnode:%d:%d:%d", &T, &NID, &I) == 3 && T >= 0)
+            vivid::session::session_audio_graph_node_param_override_clear(app.session, T, NID, I);
+    }
+    app.bridge_active_audio_dests.swap(active);
 }
 
 void update_drag_continuations(App& app, Window& win, double mx, double my) {
