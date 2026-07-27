@@ -122,14 +122,17 @@ the project stays portable.)
   origin, the compile error + its fix, recompile-on-load, quarantine check).
 - `project/FRICTION-LOG.md` — what worked and the known gaps.
 
-## Known Gaps (honest notes)
+## Live hot-swap + remaining gap (honest notes)
 
-- **Hot-swapping an already-live compiled operator is not done over MCP.** `reload_operator_package`
-  and `reload_project_files` re-register the *type* but do not rebuild an already-live compiled-op
-  node in place — unlike the shader tier, where `reload_project_files` rebuilds live shader nodes.
-  Hot-swapping a live dylib safely (RTLD lifecycle, and real-time audio operators) is a separate,
-  riskier change. The deterministic way to see a compiled edit today is `load_project` (recompiles +
-  rebuilds nodes) or the source file-watcher in a focused session.
+- **Editing a live compiled VISUAL operator hot-swaps over MCP.** `reload_project_files` recompiles the
+  package and swaps the recompiled dylib *in place* inside its loader, then rebuilds the live nodes
+  (`compiled_nodes_rebuilt`, params preserved by name) — the compiled-op analogue of the shader
+  hot-swap. It never `unregister_type`s a live type (which would dangle the registry factory).
+  `load_project` remains a full-reload alternative.
+- **AUDIO compiled operators are NOT hot-swapped.** Releasing a compiled audio op's dylib from under
+  the real-time audio thread is unsafe (use-after-`dlclose`), so both the hot-swap and the source
+  file-watcher **refuse** audio ops. Reload the project to apply an audio-operator edit. An
+  audio-thread-coordinated swap is a separate, riskier change.
 - **Visual verification is best-effort in a headless run.** A freshly-recompiled dylib operator
   initializes its GPU pipeline on first draw; when the app is driven headlessly by rapid synchronous
   control calls, the main-thread frame loop is starved and a capture can read blank even though the

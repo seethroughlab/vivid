@@ -253,12 +253,17 @@ quarantine on top of the authoring loop. Findings:
   verbatim `clang++` output in the per-op `error` field; crash quarantine is covered by
   `run_quality_check no_quarantined_operators` (ADR-0018). No new product work was needed here — the
   tutorial exercises the existing safety rails.
-- **Two known gaps recorded, not fixed here.** (1) Hot-swapping an *already-live* compiled operator is
-  not done over MCP — `reload_operator_package` / `reload_project_files` re-register the type but do
-  not rebuild a live compiled-op node, unlike the shader path; a safe live-dylib hot-swap (RTLD
-  lifecycle + real-time audio ops) is a separate, riskier change, so the tutorial teaches the
-  deterministic `load_project` recompile path. (2) `abi_mismatch` / `dlopen` failures surface only to
-  stderr today, not as a distinct MCP field. Both are candidates for a future focused change.
+- **Two known gaps recorded — both now fixed as follow-ups.** (1) Hot-swapping an *already-live*
+  compiled operator was not done over MCP. **Fixed:** `reload_project_files` now swaps the recompiled
+  dylib in place inside its loader and rebuilds the live VISUAL nodes (`compiled_nodes_rebuilt`, params
+  preserved) — the compiled-op analogue of the shader hot-swap, reusing the shipping
+  `HotReloadManager::tick` sequence and never `unregister_type`ing a live type. AUDIO ops are refused
+  (releasing their dylib from under the RT audio thread is unsafe) — the swap *and* the source
+  file-watcher now skip `has_process_audio` ops, closing a latent use-after-`dlclose` hazard; reload
+  the project to apply an audio-op edit. (2) `abi_mismatch` / `dlopen` failures surfaced only to
+  stderr. **Fixed:** `load_and_register_operator_ex` threads the loader's structured
+  `{error_key, error_msg}` into `reload_operator_package` / `install_operator_package` /
+  `reload_project_files`.
 
 The `build.py` asserts the compiled-operator loop (build → register → discover → break/recover →
 recompile-on-load → no quarantine) deterministically; the freshly-recompiled op's rendered frame is

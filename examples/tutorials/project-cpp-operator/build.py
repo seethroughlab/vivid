@@ -171,9 +171,11 @@ def build() -> None:
     fixed_build = call_optional(v, "build_operator_package", path=str(PROJECT))
     proof["fixed_build_ok_all"] = (fixed_build or {}).get("ok_all")
 
-    # --- STEP 5: EDIT + RECOMPILE-ON-LOAD (the deterministic path for compiled code) ----------
-    # Turn the flat starter into a spatial gradient (uses inp.uv) so the output is genuinely
-    # non-uniform — a visible creative edit AND a meaningful non-blank check after recompile.
+    # --- STEP 5: EDIT + HOT-SWAP via reload_project_files (the MCP-native live-edit path) --------
+    # Turn the flat starter into a spatial gradient (uses inp.uv) — a visible, non-uniform creative
+    # edit. reload_project_files recompiles the package and HOT-SWAPS the already-live GlowPulse into
+    # its live node (the compiled-op analogue of the shader hot-swap), so the edit takes effect without
+    # reloading the whole project; params are preserved by name.
     edited = good.replace(
         "    let col = 0.5 + 0.5 * cos(vec3f(0.0, 2.0, 4.0) + u.hue * 6.2831853);\n"
         "    return vec4f(col * u.bright, 1.0);",
@@ -183,25 +185,25 @@ def build() -> None:
     if edited == good:
         raise RuntimeError("tutorial edit did not match the scaffolded WGSL — starter template changed?")
     OP_SRC.write_text(edited)
-    v.save_project(str(PROJECT))
-    load = call_optional(v, "load_project", path=str(PROJECT))   # recompiles + rebuilds nodes on load
-    proof["load_recompile"] = (load or {}).get("project_package")
+    hot = call_optional(v, "reload_project_files")
+    hot_entry = op_entry(hot, OP)
+    hot_rebuilt = (hot or {}).get("compiled_nodes_rebuilt", 0)
+    proof["hot_swap"] = {"compiled_nodes_rebuilt": hot_rebuilt,
+                         "hot_swapped": (hot_entry or {}).get("hot_swapped"),
+                         "nodes_rebuilt": (hot_entry or {}).get("nodes_rebuilt")}
     v.launch_scene(0)
     v.play()
     time.sleep(0.8)
-    # Warm up: a freshly-recompiled dylib op initializes its GPU pipeline on first draw.
     proof["after_reload"] = warm_capture(v, str(RELOADED_PNG))
     proof["quality_no_quarantine"] = call_optional(v, "run_quality_check", name="no_quarantined_operators")
-    load_entry = op_entry(load, OP)
     reloaded_nonblank = not (proof["after_reload"] or {}).get("is_blank", True)
-    print(f"[reload] load recompiled {OP} compiled={(load_entry or {}).get('compiled')} "
-          f"registered={(load_entry or {}).get('registered')} nonblank={reloaded_nonblank}")
+    print(f"[hot-swap] reload_project_files rebuilt {hot_rebuilt} compiled node(s); nonblank={reloaded_nonblank}")
     if not reloaded_nonblank:
-        # Best-effort: a freshly-recompiled dylib op initializes its GPU pipeline on first draw, and in
-        # a headless session driven by rapid synchronous control-server calls the main-thread frame loop
-        # is starved, so it can still read blank here even though the operator renders correctly once the
-        # app is idle/focused. Not a hard failure — the compiled-operator loop below is what we assert.
-        print("[reload] NOTE: output still blank — headless warm-up (op renders fine when the app is idle/focused)")
+        # The hot-swap itself is confirmed by compiled_nodes_rebuilt (deterministic); the rendered frame
+        # is best-effort — a freshly-recompiled dylib op inits its GPU pipeline on first draw, and a
+        # headless run driven by rapid synchronous control calls starves the main-thread frame loop, so
+        # a capture can read blank even though the op renders correctly once the app is idle/focused.
+        print("[hot-swap] NOTE: output still blank — headless warm-up (op renders fine when idle/focused)")
 
     v.save_project(str(PROJECT))
     PROOF_JSON.write_text(json.dumps(proof, indent=2, default=str) + "\n")
@@ -216,13 +218,14 @@ def build() -> None:
     assert proof["broken_build"]["ok_all"] is False and proof["broken_build"]["error_excerpt"], \
         "a broken operator source was not reported by build_operator_package"
     assert proof["fixed_build_ok_all"], "operator did not build again after the fix"
-    assert (load_entry or {}).get("registered"), "operator did not recompile+register on project load"
-    # Visual output is best-effort in this headless harness (see the [reload] note); the compiled-op
-    # loop is what we assert deterministically.
+    assert hot_rebuilt >= 1 and proof["hot_swap"]["hot_swapped"] is True, \
+        "reload_project_files did not hot-swap the edited compiled op into its live node"
+    # Visual output is best-effort in this headless harness (see the [hot-swap] note); the swap itself
+    # (compiled_nodes_rebuilt) and the compiled-op loop are what we assert deterministically.
     assert ((proof["quality_no_quarantine"] or {}).get("overall")
             or (proof["quality_no_quarantine"] or {}).get("status")) in ("pass", None), \
         "an operator was quarantined"
-    print("ACCEPTED: scaffold + build + register + use + break/recover + recompile-on-load verified"
+    print("ACCEPTED: scaffold + build + register + use + break/recover + live hot-swap verified"
           + ("" if reloaded_nonblank else " (visual output verified out-of-band; blank here = headless warm-up)"))
 
 
@@ -241,12 +244,13 @@ def write_friction_log(proof: dict) -> None:
         "- Failure/recovery mode covered (Fulfillment Gate #8): a deliberate C++ compile error is\n"
         "  reported by build_operator_package with the verbatim clang++ output in the per-op `error`\n"
         "  field; fixing the source builds clean again.\n"
-        "- Live edit of compiled code: editing the .cpp and reloading the PROJECT (load_project)\n"
-        "  recompiles from source and rebuilds the nodes deterministically (the song-sketch model).\n"
-        "  KNOWN GAP: reload_operator_package / reload_project_files re-register the type but do NOT\n"
-        "  hot-swap an already-live compiled-op node in place (unlike the shader tier) — hot-swapping a\n"
-        "  live dylib safely (RTLD lifecycle, and RT-audio ops) is a separate, riskier change. For now\n"
-        "  the deterministic path to see a compiled edit is load_project or the source file-watcher.\n"
+        "- Live edit of compiled code: editing the .cpp and calling reload_project_files recompiles the\n"
+        f"  package and HOT-SWAPS the already-live op into its live VISUAL nodes ({proof.get('hot_swap',{}).get('compiled_nodes_rebuilt')} rebuilt) —\n"
+        "  the compiled-op analogue of the shader hot-swap (params preserved by name), swapping the\n"
+        "  dylib IN PLACE inside the loader (never unregister_type). load_project remains a full-reload\n"
+        "  alternative. REMAINING GAP: AUDIO compiled ops are NOT hot-swapped (releasing their dylib\n"
+        "  from under the RT audio thread is unsafe) — the swap + the file-watcher both refuse audio ops;\n"
+        "  reload the project to apply an audio-operator edit.\n"
         "- Safety: run_quality_check no_quarantined_operators confirms no operator crashed into\n"
         "  quarantine; ABI is guarded at dlopen (currently v14, floor v11).\n"
         "- Launch note: use VIVID_DISCARD_RECOVERY=1 for a disposable tutorial run.\n"

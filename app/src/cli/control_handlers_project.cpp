@@ -11,6 +11,7 @@
 #include "gpu/visual_graph.h"
 #include "gpu/shader_library.h"        // set_project (ADR-0024 Phase 7: reload_project_files)
 #include "gpu/operator_scan.h"         // load_and_register_operator
+#include "gpu/operator_loader.h"       // OperatorLoader (in-place compiled-op hot-swap)
 #include "packages/package_manager.h"  // install_package
 #include "packages/package_manifest.h" // parse_package_manifest (list_project_assets)
 #include "packages/package_compiler.h" // probe_package_toolchain (project_cpp_operator preflight)
@@ -331,6 +332,36 @@ bool plugin_identity_resolves(const std::string& id) {
         if (!p.name.empty() && (contains_ci(id, p.name) || contains_ci(p.name, id))) return true;
     }
     return false;
+}
+
+// In-place hot-swap of an already-live compiled VISUAL operator into its live graph nodes (ADR-0040
+// follow-up). The recompile already produced `new_dylib`; validate it rollback-first, then release the
+// live instances, swap the dylib INSIDE the same loader (never unregister_type — that would dangle the
+// registry factory that captured the loader), invalidate the cached descriptor (its char* fields point
+// into the now-unloaded old image), and rebuild the instances (params preserved by name). Mirrors the
+// shipping HotReloadManager::tick sequence. Returns nodes rebuilt (>=0), or -1 when it cannot swap
+// (no graph / not loaded / an AUDIO op / a rejected candidate); `note` explains the -1.
+int hot_swap_visual_op(App& app, vivid::VisualGraph* vgraph, const std::string& op_name,
+                       const std::string& new_dylib, std::string& note) {
+    if (!vgraph) { note = "no visual graph"; return -1; }
+    OperatorLoader* loader = nullptr;
+    for (auto& l : app.op_loaders)
+        if (l->descriptor() && op_name == l->descriptor()->name) { loader = l.get(); break; }
+    if (!loader) { note = "operator not loaded"; return -1; }
+    // Audio ops run on the RT audio thread; releasing/swapping their dylib from here would be a
+    // use-after-dlclose on that thread. Refuse until an audio-thread-coordinated swap exists.
+    if (loader->descriptor()->has_process_audio) {
+        note = "audio-operator hot-swap not supported yet — reload the project to apply the change";
+        return -1;
+    }
+    if (!loader->validate(new_dylib.c_str())) {   // rollback-first: a rejected candidate leaves the graph as-is
+        note = "recompiled operator rejected: " + loader->last_error().message + " (kept previous)";
+        return -1;
+    }
+    vgraph->release_op_instances(op_name);
+    loader->load(new_dylib.c_str());              // just validated — expected to succeed
+    app.op_registry.invalidate_descriptor(op_name);
+    return vgraph->rebuild_op_instances(op_name);
 }
 
 }  // namespace
@@ -731,9 +762,11 @@ void register_project_handlers(Handlers& handlers_) {
         r["shader_nodes_rebuilt"] = shader_nodes_rebuilt;
         const int file_param_nodes = c.vgraph ? c.vgraph->bump_all_file_param_generations() : 0;
         r["file_param_nodes_reloaded"] = file_param_nodes;
-        // Package: recompile + register any newly-authored operator.
+        // Package: recompile + register any newly-authored operator, and HOT-SWAP an already-live
+        // compiled op into its live nodes — the compiled-op analogue of the shader rebuild above (so
+        // editing a project C++ operator + reload_project_files takes effect without a full reload).
         json ops = json::array();
-        int registered = 0;
+        int registered = 0, compiled_nodes_rebuilt = 0;
         if (fs::exists(fs::path(dir) / "vivid-package.json", ec)) {
             PackageInstallResult ir = install_package(dir, dir);   // compile into the project folder
             if (!ir.ok) return err(code::kBadArg, "package: " + ir.error);
@@ -745,7 +778,12 @@ void register_project_handlers(Handlers& handlers_) {
                     const RegisterResult rr = load_and_register_operator_ex(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
                     jo["registered"] = rr.ok;
                     if (rr.ok) { jo["op"] = rr.op_name; ++registered; c.app->project_operator_types.insert(rr.op_name); }
-                    else if (rr.shadowed) jo["note"] = "compiled but already registered — use reload_operator_package to hot-swap";
+                    else if (rr.shadowed) {   // already live: swap the recompiled dylib into its live nodes
+                        std::string note;
+                        const int swapped = hot_swap_visual_op(*c.app, c.vgraph, ci.op_name, ci.dylib_path, note);
+                        if (swapped >= 0) { jo["hot_swapped"] = true; jo["nodes_rebuilt"] = swapped; compiled_nodes_rebuilt += swapped; }
+                        else jo["note"] = note;
+                    }
                     else {   // dlopen / ABI / missing-symbol failure — surface the reason
                         jo["error_key"] = rr.error_key;
                         jo["error"] = rr.error_msg;
@@ -758,8 +796,10 @@ void register_project_handlers(Handlers& handlers_) {
         if (registered > 0) c.app->file_drops.rebuild(c.app->op_loaders);
         r["operators"] = ops;
         r["newly_registered"] = registered;
+        r["compiled_nodes_rebuilt"] = compiled_nodes_rebuilt;
         r["summary"] = "reloaded project files: " + std::to_string(shader_ops) + " shader op(s), " +
                        std::to_string(shader_nodes_rebuilt) + " shader node(s) rebuilt, " +
+                       std::to_string(compiled_nodes_rebuilt) + " compiled node(s) hot-swapped, " +
                        std::to_string(file_param_nodes) + " file-param node(s), " +
                        std::to_string(registered) + " new package op(s)";
         return r;

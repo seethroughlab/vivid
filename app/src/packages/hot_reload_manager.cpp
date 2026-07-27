@@ -38,6 +38,15 @@ void HotReloadManager::stop() {
 void HotReloadManager::watch_op(const std::string& op_name, const std::string& package_dir,
                                 const PackageOperator& op, const std::string& source_path,
                                 OperatorLoader* loader) {
+    // Never hot-swap a compiled AUDIO operator from the watcher: tick() would release + dlclose its
+    // dylib while the RT audio thread may be mid-process_audio through that same loader (a
+    // use-after-unload). The swap path only coordinates with the VISUAL graph, not the audio graph, so
+    // audio ops are excluded until an audio-thread-safe swap exists (edit → reload the project instead).
+    if (loader && loader->descriptor() && loader->descriptor()->has_process_audio) {
+        if (log_) log_->log(LogLevel::Info, "not hot-watching audio operator '%s' (reload to apply)", op_name.c_str());
+        else std::fprintf(stderr, "[vivid] hot-reload: skipping audio operator '%s' (reload to apply)\n", op_name.c_str());
+        return;
+    }
     {
         std::lock_guard<std::mutex> lk(mtx_);
         for (auto& w : watched_)
