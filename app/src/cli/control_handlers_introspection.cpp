@@ -120,13 +120,31 @@ json visual_graph_summary(const ControlCtx& c) {
         r["active_output"] = c.vgraph->active_output_id();
         r["generator"] = c.vgraph->generator();
     }
+    // Per-node error, by id, from the live visual graph: a node whose op type never registered
+    // (missing project shader / package op) or whose shader failed to compile is otherwise silent
+    // over MCP. VisualNode::error() is the single source of truth (ADR-0019); surface it here and in
+    // a `broken_ops` rollup so an agent sees WHICH op is broken, not just get_health's nameless count.
+    auto node_error = [&](int id) -> std::string {
+        if (!c.vgraph) return {};
+        for (const auto& n : c.vgraph->nodes())
+            if (n.id == id) return n.error();
+        return {};
+    };
     json ops = json::array();
+    json broken = json::array();
     for (int i = 0; i < c.graph->op_count(); ++i) {
         int in = -1, id = 0; float x = 0, y = 0;
         c.graph->get_op(i, in, id, x, y);
-        ops.push_back({ {"id", id}, {"op", c.graph->op_kind_name(i)}, {"inputs", c.graph->op_inputs_at(i)} });
+        json op = { {"id", id}, {"op", c.graph->op_kind_name(i)}, {"inputs", c.graph->op_inputs_at(i)} };
+        const std::string e = node_error(id);
+        if (!e.empty()) {
+            op["error"] = e;
+            broken.push_back({ {"id", id}, {"op", c.graph->op_kind_name(i)}, {"error", e} });
+        }
+        ops.push_back(std::move(op));
     }
     r["ops"] = ops;
+    r["broken_ops"] = broken;
     return r;
 }
 

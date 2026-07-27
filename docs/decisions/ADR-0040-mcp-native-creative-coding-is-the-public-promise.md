@@ -188,6 +188,29 @@ graph is destroyed on New/project switch, and tracks later project-package regis
 `Foo.cpp` registers `Foo` as a compiled operator. The C++ path remains a later tutorial tier because
 it adds compiler, ABI, crash/quarantine, and hot-reload diagnostics beyond the shader path.
 
+**Fifth friction result (Phase 3 — beginner recovery, Fulfillment Gate #8).** Loading a saved
+project on a fresh machine degraded *silently* over MCP: a track whose plugin is not installed fell
+back to a placeholder with only a stderr line (`persist.cpp`); a project-local shader/operator that
+failed to register or a package source that was gone showed up only as a nameless `get_health`
+count or, worst, a shader compile error visible only in the desktop node canvas. Recovery guidance
+existed **only** as tutorial preflight (`check_tutorial_prereqs`), never at load time. Vivid now
+turns these into named, recoverable findings through its own inspection tools, in the same
+`{issue, suggestion}` + `next_actions` vocabulary as the preflight:
+
+- `validate_project` cross-references the *saved* session's intended plugins against this machine's
+  catalog/disk (naming the missing plugin + track + install/relaunch action), folds in package
+  operator-source existence, and walks the live `VisualGraph` for unregistered ops and shader
+  compile errors (naming the node/op + `reload_project_files` action). It reports a new `degraded`
+  flag and top-level `next_actions`; `valid` still flips only for hard on-disk-integrity problems
+  (missing session file / media), so a degraded-but-loadable project stays `valid:true`.
+- `inspect_signal_flow`/session summaries now carry a per-op `error` field and a `broken_ops` rollup
+  so an agent sees *which* visual op is broken, not just a count.
+
+The recovery-analysis core (`cli/project_recovery.{h,cpp}`) is a pure, resolver-injected unit with
+portable CI coverage (`test_project_recovery`); the live-`VisualGraph` op health stays in the
+handler. No new operators, no RT-path changes, no new MCP methods — recovery is surfaced through the
+existing perception surface, keeping the core lean.
+
 ## Implementation Order
 
 Work on this ADR should proceed in this order:
