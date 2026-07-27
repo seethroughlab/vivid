@@ -559,13 +559,21 @@ struct Vst3Handle {
     // Written on the main thread alongside host_base; read on the audio thread via `abase_load`.
     std::unique_ptr<std::atomic<float>[]>   abase;
     std::unique_ptr<std::atomic<uint8_t>[]> ahas;
+    // ADR-0034 Phase 3: the frame-bridge's delivered value per param (mirror of native `fovr`), so a
+    // param driven by BOTH a bridge mapping and a control edge composes — the bridge value is the
+    // effective base modulation swings around. Written by the bridge deliver path, cleared by clear.
+    std::unique_ptr<std::atomic<float>[]>   abridge;
+    std::unique_ptr<std::atomic<uint8_t>[]> abr_on;
     int abase_n = 0;
     void base_size_to_params() {
         host_base.assign(params.size(), 0.f); has_base.assign(params.size(), 0u);
         abase_n = static_cast<int>(params.size());
         abase.reset(new std::atomic<float>[params.size()]);
         ahas.reset(new std::atomic<uint8_t>[params.size()]);
-        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.f, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed); }
+        abridge.reset(new std::atomic<float>[params.size()]);
+        abr_on.reset(new std::atomic<uint8_t>[params.size()]);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.f, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed);
+                                            abridge[i].store(0.f, std::memory_order_relaxed); abr_on[i].store(0u, std::memory_order_relaxed); }
     }
     int  base_index_of(ParamID pid) const {
         for (size_t i = 0; i < params.size(); ++i) if (params[i].id == pid) return static_cast<int>(i);
@@ -582,6 +590,16 @@ struct Vst3Handle {
     void base_forget_all() {
         has_base.assign(params.size(), 0u);
         for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
+    }
+    // ADR-0034 Phase 3: bridge delivery sets/clears the effective base modulation resolves against.
+    void bridge_set(int i, float norm) { if (i >= 0 && i < abase_n) { abridge[i].store(norm, std::memory_order_relaxed); abr_on[i].store(1u, std::memory_order_release); } }
+    void bridge_clear(int i)           { if (i >= 0 && i < abase_n) abr_on[i].store(0u, std::memory_order_relaxed); }
+    // Audio thread: EFFECTIVE base (bridge value if delivering, else authored base), or false if neither.
+    bool aeff_load(int i, float& out) const {
+        if (i < 0 || i >= abase_n) return false;
+        if (abr_on[i].load(std::memory_order_acquire)) { out = abridge[i].load(std::memory_order_relaxed); return true; }
+        if (ahas[i].load(std::memory_order_acquire))   { out = abase[i].load(std::memory_order_relaxed);   return true; }
+        return false;
     }
     // Audio thread: the authored base (normalized) for param `i`, or false if none authored.
     bool abase_load(int i, float& out) const {

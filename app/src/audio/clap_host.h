@@ -167,13 +167,22 @@ struct ClapHandle {
     // Written on the main thread alongside host_base; read on the audio thread via `abase_load`.
     std::unique_ptr<std::atomic<double>[]>  abase;
     std::unique_ptr<std::atomic<uint8_t>[]> ahas;
+    // ADR-0034 Phase 3: the frame-bridge's delivered value per param (mirror of native `fovr`), so a
+    // param driven by BOTH a bridge mapping and a control edge composes: the bridge value is the
+    // effective base modulation swings around. `abr_on[i]` gates it. Written by the bridge deliver path
+    // (session_audio_graph_node_param_deliver), cleared by _override_clear.
+    std::unique_ptr<std::atomic<double>[]>  abridge;
+    std::unique_ptr<std::atomic<uint8_t>[]> abr_on;
     int abase_n = 0;
     void base_size_to_params() {
         host_base.assign(params.size(), 0.0); has_base.assign(params.size(), 0u);
         abase_n = static_cast<int>(params.size());
         abase.reset(new std::atomic<double>[params.size()]);
         ahas.reset(new std::atomic<uint8_t>[params.size()]);
-        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.0, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed); }
+        abridge.reset(new std::atomic<double>[params.size()]);
+        abr_on.reset(new std::atomic<uint8_t>[params.size()]);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.0, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed);
+                                            abridge[i].store(0.0, std::memory_order_relaxed); abr_on[i].store(0u, std::memory_order_relaxed); }
     }
     void base_author(int i, double val) {
         if (i < 0 || i >= static_cast<int>(params.size())) return;
@@ -185,8 +194,18 @@ struct ClapHandle {
         has_base.assign(params.size(), 0u);
         for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
     }
-    // Audio thread: the authored base for param `i`, or false if none authored (unmodulatable until
-    // the host captures one — see capture-on-wire in session_audio_graph_connect_control).
+    // ADR-0034 Phase 3: bridge delivery sets/clears the effective base modulation resolves against.
+    void bridge_set(int i, double val) { if (i >= 0 && i < abase_n) { abridge[i].store(val, std::memory_order_relaxed); abr_on[i].store(1u, std::memory_order_release); } }
+    void bridge_clear(int i)           { if (i >= 0 && i < abase_n) abr_on[i].store(0u, std::memory_order_relaxed); }
+    // Audio thread: the EFFECTIVE base for param `i` — the bridge value if the bridge is delivering,
+    // else the authored base — or false if neither (unmodulatable until captured on wire).
+    bool aeff_load(int i, double& out) const {
+        if (i < 0 || i >= abase_n) return false;
+        if (abr_on[i].load(std::memory_order_acquire)) { out = abridge[i].load(std::memory_order_relaxed); return true; }
+        if (ahas[i].load(std::memory_order_acquire))   { out = abase[i].load(std::memory_order_relaxed);   return true; }
+        return false;
+    }
+    // Audio thread: the authored base only (ignores bridge). Kept for callers wanting the anchor.
     bool abase_load(int i, double& out) const {
         if (i < 0 || i >= abase_n || !ahas[i].load(std::memory_order_acquire)) return false;
         out = abase[i].load(std::memory_order_relaxed);

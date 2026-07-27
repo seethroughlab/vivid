@@ -87,7 +87,7 @@ int main() {
         for (int k = 0; k < 3000; ++k) {
             const int nt = session_track_count(s);
             const int tr = nt > 0 ? (k % nt) : -1;
-            switch (k % 15) {
+            switch (k % 16) {
                 case 0: if (nt < kMaxTracks) session_add_graph_track(s, "Tx"); break;   // tracks_gen
                 case 1: if (nt > 1) session_remove_track(s, nt - 1); break;             // tracks_gen + tracks_retired
                 case 2: if (tr >= 0) session_set_track_audio_instrument(s, tr, "TestTone"); break;  // op_fx_gen + ggen
@@ -114,6 +114,14 @@ int main() {
                 // while the render thread resolves modulation off it — the race the atomic base guards.
                 case 14: if (plug_nid >= 0 && plug_gp >= 0)
                              session_audio_graph_node_param_set(s, t0, plug_nid, plug_gp, static_cast<float>(k % 100) / 100.f);
+                         break;
+                // ADR-0034 P3: deliver/clear a frame-bridge override on the modulated plugin param
+                // (bridge_set/bridge_clear → abr_on/abridge writes) while the render resolves modulation
+                // off the effective base (aeff_load reads) — races the new bridge-compose channel.
+                case 15: if (plug_nid >= 0 && plug_gp >= 0) {
+                             if (k & 1) session_audio_graph_node_param_deliver(s, t0, plug_nid, plug_gp, static_cast<float>(k % 100) / 100.f);
+                             else       session_audio_graph_node_param_override_clear(s, t0, plug_nid, plug_gp);
+                         }
                          break;
             }
             if ((k & 63) == 0) std::this_thread::yield();

@@ -109,18 +109,25 @@ float session_audio_graph_node_param_max(Session* s, int t, int node_id, int p) 
     return graph_param_max_nolock(tr, node_id, p);
 }
 
-// The value the DSP is actually STARTING from this instant (before control edges) — distinct from the
-// authored base once a frame-bridge override is active (ADR-0030 Phase 2). Native: the effective base
-// (frame override if active, else pvals). Plugin: the LIVE plugin value, which already reflects any
-// delivered automation (base cache is the authored value, not what the plugin currently hears).
+// The base the audio thread resolves control-edge modulation FROM — so `_resolved` can predict the
+// DSP value the same way, WITHOUT double-counting. Native: the effective base (frame override if
+// active, else pvals). Plugin (ADR-0034): the frame-bridge value if it is delivering, else the
+// authored host base, else the plugin's own value. Crucially NOT the plugin's live value for CLAP:
+// its get_value already reflects the modulation we delivered, so re-applying the edge would double it.
 static float graph_param_effective_nolock(Track* tr, int node_id, int p) {
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) return vivid::audio_op_param_effective(op, p);
-    if (Vst3Handle* h = graph_node_handle(tr, node_id))
-        return (h->controller && p >= 0 && p < static_cast<int>(h->params.size()))
-                   ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
-    if (ClapHandle* c = graph_node_clap(tr, node_id))
-        return (p >= 0 && p < static_cast<int>(c->params.size()))
-                   ? static_cast<float>(clap_param_value(c, c->params[p].id)) : 0.f;
+    if (Vst3Handle* h = graph_node_handle(tr, node_id)) {
+        if (p < 0 || p >= static_cast<int>(h->params.size())) return 0.f;
+        if (p < h->abase_n && h->abr_on[p].load(std::memory_order_relaxed)) return h->abridge[p].load(std::memory_order_relaxed);
+        if (p < static_cast<int>(h->has_base.size()) && h->has_base[p]) return h->host_base[p];
+        return h->controller ? static_cast<float>(h->controller->getParamNormalized(h->params[p].id)) : 0.f;
+    }
+    if (ClapHandle* c = graph_node_clap(tr, node_id)) {
+        if (p < 0 || p >= static_cast<int>(c->params.size())) return 0.f;
+        if (p < c->abase_n && c->abr_on[p].load(std::memory_order_relaxed)) return static_cast<float>(c->abridge[p].load(std::memory_order_relaxed));
+        if (p < static_cast<int>(c->has_base.size()) && c->has_base[p]) return static_cast<float>(c->host_base[p]);
+        return static_cast<float>(clap_param_value(c, c->params[p].id));
+    }
     return 0.f;
 }
 
@@ -191,6 +198,7 @@ void session_audio_graph_node_param_deliver(Session* s, int t, int node_id, int 
             h->base_author(p, h->controller ? static_cast<float>(h->controller->getParamNormalized(id)) : v);
         h->param_q.push(id, v);                                              // deliver automation (NOT authored)
         if (h->controller) h->controller->setParamNormalized(id, v);        // GUI reflects the automated value
+        h->bridge_set(p, v);   // ADR-0034 P3: this is the effective base a control edge modulates on top of
         return;
     }
     if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
@@ -198,6 +206,7 @@ void session_audio_graph_node_param_deliver(Session* s, int t, int node_id, int 
         if (p >= static_cast<int>(c->has_base.size()) || !c->has_base[p])          // capture base once
             c->base_author(p, clap_param_value(c, c->params[p].id));
         c->param_q.push(c->params[p].id, val);
+        c->bridge_set(p, val);   // ADR-0034 P3: effective base for a coincident control edge
     }
 }
 // Remove the bridge override on `p` and return the node to its authored base. Native: drop the frame
@@ -208,12 +217,14 @@ void session_audio_graph_node_param_override_clear(Session* s, int t, int node_i
     std::lock_guard<std::mutex> lk(tr->gmtx);
     if (vivid::AudioOp* op = graph_node_op(tr, node_id)) { vivid::audio_op_param_override_clear(op, p); return; }
     if (Vst3Handle* h = graph_node_handle(tr, node_id); h && p >= 0 && p < static_cast<int>(h->params.size())) {
+        h->bridge_clear(p);   // ADR-0034 P3: modulation resolves on the authored base again
         const float base = graph_param_base_nolock(tr, node_id, p);   // host base (captured at first delivery)
         h->param_q.push(h->params[p].id, base);
         if (h->controller) h->controller->setParamNormalized(h->params[p].id, base);
         return;
     }
     if (ClapHandle* c = graph_node_clap(tr, node_id); c && p >= 0 && p < static_cast<int>(c->params.size())) {
+        c->bridge_clear(p);
         const double base = graph_param_base_nolock(tr, node_id, p);
         c->param_q.push(c->params[p].id, base);
     }
