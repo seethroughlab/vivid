@@ -895,11 +895,16 @@ void register_introspection_handlers(Handlers& handlers_) {
             if (!ci.success) {
                 jo["error"] = ci.error_output;
             } else {
-                const std::string regname = load_and_register_operator(
+                const RegisterResult rr = load_and_register_operator_ex(
                     ci.dylib_path, c.app->op_registry, c.app->op_loaders);
-                jo["registered"] = !regname.empty();
-                if (!regname.empty()) { jo["op"] = regname; ++registered; }
-                else jo["note"] = "compiled but not registered (name already in use)";
+                jo["registered"] = rr.ok;
+                if (rr.ok) { jo["op"] = rr.op_name; ++registered; }
+                else if (rr.shadowed) jo["note"] = "compiled but not registered (name already in use)";
+                else {   // dlopen / ABI / missing-symbol failure — report the reason
+                    jo["error_key"] = rr.error_key;
+                    jo["error"] = rr.error_msg;
+                    if (rr.quarantined) jo["note"] = "operator is quarantined (repeat crashes) — not registered";
+                }
             }
             ops.push_back(jo);
         }
