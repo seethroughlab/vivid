@@ -96,6 +96,134 @@ def render_tutorial_cards(cfg: dict) -> str:
     return "\n".join(cards)
 
 
+# --- operator reference (ADR-0038: rendered from the generated reference.json snapshot) -------
+
+import re
+
+DOMAIN_ORDER = ["visual", "audio", "control"]
+DOMAIN_LABEL = {"visual": "Visual", "audio": "Audio", "control": "Control"}
+
+
+def slugify(v: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", v.lower()).strip("-")
+
+
+def _num(v) -> str:
+    if isinstance(v, bool):
+        return str(v).lower()
+    if isinstance(v, (int, float)):
+        r = round(float(v), 4)
+        return str(int(r)) if r == int(r) else f"{r:g}"
+    return esc(str(v))
+
+
+def _detail_table(label: str, headers: list[str], rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    head = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    body = "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows)
+    return (f'      <section class="detail-panel">\n'
+            f'        <p class="table-label">{esc(label)}</p>\n'
+            f'        <div class="table-wrap"><table><thead><tr>{head}</tr></thead>'
+            f'<tbody>{body}</tbody></table></div>\n      </section>')
+
+
+def _param_rows(params: list[dict]) -> list[list[str]]:
+    rows = []
+    for p in params:
+        choices = p.get("choices")
+        typ = "choice" if choices else esc(str(p.get("type", "")))
+        lo, hi = p.get("min"), p.get("max")
+        rng = f"{_num(lo)} – {_num(hi)}" if lo is not None and hi is not None else ""
+        default = _num(p["default"]) if "default" in p else ""
+        desc = p.get("description") or p.get("semantic_intent") or ""
+        if choices:
+            desc = (desc + " " if desc else "") + "(" + ", ".join(map(str, choices)) + ")"
+        rows.append([f"<code>{esc(str(p.get('name', '')))}</code>", typ, rng, default, esc(desc)])
+    return rows
+
+
+def _port_rows(ports: list[dict]) -> list[list[str]]:
+    return [[f"<code>{esc(str(p.get('name', '')))}</code>", esc(p.get("dir", "")),
+             esc(p.get("description") or p.get("semantic_intent") or "")] for p in ports]
+
+
+def render_reference_cards(ops: list[dict]) -> str:
+    sections = []
+    for dom in DOMAIN_ORDER:
+        items = [o for o in ops if o["domain"] == dom]
+        if not items:
+            continue
+        cards = []
+        for o in items:
+            search = " ".join([o["name"], o.get("summary", ""), dom, *o.get("keywords", [])]).lower()
+            cards.append(
+                f'        <article class="op-card operator-card" data-domain="{dom}" '
+                f'data-search="{esc(search)}">\n'
+                f'          <div class="op-card-header"><h3><a href="/reference/{o["slug"]}/">'
+                f'{esc(o["name"])}</a></h3><span class="badge {dom}">{DOMAIN_LABEL[dom]}</span></div>\n'
+                f'          <p>{esc(o.get("summary") or "No description yet.")}</p>\n'
+                f'        </article>')
+        sections.append(
+            f'      <section class="operator-section" data-domain="{dom}">\n'
+            f'        <p class="section-kicker">{DOMAIN_LABEL[dom]} · {len(items)}</p>\n'
+            f'        <div class="op-grid">\n' + "\n".join(cards) + "\n        </div>\n      </section>")
+    return "\n".join(sections)
+
+
+def render_reference_detail_content(op: dict) -> dict:
+    kw = op.get("keywords", [])
+    keywords_html = ('        <div class="keywords">'
+                     + "".join(f'<span class="keyword">{esc(k)}</span>' for k in kw)
+                     + "</div>") if kw else ""
+    params_html = _detail_table("Parameters", ["Name", "Type", "Range", "Default", "Description"],
+                                _param_rows(op.get("params", [])))
+    ports_html = _detail_table("Ports", ["Port", "Direction", "Description"],
+                               _port_rows(op.get("ports", [])))
+    src = op.get("source") or {}
+    source_html = ""
+    if src.get("path"):
+        import os as _os
+        source_html = (f'      <section class="detail-panel"><p class="source-note">Backed by a '
+                       f'{esc(src.get("tier", "bundled"))} shader file: '
+                       f'<code>{esc(_os.path.basename(src["path"]))}</code></p></section>')
+    return {"name": esc(op["name"]), "domain": op["domain"], "domain_label": DOMAIN_LABEL[op["domain"]],
+            "kind": esc(op.get("kind", "")), "summary": esc(op.get("summary") or "No description yet."),
+            "keywords_html": keywords_html, "params_html": params_html, "ports_html": ports_html,
+            "source_html": source_html}
+
+
+def render_reference(cfg: dict, emit, site: str) -> None:
+    """Render /reference/ (filterable index) + /reference/<slug>/ detail pages from reference.json.
+    Falls back to a coming-soon page if the snapshot is absent (so the build never breaks)."""
+    ref_path = HERE / "reference.json"
+    if not ref_path.exists():
+        emit("reference", f"Operator Reference — {site}", "The operator reference is coming soon.",
+             load_template("coming_soon.html").substitute(
+                 heading="Operator Reference",
+                 body="Generated from Vivid 4's live operator metadata. Run "
+                      "<code>site/generate_reference.py</code> to produce the snapshot."),
+             "/reference/")
+        return
+    ref = json.loads(ref_path.read_text())
+    ops = ref.get("operators", [])
+    opts = ['            <option value="">All domains</option>']
+    for d in ref.get("domains", DOMAIN_ORDER):
+        opts.append(f'            <option value="{d}">{DOMAIN_LABEL.get(d, d)}</option>')
+    index_html = load_template("reference_index.html").substitute(
+        count=ref.get("count", len(ops)), app_version=esc(str(ref.get("app_version", ""))),
+        operator_abi=esc(str(ref.get("operator_abi", ""))),
+        domain_options="\n".join(opts), domain_sections=render_reference_cards(ops))
+    emit("reference", f"Operator Reference — {site}",
+         f"{ref.get('count', len(ops))} Vivid operators, generated from live metadata.",
+         index_html, "/reference/")
+    detail_tpl = load_template("reference_detail.html")
+    for o in ops:
+        emit(f"reference/{o['slug']}", f"{o['name']} — Operator Reference — {site}",
+             (o.get("summary") or f"The {o['name']} operator."),
+             detail_tpl.substitute(render_reference_detail_content(o)), "/reference/")
+
+
 # --- page builder -----------------------------------------------------------------------------
 
 def build_site(output_dir: Path) -> None:
@@ -162,15 +290,11 @@ def build_site(output_dir: Path) -> None:
          load_template("showcase.html").substitute(cards=render_showcase_cards(cfg)),
          "/showcase/")
 
+    # Operator Reference (generated from reference.json; ADR-0038)
+    render_reference(cfg, emit, site)
+
     # Coming soon
     coming = load_template("coming_soon.html")
-    emit("reference", f"Operator Reference — {site}",
-         "The operator reference will be generated from Vivid 4 metadata.",
-         coming.substitute(
-             heading="Operator Reference",
-             body="The operator reference is generated from Vivid 4's live operator metadata and "
-                  "shader headers. It is coming soon — until then, browse operators in-app over MCP."),
-         "/reference/")
     emit("packages", f"Packages — {site}",
          "Community packages are coming soon.",
          coming.substitute(
@@ -197,7 +321,17 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
         text = html.read_text()
         if "$title" in text or "${" in text:
             raise SystemExit(f"[build] self-check failed — unresolved template var in {html}")
-    print(f"[build] ok — {len(expected_pages)} pages, {len(cfg['showcase'])} heroes -> {output_dir}")
+    # Operator reference: every operator in the snapshot must have a detail page.
+    ref_path = HERE / "reference.json"
+    ref_ops = 0
+    if ref_path.exists():
+        ops = json.loads(ref_path.read_text()).get("operators", [])
+        ref_ops = len(ops)
+        missing = [o["slug"] for o in ops if not (output_dir / "reference" / o["slug"] / "index.html").exists()]
+        if missing:
+            raise SystemExit(f"[build] self-check failed — missing operator pages: {', '.join(missing[:5])}")
+    print(f"[build] ok — {len(expected_pages)} pages, {len(cfg['showcase'])} heroes, "
+          f"{ref_ops} operator pages -> {output_dir}")
 
 
 def main(argv=None) -> int:
