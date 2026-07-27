@@ -12,9 +12,9 @@
       "hero": "first-project.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2864,
-      "contrast": 0.283,
-      "hash": "183c3c3c3c3c3c18"
+      "brightness": 0.2917,
+      "contrast": 0.2873,
+      "hash": "183c3c3c3c3c3c08"
     },
     {
       "id": "pulse-song",
@@ -23,9 +23,9 @@
       "hero": "pulse-song.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.3583,
-      "contrast": 0.2514,
-      "hash": "10383c3c3c1c1800"
+      "brightness": 0.381,
+      "contrast": 0.2821,
+      "hash": "0818383c3c381800"
     },
     {
       "id": "mirror-bridge",
@@ -34,9 +34,9 @@
       "hero": "mirror-bridge.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.272,
-      "contrast": 0.1585,
-      "hash": "3c3c3c7e7e3c3c3c"
+      "brightness": 0.2701,
+      "contrast": 0.1543,
+      "hash": "3c3c7e7e7e7e3c3c"
     },
     {
       "id": "shader-edit",
@@ -45,8 +45,8 @@
       "hero": "shader-edit.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.288,
-      "contrast": 0.2845,
+      "brightness": 0.2113,
+      "contrast": 0.1987,
       "hash": "183c3c3c3c3c3c18"
     },
     {
@@ -56,9 +56,9 @@
       "hero": "neon-song.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2178,
-      "contrast": 0.1375,
-      "hash": "1c3c3c7e7e3c3c1c"
+      "brightness": 0.2105,
+      "contrast": 0.133,
+      "hash": "3c3c3c7e7e3c3c1c"
     }
   ]
 }
