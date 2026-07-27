@@ -103,6 +103,8 @@ void ControlServer::register_handlers() {
     register_package_handlers(handlers_);   // ---- ADR-0024 Phase 7: operator-package authoring ----
 
     register_edit_handlers(handlers_);   // ---- ADR-0017 undo/redo ----
+
+    register_video_export_handlers(handlers_);   // ---- realtime AV video export ----
 }
 
 }  // namespace vivid

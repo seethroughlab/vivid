@@ -23,5 +23,6 @@ void register_audio_handlers(Handlers& handlers_);           // authoring + clip
 void register_project_handlers(Handlers& handlers_);         // session author/persist + project workflow
 void register_package_handlers(Handlers& handlers_);         // ADR-0024 Phase 7: operator-package authoring
 void register_edit_handlers(Handlers& handlers_);            // ADR-0017 undo/redo
+void register_video_export_handlers(Handlers& handlers_);    // realtime AV video export (File > Export Video / MCP)
 
 }  // namespace vivid

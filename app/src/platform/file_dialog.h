@@ -11,6 +11,10 @@ namespace vivid::platform {
 std::string open_project_dialog();
 std::string save_project_dialog(const std::string& suggested_name);
 
+// Choose a destination for a video export (File > Export Video). `suggested_name` seeds the name
+// field (e.g. "vivid-export.mp4"). Returns the chosen absolute path, or "" if cancelled / no dialog.
+std::string save_video_dialog(const std::string& suggested_name);
+
 // Choose a single existing file (e.g. an image for an Image node). `message` labels the
 // panel. Returns the chosen absolute path, or "" if cancelled / no native dialog.
 // `extensions` (lowercased, no dot — e.g. {"png","jpg"}) filters the panel to those types; empty

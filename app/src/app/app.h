@@ -20,6 +20,7 @@ class VisualGraph;
 class ControlServer;
 class EditGateway;
 class CrashRecovery;
+class VideoRecorder;
 namespace ui { class NodeGraph; class AudioNodeGraph; }
 }
 namespace vivid::session { struct Session; }
@@ -41,6 +42,7 @@ struct App {
     ControlServer*      control   = nullptr;   // MCP loopback server
     EditGateway*        edit_gateway = nullptr; // ADR-0017 undo/redo command sink (a main.cpp local)
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
+    VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
     OpRegistry          op_registry;           // built-in + loaded operators
     // Loaders for dlopen'd operator dylibs. Owned here so each outlives the
     // registry factory that captures its raw pointer (App lives the whole run).

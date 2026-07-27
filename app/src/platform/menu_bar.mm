@@ -32,6 +32,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)doRedo:(id)sender { (void)sender; if (vivid::platform::g_actions.redo) vivid::platform::g_actions.redo(); }
 - (void)setGeminiKey:(id)sender   { (void)sender; if (vivid::platform::g_actions.set_gemini_key)  vivid::platform::g_actions.set_gemini_key(); }
 - (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
+- (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
@@ -39,6 +40,7 @@ static NSMenu*          g_recentMenu = nil;  // the Open Recent submenu (retaine
 static NSMenu*          g_exampleMenu = nil; // the Open Example submenu (retained by its item)
 static NSMenuItem*      g_undoItem = nil;    // Edit > Undo (title updated by set_edit_labels)
 static NSMenuItem*      g_redoItem = nil;    // Edit > Redo
+static NSMenuItem*      g_exportVideoItem = nil;  // File > Export Video (title flips via set_export_video_recording)
 
 namespace vivid { namespace platform {
 
@@ -81,6 +83,11 @@ void install_menu_bar(const MenuActions& actions) {
         it = [[NSMenuItem alloc] initWithTitle:@"Save As…" action:@selector(saveProjectAs:) keyEquivalent:@"s"];
         [it setKeyEquivalentModifierMask:(NSEventModifierFlagCommand | NSEventModifierFlagShift)];
         [it setTarget:g_target]; [fileMenu addItem:it]; [it release];
+
+        // Export Video — toggles a realtime AV export (label flips to "Stop Export" while recording).
+        [fileMenu addItem:[NSMenuItem separatorItem]];
+        g_exportVideoItem = [[NSMenuItem alloc] initWithTitle:@"Export Video…" action:@selector(exportVideo:) keyEquivalent:@""];
+        [g_exportVideoItem setTarget:g_target]; [fileMenu addItem:g_exportVideoItem]; [g_exportVideoItem release];
 
         NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];
         [fileItem setSubmenu:fileMenu];
@@ -128,6 +135,13 @@ void set_edit_labels(const std::string& undo_label, const std::string& redo_labe
             NSString* t = redo_label.empty() ? @"Redo" : [NSString stringWithUTF8String:("Redo " + redo_label).c_str()];
             [g_redoItem setTitle:t]; [g_redoItem setEnabled:can_redo];
         }
+    }
+}
+
+void set_export_video_recording(bool recording) {
+    @autoreleasepool {
+        if (g_exportVideoItem)
+            [g_exportVideoItem setTitle:(recording ? @"Stop Export" : @"Export Video…")];
     }
 }
 
