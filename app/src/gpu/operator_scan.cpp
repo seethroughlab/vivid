@@ -11,28 +11,33 @@
 
 namespace vivid {
 
-std::string load_and_register_operator(const std::string& dylib_path, OpRegistry& reg,
-                                       std::vector<std::unique_ptr<OperatorLoader>>& loaders,
-                                       const std::set<std::string>* quarantined) {
+RegisterResult load_and_register_operator_ex(const std::string& dylib_path, OpRegistry& reg,
+                                             std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                             const std::set<std::string>* quarantined) {
+    RegisterResult r;
     auto loader = std::make_unique<OperatorLoader>();
     if (!loader->load(dylib_path.c_str())) {
+        r.error_key = loader->last_error().code;      // dlopen_failed / abi_mismatch / missing_* …
+        r.error_msg = loader->last_error().message;
         std::fprintf(stderr, "[vivid] operator load failed (%s): %s — %s\n",
                      std::filesystem::path(dylib_path).filename().c_str(),
-                     loader->last_error().code.c_str(),
-                     loader->last_error().message.c_str());
-        return {};
+                     r.error_key.c_str(), r.error_msg.c_str());
+        return r;
     }
     const VividOperatorDescriptor* d = loader->descriptor();
     const std::string name = d->name;
+    r.op_name = name;   // known from here on, even when we decline to register
     if (quarantined && quarantined->count(name)) {   // ADR-0018: a repeat crasher is disabled by default
+        r.quarantined = true;
         std::fprintf(stderr, "[vivid] operator '%s' quarantined (repeat crashes) — not registered\n", name.c_str());
-        return {};
+        return r;
     }
     if (reg.has(name)) {
+        r.shadowed = true;
         std::fprintf(stderr, "[vivid] operator '%s' (%s) shadowed by an existing "
                      "registration — skipped\n", name.c_str(),
                      std::filesystem::path(dylib_path).filename().c_str());
-        return {};
+        return r;
     }
     // Carry the dylib descriptor's discovery metadata into the registry.
     OpMeta meta;
@@ -51,7 +56,15 @@ std::string load_and_register_operator(const std::string& dylib_path, OpRegistry
     loaders.push_back(std::move(loader));
     std::fprintf(stderr, "[vivid] loaded operator '%s' (%s)\n",
                  name.c_str(), std::filesystem::path(dylib_path).filename().c_str());
-    return name;
+    r.ok = true;
+    return r;
+}
+
+std::string load_and_register_operator(const std::string& dylib_path, OpRegistry& reg,
+                                       std::vector<std::unique_ptr<OperatorLoader>>& loaders,
+                                       const std::set<std::string>* quarantined) {
+    const RegisterResult r = load_and_register_operator_ex(dylib_path, reg, loaders, quarantined);
+    return r.ok ? r.op_name : std::string();   // preserve the "" == not-registered contract
 }
 
 int scan_operator_dir(const std::string& dir, OpRegistry& reg,

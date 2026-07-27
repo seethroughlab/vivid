@@ -248,12 +248,19 @@ void register_package_handlers(Handlers& handlers_) {
             json jo = { {"name", ci.op_name}, {"compiled", ci.success} };
             if (!ci.success) { jo["error"] = ci.error_output; }
             else {
-                const std::string reg = load_and_register_operator(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
-                if (!reg.empty()) {
-                    jo["registered"] = true; jo["op"] = reg; ++registered;
-                    if (is_current_folder_project_path(c.app, path)) c.app->project_operator_types.insert(reg);
+                const RegisterResult rr = load_and_register_operator_ex(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
+                if (rr.ok) {
+                    jo["registered"] = true; jo["op"] = rr.op_name; ++registered;
+                    if (is_current_folder_project_path(c.app, path)) c.app->project_operator_types.insert(rr.op_name);
+                } else if (rr.shadowed) {
+                    jo["registered"] = false; jo["note"] = "already live — edit source to hot-reload"; ++live;
+                } else {
+                    // A real load failure (dlopen / ABI / missing symbols) — surface WHY, not "already live".
+                    jo["registered"] = false;
+                    jo["error_key"] = rr.error_key;
+                    jo["error"] = rr.error_msg;
+                    if (rr.quarantined) jo["note"] = "operator is quarantined (repeat crashes) — not registered";
                 }
-                else { jo["registered"] = false; jo["note"] = "already live — edit source to hot-reload"; ++live; }
             }
             ops.push_back(jo);
         }
