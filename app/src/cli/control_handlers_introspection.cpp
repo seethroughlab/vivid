@@ -346,6 +346,13 @@ json unified_operator_catalog(const ControlCtx& c, const std::string& domain, co
                 if (const auto* sh = c.app->shader_library.find(name)) {
                     jo["format"] = "shader_file";
                     jo["source"] = { {"path", sh->path}, {"tier", sh->tier} };
+                } else if (c.app->project_operator_types.count(name)) {
+                    // A compiled operator that came from the open folder project's vivid-package.json
+                    // (scoped to this project, retired on New/switch). Mark its origin so it is not
+                    // indistinguishable from a core op; its .cpp source is enumerable via
+                    // list_project_assets / validate_operator_package.
+                    jo["format"] = "compiled_operator";
+                    jo["source"] = { {"tier", "project"} };
                 }
             }
             arr.push_back(jo);

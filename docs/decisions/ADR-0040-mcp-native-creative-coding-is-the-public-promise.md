@@ -237,6 +237,35 @@ The walkthrough's `build.py` is a runnable acceptance test (hard asserts on node
 compile-error report, and recovery); it is app/GPU-tier, so it is proven by the live drive rather
 than portable CI, consistent with the repo's app-tier test boundary.
 
+**Seventh friction result (tutorial tier 3 — project-local C++ operator).**
+`examples/tutorials/project-cpp-operator/` is the compiled-code sibling of the shader tutorials: it
+scaffolds its own `gpu_visual` operator package, builds it with a real `clang++`, registers it into
+the folder project, uses it, breaks it on purpose and recovers via the build diagnostics, then edits
++ recompiles on load. This is the hardest tier — it adds the compiler, the ABI guard, and crash
+quarantine on top of the authoring loop. Findings:
+
+- **Product fix — compiled project operators are now self-describing in the catalog.** Like the shader
+  fix, a compiled operator that came from the open project's `vivid-package.json` was indistinguishable
+  from a core op in `list_operator_catalog` / `find_operators`. The catalog now marks such an op
+  `format:"compiled_operator"`, `source:{tier:"project"}` (joining the visual op name against
+  `App::project_operator_types`); its `.cpp` stays enumerable via `list_project_assets`.
+- **Recovery works out of the box.** A C++ compile error is reported by `build_operator_package` with
+  verbatim `clang++` output in the per-op `error` field; crash quarantine is covered by
+  `run_quality_check no_quarantined_operators` (ADR-0018). No new product work was needed here — the
+  tutorial exercises the existing safety rails.
+- **Two known gaps recorded, not fixed here.** (1) Hot-swapping an *already-live* compiled operator is
+  not done over MCP — `reload_operator_package` / `reload_project_files` re-register the type but do
+  not rebuild a live compiled-op node, unlike the shader path; a safe live-dylib hot-swap (RTLD
+  lifecycle + real-time audio ops) is a separate, riskier change, so the tutorial teaches the
+  deterministic `load_project` recompile path. (2) `abi_mismatch` / `dlopen` failures surface only to
+  stderr today, not as a distinct MCP field. Both are candidates for a future focused change.
+
+The `build.py` asserts the compiled-operator loop (build → register → discover → break/recover →
+recompile-on-load → no quarantine) deterministically; the freshly-recompiled op's rendered frame is
+best-effort evidence, since a headless run driven by rapid synchronous control calls starves the
+main-thread frame loop and a dylib op initializes its GPU pipeline on first draw (it renders correctly
+once the app is idle/focused, as the existing `song-sketch` `AuroraField` op does).
+
 ## Implementation Order
 
 Work on this ADR should proceed in this order:

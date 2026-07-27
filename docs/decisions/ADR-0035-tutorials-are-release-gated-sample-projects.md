@@ -88,3 +88,12 @@ and save. Building it drove two product fixes (self-describing shader ops in the
 `reload_project_files` rebuilding live shader nodes so edits/errors reach running nodes over MCP — see
 ADR-0040). Its `build.py` is a runnable acceptance test with hard assertions; it produces
 `project/live-edit-proof.json` and a friction log.
+
+The C++ tier followed: `examples/tutorials/project-cpp-operator/` scaffolds its own `gpu_visual`
+operator package, builds it with a real `clang++`, registers it into the folder project, uses it,
+recovers from a deliberate C++ compile error via the build diagnostics, and recompiles on load — the
+`song-sketch` model, with the compiler / ABI / crash-quarantine safety rails the C++ path adds. It
+drove one product fix (compiled project operators are now marked with their project origin in the
+operator catalog) and recorded two known gaps (no MCP hot-swap of an already-live compiled op; ABI /
+dlopen failures surface only to stderr). Its `build.py` asserts the compiled-operator loop
+deterministically; the rendered frame is best-effort in a headless run.
