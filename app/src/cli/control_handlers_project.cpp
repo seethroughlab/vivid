@@ -685,10 +685,15 @@ void register_project_handlers(Handlers& handlers_) {
                 json jo = { {"name", ci.op_name}, {"compiled", ci.success} };
                 if (!ci.success) { jo["error"] = ci.error_output; }
                 else {
-                    const std::string reg = load_and_register_operator(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
-                    jo["registered"] = !reg.empty();
-                    if (!reg.empty()) { jo["op"] = reg; ++registered; c.app->project_operator_types.insert(reg); }
-                    else jo["note"] = "compiled but already registered — use reload_operator_package to hot-swap";
+                    const RegisterResult rr = load_and_register_operator_ex(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
+                    jo["registered"] = rr.ok;
+                    if (rr.ok) { jo["op"] = rr.op_name; ++registered; c.app->project_operator_types.insert(rr.op_name); }
+                    else if (rr.shadowed) jo["note"] = "compiled but already registered — use reload_operator_package to hot-swap";
+                    else {   // dlopen / ABI / missing-symbol failure — surface the reason
+                        jo["error_key"] = rr.error_key;
+                        jo["error"] = rr.error_msg;
+                        if (rr.quarantined) jo["note"] = "operator is quarantined (repeat crashes) — not registered";
+                    }
                 }
                 ops.push_back(jo);
             }

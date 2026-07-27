@@ -207,6 +207,10 @@ target_include_directories(test_fixture_bad PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 vivid_add_test(test_operator_loader)
 target_sources(test_operator_loader PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_loader.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/operator_scan.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/loaded_operator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 target_link_libraries(test_operator_loader PRIVATE ${CMAKE_DL_LIBS})
 add_dependencies(test_operator_loader test_fixture_op test_fixture_bad)
