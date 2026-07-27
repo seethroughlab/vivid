@@ -49,14 +49,10 @@ ENTITLEMENTS="${VIVID_ENTITLEMENTS:-$REPO_ROOT/app/platform/macos/vivid.entitlem
 [ -f "$ENTITLEMENTS" ] || { echo "error: entitlements not found: $ENTITLEMENTS" >&2; exit 1; }
 echo "==> entitlements: $ENTITLEMENTS"
 
-# Headless self-hosted runner: unlock the keychain holding the Developer ID private key so codesign
-# doesn't block on an interactive prompt. No-op unless KEYCHAIN_PASSWORD is set (local dev signs fine).
-if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
-  KC="${KEYCHAIN_NAME:-login.keychain-db}"
-  echo "==> unlocking keychain: $KC"
-  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
-  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KC" >/dev/null 2>&1 || true
-fi
+# The Developer ID private key must be reachable by codesign non-interactively. Locally that's the
+# login keychain (the dev's cert). In CI the release workflow imports the cert (APPLE_CERT_P12_B64)
+# into a dedicated temporary keychain and puts it on the search list BEFORE running this script — the
+# headless-runner-safe pattern (a locked/service-context login keychain yields errSecInternalComponent).
 
 sign() { codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$@"; }
 
