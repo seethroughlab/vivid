@@ -34,6 +34,7 @@ constexpr int kMaxHeld    = 32;    // max simultaneously-held notes tracked per 
 
 // One currently-held note of a track, for the polyphonic active-notes channel (the note instancer).
 struct ActiveNote { int pitch; float vel; };
+struct NoteEvt { int kind; int pitch; float vel; int note_id; };   // kind: 1=on, 0=off
 
 // Optional startup load-progress hook: session_create blocks while it scans + loads the
 // default project's VST3 instruments (seconds). Set this before session_create to drive a
@@ -167,6 +168,7 @@ float session_track_note_gate(Session*, int track);       // 1.0 on a block with
 int   session_track_analysis_copy(Session*, int track, float* out, int n);  // recent mono samples (frame-side FFT)
 int   session_master_analysis_copy(Session*, float* out, int n);            // recent master samples (frame-side FFT)
 int   session_track_active_notes(Session*, int track, ActiveNote* out, int max);  // currently-held notes; returns count
+int   session_track_note_events(Session*, int track, NoteEvt* out, int max);      // drains this frame's note on/off events; returns count
 void  session_set_track_node_analyze_mask(Session*, int track, uint64_t mask);    // gate per-node FFT capture (bit=node idx)
 int   session_track_node_analysis_copy(Session*, int track, int node_id, float* out, int n);  // watched node's recent samples
 int   session_track_capture_snapshot(Session*, int track, double seconds,

@@ -54,6 +54,7 @@ add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
 add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
+add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
 add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)

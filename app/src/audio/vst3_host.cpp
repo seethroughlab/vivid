@@ -2376,9 +2376,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 }
                 // Polyphonic active-notes: maintain the persistent held set from this block's on/off
                 // events (dedup/replace by note_id on on; swap-remove on off). Published for the instancer.
+                // Also enqueue each as a DISCRETE event (note_id carried) so one-shot visual ops can fire
+                // per note-on — including a re-struck held pitch, which the held set alone can't express.
                 for (const NoteEvent& e : t.nev) {
                     if (e.on) t.held.add(e.note_id, e.pitch, e.vel);
                     else      t.held.remove(e.note_id);
+                    t.note_events.push(e.on ? 1 : 0, e.pitch, e.vel, e.note_id, e.sample_offset);
                 }
             }
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.

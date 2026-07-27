@@ -33,6 +33,7 @@
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
+#include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
@@ -288,10 +289,22 @@ void publish_bridge_sources(App& app, Window& win) {
         const int m = std::min(na, VIVID_MAX_ACTIVE_NOTES);
         for (int k = 0; k < m; ++k) { vn[k].pitch = an[k].pitch; vn[k].velocity = an[k].vel; }
         vivid_note_bus_publish(t, static_cast<int>(tid), vn, static_cast<uint32_t>(m));
+        // Also DRAIN this frame's discrete note on/off events into the note-event bus (one-shot ops).
+        // The drain is destructive, so this is the single per-frame consumer of the track's event ring.
+        S::NoteEvt ne[VIVID_MAX_NOTE_EVENTS];
+        const int nne = S::session_track_note_events(app.session, t, ne, VIVID_MAX_NOTE_EVENTS);
+        VividNoteHit vev[VIVID_MAX_NOTE_EVENTS];
+        for (int k = 0; k < nne; ++k) {
+            vev[k].kind = ne[k].kind; vev[k].pitch = ne[k].pitch;
+            vev[k].velocity = ne[k].vel; vev[k].note_id = ne[k].note_id;
+        }
+        vivid_note_event_bus_publish(t, static_cast<int>(tid), vev, static_cast<uint32_t>(nne));
         ntracks = t + 1;
     }
-    for (int s = ntracks; s < VIVID_NOTE_BUS_TRACKS; ++s)   // free slots no live track occupies this frame
+    for (int s = ntracks; s < VIVID_NOTE_BUS_TRACKS; ++s) {   // free slots no live track occupies this frame
         vivid_note_bus_publish(s, -1, nullptr, 0);
+        if (s < VIVID_NOTE_EVENT_TRACKS) vivid_note_event_bus_publish(s, -1, nullptr, 0);
+    }
     graph.apply_params();
 }
 

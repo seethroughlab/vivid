@@ -296,6 +296,11 @@ int VisualGraph::bump_all_file_param_generations() {
 }
 
 void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
+    // Per-frame delta for time-integrating ops (particle emitters, note-off trail fades). The context
+    // used to hardcode dt=0, which froze any op that integrated over dt. Clamp so a first frame / a long
+    // stall (paused, backgrounded) can't teleport a simulation.
+    const float dt = (last_chain_time_ < 0.f) ? 0.f : std::clamp(time - last_chain_time_, 0.f, 0.1f);
+    last_chain_time_ = time;
     apply_output_settings();   // FIRST: may resize every RT, before the encoder references any
     ensure_resources(nodes_.size());
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
@@ -350,7 +355,7 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         std::fill(pub.begin(), pub.end(), nullptr);
 
         VividGpuContext ctx{};
-        ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
+        ctx.time = time; ctx.delta_time = dt; ctx.frame = frame_;
         ctx.param_values = n.params.empty() ? nullptr : n.params.data();
         ctx.device = dev_; ctx.queue = q_; ctx.command_encoder = enc;
         ctx.output_texture = rts_[idx].tex;

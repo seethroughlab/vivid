@@ -7,6 +7,7 @@
 #include "audio/analysis_ring.h"   // ADR-0029: atomic-slot spectrum ring (MeterState::an_ring)
 #include "audio/node_ring_bank.h"  // ADR-0029: atomic-slot per-node capture rings (node_scope, node_an)
 #include "audio/held_note_set.h"   // ADR-0029: atomic-slot polyphonic held-note set (Track::held)
+#include "audio/note_event_ring.h" // discrete note on/off events (Track::note_events) for one-shot visuals
 #include "midi/midi_clip.h"
 #include "audio/audio_clip.h"
 #include "audio/clip_dsp.h"
@@ -262,6 +263,10 @@ struct Track {
     // maintained incrementally from t.nev's on/off events (audio thread), snapshotted by the frame thread.
     // Atomic-slot set (ADR-0029): a torn snapshot mixes whole notes, a benign 1-frame glitch, never UB.
     vivid::audio::HeldNoteSet<kMaxHeld> held;
+    // Discrete note on/off EVENTS this block (the one-shot counterpart to `held`): a lock-free SPSC ring
+    // pushed by the audio thread, drained by the frame thread → the note-event bus. Carries note_id, so a
+    // re-struck held pitch fires again (membership can't). Sized well above notes-per-block.
+    vivid::audio::NoteEventRing<128> note_events;
     // (spectrum ring + crossover state now live in `meter` above — MeterState, shared with Master.)
     std::vector<float>    bl, br;          // planar scratch
     std::mutex            capture_mtx;      // audio thread uses try_lock; UI snapshots may block
