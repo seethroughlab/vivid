@@ -1,12 +1,12 @@
 # Live Shader Edit
 
-ADR-0034 follow-up artifact: edit the project-local shader from
+ADR-0040 follow-up artifact: edit the project-local shader from
 `mcp-native-first-project/` and verify what Vivid updates live.
 
 This tutorial is intentionally a pressure test. A beginner should eventually be able to say:
 
 1. Open the first project.
-2. Edit `assets/shaders/pulse_field.glsl`.
+2. Edit `shaders/pulse_field.wgsl`.
 3. See the visual change while the project keeps playing.
 4. Save/reload and keep the edited shader.
 
@@ -44,7 +44,7 @@ The builder:
 
 - loads the first tutorial project;
 - captures a pre-edit frame;
-- edits `assets/shaders/pulse_field.glsl`;
+- edits `shaders/pulse_field.wgsl`;
 - captures after the plain file edit;
 - asks Vivid to reload project files;
 - captures again;
@@ -53,15 +53,15 @@ The builder:
 ## Expected Learning
 
 The creative-coding promise is that an MCP-authored project-local shader can change while Vivid is
-running. A plain file edit is allowed to be passive, but `reload_project_files` should make same-path
-`CustomShader.file` content visible without changing the FILE param.
+running. A plain file edit is allowed to be passive, but `reload_project_files` should re-scan the
+project shader tier and make the edited `PulseField` operator visible without changing the graph.
 
 ## Current Result
 
 The pressure test now expects:
 
 - launching with `VIVID_DISCARD_RECOVERY=1` starts cleanly;
-- the edited shader remains portable under `assets/shaders/pulse_field.glsl`;
-- `reload_project_files` bumps Vivid's FILE-param reload generation for live nodes;
-- `CustomShader` reloads the same path when that generation changes;
+- the edited shader remains portable under `shaders/pulse_field.wgsl`;
+- `reload_project_files` refreshes project shader operators;
+- `PulseField` keeps its node identity while the shader body changes;
 - the post-reload quality check passes.

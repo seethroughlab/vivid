@@ -62,3 +62,14 @@ Before a plugin is marked tutorial-required, verify:
   plugin-dependent tutorial can ship.
 - `vivid-wavetable` should be treated as the later first-party native synthesis package path, not as
   a reason to remove Surge XT from the first beginner tutorial.
+
+## Progress
+
+The first tutorial now treats Surge XT as required and documents the expected macOS CLAP install
+path. The curated starter list lives at `examples/tutorials/free-plugin-starter-list.md`; Surge XT is
+the only required dependency there, while Surge XT Effects, Vital, and Cardinal are reserved for
+optional follow-up material.
+
+The plugin-onboarding checks have moved from tutorial-only Python into Vivid's product surface:
+`check_tutorial_prereqs` reports the required Surge XT path, plugin-catalog visibility, missing
+items, and next actions before a tutorial mutates generated project files.

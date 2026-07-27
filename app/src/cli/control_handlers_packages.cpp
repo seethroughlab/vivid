@@ -132,6 +132,15 @@ bool valid_op_name(const std::string& n) {
     return true;
 }
 
+bool is_current_folder_project_path(App* app, const std::string& path) {
+    if (!app || app->project.current_project_path.empty()) return false;
+    if (!vivid::project_paths::is_folder_project(app->project.current_project_path)) return false;
+    std::error_code eca, ecb;
+    const fs::path a = fs::weakly_canonical(path, eca);
+    const fs::path b = fs::weakly_canonical(app->project.current_project_path, ecb);
+    return !eca && !ecb && a == b;
+}
+
 // Parse a manifest and check every declared source exists on disk → a structured validation result.
 json validate_manifest(const std::string& dir) {
     json r;
@@ -240,7 +249,10 @@ void register_package_handlers(Handlers& handlers_) {
             if (!ci.success) { jo["error"] = ci.error_output; }
             else {
                 const std::string reg = load_and_register_operator(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
-                if (!reg.empty()) { jo["registered"] = true; jo["op"] = reg; ++registered; }
+                if (!reg.empty()) {
+                    jo["registered"] = true; jo["op"] = reg; ++registered;
+                    if (is_current_folder_project_path(c.app, path)) c.app->project_operator_types.insert(reg);
+                }
                 else { jo["registered"] = false; jo["note"] = "already live — edit source to hot-reload"; ++live; }
             }
             ops.push_back(jo);

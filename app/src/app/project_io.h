@@ -39,6 +39,11 @@ struct SaveResult {
 SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float split_x, float dock_h,
                 const std::string& path);
 
+// Retire compiled C++ operators registered from the current project-local package. Call only after
+// live graph nodes from the old project have been destroyed; unregistering a type while a node still
+// owns its instance would dangle the loader captured by the registry factory.
+void retire_project_operators(App& app);
+
 // One project-local operator's compile+register outcome (for reporting).
 struct OpResult {
     std::string name;

@@ -4,6 +4,7 @@
 #include "app/project_io.h"   // folder-aware save/load + project-local operators
 #include "app/project_paths.h"   // is_folder_project / session_json_path
 #include "app/app.h"
+#include "audio/plugin_catalog.h"       // check_tutorial_prereqs: installed plugin readiness
 #include "ui/node_graph.h"
 #include "ui/audio_node_graph.h"   // App::audio_graph view (ADR-0023 6b: file save/load round-trips it)
 #include "gpu/visual_graph.h"
@@ -14,6 +15,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <algorithm>
+#include <cctype>
+#include <sstream>
 #include <string>
 
 namespace vivid {
@@ -41,6 +45,191 @@ std::string asset_kind(const fs::path& p) {
     if (ext == ".png" || ext == ".jpg" || ext == ".jpeg") return "image";
     if (ext == ".wav" || ext == ".aif" || ext == ".aiff" || ext == ".flac" || ext == ".mp3") return "audio";
     return "other";
+}
+
+std::string lower_copy(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return s;
+}
+
+bool contains_ci(const std::string& haystack, const std::string& needle) {
+    return lower_copy(haystack).find(lower_copy(needle)) != std::string::npos;
+}
+
+bool tutorial_is_first_project(const std::string& tutorial) {
+    return tutorial.empty() ||
+           tutorial == "mcp_native_first_project" ||
+           tutorial == "first_project" ||
+           tutorial == "golden_path_a";
+}
+
+json tutorial_action(const std::string& title, const std::string& detail) {
+    return { {"title", title}, {"detail", detail} };
+}
+
+bool valid_shader_op_name(const std::string& name) {
+    if (name.empty()) return false;
+    if (!(std::isalpha(static_cast<unsigned char>(name[0])) || name[0] == '_')) return false;
+    for (char ch : name)
+        if (!(std::isalnum(static_cast<unsigned char>(ch)) || ch == '_')) return false;
+    return true;
+}
+
+std::string shader_filename_for(const std::string& name) {
+    std::string out;
+    for (size_t i = 0; i < name.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (std::isupper(ch)) {
+            if (i > 0 && !out.empty() && out.back() != '_') out.push_back('_');
+            out.push_back(static_cast<char>(std::tolower(ch)));
+        } else if (std::isalnum(ch)) {
+            out.push_back(static_cast<char>(std::tolower(ch)));
+        } else if (ch == '_' && !out.empty() && out.back() != '_') {
+            out.push_back('_');
+        }
+    }
+    if (out.empty()) out = "project_shader";
+    return out + ".wgsl";
+}
+
+std::string project_shader_template(const std::string& name) {
+    std::ostringstream s;
+    s << "/*{\n"
+      << "  \"version\": 1,\n"
+      << "  \"name\": \"" << name << "\",\n"
+      << "  \"summary\": \"Project-local audiovisual shader.\",\n"
+      << "  \"keywords\": [\"project\", \"tutorial\", \"generator\"],\n"
+      << "  \"inputs\": [],\n"
+      << "  \"params\": [\n"
+      << "    {\"name\": \"warp\", \"type\": \"float\", \"default\": 0.35, \"min\": 0, \"max\": 1,\n"
+      << "     \"semantic_intent\": \"domain warp amount\"},\n"
+      << "    {\"name\": \"hue\", \"type\": \"float\", \"default\": 0.58, \"min\": 0, \"max\": 1,\n"
+      << "     \"semantic_tag\": \"phase_01\", \"semantic_intent\": \"color hue\"},\n"
+      << "    {\"name\": \"density\", \"type\": \"float\", \"default\": 0.42, \"min\": 0, \"max\": 1,\n"
+      << "     \"semantic_intent\": \"pattern density\"},\n"
+      << "    {\"name\": \"glow\", \"type\": \"float\", \"default\": 0.55, \"min\": 0, \"max\": 1,\n"
+      << "     \"semantic_intent\": \"brightness\"}\n"
+      << "  ]\n"
+      << "}*/\n"
+      << "fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {\n"
+      << "    let d = abs(distance(uv, center) - radius);\n"
+      << "    return 1.0 - smoothstep(0.0, width, d);\n"
+      << "}\n\n"
+      << "@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {\n"
+      << "    let uv = inp.uv;\n"
+      << "    var p = uv * 2.0 - vec2f(1.0);\n"
+      << "    p.x = p.x * (u.res.x / max(1.0, u.res.y));\n\n"
+      << "    let twist = sin((p.x + p.y) * (3.0 + u.density * 10.0) + u.time * 1.8);\n"
+      << "    let q = p + vec2f(cos(p.y * 4.0 + u.time), sin(p.x * 4.0 - u.time)) * (0.04 + u.warp * 0.18);\n\n"
+      << "    let beam = 0.5 + 0.5 * sin((q.x * 5.0 + q.y * 2.0) + twist * 1.4 + u.time * 2.0);\n"
+      << "    let pulse = ring(uv, vec2f(0.5), 0.16 + u.density * 0.24, 0.08);\n"
+      << "    let vignette = smoothstep(1.3, 0.15, length(p));\n\n"
+      << "    let a = 0.5 + 0.5 * cos(vec3f(0.0, 2.1, 4.2) + u.hue * 6.2831853);\n"
+      << "    let b = vec3f(0.08, 0.12, 0.18);\n"
+      << "    var color = mix(b, a, beam * 0.65 + pulse * 0.55);\n"
+      << "    color = color * vignette * (0.65 + u.glow * 1.2);\n"
+      << "    return vec4f(color, 1.0);\n"
+      << "}\n";
+    return s.str();
+}
+
+json surge_xt_tutorial_prereqs(App* app) {
+    namespace P = vivid::session;
+    constexpr const char* kTutorial = "mcp_native_first_project";
+    constexpr const char* kSurgePath = "/Library/Audio/Plug-Ins/CLAP/Surge XT.clap";
+    constexpr const char* kSurgeDownload = "https://surge-synthesizer.github.io/";
+    constexpr const char* kPluginList = "examples/tutorials/free-plugin-starter-list.md";
+
+    json checks = json::array();
+    json missing = json::array();
+    json next_actions = json::array();
+    bool ready = true;
+
+    checks.push_back({
+        {"name", "vivid_control_server"},
+        {"status", "pass"},
+        {"summary", "Vivid control server is reachable"}
+    });
+
+    checks.push_back({
+        {"name", "project_shader_operator_workflow"},
+        {"status", "pass"},
+        {"method", "scaffold_project_shader_operator"},
+        {"summary", "Project-local shaders register as metadata-named operators"}
+    });
+
+    std::error_code ec;
+    const bool surge_bundle_exists = fs::exists(kSurgePath, ec);
+    if (surge_bundle_exists) {
+        checks.push_back({
+            {"name", "surge_xt_clap_bundle"},
+            {"status", "pass"},
+            {"path", kSurgePath},
+            {"summary", "Surge XT CLAP bundle is installed at the tutorial path"}
+        });
+    } else {
+        ready = false;
+        missing.push_back("surge_xt_clap_bundle");
+        checks.push_back({
+            {"name", "surge_xt_clap_bundle"},
+            {"status", "fail"},
+            {"path", kSurgePath},
+            {"summary", "Surge XT is required for this tutorial and was not found"},
+            {"suggestion", "Install Surge XT, then relaunch Vivid so plugin discovery refreshes"}
+        });
+        next_actions.push_back(tutorial_action(
+            "Install Surge XT",
+            std::string("Download from ") + kSurgeDownload + " or run `brew install --cask surge-xt`."
+        ));
+    }
+
+    json catalog_matches = json::array();
+    for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+        const auto& p = P::plugin_at(i);
+        if (!contains_ci(p.name, "surge") && !contains_ci(p.path, "surge")) continue;
+        catalog_matches.push_back({
+            {"name", p.name},
+            {"path", p.path},
+            {"format", P::plugin_format_name(p.format)},
+            {"class", P::plugin_class_name(p.cls)},
+            {"vendor", p.vendor},
+            {"probed", p.probed}
+        });
+    }
+
+    json catalog_check = {
+        {"name", "surge_xt_plugin_catalog"},
+        {"matches", catalog_matches},
+        {"summary", catalog_matches.empty()
+                        ? "Vivid's plugin catalog does not currently list Surge XT"
+                        : "Vivid's plugin catalog lists Surge-related plugins"}
+    };
+    if (catalog_matches.empty()) {
+        catalog_check["status"] = surge_bundle_exists ? "warn" : "fail";
+        catalog_check["suggestion"] = "Relaunch Vivid after installing Surge XT; direct CLAP path loading can still work once the bundle exists.";
+        if (!surge_bundle_exists) missing.push_back("surge_xt_plugin_catalog");
+        next_actions.push_back(tutorial_action(
+            "Refresh Vivid plugin discovery",
+            "Quit and relaunch Vivid after installing Surge XT. Then rerun the tutorial preflight."
+        ));
+    } else {
+        catalog_check["status"] = "pass";
+    }
+    checks.push_back(std::move(catalog_check));
+
+    json r = ok();
+    r["tutorial"] = kTutorial;
+    r["ready"] = ready;
+    r["checks"] = checks;
+    r["missing"] = missing;
+    r["next_actions"] = next_actions;
+    r["free_plugin_list"] = kPluginList;
+    r["summary"] = ready
+                       ? "tutorial prerequisites are ready"
+                       : "tutorial prerequisites need attention before generating the project";
+    return r;
 }
 
 // A coarse structural fingerprint of a session JSON (counts + identity that carry no plugin-state
@@ -111,6 +300,7 @@ void register_project_handlers(Handlers& handlers_) {
         c.graph->reset_nodes();                        // data nodes + mappings
         if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // clean canvas: just Output
         if (c.app) {
+            project_io::retire_project_operators(*c.app);               // drop project-scoped C++ ops
             c.app->shader_library.set_project(c.app->op_registry, "");   // drop project-scoped operators
             c.app->project.current_project_path.clear();
             c.app->project.media_root.clear();
@@ -125,6 +315,70 @@ void register_project_handlers(Handlers& handlers_) {
         r["media_root"] = c.app->project.media_root;
         r["recent"] = c.app->project.recent_project_paths;
         r["missing_media"] = c.app->project.missing_media;
+        return r;
+    };
+    // Productized tutorial preflight: named onboarding checklists live in Vivid/MCP rather than
+    // inside one-off builder scripts. A reachable handler means the app/control-server check passed;
+    // tutorial-specific checks report readiness, missing pieces, and next actions without mutating
+    // the project.
+    handlers_["check_tutorial_prereqs"] = [](const ControlCtx& c, const json& b) {
+        const std::string tutorial = b.value("tutorial", b.value("name", std::string("mcp_native_first_project")));
+        if (!tutorial_is_first_project(tutorial)) {
+            json r = err(code::kBadArg, "unknown tutorial preflight: '" + tutorial + "'");
+            r["supported"] = json::array({ "mcp_native_first_project" });
+            return r;
+        }
+        return surge_xt_tutorial_prereqs(c.app);
+    };
+    handlers_["scaffold_project_shader_operator"] = [](const ControlCtx& c, const json& b) {
+        if (!c.app) return err(code::kInternal, "no app context");
+        const std::string project_dir = project_asset_dir(c.app);
+        if (project_dir.empty() || !vivid::project_paths::is_folder_project(c.app->project.current_project_path))
+            return err(code::kBadArg, "scaffold_project_shader_operator needs a saved folder project");
+        const std::string name = b.value("name", std::string());
+        if (!valid_shader_op_name(name)) return err(code::kBadArg, "shader operator name must be a C identifier");
+        if (c.app->op_registry.has(name)) return err(code::kBadArg, "an operator named '" + name + "' already exists");
+
+        const std::string filename = b.value("filename", shader_filename_for(name));
+        if (filename.empty() || fs::path(filename).filename().string() != filename)
+            return err(code::kBadArg, "shader filename must be a file name, not a path");
+        fs::path rel = fs::path("shaders") / filename;
+        fs::path out = fs::path(project_dir) / rel;
+        std::error_code ec;
+        const fs::path root = fs::weakly_canonical(fs::path(project_dir), ec);
+        const fs::path abs_parent = fs::weakly_canonical(out.parent_path(), ec);
+        const std::string roots = root.string(), parents = abs_parent.string();
+        if (parents.rfind(roots, 0) != 0) return err(code::kBadArg, "shader filename resolves outside the project");
+        if (fs::exists(out, ec) && !b.value("overwrite", false))
+            return err(code::kBadArg, "shader file already exists: " + out.string());
+
+        fs::create_directories(out.parent_path(), ec);
+        if (ec) return err(code::kIoError, "could not create shader directory: " + ec.message());
+        const std::string source = b.value("source", project_shader_template(name));
+        {
+            std::ofstream f(out, std::ios::binary);
+            if (!f) return err(code::kIoError, "could not write " + out.string());
+            f << source;
+        }
+
+        const int registered = c.app->shader_library.set_project(c.app->op_registry, project_dir);
+        json r = ok();
+        r["op"] = name;
+        r["path"] = out.string();
+        r["project_relative"] = rel.string();
+        r["registered"] = c.app->op_registry.has(name);
+        r["project_shader_operators"] = registered;
+        if (!r["registered"].get<bool>()) {
+            for (const auto& e : c.app->shader_library.entries()) {
+                if (e.path == out.string()) {
+                    r["error"] = e.error.empty() ? std::string("shader did not register") : e.error;
+                    break;
+                }
+            }
+        }
+        r["summary"] = r["registered"].get<bool>()
+                           ? "registered project shader operator '" + name + "'"
+                           : "wrote project shader file, but it did not register";
         return r;
     };
     handlers_["save_project"] = [](const ControlCtx& c, const json& b) {
@@ -332,12 +586,13 @@ void register_project_handlers(Handlers& handlers_) {
                 else {
                     const std::string reg = load_and_register_operator(ci.dylib_path, c.app->op_registry, c.app->op_loaders);
                     jo["registered"] = !reg.empty();
-                    if (!reg.empty()) { jo["op"] = reg; ++registered; }
+                    if (!reg.empty()) { jo["op"] = reg; ++registered; c.app->project_operator_types.insert(reg); }
                     else jo["note"] = "compiled but already registered — use reload_operator_package to hot-swap";
                 }
                 ops.push_back(jo);
             }
         }
+        if (registered > 0) c.app->file_drops.rebuild(c.app->op_loaders);
         r["operators"] = ops;
         r["newly_registered"] = registered;
         r["summary"] = "reloaded project files: " + std::to_string(shader_ops) + " shader op(s), " +

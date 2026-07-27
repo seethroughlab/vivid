@@ -1684,6 +1684,29 @@ def set_media_root(path: str) -> dict:
     return _post("set_media_root", {"path": path})
 
 
+@mcp.tool
+def check_tutorial_prereqs(tutorial: str = "mcp_native_first_project") -> dict:
+    """Run a named tutorial readiness checklist before a builder mutates anything. Returns
+    ready, checks, missing, and next_actions so an MCP client can explain setup gaps. The first
+    supported checklist is mcp_native_first_project, which verifies Surge XT and project-shader
+    onboarding state."""
+    return _post("check_tutorial_prereqs", {"tutorial": tutorial})
+
+
+@mcp.tool
+def scaffold_project_shader_operator(name: str, filename: str = "", source: str = "",
+                                     overwrite: bool = False) -> dict:
+    """Write and live-register a project-local shader operator in the current saved folder project.
+    The shader appears by its metadata/operator name in list_operators and can be spawned like any
+    other visual node. If source is omitted, Vivid writes a small WGSL starter."""
+    payload = {"name": name, "overwrite": overwrite}
+    if filename:
+        payload["filename"] = filename
+    if source:
+        payload["source"] = source
+    return _post("scaffold_project_shader_operator", payload)
+
+
 # ---- ADR-0024 Phase 7: project workflow (inspect / resolve / reload project assets) ----
 
 @mcp.tool

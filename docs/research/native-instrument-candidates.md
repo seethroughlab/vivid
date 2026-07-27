@@ -2,21 +2,21 @@
 
 Date: 2026-07-26
 
-Scope: small research pass for ADR-0034. Sources checked:
+Scope: small research pass for ADR-0040. Sources checked:
 
 - `vivid-classic` branch audio operators and generated site metadata
 - sibling package `../vivid-wavetable` (read-only; repo had unrelated local changes)
 
 ## Question
 
-Should the ADR-0034 beginner path assume Surge XT, or should we port/ship a strong native instrument
+Should the ADR-0040 beginner path assume Surge XT, or should we port/ship a strong native instrument
 from Vivid Classic or `vivid-wavetable` so the tutorial can avoid third-party plugins?
 
 ## Summary
 
 Keep **Surge XT as assumed installed** for the public beginner path.
 
-Do not port a classic instrument into core for ADR-0034. Classic has small useful synths and
+Do not port a classic instrument into core for ADR-0040. Classic has small useful synths and
 samplers, but none appear strong enough to replace Surge XT as a beginner-facing musical voice
 without either sounding like a test utility or pulling content/tooling weight into core.
 
@@ -45,7 +45,7 @@ excellent, not to fold its engine into core.
 - Weakness: two-operator FM is useful but not broad or beginner-friendly enough to anchor public
   onboarding. It is likely to sound narrow without presets, effects, and curation.
 - Recommendation: possible package or small future native utility, but not worth changing the
-  ADR-0034 beginner assumption.
+  ADR-0040 beginner assumption.
 
 ### Sampler / SP404
 
@@ -58,7 +58,7 @@ excellent, not to fold its engine into core.
 - Weakness: the instrument quality depends on sample-bank format, bundled/licensed content, browser
   UX, missing-asset recovery, and install size. This is more an onboarding content/package problem
   than a lean-core primitive.
-- Recommendation: keep sampler capability as utility; do not make it the ADR-0034 beginner voice.
+- Recommendation: keep sampler capability as utility; do not make it the ADR-0040 beginner voice.
 
 ### GranularSynth
 
@@ -111,7 +111,7 @@ Recommendation:
 - Add website/package work so `vivid-wavetable` can be presented as the native synthesis path:
   install, verify, load module/preset, inspect, map, save project.
 
-## Decision For ADR-0034
+## Decision For ADR-0040
 
 For now:
 
@@ -128,4 +128,3 @@ Promotion rule for any future native instrument:
 - It must have clear missing-asset/missing-package recovery.
 - It must have tests, metadata, and at least one tutorial project.
 - It must justify core residency over package residency.
-

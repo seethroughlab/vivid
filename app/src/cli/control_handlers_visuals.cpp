@@ -59,7 +59,8 @@ void register_visuals_handlers(Handlers& handlers_) {
         if (in_id >= 0 && in_idx < 0) return err(code::kNotFound, "no node with that input_id");
         const int port = b.value("port", 0);
         const int nports = c.vgraph->nodes()[idx].inst.input_port_count;
-        if (port < 0 || port >= nports)
+        const bool output_primary = c.vgraph->nodes()[idx].is_output() && port == 0;
+        if (port < 0 || (!output_primary && port >= nports))
             return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
         c.vgraph->set_input(idx, port, in_idx);   // N-input: wire src -> node's texture input `port`
         tidy_layout(c);                            // re-tidy: node positions depend on the edges

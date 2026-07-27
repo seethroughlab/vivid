@@ -44,3 +44,13 @@ is treated as a release artifact of the demo QA path, not as hand-crafted market
 - Showcase work will uncover UI, MCP, save/load, plugin, media, and rendering gaps.
 - The website implementation should support adding media later without redesigning the whole site.
 
+## Progress
+
+The ADR-0040 tutorial artifacts are the first regeneration/proof path that can feed later showcase
+work, but they are not yet website-ready showcase demos. They intentionally optimize for product
+friction discovery over visual polish.
+
+Before the real website can use screenshots or video, the showcase set still needs refreshed saved
+projects that visibly demonstrate Session View, audio-reactive mappings, project-local creative code,
+and the curated free-plugin path. The current tutorial work gives those demos a better foundation,
+but does not remove the showcase gate.

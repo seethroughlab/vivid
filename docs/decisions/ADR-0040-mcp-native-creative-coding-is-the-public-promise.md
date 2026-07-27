@@ -1,4 +1,4 @@
-# ADR-0034: MCP-Native Creative Coding Is the Public Promise
+# ADR-0040: MCP-Native Creative Coding Is the Public Promise
 
 Status: accepted
 
@@ -80,7 +80,7 @@ claim to fit incomplete product behavior.
 
 ## Fulfillment Gates
 
-ADR-0034 is fulfilled when the following can be demonstrated from a signed release build:
+ADR-0040 is fulfilled when the following can be demonstrated from a signed release build:
 
 1. **Golden path project.** A beginner tutorial creates a saved folder project from scratch or from a
    starter example, then reloads it successfully.
@@ -155,19 +155,38 @@ required/optional free plugin story explicit. The follow-up C++ artifact should 
 `examples/song-sketch`.
 
 **First friction result.** The initial live run successfully authored the project through the control
-server, loaded Surge XT, produced audio/visual output, and wrote proof hooks. It also exposed a core
-gap: a saved project-relative `CustomShader.file` value can pass control-server reload/quality checks
-while the live operator later logs that it cannot open the relative shader path. The smallest fix is
-in the project asset contract, not in adding new built-in creative features: successful save and load
-both establish the project asset root; in-process operators receive project-resolved FILE/TEXT params;
-loaded dylib operators keep receiving those resolved strings through the existing ABI context.
+server, loaded Surge XT, produced audio/visual output, and wrote proof hooks. It also exposed that
+the tutorial was following stale `CustomShader` language rather than ADR-0016's current shader-file
+operator model. The durable fix is not to restore the fixed four-param `CustomShader` contract. A
+project-local shader file should declare its metadata, register as a named operator, and appear in
+the same catalog/mapping surface as bundled shaders and compiled operators.
 
 **Second friction result.** The live shader edit artifact at `examples/tutorials/live-shader-edit/`
-showed that editing a project-local `CustomShader.file` source needed a real same-path content reload
-contract, not a tutorial-only FILE-param rebind. `reload_project_files` now bumps a live
-FILE-param reload generation for nodes with authored FILE/TEXT values, and `CustomShader` reloads
-the same resolved path when that generation changes. This keeps the core lean: no watcher, no path
-mutation, and no special tutorial behavior.
+showed that project-local shader edits need a real refresh contract, not a tutorial-only rebind.
+`reload_project_files` refreshes the project shader tier and preserves graph identity for nodes using
+the same metadata-named shader operator. This keeps the core lean: no watcher requirement for the
+tutorial, no path mutation, and no special tutorial behavior.
+
+**Third friction result.** The first-project builder's Surge XT checks were too product-shaped to
+live only in tutorial Python: download hints, expected install paths, plugin-catalog visibility,
+project-shader workflow availability, and safe "do not delete generated work yet" behavior are
+onboarding diagnostics. Vivid now exposes `check_tutorial_prereqs` through the control server/MCP.
+The first checklist is `mcp_native_first_project`, which reports `ready`, structured checks, missing
+prerequisites, and next actions before a tutorial mutates project files. Vivid also exposes
+`scaffold_project_shader_operator`, which writes a metadata-bearing shader under `<project>/shaders`,
+registers it live as its declared operator name, and returns the path/operator pair for tutorials and
+MCP clients. The builder still handles the one case Vivid cannot answer itself: the app/control
+server is not running.
+
+**Fourth friction result.** Project-local C++ operators need the same project scope rule as
+project-local shaders: a folder project's `vivid-package.json` registers named operators that belong
+to that open project, not to the whole Vivid process forever. Vivid now tracks compiled operators
+registered from a project package, unregisters them and removes their dylib loaders after the old
+graph is destroyed on New/project switch, and tracks later project-package registrations from
+`reload_project_files` / `reload_operator_package`. The user-facing model is parallel:
+`project/shaders/Foo.wgsl` registers `Foo` as a shader operator; `project/vivid-package.json` plus
+`Foo.cpp` registers `Foo` as a compiled operator. The C++ path remains a later tutorial tier because
+it adds compiler, ABI, crash/quarantine, and hot-reload diagnostics beyond the shader path.
 
 ## Implementation Order
 
