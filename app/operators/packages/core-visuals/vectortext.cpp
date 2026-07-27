@@ -25,7 +25,9 @@ const char* kVectorTextWGSL = R"(
 struct U { res: vec2f, time: f32, size: f32, posx: f32, posy: f32, pad0: f32, pad1: f32, fill: vec4f };
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs_fan(@location(0) p: vec2f) -> @builtin(position) vec4f {
-    var q = vec2f(p.x, p.y) * (u.size * 1.6);
+    // FreeType glyph outlines are Y-up; the composited output is Y-flipped, so negate glyph Y here
+    // to render text upright (about its own centre — position/posy is unaffected).
+    var q = vec2f(p.x, -p.y) * (u.size * 1.6);
     q.x = q.x * (u.res.y / max(u.res.x, 1.0));   // aspect-correct against the REAL target
     q = q + vec2f((u.posx - 0.5) * 2.0, (u.posy - 0.5) * 2.0);
     return vec4f(q, 0.0, 1.0);

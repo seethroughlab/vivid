@@ -1,5 +1,5 @@
 {
-  "note": "Hero images are release artifacts of the ADR-0037 showcase QA harness (examples/demos/showcase). Regenerate: run the harness against the signed app.",
+  "note": "Hero images are release artifacts of the ADR-0037 showcase QA harness (examples/demos/showcase). Regenerate: run the harness against the signed app. mirror-bridge.png was re-captured on the dev build after the VectorText Y-flip fix (on main; matches the next signed release); the other four are signed-build captures.",
   "app_build": "signed",
   "app_version": "0.1.0",
   "captured_from": "/Applications/vivid.app (signed release, build_type=release, operator_abi=14)",
@@ -34,8 +34,8 @@
       "hero": "mirror-bridge.png",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2701,
-      "contrast": 0.1543,
+      "brightness": 0.2794,
+      "contrast": 0.1553,
       "hash": "3c3c7e7e7e7e3c3c"
     },
     {
