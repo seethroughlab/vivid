@@ -185,7 +185,7 @@ void publish_bridge_sources(App& app, Window& win) {
     };
     // identity key: tag (top byte) | track_id (24b) | node_id (24b) | kind/band (8b) — collision-free.
     auto key = [](uint64_t tag, uint64_t a, uint64_t b, uint64_t c) { return (tag << 56) | (a << 32) | (b << 8) | c; };
-    constexpr uint64_t kMaster = 1, kMasterFft = 2, kTrack = 3, kTrackFft = 4, kNodeRms = 5, kNodeCtl = 6, kNodeFft = 7, kNodeFftGate = 8;
+    constexpr uint64_t kMaster = 1, kMasterFft = 2, kTrack = 3, kTrackFft = 4, kNodeRms = 5, kNodeCtl = 6, kNodeFft = 7, kNodeFftGate = 8, kTransport = 9;
     // Frame-side spectrum: snapshot recent samples (already in an_buf), publish <src>.fft.0..N-1 by handle.
     // Static scratch is fine — once per frame on the UI thread. sr fixed at 48k (a device-rate mismatch
     // only nudges band edges cosmetically).
@@ -206,6 +206,27 @@ void publish_bridge_sources(App& app, Window& win) {
                              std::min(1.0f, transport.band_high.load(rel) * 12.0f) };
     for (int k = 0; k < 5; ++k)
         graph.publish(H(key(kMaster, 0, 0, k), [k] { return B::master_source(B::kTrackKindSuffixes[k]); }), mvals[k]);
+    // Transport (beat/bar/tempo) sources — musically-timed signals so visuals can punctuate ON the
+    // beat/bar instead of only following loudness. beat/bar_phase are 0..1 sawtooth ramps; downbeat/
+    // beat_pulse are decayed flashes snapped to 1 on each bar/beat edge (edge-detected here).
+    {
+        const double beats = transport.beats.load(rel);
+        const int bpb = std::max(1, transport.beats_per_bar.load(rel));
+        const double bar_pos = beats / static_cast<double>(bpb);
+        const long long beat_idx = static_cast<long long>(std::floor(beats));
+        const long long bar_idx  = static_cast<long long>(std::floor(bar_pos));
+        win.beatPulse *= 0.85f;
+        if (beat_idx != win.lastBeatIdx) { win.beatPulse = 1.f; win.lastBeatIdx = beat_idx; }
+        win.barPulse *= 0.85f;
+        if (bar_idx != win.lastBarIdx)   { win.barPulse = 1.f; win.lastBarIdx = bar_idx; }
+        const float tvals[B::kNumTransportKinds] = {
+            static_cast<float>(beats - std::floor(beats)),        // beat: phase within the beat
+            static_cast<float>(bar_pos - std::floor(bar_pos)),    // bar_phase: phase within the bar
+            std::min(1.0f, win.barPulse),                          // downbeat pulse
+            std::min(1.0f, win.beatPulse) };                       // beat pulse
+        for (int k = 0; k < B::kNumTransportKinds; ++k)
+            graph.publish(H(key(kTransport, 0, 0, k), [k] { return B::transport_source(B::kTransportKindSuffixes[k]); }), tvals[k]);
+    }
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)

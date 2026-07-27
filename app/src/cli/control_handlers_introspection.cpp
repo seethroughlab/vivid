@@ -1231,6 +1231,17 @@ void register_introspection_handlers(Handlers& handlers_) {
         for (int t = 0; t < P::session_track_count(c.session); ++t)
             emit("track_" + std::to_string(P::session_track_id(c.session, t)),
                  P::session_track_name(c.session, t), true);
+        // Transport (master-clock) sources: beat/bar phase ramps + downbeat/beat pulses. These let a
+        // visual hit ON the beat or phrase with the music, independent of any track's loudness.
+        static const char* kTKinds[] = { "beat", "bar_phase", "downbeat", "beat_pulse" };
+        static const char* kTDescs[] = { "phase within the current beat, 0..1 sawtooth",
+                                         "phase within the current bar, 0..1 sawtooth",
+                                         "downbeat flash (pulses to 1 at the start of each bar)",
+                                         "beat flash (pulses to 1 on each beat)" };
+        for (int k = 0; k < 4; ++k)
+            sources.push_back({ {"source", std::string("transport.") + kTKinds[k]}, {"kind", kTKinds[k]},
+                                {"label", std::string("transport ") + kTKinds[k]}, {"range", {0.0, 1.0}},
+                                {"description", kTDescs[k]} });
         json r = ok(); r["sources"] = sources; return r;
     };
 
