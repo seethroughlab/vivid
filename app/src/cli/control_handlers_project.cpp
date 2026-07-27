@@ -1,4 +1,5 @@
 #include "cli/control_handlers_internal.h"
+#include "cli/project_recovery.h"   // ADR-0040 P3: pure beginner-recovery diagnostics (plugin/package)
 
 #include "persist.h"
 #include "app/project_io.h"   // folder-aware save/load + project-local operators
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cctype>
+#include <set>
 #include <sstream>
 #include <string>
 
@@ -256,6 +258,24 @@ json session_structure(const json& j) {
     return s;
 }
 
+// Does a saved plugin identity (a catalog label like "Surge XT" or a .clap/.vst3 path) resolve on
+// this machine? Loadable if the file exists on disk OR the plugin catalog lists a matching path/name.
+// Conservative: an empty identity, or a match by either path or name, counts as resolved — we only
+// flag a plugin we are confident is unavailable, so a healthy load reports nothing. This is the
+// machine-specific resolver the pure recovery::analyze_saved_project runs against.
+bool plugin_identity_resolves(const std::string& id) {
+    namespace P = vivid::session;
+    if (id.empty()) return true;
+    std::error_code ec;
+    if (vivid::recovery::ident_looks_like_path(id) && fs::exists(id, ec)) return true;
+    for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+        const auto& p = P::plugin_at(i);
+        if (!p.path.empty() && p.path == id) return true;
+        if (!p.name.empty() && (contains_ci(id, p.name) || contains_ci(p.name, id))) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 // Session author / persist + project workflow (a thin folder-aware layer over the session JSON):
@@ -427,16 +447,30 @@ void register_project_handlers(Handlers& handlers_) {
     // resolve, and refresh a project's assets without guessing paths. All compose project_io /
     // the folder conventions; none touch perception.
 
-    // validate_project — structural health of the loaded project: is it saved, does its session file
-    // exist on disk, does it carry a project-local operator package, and is any referenced media
-    // missing. `valid` is false only for a hard problem (missing session file / missing media).
+    // validate_project — structural health + recovery diagnostics for the loaded project. Reports
+    // whether it is saved, whether its session file exists, whether it carries a project-local
+    // operator package, and whether any referenced media is missing (the `valid` gate: false only for
+    // a hard on-disk-integrity problem — missing session file / missing media). It ALSO surfaces the
+    // silent load-time degradations a beginner hits on a fresh machine (ADR-0040 Phase 3, Fulfillment
+    // Gate #8): a track's plugin not installed, a project-local shader/operator that did not register
+    // or compile, and a package source that is gone. Those set `degraded` (the project loaded but is
+    // not fully functional) without flipping `valid`, and each gets an issue + a next_action in the
+    // same recovery vocabulary as check_tutorial_prereqs.
     handlers_["validate_project"] = [](const ControlCtx& c, const json&) {
         if (!c.app || !c.session) return err(code::kNoSession, "no session");
         const std::string path = c.app->project.current_project_path;
         json issues = json::array();
+        json next_actions = json::array();
+        std::set<std::string> action_titles;   // dedup: many tracks may need the same plugin
+        auto add_action = [&](const json& a) {
+            const std::string t = a.value("title", std::string());
+            if (action_titles.insert(t).second) next_actions.push_back(a);
+        };
+        bool degraded = false;
         json r = ok();
         r["path"] = path;
         r["saved"] = !path.empty();
+        std::error_code ec;
         if (path.empty()) {
             issues.push_back({ {"level", "info"}, {"issue", "project is unsaved (in-memory only)"} });
             r["valid"] = true;   // an unsaved project is a valid state, just not on disk yet
@@ -445,7 +479,6 @@ void register_project_handlers(Handlers& handlers_) {
             r["is_folder_project"] = folder;
             const std::string dir = project_asset_dir(c.app);
             const std::string jpath = vivid::project_paths::session_json_path(path);
-            std::error_code ec;
             const bool session_exists = fs::exists(jpath, ec);
             r["session_file"] = jpath;
             r["session_file_exists"] = session_exists;
@@ -456,14 +489,67 @@ void register_project_handlers(Handlers& handlers_) {
             const bool has_shaders = folder && fs::is_directory(fs::path(dir) / "shaders", ec);
             r["has_shaders_dir"] = has_shaders;
             r["valid"] = session_exists;
+
+            // Beginner recovery (ADR-0040 P3): a track whose plugin isn't installed loaded as a silent
+            // placeholder (persist.cpp), and a package source that is gone is otherwise invisible here.
+            // The saved JSON is the source of intent; analyze it against this machine's plugin catalog.
+            json disk = json::object();
+            if (session_exists) {
+                std::ifstream f(jpath);
+                try { f >> disk; }
+                catch (const std::exception& e) {
+                    issues.push_back({ {"level", "error"}, {"issue", "session file could not be parsed"},
+                                       {"path", jpath}, {"detail", e.what()} });
+                    disk = json::object();
+                }
+            }
+            auto rep = vivid::recovery::analyze_saved_project(
+                disk, dir, has_pkg, [](const std::string& id) { return plugin_identity_resolves(id); });
+            for (const auto& is : rep.issues) issues.push_back(is);
+            for (const auto& a : rep.next_actions) add_action(a);
+            degraded = degraded || rep.degraded;
         }
+
+        // Visual-op health: the live graph knows which nodes never resolved to a registered operator
+        // (missing project shader / package op) and which shader ops carry a compile error. Both are
+        // otherwise silent over MCP — VisualNode::error() is the single source of truth (ADR-0019).
+        if (c.vgraph) {
+            bool broken_visual = false;
+            for (const auto& n : c.vgraph->nodes()) {
+                const std::string e = n.error();
+                if (e.empty()) continue;
+                degraded = true;
+                broken_visual = true;
+                const bool unregistered = n.op_missing();
+                issues.push_back({ {"level", "error"},
+                                   {"issue", unregistered ? "visual operator not registered"
+                                                          : "visual operator failed to compile"},
+                                   {"node_id", n.id}, {"op", n.op_type}, {"detail", e},
+                                   {"suggestion", unregistered
+                                       ? "The project-local shader/operator '" + n.op_type + "' is not registered. Check shaders/ and vivid-package.json, then call reload_project_files."
+                                       : "Fix the shader/operator source for '" + n.op_type + "', then call reload_project_files."} });
+            }
+            // Only suggest reload_project_files when a *visual op* is actually broken — that is the fix
+            // reload re-applies. A missing plugin needs a relaunch (its own action), not a reload.
+            if (broken_visual)
+                add_action(tutorial_action("Reload project files",
+                    "After fixing a project-local shader or operator source on disk, call reload_project_files to re-register it without reloading the whole project."));
+        }
+
         for (const auto& m : c.app->project.missing_media)
             issues.push_back({ {"level", "error"}, {"issue", "missing media"}, {"path", m} });
         if (!c.app->project.missing_media.empty()) r["valid"] = false;
+
         r["issues"] = issues;
-        r["summary"] = r.value("valid", false)
-                           ? std::string("project is valid (") + std::to_string(issues.size()) + " note(s))"
-                           : std::string("project has ") + std::to_string(issues.size()) + " issue(s)";
+        r["degraded"] = degraded;
+        r["next_actions"] = next_actions;
+        const bool valid = r.value("valid", false);
+        const std::string n = std::to_string(issues.size());
+        r["summary"] = !valid
+                           ? "project has " + n + " issue(s) — not loadable as saved"
+                           : degraded
+                               ? "project loaded but is degraded — " + n + " recovery item(s)"
+                               : "project is valid (" + n + " note(s))";
         return r;
     };
 

@@ -256,6 +256,12 @@ target_sources(test_package_manifest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp)
 target_link_libraries(test_package_manifest PRIVATE nlohmann_json::nlohmann_json)
 
+vivid_add_test(test_project_recovery)   # ADR-0040 P3: beginner-recovery diagnostics (plugin/package)
+target_sources(test_project_recovery PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/cli/project_recovery.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/packages/package_manifest.cpp)
+target_link_libraries(test_project_recovery PRIVATE nlohmann_json::nlohmann_json)
+
 # P2.3: package pipeline — parse manifest, compile the operator via clang++, load it.
 # Compiles a GPU-free fixture op so it needs no wgpu at test time (portable/headless).
 vivid_add_test(test_package_compile)
