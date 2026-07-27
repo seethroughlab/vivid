@@ -30,7 +30,7 @@ if DEMOS not in sys.path:
     sys.path.insert(0, DEMOS)
 
 from vivid_demo import (  # noqa: E402
-    SURGE, SURGE_FX, Vivid, call_optional, require_control_server, warm_capture,
+    SURGE, SURGE_FX, Vivid, call_optional, capture_video, require_control_server, warm_capture,
 )
 from showcase import gates, registry, report  # noqa: E402
 
@@ -123,6 +123,13 @@ def run_showcase(v: Vivid, showcase, args, caps: dict) -> gates.ShowcaseResult:
     steps["capture"] = warm_capture(v, str(hero_path), tries=args.warm_tries, delay=args.warm_delay)
     steps["analyze"] = call_optional(v, "analyze_frame", path=str(hero_path))
 
+    # --- 5b. VIDEO CLIP (opt-in): play + record a short AV-synced clip for the website ----------
+    if args.video:
+        video_path = args.heroes / showcase.video_name()
+        print(f"[{showcase.id}] recording {args.video_seconds:.0f}s clip -> {video_path.name}")
+        steps["video"] = capture_video(v, str(video_path),
+                                       seconds=args.video_seconds, fps=args.video_fps)
+
     # --- 6. GATE + per-showcase report ---------------------------------------------------------
     result = gates.evaluate(showcase, steps, caps)
     print(f"[{showcase.id}] {result.gate.upper()}"
@@ -142,6 +149,10 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--no-regen", action="store_true", help="load+verify+capture existing artifacts only")
     p.add_argument("--force", action="store_true", help="regenerate even when a prereq is missing")
     p.add_argument("--audio", action="store_true", help="play transport + run no_audio_clipping")
+    p.add_argument("--video", action="store_true",
+                   help="also record a short AV clip per showcase (heroes/<id>.mp4) for the website")
+    p.add_argument("--video-seconds", type=float, default=6.0, help="clip length seconds (default 6)")
+    p.add_argument("--video-fps", type=float, default=30.0, help="clip frame rate (default 30)")
     p.add_argument("--warm-tries", type=int, default=12, help="warm_capture attempts (default 12)")
     p.add_argument("--warm-delay", type=float, default=0.5, help="warm_capture delay seconds")
     p.add_argument("--json", action="store_true", help="print machine-readable index to stdout")

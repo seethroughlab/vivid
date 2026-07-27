@@ -70,12 +70,28 @@ def render_supports(cfg: dict) -> str:
     return "\n".join(item.substitute(title=esc(s["title"]), body=esc(s["body"])) for s in cfg["supports"])
 
 
+def showcase_media_html(s: dict) -> str:
+    """The card's media element: a muted autoplay-loop <video> (hero PNG as poster/fallback) when the
+    showcase has a clip, else the still <img>. Poster means the hero shows instantly and remains the
+    fallback if the video can't play, so the hero PNGs stay the single source of truth."""
+    hero = s["hero"]
+    title = esc(s["title"])
+    if s.get("video"):
+        return (
+            f'<video class="showcase-video" src="/assets/showcase/{s["video"]}" '
+            f'poster="/assets/showcase/{hero}" width="1280" height="720" '
+            f'muted loop playsinline autoplay preload="metadata" aria-label="{title}"></video>'
+        )
+    return (f'<img src="/assets/showcase/{hero}" alt="{title}" '
+            f'width="1280" height="720" loading="lazy">')
+
+
 def render_showcase_cards(cfg: dict) -> str:
     item = load_template("_showcase_card.html")
     cards = []
     for s in cfg["showcase"]:
         cards.append(item.substitute(
-            hero=s["hero"], title=esc(s["title"]), type=s["type"],
+            media=showcase_media_html(s), title=esc(s["title"]), type=s["type"],
             mechanism=esc(s["mechanism"]), blurb=esc(s["blurb"]),
             source=f'{cfg["source_base"]}/{s["source"]}',
         ))
@@ -239,6 +255,13 @@ def build_site(output_dir: Path) -> None:
         if not src.exists():
             raise SystemExit(f"[build] missing hero image: {src} (run the showcase harness first)")
         shutil.copy2(src, hero_out / s["hero"])
+        # Optional per-showcase clip (heroes/<id>.mp4 from `runner.py --video`); the hero PNG is its poster.
+        if s.get("video"):
+            vsrc = HEROES_SRC / s["video"]
+            if not vsrc.exists():
+                raise SystemExit(f"[build] missing showcase video: {vsrc} "
+                                 f"(run the showcase harness with --video, or drop the 'video' field)")
+            shutil.copy2(vsrc, hero_out / s["video"])
 
     base = load_template("base.html")
 
@@ -316,6 +339,10 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
                       if not (output_dir / "assets" / "showcase" / s["hero"]).exists()]
     if missing_heroes:
         raise SystemExit(f"[build] self-check failed — missing heroes: {', '.join(missing_heroes)}")
+    missing_videos = [s["video"] for s in cfg["showcase"]
+                      if s.get("video") and not (output_dir / "assets" / "showcase" / s["video"]).exists()]
+    if missing_videos:
+        raise SystemExit(f"[build] self-check failed — missing videos: {', '.join(missing_videos)}")
     # No unresolved $template placeholders leaked into any page.
     for html in output_dir.rglob("index.html"):
         text = html.read_text()

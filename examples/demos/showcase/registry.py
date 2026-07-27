@@ -62,6 +62,10 @@ class Showcase:
     def hero_name(self) -> str:
         return self.hero or f"{self.id}.png"
 
+    def video_name(self) -> str:
+        """Showcase clip filename (parallel to the hero PNG). The site poster is the hero PNG."""
+        return f"{self.id}.mp4"
+
     def target_path(self) -> Path:
         """Absolute path of the tutorial build.py (TUTORIAL only)."""
         return REPO / self.target

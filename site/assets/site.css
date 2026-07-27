@@ -190,6 +190,7 @@ main {
 .showcase-card:hover, .tutorial-card:hover { border-color: var(--border-lit); transform: translateY(-2px); }
 .showcase-media, .tutorial-media { display: block; background: #000; aspect-ratio: 16 / 9; }
 .showcase-media img, .tutorial-media img { width: 100%; height: 100%; object-fit: cover; }
+.showcase-media video { display: block; width: 100%; height: 100%; object-fit: cover; }
 .showcase-body, .tutorial-body { padding: 16px 18px 18px; }
 .tag {
   display: inline-block;

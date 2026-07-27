@@ -74,6 +74,15 @@ class Vivid:
     def launch_scene(self, scene: int):
         return self.call("launch_scene", scene=scene)
 
+    # --- video export (realtime AV) ---
+    def export_video(self, path: str, seconds: float, fps: float = 30.0):
+        """Record the live visual output + master audio to an AV-synced clip for `seconds`, then
+        auto-stop server-side. Returns immediately; poll video_export_status until recording:false."""
+        return self.call("export_video", path=path, seconds=seconds, fps=fps)
+
+    def video_export_status(self):
+        return self.call("video_export_status")
+
     def scenes(self, names: list[str]) -> list[int]:
         """Lay out song SECTIONS as named scenes (intro/verse/chorus/bridge/outro). Call right after
         reset() — a fresh session has 1 scene, so this appends the rest and names them all. The song
@@ -516,6 +525,38 @@ def warm_capture(v: "Vivid", path: str, tries: int = 10, delay: float = 0.5) -> 
                 return r
         time.sleep(delay)
     return r
+
+
+def capture_video(v: "Vivid", path: str, seconds: float = 6.0, fps: float = 30.0,
+                  scene: int = 0) -> dict:
+    """Play the loaded project and record a short AV-synced clip to `path` (server-side auto-stop
+    after `seconds`). Samples visual motion mid-clip as a liveness cross-check, then pauses transport.
+    The caller must have loaded + warmed the project first (a blank/static output yields a dull clip).
+    Returns {ok, path, status, motion, error?}; ok=False if the export never started or finalized."""
+    call_optional(v, "set_playing", playing=True)
+    call_optional(v, "launch_scene", scene=scene)   # best-effort: start the first section, if any
+    started = call_optional(v, "export_video", path=path, seconds=seconds, fps=fps)
+    if not isinstance(started, dict) or not started.get("ok", True):
+        call_optional(v, "set_playing", playing=False)
+        return {"ok": False, "path": path, "error": "export_video did not start", "status": started}
+
+    # analyze_visual_motion's first call only seeds its window; poll while the clip records.
+    call_optional(v, "analyze_visual_motion", duration_seconds=0.8)
+    status, motion = None, None
+    deadline = seconds + 10.0   # generous margin over the server-side auto-stop
+    waited = 0.0
+    while waited < deadline:
+        time.sleep(0.5)
+        waited += 0.5
+        status = call_optional(v, "video_export_status")
+        m = call_optional(v, "analyze_visual_motion", duration_seconds=0.8)
+        if isinstance(m, dict):
+            motion = m
+        if isinstance(status, dict) and status.get("recording") is False:
+            break
+    call_optional(v, "set_playing", playing=False)
+    ok = isinstance(status, dict) and status.get("recording") is False and status.get("frames", 0) > 0
+    return {"ok": bool(ok), "path": path, "status": status, "motion": motion}
 
 
 # --- Surge XT (a free/open CLAP synth — always audible, unlike the licensed VST3s) ---
