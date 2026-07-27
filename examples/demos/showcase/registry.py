@@ -86,9 +86,9 @@ SHOWCASES: list[Showcase] = [
         title="Pulse — techno song (Session View + visual graph)",
         target="pulse",
         project_dir=DEMO_PROJECTS / "pulse",
-        prereqs=(Prereq.SURGE,),
+        prereqs=(Prereq.SURGE, Prereq.CASSETTE_DRUMS),
         wants_audio=True,
-        notes="Multi-track scene + reactive geometry graph; Surge voices (degrade to WARN if absent).",
+        notes="Multi-track scene + reactive geometry graph; Surge voices + free Cassette Drums.",
     ),
     Showcase(
         id="mirror-bridge",
@@ -119,9 +119,9 @@ SHOWCASES: list[Showcase] = [
         title="Neon — synthwave song on the curated free-plugin path",
         target="neon",
         project_dir=DEMO_PROJECTS / "neon",
-        prereqs=(Prereq.SURGE,),
+        prereqs=(Prereq.SURGE, Prereq.CASSETTE_DRUMS),
         wants_audio=True,
-        notes="Surge XT arp + bass; the ADR-0036 free-plugin music showcase.",
+        notes="Surge XT arp + bass + free Cassette Drums; the ADR-0036 free-plugin music showcase.",
     ),
 ]
 

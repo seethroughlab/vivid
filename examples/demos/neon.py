@@ -16,20 +16,24 @@ import theory
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "neon")
 
-ARP, BASS, DRUMS = 0, 1, 2
+CASSETTE = "Cassette Drums"       # free VST3 drum machine (BPB)
 
 
 def build(v: Vivid, save: bool = True):
-    v.new_project()
+    v.reset()
     v.bpm(100)
     prog = ["Am", "F", "C", "G"]      # i-VI-III-VII, 1 bar each
 
-    # --- instruments : Surge XT — a bright detuned arp (with a shimmer FX) and a dark bass;
-    # drums stay on EZdrummer. ---
+    # --- roster : self-contained. Author our OWN tracks (don't assume the default session's
+    # tracks) so the project regenerates from any session. All free plugins: Surge XT — a bright
+    # detuned arp (with a shimmer FX) + a dark square bass — over a free VST3 drum machine. ---
+    DRUMS = v.add_track(kind="instrument", instrument=CASSETTE)     # free VST3 drums
+    v.set_track_gain(DRUMS, 0.85)                  # leave master headroom (kick is the hottest source)
+    ARP = v.add_graph_track("arp")
     an = surge_preset(v, ARP, "pluck", prefer="Sync", gain=0.75)   # bright synthwave pluck arp
     v.clap_effect(ARP, SURGE_FX)                  # synthwave shimmer/space on the arp
     v.node_param(ARP, v.audio_node_id(ARP, "effect"), SURGE_FX_TYPE, 0.05)
-    surge_preset(v, BASS, "bass", prefer="Square", gain=1.0)       # driving square bass
+    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "bass", prefer="Square", gain=0.85)
 
     # --- arp : classic driving 16th synthwave arp, one chord per bar ---
     notes = []
@@ -55,10 +59,10 @@ def build(v: Vivid, save: bool = True):
         "hat":   "x.x.x.x.x.x.x.x.",
     }, bars=4, vel=0.85)
 
-    # --- visuals : REAL geometry (cyan Lines rings + a magenta wireframe Mesh), added, then
-    # run through the existing Feedback->Blur->Output for a Tron/neon bloom. ---
-    nodes = v.graph()["nodes"]
-    fb, blur = find(nodes, "Feedback"), find(nodes, "Blur")
+    # --- visuals : REAL geometry (cyan Lines rings + a magenta wireframe Mesh), added, then run
+    # through our OWN Feedback->Blur for a Tron/neon bloom -> Output. Self-contained: after reset
+    # the graph is just Output, so we author the whole glow chain (don't assume a default chain). ---
+    out = find(v.graph()["nodes"], "Output")
     rings = v.add_node("Lines")                   # real LineList: concentric n-gon rings (the grid)
     for k, val in dict(mode=0.8, count=0.35, sides=0.75, size=0.8, rotation=0.0,
                        r=0.2, g=0.85, b=1.0, bg_r=0.02, bg_g=0.01, bg_b=0.06).items():
@@ -71,9 +75,13 @@ def build(v: Vivid, save: bool = True):
     v.connect(comp, rings, port=0)                # A = the rings
     v.connect(comp, sun, port=1)                  # B = the octahedron
     v.set_node_param(comp, "mode", 1.0)          # ADD
-    v.connect(fb, comp)                           # Feedback reads the composite (glow) -> Blur -> Output
+    fb = v.add_node("Feedback")                   # Feedback reads the composite (glow) ...
     v.set_node_param(fb, "decay", 0.55)           # a modest neon bloom (not a haze)
+    v.connect(fb, comp)
+    blur = v.add_node("Blur")                     # ... -> Blur -> Output
     v.set_node_param(blur, "radius", 0.05)
+    v.connect(blur, fb)
+    v.connect(out, blur)
 
     # --- the bridge (smooth params only) ---
     v.map("master.low",       rings, "rotation", amount=0.3)                # bass rolls the rings

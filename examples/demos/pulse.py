@@ -16,18 +16,20 @@ import theory
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "pulse")
 
-# track map of the default session
-LEAD, BASS, DRUMS = 0, 1, 2      # Pigments, Serum 2, EZdrummer 3
+CASSETTE = "Cassette Drums"      # free VST3 drum machine (BPB)
 A1, A2, A3 = 33, 45, 57          # A across octaves
 
 
 def build(v: Vivid, save: bool = True):
-    v.new_project()
+    v.reset()
     v.bpm(128)
 
-    # --- instruments : real Surge XT factory patches (generic preset flow — pick by name). ---
-    surge_preset(v, BASS, "acid", prefer="Bassline 1", gain=1.0)   # acid bass
-    surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.7)        # bright stab
+    # --- roster : self-contained. Author our OWN tracks (don't assume the default session's
+    # tracks) so the project regenerates from any session — a free drum machine + real Surge XT
+    # factory patches (generic preset flow, pick by name). ---
+    DRUMS = v.add_track(kind="instrument", instrument=CASSETTE)     # free VST3 drums
+    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "acid", prefer="Bassline 1", gain=1.0)
+    LEAD = v.add_graph_track("lead"); surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.7)
 
     # --- drums (2 bars) : four-on-the-floor + clap on 2 & 4 + driving hats ---
     v.drums(DRUMS, 0, {
@@ -56,7 +58,7 @@ def build(v: Vivid, save: bool = True):
     v.set_clip(LEAD, 0, stabs, 8.0)
 
     # --- visuals : real geometry (ShapeGrid hexagons + a solid Mesh octahedron), added -> Output ---
-    # After new_project the chain is Plasma->Feedback->Blur->Output and the Output node is the
+    # After reset the default Plasma->Feedback->Blur->Output chain remains and the Output node is the
     # display. We build real-geometry generators and route them straight to Output (no field/haze).
     out = find(v.graph()["nodes"], "Output")
     sg = v.add_node("ShapeGrid")                     # a real vertex-buffer grid of hexagons
