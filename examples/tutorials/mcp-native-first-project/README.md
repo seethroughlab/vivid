@@ -1,6 +1,6 @@
 # MCP-Native First Project
 
-ADR-0034 Golden Path A: build a tiny audiovisual project through Vivid's MCP/control-server surface.
+ADR-0040 Golden Path A: build a tiny audiovisual project through Vivid's MCP/control-server surface.
 This is the first beginner tutorial artifact for the website revival.
 
 ## What You Build
@@ -9,8 +9,8 @@ The generated project contains:
 
 - a Surge XT CLAP instrument track named `tone`;
 - a short MIDI clip;
-- a project-local GLSL fragment at `assets/shaders/pulse_field.glsl`;
-- a `CustomShader -> Feedback -> Blur -> Output` visual graph;
+- a project-local WGSL shader operator at `shaders/pulse_field.wgsl`, registered as `PulseField`;
+- a `PulseField -> Blur -> Output` visual graph;
 - four audio-to-visual mappings;
 - a saved, reloadable folder project under `project/`;
 - proof files: `project/proof.json`, `project/capture.png`, and `project/FRICTION-LOG.md`.
@@ -59,9 +59,10 @@ From the repo root:
 uv run examples/tutorials/mcp-native-first-project/build.py
 ```
 
-The script checks the control server, the expected Surge XT CLAP path, and Vivid's visible plugin
-catalog before regenerating `project/`. If something is missing, it prints a checklist and exits
-without deleting the previous generated project.
+The script checks the control server, then calls Vivid's `check_tutorial_prereqs` preflight before
+regenerating `project/`. The checklist covers Surge XT and Vivid's project-local shader workflow. If
+something is missing, it prints Vivid's checklist and exits without deleting the previous generated
+project.
 
 After it finishes, open this folder project in Vivid:
 
@@ -82,10 +83,11 @@ Open `project/proof.json`. A good run has:
 Open `project/project.json` and confirm the shader path is portable:
 
 ```json
-"file": "assets/shaders/pulse_field.glsl"
+"op_type": "PulseField"
 ```
 
-The saved project should not contain a machine-specific absolute shader path.
+The saved project should name the project-local shader operator, not a machine-specific absolute
+shader path.
 
 ## Mapping Discovery
 
@@ -111,7 +113,7 @@ Find:
 {"method": "list_mapping_destinations", "scope": "visual"}
 ```
 
-Find the `CustomShader` params:
+Find the `PulseField` params:
 
 - `warp`
 - `hue`
@@ -136,9 +138,9 @@ Find the `CustomShader` params:
 
 Repeat for:
 
-- `track tone note -> CustomShader.hue`
-- `master level -> CustomShader.glow`
-- `master transient -> CustomShader.density`
+- `track tone note -> PulseField.hue`
+- `master level -> PulseField.glow`
+- `master transient -> PulseField.density`
 
 The helper response includes canonical `src` and `dst` strings for debugging, but the user or agent
 does not need to construct `track_<id>.*` or `node:<id>.*` manually.
@@ -148,10 +150,12 @@ does not need to construct `track_<id>.*` or `node:<id>.*` manually.
 If the builder cannot reach Vivid, launch the app and confirm the control server port.
 
 If Surge XT is missing, install Surge XT and rerun the builder. The tutorial intentionally fails
-early with install paths and links instead of creating a silent project.
+early through Vivid's productized preflight, with install paths and links instead of creating a
+silent project.
 
 If the visual output is blank after reload, inspect `project/proof.json`, then check whether
-`assets/shaders/pulse_field.glsl` is present and whether `project.json` stores that relative path.
+`shaders/pulse_field.wgsl` is present and whether Vivid registered `PulseField` after loading the
+project.
 
 If Vivid prints a recovery warning before the builder resets the session, relaunch with
 `VIVID_DISCARD_RECOVERY=1` for a clean disposable tutorial run.
@@ -160,7 +164,7 @@ If Vivid prints a recovery warning before the builder resets the session, relaun
 
 Project-local C++ is central to Vivid's long-term creative coding story, but it requires compiler
 and package setup. This first tutorial starts with a project-local shader because it proves the
-MCP-native creative loop with less setup. The next ADR-0034 artifact should deepen this into live
+MCP-native creative loop with less setup. The next ADR-0040 artifact should deepen this into live
 shader editing, then project-local operators.
 
 ## Friction Log

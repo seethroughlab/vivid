@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ADR-0034 Golden Path A: build the first MCP-native creative-coding tutorial project.
+"""ADR-0040 Golden Path A: build the first MCP-native creative-coding tutorial project.
 
 Run with the Vivid app already open:
 
@@ -23,93 +23,74 @@ REPO = HERE.parents[2]
 DEMOS = REPO / "examples" / "demos"
 sys.path.insert(0, str(DEMOS))
 
-from vivid_demo import SURGE, Vivid, find, surge_preset  # noqa: E402
+from vivid_demo import Vivid, find, surge_preset  # noqa: E402
 
 PROJECT = HERE / "project"
-ASSET_SHADER_DIR = PROJECT / "assets" / "shaders"
-SHADER_NAME = "pulse_field.glsl"
-SHADER_REF = f"assets/shaders/{SHADER_NAME}"
-SHADER_PATH = ASSET_SHADER_DIR / SHADER_NAME
+SHADER_OP = "PulseField"
+SHADER_NAME = "pulse_field.wgsl"
+SHADER_PATH = PROJECT / "shaders" / SHADER_NAME
 FRICTION_LOG = PROJECT / "FRICTION-LOG.md"
 PROOF_JSON = PROJECT / "proof.json"
 CAPTURE_PNG = PROJECT / "capture.png"
-PLUGIN_LIST = REPO / "examples" / "tutorials" / "free-plugin-starter-list.md"
-SURGE_DOWNLOAD = "https://surge-synthesizer.github.io/"
 
-SURGE_HELP = f"""Surge XT is required for this tutorial.
-
-Expected macOS CLAP bundle:
-  {SURGE}
-
-Install options:
-  - Download: {SURGE_DOWNLOAD}
-  - Homebrew: brew install --cask surge-xt
-
-After installing, relaunch Vivid so its plugin catalog refreshes.
-More free plugin context: {PLUGIN_LIST}
-"""
-
-SHADER_SOURCE = """#version 450
-// ADR-0034 Golden Path A: project-local CustomShader source.
-// The CustomShader params map to u_warp/u_hue/u_density/u_glow.
-layout(location = 0) in vec2 v_uv;
-layout(location = 0) out vec4 o_color;
-layout(set = 0, binding = 0) uniform U {
-    vec2 u_res;
-    float u_time;
-    float u_warp;
-    float u_hue;
-    float u_density;
-    float u_glow;
-};
-
-float ring(vec2 uv, vec2 center, float radius, float width) {
-    float d = abs(distance(uv, center) - radius);
+SHADER_SOURCE = """/*{
+  "version": 1,
+  "name": "PulseField",
+  "summary": "Project-local pulse field driven by audio mappings.",
+  "keywords": ["project", "tutorial", "generator", "pulse"],
+  "inputs": [],
+  "params": [
+    {"name": "warp", "type": "float", "default": 0.35, "min": 0, "max": 1,
+     "semantic_intent": "domain warp amount"},
+    {"name": "hue", "type": "float", "default": 0.58, "min": 0, "max": 1,
+     "semantic_tag": "phase_01", "semantic_intent": "color hue"},
+    {"name": "density", "type": "float", "default": 0.42, "min": 0, "max": 1,
+     "semantic_intent": "pattern density"},
+    {"name": "glow", "type": "float", "default": 0.55, "min": 0, "max": 1,
+     "semantic_intent": "brightness"}
+  ]
+}*/
+fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {
+    let d = abs(distance(uv, center) - radius);
     return 1.0 - smoothstep(0.0, width, d);
 }
 
-void main() {
-    vec2 uv = v_uv;
-    vec2 p = uv * 2.0 - 1.0;
-    p.x *= u_res.x / max(1.0, u_res.y);
+@fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
+    let uv = inp.uv;
+    var p = uv * 2.0 - vec2f(1.0);
+    p.x = p.x * (u.res.x / max(1.0, u.res.y));
 
-    float t = u_time;
-    float twist = sin((p.x + p.y) * (3.0 + u_density * 10.0) + t * 1.8);
-    vec2 q = p + vec2(cos(p.y * 4.0 + t), sin(p.x * 4.0 - t)) * (0.04 + u_warp * 0.18);
+    let twist = sin((p.x + p.y) * (3.0 + u.density * 10.0) + u.time * 1.8);
+    let q = p + vec2f(cos(p.y * 4.0 + u.time), sin(p.x * 4.0 - u.time)) * (0.04 + u.warp * 0.18);
 
-    float beam = 0.5 + 0.5 * sin((q.x * 5.0 + q.y * 2.0) + twist * 1.4 + t * 2.0);
-    float pulse = ring(uv, vec2(0.5), 0.16 + u_density * 0.24, 0.08);
-    float vignette = smoothstep(1.3, 0.15, length(p));
+    let beam = 0.5 + 0.5 * sin((q.x * 5.0 + q.y * 2.0) + twist * 1.4 + u.time * 2.0);
+    let pulse = ring(uv, vec2f(0.5), 0.16 + u.density * 0.24, 0.08);
+    let vignette = smoothstep(1.3, 0.15, length(p));
 
-    vec3 a = 0.5 + 0.5 * cos(vec3(0.0, 2.1, 4.2) + u_hue * 6.2831853);
-    vec3 b = vec3(0.08, 0.12, 0.18);
-    vec3 color = mix(b, a, beam * 0.65 + pulse * 0.55);
-    color *= vignette * (0.65 + u_glow * 1.2);
-    o_color = vec4(color, 1.0);
+    let a = 0.5 + 0.5 * cos(vec3f(0.0, 2.1, 4.2) + u.hue * 6.2831853);
+    let b = vec3f(0.08, 0.12, 0.18);
+    var color = mix(b, a, beam * 0.65 + pulse * 0.55);
+    color = color * vignette * (0.65 + u.glow * 1.2);
+    return vec4f(color, 1.0);
 }
 """
 
 
-def ensure_project_shader() -> None:
-    ASSET_SHADER_DIR.mkdir(parents=True, exist_ok=True)
-    SHADER_PATH.write_text(SHADER_SOURCE)
-
-
 def ensure_friction_log() -> None:
+    PROJECT.mkdir(parents=True, exist_ok=True)
     FRICTION_LOG.write_text(
         "# Friction Log\n\n"
         "- UI-only steps: none exercised by the builder. Tutorial prose still needs a human path or\n"
         "  an explicit MCP-client-first framing.\n"
         "- MCP-required steps: reset, save folder project, create track, load Surge XT, add notes,\n"
-        "  create visual graph, set project-local shader, discover sources/destinations, map audio\n"
+        "  scaffold a project-local shader operator, create visual graph, discover sources/destinations, map audio\n"
         "  characteristics to visual params, save, reload, capture, validate, and run quality checks.\n"
         "- Confusing or missing diagnostics: stale autosave/recovery state can emit warnings before a\n"
         "  scripted tutorial reset unless Vivid is launched with `VIVID_DISCARD_RECOVERY=1`. The builder\n"
         "  itself preflights the control server before deleting the generated project.\n"
         "- Save/load issues:\n"
-        "  - Watch for project-relative `CustomShader.file` reload behavior. The desired saved value is\n"
-        f"    `{SHADER_REF}`, but the live operator must receive a project-resolved absolute\n"
-        "    path after reload.\n"
+        "  - Watch for project-local shader registration/reload behavior. The project shader should\n"
+        f"    remain under `shaders/{SHADER_NAME}` and register as `{SHADER_OP}` after reload.\n"
         "- Visual verification issues: post-reload capture should be nonblank; current visual is a proof\n"
         "  artifact, not yet a website-grade showcase image.\n"
         "- Audio verification issues: Surge XT is assumed installed; builder preflight now prints\n"
@@ -146,19 +127,39 @@ def check_control_server(v: Vivid) -> str | None:
     return None
 
 
-def surge_catalog_note(v: Vivid) -> str:
-    try:
-        plugins = v.call("list_plugins").get("plugins", [])
-    except Exception as exc:
-        return f"Could not read Vivid's plugin catalog yet: {exc}"
-    matches = [
-        f"{p.get('format', '?')} {p.get('class', '?')} {p.get('name', '?')} -> {p.get('path', '?')}"
-        for p in plugins
-        if "surge" in str(p.get("name", "")).lower() or "surge" in str(p.get("path", "")).lower()
+def format_prereq_report(report: dict) -> str:
+    lines = [
+        f"Tutorial preflight failed for {report.get('tutorial', 'unknown tutorial')}.",
+        report.get("summary", "Some prerequisites need attention."),
     ]
-    if matches:
-        return "Vivid currently sees Surge-related plugins:\n  " + "\n  ".join(matches[:8])
-    return "Vivid's plugin catalog did not report Surge XT. Relaunch Vivid after installing it."
+    checks = report.get("checks", [])
+    if checks:
+        lines.append("\nChecks:")
+        for check in checks:
+            status = str(check.get("status", "?")).upper()
+            summary = check.get("summary", check.get("name", "unnamed check"))
+            lines.append(f"- [{status}] {summary}")
+            if check.get("path"):
+                lines.append(f"  path: {check['path']}")
+            if check.get("suggestion"):
+                lines.append(f"  suggestion: {check['suggestion']}")
+            matches = check.get("matches")
+            if matches:
+                lines.append("  catalog matches:")
+                for match in matches[:8]:
+                    lines.append(
+                        "  - "
+                        f"{match.get('format', '?')} {match.get('class', '?')} "
+                        f"{match.get('name', '?')} -> {match.get('path', '?')}"
+                    )
+    actions = report.get("next_actions", [])
+    if actions:
+        lines.append("\nNext actions:")
+        for action in actions:
+            lines.append(f"- {action.get('title', 'Action')}: {action.get('detail', '')}")
+    if report.get("free_plugin_list"):
+        lines.append(f"\nFree plugin context: {report['free_plugin_list']}")
+    return "\n".join(lines)
 
 
 def preflight(v: Vivid) -> None:
@@ -166,10 +167,10 @@ def preflight(v: Vivid) -> None:
     control_issue = check_control_server(v)
     if control_issue:
         issues.append(control_issue)
-
-    if not Path(SURGE).exists():
-        note = "" if control_issue else "\n" + surge_catalog_note(v)
-        issues.append(SURGE_HELP + note)
+    else:
+        report = v.call("check_tutorial_prereqs", tutorial="mcp_native_first_project")
+        if not report.get("ready", False):
+            issues.append(format_prereq_report(report))
 
     if issues:
         raise SystemExit("\n\n---\n\n".join(issues))
@@ -180,7 +181,6 @@ def build() -> None:
     preflight(v)
 
     remove_generated_project()
-    ensure_project_shader()
     ensure_friction_log()
 
     v.reset()
@@ -188,6 +188,15 @@ def build() -> None:
 
     # Save early so the app has a folder-project context for project-relative assets.
     v.save_project(str(PROJECT))
+    shader_info = v.call(
+        "scaffold_project_shader_operator",
+        name=SHADER_OP,
+        filename=SHADER_NAME,
+        source=SHADER_SOURCE,
+        overwrite=True,
+    )
+    if not shader_info.get("registered", False):
+        raise RuntimeError(f"project shader did not register: {shader_info}")
 
     track = v.add_graph_track("tone")
     surge_preset(v, track, "pluck", prefer="Sync", gain=0.55)
@@ -208,19 +217,15 @@ def build() -> None:
 
     nodes = v.graph()["nodes"]
     out = find(nodes, "Output")
-    shader = v.add_node("CustomShader")
-    v.set_node_file(shader, "file", SHADER_REF)
+    shader = v.add_node(SHADER_OP)
     v.set_node_param(shader, "warp", 0.35)
     v.set_node_param(shader, "hue", 0.58)
     v.set_node_param(shader, "density", 0.42)
     v.set_node_param(shader, "glow", 0.55)
 
-    feedback = v.add_node("Feedback")
-    v.set_node_param(feedback, "decay", 0.28)
     blur = v.add_node("Blur")
     v.set_node_param(blur, "radius", 0.08)
-    v.connect(feedback, shader)
-    v.connect(blur, feedback)
+    v.connect(blur, shader)
     if out is not None:
         v.connect(out, blur)
         v.set_active_output(out)

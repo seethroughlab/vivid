@@ -62,3 +62,18 @@ Each tutorial records:
   gated by tutorial projects.
 - The examples directory should eventually distinguish polished tutorial projects from exploratory
   demos.
+
+## Progress
+
+The first checked-in tutorial artifact is `examples/tutorials/mcp-native-first-project/`. It creates
+a saved folder project through the control-server/MCP surface, uses Surge XT as the assumed beginner
+instrument, authors a project-local shader operator, saves/reloads the project, and writes proof
+files plus `FRICTION-LOG.md`.
+
+The first follow-up artifact is `examples/tutorials/live-shader-edit/`. It pressure-tests the
+creative-code edit loop by mutating the first tutorial's project-local shader, calling
+`reload_project_files`, and verifying that the metadata-named shader operator updates without
+changing graph identity.
+
+This confirms the ADR shape: the tutorial work is already finding product gaps, and those gaps are
+being fixed in Vivid before the website claims the workflow is ready.

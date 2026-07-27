@@ -1,6 +1,6 @@
 # Free Plugin Starter List
 
-This list supports ADR-0034 beginner tutorials. Keep the first tutorial strict and small: only
+This list supports ADR-0040 beginner tutorials. Keep the first tutorial strict and small: only
 Surge XT is required. Everything else is optional material for follow-up tutorials and demos.
 
 ## Required For Tutorial 1

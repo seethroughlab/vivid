@@ -89,8 +89,8 @@ Always available in the body, without declaring anything:
 ## GLSL
 
 `.glsl` files use the same header and the same param model; only the generated prelude differs. A
-`.glsl` file with **no** header falls back to the legacy `CustomShader` contract (the fixed
-`u_warp`/`u_hue`/`u_density`/`u_glow` uniform block) so existing projects keep working.
+shader file with no header is malformed and appears in the shader catalog with an error instead of
+registering silently.
 
 ## Reserved for later
 

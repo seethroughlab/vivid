@@ -191,7 +191,7 @@ single-graph product. The current showcase demos also need work before they can 
 Recommended phases:
 
 - Phase 0: accept the website-gating ADR sequence in implementation order:
-  [ADR-0034](../decisions/ADR-0034-mcp-native-creative-coding-is-the-public-promise.md),
+  [ADR-0040](../decisions/ADR-0040-mcp-native-creative-coding-is-the-public-promise.md),
   [ADR-0035](../decisions/ADR-0035-tutorials-are-release-gated-sample-projects.md),
   [ADR-0036](../decisions/ADR-0036-free-plugin-onboarding-is-curated.md),
   [ADR-0037](../decisions/ADR-0037-showcase-demos-gate-the-real-website.md),

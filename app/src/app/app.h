@@ -48,6 +48,10 @@ struct App {
     // The shader library (ADR-0016). Owns the parsed ShaderDefs, which every shader node —
     // and every cached descriptor built from one — points into, so it lives the whole run.
     ShaderLibrary shader_library;
+    // Project-local compiled C++ operators registered from the open folder project's
+    // vivid-package.json. Cleared on New/project switch so package operators are scoped like
+    // project shaders, not leaked globally for the rest of the process.
+    std::set<std::string> project_operator_types;
     // Which operators accept which dropped file extensions (ADR-0021/P3). Rebuilt from op_loaders
     // after the startup scan and after each live package install.
     FileDropRegistry file_drops;

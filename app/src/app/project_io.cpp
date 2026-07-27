@@ -5,12 +5,28 @@
 #include "packages/package_manager.h"    // install_package
 #include "gpu/operator_scan.h"           // load_and_register_operator
 #include "gpu/visual_graph.h"            // VisualGraph::set_asset_dir
+#include "ui/node_graph.h"               // chain_load_begin / reset_nodes
 #include "ui/audio_node_graph.h"         // App::audio_graph view getters (ADR-0023 6b)
 
+#include <algorithm>
 #include <filesystem>
 
 namespace vivid::project_io {
 namespace fs = std::filesystem;
+
+void retire_project_operators(App& app) {
+    if (app.project_operator_types.empty()) return;
+    for (const std::string& name : app.project_operator_types)
+        app.op_registry.unregister_type(name);
+    app.op_loaders.erase(
+        std::remove_if(app.op_loaders.begin(), app.op_loaders.end(), [&](const auto& loader) {
+            const VividOperatorDescriptor* d = loader ? loader->descriptor() : nullptr;
+            return d && d->name && app.project_operator_types.count(d->name) > 0;
+        }),
+        app.op_loaders.end());
+    app.project_operator_types.clear();
+    app.file_drops.rebuild(app.op_loaders);
+}
 
 SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float split_x, float dock_h,
                 const std::string& path) {
@@ -38,6 +54,11 @@ SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float spli
 LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& split_x, float& dock_h,
                 const std::string& path) {
     LoadResult r;
+    // Drop the old visual graph before unregistering old project-local C++ operators; node
+    // instances may own code from the dylibs we are about to retire.
+    graph.reset_nodes();
+    graph.chain_load_begin();
+    retire_project_operators(app);
     // Compile + register a project-local operator package first, so a node that names
     // a project-local operator resolves when the session JSON is read below.
     if (is_folder_project(path)) {
@@ -54,7 +75,7 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
                 } else {
                     const std::string reg = load_and_register_operator(ci.dylib_path, app.op_registry, app.op_loaders);
                     o.registered = !reg.empty();
-                    if (o.registered) ++r.registered;
+                    if (o.registered) { ++r.registered; app.project_operator_types.insert(reg); }
                     else o.note = "compiled but not registered (name already in use)";
                 }
                 r.ops.push_back(std::move(o));
@@ -68,6 +89,9 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
     float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
     if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, aox, aoy, ascale)) {
         r.error = "read failed";
+        graph.chain_load_begin();
+        if (app.vgraph) app.vgraph->reset_to_default();
+        retire_project_operators(app);
         return r;
     }
     if (ascale > 0.f) app.audio_graph->set_view({ aox, aoy, ascale });   // restore the persisted camera (ADR-0023)

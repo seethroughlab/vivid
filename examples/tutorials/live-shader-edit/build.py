@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ADR-0034 follow-up: pressure-test live editing of a project-local CustomShader file."""
+"""ADR-0040 follow-up: pressure-test live editing of a project-local shader operator."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ def load_first_project_constants():
 FIRST_BUILD = load_first_project_constants()
 PROJECT = FIRST_BUILD.PROJECT
 SHADER_PATH = FIRST_BUILD.SHADER_PATH
-SHADER_REF = FIRST_BUILD.SHADER_REF
+SHADER_OP = FIRST_BUILD.SHADER_OP
 PROOF_JSON = PROJECT / "live-edit-proof.json"
 BEFORE_PNG = PROJECT / "live-edit-before.png"
 AFTER_EDIT_PNG = PROJECT / "live-edit-after-file-edit.png"
@@ -59,21 +59,21 @@ def mutate_shader() -> None:
     if EDIT_MARKER in src:
         return
     src = src.replace(
-        "vec3 b = vec3(0.08, 0.12, 0.18);",
-        "vec3 b = vec3(0.02, 0.18, 0.14);",
+        "let b = vec3f(0.08, 0.12, 0.18);",
+        "let b = vec3f(0.02, 0.18, 0.14);",
     )
     src = src.replace(
-        "color *= vignette * (0.65 + u_glow * 1.2);",
-        "color *= vignette * (0.85 + u_glow * 1.9);\n    " + EDIT_MARKER,
+        "color = color * vignette * (0.65 + u.glow * 1.2);",
+        "color = color * vignette * (0.85 + u.glow * 1.9);\n    " + EDIT_MARKER,
     )
     SHADER_PATH.write_text(src)
 
 
-def custom_shader_node(v: Vivid) -> int:
+def project_shader_node(v: Vivid) -> int:
     nodes = v.graph()["nodes"]
-    node_id = find(nodes, "CustomShader")
+    node_id = find(nodes, SHADER_OP)
     if node_id is None:
-        raise SystemExit("Loaded project has no CustomShader node.")
+        raise SystemExit(f"Loaded project has no {SHADER_OP} node.")
     return node_id
 
 
@@ -100,10 +100,11 @@ def build() -> None:
     v.play()
     time.sleep(1.0)
 
-    custom_shader_node(v)
+    project_shader_node(v)
     proof: dict[str, object] = {
         "project": str(PROJECT),
-        "shader": SHADER_REF,
+        "shader": str(SHADER_PATH),
+        "shader_op": SHADER_OP,
         "before": call_optional(v, "capture_frame", path=str(BEFORE_PNG)),
     }
 
