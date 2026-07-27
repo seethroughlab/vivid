@@ -25,4 +25,18 @@ public:
                                           const std::string& out_dir);
 };
 
+// Readiness of the operator-compile toolchain on THIS machine — for a signed-build / tutorial
+// preflight. Reuses the same bundle-relative resolution compile_operator uses (resolve_toolchain),
+// then checks that the pieces actually exist: the C++ compiler (Xcode CLT clang++ on a signed build),
+// the shipped operator_api + webgpu headers, and libwgpu_native next to the executable.
+struct ToolchainStatus {
+    std::string cxx;                 // resolved compiler (absolute path, or a PATH name like "clang++")
+    bool        cxx_found = false;   // compiler resolvable on disk / PATH
+    std::string cxx_resolved_path;   // absolute path when resolvable
+    std::string inc_src, inc_wgpu, lib_wgpu;
+    bool        headers_present = false;   // operator_api/ + webgpu/ headers reachable
+    bool        libwgpu_present = false;   // libwgpu_native reachable
+};
+ToolchainStatus probe_package_toolchain();
+
 }  // namespace vivid

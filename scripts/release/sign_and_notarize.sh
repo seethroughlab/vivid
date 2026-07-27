@@ -42,6 +42,22 @@ fi
 echo "==> identity: $APPLE_CODESIGN_IDENTITY"
 echo "==> notarization: $NOTARIZE"
 
+# Entitlements for the hardened runtime — applied to the MAIN executable so the app can dlopen its
+# runtime-compiled (unsigned/other-team) operator dylibs. Overridable via VIVID_ENTITLEMENTS.
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ENTITLEMENTS="${VIVID_ENTITLEMENTS:-$REPO_ROOT/app/platform/macos/vivid.entitlements}"
+[ -f "$ENTITLEMENTS" ] || { echo "error: entitlements not found: $ENTITLEMENTS" >&2; exit 1; }
+echo "==> entitlements: $ENTITLEMENTS"
+
+# Headless self-hosted runner: unlock the keychain holding the Developer ID private key so codesign
+# doesn't block on an interactive prompt. No-op unless KEYCHAIN_PASSWORD is set (local dev signs fine).
+if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
+  KC="${KEYCHAIN_NAME:-login.keychain-db}"
+  echo "==> unlocking keychain: $KC"
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KC" >/dev/null 2>&1 || true
+fi
+
 sign() { codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$@"; }
 
 echo "==> codesign (inside-out: nested dylibs/plugins/frameworks, then the app)"
@@ -53,7 +69,10 @@ while IFS= read -r -d '' lib; do sign "$lib"; done < <(
     \( -name "*.dylib" -o -name "*.so" -o -name "*.bundle" \) -print0 2>/dev/null)
 while IFS= read -r -d '' fw; do sign "$fw"; done < <(
   find "$APP/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 2>/dev/null)
-sign "$APP"
+# The outer app (main executable) is signed WITH the entitlements; the nested code above was signed
+# without them (entitlements attach to the loading process, i.e. the main executable).
+codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" \
+         --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 notarize() {  # $1 = artifact to submit (zip or dmg)

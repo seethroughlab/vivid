@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Vivid compiles operator packages at runtime (package_compiler.cpp shells out to clang++) and
+         dlopens the resulting .dylib files, which are unsigned / ad-hoc-signed by another team. Under
+         the hardened runtime, default library validation refuses to load a dylib not signed by this
+         app's Team ID, which would break the entire package-operator feature (tier-3 tutorial + the
+         sibling package ecosystem) on a notarized build. This entitlement lifts that restriction. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <!-- NOTE: if a notarized build fails to launch or render on Metal, the usual next additions are
+         com.apple.security.cs.allow-jit and com.apple.security.cs.allow-unsigned-executable-memory.
+         Kept out for now to stay minimal (wgpu/Metal normally render fine under hardened runtime). -->
+</dict>
+</plist>

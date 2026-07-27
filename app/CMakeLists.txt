@@ -431,6 +431,12 @@ if(APPLE)
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreMIDI" "-framework CoreFoundation" "-framework Security"
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+    # The bundled libwgpu_native.dylib sits next to the executable in Contents/MacOS
+    # (target_copy_webgpu_binaries), and its install name is @rpath/libwgpu_native.dylib. Add an
+    # @executable_path rpath so a signed/distributed .app resolves it OFF the build machine — the wgpu
+    # import target also injects an absolute build-tree rpath, which dyld harmlessly skips once the app
+    # is moved. Mirrors the operator plugins' @loader_path/../MacOS rpath (operators/CMakeLists.txt).
+    target_link_options(vivid PRIVATE "-Wl,-rpath,@executable_path")
 endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.

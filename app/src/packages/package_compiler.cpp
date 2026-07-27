@@ -3,6 +3,7 @@
 
 #include <filesystem>
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 #include <unistd.h>
@@ -98,6 +99,34 @@ Toolchain resolve_toolchain() {
     return t;
 }
 }  // namespace
+
+ToolchainStatus probe_package_toolchain() {
+    namespace fs = std::filesystem;
+    const Toolchain t = resolve_toolchain();
+    ToolchainStatus s;
+    s.cxx = t.cxx; s.inc_src = t.inc_src; s.inc_wgpu = t.inc_wgpu; s.lib_wgpu = t.lib_wgpu;
+    std::error_code ec;
+    // Compiler: an absolute path must exist; a bare name (e.g. "clang++") is searched on PATH.
+    if (t.cxx.find('/') != std::string::npos) {
+        if (fs::exists(t.cxx, ec)) { s.cxx_found = true; s.cxx_resolved_path = t.cxx; }
+    } else if (const char* path = std::getenv("PATH")) {
+        std::string p(path);
+        for (size_t start = 0; start <= p.size(); ) {
+            const size_t colon = p.find(':', start);
+            const std::string dir = p.substr(start, colon == std::string::npos ? std::string::npos : colon - start);
+            if (!dir.empty() && fs::exists(fs::path(dir) / t.cxx, ec)) {
+                s.cxx_found = true; s.cxx_resolved_path = (fs::path(dir) / t.cxx).string(); break;
+            }
+            if (colon == std::string::npos) break;
+            start = colon + 1;
+        }
+    }
+    s.headers_present = fs::exists(fs::path(t.inc_src) / "operator_api", ec) &&
+                        fs::exists(fs::path(t.inc_wgpu) / "webgpu", ec);
+    s.libwgpu_present = fs::exists(
+        fs::path(t.lib_wgpu) / (std::string("libwgpu_native") + platform::plugin_suffix()), ec);
+    return s;
+}
 
 PackageCompileResult PackageCompiler::compile_operator(const std::string& package_dir,
                                                        const PackageOperator& op,
