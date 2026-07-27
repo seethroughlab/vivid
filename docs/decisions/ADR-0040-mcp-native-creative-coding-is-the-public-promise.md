@@ -211,6 +211,32 @@ portable CI coverage (`test_project_recovery`); the live-`VisualGraph` op health
 handler. No new operators, no RT-path changes, no new MCP methods — recovery is surfaced through the
 existing perception surface, keeping the core lean.
 
+**Sixth friction result (tutorial tier 2 — live shader edit as a first-class walkthrough).**
+`examples/tutorials/live-shader-edit/` was promoted from a pressure-test script into a self-contained
+beginner walkthrough (ADR-0035 step 9): it scaffolds its own shader-only project (no Surge/synth
+prerequisite), then teaches discover → edit → break → recover → verify → save over MCP. Driving it
+live exposed two real gaps, now fixed in the smallest layer:
+
+- **Shader operators were not self-describing.** The operator catalog a beginner naturally reaches for
+  (`list_operator_catalog` / `find_operators`) exposed no backing file and did not even flag an op as
+  shader-backed — the only node→file link was to *know* to call `list_shaders` and join on name. The
+  catalog now attaches `format:"shader_file"` and `source:{path,tier}` to a shader op by joining
+  against the shader library by type name (the ABI-frozen `VividOperatorDescriptor` is untouched).
+- **`reload_project_files` did not reach live nodes.** It re-registered the shader *type* with the new
+  body but left already-built *nodes* on their old compiled pipeline; the frame-loop poll only fires
+  while the window actively renders. So an agent editing a project shader and calling reload saw
+  nothing change, and a newly-broken body was never surfaced — the live-edit promise silently failed
+  for MCP-driven use. `reload_project_files` now rebuilds the live nodes of each re-registered project
+  shader type (`VisualGraph::rebuild_op_instances`, preserving params by name), so both the creative
+  edit and its compile errors are deterministic over MCP. Combined with the Phase 3 diagnostics, a
+  WGSL compile error now shows up by name in `validate_project` and `inspect_signal_flow.broken_ops`
+  with the real compiler message, and clears on fix — exactly the failure/recovery mode Fulfillment
+  Gate #8 asks a tutorial to cover.
+
+The walkthrough's `build.py` is a runnable acceptance test (hard asserts on node identity, the
+compile-error report, and recovery); it is app/GPU-tier, so it is proven by the live drive rather
+than portable CI, consistent with the repo's app-tier test boundary.
+
 ## Implementation Order
 
 Work on this ADR should proceed in this order:
