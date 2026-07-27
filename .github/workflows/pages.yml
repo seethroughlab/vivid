@@ -1,0 +1,73 @@
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "examples/demos/showcase/heroes/**"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build static site (+ self-check)
+        run: uv run --project site site/build.py --output _site
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: _site
+
+  # Deploy on pushes to the default branch (not PRs) using the existing Cloudflare Pages secrets
+  # (CF_API_TOKEN / CF_ACCOUNT_ID, already configured for the classic `vivid-site` project). PRs still
+  # run the build job above, which self-checks pages + hero images.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Build static site
+        run: uv run --project site site/build.py --output _site
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          projectName: vivid-site
+          directory: _site
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # The existing vivid-site project's production branch is "master" (from the classic site),
+          # while this repo's default branch is "main". Cloudflare serves the custom domain
+          # (vivid.seethroughlab.com) from the deployment whose branch matches the production branch,
+          # so we deploy labeled "master" to publish to production. If the CF project's production
+          # branch is ever changed to "main", set this to "main" (or remove it).
+          branch: master

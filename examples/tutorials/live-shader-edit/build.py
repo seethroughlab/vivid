@@ -33,8 +33,8 @@ sys.path.insert(0, str(DEMOS))
 from vivid_demo import Vivid, call_optional, find, require_control_server  # noqa: E402
 
 PROJECT = HERE / "project"
-SHADER_OP = "PulseField"
-SHADER_NAME = "pulse_field.wgsl"
+SHADER_OP = "AuroraWeave"
+SHADER_NAME = "aurora_weave.wgsl"
 SHADER_PATH = PROJECT / "shaders" / SHADER_NAME
 PROOF_JSON = PROJECT / "live-edit-proof.json"
 FRICTION_LOG = PROJECT / "FRICTION-LOG.md"
@@ -44,27 +44,28 @@ BROKEN_PNG = PROJECT / "live-edit-broken.png"
 RECOVERED_PNG = PROJECT / "live-edit-recovered.png"
 
 # A self-animating (u.time) project-local shader. No audio needed — the field moves on its own, so
-# the tutorial can focus purely on the code->reload->pixels loop.
+# the tutorial can focus purely on the code->reload->pixels loop. It is a WARM hex-weave interference
+# field — deliberately distinct from the beginner project's cool PulseField rings, so the two
+# creative-coding showcases read as different pieces (ADR-0037 visual distinctiveness).
 BASE_SHADER = """/*{
   "version": 1,
-  "name": "PulseField",
-  "summary": "Project-local pulse field for the live-shader-edit tutorial.",
-  "keywords": ["project", "tutorial", "generator", "pulse"],
+  "name": "AuroraWeave",
+  "summary": "Project-local woven interference field for the live-shader-edit tutorial.",
+  "keywords": ["project", "tutorial", "generator", "weave"],
   "inputs": [],
   "params": [
     {"name": "warp", "type": "float", "default": 0.35, "min": 0, "max": 1,
      "semantic_intent": "domain warp amount"},
-    {"name": "hue", "type": "float", "default": 0.58, "min": 0, "max": 1,
+    {"name": "hue", "type": "float", "default": 0.07, "min": 0, "max": 1,
      "semantic_tag": "phase_01", "semantic_intent": "color hue"},
-    {"name": "density", "type": "float", "default": 0.42, "min": 0, "max": 1,
-     "semantic_intent": "pattern density"},
+    {"name": "density", "type": "float", "default": 0.5, "min": 0, "max": 1,
+     "semantic_intent": "weave density"},
     {"name": "glow", "type": "float", "default": 0.55, "min": 0, "max": 1,
      "semantic_intent": "brightness"}
   ]
 }*/
-fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {
-    let d = abs(distance(uv, center) - radius);
-    return 1.0 - smoothstep(0.0, width, d);
+fn grating(p: vec2f, dir: vec2f, freq: f32, phase: f32) -> f32 {
+    return 0.5 + 0.5 * sin(dot(p, dir) * freq + phase);
 }
 
 @fragment fn fs_main(inp: FullscreenOutput) -> @location(0) vec4f {
@@ -72,26 +73,33 @@ fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {
     var p = uv * 2.0 - vec2f(1.0);
     p.x = p.x * (u.res.x / max(1.0, u.res.y));
 
-    let twist = sin((p.x + p.y) * (3.0 + u.density * 10.0) + u.time * 1.8);
-    let q = p + vec2f(cos(p.y * 4.0 + u.time), sin(p.x * 4.0 - u.time)) * (0.04 + u.warp * 0.18);
+    // slowly rotating domain warp so the woven lattice breathes
+    let sw = sin(u.time * 0.4);
+    let cw = cos(u.time * 0.4);
+    let pr = vec2f(p.x * cw - p.y * sw, p.x * sw + p.y * cw);
+    let q = pr + vec2f(sin(pr.y * 3.0 + u.time), cos(pr.x * 3.0 - u.time)) * (0.05 + u.warp * 0.22);
 
-    let beam = 0.5 + 0.5 * sin((q.x * 5.0 + q.y * 2.0) + twist * 1.4 + u.time * 2.0);
-    let pulse = ring(uv, vec2f(0.5), 0.16 + u.density * 0.24, 0.08);
-    let vignette = smoothstep(1.3, 0.15, length(p));
+    // three gratings at 0/60/120 deg multiply into a woven hex moire (sharp thread intersections)
+    let freq = 6.0 + u.density * 22.0;
+    let g0 = grating(q, vec2f(1.0, 0.0), freq, u.time * 1.2);
+    let g1 = grating(q, vec2f(-0.5, 0.8660254), freq, -u.time * 1.0);
+    let g2 = grating(q, vec2f(-0.5, -0.8660254), freq, u.time * 0.8);
+    let threads = pow(g0 * g1 * g2, 0.6);
+    let vignette = smoothstep(1.35, 0.1, length(p));
 
     let a = 0.5 + 0.5 * cos(vec3f(0.0, 2.1, 4.2) + u.hue * 6.2831853);
     let b = vec3f(0.08, 0.12, 0.18);
-    var color = mix(b, a, beam * 0.65 + pulse * 0.55);
+    var color = mix(b, a, threads * 0.9 + 0.1);
     color = color * vignette * (0.65 + u.glow * 1.2);
     return vec4f(color, 1.0);
 }
 """
 
-# STEP 2 edit — a visible creative change: shift the base tint and push brightness up.
+# STEP 2 edit — a visible creative change: shift the base tint to a warm ember and push brightness up.
 EDIT_MARKER = "// live-shader-edit tutorial mutation"
 BRIGHT_EDIT = BASE_SHADER.replace(
     "let b = vec3f(0.08, 0.12, 0.18);",
-    "let b = vec3f(0.02, 0.18, 0.14);  " + EDIT_MARKER,
+    "let b = vec3f(0.14, 0.05, 0.02);  " + EDIT_MARKER,
 ).replace(
     "color = color * vignette * (0.65 + u.glow * 1.2);",
     "color = color * vignette * (1.05 + u.glow * 1.9);",
@@ -117,7 +125,7 @@ def visual_op_issues(report: dict | None, op: str) -> list[dict]:
 
 
 def catalog_source(v: Vivid, op: str) -> dict | None:
-    """Ask the operator catalog what a beginner sees: does PulseField reveal its backing file?"""
+    """Ask the operator catalog what a beginner sees: does the shader op reveal its backing file?"""
     cat = call_optional(v, "find_operators", query=op, domain="visual")
     if not cat:
         return None
@@ -247,7 +255,7 @@ def write_friction_log(proof: dict) -> None:
         f"  `source` for shader-backed ops (here: `{(cat.get('source') or {}).get('path')}`),\n"
         "  and `list_shaders` remains the authoritative name->path->error row. Before ADR-0040 tier 2\n"
         "  the catalog exposed no backing file, so a beginner had to know to call `list_shaders`.\n"
-        "- Live edit: editing `shaders/pulse_field.wgsl` + `reload_project_files` re-registers the\n"
+        "- Live edit: editing `shaders/aurora_weave.wgsl` + `reload_project_files` re-registers the\n"
         f"  project shader tier while `{SHADER_OP}` keeps its node identity"
         f" (preserved={proof.get('node_identity_preserved')}).\n"
         "- Failure/recovery mode covered (Fulfillment Gate #8): a deliberate WGSL compile error is\n"
