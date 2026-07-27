@@ -26,7 +26,10 @@ jobs:
           -DVIVID_SANITIZE=${{ matrix.sanitize }}
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
       - name: Build
-        run: cmake --build build -j
+        # ASan compilation is memory-heavy (~1.5-2 GB per cc1plus); unbounded -j on the RAM-limited
+        # GitHub-hosted runner intermittently OOM-kills cc1plus ("Killed signal terminated program").
+        # Cap parallelism for the sanitizer build; the plain build keeps full -j.
+        run: cmake --build build ${{ matrix.sanitize == 'ON' && '-j 2' || '-j' }}
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
@@ -50,8 +53,9 @@ jobs:
       - name: Build
         # Build the whole (small) suite so every THREAD-labelled test exists, then run only those — the
         # package/dlopen tests get built but not run (they SEGV under TSan). Avoids the "forgot to add the
-        # new THREAD target" foot-gun.
-        run: cmake --build build-tsan -j
+        # new THREAD target" foot-gun. -j 2: TSan instrumentation is memory-heavy like ASan; cap
+        # parallelism so the RAM-limited hosted runner doesn't OOM-kill cc1plus.
+        run: cmake --build build-tsan -j 2
       - name: Test
         run: ctest --test-dir build-tsan -L THREAD --output-on-failure
         env:
