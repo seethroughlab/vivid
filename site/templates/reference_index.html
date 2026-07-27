@@ -1,0 +1,28 @@
+    <section class="section operator-filter-root">
+      <h1 class="page-title">Operator Reference</h1>
+      <p class="page-lede">$count core operators, generated from Vivid $app_version's live metadata
+        (operator ABI $operator_abi) — never hand-written. Third-party plugins you install appear
+        in-app; this reference covers Vivid's own operators.</p>
+
+      <div id="operator-filter-panel" class="filter-panel" hidden>
+        <div class="filter-row">
+          <div class="filter-field">
+            <label for="operator-search">Search</label>
+            <input id="operator-search" class="filter-input" type="search"
+                   placeholder="name, keyword, parameter…" autocomplete="off">
+          </div>
+          <div class="filter-field filter-select-field">
+            <label for="operator-domain">Domain</label>
+            <select id="operator-domain" class="filter-select">
+$domain_options
+            </select>
+          </div>
+          <button id="operator-clear" class="filter-clear" type="button">Clear</button>
+        </div>
+        <p id="operator-results" class="filter-results" aria-live="polite"></p>
+      </div>
+      <p id="operator-empty" class="filter-empty" hidden>No operators match your filters.</p>
+
+$domain_sections
+    </section>
+    <script src="/assets/operator-filter.js" defer></script>
