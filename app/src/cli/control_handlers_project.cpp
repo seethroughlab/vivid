@@ -13,6 +13,7 @@
 #include "gpu/operator_scan.h"         // load_and_register_operator
 #include "packages/package_manager.h"  // install_package
 #include "packages/package_manifest.h" // parse_package_manifest (list_project_assets)
+#include "packages/package_compiler.h" // probe_package_toolchain (project_cpp_operator preflight)
 
 #include <filesystem>
 #include <fstream>
@@ -234,6 +235,62 @@ json surge_xt_tutorial_prereqs(App* app) {
     return r;
 }
 
+// Signed-build readiness for the project-local C++ operator tutorial (tier 3): the operator-compile
+// toolchain must be usable. On a downloaded signed .app the compiler is NOT bundled (matches
+// vivid-classic — clang++ comes from the Xcode Command Line Tools); the operator_api + webgpu headers
+// and libwgpu_native ARE shipped in the bundle. Reports readiness in the same vocabulary as the Surge
+// preflight so a beginner/agent can fix it before scaffolding + building an operator.
+json project_cpp_operator_prereqs(App* /*app*/) {
+    const ToolchainStatus t = probe_package_toolchain();
+    json checks = json::array();
+    json missing = json::array();
+    json next_actions = json::array();
+    bool ready = true;
+
+    checks.push_back({ {"name", "vivid_control_server"}, {"status", "pass"},
+                       {"summary", "Vivid control server is reachable"} });
+
+    if (t.cxx_found) {
+        checks.push_back({ {"name", "cxx_compiler"}, {"status", "pass"}, {"compiler", t.cxx},
+                           {"path", t.cxx_resolved_path},
+                           {"summary", "A C++ compiler is available to build project operators"} });
+    } else {
+        ready = false;
+        missing.push_back("cxx_compiler");
+        checks.push_back({ {"name", "cxx_compiler"}, {"status", "fail"}, {"compiler", t.cxx},
+                           {"summary", "No C++ compiler found — project operators cannot be built"},
+                           {"suggestion", "Install the Xcode Command Line Tools (xcode-select --install)"} });
+        next_actions.push_back(tutorial_action("Install the Xcode Command Line Tools",
+            "Run `xcode-select --install`. Vivid builds project-local C++ operators with the system "
+            "clang++ — it is not bundled in the app (the shader tutorials need no toolchain)."));
+    }
+
+    checks.push_back({ {"name", "operator_headers"}, {"status", t.headers_present ? "pass" : "fail"},
+                       {"inc_src", t.inc_src}, {"inc_wgpu", t.inc_wgpu},
+                       {"summary", t.headers_present
+                           ? "Bundled operator_api + webgpu headers are present"
+                           : "Bundled operator headers are missing — the app bundle looks incomplete"} });
+    if (!t.headers_present) { ready = false; missing.push_back("operator_headers"); }
+
+    checks.push_back({ {"name", "libwgpu_native"}, {"status", t.libwgpu_present ? "pass" : "fail"},
+                       {"lib_dir", t.lib_wgpu},
+                       {"summary", t.libwgpu_present
+                           ? "libwgpu_native is present for linking GPU operators"
+                           : "libwgpu_native not found next to the executable — GPU operators cannot link"} });
+    if (!t.libwgpu_present) { ready = false; missing.push_back("libwgpu_native"); }
+
+    json r = ok();
+    r["tutorial"] = "project_cpp_operator";
+    r["ready"] = ready;
+    r["checks"] = checks;
+    r["missing"] = missing;
+    r["next_actions"] = next_actions;
+    r["summary"] = ready
+                       ? "tutorial prerequisites are ready"
+                       : "tutorial prerequisites need attention before building the operator";
+    return r;
+}
+
 // A coarse structural fingerprint of a session JSON (counts + identity that carry no plugin-state
 // blob, so an unsaved-vs-disk diff is not swamped by opaque plugin bytes). Used by diff_project.
 json session_structure(const json& j) {
@@ -343,12 +400,12 @@ void register_project_handlers(Handlers& handlers_) {
     // the project.
     handlers_["check_tutorial_prereqs"] = [](const ControlCtx& c, const json& b) {
         const std::string tutorial = b.value("tutorial", b.value("name", std::string("mcp_native_first_project")));
-        if (!tutorial_is_first_project(tutorial)) {
-            json r = err(code::kBadArg, "unknown tutorial preflight: '" + tutorial + "'");
-            r["supported"] = json::array({ "mcp_native_first_project" });
-            return r;
-        }
-        return surge_xt_tutorial_prereqs(c.app);
+        if (tutorial_is_first_project(tutorial)) return surge_xt_tutorial_prereqs(c.app);
+        if (tutorial == "project_cpp_operator" || tutorial == "cpp_operator")
+            return project_cpp_operator_prereqs(c.app);
+        json r = err(code::kBadArg, "unknown tutorial preflight: '" + tutorial + "'");
+        r["supported"] = json::array({ "mcp_native_first_project", "project_cpp_operator" });
+        return r;
     };
     handlers_["scaffold_project_shader_operator"] = [](const ControlCtx& c, const json& b) {
         if (!c.app) return err(code::kInternal, "no app context");

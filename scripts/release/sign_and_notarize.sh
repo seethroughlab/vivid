@@ -26,6 +26,10 @@ APP="${1:?usage: sign_and_notarize.sh <Vivid.app> [out_dir]}"
 OUT_DIR="${2:-build/dist}"
 : "${APPLE_CODESIGN_IDENTITY:?set APPLE_CODESIGN_IDENTITY (see: security find-identity -v -p codesigning)}"
 [ -d "$APP" ] || { echo "error: not a bundle: $APP" >&2; exit 1; }
+# Canonicalize: the caller may pass a path with `..` segments (e.g. .../Contents/MacOS/../..).
+# codesign tolerates that, but `cp -R`/`ditto` copy the literal `..` entries and fail ("File exists"),
+# so resolve to a clean absolute bundle path before staging the DMG.
+APP="$(cd "$APP" && pwd -P)"
 
 APP_NAME="$(basename "$APP" .app)"
 mkdir -p "$OUT_DIR"
@@ -42,6 +46,18 @@ fi
 echo "==> identity: $APPLE_CODESIGN_IDENTITY"
 echo "==> notarization: $NOTARIZE"
 
+# Entitlements for the hardened runtime — applied to the MAIN executable so the app can dlopen its
+# runtime-compiled (unsigned/other-team) operator dylibs. Overridable via VIVID_ENTITLEMENTS.
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+ENTITLEMENTS="${VIVID_ENTITLEMENTS:-$REPO_ROOT/app/platform/macos/vivid.entitlements}"
+[ -f "$ENTITLEMENTS" ] || { echo "error: entitlements not found: $ENTITLEMENTS" >&2; exit 1; }
+echo "==> entitlements: $ENTITLEMENTS"
+
+# The Developer ID private key must be reachable by codesign non-interactively. Locally that's the
+# login keychain (the dev's cert). In CI the release workflow imports the cert (APPLE_CERT_P12_B64)
+# into a dedicated temporary keychain and puts it on the search list BEFORE running this script — the
+# headless-runner-safe pattern (a locked/service-context login keychain yields errSecInternalComponent).
+
 sign() { codesign --force --options runtime --timestamp --sign "$APPLE_CODESIGN_IDENTITY" "$@"; }
 
 echo "==> codesign (inside-out: nested dylibs/plugins/frameworks, then the app)"
@@ -53,7 +69,10 @@ while IFS= read -r -d '' lib; do sign "$lib"; done < <(
     \( -name "*.dylib" -o -name "*.so" -o -name "*.bundle" \) -print0 2>/dev/null)
 while IFS= read -r -d '' fw; do sign "$fw"; done < <(
   find "$APP/Contents/Frameworks" -maxdepth 1 -name "*.framework" -print0 2>/dev/null)
-sign "$APP"
+# The outer app (main executable) is signed WITH the entitlements; the nested code above was signed
+# without them (entitlements attach to the loading process, i.e. the main executable).
+codesign --force --options runtime --timestamp --entitlements "$ENTITLEMENTS" \
+         --sign "$APPLE_CODESIGN_IDENTITY" "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 
 notarize() {  # $1 = artifact to submit (zip or dmg)

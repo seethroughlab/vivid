@@ -11,11 +11,22 @@ beyond shaders: a real compiler, ABI checks, and crash quarantine.
 
 ## Prerequisites
 
-- Vivid running with the control server on `127.0.0.1:9876` (`VIVID_DISCARD_RECOVERY=1` for a
-  disposable run; set `VIVID_PORT` to change the port).
-- **Xcode Command Line Tools** (`xcode-select --install`) — the package compiler shells out to
-  `clang++`. If it is missing, `build_operator_package` returns a clear install hint instead of a
-  cryptic failure.
+- Vivid running — a signed release (`/Applications/Vivid.app`) or a dev build — with the control server
+  on `127.0.0.1:9876` (`VIVID_DISCARD_RECOVERY=1` for a disposable run; set `VIVID_PORT` to change it).
+- **Xcode Command Line Tools** (`xcode-select --install`) — Vivid builds project-local C++ operators
+  with the **system** `clang++`; the compiler is **not** bundled in the signed app (this matches how
+  Vivid has always built operator packages — the shader tutorials, by contrast, need no toolchain).
+
+Check readiness before you start — the preflight verifies clang++ **and** that the app bundle ships the
+operator headers + `libwgpu_native`:
+
+```json
+{"method": "check_tutorial_prereqs", "tutorial": "project_cpp_operator"}
+// → { "ready": true, "checks": [ {"name":"cxx_compiler","status":"pass", ...}, ... ] }
+```
+
+If a piece is missing it reports the gap + a `next_actions` install hint (e.g. `xcode-select --install`)
+before you scaffold or build anything.
 
 ## Run It
 

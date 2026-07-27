@@ -48,8 +48,9 @@ picture moves with the music: solids punch on the kick, grids jitter on the hats
 with the bass.
 
 ## Requirements
-- The app running (`app/build/vivid.app/Contents/MacOS/vivid`) — it serves the control
-  server on `127.0.0.1:9876`.
+- The app running — either a signed release (`/Applications/Vivid.app`, launched normally) or a dev
+  build (`app/build/vivid.app/Contents/MacOS/vivid`). Either serves the control server on
+  `127.0.0.1:9876` (set `VIVID_PORT` to change it).
 - **[Surge XT](https://surge-synthesizer.github.io/)** — free CLAP synth, the melodic voices
   (bass / lead / pad / stabs) across every demo.
 - **[BPB Cassette Drums](https://bedroomproducersblog.com/free-vst-plugins/drums/)** — free VST3

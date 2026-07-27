@@ -266,6 +266,35 @@ best-effort evidence, since a headless run driven by rapid synchronous control c
 main-thread frame loop and a dylib op initializes its GPU pipeline on first draw (it renders correctly
 once the app is idle/focused, as the existing `song-sketch` `AuroraField` op does).
 
+**Signed-build meta-gate met.** ADR-0040's Fulfillment Gates all read "demonstrated from a signed
+release build," but every proof above ran in dev worktrees. The macOS release pipeline
+(`release-macos.yml` + `scripts/release/sign_and_notarize.sh`) was scaffolded but never exercised;
+running it exposed and fixed four real, pre-existing blockers, none of them product code:
+
+- **rpath** — the host binary's only `LC_RPATH` was an absolute dev build-deps path, so a distributed
+  `.app` couldn't find bundled `libwgpu_native.dylib`; added `@executable_path`.
+- **wgpu arch** — the self-hosted runner runs under Rosetta (host reports x86_64), so the
+  WebGPU-distribution fetched the x86_64 wgpu against an arm64 target; pinned `ARCH` to
+  `CMAKE_OSX_ARCHITECTURES` + a clean release build.
+- **codesign keychain** — `errSecInternalComponent` on the headless runner; the workflow now imports
+  the Developer ID cert (`APPLE_CERT_P12_B64`) into a dedicated temporary keychain with a
+  `set-key-partition-list` grant.
+- **hardened-runtime entitlements** — signing had none, so a notarized app's `dlopen` of
+  runtime-compiled operator dylibs would be refused (breaking the whole package-operator feature);
+  added `com.apple.security.cs.disable-library-validation` and sign the main executable with it.
+- Plus the DMG staging path (`../..`) and a tag-gated GitHub Release step.
+
+Result: GitHub Actions produces a **signed + notarized** DMG (`spctl --assess` → "accepted, Notarized
+Developer ID"; ticket stapled). Installed to `/Applications/vivid.app`, it launches and the
+**project-cpp-operator tutorial passes against it** — scaffold → real `clang++` build → `dlopen` of
+the operator dylib *under the hardened runtime* (the entitlement's payoff) → recover → recompile — so
+the compiled-operator loop, the hardest gate, is demonstrated from a signed build. A new
+`check_tutorial_prereqs` `project_cpp_operator` checklist verifies the toolchain + bundle Resources on
+the signed build (Xcode CLT is a documented tier-3 prerequisite — the compiler is not bundled, matching
+vivid-classic). The acceptance *scripts* still run from a repo checkout against the signed app;
+distributing them to a no-repo user (bundling `examples/` + `mcp/`) remains a follow-up, as does the
+showcase regenerate→screenshot harness that ADR-0037 gates the website on.
+
 ## Implementation Order
 
 Work on this ADR should proceed in this order:

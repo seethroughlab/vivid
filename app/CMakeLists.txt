@@ -75,6 +75,18 @@ endif()
 
 # --- wgpu-native via eliemichel's WebGPU-distribution (precompiled) ---
 set(WGPU_VERSION "v29.0.0.0" CACHE STRING "wgpu-native release" FORCE)
+# The distribution auto-detects arch from CMAKE_SYSTEM_PROCESSOR (the HOST). That breaks when the
+# GitHub Actions self-hosted runner runs under Rosetta (host reports x86_64) while we target arm64
+# (forced above): it fetches the x86_64 wgpu and fails to link against the arm64 build. Pin the
+# distribution's ARCH to our TARGET arch (CMAKE_OSX_ARCHITECTURES) — detect_system_architecture
+# honors a pre-set ARCH (it early-outs on `if(NOT ARCH)`).
+if(APPLE AND NOT ARCH)
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+        set(ARCH "aarch64")
+    elseif(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        set(ARCH "x86_64")
+    endif()
+endif()
 FetchContent_Declare(webgpu
     GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
     GIT_TAG        17dcd42a7683355e7a40ac4e97e77f36dff5b5ab
@@ -431,6 +443,12 @@ if(APPLE)
         "-framework IOKit" "-framework CoreAudio" "-framework AudioToolbox"
         "-framework CoreMIDI" "-framework CoreFoundation" "-framework Security"
         "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo")
+    # The bundled libwgpu_native.dylib sits next to the executable in Contents/MacOS
+    # (target_copy_webgpu_binaries), and its install name is @rpath/libwgpu_native.dylib. Add an
+    # @executable_path rpath so a signed/distributed .app resolves it OFF the build machine — the wgpu
+    # import target also injects an absolute build-tree rpath, which dyld harmlessly skips once the app
+    # is moved. Mirrors the operator plugins' @loader_path/../MacOS rpath (operators/CMakeLists.txt).
+    target_link_options(vivid PRIVATE "-Wl,-rpath,@executable_path")
 endif()
 
 # Copy the wgpu-native dylib next to the executable at build time.
