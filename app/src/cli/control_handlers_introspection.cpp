@@ -338,6 +338,16 @@ json unified_operator_catalog(const ControlCtx& c, const std::string& domain, co
             json jo = control_json::operator_to_json(*d, "gpu_visual");
             jo["domain"] = "visual";
             jo["spawn"] = { {"tool", "add_node"}, {"op_arg", name} };
+            // Make a project-local/user shader operator self-describing: a beginner who finds a
+            // PulseField node and reaches for the catalog should learn it is shader-backed and WHERE
+            // its source lives, without having to know to cross-reference list_shaders. The descriptor
+            // (ABI-frozen) carries no path, so join against the shader library by the type name.
+            if (c.app) {
+                if (const auto* sh = c.app->shader_library.find(name)) {
+                    jo["format"] = "shader_file";
+                    jo["source"] = { {"path", sh->path}, {"tier", sh->tier} };
+                }
+            }
             arr.push_back(jo);
         }
     }

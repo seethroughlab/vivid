@@ -654,9 +654,24 @@ void register_project_handlers(Handlers& handlers_) {
         std::error_code ec;
         json r = ok();
         r["path"] = dir;
-        // Shaders: re-scan the project's shaders (registers new files; hot-reload handles edits live).
+        // Shaders: re-scan the project's shaders. set_project re-registers each shader TYPE with the
+        // current file body, but it does NOT touch live graph NODES — an already-built node keeps its
+        // old compiled pipeline. So a body edit (or a newly-broken body) would never reach the running
+        // node via this MCP call, and the frame-loop poll only fires when the window is actively
+        // rendering. For a deterministic, MCP-native live-edit loop, rebuild the live nodes of each
+        // re-registered project shader type here: rebuild_op_instances recompiles the node from the new
+        // body (preserving params by name) so good edits take effect and a broken body surfaces its
+        // compile error through VisualNode::error() (validate_project / broken_ops).
         const int shader_ops = c.app->shader_library.set_project(c.app->op_registry, dir);
         r["shader_operators"] = shader_ops;
+        int shader_nodes_rebuilt = 0;
+        if (c.vgraph) {
+            for (const auto& e : c.app->shader_library.entries()) {
+                if (e.tier == "project" && e.registered)
+                    shader_nodes_rebuilt += c.vgraph->rebuild_op_instances(e.name);
+            }
+        }
+        r["shader_nodes_rebuilt"] = shader_nodes_rebuilt;
         const int file_param_nodes = c.vgraph ? c.vgraph->bump_all_file_param_generations() : 0;
         r["file_param_nodes_reloaded"] = file_param_nodes;
         // Package: recompile + register any newly-authored operator.
@@ -682,6 +697,7 @@ void register_project_handlers(Handlers& handlers_) {
         r["operators"] = ops;
         r["newly_registered"] = registered;
         r["summary"] = "reloaded project files: " + std::to_string(shader_ops) + " shader op(s), " +
+                       std::to_string(shader_nodes_rebuilt) + " shader node(s) rebuilt, " +
                        std::to_string(file_param_nodes) + " file-param node(s), " +
                        std::to_string(registered) + " new package op(s)";
         return r;

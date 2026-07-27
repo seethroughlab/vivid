@@ -77,3 +77,14 @@ changing graph identity.
 
 This confirms the ADR shape: the tutorial work is already finding product gaps, and those gaps are
 being fixed in Vivid before the website claims the workflow is ready.
+
+`live-shader-edit` has since been promoted from that pressure-test into a first-class beginner
+walkthrough (tutorial tier 2, ADR-0035 step 9 "Fork a Shader or Visual Operator"). It is now
+self-contained — it scaffolds its own shader-only project, so it needs no Surge XT / synth
+prerequisite — and it teaches the full creative-coding loop over MCP: discover the shader operator and
+its backing file, edit the `.wgsl` and reload it live (the node keeps its identity), deliberately
+break the shader and recover using `validate_project` / `inspect_signal_flow` diagnostics, then verify
+and save. Building it drove two product fixes (self-describing shader ops in the operator catalog, and
+`reload_project_files` rebuilding live shader nodes so edits/errors reach running nodes over MCP — see
+ADR-0040). Its `build.py` is a runnable acceptance test with hard assertions; it produces
+`project/live-edit-proof.json` and a friction log.
