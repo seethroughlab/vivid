@@ -424,6 +424,52 @@ def find(nodes, op_type):
     return None
 
 
+# --- Control-server preflight / capture helpers -----------------------------------------------
+# Shared by the demo builders, the tutorial build.py scripts, and the showcase QA harness so
+# there is one copy of the control-server etiquette (preflight, tolerant calls, warm-up capture).
+
+def require_control_server(v: "Vivid", context: str = "") -> None:
+    """Raise SystemExit with a launch hint if the app's control server is unreachable. `context`
+    names the walkthrough for the error message (e.g. "the live-shader-edit walkthrough")."""
+    try:
+        v.call("status")
+    except Exception as exc:  # noqa: BLE001
+        where = f" before {context}" if context else ""
+        raise SystemExit(
+            f"Vivid must be running{where}.\n"
+            f"Could not reach the control server at {v.base}: {exc}\n"
+            "Launch Vivid (VIVID_DISCARD_RECOVERY=1 for a disposable run) and confirm the control "
+            "server is listening; set VIVID_PORT if you changed it."
+        ) from exc
+
+
+def call_optional(v: "Vivid", method: str, **payload) -> dict | None:
+    """Call a control-server method, warning instead of failing. Used for proof/QA hooks so a
+    warming buffer or an absent optional feature degrades to a warning, not a hard error."""
+    try:
+        return v.call(method, **payload)
+    except RuntimeError as exc:  # noqa: BLE001
+        print(f"[warn] {method} skipped: {exc}")
+        return None
+
+
+def warm_capture(v: "Vivid", path: str, tries: int = 10, delay: float = 0.5) -> dict | None:
+    """Capture, retrying until the frame is non-blank. A freshly-registered dylib operator's GPU
+    pipeline lazily initializes on its first draw; in a headless/unfocused session the frame loop is
+    throttled, so the node can take several seconds of wall-clock to warm up (in a normal focused
+    session it warms in one frame). Returns early once non-blank, else the last capture. The number
+    of attempts made is stamped onto the returned dict as `warm_attempts` (1 = warmed immediately)."""
+    r = None
+    for attempt in range(1, tries + 1):
+        r = call_optional(v, "capture_frame", path=path)
+        if isinstance(r, dict):
+            r["warm_attempts"] = attempt
+            if r.get("captured") and not r.get("is_blank", True):
+                return r
+        time.sleep(delay)
+    return r
+
+
 # --- Surge XT (a free/open CLAP synth — always audible, unlike the licensed VST3s) ---
 SURGE = "/Library/Audio/Plug-Ins/CLAP/Surge XT.clap"
 SURGE_FX = "/Library/Audio/Plug-Ins/CLAP/Surge XT Effects.clap"

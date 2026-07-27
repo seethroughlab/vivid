@@ -30,7 +30,7 @@ REPO = HERE.parents[2]
 DEMOS = REPO / "examples" / "demos"
 sys.path.insert(0, str(DEMOS))
 
-from vivid_demo import Vivid, find  # noqa: E402
+from vivid_demo import Vivid, call_optional, find, require_control_server  # noqa: E402
 
 PROJECT = HERE / "project"
 SHADER_OP = "PulseField"
@@ -106,26 +106,6 @@ BROKEN_EDIT = BASE_SHADER.replace(
 )
 
 
-def require_control_server(v: Vivid) -> None:
-    try:
-        v.call("status")
-    except Exception as exc:  # noqa: BLE001
-        raise SystemExit(
-            "Vivid must be running before the live-shader-edit walkthrough.\n"
-            f"Could not reach the control server at {v.base}: {exc}\n"
-            "Launch Vivid (VIVID_DISCARD_RECOVERY=1 for a disposable run) and confirm the control "
-            "server is listening; set VIVID_PORT if you changed it."
-        ) from exc
-
-
-def call_optional(v: Vivid, method: str, **payload) -> dict | None:
-    try:
-        return v.call(method, **payload)
-    except RuntimeError as exc:  # noqa: BLE001
-        print(f"[warn] {method} skipped: {exc}")
-        return None
-
-
 def visual_op_issues(report: dict | None, op: str) -> list[dict]:
     """The validate_project issues that name this visual operator (broken/unregistered)."""
     if not report:
@@ -160,7 +140,7 @@ def shader_entry(v: Vivid, op: str) -> dict | None:
 
 def build() -> None:
     v = Vivid()
-    require_control_server(v)
+    require_control_server(v, "the live-shader-edit walkthrough")
 
     # --- Fresh, self-contained project (no synth prerequisite) --------------------------------
     if PROJECT.exists():
