@@ -1,0 +1,64 @@
+{
+  "note": "Hero images are release artifacts of the ADR-0037 showcase QA harness (examples/demos/showcase). Regenerate: run the harness against the signed app.",
+  "app_build": "signed",
+  "app_version": "0.1.0",
+  "captured_from": "/Applications/vivid.app (signed release, build_type=release, operator_abi=14)",
+  "gate": "pass",
+  "heroes": [
+    {
+      "id": "first-project",
+      "adr0037_type": 1,
+      "gate": "pass",
+      "hero": "first-project.png",
+      "width": 1280,
+      "height": 720,
+      "brightness": 0.2864,
+      "contrast": 0.283,
+      "hash": "183c3c3c3c3c3c18"
+    },
+    {
+      "id": "pulse-song",
+      "adr0037_type": 2,
+      "gate": "pass",
+      "hero": "pulse-song.png",
+      "width": 1280,
+      "height": 720,
+      "brightness": 0.3583,
+      "contrast": 0.2514,
+      "hash": "10383c3c3c1c1800"
+    },
+    {
+      "id": "mirror-bridge",
+      "adr0037_type": 3,
+      "gate": "pass",
+      "hero": "mirror-bridge.png",
+      "width": 1280,
+      "height": 720,
+      "brightness": 0.272,
+      "contrast": 0.1585,
+      "hash": "3c3c3c7e7e3c3c3c"
+    },
+    {
+      "id": "shader-edit",
+      "adr0037_type": 4,
+      "gate": "pass",
+      "hero": "shader-edit.png",
+      "width": 1280,
+      "height": 720,
+      "brightness": 0.288,
+      "contrast": 0.2845,
+      "hash": "183c3c3c3c3c3c18"
+    },
+    {
+      "id": "neon-song",
+      "adr0037_type": 5,
+      "gate": "pass",
+      "hero": "neon-song.png",
+      "width": 1280,
+      "height": 720,
+      "brightness": 0.2178,
+      "contrast": 0.1375,
+      "hash": "1c3c3c7e7e3c3c1c"
+    }
+  ]
+}
