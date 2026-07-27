@@ -543,7 +543,7 @@ static uint32_t resolve_control_inputs(const vivid::audio::CompiledStep& s, cons
 }
 
 // ADR-0034: resolve this block's control inputs for a CLAP plugin node into param events (plain
-// units, keyed by clap_id), reading the audio-thread base mirror (`abase_load`) instead of the native
+// units, keyed by clap_id), reading the EFFECTIVE base (`aeff_load` — bridge value if active, else authored) instead of the native
 // op's pvals. Same combine as native — in-track edges + cross-track edges, stacking on one param —
 // but the output is delivered through the plugin's event list (render_clap_*), not the native
 // override array. Returns the count; 0 for an unmodulated node or one with no captured base yet.
@@ -553,7 +553,7 @@ static uint32_t resolve_clap_control(const vivid::audio::CompiledStep& s, const 
     uint32_t n = 0;
     auto stack = [&](int pidx, float src, const vivid::audio::ControlShape& sh) {
         if (pidx < 0 || pidx >= static_cast<int>(nb.clap->params.size())) return;
-        double base; if (!nb.clap->abase_load(pidx, base)) return;   // no anchor captured → not modulatable
+        double base; if (!nb.clap->aeff_load(pidx, base)) return;   // effective base (bridge if active, else authored)
         const clap_id id = nb.clap->params[pidx].id;
         const float lo = static_cast<float>(nb.clap->params[pidx].min), hi = static_cast<float>(nb.clap->params[pidx].max);
         int slot = -1;
@@ -578,7 +578,7 @@ static uint32_t resolve_clap_control(const vivid::audio::CompiledStep& s, const 
 
 // ADR-0034: the VST3 twin of resolve_clap_control — resolve a VST3 node's control edges into
 // normalized param points (VST3 params are 0..1), keyed by ParamID, injected into the plugin's
-// Vst3ParamChanges by render_vst3_*. Reads the atomic base mirror (`abase_load`). Empty (0) for an
+// Vst3ParamChanges by render_vst3_*. Reads the EFFECTIVE base (`aeff_load`). Empty (0) for an
 // unmodulated node or one without a captured base.
 static uint32_t resolve_vst3_control(const vivid::audio::CompiledStep& s, const GNodeBind& nb,
                                      const GraphBlockCtx& b, int dst_track_id, ParamMsg* out) {
@@ -586,7 +586,7 @@ static uint32_t resolve_vst3_control(const vivid::audio::CompiledStep& s, const 
     uint32_t n = 0;
     auto stack = [&](int pidx, float src, const vivid::audio::ControlShape& sh) {
         if (pidx < 0 || pidx >= static_cast<int>(nb.handle->params.size())) return;
-        float base; if (!nb.handle->abase_load(pidx, base)) return;   // no anchor captured → not modulatable
+        float base; if (!nb.handle->aeff_load(pidx, base)) return;   // effective base (bridge if active, else authored)
         const ParamID id = nb.handle->params[pidx].id;
         int slot = -1;
         for (uint32_t j = 0; j < n; ++j) if (out[j].id == id) { slot = static_cast<int>(j); break; }
@@ -3394,6 +3394,28 @@ int session_audio_graph_disconnect_control(Session* s, int t, int from_id, int t
     std::lock_guard<std::mutex> lk(tr->gmtx);
     tr->agraph.disconnect_control(from_id, to_id, dest_param);
     republish_track_graph(tr);
+    // ADR-0034 Phase 3: restore-on-disconnect. Once the LAST control edge on a plugin param is gone,
+    // the plugin holds its last modulated value (VST3/CLAP params latch — no injected event returns
+    // them to base). Deliver the authored base once so it snaps back. Native ops need nothing: with no
+    // control edge the op reads `pvals` (its base) directly. Only when no edge still targets the param.
+    bool still_driven = false;
+    for (const vivid::audio::AudioGraphEdge& e : tr->agraph.edges())
+        if (e.kind == vivid::audio::EdgeKind::Control && e.to_id == to_id && e.dest_param == dest_param) { still_driven = true; break; }
+    if (!still_driven && dest_param >= 0) {
+        const int nidx = tr->agraph.node_index(to_id);
+        if (nidx >= 0 && nidx < static_cast<int>(tr->agnodes.size())) {
+            const GNodeBind& nb = tr->agnodes[static_cast<size_t>(nidx)];
+            if (nb.clap && dest_param < static_cast<int>(nb.clap->params.size()) &&
+                dest_param < static_cast<int>(nb.clap->has_base.size()) && nb.clap->has_base[dest_param])
+                nb.clap->param_q.push(nb.clap->params[dest_param].id, nb.clap->host_base[dest_param]);
+            else if (nb.handle && nb.handle->controller && dest_param < static_cast<int>(nb.handle->params.size()) &&
+                     dest_param < static_cast<int>(nb.handle->has_base.size()) && nb.handle->has_base[dest_param]) {
+                const ParamID id = nb.handle->params[dest_param].id;
+                nb.handle->param_q.push(id, nb.handle->host_base[dest_param]);
+                nb.handle->controller->setParamNormalized(id, nb.handle->host_base[dest_param]);
+            }
+        }
+    }
     return 1;
 }
 // ADR-0022: re-shape an existing control edge (amount/curve/invert/bipolar) without rewiring.

@@ -18,7 +18,15 @@ Implementation:
   drain (raising `kMaxParams` 8 → 64). Confirmed end to end: an LFO on a VST3 param swings the output.
   No VST3 fixture (SDK lacks `public.sdk`), so CI covers the base mirror via `test_plugin_param_base`;
   the delivery is manually verified.
-- Phase 3 hardens precedence and restore-on-disconnect across both formats.
+- Phase 3 — restore-on-disconnect + precedence. Removing a param's last control edge delivers the
+  authored base to the plugin once (VST3/CLAP params latch; native ops revert on their own). Both
+  handles gain a bridge-value mirror (`abridge`/`abr_on`, mirror of native `fovr`) written by the
+  bridge deliver path and cleared on override-clear, so a param driven by BOTH a bridge mapping and a
+  control edge composes: modulation resolves on the bridge value as the effective base. Also fixed a
+  double-count the delivered modulation exposed — `session_audio_graph_node_param_resolved` started
+  from the plugin's live value (which for CLAP already includes the delivered modulation) and
+  re-applied the edge; it now predicts from the effective base (bridge/authored), never the live value.
+  Covered by `test_clap_modulation` (swing / restore-on-disconnect / bridge-compose) against the fixture.
 
 Extends [ADR-0022](ADR-0022-session-audio-graph.md), [ADR-0030](ADR-0030-host-owned-audio-param-state.md),
 and [ADR-0029](ADR-0029-concurrency-model-is-tsan-gated.md).
