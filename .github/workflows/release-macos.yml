@@ -39,6 +39,10 @@ jobs:
 
       - name: Build (release)
         run: |
+          # Self-hosted runners reuse the workspace, so a stale build dir can carry the wrong-arch wgpu
+          # (the runner reports host x86_64 under Rosetta) or a stale cache. Start clean for a
+          # deterministic, correctly-arch'd release build.
+          rm -rf app/build
           cmake -S app -B app/build -DCMAKE_BUILD_TYPE=Release
           cmake --build app/build -j
 

@@ -75,6 +75,18 @@ endif()
 
 # --- wgpu-native via eliemichel's WebGPU-distribution (precompiled) ---
 set(WGPU_VERSION "v29.0.0.0" CACHE STRING "wgpu-native release" FORCE)
+# The distribution auto-detects arch from CMAKE_SYSTEM_PROCESSOR (the HOST). That breaks when the
+# GitHub Actions self-hosted runner runs under Rosetta (host reports x86_64) while we target arm64
+# (forced above): it fetches the x86_64 wgpu and fails to link against the arm64 build. Pin the
+# distribution's ARCH to our TARGET arch (CMAKE_OSX_ARCHITECTURES) — detect_system_architecture
+# honors a pre-set ARCH (it early-outs on `if(NOT ARCH)`).
+if(APPLE AND NOT ARCH)
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+        set(ARCH "aarch64")
+    elseif(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        set(ARCH "x86_64")
+    endif()
+endif()
 FetchContent_Declare(webgpu
     GIT_REPOSITORY https://github.com/eliemichel/WebGPU-distribution
     GIT_TAG        17dcd42a7683355e7a40ac4e97e77f36dff5b5ab
