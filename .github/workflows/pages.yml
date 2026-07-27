@@ -40,12 +40,13 @@ jobs:
           name: site
           path: _site
 
-  # Deploy runs only when Cloudflare Pages secrets are configured. Until then the build job above
-  # still validates the site on every push/PR (it self-checks pages + hero images).
+  # Deploy on pushes to the default branch (not PRs) using the existing Cloudflare Pages secrets
+  # (CF_API_TOKEN / CF_ACCOUNT_ID, already configured for the classic `vivid-site` project). PRs still
+  # run the build job above, which self-checks pages + hero images.
   deploy:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && vars.CF_PAGES_ENABLED == 'true'
+    if: github.event_name != 'pull_request'
     steps:
       - name: Checkout
         uses: actions/checkout@v4

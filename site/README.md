@@ -32,13 +32,10 @@ unresolved template placeholder leaks into the output.
 
 ## Deploy
 
-`.github/workflows/pages.yml` builds the site with `uv` on every push/PR touching `site/**` and
-deploys `_site/` to **Cloudflare Pages** (project `vivid-site`). The build + self-check run with no
-secrets; the deploy job is skipped unless the repo variable `CF_PAGES_ENABLED` is `true`. To go live:
-
-1. Create the Cloudflare Pages project `vivid-site`.
-2. Add repo secrets `CF_API_TOKEN` and `CF_ACCOUNT_ID`.
-3. Set the repo variable `CF_PAGES_ENABLED` to `true`.
+`.github/workflows/pages.yml` builds the site with `uv` on every push/PR touching `site/**`. On pushes
+to `main` it deploys `_site/` to the existing **Cloudflare Pages** project `vivid-site`, using the
+repo secrets `CF_API_TOKEN` / `CF_ACCOUNT_ID` (already configured from the classic site). PRs run only
+the build + self-check. If the Cloudflare project was renamed, update `projectName` in `pages.yml`.
 
 ## Sections
 
