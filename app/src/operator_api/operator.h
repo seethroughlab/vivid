@@ -367,6 +367,11 @@ struct OperatorBase {
     // record it WITHOUT reading an appended field out of the (possibly older) dylib descriptor
     // struct. Built-in audio ops keep using the audio_op_mark_* tables, so they leave this DEFAULT.
     virtual VividAudioRole declared_audio_role() const { return VIVID_AUDIO_ROLE_DEFAULT; }
+    // Host-internal: built-in operators store FILE/TEXT params as concrete Param<FilePath> /
+    // Param<TextValue> members, so the host can sync resolved strings directly. Loaded dylib
+    // operators mirror params as plain ParamBase descriptors and sync their real params inside the
+    // ABI process call, so their adapter opts out.
+    virtual bool host_syncs_file_params() const { return true; }
     // Host-internal: a built-in operator's process_* capabilities ARE its C++ interfaces, so the
     // host infers them by dynamic_cast (returns nullptr here). The loaded-dylib adapter implements
     // all three interfaces at once, so it can't be told apart that way — it overrides this to hand

@@ -21,6 +21,7 @@ function(vivid_add_test name)
 endfunction()
 
 vivid_add_test(test_mapping)
+vivid_add_test(test_mapping_request)    # MCP helper contract: audio characteristic -> visual mapping request
 vivid_add_test(test_undo_manager)   # ADR-0017/G1 undo history cursor (pure)
 target_sources(test_undo_manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/undo_manager.cpp)

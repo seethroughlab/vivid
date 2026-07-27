@@ -28,6 +28,7 @@ struct VisualNode {
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
+    uint64_t file_param_generation = 0;    // host-triggered same-path reload signal for FILE/TEXT consumers
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
     // Base values captured BY PARAM NAME across a rebuild (an operator hot-reload, or a shader
     // whose header changed). Indices move when a reload adds, removes or reorders a param, so a
@@ -112,6 +113,8 @@ public:
     // against — the loaded project folder. Cleared for a fresh/default session.
     void set_asset_dir(const std::string& dir) { asset_dir_ = dir; }
     const std::string& asset_dir() const { return asset_dir_; }
+    uint64_t bump_file_param_generation(int node);
+    int bump_all_file_param_generations();
 
     // Hot-reload: destroy / recreate the OpInstance of every node whose op_type is
     // `type`. release MUST run before the loader dlcloses the old dylib (so the old

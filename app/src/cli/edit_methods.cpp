@@ -20,6 +20,7 @@ const EditMethodInfo* edit_method_info(const std::string& method) {
         { "set_node_asset",      { "Set Asset",          true  } },
         // ---- the bridge (G2) ----
         { "connect_mapping",     { "Connect Mapping",    false } },
+        { "map_audio_to_visual_param", { "Connect Mapping", false } },
         { "disconnect_mapping",  { "Disconnect Mapping", false } },
         // ---- layout (G2) ----
         { "layout_graph",        { "Auto-Layout",        false } },

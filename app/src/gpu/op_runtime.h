@@ -108,7 +108,9 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
 
 // Write resolved values into the instance's params (collect_params order).
 // Copies min(count, param_ptrs.size()) values.
-void sync_params(OpInstance& inst, const float* values, int count);
+void sync_params(OpInstance& inst, const float* values, int count,
+                 const char** file_param_values = nullptr,
+                 uint32_t file_param_count = 0);
 
 // Extract operator-level metadata (display_name/keywords/summary) from an op type's
 // optional static members (kDisplayName/kKeywords/kSummary). Empty when none exist.

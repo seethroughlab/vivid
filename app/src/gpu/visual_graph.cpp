@@ -271,6 +271,30 @@ std::string VisualGraph::generator() const {
     return {};
 }
 
+uint64_t VisualGraph::bump_file_param_generation(int node) {
+    if (node < 0 || node >= static_cast<int>(nodes_.size())) return 0;
+    return ++nodes_[node].file_param_generation;
+}
+
+int VisualGraph::bump_all_file_param_generations() {
+    int count = 0;
+    for (auto& n : nodes_) {
+        bool has_file_param = false;
+        for (size_t i = 0; i < n.inst.param_ptrs.size(); ++i) {
+            const auto* pb = n.inst.param_ptrs[i];
+            if (!pb || (pb->type != VIVID_PARAM_FILE && pb->type != VIVID_PARAM_TEXT)) continue;
+            if (i < n.file_params.size() && !n.file_params[i].empty()) {
+                has_file_param = true;
+                break;
+            }
+        }
+        if (!has_file_param) continue;
+        ++n.file_param_generation;
+        ++count;
+    }
+    return count;
+}
+
 void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
     apply_output_settings();   // FIRST: may resize every RT, before the encoder references any
     ensure_resources(nodes_.size());
@@ -357,9 +381,11 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         for (auto& s : fpv_storage) fpv.push_back(s.c_str());
         ctx.file_param_values = fpv.empty() ? nullptr : fpv.data();
         ctx.file_param_count  = static_cast<uint32_t>(fpv.size());
+        ctx.file_param_generation = n.file_param_generation;
 
         sync_params(n.inst, n.params.empty() ? nullptr : n.params.data(),
-                    static_cast<int>(n.params.size()));
+                    static_cast<int>(n.params.size()),
+                    ctx.file_param_values, ctx.file_param_count);
         // Data-driven shader nodes: resolve the node's relative asset against the project
         // dir and hand the absolute path to the operator (it (re)loads on change).
         if (!n.asset.empty())

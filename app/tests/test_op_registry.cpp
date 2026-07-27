@@ -63,6 +63,45 @@ struct FileStandIn : vivid::OperatorBase, vivid::GpuProcessable {
     void process_gpu(const VividGpuContext*) override {}
 };
 
+// Mixed params prove the host runtime contract for built-in/package ops: numeric values keep their
+// canonical param indices, while FILE/TEXT strings arrive as a dense file-param array.
+struct MixedFileTextStandIn : vivid::OperatorBase, vivid::GpuProcessable {
+    vivid::Param<float> gain{"gain", 0.25f, 0.f, 1.f};
+    vivid::Param<vivid::FilePath> path{"file", "seed.glsl"};
+    vivid::Param<vivid::TextValue> label{"label", "hello"};
+    vivid::Param<float> mix{"mix", 0.5f, 0.f, 1.f};
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&gain);
+        out.push_back(&path);
+        out.push_back(&label);
+        out.push_back(&mix);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& out) override {
+        VividPortDescriptor o{}; o.name = "texture"; o.type = VIVID_PORT_TEXTURE; o.direction = VIVID_PORT_OUTPUT;
+        out.push_back(o);
+    }
+    void process_gpu(const VividGpuContext*) override {}
+};
+
+struct MirroredLoadedStandIn : vivid::OperatorBase {
+    vivid::Param<float> gain{"gain", 0.1f, 0.f, 1.f};
+    vivid::ParamBase file{};
+    vivid::ParamBase label{};
+    MirroredLoadedStandIn() {
+        file.name = "file";
+        file.type = VIVID_PARAM_FILE;
+        label.name = "label";
+        label.type = VIVID_PARAM_TEXT;
+    }
+    void collect_params(std::vector<vivid::ParamBase*>& out) override {
+        out.push_back(&gain);
+        out.push_back(&file);
+        out.push_back(&label);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& out) override { out.clear(); }
+    bool host_syncs_file_params() const override { return false; }
+};
+
 }  // namespace
 
 int main() {
@@ -71,10 +110,12 @@ int main() {
     reg.register_type("Fx",  [] { return std::make_unique<FxStandIn>(); });
     reg.register_type("Fx2", [] { return std::make_unique<Fx2StandIn>(); });
     reg.register_type("Filey", [] { return std::make_unique<FileStandIn>(); });
+    reg.register_type("MixedFileText", [] { return std::make_unique<MixedFileTextStandIn>(); });
 
     // Registry surface: names in registration order; has().
     auto names = reg.type_names();
-    CHECK(names.size() == 4 && names[0] == "Gen" && names[1] == "Fx" && names[2] == "Fx2" && names[3] == "Filey");
+    CHECK(names.size() == 5 && names[0] == "Gen" && names[1] == "Fx" && names[2] == "Fx2" &&
+          names[3] == "Filey" && names[4] == "MixedFileText");
     CHECK(reg.has("Gen") && !reg.has("Bogus"));
 
     std::vector<vivid::DescriptorValidationIssue> issues;
@@ -116,8 +157,8 @@ int main() {
     CHECK(fd->params[0].default_string != nullptr &&
           std::string(fd->params[0].default_string) == "seed.png");
 
-    // Registry now lists four types in registration order.
-    CHECK(reg.type_names().size() == 4);
+    // Registry now lists all types in registration order.
+    CHECK(reg.type_names().size() == 5);
 
     // Unknown type → no instance.
     CHECK(!reg.create("Bogus", issues).has_value());
@@ -127,6 +168,30 @@ int main() {
     vivid::sync_params(*gi, vals, 2);
     CHECK(gi->param_ptrs[0]->value == 0.9f);
     CHECK(gi->param_ptrs[1]->value == 1.5f);
+
+    auto mi = reg.create("MixedFileText", issues);
+    CHECK(mi.has_value() && issues.empty());
+    float mixed_vals[4] = { 0.75f, 0.f, 0.f, 0.125f };
+    const char* mixed_files[2] = { "/tmp/project/shaders/pulse_field.glsl", "resolved text" };
+    vivid::sync_params(*mi, mixed_vals, 4, mixed_files, 2);
+    CHECK(mi->param_ptrs[0]->value == 0.75f);
+    CHECK(mi->param_ptrs[3]->value == 0.125f);
+    CHECK(static_cast<vivid::Param<vivid::FilePath>*>(mi->param_ptrs[1])->str_value ==
+          "/tmp/project/shaders/pulse_field.glsl");
+    CHECK(static_cast<vivid::Param<vivid::TextValue>*>(mi->param_ptrs[2])->str_value ==
+          "resolved text");
+
+    auto mirrored_op = std::make_unique<MirroredLoadedStandIn>();
+    MirroredLoadedStandIn* mirrored = mirrored_op.get();
+    vivid::OpInstance mirrored_inst;
+    mirrored_inst.op = std::move(mirrored_op);
+    mirrored->collect_params(mirrored_inst.param_ptrs);
+    float mirrored_vals[3] = { 0.625f, 0.f, 0.f };
+    const char* mirrored_files[2] = { "/tmp/project/file.glsl", "ignored text" };
+    vivid::sync_params(mirrored_inst, mirrored_vals, 3, mirrored_files, 2);
+    CHECK(mirrored->gain.value == 0.625f);
+    CHECK(mirrored->file.value == 0.f);
+    CHECK(mirrored->label.value == 0.f);
 
     // unregister_type retires a type (the project-scoped-operator teardown path): has() is
     // false, create() has no value, its cached descriptor is dropped, and it leaves type_names —
@@ -140,11 +205,11 @@ int main() {
     CHECK(reg.descriptor_for("Fx2") == nullptr);
     {
         auto ns = reg.type_names();
-        CHECK(ns.size() == 3 && std::find(ns.begin(), ns.end(), "Fx2") == ns.end());
+        CHECK(ns.size() == 4 && std::find(ns.begin(), ns.end(), "Fx2") == ns.end());
     }
-    CHECK(reg.has("Gen") && reg.has("Fx") && reg.has("Filey"));   // siblings intact
+    CHECK(reg.has("Gen") && reg.has("Fx") && reg.has("Filey") && reg.has("MixedFileText"));   // siblings intact
     reg.unregister_type("Bogus");                                 // unknown name → harmless no-op
-    CHECK(reg.type_names().size() == 3);
+    CHECK(reg.type_names().size() == 4);
     // Re-registering the same name after an unregister works (a project re-open): the descriptor
     // rebuilds fresh from the new factory.
     reg.register_type("Fx2", [] { return std::make_unique<Fx2StandIn>(); });

@@ -431,6 +431,30 @@ def connect_mapping(src: str, dst: str, amount: float = 1.0, curve: float = 0.0,
 
 
 @mcp.tool
+def map_audio_to_visual_param(source: str = "track", characteristic: str = "",
+                              node_id: int = -1, param: str = "",
+                              track: int | None = None, track_id: int | None = None,
+                              track_name: str = "", amount: float = 1.0,
+                              curve: float = 0.0, invert: bool = False,
+                              lo: float = 0.0, hi: float = 1.0) -> dict:
+    """First-class bridge helper: map an audio characteristic to a visual param without hand-building
+    raw source/destination strings. source='track' uses one of track, track_id, or track_name plus a
+    characteristic (level|transient|low|mid|high|note|velocity|gate). source='master' uses
+    characteristic level|transient|low|mid|high. node_id and param identify the visual destination.
+    Returns the canonical src/dst strings plus readable source/destination info."""
+    payload = {"source": source, "characteristic": characteristic, "node_id": node_id,
+               "param": param, "amount": amount, "curve": curve, "invert": invert,
+               "lo": lo, "hi": hi}
+    if track is not None:
+        payload["track"] = track
+    if track_id is not None:
+        payload["track_id"] = track_id
+    if track_name:
+        payload["track_name"] = track_name
+    return _post("map_audio_to_visual_param", payload)
+
+
+@mcp.tool
 def disconnect_mapping(dst: str) -> dict:
     """Remove the mapping driving this destination."""
     return _post("disconnect_mapping", {"dst": dst})

@@ -83,6 +83,7 @@ struct VividGpuContext {
     VividValueOutput*     value_outputs;  // [output port_ordinal]
     const char**       file_param_values;
     uint32_t           file_param_count;
+    uint64_t           file_param_generation;  // increments when same-path FILE content should be reloaded
 
     // Input events
     const VividInputState* input;
