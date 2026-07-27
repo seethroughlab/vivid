@@ -718,6 +718,39 @@ def capture_frame(path: str = "") -> dict:
     return _post("capture_frame", payload)
 
 
+# ---------------- video export (realtime AV) ----------------
+@mcp.tool
+def export_video(path: str, seconds: float, fps: float = 60.0) -> dict:
+    """Record the live visual output + master audio to an AV-synced video for `seconds`, then auto-stop.
+    Returns immediately with {status:"recording", path, seconds, width, height}; poll video_export_status
+    until recording:false, then the file is finalized. `path` must be absolute and end in .mp4 (default,
+    web-friendly) or .mov. Something must be PLAYING for the capture to have motion/audio. The one-call
+    way to grab a showcase clip: export_video → poll → done."""
+    return _post("export_video", {"path": path, "seconds": seconds, "fps": fps})
+
+
+@mcp.tool
+def start_video_export(path: str, fps: float = 60.0) -> dict:
+    """Begin a MANUAL AV video export (records until stop_video_export). Returns {status:"recording",
+    path, width, height}. `path` absolute, .mp4 or .mov. Use export_video instead when you know the
+    duration up front; use this pair to bracket an arbitrary live session."""
+    return _post("start_video_export", {"path": path, "fps": fps})
+
+
+@mcp.tool
+def stop_video_export() -> dict:
+    """Finalize the current manual video export. Returns {path, frames, duration_sec}. Errors if no
+    export is running."""
+    return _post("stop_video_export", {})
+
+
+@mcp.tool
+def video_export_status() -> dict:
+    """Poll the current/last video export. Returns {recording, path, frames, elapsed_sec, width, height}.
+    After export_video, poll this until recording:false to know the file is written."""
+    return _post("video_export_status", {})
+
+
 @mcp.tool
 def analyze_frame(path: str = "") -> dict:
     """Structured perception of the active visual output (or a saved image via path). Returns

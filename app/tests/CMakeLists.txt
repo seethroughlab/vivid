@@ -126,6 +126,12 @@ set_tests_properties(test_held_note_set PROPERTIES LABELS "HEADLESS_SMOKE;THREAD
 vivid_add_test(test_popup_menu)     # ADR-0027: PopupMenu builders + draw/hit-test geometry invariant
 vivid_add_test(test_control_parse)
 
+# Realtime AV video export coordinator (app/video_recorder) with a mock exporter — even-dim locking,
+# frame/audio forwarding, blank-skip, crop, deadline auto-stop, RecordingTap ring. No GPU/AVFoundation.
+vivid_add_test(test_video_recorder)
+target_sources(test_video_recorder PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/video_recorder.cpp)
+
 # ADR-0014: the visual output's format — the aspect/size preset tables + the Fit/Fill/Stretch UV
 # window that letterboxes the output into a surface of a different shape (gpu/output_format.h).
 vivid_add_test(test_output_format)

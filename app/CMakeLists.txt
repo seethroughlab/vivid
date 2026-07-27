@@ -220,6 +220,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/node_presets.cpp
     src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
+    src/app/video_recorder.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
     src/app/runtime_health_collect.cpp
@@ -257,6 +258,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/platform/sparkle_bridge_stub.cpp
     src/platform/file_dialog_stub.cpp
     src/platform/menu_bar_stub.cpp
+    src/platform/av_exporter_stub.cpp
     src/platform/midi_input_stub.cpp
     src/platform/gemini_client_stub.cpp
     src/platform/secret_store_stub.cpp
@@ -293,6 +295,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/cli/control_handlers_packages.cpp
     src/cli/control_handlers_edit.cpp
     src/cli/control_handlers_music_eval.cpp
+    src/cli/control_handlers_video_export.cpp
     src/cli/edit_methods.cpp
     src/ui/renderer_2d.cpp
     src/ui/mapping_overview.cpp
@@ -316,6 +319,7 @@ if(APPLE)
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm
         src/platform/menu_bar.mm
+        src/platform/av_exporter.mm
         src/platform/midi_input.mm
         src/platform/gemini_client_macos.mm
         src/platform/secret_store_macos.mm

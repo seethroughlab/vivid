@@ -20,6 +20,7 @@ struct MenuActions {
     std::function<void()> redo;   // Edit > Redo
     std::function<void()> set_gemini_key;   // Eval > Set Gemini Key… (ADR-0026)
     std::function<void()> evaluate_output;  // Eval > Evaluate Output
+    std::function<void()> export_video;     // File > Export Video (toggles start/stop a realtime AV export)
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
@@ -41,6 +42,10 @@ void set_example_projects(const std::vector<MenuItemEntry>& examples);
 // history changes (the frame loop watches EditGateway::revision()). (ADR-0017/G4)
 void set_edit_labels(const std::string& undo_label, const std::string& redo_label,
                      bool can_undo, bool can_redo);
+
+// Flip the File > Export Video item label between "Export Video…" and "Stop Export" as recording
+// starts/stops (from any trigger). The frame loop calls this when the recorder state changes.
+void set_export_video_recording(bool recording);
 
 // ADR-0018: the macOS window "edited" dot (the close-button gets a dot; ⌘-title shows the proxy is
 // modified) — set from the app-level dirty flag. No-op off macOS.

@@ -51,6 +51,19 @@ std::string save_project_dialog(const std::string& suggested_name) {
     return {};
 }
 
+std::string save_video_dialog(const std::string& suggested_name) {
+    @autoreleasepool {
+        NSSavePanel* p = [NSSavePanel savePanel];
+        [p setMessage:@"Export video"];
+        [p setPrompt:@"Export"];
+        [p setNameFieldStringValue:[NSString stringWithUTF8String:
+                                        (suggested_name.empty() ? "vivid-export.mp4" : suggested_name.c_str())]];
+        if ([p runModal] == NSModalResponseOK && p.URL)
+            return std::string([[p.URL path] UTF8String]);
+    }
+    return {};
+}
+
 DiscardChoice confirm_discard_changes() {
     @autoreleasepool {
         NSAlert* a = [[NSAlert alloc] init];

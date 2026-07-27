@@ -36,6 +36,7 @@
 #include "platform/file_dialog.h"  // ADR-0018 confirm_discard_changes (New/Open save-confirm)
 #include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
+#include "app/video_recorder.h"     // realtime AV video export (File > Export Video / MCP)
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
 #include "audio/plugin_scan.h"         // background plugin classifier (instrument vs effect)
@@ -269,6 +270,9 @@ int main(int argc, char** argv) {
     Transport transport;
     app.transport = &transport;
 
+    vivid::VideoRecorder video_recorder;   // realtime AV export; driven per-frame in run_frame_loop
+    app.recorder = &video_recorder;
+
     ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
     cfg.playback.format = ma_format_f32;
     cfg.playback.channels = 2;
@@ -346,6 +350,32 @@ int main(int argc, char** argv) {
             win.music_eval_job = app.music_eval.start_eval(vivid::pcm16_wav_from_planar(L, R, sr), "caption");
             vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, "Evaluating output\xE2\x80\xA6", glfwGetTime());
         };
+        // File > Export Video: toggle a realtime AV export. Start → save dialog → record the live
+        // Output + master audio; the menu item becomes "Stop Export". Stop → finalize + toast.
+        ma.export_video = [&] {
+            if (!app.recorder) return;
+            if (app.recorder->is_recording()) {
+                const auto st = app.recorder->stop();
+                char m[192];
+                std::snprintf(m, sizeof m, "Video exported: %s (%llu frames, %.1fs)",
+                              st.path.c_str(), static_cast<unsigned long long>(st.frames), st.elapsed_sec);
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                return;
+            }
+            const std::string path = vivid::platform::save_video_dialog("vivid-export.mp4");
+            if (path.empty()) return;   // cancelled
+            const uint32_t sr = audio_ok ? static_cast<uint32_t>(device.sampleRate) : 0;
+            std::string err;
+            if (app.vgraph && app.transport &&
+                app.recorder->start(path, 60.0, 0.0, app.vgraph->rt_w(), app.vgraph->rt_h(),
+                                    sr, *app.transport, &err)) {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
+                    "Recording video\xE2\x80\xA6  (File \xE2\x96\xB8 Stop Export)", glfwGetTime());
+            } else {
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning,
+                    "Export failed: " + err, glfwGetTime(), 8.0);
+            }
+        };
         vivid::platform::install_menu_bar(ma);
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
@@ -413,6 +443,10 @@ int main(int argc, char** argv) {
     }
 
     vivid::run_frame_loop(app, win);   // blocks until the window closes (app/frame.cpp)
+
+    // Finalize an in-flight video export BEFORE tearing down audio/GPU — otherwise the writer's
+    // moov atom is never written and the file is corrupt. stop() is a no-op if not recording.
+    if (app.recorder && app.recorder->is_recording()) app.recorder->stop();
 
     // Remember this window's size + position for next launch (app-level, not per-project).
     { int w = 0, h = 0, x = 0, y = 0;

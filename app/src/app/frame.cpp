@@ -14,6 +14,7 @@
 #include "app/bridge_source.h"   // the audio→visual source-id grammar (shared with input.cpp's catalog)
 #include "app/editor_window.h"   // UI-5: floated operator-editor window
 #include "app/window_prefs.h"    // UI-5.4c: remembered float-window geometry
+#include "app/video_recorder.h"  // realtime AV export: per-frame tick after end_frame
 #include "gpu/gpu_context.h"
 #include "gpu/gpu_util.h"
 #include "ui/renderer_2d.h"
@@ -504,6 +505,7 @@ void run_frame_loop(App& app, Window& win) {
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
+    int  last_export_rec = -1;           // flip the File > Export Video menu label with recording state
     std::string last_title;              // window title = current project name; re-set only when it changes
     double last_autosave = 0.0;          // ADR-0018: throttle periodic autosave (glfwGetTime seconds)
     double last_snapshot = 0.0;          // ADR-0018: throttle the crash-attribution warm snapshot
@@ -511,6 +513,15 @@ void run_frame_loop(App& app, Window& win) {
         if (glfwWindowShouldClose(window)) return false;
         cctx.session = app.session;
         control.process_pending(cctx);   // apply queued MCP commands on the main thread
+        // Keep the File > Export Video menu label in sync with recording state, whatever started
+        // it (menu / MCP / timed auto-stop). Cheap flip-detected update.
+        if (app.recorder) {
+            const int rec = app.recorder->is_recording() ? 1 : 0;
+            if (rec != last_export_rec) {
+                last_export_rec = rec;
+                vivid::platform::set_export_video_recording(rec != 0);
+            }
+        }
         if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
         vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
@@ -683,6 +694,20 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
+            // Video export (realtime): this frame's Output RT is now submitted to the queue, so
+            // read it back + drain the audio tap into the AV writer. Only touches the GPU while a
+            // recording is active. A true return means a timed export just auto-stopped — toast it.
+            if (app.recorder && app.recorder->is_recording()) {
+                std::vector<uint8_t> rgba; uint32_t rw = 0, rh = 0;
+                const bool got = vgraph.read_output_pixels(rgba, rw, rh);
+                if (app.recorder->tick(got ? rgba.data() : nullptr, rw, rh, transport)) {
+                    const auto st = app.recorder->status();
+                    char m[192];
+                    std::snprintf(m, sizeof m, "Video exported: %s (%llu frames, %.1fs)",
+                                  st.path.c_str(), static_cast<unsigned long long>(st.frames), st.elapsed_sec);
+                    vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info, m, glfwGetTime(), 10.0);
+                }
+            }
         }
 
         // Pop-out visuals window: mirror the current output onto its surface, fullscreen.
