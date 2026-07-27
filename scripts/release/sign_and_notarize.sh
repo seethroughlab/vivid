@@ -26,6 +26,10 @@ APP="${1:?usage: sign_and_notarize.sh <Vivid.app> [out_dir]}"
 OUT_DIR="${2:-build/dist}"
 : "${APPLE_CODESIGN_IDENTITY:?set APPLE_CODESIGN_IDENTITY (see: security find-identity -v -p codesigning)}"
 [ -d "$APP" ] || { echo "error: not a bundle: $APP" >&2; exit 1; }
+# Canonicalize: the caller may pass a path with `..` segments (e.g. .../Contents/MacOS/../..).
+# codesign tolerates that, but `cp -R`/`ditto` copy the literal `..` entries and fail ("File exists"),
+# so resolve to a clean absolute bundle path before staging the DMG.
+APP="$(cd "$APP" && pwd -P)"
 
 APP_NAME="$(basename "$APP" .app)"
 mkdir -p "$OUT_DIR"
