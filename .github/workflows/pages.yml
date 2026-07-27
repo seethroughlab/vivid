@@ -65,3 +65,9 @@ jobs:
           projectName: vivid-site
           directory: _site
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          # The existing vivid-site project's production branch is "master" (from the classic site),
+          # while this repo's default branch is "main". Cloudflare serves the custom domain
+          # (vivid.seethroughlab.com) from the deployment whose branch matches the production branch,
+          # so we deploy labeled "master" to publish to production. If the CF project's production
+          # branch is ever changed to "main", set this to "main" (or remove it).
+          branch: master
