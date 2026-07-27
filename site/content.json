@@ -1,0 +1,98 @@
+{
+  "title": "Vivid",
+  "tagline": "An MCP-native creative coding app.",
+  "meta_description": "Vivid is an MCP-native creative coding app: a DAW-style Session View, a rewireable visual node graph, and a bidirectional mapping bridge between sound and picture — driven by code and by AI agents over MCP.",
+  "download_url": "https://github.com/seethroughlab/vivid/releases/latest",
+  "github_url": "https://github.com/seethroughlab/vivid",
+  "source_base": "https://github.com/seethroughlab/vivid/tree/main",
+  "nav": [
+    {"label": "Start Here", "href": "/start-here/"},
+    {"label": "Tutorials", "href": "/tutorials/"},
+    {"label": "Showcase", "href": "/showcase/"},
+    {"label": "Free Plugins", "href": "/free-plugins/"},
+    {"label": "Reference", "href": "/reference/"},
+    {"label": "GitHub", "href": "https://github.com/seethroughlab/vivid", "external": true}
+  ],
+  "supports": [
+    {"title": "Session View", "body": "A DAW-style timeline of tracks, clips, scenes, instruments, effects and a mixer — the musical half of the graph."},
+    {"title": "Visual node graph", "body": "A rewireable graph of visual operators — real geometry, shaders and compositing — that you build and fork like code."},
+    {"title": "The mapping bridge", "body": "A bidirectional bridge: musical and control signals drive visual parameters, and visual state can drive audio back."},
+    {"title": "MCP-native control", "body": "Every operation is exposed over MCP, so agents (and scripts) author, inspect and verify whole projects — not just nudge knobs."}
+  ],
+  "tutorials": [
+    {
+      "slug": "mcp-native-first-project",
+      "title": "First MCP-native project",
+      "track": "Start Here",
+      "difficulty": "Beginner",
+      "prereqs": "Surge XT",
+      "build": "A Surge XT track, a project-local shader, and audio mapped to visuals — saved as one portable, reloadable project.",
+      "hero": "first-project.png"
+    },
+    {
+      "slug": "live-shader-edit",
+      "title": "Live shader edit",
+      "track": "Creative coding",
+      "difficulty": "Beginner",
+      "prereqs": "None",
+      "build": "Discover a shader node's backing file, edit the WGSL and reload live, then deliberately break it and recover using Vivid's own diagnostics.",
+      "hero": "shader-edit.png"
+    },
+    {
+      "slug": "project-cpp-operator",
+      "title": "Project C++ operator",
+      "track": "Creative coding",
+      "difficulty": "Advanced",
+      "prereqs": "Xcode Command Line Tools",
+      "build": "Scaffold a project-local C++ visual operator, compile it with clang++, and hot-swap it live after an edit.",
+      "hero": ""
+    }
+  ],
+  "showcase": [
+    {
+      "id": "first-project",
+      "type": 1,
+      "title": "Your first project",
+      "mechanism": "Session View + visual graph + mappings",
+      "blurb": "The beginner project: a Surge XT track, a project-local shader, and four audio-to-visual mappings, saved as a portable project.",
+      "hero": "first-project.png",
+      "source": "examples/tutorials/mcp-native-first-project"
+    },
+    {
+      "id": "pulse-song",
+      "type": 2,
+      "title": "Pulse",
+      "mechanism": "Session View scenes + reactive geometry",
+      "blurb": "A techno scene driving a hard-geometric graph — a hex ShapeGrid and a solid Mesh octahedron that punch on the kick.",
+      "hero": "pulse-song.png",
+      "source": "examples/demos/pulse.py"
+    },
+    {
+      "id": "mirror-bridge",
+      "type": 3,
+      "title": "Mirror",
+      "mechanism": "The bidirectional bridge",
+      "blurb": "The bridge runs both ways: the music drives the picture, and the picture's feedback and blur drive a filter on the sound back.",
+      "hero": "mirror-bridge.png",
+      "source": "examples/demos/mirror.py"
+    },
+    {
+      "id": "shader-edit",
+      "type": 4,
+      "title": "Live shader edit",
+      "mechanism": "Creative-coding a project-local shader",
+      "blurb": "A woven interference field authored as a project-local WGSL shader — edited, broken and recovered live over MCP.",
+      "hero": "shader-edit.png",
+      "source": "examples/tutorials/live-shader-edit"
+    },
+    {
+      "id": "neon-song",
+      "type": 5,
+      "title": "Neon",
+      "mechanism": "The curated free-plugin path",
+      "blurb": "A synthwave track built entirely on free plugins (Surge XT + Cassette Drums) with a Tron-glow vector visual.",
+      "hero": "neon-song.png",
+      "source": "examples/demos/neon.py"
+    }
+  ]
+}
