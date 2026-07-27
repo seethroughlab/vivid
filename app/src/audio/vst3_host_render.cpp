@@ -18,11 +18,7 @@ namespace vivid::session {
 // two VST3 render primitives below feed a plugin's param queue, so it stays out of the shared header.
 static void drain_params(Vst3Handle* h, Vst3ParamChanges& pc) {
     ParamMsg m;
-    while (h->param_q.pop(m)) {
-        int32 idx = 0;
-        IParamValueQueue* q = pc.addParameterData(m.id, idx);
-        if (q) { int32 pt = 0; q->addPoint(0, m.value, pt); }
-    }
+    while (h->param_q.pop(m)) pc.add(m.id, m.value);   // sets id AND value (addParameterData+addPoint left value unset)
 }
 
 // Note on/off + per-note expression. Note events are added first so a same-offset
@@ -95,11 +91,13 @@ void filter_expr_by_range(const std::vector<ExprEvent>& src, uint8_t lo, uint8_t
 // For a full-range source the caller passes t.vev (primed with scene-switch releases + this block's
 // notes), keeping behavior identical; for a key-split source it passes a filtered per-source list.
 void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
-                            const VividAudioContext& ctx, uint32_t frames, float* L, float* R) {
+                            const VividAudioContext& ctx, uint32_t frames, float* L, float* R,
+                            const ParamMsg* mod, uint32_t mod_n) {
     float* ch[2] = { L, R };
     AudioBusBuffers ob{}; ob.channelBuffers32 = ch; ob.numChannels = 2; ob.silenceFlags = 0;
     Vst3ParamChanges pc; pc.clear();
     drain_params(h, pc);
+    for (uint32_t k = 0; k < mod_n; ++k) pc.add(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     ProcessContext pctx = vst3_build_process_context(&ctx, t.steady);
     ProcessData data{};
     data.processMode = kRealtime; data.symbolicSampleSize = kSample32;
@@ -136,7 +134,8 @@ void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out) {
 // VST3 effect. Transforms L/R in place, using the track's fx scratch (t.fxl/t.fxr) as the plugin's
 // output bus, then copies back. Caller guards `fx && fx->processing`.
 void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
-                        uint32_t frames, float* L, float* R) {
+                        uint32_t frames, float* L, float* R,
+                        const ParamMsg* mod, uint32_t mod_n) {
     if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
     float* oL = t.fxl.data(); float* oR = t.fxr.data();
     float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
@@ -144,6 +143,7 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
     AudioBusBuffers fob{}; fob.channelBuffers32 = outCh; fob.numChannels = 2; fob.silenceFlags = 0;
     Vst3ParamChanges fpc; fpc.clear();
     drain_params(fx, fpc);
+    for (uint32_t k = 0; k < mod_n; ++k) fpc.add(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     ProcessContext fpctx = vst3_build_process_context(&ctx, t.steady);
     ProcessData fd{};
     fd.processMode = kRealtime; fd.symbolicSampleSize = kSample32;

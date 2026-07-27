@@ -30,6 +30,7 @@
 #include <string_view>
 #include <vector>
 #include <functional>
+#include <memory>
 #include <zlib.h>
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -180,7 +181,9 @@ struct SinglePointQueue : IParamValueQueue {
 };
 
 struct Vst3ParamChanges : IParameterChanges {
-    static constexpr int kMaxParams = 8;
+    // ADR-0034: was 8; raised so per-block control-edge modulation (up to kMaxControlInputs params)
+    // can stack on top of the drained UI param edits without overflowing the queue.
+    static constexpr int kMaxParams = 64;
     SinglePointQueue queues_[kMaxParams];
     int count_ = 0;
 
@@ -550,7 +553,20 @@ struct Vst3Handle {
     // plugin modulation. Normalized 0..1, matching the param setter. Main/UI thread only.
     std::vector<float>   host_base;
     std::vector<uint8_t> has_base;
-    void base_size_to_params() { host_base.assign(params.size(), 0.f); has_base.assign(params.size(), 0u); }
+    // ADR-0034: an audio-thread-readable MIRROR of the authored base (normalized), so the render
+    // thread can resolve control-edge modulation against a plugin param's base. Fixed-size, allocated
+    // once with the param table (never resized while the audio thread runs — mirrors native `pvals`).
+    // Written on the main thread alongside host_base; read on the audio thread via `abase_load`.
+    std::unique_ptr<std::atomic<float>[]>   abase;
+    std::unique_ptr<std::atomic<uint8_t>[]> ahas;
+    int abase_n = 0;
+    void base_size_to_params() {
+        host_base.assign(params.size(), 0.f); has_base.assign(params.size(), 0u);
+        abase_n = static_cast<int>(params.size());
+        abase.reset(new std::atomic<float>[params.size()]);
+        ahas.reset(new std::atomic<uint8_t>[params.size()]);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.f, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed); }
+    }
     int  base_index_of(ParamID pid) const {
         for (size_t i = 0; i < params.size(); ++i) if (params[i].id == pid) return static_cast<int>(i);
         return -1;
@@ -559,10 +575,20 @@ struct Vst3Handle {
         if (i < 0 || i >= static_cast<int>(params.size())) return;
         if (host_base.size() != params.size()) base_size_to_params();
         host_base[static_cast<size_t>(i)] = norm; has_base[static_cast<size_t>(i)] = 1u;
+        if (i < abase_n) { abase[i].store(norm, std::memory_order_relaxed); ahas[i].store(1u, std::memory_order_release); }
     }
     // A preset/state load replaces the authored patch wholesale: forget every cached base so the
     // reader falls back to the plugin's (newly loaded) values until the user authors again.
-    void base_forget_all() { has_base.assign(params.size(), 0u); }
+    void base_forget_all() {
+        has_base.assign(params.size(), 0u);
+        for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
+    }
+    // Audio thread: the authored base (normalized) for param `i`, or false if none authored.
+    bool abase_load(int i, float& out) const {
+        if (i < 0 || i >= abase_n || !ahas[i].load(std::memory_order_acquire)) return false;
+        out = abase[i].load(std::memory_order_relaxed);
+        return true;
+    }
 
     void destroy() {
         if (component && component->setActive(false) != kResultOk)
