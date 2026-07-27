@@ -94,4 +94,6 @@ text/drift.txt    # the vector-type title string for drift (copied into its save
 media/            # bundled assets for the showcases: break90.wav + loop.mp4 (placeholders — swap
                   #   for a real break / footage) + the {mirror,signal,bloom}.txt call-signs
 projects/         # saved loadable projects (git-ignored; regenerate by running a builder)
+showcase/         # ADR-0037 QA / screenshot harness: regenerate -> load -> verify -> capture
+                  #   hero PNGs, gating the website's showcase media (see showcase/README.md)
 ```

@@ -36,7 +36,7 @@ REPO = HERE.parents[2]
 DEMOS = REPO / "examples" / "demos"
 sys.path.insert(0, str(DEMOS))
 
-from vivid_demo import Vivid, find  # noqa: E402
+from vivid_demo import Vivid, call_optional, find, require_control_server, warm_capture  # noqa: E402
 
 PROJECT = HERE / "project"
 OP = "GlowPulse"
@@ -46,25 +46,6 @@ PROOF_JSON = PROJECT / "cpp-op-proof.json"
 FRICTION_LOG = PROJECT / "FRICTION-LOG.md"
 BEFORE_PNG = PROJECT / "cpp-op-before.png"
 RELOADED_PNG = PROJECT / "cpp-op-after-reload.png"
-
-
-def require_control_server(v: Vivid) -> None:
-    try:
-        v.call("status")
-    except Exception as exc:  # noqa: BLE001
-        raise SystemExit(
-            "Vivid must be running before the project C++ operator walkthrough.\n"
-            f"Could not reach the control server at {v.base}: {exc}\n"
-            "Launch Vivid (VIVID_DISCARD_RECOVERY=1 for a disposable run); set VIVID_PORT if changed."
-        ) from exc
-
-
-def call_optional(v: Vivid, method: str, **payload) -> dict | None:
-    try:
-        return v.call(method, **payload)
-    except RuntimeError as exc:  # noqa: BLE001
-        print(f"[warn] {method} skipped: {exc}")
-        return None
 
 
 def op_entry(report: dict | None, op: str) -> dict | None:
@@ -78,20 +59,6 @@ def op_entry(report: dict | None, op: str) -> dict | None:
     return None
 
 
-def warm_capture(v: Vivid, path: str, tries: int = 10, delay: float = 0.5) -> dict | None:
-    """Capture, retrying until the frame is non-blank. A freshly-registered dylib operator's GPU
-    pipeline lazily initializes on its first draw; in a headless/unfocused session the frame loop is
-    throttled, so the node can take several seconds of wall-clock to warm up (in a normal focused
-    session it warms in one frame). Returns early once non-blank, else the last capture."""
-    r = None
-    for _ in range(tries):
-        r = call_optional(v, "capture_frame", path=path)
-        if r and r.get("captured") and not r.get("is_blank", True):
-            return r
-        time.sleep(delay)
-    return r
-
-
 def catalog_entry(v: Vivid, op: str) -> dict | None:
     cat = call_optional(v, "find_operators", query=op, domain="visual")
     for e in (cat or {}).get("matches", []):
@@ -102,7 +69,7 @@ def catalog_entry(v: Vivid, op: str) -> dict | None:
 
 def build() -> None:
     v = Vivid()
-    require_control_server(v)
+    require_control_server(v, "the project C++ operator walkthrough")
 
     # --- Fresh, self-contained folder project -------------------------------------------------
     if PROJECT.exists():

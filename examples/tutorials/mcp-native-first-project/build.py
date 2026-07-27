@@ -23,7 +23,7 @@ REPO = HERE.parents[2]
 DEMOS = REPO / "examples" / "demos"
 sys.path.insert(0, str(DEMOS))
 
-from vivid_demo import Vivid, find, surge_preset  # noqa: E402
+from vivid_demo import Vivid, call_optional, find, surge_preset  # noqa: E402
 
 PROJECT = HERE / "project"
 SHADER_OP = "PulseField"
@@ -105,14 +105,6 @@ def ensure_friction_log() -> None:
 def remove_generated_project() -> None:
     if PROJECT.exists():
         shutil.rmtree(PROJECT)
-
-
-def call_optional(v: Vivid, method: str, **payload) -> dict | None:
-    try:
-        return v.call(method, **payload)
-    except RuntimeError as exc:
-        print(f"[warn] {method} skipped: {exc}")
-        return None
 
 
 def check_control_server(v: Vivid) -> str | None:
