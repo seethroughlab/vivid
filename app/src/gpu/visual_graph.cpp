@@ -298,6 +298,12 @@ int VisualGraph::bump_all_file_param_generations() {
 void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
     apply_output_settings();   // FIRST: may resize every RT, before the encoder references any
     ensure_resources(nodes_.size());
+    // Real frame delta for time-based ops (Particles3D spawn/advect, etc.). Clamped to a sane cap so a
+    // stalled loop or the gap between one-shot headless captures can't fling a simulation across a huge dt;
+    // the first frame (no prior time) yields 0. Used below as ctx.delta_time (was hardcoded 0).
+    const double frame_dt = (last_chain_time_ > 0.f && time > last_chain_time_)
+                          ? std::min(0.1, static_cast<double>(time - last_chain_time_)) : 0.0;
+    last_chain_time_ = time;
     if (!fb_cleared_) { clear_target(enc, fallback_.view); fb_cleared_ = true; }
     const int outIdx = output_index();
     if (outIdx < 0) return;
@@ -350,7 +356,7 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         std::fill(pub.begin(), pub.end(), nullptr);
 
         VividGpuContext ctx{};
-        ctx.time = time; ctx.delta_time = 0.0; ctx.frame = frame_;
+        ctx.time = time; ctx.delta_time = frame_dt; ctx.frame = frame_;
         ctx.param_values = n.params.empty() ? nullptr : n.params.data();
         ctx.device = dev_; ctx.queue = q_; ctx.command_encoder = enc;
         ctx.output_texture = rts_[idx].tex;
