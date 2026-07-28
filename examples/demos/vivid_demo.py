@@ -254,9 +254,16 @@ class Vivid:
         return new
 
     # --- the bridge (audio characteristic -> visual param) ---
-    def map(self, src: str, node_id: int, param: str, amount=1.0, curve=0.0, lo=0.0, hi=1.0, invert=False):
+    def map(self, src: str, node_id: int, param: str, amount=1.0, curve=0.0, lo=0.0, hi=1.0, invert=False,
+            attack=0.0, release=0.0):
+        """Wire an audio characteristic to a visual param. `amount` = desired_excursion / param_range
+        (the mapped value is base + mod×range; see reference_visual_mapping_amount_vs_range). `attack`/
+        `release` are envelope-follower time constants in SECONDS — a raw audio envelope is jumpy, so a
+        fast attack + slow release lets the param SNAP up on a hit then glide back instead of jittering
+        (0/0 = instantaneous, the old behaviour)."""
         return self.call("connect_mapping", src=src, dst=f"node:{node_id}.{param}",
-                         amount=amount, curve=curve, lo=lo, hi=hi, invert=invert)
+                         amount=amount, curve=curve, lo=lo, hi=hi, invert=invert,
+                         attack=attack, release=release)
 
     def track_id(self, track: int) -> int:
         """The STABLE id of a track (by index) — the one used in per-track mapping sources. It is NOT

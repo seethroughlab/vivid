@@ -308,7 +308,8 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     json maps = json::array();
     for (const auto& m : g.mappings())
         maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount},
-                         {"curve", m.curve}, {"inv", m.invert}, {"lo", m.out_lo}, {"hi", m.out_hi} });
+                         {"curve", m.curve}, {"inv", m.invert}, {"lo", m.out_lo}, {"hi", m.out_hi},
+                         {"attack", m.attack}, {"release", m.release} });
     jg["mappings"] = maps;
     json chain = json::array();
     for (int i = 0; i < g.op_count(); ++i) {
@@ -839,7 +840,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             for (const auto& jm : jg["mappings"])
                 g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()),
                               jm.value("amt", 1.0f), jm.value("curve", 0.0f), jm.value("inv", false),
-                              jm.value("lo", 0.0f), jm.value("hi", 1.0f));
+                              jm.value("lo", 0.0f), jm.value("hi", 1.0f),
+                              jm.value("attack", 0.0f), jm.value("release", 0.0f));
     }
     return true;
 }

@@ -68,10 +68,16 @@ public:
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt,
-                     float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f) {
+                     float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
+                     float attack = 0.f, float release = 0.f) {
         reg_.connect(src, dst, amt);
-        if (auto* m = reg_.find(dst)) { m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi; }
+        if (auto* m = reg_.find(dst)) {
+            m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi;
+            m->attack = attack; m->release = release; m->primed = false;
+        }
     }
+    // Advance mapping smoothing one frame (dt seconds). Call before apply_params().
+    void advance_mappings(float dt) { reg_.advance(dt); }
     // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path
     // makes). Records an undo note. Used by the param-reveal menu (Gesture B). False on invalid indices.
     bool connect_data_to_param(int data_idx, int op_idx, int local);

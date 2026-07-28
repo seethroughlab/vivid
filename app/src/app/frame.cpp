@@ -271,6 +271,13 @@ void publish_bridge_sources(App& app, Window& win) {
     }
     for (int s = ntracks; s < VIVID_NOTE_BUS_TRACKS; ++s)   // free slots no live track occupies this frame
         vivid_note_bus_publish(s, -1, nullptr, 0);
+    // Advance mapping smoothing (envelope followers) once per frame BEFORE resolving params, using a
+    // real wall-clock delta clamped against stalls. Sources are all published above at this point.
+    static double s_prev_bridge_t = glfwGetTime();
+    const double now = glfwGetTime();
+    const float bridge_dt = static_cast<float>(std::clamp(now - s_prev_bridge_t, 0.0, 0.1));
+    s_prev_bridge_t = now;
+    graph.advance_mappings(bridge_dt);
     graph.apply_params();
 }
 

@@ -57,7 +57,8 @@ void register_mappings_handlers(Handlers& handlers_) {
         const std::string src = b.value("src", std::string()), dst = b.value("dst", std::string());
         if (src.empty() || dst.empty()) return err(code::kBadArg, "need src and dst");
         c.graph->add_mapping(src, dst, b.value("amount", 1.0f), b.value("curve", 0.0f),
-                             b.value("invert", false), b.value("lo", 0.0f), b.value("hi", 1.0f));
+                             b.value("invert", false), b.value("lo", 0.0f), b.value("hi", 1.0f),
+                             b.value("attack", 0.0f), b.value("release", 0.0f));
         return ok();
     };
     // First-class tutorial/agent path for the common bridge move: "map this audio

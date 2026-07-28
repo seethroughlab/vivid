@@ -39,12 +39,26 @@ struct Mapping {
     bool        invert = false;  // polarity (1 - s)
     float       out_lo = 0.0f;   // output range: shaped 0..1 maps to [out_lo, out_hi]
     float       out_hi = 1.0f;
+    // Temporal smoothing (envelope follower on the shaped 0..1 signal). Raw audio envelopes are
+    // jumpy; a fast attack + slow release lets a param SNAP up on a hit then glide back, killing the
+    // frame-to-frame jitter that reads as "glitchy". 0/0 = instantaneous (old behaviour). Seconds.
+    float       attack  = 0.0f;  // time constant while rising toward a higher target
+    float       release = 0.0f;  // time constant while falling toward a lower target
+    mutable float smoothed = 0.0f;  // current smoothed shaped value (maintained by advance())
+    mutable bool  primed   = false; // false until advance() seeds `smoothed` on first tick
 };
 
 // Gamma shaping: curve 0 = linear; >0 eases in (exp up to 4); <0 eases out.
 // The math moved to signal_shape.h when the audio-graph control model needed the same shaper
 // (ADR-0022); this name is the bridge's spelling of it.
 inline float mapping_shape(float s, float curve) { return shape_curve(s, curve); }
+
+// The shaped 0..1 signal for a mapping (clamp -> polarity -> curve), before range + gain.
+inline float mapping_shaped(const Mapping& m, float raw_source) {
+    float s = raw_source < 0.f ? 0.f : (raw_source > 1.f ? 1.f : raw_source);
+    if (m.invert) s = 1.f - s;
+    return mapping_shape(s, m.curve);
+}
 
 // Central registry: holds the mappings + the current value of every source.
 // One mapping per destination (matches the old one-wire-per-port behaviour).
@@ -78,16 +92,30 @@ public:
         for (auto& m : maps_) if (m.dest == dst) return &m;
         return nullptr;
     }
-    // Current value driving `dst`: clamp -> polarity -> curve -> gain. 0 if unmapped.
+    // Current value driving `dst`: shaped signal (smoothed if the mapping asks for it) -> range -> gain.
+    // 0 if unmapped.
     float dest_value(const std::string& dst) const {
         for (const auto& m : maps_) if (m.dest == dst) {
-            float s = source_value(m.source);
-            s = s < 0.f ? 0.f : (s > 1.f ? 1.f : s);
-            if (m.invert) s = 1.f - s;
-            const float shaped = mapping_shape(s, m.curve);
+            const bool smooth = (m.attack > 1e-5f || m.release > 1e-5f);
+            const float shaped = smooth ? m.smoothed : mapping_shaped(m, source_value(m.source));
             return (m.out_lo + (m.out_hi - m.out_lo) * shaped) * m.amount;  // range, then gain
         }
         return 0.f;
+    }
+
+    // Advance every smoothed mapping one frame (dt seconds). A one-pole toward the shaped target with a
+    // separate attack/release time constant, so a bass pump snaps up then glides down instead of
+    // jittering. Call once per frame before resolving params; a no-op for mappings without smoothing.
+    void advance(float dt) {
+        if (dt < 0.f) dt = 0.f;
+        for (auto& m : maps_) {
+            const float target = mapping_shaped(m, source_value(m.source));
+            if (!m.primed) { m.smoothed = target; m.primed = true; continue; }
+            const float tau = (target > m.smoothed) ? m.attack : m.release;
+            if (tau <= 1e-5f) { m.smoothed = target; continue; }
+            const float k = 1.f - std::exp(-dt / tau);   // one-pole coefficient for this dt
+            m.smoothed += (target - m.smoothed) * k;
+        }
     }
 
     const std::vector<Mapping>& mappings() const { return maps_; }

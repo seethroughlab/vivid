@@ -43,7 +43,7 @@ def build(v: Vivid, save: bool = True):
     out = find(v.graph()["nodes"], "Output")
 
     shape = v.add_node("Shape3D")   # a glowing cell: base emission so it's always lit, pumps brighter
-    for k, val in dict(shape=1, detail=3, r=0.3, g=0.6, b=1.0, metallic=0.0, roughness=0.6,
+    for k, val in dict(shape=1, detail=24, r=0.3, g=0.6, b=1.0, metallic=0.0, roughness=0.6,
                        emission=0.25, scale_x=0.7, scale_y=0.7, scale_z=0.7).items():
         v.set_node_param(shape, k, float(val))
 
@@ -82,15 +82,18 @@ def build(v: Vivid, save: bool = True):
     v.connect(render, merge, 0)
     v.connect(out, render, 0)
 
-    # --- The bridge: amount = excursion / param_range (ranges in the op decls). ---
+    # --- The bridge: amount = excursion / param_range (ranges in the op decls). Every wire uses an
+    #     envelope follower (attack/release, seconds) so the raw jumpy audio envelope becomes a smooth
+    #     snap-then-glide instead of frame-to-frame jitter — a fast attack keeps the punch, a slow
+    #     release removes the glitch. ---
     for ax in ("scale_x", "scale_y", "scale_z"):
-        v.map("master.low", shape, ax, amount=0.016)          # 0.7→~1.5 over scale range 50: the PUMP
-    v.map("master.low",       shape,  "emission",      amount=0.32)   # +1.6 over range 5: glow harder
-    v.map("master.low",       render, "cam_z",         amount=-0.03)  # −3 over range 100: dolly-in punch
-    v.map("master.transient", parts,  "emission_rate", amount=0.7)    # +7000: particle bursts on hits
-    v.map("master.transient", parts,  "size",          amount=0.04)   # +0.08 over range 2
-    v.map("master.high",      parts,  "speed",         amount=0.12)   # +2.4 over range 20: hats shimmer
-    v.map("master.high",      accent, "intensity",     amount=0.28)   # +2.8 over range 10
+        v.map("master.low", shape, ax, amount=0.016, attack=0.03, release=0.22)   # the PUMP: 0.7→~1.5
+    v.map("master.low",       shape,  "emission",      amount=0.32, attack=0.02, release=0.28)  # glow harder
+    v.map("master.low",       render, "cam_z",         amount=-0.03, attack=0.05, release=0.35)  # dolly-in punch
+    v.map("master.transient", parts,  "emission_rate", amount=0.7,  attack=0.005, release=0.14)  # bursts on hits
+    v.map("master.transient", parts,  "size",          amount=0.04, attack=0.01, release=0.16)
+    v.map("master.high",      parts,  "speed",         amount=0.12, attack=0.02, release=0.12)   # hats shimmer
+    v.map("master.high",      accent, "intensity",     amount=0.28, attack=0.02, release=0.14)
 
     v.launch_scene(0)
     v.play()
