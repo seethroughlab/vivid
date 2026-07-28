@@ -151,6 +151,11 @@
       "name": "VectorText",
       "source": "vectortext.cpp",
       "gpu": true
+    },
+    {
+      "name": "Type",
+      "source": "note_type.cpp",
+      "gpu": true
     }
   ]
 }

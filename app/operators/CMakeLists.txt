@@ -104,7 +104,7 @@ endif()
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
 add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
 # Text/VectorText need FreeType (the app fetches it) + the bundled font path.
-foreach(_txt text vectortext)
+foreach(_txt text vectortext note_type)
     add_vivid_operator(vivid_${_txt} packages/core-visuals/${_txt}.cpp)
     target_link_libraries(vivid_${_txt} PRIVATE freetype)
     target_compile_definitions(vivid_${_txt} PRIVATE
