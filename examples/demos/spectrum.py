@@ -22,13 +22,15 @@ def build(v: Vivid, save: bool = True):
 
     # --- Audio: full-spectrum material so every band has something to show — kick (lows), sub bass,
     #     off-beat hats (highs), and a bright arp sweeping the mids/highs. ---
-    kick = surge_drum(v, "kick", "kick", prefer="909", gain=1.0)
-    hat  = surge_drum(v, "hat",  "hat",  prefer="closed", gain=0.5)
+    kick = surge_drum(v, "kick", "kick",  prefer="909", gain=1.0)
+    hat  = surge_drum(v, "hat",  "hat",   prefer="closed", gain=0.8)
+    clap = surge_drum(v, "clap", "clap",  prefer="", gain=0.85)   # broadband → fills the mids/highs
     bass = v.add_graph_track("bass"); surge_preset(v, bass, "bass", prefer="sub", gain=0.7)
-    lead = v.add_graph_track("lead"); surge_preset(v, lead, "pluck", prefer="", gain=0.5)
+    lead = v.add_graph_track("lead"); surge_preset(v, lead, "pluck", prefer="bright", gain=0.7)
 
     hits(v, kick, 0, "x...x...x...x...", 4.0, vel=1.0)
-    hits(v, hat,  0, "..x...x...x...x.", 4.0, pitch=42, vel=0.6)
+    hits(v, hat,  0, "..x.x.x...x.x.x.", 4.0, pitch=42, vel=0.7)   # busy 16ths → constant highs
+    hits(v, clap, 0, "....x.......x...", 4.0, pitch=39, vel=0.9)   # backbeat on 2 & 4
     v.bassline(bass, 0, [(33, 0.0, 1.5), (33, 2.0, 1.5), (40, 3.0, 1.0)], 4.0, vel=0.95)
     # A 1/16 arp climbing an A-minor shape — lots of moving mid/high content for the bars to track.
     arp_pitches = [69, 72, 76, 79, 81, 79, 76, 72, 69, 72, 76, 79, 81, 84, 81, 76]
@@ -44,8 +46,8 @@ def build(v: Vivid, save: bool = True):
         v.set_node_param(shape, k, float(val))
 
     spec = v.add_node("AudioSpectrum3D")
-    for k, val in dict(bars=40, layout=0, width=22.0, height=11.0, gain=4.0, thickness=0.45,
-                       floor=0.35, attack=0.02, release=0.16, palette=0).items():
+    for k, val in dict(bars=48, layout=0, width=26.0, height=6.0, gain=3.0, tilt=1.8, thickness=0.5,
+                       floor=0.3, attack=0.02, release=0.16, palette=0).items():
         v.set_node_param(spec, k, float(val))
 
     inst = v.add_node("Instancer3D")
@@ -67,7 +69,7 @@ def build(v: Vivid, save: bool = True):
     v.connect(merge, fill, 2)
 
     render = v.add_node("Render3D")
-    for k, val in dict(cam_x=9, cam_y=9, cam_z=25, target_x=0, target_y=3.5, target_z=0,
+    for k, val in dict(cam_x=9, cam_y=7, cam_z=36, target_x=0, target_y=3, target_z=0,
                        fov=42, far=200, near=0.1).items():
         v.set_node_param(render, k, float(val))
     v.connect(render, merge, 0)

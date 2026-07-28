@@ -29,6 +29,7 @@ struct AudioSpectrum3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> width    {"width",    18.0f, 1.0f, 80.0f};   // Line span / Arc+Circle radius
     vivid::Param<float> height   {"height",   9.0f, 0.1f, 40.0f};    // magnitude → bar height
     vivid::Param<float> gain     {"gain",     3.0f, 0.1f, 20.0f};    // spectrum magnitude boost
+    vivid::Param<float> tilt     {"tilt",     1.6f, 0.0f, 4.0f};     // extra high-freq boost (1/f comp)
     vivid::Param<float> thickness{"thickness",0.6f, 0.05f, 5.0f};    // bar cross-section (scale x/z)
     vivid::Param<float> floor_h  {"floor",    0.3f, 0.0f, 5.0f};     // min bar height (always visible)
     vivid::Param<float> attack   {"attack",   0.02f, 0.0f, 1.0f};    // rise time constant (s)
@@ -44,13 +45,15 @@ struct AudioSpectrum3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(thickness, "Layout");
         vivid::param_group(height,    "Response");
         vivid::param_group(gain,      "Response");
+        vivid::param_group(tilt,      "Response");
         vivid::param_group(floor_h,   "Response");
         vivid::param_group(attack,    "Response");
         vivid::param_group(release,   "Response");
         vivid::param_group(palette,   "Color");
         out.push_back(&bars);      out.push_back(&layout);  out.push_back(&width);
         out.push_back(&arc_span);  out.push_back(&thickness);
-        out.push_back(&height);    out.push_back(&gain);    out.push_back(&floor_h);
+        out.push_back(&height);    out.push_back(&gain);    out.push_back(&tilt);
+        out.push_back(&floor_h);
         out.push_back(&attack);    out.push_back(&release); out.push_back(&palette);
     }
 
@@ -75,12 +78,18 @@ struct AudioSpectrum3D : vivid::OperatorBase, vivid::GpuProcessable {
         instances_.resize(n);
 
         for (uint32_t i = 0; i < n; ++i) {
-            // Map bar i → a source band (stretch/compress the available bands across the bars).
+            // Map bar i → a source band (linear-interpolated so bar count is independent of band
+            // count), with a rising high-frequency tilt so the naturally-quieter highs still register.
+            const float frac0 = (n > 1) ? static_cast<float>(i) / static_cast<float>(n - 1) : 0.f;
             float target = 0.f;
             if (got > 0) {
-                const float fpos = (n > 1) ? static_cast<float>(i) / static_cast<float>(n - 1) : 0.f;
-                const uint32_t bi = std::min(got - 1, static_cast<uint32_t>(fpos * (got - 1) + 0.5f));
-                target = std::clamp(raw[bi] * g, 0.f, 1.5f);
+                const float fb = frac0 * static_cast<float>(got - 1);
+                const uint32_t b0 = static_cast<uint32_t>(fb);
+                const uint32_t b1 = std::min(got - 1, b0 + 1);
+                const float ft = fb - static_cast<float>(b0);
+                const float mag = raw[b0] * (1.f - ft) + raw[b1] * ft;
+                const float tiltf = 1.f + tilt.value * frac0;    // 1 at lows → 1+tilt at highs
+                target = std::clamp(mag * g * tiltf, 0.f, 1.5f);
             }
             const float tau = (target > smoothed_[i]) ? atk : rel;
             if (tau <= 1e-5f || dt <= 0.f) smoothed_[i] = target;
@@ -89,12 +98,11 @@ struct AudioSpectrum3D : vivid::OperatorBase, vivid::GpuProcessable {
             const float m   = smoothed_[i];
             const float bh  = floor_h.value + m * height.value;     // bar height
             const float th  = thickness.value;
-            const float frac = (n > 1) ? static_cast<float>(i) / static_cast<float>(n - 1) : 0.5f;
 
             auto& d = instances_[i];
-            place(d, i, n, frac, bh);
+            place(d, i, n, frac0, bh);
             d.scale[0] = th; d.scale[1] = bh; d.scale[2] = th;
-            palette_color(d.color, frac, m);
+            palette_color(d.color, frac0, m);
         }
 
         bundle_.data  = instances_.data();
