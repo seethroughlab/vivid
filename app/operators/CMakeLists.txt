@@ -121,10 +121,13 @@ else()
     add_vivid_operator(vivid_webcam packages/core-visuals/webcam.cpp)
 endif()
 
-# vivid-3d scene-graph spine (ADR-0041, Phase 0 spike). Vendored from ../vivid-3d onto the trunk ABI.
-# Each op needs the package-local operator_api/ (gpu_3d.h, port_type_registry.h shim) + linmath.h,
-# so the package dir goes on the include path alongside the ../src default from add_vivid_operator.
-foreach(_v3d render_3d scene_merge shape3d light3d)
+# vivid-3d scene-graph spine + curated content ops (ADR-0041, Phase 0 spine + Phase 1a content).
+# Vendored from ../vivid-3d onto the trunk ABI. Each op needs the package-local operator_api/
+# (gpu_3d.h, port_type_registry.h shim, instance_algorithms.h) + linmath.h, so the package dir goes
+# on the include path alongside the ../src default from add_vivid_operator.
+foreach(_v3d render_3d scene_merge shape3d light3d
+             instancer3d instances_from_lanes instance_grid instance_noise deformer
+             particles3d sdf3d)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 endforeach()
