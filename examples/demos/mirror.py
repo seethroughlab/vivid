@@ -12,9 +12,11 @@ the picture. That loop is the signature flourish, on top of a five-section arran
   BRIDGE     kick   .   pad   lead arp   .       breakdown + arp flourish
   OUTRO      tail   .   pad    .    .   downlift  resolve
 
-Each instrument marks the picture differently (kick -> feedback trails, which also sweep the pad
-cutoff; pad level -> blur, which sweeps the resonance; bass -> mesh size; lead -> mesh spin; arp ->
-grid rotation). Hard geometry only — a wireframe Mesh + a ShapeGrid, feedback-smeared, with a title.
+The geometry is per-NOTE (each track's notes draw their own wireframe forms); only the bridge-state
+params ride band energy, because THAT is the loop: kick -> feedback trails (which sweep the pad
+cutoff), pad level -> blur (which sweeps the resonance), arp -> the mirror's rotation. Hard geometry
+only — per-note wireframe octahedra (bass), cubes (pad), triangles (lead), rings (arp), folded into
+mirror symmetry, lightly feedback-smeared, with a title.
 
 Requires Surge XT (free CLAP) + BPB Cassette Drums (free VST3).
 Run with the app running:  uv run examples/demos/mirror.py   (append 'perform' to play the whole song)
@@ -86,29 +88,38 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.bassline(sfx, S_INTRO, [(48 + i, i * 0.5, 0.4) for i in range(16)], length=8.0, vel=0.5)
     v.bassline(sfx, S_OUTRO, [(57 - 2 * i, i * 0.5, 0.4) for i in range(8)], length=8.0, vel=0.5)
 
-    # ================= visuals : SYMMETRIC — a custom Fold op mirrors the geometry =================
-    # Style: a cool blue/white wireframe octahedron over concentric Lines rings, folded through the
-    # custom **Fold** op (crisp axis-aligned mirror symmetry — architectural, not a busy kaleido),
-    # then feedback + blur. The kick->feedback and pad->blur maps ALSO drive the return leg
-    # (viz.feedback -> the pad's filter cutoff, viz.blur -> resonance), so the picture shapes the sound.
+    # ================= visuals : SYMMETRIC per-note geometry through a custom Fold op ==============
+    # Style: PER-NOTE hard wireframe geometry (Solids + polygon Instancers — the picture reads WHICH
+    # notes play, not band energy) folded through the custom **Fold** op (crisp axis-aligned mirror
+    # symmetry — architectural, not a busy kaleido). Feedback+Blur stay — not as haze but as the
+    # BRIDGE MECHANISM: kick->feedback and pad->blur move viz.feedback / viz.blur, which the return
+    # leg wires straight back into the pad's filter (cutoff / resonance). The picture shapes the sound.
     out = find(v.graph()["nodes"], "Output")
-    mesh = v.add_node("Mesh")                              # cool wireframe octahedron <- BASS size, LEAD spin
-    for k, val in dict(shape=0.66, wireframe=1.0, size=0.4, spin=0.25, tilt=0.5,
-                       r=0.55, g=0.8, b=1.0, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
-        v.set_node_param(mesh, k, val)
-    rings = v.add_node("Lines")                            # concentric rings (mode 2), cool
-    for k, val in dict(mode=1.0, count=0.4, size=0.65, rotation=0.0, r=0.3, g=0.65, b=1.0,
-                       bg_r=0.0, bg_g=0.02, bg_b=0.05).items():
-        v.set_node_param(rings, k, val)
-    compA = v.add_node("Composite"); v.set_node_param(compA, "mode", 1.0)
-    v.connect(compA, rings, port=0); v.connect(compA, mesh, port=1)
+    bass_sig = v.notes(v.track_id(bass))
+    pad_sig  = v.notes(v.track_id(pad))
+    lead_sig = v.notes(v.track_id(lead))
+    arp_sig  = v.notes(v.track_id(arp))
+
+    octa  = v.solids(bass_sig, shape=2, size=0.42, spread=0.5,  spin=0.28, wireframe=1.0)  # bass  → wireframe octahedra
+    cubes = v.solids(pad_sig,  shape=0, size=0.3,  spread=0.72, spin=0.14, wireframe=1.0)  # pad   → wireframe cube cluster
+    tris  = v.instancer(lead_sig, shape=2, sides=3, size=0.19, spread=0.7,  pulse=0.85)    # lead  → triangles
+    arpI  = v.instancer(arp_sig,  shape=1,          size=0.16, spread=0.9, trail=0.4, pulse=0.7)  # arp → rings
+    v.beat_sync("beat_pulse", octa, "size", amount=0.14, lo=0.34, hi=0.5)  # on-beat throb of the octahedra
+
+    # stack the per-note layers (ADD), then fold into mirror symmetry
+    c1 = v.add_node("Composite"); v.set_node_param(c1, "mode", 1.0)
+    v.connect(c1, octa, port=0); v.connect(c1, cubes, port=1)
+    c2 = v.add_node("Composite"); v.set_node_param(c2, "mode", 1.0)
+    v.connect(c2, c1, port=0); v.connect(c2, tris, port=1)
+    c3 = v.add_node("Composite"); v.set_node_param(c3, "mode", 1.0)
+    v.connect(c3, c2, port=0); v.connect(c3, arpI, port=1)
     fold = v.add_node("Fold")                              # <- the custom signature: mirror symmetry
     for k, val in dict(axes=1.0, angle=0.0, cx=0.5, cy=0.5, zoom=0.5).items():   # axes=1 -> quad (2-axis)
         v.set_node_param(fold, k, val)
-    v.connect(fold, compA)
-    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.42)   # <- KICK (also the return source)
+    v.connect(fold, c3)
+    fb = v.add_node("Feedback"); v.set_node_param(fb, "decay", 0.32)   # subtle trails <- KICK (=viz.feedback)
     v.connect(fb, fold)
-    blur = v.add_node("Blur"); v.set_node_param(blur, "radius", 0.15)  # <- PAD level (also return source)
+    blur = v.add_node("Blur"); v.set_node_param(blur, "radius", 0.08)  # gentle <- PAD level (=viz.blur)
     v.connect(blur, fb)
     title = v.add_node("VectorText")
     for k, val in dict(size=0.12, x=0.5, y=0.12, r=0.95, g=0.95, b=1.0,
@@ -119,12 +130,11 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.connect(compB, blur, port=0); v.connect(compB, title, port=1)
     v.connect(out, compB)
 
-    # ---- forward leg : ONE instrument -> ONE visual effect (per-track). The kick->feedback and
-    #      pad->blur maps ALSO move the return-leg sources (viz.feedback / viz.blur). ----
-    v.track_viz(drums, "low",   fb,   "decay",  amount=0.7, lo=0.4,  hi=0.82)   # kick -> trails (=viz.feedback)
-    v.track_viz(pad,   "level", blur, "radius", amount=0.6, lo=0.2,  hi=0.6)    # pad  -> blur   (=viz.blur)
-    v.track_viz(bass,  "low",   mesh, "size",   amount=0.7, lo=0.28, hi=0.5)    # bass -> mesh size
-    v.track_viz(lead,  "high",  mesh, "spin",   amount=1.0, lo=0.1,  hi=0.7)    # lead -> mesh spin
+    # ---- forward leg : the kick->feedback and pad->blur maps drive BOTH the visible trails/blur AND
+    #      the return-leg sources (viz.feedback / viz.blur). The geometry itself is per-note (above),
+    #      so only the bridge-state params ride band energy — that IS the bridge, not a screensaver. ----
+    v.track_viz(drums, "low",   fb,   "decay",  amount=0.6, lo=0.24, hi=0.55)   # kick -> trails (=viz.feedback)
+    v.track_viz(pad,   "level", blur, "radius", amount=0.6, lo=0.05, hi=0.28)   # pad  -> blur   (=viz.blur)
     v.track_viz(arp,   "high",  fold, "angle",  amount=1.0, lo=0.0,  hi=1.0)    # arp  -> the mirror rotates
     v.track_viz(sfx,   "level", fold, "zoom",   amount=1.0, lo=0.35, hi=0.75)   # riser-> the mirror zooms
 
