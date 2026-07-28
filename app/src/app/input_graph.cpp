@@ -419,6 +419,73 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     return true;
 }
 
+// Build the param-curation item list for a VISUAL node: every param, checked when currently shown
+// (pinned OR wired), and a wired param disabled (it's shown because of its connection — disconnect to hide).
+static std::vector<vivid::ui::PopupItem> visual_param_items(App& app, int node_i, bool connect_mode) {
+    std::vector<vivid::ui::PopupItem> items;
+    const int pc = app.graph->op_param_count_at(node_i);
+    for (int l = 0; l < pc; ++l) {
+        const bool wired = app.graph->op_param_wired_at(node_i, l);
+        if (connect_mode && wired) continue;   // the reveal menu only offers params you can still connect
+        vivid::ui::PopupItem it;
+        it.label   = app.graph->op_param_label_at(node_i, l);
+        it.id      = l;
+        it.checked = wired || app.graph->is_param_pinned(node_i, l);
+        it.enabled = connect_mode ? true : !wired;
+        items.push_back(std::move(it));
+    }
+    return items;
+}
+
+// Gesture A: left-click a visuals node's header chevron → open its show/hide-params menu.
+bool graph_param_curate_click(Window& win, App& app, int button, int action, double mx, double my) {
+    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS || !app.graph || mx < win.split_x) return false;
+    const int i = app.graph->param_curate_hit(mx, my);
+    if (i < 0) return false;
+    win.param_menu = vivid::ui::popup_param_curate(static_cast<float>(mx), static_cast<float>(my), i,
+                                                   /*audio_track*/ -1, /*connect_mode*/ false, /*pending_src*/ -1,
+                                                   app.graph->op_kind_name(i), visual_param_items(app, i, false));
+    win.menu.close(); win.node_menu.close();
+    return true;
+}
+
+// Gesture B: a param wire was dropped on a node body (no visible port) → open the reveal+connect menu.
+bool graph_param_reveal_open(Window& win, App& app) {
+    if (!app.graph) return false;
+    int node_i, src; double sx, sy;
+    if (!app.graph->take_param_menu_request(node_i, src, sx, sy)) return false;
+    auto items = visual_param_items(app, node_i, /*connect_mode*/ true);
+    if (items.empty()) return false;   // nothing left to connect (all params already wired)
+    win.param_menu = vivid::ui::popup_param_curate(static_cast<float>(sx), static_cast<float>(sy), node_i,
+                                                   /*audio_track*/ -1, /*connect_mode*/ true, /*pending_src*/ src,
+                                                   app.graph->op_kind_name(node_i), std::move(items));
+    win.menu.close(); win.node_menu.close();
+    return true;
+}
+
+// Dispatch a click in the param-curation menu: toggle a pin (curate) or pin+connect the parked wire (reveal).
+bool graph_parammenu(Window& win, App& app, double mx, double my) {
+    if (!win.param_menu.open) return false;
+    vivid::ui::PopupMenu& m = win.param_menu;
+    const int row = m.hit_row(static_cast<float>(mx), static_cast<float>(my));
+    if (app.graph && row >= 0 && m.items[row].enabled) {
+        const int node_i = m.a;
+        const int param  = m.items[row].id;
+        const bool audio = m.data.rfind("audio:", 0) == 0;
+        if (!audio) {
+            if (m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect) {
+                app.graph->pin_param(node_i, param);
+                app.graph->connect_data_to_param(m.b, node_i, param);
+            } else {
+                app.graph->toggle_param_pin(node_i, param);
+            }
+        }
+        // (audio-node curation dispatched in audio_param_menu handling — see input_graph audio section)
+    }
+    m.close();
+    return true;
+}
+
 }  // namespace vivid::input
 
 // ADR-0023 6d: the audio editor's gesture FSM as methods on AudioNodeGraph (the stateful interaction

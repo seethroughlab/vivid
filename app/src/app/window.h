@@ -120,7 +120,8 @@ struct Window {
     std::string gemini_key_buf;
     int         music_eval_job  = -1;
     // ADR-0027: characteristics menu · bridge map-source picker · op-node menu · audio-node "→ visuals"
-    vivid::ui::PopupMenu menu, map_menu, node_menu, audio_node_menu;
+    // param_menu: the node param-curation menu (show/hide params; a dropped wire reveals+connects one).
+    vivid::ui::PopupMenu menu, map_menu, node_menu, audio_node_menu, param_menu;
     ModEditor mod_editor;                          // ADR-0022: the modulation shape editor popover
     int     map_param = -1;
     int     sel_track = 0, sel_device = 0;

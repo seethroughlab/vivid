@@ -328,6 +328,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             if (const char* fv = g.op_file_param_at(i, p); fv && fv[0])
                 file_params[g.op_param_label_at(i, p)] = fv;
         if (!file_params.empty()) jn["file_params"] = file_params;
+        json pinned = json::array();   // curated body params (by NAME, robust to param reorder); absent = collapsed
+        for (int p = 0; p < g.op_param_count_at(i); ++p)
+            if (g.is_param_pinned(i, p)) pinned.push_back(g.op_param_label_at(i, p));
+        if (!pinned.empty()) jn["pinned"] = pinned;
         chain.push_back(jn);
     }
     jg["chain"] = chain;
@@ -791,6 +795,12 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         const char* name = g.op_param_label_at(i, l);
                         if (ch[i]["file_params"].contains(name))
                             g.set_op_file_param_at(i, l, ch[i]["file_params"][name].get<std::string>());
+                    }
+                if (ch[i].contains("pinned") && ch[i]["pinned"].is_array())   // curated body params (by name)
+                    for (int l = 0; l < g.op_param_count_at(i); ++l) {
+                        const char* name = g.op_param_label_at(i, l);
+                        for (const auto& pn : ch[i]["pinned"])
+                            if (pn.is_string() && pn.get<std::string>() == name) { g.pin_param(i, l); break; }
                     }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     const std::string op_type = ch[i].value("op_type", std::string());

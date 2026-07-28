@@ -200,7 +200,7 @@ CardPorts NodeGraph::card_ports(int i) const {
     cp.tail_h   = thumb ? kThumbH : 0.f;   // fixed thumbnail, or nothing (the output sink)
     cp.tail_pad = thumb ? 8.f : 6.f;
     cp.lead_rows = op_in_count(vg_, i);    // one lead row per texture input port
-    cp.params    = node_pcount(vg_, i);
+    cp.params    = int(exposed_params(i).size());   // curated subset (pinned ∪ wired), not every param
     return cp;
 }
 
@@ -236,9 +236,16 @@ int NodeGraph::first_node_of(const std::string& op_type) const {
 bool NodeGraph::param_port(int node_idx, int local, float& px, float& py) const {  // left edge, per node
     if (!vg_ || node_idx < 0 || node_idx >= int(vg_->nodes().size())) return false;
     if (local < 0 || local >= node_pcount(vg_, node_idx)) return false;
+    // `local` is the REAL param index; a param has a row only if it is exposed (pinned ∪ wired). Its ROW
+    // SLOT is its position within the exposed list, so callers can keep iterating 0..pcount and hidden
+    // params simply return false (skip). Draw + hit-test share this single mapping.
+    const std::vector<int> ex = exposed_params(node_idx);
+    int slot = -1;
+    for (int s = 0; s < int(ex.size()); ++s) if (ex[s] == local) { slot = s; break; }
+    if (slot < 0) return false;
     float x, y, w, h; op_node_rect(node_idx, x, y, w, h);
     const CardPorts cp = card_ports(node_idx);
-    px = x; py = cp.row_cy(y, cp.param_row(local));   // param rows follow the texture-input rows
+    px = x; py = cp.row_cy(y, cp.param_row(slot));   // param rows follow the texture-input rows
     return true;
 }
 bool NodeGraph::nearest_param(double x, double y, double maxd, int& node_idx, int& local) const {
@@ -468,6 +475,63 @@ bool NodeGraph::op_param_wired_at(int i, int local) const {
     return reg_.source_of(node_param_dest(vg_->nodes()[i].id, node_plabel(vg_, i, local))) != nullptr;
 }
 
+// Curated body params: the param indices shown as rows on node i, in index order. A param appears iff it
+// is pinned OR wired — a connection is always visible so its wire has an endpoint (see the param-wire draw
+// pass). Empty for a fresh/uncurated node => the card is collapsed. One source of truth for card_ports()
+// (row count) and param_port() (row slot), so draw + hit-test can't drift.
+std::vector<int> NodeGraph::exposed_params(int i) const {
+    std::vector<int> out;
+    const int pc = node_pcount(vg_, i);
+    for (int l = 0; l < pc; ++l)
+        if (is_param_pinned(i, l) || op_param_wired_at(i, l)) out.push_back(l);
+    return out;
+}
+bool NodeGraph::is_param_pinned(int i, int local) const {
+    if (!op_node_valid(vg_, i)) return false;
+    const auto& v = vg_->nodes()[i].pinned_params;
+    return std::find(v.begin(), v.end(), local) != v.end();
+}
+void NodeGraph::pin_param(int i, int local) {
+    if (!op_node_valid(vg_, i) || local < 0 || local >= node_pcount(vg_, i)) return;
+    auto& v = vg_->nodes()[i].pinned_params;
+    if (std::find(v.begin(), v.end(), local) == v.end()) v.push_back(local);   // idempotent, add order
+}
+void NodeGraph::unpin_param(int i, int local) {
+    if (!op_node_valid(vg_, i)) return;
+    auto& v = vg_->nodes()[i].pinned_params;
+    v.erase(std::remove(v.begin(), v.end(), local), v.end());
+}
+void NodeGraph::toggle_param_pin(int i, int local) {
+    if (is_param_pinned(i, local)) unpin_param(i, local); else pin_param(i, local);
+}
+// Gesture A affordance: a small chevron box at the LEFT of the header opens the curate menu. Kept inside
+// the header (30px tall) and clear of the param/input port dots, which live on the ROWS below it.
+int NodeGraph::param_curate_hit(double sx, double sy) const {
+    if (!vg_) return -1;
+    double wx, wy; to_world(sx, sy, wx, wy);
+    for (int i = 0; i < int(vg_->nodes().size()); ++i) {
+        if (vg_->nodes()[i].is_output()) continue;          // the sink has no params to curate
+        if (node_pcount(vg_, i) <= 0) continue;
+        float x, y, w, h; op_node_rect(i, x, y, w, h);
+        if (hit({ x, y, 18.f, 26.f }, wx, wy)) return i;    // left ~18px of the header row
+    }
+    return -1;
+}
+bool NodeGraph::take_param_menu_request(int& node_idx, int& src_data_node, double& sx, double& sy) {
+    if (pmreq_node_ < 0) return false;
+    node_idx = pmreq_node_; src_data_node = pmreq_src_; sx = pmreq_sx_; sy = pmreq_sy_;
+    pmreq_node_ = pmreq_src_ = -1;
+    return true;
+}
+bool NodeGraph::connect_data_to_param(int data_idx, int op_idx, int local) {
+    if (!vg_ || data_idx < 0 || data_idx >= int(data_.size())) return false;
+    if (!op_node_valid(vg_, op_idx) || local < 0 || local >= node_pcount(vg_, op_idx)) return false;
+    reg_.connect(data_[data_idx].source,
+                 node_param_dest(vg_->nodes()[op_idx].id, node_plabel(vg_, op_idx, local)));
+    note_edit_("Connect Mapping");
+    return true;
+}
+
 void NodeGraph::chain_load_begin() { if (vg_) vg_->clear_nodes(); op_pos_.clear(); op_pos_init_ = true; sel_op_ = -1; }
 void NodeGraph::chain_load_add(const std::string& op_type, int id, float x, float y) {
     if (!vg_) return;
@@ -493,14 +557,17 @@ std::string NodeGraph::op_asset_at(int i) const {
 void NodeGraph::set_op_asset_at(int i, const std::string& asset) {
     if (op_node_valid(vg_, i)) vg_->nodes()[i].asset = asset;
 }
-int NodeGraph::op_at(double sx, double sy) const {
+int NodeGraph::op_at_world(double wx, double wy) const {
     if (!vg_) return -1;
-    double wx, wy; to_world(sx, sy, wx, wy);
     for (int i = 0; i < int(vg_->nodes().size()); ++i) {
         float x, y, w, h; op_node_rect(i, x, y, w, h);
         if (hit({ x, y, w, h }, wx, wy)) return i;
     }
     return -1;
+}
+int NodeGraph::op_at(double sx, double sy) const {
+    double wx, wy; to_world(sx, sy, wx, wy);
+    return op_at_world(wx, wy);
 }
 std::string NodeGraph::op_source_path(int i) const {
     const std::string asset = op_asset_at(i);   // only CustomShader-style nodes carry an editable asset today
@@ -588,7 +655,14 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     // ADR-0023 LOD: fade small text out as the camera zooms out (it would be illegible noise). Cards,
     // accents, ports and thumbnails stay; the label text fades — port labels first (small fs), then the
     // title (larger fs). Below the fade floor the text is skipped entirely (draw nothing, not invisibly).
-    const float label_x = x + 10.f + (node_err.empty() ? 0.f : node_error_label_shift);
+    // Gesture A affordance: a disclosure chevron at the header-left on curatable nodes (has params, not
+    // the sink). Clicking its zone (param_curate_hit) opens the show/hide-params menu. The title shifts
+    // right to clear it.
+    const bool curatable = !out && node_pcount(vg_, i) > 0;
+    const float chev_w = curatable ? 12.f : 0.f;
+    const float label_x = x + 10.f + chev_w + (node_err.empty() ? 0.f : node_error_label_shift);
+    if (curatable) if (const float ta = canvas_.text_alpha(sty.fs_body); ta > 0.01f)
+        r.draw_text(x + 6.f, y + 6.f, "\xE2\x80\xBA", 0.55f, 0.6f, 0.68f, ta, sty.fs_body);   // ›
     if (const float ta = canvas_.text_alpha(sty.fs_body); ta > 0.01f)
         r.draw_text(label_x, y + 6.f, a.title.c_str(), sty.text[0], sty.text[1], sty.text[2], ta, sty.fs_body);
     if (const float ta = canvas_.text_alpha(0.72f); out && ta > 0.01f)
@@ -899,9 +973,14 @@ void NodeGraph::on_up(double x, double y) {
     if (drag_mode_ == 3 && wire_from_ >= 0 && wire_from_ < int(data_.size()) && vg_) {
         int pni, pl;
         if (nearest_param(wx, wy, 18.0 / canvas_.view().scale, pni, pl)) {
-            reg_.connect(data_[wire_from_].source,
-                         node_param_dest(vg_->nodes()[pni].id, node_plabel(vg_, pni, pl)));
-            note_edit_("Connect Mapping");
+            connect_data_to_param(wire_from_, pni, pl);
+        } else {
+            // Gesture B: no VISIBLE param row under the drop — but if it landed on a node body, park a
+            // request so the app opens the reveal+connect menu (reach a hidden/collapsed param).
+            const int tgt = op_at_world(wx, wy);
+            if (tgt >= 0 && !vg_->nodes()[tgt].is_output() && node_pcount(vg_, tgt) > 0) {
+                pmreq_node_ = tgt; pmreq_src_ = wire_from_; pmreq_sx_ = x; pmreq_sy_ = y;
+            }
         }
     } else if (drag_mode_ == 4 && wire_from_ >= 0) {
         int tport = 0; int target = nearest_op_in(wx, wy, 18.0 / canvas_.view().scale, tport);

@@ -18,6 +18,7 @@ struct PopupItem {
     std::string label;
     int         id = 0;
     bool        enabled = true;
+    bool        checked = false;   // param-curation menus: draw a checkmark when this param is shown
 };
 
 // A visuals op-node menu's single action (resolved at open time from the node's shader/source tier).
@@ -25,7 +26,11 @@ enum class NodeAction { None, OpenSource, ForkEdit, CloneEdit };
 
 struct PopupMenu {
     // What the menu acts on (grows as menus migrate); drives the click dispatch.
-    enum class Kind { None, TrackChars, MapSource, AudioNode, VisualNode };
+    // NodeParamPin  = the "curate which params to show" checklist (click toggles a pin).
+    // NodeParamConnect = same list opened by a dropped wire (click pins the param AND connects the wire).
+    // For both, `a` = node index, `b` = pending wire source (data-node index; connect only), and each
+    // PopupItem.id = the real param index. `data` holds "audio:<track>" when the menu targets an audio node.
+    enum class Kind { None, TrackChars, MapSource, AudioNode, VisualNode, NodeParamPin, NodeParamConnect };
     enum Accent { Teal = 0, Gold = 1, Gpu = 2 };       // panel/item accent (resolved to a Style colour)
 
     bool  open = false;
@@ -95,6 +100,23 @@ inline PopupMenu popup_visual_node(float x, float y, int node_id, NodeAction act
     m.kind = PopupMenu::Kind::VisualNode; m.a = node_id; m.data = target;
     m.header = header ? header : "node";
     m.items.push_back({ label ? label : "", static_cast<int>(action), action != NodeAction::None });
+    return m;
+}
+
+// The param-curation menu (Gesture A: click node edge to toggle shown params; Gesture B: a dropped wire
+// picks a param to reveal+connect). Items are assembled by the caller (visual reads NodeGraph accessors,
+// audio reads the session C-API), each PopupItem.id = the real param index, .checked = currently shown.
+// `connect_mode` switches dispatch from toggle-pin to pin-and-connect; `pending_src` carries the wire
+// source; `audio_track` >= 0 tags an audio-graph node (else it's a visual node).
+inline PopupMenu popup_param_curate(float x, float y, int node_idx, int audio_track, bool connect_mode,
+                                    int pending_src, const char* header, std::vector<PopupItem> items) {
+    PopupMenu m;
+    m.open = true; m.x = x; m.y = y; m.width = 204.f; m.row_h = 22.f; m.accent = PopupMenu::Gpu;
+    m.kind = connect_mode ? PopupMenu::Kind::NodeParamConnect : PopupMenu::Kind::NodeParamPin;
+    m.a = node_idx; m.b = pending_src;
+    m.header = header && *header ? header : "show params";
+    if (audio_track >= 0) m.data = "audio:" + std::to_string(audio_track);
+    m.items = std::move(items);
     return m;
 }
 

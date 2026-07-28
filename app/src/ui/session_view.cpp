@@ -787,11 +787,17 @@ void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m) {
     const int n = static_cast<int>(m.items.size());
     const std::string hdr = fit_text(ui, m.header, m.width - 16.f, sty.fs_label);   // truncate long op names
     overlay_panel(ui, { m.x, m.y - 22.f, m.width, 22.f + n * m.row_h }, hdr.c_str(), acc);
+    const bool curate = m.kind == vivid::ui::PopupMenu::Kind::NodeParamPin
+                     || m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect;
     for (int j = 0; j < n; ++j) {
         const float iy = m.y + j * m.row_h;
         item_box(ui, { m.x, iy, m.width, m.row_h }, acc);
         const float* c = m.items[j].enabled ? sty.text : sty.dim;
-        ui.draw_text(m.x + 14.f, iy + m.row_h * 0.5f - 7.f, m.items[j].label.c_str(), c[0], c[1], c[2], 1.0f);
+        // Curation menus: a leading ✓ marks a param that is currently shown; the label indents past it.
+        const float tx = m.x + (curate ? 26.f : 14.f);
+        if (curate && m.items[j].checked)
+            ui.draw_text(m.x + 12.f, iy + m.row_h * 0.5f - 7.f, "\xE2\x9C\x93", acc[0], acc[1], acc[2], 1.0f);
+        ui.draw_text(tx, iy + m.row_h * 0.5f - 7.f, m.items[j].label.c_str(), c[0], c[1], c[2], 1.0f);
     }
 }
 
