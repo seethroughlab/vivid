@@ -427,6 +427,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
         }
         vivid::input::clipgrid_release(*win, *app, mx, my, mods, tracks, scenes);   // clip drop (grid/pool); no-op if no drag
         if (app->graph) app->graph->on_up(mx, my);
+        // A param wire dropped on a node body (no visible port) parks a reveal request → open the menu.
+        vivid::input::graph_param_reveal_open(*win, *app);
         // ADR-0017: close the gesture opened on press — one undo entry per drag (commits if dirtied).
         if (app->edit_gateway) app->edit_gateway->end_group();
         return;
@@ -453,6 +455,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (vivid::input::audio_node_menu_click(*win, *app, mx, my)) return;
     // Node context menu: "Open source" (custom nodes) or "Clone & Edit" (built-ins).
     if (vivid::input::graph_nodemenu(*win, *app, mx, my)) return;
+    // Param-curation menu: toggle a shown param, or (reveal menu) pin+connect the dropped wire.
+    if (vivid::input::graph_parammenu(*win, *app, mx, my)) return;
     // Device pickers (priority): FX effect / +Track instrument / mapping source.
     if (vivid::input::dock_menus(*win, *app, mx, my, tracks)) return;
     if (!app->session) return;
@@ -500,6 +504,8 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     if (vivid::input::dock_inspector(*win, *app, mx, my)) return;   // visual-node param inspector (consumes dock)
     // mixer: ARM buttons (record-arm) then gain sliders.
     if (vivid::input::clipgrid_mixer(*win, *app, mx, my, tracks, scenes)) return;
+    // A visuals node's header chevron opens its show/hide-params menu (before on_down would start a drag).
+    if (vivid::input::graph_param_curate_click(*win, *app, button, action, mx, my)) return;
     if (app->graph && app->graph->on_down(mx, my)) return;  // node graph consumed it (it owns the visuals column)
     // clip cells (single-click arms/launches, double-click opens editor) + scene-launch buttons.
     if (vivid::input::clipgrid_cells(*win, *app, mx, my, tracks, scenes)) return;

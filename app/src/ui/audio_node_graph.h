@@ -126,6 +126,8 @@ public:
     // native op, the pinned/curated subset for a plugin. Compound-widget leaders (the LFO waveform
     // enum) are skipped so the port list stays clean. Indices into the node's param list.
     std::vector<int> exposed_params(int node_id) const;
+    bool is_param_pinned(int node_id, int p) const;       // for the curate menu's checkmarks
+    int  param_curate_hit(double wmx, double wmy) const;  // node whose header chevron is under a world point, -1
     // A param port down the card's left edge (below the signal-in port): `slot` indexes into
     // exposed_params(). A control wire from a modulator drops here. Empty rect if slot is invalid.
     Rect param_port_rect(const AudioNodeBox& b, int slot) const;

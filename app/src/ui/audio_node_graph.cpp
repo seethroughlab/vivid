@@ -249,24 +249,45 @@ Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
     return { b.x - 6.f, cp.row_cy(b.y, 0) - 6.f, 12.f, 12.f };        // top-left row
 }
 
-// A native op exposes every param; a plugin exposes only its pinned/curated subset. The LFO
+// Curated body params: the param indices shown as rows, in index order. Every node (native OR plugin)
+// starts COLLAPSED and shows a param iff it is PINNED or WIRED — a control edge is always visible so its
+// port never dangles (the same invariant as the visuals graph, NodeGraph::exposed_params). The LFO
 // waveform enum (a compound-widget leader) is skipped so the port list reads cleanly.
 std::vector<int> AudioNodeGraph::exposed_params(int node_id) const {
     std::vector<int> out;
     if (!s_ || node_id < 0) return out;
-    if (P::session_audio_graph_node_is_plugin(s_, track_, node_id)) {
-        const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
-        for (int k = 0; k < np; ++k) {
-            const int p = P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k);
-            if (p >= 0) out.push_back(p);
-        }
-    } else {
-        const int pc = P::session_audio_graph_node_param_count(s_, track_, node_id);
-        for (int p = 0; p < pc; ++p)
-            if (P::session_audio_graph_node_param_hint(s_, track_, node_id, p) != VIVID_DISPLAY_LFO)
-                out.push_back(p);
+    // pinned set (small) — collect once so the per-param test is cheap.
+    const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
+    const int pc = P::session_audio_graph_node_param_count(s_, track_, node_id);
+    for (int p = 0; p < pc; ++p) {
+        if (P::session_audio_graph_node_param_hint(s_, track_, node_id, p) == VIVID_DISPLAY_LFO) continue;
+        bool pinned = false;
+        for (int k = 0; k < np && !pinned; ++k)
+            if (P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k) == p) pinned = true;
+        if (pinned || P::session_audio_graph_node_param_wired(s_, track_, node_id, p) != 0)
+            out.push_back(p);
     }
     return out;
+}
+// Whether param p is currently in node_id's pinned set (for the curate menu's checkmarks).
+bool AudioNodeGraph::is_param_pinned(int node_id, int p) const {
+    if (!s_ || node_id < 0) return false;
+    const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
+    for (int k = 0; k < np; ++k)
+        if (P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k) == p) return true;
+    return false;
+}
+// Gesture A affordance: the node whose header curate chevron (left of the header) is under (wmx,wmy) in
+// WORLD coords, else -1. Skips engine-managed nodes with no user-curatable params (Output).
+int AudioNodeGraph::param_curate_hit(double wmx, double wmy) const {
+    // The chevron gutter runs from the card's left edge to just before the title (which starts ~22 world
+    // in). Using that full width keeps the affordance comfortably clickable at the default (zoomed-out)
+    // audio-view scale, and never overlaps the title text.
+    for (const AudioNodeBox& b : layout()) {
+        if (b.kind == 2) continue;   // the Output sink has no params
+        if (wmx >= b.x && wmx < b.x + 22.f && wmy >= b.y && wmy < b.y + kCardHeaderH) return b.node_id;
+    }
+    return -1;
 }
 
 // Card kind for a node id (small linear scan; n <= kGraphMaxNodes).
@@ -459,9 +480,16 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     // ADR-0023 LOD: fade the card text out as the camera zooms out (illegible when small). The cards,
     // accents, port dots and the waveform preview stay; the title fades last (larger fs), the small
     // tag/port/param labels first. text_alpha() returns 0 below the fade floor, so those draws no-op.
-    if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f)
-        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
+    // Gesture A affordance: a disclosure chevron at the header-left on curatable nodes (anything but the
+    // Output sink). Clicking its zone (param_curate_hit) opens the show/hide-params menu; the title shifts.
+    const bool curatable = b.kind != 2;
+    const float chev_w = curatable ? 12.f : 0.f;
+    if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f) {
+        if (curatable)
+            r.draw_text(b.x + 6.f, b.y + 6.f, "\xE2\x80\xBA", sty.dim[0], sty.dim[1], sty.dim[2], ta, sty.fs_label);   // ›
+        r.draw_text(b.x + 10.f + chev_w + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
                     sty.text[0], sty.text[1], sty.text[2], ta, sty.fs_label);
+    }
     const float a_small = canvas_.text_alpha(0.6f);   // kind tag, lead-row label, "+ param"
     const char* tag = b.kind == 0 ? "inst"
                     : (b.kind == 1 ? "fx"

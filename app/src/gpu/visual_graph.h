@@ -30,6 +30,11 @@ struct VisualNode {
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     uint64_t file_param_generation = 0;    // host-triggered same-path reload signal for FILE/TEXT consumers
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
+    // Curated body params (pure UI curation, persisted): the param indices the user chose to SHOW as
+    // rows/ports on this node's card, in add order. Mirrors AudioGraphNode::pinned_params. A node starts
+    // COLLAPSED (empty) and reveals params via the curate menu or a dropped wire; a param that carries a
+    // connection is always shown regardless (see NodeGraph::exposed_params), so a wire never dangles.
+    std::vector<int> pinned_params;
     // Base values captured BY PARAM NAME across a rebuild (an operator hot-reload, or a shader
     // whose header changed). Indices move when a reload adds, removes or reorders a param, so a
     // name is the only thing worth carrying over. Consumed by make_instance(), then cleared.
