@@ -2,10 +2,11 @@
 
 Music : 4-on-floor kick + clap + Euclidean hats, a rolling 16th acid bass (with a
         Drive stage for grit), and off-beat minor stabs.
-Visual: HARD-GEOMETRIC — REAL vertex geometry, not a shader field. A ShapeGrid of
-        hexagons (a real vertex buffer) with a solid 3D Mesh octahedron punching
-        through the center, added together → Output. The kick transient punches the
-        octahedron + the grid, the bass rotates the grid, the mids spin the solid.
+Visual: PER-NOTE reactivity, not band energy. Every instrument drives its own layer off
+        the ACTUAL notes: the lead's chord notes become spinning wireframe octahedra
+        (Solids), the bass riff becomes crisp hexagons sweeping by pitch (Instancer), and
+        each drum hit fires a particle burst (Emitter) — beat-synced, composited over
+        black, no haze. You see WHICH notes play, not just how loud the mix is.
 
 Run with the app running:  uv run examples/demos/pulse.py
 """
@@ -57,29 +58,32 @@ def build(v: Vivid, save: bool = True):
                 stabs.append({"p": p, "s": bar * 4.0 + off, "d": 0.2, "v": 0.7})
     v.set_clip(LEAD, 0, stabs, 8.0)
 
-    # --- visuals : real geometry (ShapeGrid hexagons + a solid Mesh octahedron), added -> Output ---
-    # After reset the default Plasma->Feedback->Blur->Output chain remains and the Output node is the
-    # display. We build real-geometry generators and route them straight to Output (no field/haze).
+    # --- visuals : the PER-NOTE reactivity palette — real geometry driven by the ACTUAL notes,
+    # beat-synced, NO Feedback/Blur haze. Each instrument owns a layer: a Notes node adapts its MIDI
+    # into a generic signal that a draw op renders (the ops never refer to "notes"). You SEE which
+    # notes play, not just how loud the mix is. ---
     out = find(v.graph()["nodes"], "Output")
-    sg = v.add_node("ShapeGrid")                     # a real vertex-buffer grid of hexagons
-    for k, val in dict(sides=0.6, cols=0.45, rows=0.3, size=0.5, rotation=0.0,
-                       r=0.95, g=0.25, b=0.2, bg_r=0.03, bg_g=0.02, bg_b=0.04).items():
-        v.set_node_param(sg, k, val)                 # bold red hexagons on near-black
-    m = v.add_node("Mesh")                           # a solid 3D octahedron punching the center
-    for k, val in dict(shape=0.66, wireframe=0.0, size=0.32, spin=0.3, tilt=0.5,
-                       r=1.0, g=0.85, b=0.3, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
-        v.set_node_param(m, k, val)                  # amber solid, black bg so ADD keys it over the grid
-    comp = v.add_node("Composite")
-    v.connect(comp, sg, port=0)                      # A = the hex grid
-    v.connect(comp, m, port=1)                       # B = the octahedron
-    v.set_node_param(comp, "mode", 1.0)             # ADD (black bg of each layer drops out)
-    v.connect(out, comp)                             # Output <- Composite
+    d_sig = v.notes(v.track_id(DRUMS))
+    b_sig = v.notes(v.track_id(BASS))
+    l_sig = v.notes(v.track_id(LEAD))
 
-    # --- the bridge : audio -> visual params (only smooth params; structure stays baked) ---
-    v.map("master.transient", m,  "size", amount=1.0, lo=0.28, hi=0.6)   # kick punches the solid
-    v.map("master.transient", sg, "size", amount=0.8, lo=0.42, hi=0.62)  # + the grid breathes
-    v.map("master.low",       sg, "rotation", amount=0.5)                # bass rotates the grid
-    v.map("master.mid",       m,  "spin", amount=0.6, lo=0.2, hi=0.7)    # mids spin the octahedron
+    # LEAD stabs → big spinning wireframe octahedra, one per chord note (the hard-geometric hero)
+    solids = v.solids(l_sig, shape=2, size=0.95, spread=0.62, spin=0.55, trail=0.5, wireframe=1.0)
+    # BASS riff → crisp hexagons sweeping by pitch (data-viz), re-popping on each hit
+    bass = v.instancer(b_sig, shape=2, sides=6, size=0.34, spread=0.9, trail=0.14, pulse=1.0)
+    # DRUMS → a particle burst on every kick / clap / hat
+    sparks = v.emitter(d_sig, count=0.45, speed=0.7, gravity=0.4, life=0.45, size=0.4, spread=0.95)
+
+    # beat-synced throb: the bass hexagons pump gently on each beat (transport source, not band energy)
+    v.beat_sync("beat_pulse", bass, "size", amount=0.22, lo=0.22, hi=0.4)
+
+    # composite the three geometry layers, ADD over black (each op clears black/transparent → ADD keys them together)
+    def add_layer(a, b):
+        c = v.add_node("Composite"); v.set_node_param(c, "mode", 1.0)
+        v.connect(c, a, port=0); v.connect(c, b, port=1); return c
+    stack = add_layer(bass, solids)
+    stack = add_layer(stack, sparks)
+    v.connect(out, stack)                            # Output <- the composited stack
 
     v.launch_scene(0)
     v.play()

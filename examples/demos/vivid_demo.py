@@ -243,6 +243,54 @@ class Vivid:
     def set_node_param(self, node_id: int, name: str, value: float):
         return self.call("set_node_param", node_id=node_id, name=name, value=value)
 
+    # --- per-note reactivity palette (ADR: generic VividSignal) ---
+    # A `Notes` node adapts a track's MIDI into a generic signal (an `active` held set + `fired`
+    # note-ons); the consumer ops draw it and never refer to "notes", so the same graph works off a
+    # future Beat/onset source. Each consumer helper adds the op, wires the signal edge, sets params,
+    # and returns the node id. Params are the op's own (see the op source): Instancer size/spread/
+    # trail/shape/sides/pulse; Emitter count/speed/gravity/life/size/spread; Solids shape/size/spread/
+    # spin/trail/wireframe; readout (Type) size/x/y/r/g/b/mode.
+    def _consume(self, op: str, signal_node: int, params: dict) -> int:
+        n = self.add_node(op)
+        self.connect(n, signal_node)              # consumer.signal <- Notes
+        for k, v in params.items():
+            self.set_node_param(n, k, float(v))
+        return n
+
+    def notes(self, track_id: int) -> int:
+        """A Notes source bound to a track's STABLE id → emits a VividSignal (active + fired)."""
+        n = self.add_node("Notes")
+        self.set_node_param(n, "track", float(track_id))
+        return n
+
+    def instancer(self, signal_node: int, **params) -> int:
+        """One glowing instance per active element (dot/ring/polygon/bar via `shape`)."""
+        return self._consume("Instancer", signal_node, params)
+
+    def emitter(self, signal_node: int, **params) -> int:
+        """A particle burst per note-on FIRE (re-struck notes re-burst)."""
+        return self._consume("Emitter", signal_node, params)
+
+    def solids(self, signal_node: int, **params) -> int:
+        """One 3D solid (cube/tetra/octa via `shape`) per active element; `wireframe` for edges."""
+        return self._consume("Solids", signal_node, params)
+
+    def readout(self, signal_node: int, **params) -> int:
+        """A live typographic readout (note names / pitch numbers) of the active set (the Type op)."""
+        return self._consume("Type", signal_node, params)
+
+    def beat_sync(self, src: str, node_id: int, param: str, amount: float = 1.0, **kw):
+        """Map a transport source (beat/bar_phase/downbeat/beat_pulse) to a visual param."""
+        return self.map(f"transport.{src}", node_id, param, amount=amount, **kw)
+
+    def adsr(self, track: int, attack=0.01, decay=0.15, sustain=0.7, release=0.4) -> int:
+        """Add a note-gated ADSR modulator to a track; returns its node id. Its envelope is exposed as
+        the visual source `node_<stable_track_id>_<node_id>.ctl` — map() that to any visual param."""
+        n = self.add_mod(track, "ADSR")
+        for i, v in enumerate((attack, decay, sustain, release)):
+            self.set_audio_node_param(track, n, i, float(v))
+        return n
+
     def swap_generator(self, op: str) -> int:
         """Replace the active generator: add a node of `op` and rewire the first Feedback's
         input to it (the default Plasma is left idle). Returns the new node id."""
