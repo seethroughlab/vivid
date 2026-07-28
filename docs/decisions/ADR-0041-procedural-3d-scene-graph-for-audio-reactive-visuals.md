@@ -1,8 +1,20 @@
 # ADR-0041: Procedural 3D Scene Graph for Audio-Reactive Visuals
 
-Status: proposed
+Status: accepted
 
 Date: 2026-07-28
+
+> **Phase 0 spikes cleared (2026-07-28).** The header/ABI reconciliation succeeded: `gpu_3d.h` and the
+> `Render3D`/`SceneMerge`/`Shape3D`/`Light3D` op sources compile against the trunk `operator_api` with only a
+> no-op `VIVID_DESCRIBE_REF_TYPE` shim (`port_type_registry.h`), a vendored `linmath.h`, and stubbed
+> `draw_thumbnail` bodies (the trunk's 2D `VividThumbnailContext` differs from classic's GPU one — faithful
+> reimpl is Phase-1 work). The 4 ops build as MODULE plugins via `add_vivid_operator` + `VIVID_REGISTER`,
+> load at runtime, and a `Shape3D → SceneMerge(+Light3D) → Render3D → Output` graph renders a lit, shaded,
+> depth-correct cube at both 720p and 1080p. wgpu features are all core (Depth32Float / textureSampleCompare /
+> texture_2d_array; default limits give 128 MiB storage buffers ≈ 1M particles); the FFT MANY-lane → geometry
+> path is present in the trunk ABI (`VividGpuContext::input_lane_gpu_buffers`; `instances_from_lanes` reads
+> `ctx->values`). Remaining runtime proofs (live 60fps under SDF3D raymarch, live FFT reactivity) fold into
+> Phase 1 with the ops that exercise them.
 
 ## Context
 
