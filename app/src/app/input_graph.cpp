@@ -23,6 +23,7 @@
 #include "platform/platform.h"      // open_in_editor
 
 #include <algorithm>
+#include <cstdlib>   // std::atoi (audio param-menu track tag)
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -30,6 +31,44 @@
 namespace {
 using namespace vivid::ui;          // hit, Rect, AudioNodeGraph/Box, dock/audio_graph rects
 namespace S = vivid::session;
+
+// Build the audio node's param-curation menu (Gesture A curate / Gesture B reveal). connect_mode omits
+// already-wired params and switches dispatch to pin+connect; pending_src is the modulator the wire came
+// from. Shared by the audio FSM (AudioNodeGraph::on_down/on_up) and the menu dispatch. `checked` marks a
+// shown param (pinned OR wired); a wired param is disabled in curate mode (disconnect to hide).
+inline vivid::ui::PopupMenu build_audio_param_menu(vivid::App& app, vivid::ui::AudioNodeGraph& ag, int tr,
+                                                   int node_id, float x, float y, bool connect_mode,
+                                                   int pending_src) {
+    std::vector<vivid::ui::PopupItem> items;
+    const int pc = S::session_audio_graph_node_param_count(app.session, tr, node_id);
+    for (int p = 0; p < pc; ++p) {
+        if (S::session_audio_graph_node_param_hint(app.session, tr, node_id, p) == VIVID_DISPLAY_LFO) continue;
+        const bool wired = S::session_audio_graph_node_param_wired(app.session, tr, node_id, p) != 0;
+        if (connect_mode && wired) continue;
+        vivid::ui::PopupItem it;
+        const char* nm = S::session_audio_graph_node_param_name(app.session, tr, node_id, p);
+        it.label = nm ? nm : "";
+        it.id = p;
+        it.checked = wired || ag.is_param_pinned(node_id, p);
+        it.enabled = connect_mode ? true : !wired;
+        items.push_back(std::move(it));
+    }
+    const char* tn = "params";   // header = the node's op type (resolved by id → index)
+    for (int i = 0, n = S::session_track_audio_graph_node_count(app.session, tr); i < n; ++i)
+        if (S::session_track_audio_graph_node_id(app.session, tr, i) == node_id) {
+            const char* t = S::session_track_audio_graph_node_type(app.session, tr, i);
+            if (t && *t) tn = t;
+            break;
+        }
+    return vivid::ui::popup_param_curate(x, y, node_id, tr, connect_mode, pending_src, tn, std::move(items));
+}
+// The audio deep view lives in the bottom dock, so a menu opened at the click would extend off the bottom.
+// Float it UP so its full height sits above the dock (over the graph), clamped below the top bar.
+inline void clamp_audio_menu_onscreen(vivid::Window& win) {
+    vivid::ui::PopupMenu& m = win.param_menu;
+    const float mh = 22.f + static_cast<float>(m.items.size()) * m.row_h;   // header + rows
+    m.y = std::max(30.f, std::min(m.y, win.dock_top() - mh - 8.f));
+}
 }
 
 namespace vivid::input {
@@ -479,8 +518,19 @@ bool graph_parammenu(Window& win, App& app, double mx, double my) {
             } else {
                 app.graph->toggle_param_pin(node_i, param);
             }
+        } else if (app.session) {
+            const int tr = std::atoi(m.data.c_str() + 6);   // "audio:<tr>"
+            if (m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect) {
+                S::session_audio_graph_node_param_pin(app.session, tr, node_i, param);
+                S::session_audio_graph_connect_control(app.session, tr, m.b, node_i, param,
+                                                       /*amount*/ 1.f, /*curve*/ 0.f, /*invert*/ 0, /*bipolar*/ 0);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Connect Modulation", "");
+            } else {   // toggle: item.checked (and enabled ⇒ not wired) means currently pinned
+                if (m.items[row].checked) S::session_audio_graph_node_param_unpin(app.session, tr, node_i, param);
+                else                      S::session_audio_graph_node_param_pin(app.session, tr, node_i, param);
+                if (app.edit_gateway) app.edit_gateway->note_edit(m.items[row].checked ? "Unpin Param" : "Pin Param", "");
+            }
         }
-        // (audio-node curation dispatched in audio_param_menu handling — see input_graph audio section)
     }
     m.close();
     return true;
@@ -613,6 +663,15 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     // popover placement) stays screen-space and keeps using mx,my.
     double wmx, wmy; canvas_.view().to_world(mx, my, wmx, wmy);
     const auto boxes = layout();
+    // Gesture A: a header chevron opens the show/hide-params menu (before body-select would grab the node).
+    if (const int chev = param_curate_hit(wmx, wmy); chev >= 0) {
+        win.param_menu = build_audio_param_menu(app, *this, tr, chev, static_cast<float>(mx),
+                                                static_cast<float>(my), /*connect_mode*/ false, /*pending_src*/ -1);
+        clamp_audio_menu_onscreen(win);   // the dock is at the bottom → float the menu up over the graph
+        win.menu.close(); win.node_menu.close();
+        win.sel_audio_node = chev;
+        return true;
+    }
     for (const auto& b : boxes) {   // start a rewire drag from an output port (release connects)
         // No user-drawable output on ENGINE-MANAGED nodes: the Output sink (2) and the note-source
         // infrastructure — MIDI In (3), Clip (6), Selector (7), Gen (8). reconcile_note_subgraph owns
@@ -721,6 +780,7 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     for (const auto& b : layout()) if (b.node_id == wire_from) { from_kind = b.kind; break; }
     const bool note_wire = (from_kind == 3 || from_kind == 4);
     if (from_kind == 5) {   // modulator -> a param PORT (control edge to that exact param, ADR-0022)
+        bool connected = false;
         for (const auto& b : layout()) {
             if (b.node_id == wire_from) continue;
             const int slot = param_port_hit(b, wmx, wmy);
@@ -733,7 +793,21 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
                                                        /*invert*/0, /*bipolar*/0)
                 && app.edit_gateway)
                 app.edit_gateway->note_edit("Connect Modulation", "");
+            connected = true;
             break;
+        }
+        if (!connected) {   // Gesture B: dropped on a node body (no visible port) → reveal+connect menu
+            for (const auto& b : layout()) {
+                if (b.node_id == wire_from || b.kind == 2) continue;
+                if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
+                    win.param_menu = build_audio_param_menu(app, *this, tr, b.node_id, static_cast<float>(mx),
+                                                            static_cast<float>(my), /*connect_mode*/ true,
+                                                            /*pending_src*/ wire_from);
+                    clamp_audio_menu_onscreen(win);
+                    win.menu.close(); win.node_menu.close();
+                    break;
+                }
+            }
         }
         wire_from = -1;
         return true;
