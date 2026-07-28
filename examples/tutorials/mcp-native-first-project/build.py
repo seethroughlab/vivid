@@ -36,20 +36,24 @@ CAPTURE_PNG = PROJECT / "capture.png"
 SHADER_SOURCE = """/*{
   "version": 1,
   "name": "PulseField",
-  "summary": "Project-local pulse field driven by audio mappings.",
-  "keywords": ["project", "tutorial", "generator", "pulse"],
+  "summary": "Project-local pulse field — its motion comes from the AUDIO, not a clock.",
+  "keywords": ["project", "tutorial", "generator", "pulse", "reactive"],
   "inputs": [],
   "params": [
-    {"name": "warp", "type": "float", "default": 0.35, "min": 0, "max": 1,
-     "semantic_intent": "domain warp amount"},
+    {"name": "warp", "type": "float", "default": 0.0, "min": 0, "max": 1,
+     "semantic_intent": "note-on pulse — pushes a ring outward on each note"},
     {"name": "hue", "type": "float", "default": 0.58, "min": 0, "max": 1,
-     "semantic_tag": "phase_01", "semantic_intent": "color hue"},
+     "semantic_tag": "phase_01", "semantic_intent": "color hue (which note plays)"},
     {"name": "density", "type": "float", "default": 0.42, "min": 0, "max": 1,
-     "semantic_intent": "pattern density"},
-    {"name": "glow", "type": "float", "default": 0.55, "min": 0, "max": 1,
-     "semantic_intent": "brightness"}
+     "semantic_intent": "ring count / sharpness (transient energy)"},
+    {"name": "glow", "type": "float", "default": 0.3, "min": 0, "max": 1,
+     "semantic_intent": "brightness (level)"}
   ]
 }*/
+// A REACTIVE shader: there is no u.time in the visible motion. Every ring, flash and colour shift
+// is driven by an audio mapping (warp<-note gate, hue<-pitch, density<-transient, glow<-level), so
+// on silence the field is still and each note visibly pulses it. This is the point the tutorial
+// makes: creative code that REACTS, not a self-animating screensaver.
 fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {
     let d = abs(distance(uv, center) - radius);
     return 1.0 - smoothstep(0.0, width, d);
@@ -59,18 +63,24 @@ fn ring(uv: vec2f, center: vec2f, radius: f32, width: f32) -> f32 {
     let uv = inp.uv;
     var p = uv * 2.0 - vec2f(1.0);
     p.x = p.x * (u.res.x / max(1.0, u.res.y));
+    let r = length(p);
 
-    let twist = sin((p.x + p.y) * (3.0 + u.density * 10.0) + u.time * 1.8);
-    let q = p + vec2f(cos(p.y * 4.0 + u.time), sin(p.x * 4.0 - u.time)) * (0.04 + u.warp * 0.18);
-
-    let beam = 0.5 + 0.5 * sin((q.x * 5.0 + q.y * 2.0) + twist * 1.4 + u.time * 2.0);
-    let pulse = ring(uv, vec2f(0.5), 0.16 + u.density * 0.24, 0.08);
-    let vignette = smoothstep(1.3, 0.15, length(p));
-
+    // pitch -> palette colour
     let a = 0.5 + 0.5 * cos(vec3f(0.0, 2.1, 4.2) + u.hue * 6.2831853);
-    let b = vec3f(0.08, 0.12, 0.18);
-    var color = mix(b, a, beam * 0.65 + pulse * 0.55);
-    color = color * vignette * (0.65 + u.glow * 1.2);
+
+    // concentric rings: transient energy sets how many + how sharp; a note-on (warp) pushes the
+    // whole ring phase outward, so each note reads as a pulse radiating from the centre.
+    let rings_n = 3.0 + u.density * 9.0;
+    let phase = r * rings_n - u.warp * 3.0;
+    let field = 0.5 + 0.5 * sin(phase * 6.2831853);
+    let sharp = pow(field, 3.0 + u.density * 6.0);
+
+    // a bright core that flashes and swells on each note-on
+    let core = ring(uv, vec2f(0.5), 0.05 + u.warp * 0.32, 0.05 + u.warp * 0.05);
+
+    let vignette = smoothstep(1.35, 0.1, r);
+    var color = a * (sharp * (0.25 + u.warp * 0.9) + core);
+    color = color * vignette * (0.35 + u.glow * 1.7);
     return vec4f(color, 1.0);
 }
 """
@@ -210,10 +220,10 @@ def build() -> None:
     nodes = v.graph()["nodes"]
     out = find(nodes, "Output")
     shader = v.add_node(SHADER_OP)
-    v.set_node_param(shader, "warp", 0.35)
+    v.set_node_param(shader, "warp", 0.0)     # at rest — a note-on pulse drives it (map below)
     v.set_node_param(shader, "hue", 0.58)
     v.set_node_param(shader, "density", 0.42)
-    v.set_node_param(shader, "glow", 0.55)
+    v.set_node_param(shader, "glow", 0.3)
 
     blur = v.add_node("Blur")
     v.set_node_param(blur, "radius", 0.08)
@@ -225,10 +235,10 @@ def build() -> None:
     # Use the first-class mapping helper rather than raw source/destination strings. The tutorial
     # prose asks the user/agent to discover these choices with list_mapping_sources and
     # list_mapping_destinations before connecting them.
-    v.track_viz(track, "gate", shader, "warp", amount=0.9, lo=0.18, hi=0.8)
-    v.track_viz(track, "note", shader, "hue", amount=0.8, lo=0.15, hi=0.9)
-    v.master_viz("level", shader, "glow", amount=0.8, lo=0.35, hi=0.95)
-    v.master_viz("transient", shader, "density", amount=0.7, lo=0.25, hi=0.85)
+    v.track_viz(track, "gate", shader, "warp", amount=1.0, lo=0.0, hi=1.0)   # each note-on -> a pulse
+    v.track_viz(track, "note", shader, "hue", amount=0.8, lo=0.15, hi=0.9)   # which pitch -> colour
+    v.master_viz("level", shader, "glow", amount=0.8, lo=0.2, hi=0.95)       # loudness -> brightness
+    v.master_viz("transient", shader, "density", amount=0.7, lo=0.25, hi=0.85)  # attacks -> ring count
 
     v.save_project(str(PROJECT))
 
