@@ -85,6 +85,7 @@ def build(v: Vivid, save: bool = True):
     stack = add_layer(stack, sparks)
     v.connect(out, stack)                            # Output <- the composited stack
 
+    v.master_gain(0.6)   # headroom: the summed mix was clipping at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
 

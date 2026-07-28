@@ -142,6 +142,8 @@ def build(v: Vivid, save: bool = True, perform: bool = False):
     v.map_to_audio("viz.feedback", pad, svf, CUTOFF, amount=1.0, lo=400.0, hi=6000.0)
     v.map_to_audio("viz.blur",     pad, svf, RES,    amount=1.0, lo=0.05,  hi=0.55)
 
+    v.master_gain(0.6)   # headroom: the full-band chorus sum was clipping at 0 dBFS (AV clip needs clean audio)
+
     if save:
         save_geo(v, PROJECT)
 

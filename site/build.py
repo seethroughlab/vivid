@@ -73,50 +73,145 @@ def render_supports(cfg: dict) -> str:
 def showcase_video_url(s: dict, cfg: dict) -> str | None:
     """Resolve the clip URL for a showcase, or None to fall back to the still <img>.
 
-    Showcase .mp4s are NOT committed (they're gitignored — see examples/demos/showcase/heroes/) to
-    keep the repo free of ~9MB of binaries. They are hosted separately:
-      - production: set `showcase_video_base` in content.json to the CDN/release base; the clip is
-        referenced as `{base}/{id}.mp4` and never copied into the build.
-      - local preview: if the clip exists under the harness heroes dir (from `runner.py --video`),
-        it is copied into the build and referenced at `/assets/showcase/{id}.mp4`.
+    Showcase clips are NOT committed (gitignored — see examples/demos/showcase/heroes/ + processed/)
+    to keep the repo free of media binaries. They are hosted separately, HLS-encoded + uploaded to
+    S3/CloudFront by site/scripts/{process,upload}-showcase-video.*:
+      - production: `showcase_video_base` in content.json is the CloudFront base; the clip is the HLS
+        master `{base}/{id}/index.m3u8` (played via hls.js), never copied into the build.
+      - local preview: a plain `{id}.mp4` under the harness heroes dir (from `runner.py --video`) is
+        copied into the build and referenced at `/assets/showcase/{id}.mp4` (played directly).
     With neither, the card degrades to the hero still (never a broken <video>)."""
     if not s.get("video"):
         return None
     base = (cfg.get("showcase_video_base") or "").rstrip("/")
     if base:
-        return f"{base}/{s['video']}"
+        return f"{base}/{s['id']}/index.m3u8"
     if (HEROES_SRC / s["video"]).exists():
         return f"/assets/showcase/{s['video']}"
     return None
 
 
 def showcase_media_html(s: dict, cfg: dict) -> str:
-    """The card's media element: a muted autoplay-loop <video> (hero PNG as poster/fallback) when a
-    clip URL resolves, else the still <img>. Poster means the hero shows instantly and remains the
-    fallback if the video can't play, so the hero PNGs stay the single source of truth."""
+    """The card's media: the hero still as a poster <img> with a lazily-attached, scroll-triggered
+    muted-autoplay <video> that fades in over it, plus an unmute control (these clips are AV-synced —
+    the audio IS the point). Falls back to the still <img> alone when no clip URL resolves. The hero
+    PNG stays the single source of truth (poster + fallback); the video is enhancement."""
     hero = s["hero"]
     title = esc(s["title"])
+    poster = f"/assets/showcase/{hero}"
     video_url = showcase_video_url(s, cfg)
-    if video_url:
-        return (
-            f'<video class="showcase-video" src="{esc(video_url)}" '
-            f'poster="/assets/showcase/{hero}" width="1280" height="720" '
-            f'muted loop playsinline autoplay preload="metadata" aria-label="{title}"></video>'
-        )
-    return (f'<img src="/assets/showcase/{hero}" alt="{title}" '
-            f'width="1280" height="720" loading="lazy">')
+    if not video_url:
+        return (f'<img class="showcase-poster" src="{poster}" alt="{title}" '
+                f'width="1280" height="720" loading="lazy">')
+    return (
+        f'<div class="showcase-player" data-hls-src="{esc(video_url)}">'
+        f'<img class="showcase-poster" src="{poster}" alt="{title}" width="1280" height="720" loading="lazy">'
+        f'<video class="showcase-video" poster="{poster}" width="1280" height="720" '
+        f'muted loop playsinline preload="none" aria-label="{title}"></video>'
+        f'<button class="showcase-unmute" type="button" aria-label="Unmute" title="Unmute" hidden>'
+        f'<span aria-hidden="true">\U0001F507</span></button>'
+        f'</div>'
+    )
+
+
+# Inline player: lazy hls.js (jsDelivr, Safari native HLS), IntersectionObserver muted-autoplay on
+# scroll, and a click-to-unmute control (only one card plays sound at a time). Respects
+# prefers-reduced-motion (no autoplay; unmute still plays on the user gesture). Emitted once per page
+# that has showcase cards. No `${...}` template literals — this string is inserted as a value, but keep
+# it substitution-safe anyway.
+SHOWCASE_PLAYER_JS = """
+<script>
+(function(){
+  if (window.__vividShowcasePlayer) return; window.__vividShowcasePlayer = true;
+  var HLS_CDN = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var ICON_MUTED = "\\uD83D\\uDD07", ICON_ON = "\\uD83D\\uDD0A";
+  var hlsPromise = null;
+  function nativeHls(){ return !!document.createElement("video").canPlayType("application/vnd.apple.mpegurl"); }
+  function isHls(src){ return /\\.m3u8($|\\?)/.test(src); }
+  function loadHls(){
+    if (!hlsPromise) hlsPromise = new Promise(function(res){
+      if (nativeHls()) return res(null);
+      if (window.Hls) return res(window.Hls);
+      var sc = document.createElement("script");
+      sc.src = HLS_CDN; sc.onload = function(){ res(window.Hls || null); };
+      sc.onerror = function(){ res(null); }; document.head.appendChild(sc);
+    });
+    return hlsPromise;
+  }
+  function reveal(v){ v.classList.add("is-playing"); }
+  function attach(box){
+    var video = box.querySelector("video.showcase-video");
+    var src = box.getAttribute("data-hls-src");
+    if (!video || !src || box.dataset.active === "true") return;
+    box.dataset.active = "true";
+    video.addEventListener("playing", function(){ reveal(video); }, { once: true });
+    if (!isHls(src) || nativeHls()) {
+      if (!video.src) video.src = src;
+      video.play().catch(function(){});
+    } else {
+      loadHls().then(function(Hls){
+        if (Hls && Hls.isSupported()) {
+          var hls = new Hls({ capLevelToPlayerSize: true }); box._hls = hls;
+          hls.loadSource(src); hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, function(){ video.play().catch(function(){}); });
+        } else { video.src = src; video.play().catch(function(){}); }
+      });
+    }
+  }
+  function detach(box){
+    if (box.dataset.active !== "true") return;
+    var video = box.querySelector("video.showcase-video");
+    if (video && !video.muted) return;   // keep playing if the user turned sound on
+    box.dataset.active = "false";
+    if (video) { video.pause(); video.classList.remove("is-playing"); }
+    if (box._hls) { box._hls.destroy(); box._hls = null; if (video) { video.removeAttribute("src"); video.load(); } }
+  }
+  var io = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if (e.isIntersecting && !reduce) attach(e.target); else detach(e.target); });
+  }, { threshold: 0.25 });
+  document.querySelectorAll(".showcase-player[data-hls-src]").forEach(function(box){
+    io.observe(box);
+    var btn = box.querySelector(".showcase-unmute");
+    var video = box.querySelector("video.showcase-video");
+    if (!btn || !video) return;
+    btn.hidden = false;
+    btn.addEventListener("click", function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      if (video.muted) {
+        document.querySelectorAll("video.showcase-video").forEach(function(v){ if (v !== video) v.muted = true; });
+        document.querySelectorAll(".showcase-unmute").forEach(function(b){
+          if (b !== btn) { b.querySelector("span").textContent = ICON_MUTED; b.setAttribute("aria-label","Unmute"); b.title = "Unmute"; }
+        });
+        video.muted = false; btn.querySelector("span").textContent = ICON_ON; btn.setAttribute("aria-label","Mute"); btn.title = "Mute";
+        attach(box); video.play().catch(function(){});
+      } else {
+        video.muted = true; btn.querySelector("span").textContent = ICON_MUTED; btn.setAttribute("aria-label","Unmute"); btn.title = "Unmute";
+      }
+    });
+  });
+})();
+</script>
+"""
 
 
 def render_showcase_cards(cfg: dict) -> str:
     item = load_template("_showcase_card.html")
     cards = []
+    any_video = False
     for s in cfg["showcase"]:
+        media = showcase_media_html(s, cfg)
+        if "showcase-player" in media:
+            any_video = True
         cards.append(item.substitute(
-            media=showcase_media_html(s, cfg), title=esc(s["title"]), type=s["type"],
+            media=media, title=esc(s["title"]), type=s["type"],
             mechanism=esc(s["mechanism"]), blurb=esc(s["blurb"]),
             source=f'{cfg["source_base"]}/{s["source"]}',
         ))
-    return "\n".join(cards)
+    html = "\n".join(cards)
+    if any_video:
+        html += "\n" + SHOWCASE_PLAYER_JS   # inserted as a value — not re-substituted
+    return html
 
 
 def render_tutorial_cards(cfg: dict) -> str:

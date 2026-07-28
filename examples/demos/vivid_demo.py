@@ -168,6 +168,11 @@ class Vivid:
     def set_track_gain(self, track: int, gain: float):
         return self.call("set_track_gain", track=track, gain=gain)
 
+    def master_gain(self, gain: float):
+        """Set the master sink gain (session headroom). <1.0 pulls the summed mix below 0 dBFS —
+        use it when several loud tracks sum into clipping (the AV showcase clips need clean audio)."""
+        return self.call("set_master_gain", gain=gain)
+
     # --- clip authoring (notes are {p,s,d,v}: pitch, start-beat, dur-beats, velocity) ---
     def set_clip(self, track: int, scene: int, notes: list[dict], length: float):
         return self.call("set_clip", track=track, scene=scene, notes=notes, length=length)

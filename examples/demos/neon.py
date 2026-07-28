@@ -82,6 +82,7 @@ def build(v: Vivid, save: bool = True):
     v.connect(top, stack, port=0); v.connect(top, sparks, port=1)
     v.connect(out, top)
 
+    v.master_gain(0.6)   # headroom: the arp+bass+drums sum was clipping at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
     if save:
