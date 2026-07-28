@@ -70,15 +70,36 @@ def render_supports(cfg: dict) -> str:
     return "\n".join(item.substitute(title=esc(s["title"]), body=esc(s["body"])) for s in cfg["supports"])
 
 
-def showcase_media_html(s: dict) -> str:
-    """The card's media element: a muted autoplay-loop <video> (hero PNG as poster/fallback) when the
-    showcase has a clip, else the still <img>. Poster means the hero shows instantly and remains the
+def showcase_video_url(s: dict, cfg: dict) -> str | None:
+    """Resolve the clip URL for a showcase, or None to fall back to the still <img>.
+
+    Showcase .mp4s are NOT committed (they're gitignored — see examples/demos/showcase/heroes/) to
+    keep the repo free of ~9MB of binaries. They are hosted separately:
+      - production: set `showcase_video_base` in content.json to the CDN/release base; the clip is
+        referenced as `{base}/{id}.mp4` and never copied into the build.
+      - local preview: if the clip exists under the harness heroes dir (from `runner.py --video`),
+        it is copied into the build and referenced at `/assets/showcase/{id}.mp4`.
+    With neither, the card degrades to the hero still (never a broken <video>)."""
+    if not s.get("video"):
+        return None
+    base = (cfg.get("showcase_video_base") or "").rstrip("/")
+    if base:
+        return f"{base}/{s['video']}"
+    if (HEROES_SRC / s["video"]).exists():
+        return f"/assets/showcase/{s['video']}"
+    return None
+
+
+def showcase_media_html(s: dict, cfg: dict) -> str:
+    """The card's media element: a muted autoplay-loop <video> (hero PNG as poster/fallback) when a
+    clip URL resolves, else the still <img>. Poster means the hero shows instantly and remains the
     fallback if the video can't play, so the hero PNGs stay the single source of truth."""
     hero = s["hero"]
     title = esc(s["title"])
-    if s.get("video"):
+    video_url = showcase_video_url(s, cfg)
+    if video_url:
         return (
-            f'<video class="showcase-video" src="/assets/showcase/{s["video"]}" '
+            f'<video class="showcase-video" src="{esc(video_url)}" '
             f'poster="/assets/showcase/{hero}" width="1280" height="720" '
             f'muted loop playsinline autoplay preload="metadata" aria-label="{title}"></video>'
         )
@@ -91,7 +112,7 @@ def render_showcase_cards(cfg: dict) -> str:
     cards = []
     for s in cfg["showcase"]:
         cards.append(item.substitute(
-            media=showcase_media_html(s), title=esc(s["title"]), type=s["type"],
+            media=showcase_media_html(s, cfg), title=esc(s["title"]), type=s["type"],
             mechanism=esc(s["mechanism"]), blurb=esc(s["blurb"]),
             source=f'{cfg["source_base"]}/{s["source"]}',
         ))
@@ -255,13 +276,18 @@ def build_site(output_dir: Path) -> None:
         if not src.exists():
             raise SystemExit(f"[build] missing hero image: {src} (run the showcase harness first)")
         shutil.copy2(src, hero_out / s["hero"])
-        # Optional per-showcase clip (heroes/<id>.mp4 from `runner.py --video`); the hero PNG is its poster.
-        if s.get("video"):
+        # Per-showcase clip: NOT committed (gitignored) and hosted separately. Copy it into the build
+        # only for LOCAL preview (present under the harness heroes dir AND no external base configured).
+        # With an external `showcase_video_base`, the clip is referenced by URL, never copied. Absent
+        # and unconfigured, the card degrades to the hero still — never a hard build failure.
+        video_base = (cfg.get("showcase_video_base") or "").strip()
+        if s.get("video") and not video_base:
             vsrc = HEROES_SRC / s["video"]
-            if not vsrc.exists():
-                raise SystemExit(f"[build] missing showcase video: {vsrc} "
-                                 f"(run the showcase harness with --video, or drop the 'video' field)")
-            shutil.copy2(vsrc, hero_out / s["video"])
+            if vsrc.exists():
+                shutil.copy2(vsrc, hero_out / s["video"])
+            else:
+                print(f"[build] note: no local clip for {s['id']} ({vsrc.name}); card falls back to the "
+                      f"hero still. Set showcase_video_base or run the harness with --video to include it.")
 
     base = load_template("base.html")
 
@@ -339,10 +365,8 @@ def _self_check(cfg: dict, output_dir: Path) -> None:
                       if not (output_dir / "assets" / "showcase" / s["hero"]).exists()]
     if missing_heroes:
         raise SystemExit(f"[build] self-check failed — missing heroes: {', '.join(missing_heroes)}")
-    missing_videos = [s["video"] for s in cfg["showcase"]
-                      if s.get("video") and not (output_dir / "assets" / "showcase" / s["video"]).exists()]
-    if missing_videos:
-        raise SystemExit(f"[build] self-check failed — missing videos: {', '.join(missing_videos)}")
+    # Showcase clips are hosted separately (gitignored); a missing local clip is NOT a build failure —
+    # the card degrades to the hero still, or references the external base. So no video self-check here.
     # No unresolved $template placeholders leaked into any page.
     for html in output_dir.rglob("index.html"):
         text = html.read_text()

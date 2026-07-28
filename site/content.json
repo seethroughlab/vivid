@@ -5,6 +5,7 @@
   "download_url": "https://github.com/seethroughlab/vivid/releases/latest",
   "github_url": "https://github.com/seethroughlab/vivid",
   "source_base": "https://github.com/seethroughlab/vivid/tree/main",
+  "showcase_video_base": "",
   "nav": [
     {"label": "Start Here", "href": "/start-here/"},
     {"label": "Tutorials", "href": "/tutorials/"},
@@ -54,7 +55,7 @@
       "type": 1,
       "title": "Your first project",
       "mechanism": "Session View + visual graph + mappings",
-      "blurb": "The beginner project: a Surge XT track, a project-local shader, and four audio-to-visual mappings, saved as a portable project.",
+      "blurb": "The beginner project: a Surge XT track and a project-local shader whose rings pulse from four audio-to-visual mappings — the notes drive the picture, saved as a portable project.",
       "hero": "first-project.png",
       "video": "first-project.mp4",
       "source": "examples/tutorials/mcp-native-first-project"
@@ -64,7 +65,7 @@
       "type": 2,
       "title": "Pulse",
       "mechanism": "Session View scenes + reactive geometry",
-      "blurb": "A techno scene driving a hard-geometric graph — a hex ShapeGrid and a solid Mesh octahedron that punch on the kick.",
+      "blurb": "A techno scene driving a per-note geometry graph — hexagons for the bassline, wireframe octahedra for the lead, particle bursts on every drum hit.",
       "hero": "pulse-song.png",
       "video": "pulse-song.mp4",
       "source": "examples/demos/pulse.py"

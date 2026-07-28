@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -105,30 +106,39 @@ def run_showcase(v: Vivid, showcase, args, caps: dict) -> gates.ShowcaseResult:
         print(f"[{showcase.id}] WARNING: project dir does not exist: {showcase.project_dir}")
     steps["load"] = call_optional(v, "load_project", path=str(showcase.project_dir))
 
-    # --- 3. VERIFY -----------------------------------------------------------------------------
+    # --- 3. VERIFY (PLAYING) -------------------------------------------------------------------
+    # The rebuilt showcases are REACTIVE: the geometry demos render black when the transport is idle
+    # (no notes -> no geometry), so we must exercise them PLAYING, exactly as they run. Start the
+    # transport before judging non-blank output / capturing, then pause at the end.
+    playable = not (missing and not args.force)   # can't meaningfully play what never authored
+    if playable:
+        call_optional(v, "set_playing", playing=True)
+        call_optional(v, "launch_scene", scene=showcase.video_scene)  # money scene (songs: not the sparse intro)
+        time.sleep(1.2)                              # let notes start flowing before we judge/capture
     steps["validate"] = call_optional(v, "validate_project")
     steps["health"] = call_optional(v, "get_health")
     steps["quality"] = call_optional(v, "run_quality_check", name="all")
     steps["assets"] = call_optional(v, "list_project_assets")
 
-    # --- 4. optional AUDIO leg -----------------------------------------------------------------
+    # --- 4. optional AUDIO leg (already playing) -----------------------------------------------
     if args.audio and showcase.wants_audio and not missing:
-        call_optional(v, "set_playing", playing=True)
         steps["audio"] = call_optional(v, "run_quality_check", name="no_audio_clipping")
-        call_optional(v, "set_playing", playing=False)
 
-    # --- 5. HERO CAPTURE (warm past lazy-GPU / throttled headless frame loop) -------------------
+    # --- 5. HERO CAPTURE (warm_capture retries until non-blank — rides past sparse per-note frames)
     hero_path = args.heroes / showcase.hero_name()
     args.heroes.mkdir(parents=True, exist_ok=True)
     steps["capture"] = warm_capture(v, str(hero_path), tries=args.warm_tries, delay=args.warm_delay)
     steps["analyze"] = call_optional(v, "analyze_frame", path=str(hero_path))
 
-    # --- 5b. VIDEO CLIP (opt-in): play + record a short AV-synced clip for the website ----------
+    # --- 5b. VIDEO CLIP (opt-in): record a short AV-synced clip for the website -----------------
     if args.video:
         video_path = args.heroes / showcase.video_name()
         print(f"[{showcase.id}] recording {args.video_seconds:.0f}s clip -> {video_path.name}")
         steps["video"] = capture_video(v, str(video_path),
-                                       seconds=args.video_seconds, fps=args.video_fps)
+                                       seconds=args.video_seconds, fps=args.video_fps,
+                                       scene=showcase.video_scene)
+    elif playable:
+        call_optional(v, "set_playing", playing=False)   # (the video path pauses internally)
 
     # --- 6. GATE + per-showcase report ---------------------------------------------------------
     result = gates.evaluate(showcase, steps, caps)
