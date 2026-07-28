@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -120,10 +121,17 @@ struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.child_count     = 0;
 
         ctx->custom_outputs[0] = &fragment_;
+
+        // Animated 3D thumbnail: a glowing proxy sphere in the light's colour.
+        const float col[3] = { r.value, g.value, b.value };
+        vivid::thumb3d::render_proxy_sphere(ctx, thumb_, col, true);
     }
+
+    ~Light3D() override { vivid::thumb3d::destroy(thumb_); }
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};
 };
 
 VIVID_REGISTER(Light3D)

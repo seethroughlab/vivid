@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include <algorithm>
 #include <cstdio>
 
@@ -55,12 +56,18 @@ struct SceneMerge : vivid::OperatorBase, vivid::GpuProcessable {
         output_.child_count     = child_count_;
 
         ctx->custom_outputs[0] = &output_;
+
+        // Animated 3D thumbnail: two overlapping proxy spheres evoke compositing.
+        vivid::thumb3d::render_merge_proxy(ctx, thumb_, nullptr);
     }
+
+    ~SceneMerge() override { vivid::thumb3d::destroy(thumb_); }
 
 private:
     vivid::gpu::VividSceneFragment  output_{};
     vivid::gpu::VividSceneFragment* children_[4]{};
     uint32_t                        child_count_ = 0;
+    vivid::thumb3d::State           thumb_{};
 };
 
 VIVID_REGISTER(SceneMerge)

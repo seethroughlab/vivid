@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -250,14 +251,22 @@ struct Deformer : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.cpu_vertex_count = vc;
 
         ctx->custom_outputs[0] = &fragment_;
+
+        // Animated 3D thumbnail: the deformed mesh (index buffer passthrough from the input fragment).
+        float bmin[3], bmax[3];
+        if (vivid::thumb3d::aabb_from_verts(fragment_.cpu_vertices, fragment_.cpu_vertex_count, bmin, bmax))
+            vivid::thumb3d::render(ctx, thumb_, fragment_.vertex_buffer, fragment_.vertex_buf_size,
+                                   fragment_.index_buffer, fragment_.index_count, bmin, bmax, fragment_.color);
     }
 
     ~Deformer() override {
         vivid::gpu::release(vertex_buffer_);
+        vivid::thumb3d::destroy(thumb_);
     }
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};
     std::vector<vivid::gpu::Vertex3D> displaced_;
     WGPUBuffer vertex_buffer_ = nullptr;
     uint64_t   vb_size_       = 0;

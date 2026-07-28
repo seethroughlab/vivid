@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include "linmath.h"
 #include <cstdio>
 #include <cstring>
@@ -777,9 +778,14 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.unlit     = unlit.int_value() != 0;
 
         ctx->custom_outputs[0] = &fragment_;
+
+        // Animated 3D thumbnail: a proxy sphere stands in for the raymarched SDF blob.
+        const float col[3] = { r.value, g.value, b.value };
+        vivid::thumb3d::render_proxy_sphere(ctx, thumb_, col, false);
     }
 
     ~SDF3D() override {
+        vivid::thumb3d::destroy(thumb_);
         vivid::gpu::release(pipeline_);
         vivid::gpu::release(shader_);
         vivid::gpu::release(pipe_layout_);
@@ -798,6 +804,7 @@ struct SDF3D : vivid::OperatorBase, vivid::GpuProcessable {
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};
 
     WGPURenderPipeline  pipeline_    = nullptr;
     WGPUShaderModule    shader_      = nullptr;

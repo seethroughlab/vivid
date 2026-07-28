@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -563,9 +564,14 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.metallic  = 0.0f;
 
         ctx->custom_outputs[0] = &fragment_;
+
+        // Animated 3D thumbnail: a procedural swirling proxy cloud (the real particles live GPU-side).
+        const float col[3] = { r.value, g.value, b.value };
+        vivid::thumb3d::render_particles_proxy(ctx, thumb_, col);
     }
 
     ~Particles3D() override {
+        vivid::thumb3d::destroy(thumb_);
         vivid::gpu::release(compute_pipeline_);
         vivid::gpu::release(compute_shader_);
         vivid::gpu::release(compute_pipe_layout_);
@@ -585,6 +591,7 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};
 
     // Compute pipeline
     WGPUComputePipeline  compute_pipeline_   = nullptr;

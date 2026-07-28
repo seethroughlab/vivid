@@ -1,6 +1,8 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -59,6 +61,11 @@ struct Instancer3D : vivid::OperatorBase, vivid::GpuProcessable {
         if (!bundle || !bundle->data || bundle->count == 0) {
             fragment_ = *input;
             ctx->custom_outputs[0] = &fragment_;
+            // Thumbnail: the un-instanced base mesh.
+            float bmin[3], bmax[3];
+            if (vivid::thumb3d::aabb_from_verts(input->cpu_vertices, input->cpu_vertex_count, bmin, bmax))
+                vivid::thumb3d::render(ctx, thumb_, fragment_.vertex_buffer, fragment_.vertex_buf_size,
+                                       fragment_.index_buffer, fragment_.index_count, bmin, bmax, fragment_.color);
             return;
         }
 
@@ -81,14 +88,26 @@ struct Instancer3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.instance_buffer = storage_buf_;
         fragment_.instance_count  = n;
         ctx->custom_outputs[0] = &fragment_;
+
+        // Animated 3D thumbnail: the base mesh drawn once per instance transform.
+        float mr = 0.6f, mb[3], mx[3];
+        if (vivid::thumb3d::aabb_from_verts(input->cpu_vertices, input->cpu_vertex_count, mb, mx)) {
+            mr = 0.5f * std::sqrt((mx[0]-mb[0])*(mx[0]-mb[0]) + (mx[1]-mb[1])*(mx[1]-mb[1]) + (mx[2]-mb[2])*(mx[2]-mb[2]));
+            if (mr < 1e-3f) mr = 0.6f;
+        }
+        vivid::thumb3d::render_instanced(ctx, thumb_, fragment_.vertex_buffer, fragment_.vertex_buf_size,
+                                         fragment_.index_buffer, fragment_.index_count, mr,
+                                         instances_.data(), n, nullptr);
     }
 
     ~Instancer3D() override {
         vivid::gpu::release(storage_buf_);
+        vivid::thumb3d::destroy(thumb_);
     }
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};
     std::vector<vivid::gpu::InstanceData3D> instances_;
     WGPUBuffer storage_buf_   = nullptr;
     uint32_t   current_count_ = 0;

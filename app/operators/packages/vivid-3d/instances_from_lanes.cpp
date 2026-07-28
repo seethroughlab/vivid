@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"
 #include <algorithm>
 #include <cstdint>
 #include <vector>
@@ -96,11 +97,17 @@ struct InstancesFromLanes : vivid::OperatorBase, vivid::GpuProcessable {
         bundle_.data  = instances_.data();
         bundle_.count = n;
         ctx->custom_outputs[0] = &bundle_;
+
+        // Animated 3D thumbnail: a unit cube instanced at the lane-driven transforms.
+        vivid::thumb3d::render_instances_cpu(ctx, thumb_, instances_.data(), n);
     }
+
+    ~InstancesFromLanes() override { vivid::thumb3d::destroy(thumb_); }
 
 private:
     std::vector<vivid::gpu::InstanceData3D> instances_;
     vivid::gpu::InstanceArray3D bundle_{};
+    vivid::thumb3d::State thumb_{};
 };
 
 VIVID_REGISTER(InstancesFromLanes)
