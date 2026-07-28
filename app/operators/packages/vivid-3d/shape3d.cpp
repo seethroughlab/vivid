@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
+#include "operator_api/thumbnail_3d.h"   // ADR-0041: animated 3D node thumbnail
 #include <cstdio>
 #include <cstring>
 #include <cmath>
@@ -770,15 +771,35 @@ struct Shape3D : vivid::OperatorBase, vivid::GpuProcessable {
         fragment_.material_binds = nullptr;
 
         ctx->custom_outputs[0] = &fragment_;
+
+        // ADR-0041: render an animated 3D thumbnail of this shape into the node's output texture.
+        float bmin[3], bmax[3];
+        if (thumb_aabb(bmin, bmax)) {
+            const float col[3] = { r.value, g.value, b.value };
+            vivid::thumb3d::render(ctx, thumb_, vertex_buffer_, vertex_buf_size_,
+                                   index_buffer_, index_count_, bmin, bmax, col);
+        }
+    }
+    // AABB of the current geometry (from the CPU vertex cache) for the thumbnail camera.
+    bool thumb_aabb(float bmin[3], float bmax[3]) const {
+        if (cpu_verts_.empty()) return false;
+        bmin[0]=bmax[0]=cpu_verts_[0].position[0];
+        bmin[1]=bmax[1]=cpu_verts_[0].position[1];
+        bmin[2]=bmax[2]=cpu_verts_[0].position[2];
+        for (const auto& v : cpu_verts_)
+            for (int j=0;j<3;++j){ bmin[j]=std::min(bmin[j],v.position[j]); bmax[j]=std::max(bmax[j],v.position[j]); }
+        return true;
     }
 
     ~Shape3D() override {
         vivid::gpu::release(vertex_buffer_);
         vivid::gpu::release(index_buffer_);
+        vivid::thumb3d::destroy(thumb_);
     }
 
 private:
     vivid::gpu::VividSceneFragment fragment_{};
+    vivid::thumb3d::State thumb_{};   // ADR-0041: animated 3D thumbnail state
     WGPUBuffer   vertex_buffer_  = nullptr;
     WGPUBuffer   index_buffer_   = nullptr;
     uint64_t     vertex_buf_size_ = 0;

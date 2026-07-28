@@ -179,10 +179,6 @@ void NodeGraph::layout_nodes() {
     for (auto& d : data_) { d.x = bx0_ + 8.f; d.y = dy; dy += d.h + 12.f; }
 }
 // Total left-edge input rows: one per texture input port + one per param.
-static int op_input_rows_at(const vivid::VisualGraph* vg, int i) {
-    if (!vg || i < 0 || i >= int(vg->nodes().size())) return 0;
-    return op_in_count(vg, i) + node_pcount(vg, i);
-}
 static constexpr float kCardW  = 156.f;
 static constexpr float kThumbH = 46.f;                 // live-output thumbnail strip
 // Every node but the sink renders an image, so every node but the sink gets a thumbnail.
@@ -682,8 +678,13 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     // thumbnail: a recessed panel with the node's live output drawn on top via Renderer2D's
     // textured-quad path (scales/pans with the view, letterboxed to the source aspect).
     if (op_has_thumb(vg_, i)) {
-        const int rows = std::max(1, op_input_rows_at(vg_, i));
-        const float tx = x + 6.f, ty = y + 30.f + rows * 18.f + 2.f, tw = w - 12.f, th = kThumbH;
+        // Position the thumbnail from the SAME CardPorts layout the card is drawn with (which reflects the
+        // collapsed/curated param count via exposed_params) — not the full param count, or it floats below
+        // a collapsed card. The tail (thumbnail) sits right after the header + head + all reserved rows.
+        const CardPorts cp = card_ports(i);
+        const float tx = x + 6.f;
+        const float ty = y + cp.header_h + cp.head_h + cp.rows_reserved() * cp.row_h + 2.f;
+        const float tw = w - 12.f, th = cp.tail_h;
         node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
         if (WGPUTextureView v = vg_->node_view(i)) {
             const float srcA = vg_->rt_aspect(), dstA = tw / th;
