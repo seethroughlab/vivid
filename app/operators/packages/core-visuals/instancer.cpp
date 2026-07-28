@@ -26,22 +26,38 @@ VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
 struct QVert { float x, y; };                       // unit quad corner in [-1,1]
 struct Inst  { float px, py, scale, r, g, b; };     // per-instance: center (NDC), radius, colour
 const char* kWGSL = R"(
-struct U { res: vec2f, time: f32, pad: f32 };
+struct U { res: vec2f, time: f32, shape: f32, sides: f32, p0: f32, p1: f32, p2: f32 };
 @group(0) @binding(0) var<uniform> u: U;
 struct VIn { @location(0) corner: vec2f, @location(1) pos: vec2f, @location(2) scale: f32, @location(3) col: vec3f };
 struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) col: vec3f };
 @vertex fn vs_main(v: VIn) -> VOut {
     var o: VOut;
     var p = v.corner * v.scale;
-    p.x = p.x * (u.res.y / max(u.res.x, 1.0));   // aspect-correct: round dots stay round
+    p.x = p.x * (u.res.y / max(u.res.x, 1.0));   // aspect-correct: round shapes stay round
     o.pos = vec4f(v.pos + p, 0.0, 1.0);
     o.uv = v.corner;
     o.col = v.col;
     return o;
 }
+// shape: 0 dot (soft glow), 1 ring (hollow), 2 polygon (crisp N-gon), 3 bar (crisp block).
 @fragment fn fs_main(i: VOut) -> @location(0) vec4f {
-    let d = length(i.uv);
-    let a = smoothstep(1.0, 0.15, d);            // soft glowing disc
+    let uv = i.uv;
+    let r = length(uv);
+    var a = 0.0;
+    if (u.shape < 0.5) {
+        a = smoothstep(1.0, 0.15, r);                                  // dot: soft glowing disc
+    } else if (u.shape < 1.5) {
+        a = smoothstep(0.16, 0.0, abs(r - 0.7));                       // ring: thin hollow circle
+    } else if (u.shape < 2.5) {
+        let n = max(3.0, u.sides);                                     // polygon: crisp regular N-gon
+        let ang = atan2(uv.y, uv.x);
+        let seg = 6.2831853 / n;
+        let d = cos(seg * 0.5) / cos((ang - floor(ang / seg + 0.5) * seg));
+        a = smoothstep(1.0, 0.86, r / max(d, 1e-3));
+    } else {
+        let b = max(abs(uv.x), abs(uv.y) * 2.6);                       // bar: crisp wide block
+        a = smoothstep(1.0, 0.88, b);
+    }
     return vec4f(i.col * a, a);
 }
 )";
@@ -52,9 +68,11 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kDisplayName = "Instancer";
     static constexpr const char* kSummary = "Draws one glowing instance per note of an incoming Notes value (pitch->colour, velocity->size); chords bloom, arps trail.";
     static constexpr std::array<const char*, 3> kKeywords = {"notes", "instancer", "geometry"};
-    vivid::Param<float> size{"size", 0.5f, 0.f, 1.f};        // base dot radius
-    vivid::Param<float> spread{"spread", 0.8f, 0.f, 1.f};    // horizontal pitch spread
-    vivid::Param<float> trail{"trail", 0.35f, 0.f, 1.f};     // note-off fade time
+    vivid::Param<float> size{"size", 0.5f, 0.f, 1.f};        // base instance radius
+    vivid::Param<float> spread{"spread", 0.8f, 0.f, 1.f};    // horizontal spread by pos
+    vivid::Param<float> trail{"trail", 0.35f, 0.f, 1.f};     // fade time after an element leaves
+    vivid::Param<float> shape{"shape", 0.f, 0.f, 3.f};       // 0 dot · 1 ring · 2 polygon · 3 bar
+    vivid::Param<float> sides{"sides", 6.f, 3.f, 8.f};       // polygon sides (shape=2)
 
     bool tried_ = false;
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
@@ -74,7 +92,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         if (bgl_) wgpuBindGroupLayoutRelease(bgl_); if (sh_) wgpuShaderModuleRelease(sh_);
     }
     void collect_params(std::vector<vivid::ParamBase*>& o) override {
-        o.push_back(&size); o.push_back(&spread); o.push_back(&trail);
+        o.push_back(&size); o.push_back(&spread); o.push_back(&trail); o.push_back(&shape); o.push_back(&sides);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         o.push_back(VIVID_CUSTOM_REF_PORT("signal", VIVID_PORT_INPUT, VividSignal));   // driven by a Notes node (or any signal)
@@ -84,13 +102,13 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     bool lazy_init(const VividGpuContext* c) {
         std::string err; sh_ = vivid::gpu::create_shader_checked(c->device, kWGSL, "Instancer", err);
         if (!sh_ || !err.empty()) { vivid_report_gpu_error(c, ("Instancer WGSL: " + err).c_str()); return false; }
-        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 16, "Instancer U");
+        ubo_ = vivid::gpu::create_uniform_buffer(c->device, 32, "Instancer U");
         const QVert quad[6] = { {-1,-1},{1,-1},{1,1}, {-1,-1},{1,1},{-1,1} };
         WGPUBufferDescriptor qd{}; qd.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst; qd.size = sizeof(quad);
         quad_ = wgpuDeviceCreateBuffer(c->device, &qd);
         wgpuQueueWriteBuffer(c->queue, quad_, 0, quad, sizeof(quad));
         WGPUBindGroupLayoutEntry e{}; e.binding = 0; e.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-        e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 16;
+        e.buffer.type = WGPUBufferBindingType_Uniform; e.buffer.minBindingSize = 32;
         WGPUBindGroupLayoutDescriptor ld{}; ld.entryCount = 1; ld.entries = &e;
         bgl_ = wgpuDeviceCreateBindGroupLayout(c->device, &ld);
         WGPUPipelineLayoutDescriptor pld{}; pld.bindGroupLayoutCount = 1; pld.bindGroupLayouts = &bgl_;
@@ -116,7 +134,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         rp.multisample.count = 1; rp.multisample.mask = 0xFFFFFFFF;
         rp.fragment = &fs;
         pipe_ = wgpuDeviceCreateRenderPipeline(c->device, &rp);
-        WGPUBindGroupEntry be{}; be.binding = 0; be.buffer = ubo_; be.size = 16;
+        WGPUBindGroupEntry be{}; be.binding = 0; be.buffer = ubo_; be.size = 32;
         WGPUBindGroupDescriptor bd{}; bd.layout = bgl_; bd.entryCount = 1; bd.entries = &be;
         bg_ = wgpuDeviceCreateBindGroup(c->device, &bd);
         return pipe_ != nullptr;
@@ -161,7 +179,8 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
             insts_.push_back({ x, y, sc, r * bright, g * bright, b * bright });
         }
 
-        float u[4] = { float(c->output_width), float(c->output_height), float(c->time), 0.f };
+        float u[8] = { float(c->output_width), float(c->output_height), float(c->time),
+                       std::round(pv(3, shape.value)), pv(4, sides.value), 0.f, 0.f, 0.f };
         wgpuQueueWriteBuffer(c->queue, ubo_, 0, u, sizeof(u));
         const uint32_t bytes = static_cast<uint32_t>(insts_.size() * sizeof(Inst));
         if (bytes > inst_cap_) {
