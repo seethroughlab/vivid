@@ -43,25 +43,26 @@ AFTER_EDIT_PNG = PROJECT / "live-edit-after-edit.png"
 BROKEN_PNG = PROJECT / "live-edit-broken.png"
 RECOVERED_PNG = PROJECT / "live-edit-recovered.png"
 
-# A self-animating (u.time) project-local shader. No audio needed — the field moves on its own, so
-# the tutorial can focus purely on the code->reload->pixels loop. It is a WARM hex-weave interference
-# field — deliberately distinct from the beginner project's cool PulseField rings, so the two
-# creative-coding showcases read as different pieces (ADR-0037 visual distinctiveness).
+# A BEAT-reactive project-local shader — its motion comes from the TRANSPORT, not a u.time clock.
+# The tutorial is self-contained (no synth), but the transport still runs, so the Phase-A transport
+# sources (transport.beat_pulse / transport.bar_phase) drive the weave with zero instruments: the
+# lattice turns over each bar and jolts on every beat. A WARM hex-weave interference field —
+# deliberately distinct from the beginner project's cool PulseField rings (ADR-0037 distinctiveness).
 BASE_SHADER = """/*{
   "version": 1,
   "name": "AuroraWeave",
-  "summary": "Project-local woven interference field for the live-shader-edit tutorial.",
-  "keywords": ["project", "tutorial", "generator", "weave"],
+  "summary": "Project-local woven interference field — driven by the transport beat, not a clock.",
+  "keywords": ["project", "tutorial", "generator", "weave", "reactive"],
   "inputs": [],
   "params": [
-    {"name": "warp", "type": "float", "default": 0.35, "min": 0, "max": 1,
-     "semantic_intent": "domain warp amount"},
+    {"name": "warp", "type": "float", "default": 0.0, "min": 0, "max": 1,
+     "semantic_intent": "beat pulse — jolts the weave on each beat"},
     {"name": "hue", "type": "float", "default": 0.07, "min": 0, "max": 1,
-     "semantic_tag": "phase_01", "semantic_intent": "color hue"},
+     "semantic_tag": "phase_01", "semantic_intent": "bar phase — rotates + recolours over the bar"},
     {"name": "density", "type": "float", "default": 0.5, "min": 0, "max": 1,
      "semantic_intent": "weave density"},
-    {"name": "glow", "type": "float", "default": 0.55, "min": 0, "max": 1,
-     "semantic_intent": "brightness"}
+    {"name": "glow", "type": "float", "default": 0.5, "min": 0, "max": 1,
+     "semantic_intent": "brightness (beat)"}
   ]
 }*/
 fn grating(p: vec2f, dir: vec2f, freq: f32, phase: f32) -> f32 {
@@ -73,17 +74,19 @@ fn grating(p: vec2f, dir: vec2f, freq: f32, phase: f32) -> f32 {
     var p = uv * 2.0 - vec2f(1.0);
     p.x = p.x * (u.res.x / max(1.0, u.res.y));
 
-    // slowly rotating domain warp so the woven lattice breathes
-    let sw = sin(u.time * 0.4);
-    let cw = cos(u.time * 0.4);
+    // bar phase (u.hue) rotates the lattice over each bar; a beat pulse (u.warp) jolts the domain warp
+    let ang = u.hue * 6.2831853;
+    let sw = sin(ang);
+    let cw = cos(ang);
     let pr = vec2f(p.x * cw - p.y * sw, p.x * sw + p.y * cw);
-    let q = pr + vec2f(sin(pr.y * 3.0 + u.time), cos(pr.x * 3.0 - u.time)) * (0.05 + u.warp * 0.22);
+    let q = pr + vec2f(sin(pr.y * 3.0), cos(pr.x * 3.0)) * (0.05 + u.warp * 0.3);
 
-    // three gratings at 0/60/120 deg multiply into a woven hex moire (sharp thread intersections)
+    // three gratings at 0/60/120 deg multiply into a woven hex moire (sharp thread intersections);
+    // the beat pulse shifts the thread phases so the weave snaps on each beat
     let freq = 6.0 + u.density * 22.0;
-    let g0 = grating(q, vec2f(1.0, 0.0), freq, u.time * 1.2);
-    let g1 = grating(q, vec2f(-0.5, 0.8660254), freq, -u.time * 1.0);
-    let g2 = grating(q, vec2f(-0.5, -0.8660254), freq, u.time * 0.8);
+    let g0 = grating(q, vec2f(1.0, 0.0), freq, u.warp * 3.0);
+    let g1 = grating(q, vec2f(-0.5, 0.8660254), freq, -u.warp * 2.5);
+    let g2 = grating(q, vec2f(-0.5, -0.8660254), freq, u.warp * 2.0);
     let threads = pow(g0 * g1 * g2, 0.6);
     let vignette = smoothstep(1.35, 0.1, length(p));
 
@@ -174,6 +177,12 @@ def build() -> None:
     if out is not None:
         v.connect(out, blur)
         v.set_active_output(out)
+
+    # Reactive with NO synth: the transport sources (Phase A) drive the weave. bar_phase rotates +
+    # recolours it over each bar; the beat pulse jolts the domain warp and flashes the brightness.
+    v.beat_sync("bar_phase",  shader, "hue",  amount=1.0, lo=0.0,  hi=1.0)   # weave turns over the bar
+    v.beat_sync("beat_pulse", shader, "warp", amount=1.0, lo=0.0,  hi=1.0)   # jolt on each beat
+    v.beat_sync("beat_pulse", shader, "glow", amount=1.0, lo=0.35, hi=0.85)  # beat brightness flash
     v.save_project(str(PROJECT))
 
     # Acceptance-test the portable artifact, not the live authoring session.
@@ -263,8 +272,8 @@ def write_friction_log(proof: dict) -> None:
         "  error text + a reload_project_files next-action) and by `inspect_signal_flow.broken_ops`;\n"
         "  fixing the file + reload clears it.\n"
         "- Visual verification: `analyze_frame` (is_blank/brightness) + `compare_frames` (hash_hamming)\n"
-        "  record the change. Deltas are evidence, not hard asserts — the field self-animates, so\n"
-        "  frame-to-frame differences are expected regardless of the edit.\n"
+        "  record the change. Deltas are evidence, not hard asserts — the field reacts to the transport\n"
+        "  beat during playback, so frame-to-frame differences are expected regardless of the edit.\n"
         "- Launch note: use `VIVID_DISCARD_RECOVERY=1` for a disposable tutorial run.\n"
     )
 
