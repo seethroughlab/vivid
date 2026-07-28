@@ -56,6 +56,7 @@ add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
 add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
 add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
+add_vivid_operator(vivid_solids packages/core-visuals/solids.cpp)
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).

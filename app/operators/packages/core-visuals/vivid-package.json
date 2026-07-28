@@ -98,6 +98,11 @@
       "gpu": true
     },
     {
+      "name": "Solids",
+      "source": "solids.cpp",
+      "gpu": true
+    },
+    {
       "name": "Lines",
       "source": "lines.cpp",
       "gpu": true
