@@ -619,8 +619,12 @@ static void run_modulator_step(const vivid::audio::CompiledStep& s, const GNodeB
     float* cout = nullptr;
     if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
         cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+    // Feed the track's note union to the modulator so a note-gated envelope (ADSR) sees note on/off.
+    // The prepass runs a block before t.nev is reassembled, so this is last block's notes — a few ms
+    // of gate latency, imperceptible for an envelope. The LFO ignores notes, so this is a no-op for it.
     vivid::audio_op_process(nb.op, scL, scR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                            nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
+                            t.nev.data(), static_cast<uint32_t>(t.nev.size()),
+                            nullptr, 0, nullptr, ovr, novr, cout, frames);
     if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
         t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
 }

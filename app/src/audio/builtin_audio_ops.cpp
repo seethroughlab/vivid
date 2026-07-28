@@ -671,6 +671,65 @@ struct LfoOp : OperatorBase, AudioProcessable {
     }
 };
 
+// A note-gated ADSR envelope modulator. Like the LFO it emits a 0..1 CONTROL signal (no audio) on
+// control_out — so its value is auto-exposed to the visuals as node_<t>_<n>.ctl. Unlike the LFO it is
+// SHAPED BY THE PERFORMANCE: a note-on (re)triggers the attack, the last note-off starts the release —
+// so a mapped visual param swells and fades with the phrasing (musical dynamics, not a fixed wobble).
+struct AdsrOp : OperatorBase, AudioProcessable {
+    static constexpr const char* kDisplayName = "ADSR";
+    static constexpr const char* kSummary = "Modulator: a note-gated attack/decay/sustain/release envelope that drives any param through a control wire.";
+    static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "envelope" };
+
+    Param<float> attack{ "attack", 0.01f, 0.001f, 3.f };    // seconds: 0 -> 1 on note-on
+    Param<float> decay{ "decay", 0.15f, 0.001f, 3.f };      // seconds: 1 -> sustain
+    Param<float> sustain{ "sustain", 0.7f, 0.f, 1.f };      // held level while a note is down
+    Param<float> release{ "release", 0.3f, 0.001f, 5.f };   // seconds: sustain -> 0 on the last note-off
+
+    float env_ = 0.f;   // current envelope value (carried across blocks)
+    int   stage_ = 0;   // 0 idle · 1 attack · 2 decay · 3 sustain · 4 release
+    int   held_ = 0;    // voices currently down (gate = held_ > 0)
+
+    void collect_params(std::vector<ParamBase*>& o) override {
+        semantic_intent(attack, "attack time in seconds (rise on note-on)");
+        semantic_intent(decay, "decay time in seconds (fall to the sustain level)");
+        semantic_intent(sustain, "sustain level 0..1 held while a note is down");
+        semantic_intent(release, "release time in seconds (fall to 0 after the last note-off)");
+        o.push_back(&attack); o.push_back(&decay); o.push_back(&sustain); o.push_back(&release);
+    }
+    void collect_ports(std::vector<VividPortDescriptor>& o) override {
+        o.push_back(aud_out());   // no audio input — the signal leaves via control_out (like the LFO)
+    }
+
+    void process_audio(const VividAudioContext* c) override {
+        if (!c->control_out || c->control_out_capacity == 0) return;
+        const uint32_t N  = c->control_out_capacity;
+        const float    sr = c->sample_rate > 0 ? static_cast<float>(c->sample_rate) : 48000.f;
+        const float A = c->param_values ? c->param_values[0] : attack.value;
+        const float D = c->param_values ? c->param_values[1] : decay.value;
+        const float S = c->param_values ? c->param_values[2] : sustain.value;
+        const float R = c->param_values ? c->param_values[3] : release.value;
+        // Gate from the block's events (applied at block start — a few ms of timing slack, inaudible for
+        // an envelope): a note-on (re)triggers attack; the last note-off begins release.
+        for (uint32_t e = 0; e < c->note_event_count; ++e) {
+            if (c->note_events[e].on) { ++held_; stage_ = 1; }
+            else { if (held_ > 0) --held_; if (held_ == 0) stage_ = 4; }
+        }
+        const float aInc = 1.f / std::max(1e-4f, A * sr);
+        const float dInc = (1.f - S) / std::max(1e-4f, D * sr);
+        const float rInc = 1.f / std::max(1e-4f, R * sr);
+        for (uint32_t i = 0; i < N; ++i) {
+            switch (stage_) {
+                case 1: env_ += aInc; if (env_ >= 1.f) { env_ = 1.f; stage_ = 2; } break;
+                case 2: env_ -= dInc; if (env_ <= S)   { env_ = S;   stage_ = 3; } break;
+                case 3: env_ = S; break;
+                case 4: env_ -= rInc; if (env_ <= 0.f) { env_ = 0.f; stage_ = 0; } break;
+                default: env_ = 0.f; break;
+            }
+            c->control_out[i] = std::clamp(env_, 0.f, 1.f);
+        }
+    }
+};
+
 // ==== Note GENERATORS (ADR-0022 P3.3) ====================================================
 // Algorithmic note SOURCES: they read NO input notes and emit their own, phase-locked to the
 // transport (c->metronome_beats_elapsed), so a scene that gates one off then on resyncs with no
@@ -988,6 +1047,8 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out
     register_op<LfoOp>(reg, "LFO");   // ADR-0022: the first modulator
     audio_op_mark_mod_op("LFO");      // ...nor is it: no audio at all, it emits a control signal
+    register_op<AdsrOp>(reg, "ADSR"); // a note-gated envelope modulator (control_out -> node_<t>_<n>.ctl)
+    audio_op_mark_mod_op("ADSR");
     register_op<EuclidOp>(reg, "Euclid");           // ADR-0022 P3.3: note generators (sources, not instruments)
     audio_op_mark_gen_op("Euclid");
     register_op<ChordOp>(reg, "Chord");

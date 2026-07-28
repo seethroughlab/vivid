@@ -73,6 +73,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> trail{"trail", 0.35f, 0.f, 1.f};     // fade time after an element leaves
     vivid::Param<float> shape{"shape", 0.f, 0.f, 3.f};       // 0 dot · 1 ring · 2 polygon · 3 bar
     vivid::Param<float> sides{"sides", 6.f, 3.f, 8.f};       // polygon sides (shape=2)
+    vivid::Param<float> pulse{"pulse", 0.6f, 0.f, 1.f};      // pop amount on each note-on FIRE (re-strikes re-pop)
 
     bool tried_ = false;
     WGPUShaderModule sh_ = nullptr; WGPUBindGroupLayout bgl_ = nullptr; WGPUPipelineLayout pl_ = nullptr;
@@ -81,7 +82,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     WGPUBuffer inst_ = nullptr; uint32_t inst_cap_ = 0;      // per-instance buffer (grows)
     // Op-local aging set: a live persists while its element is present on the input edge (age reset each
     // frame it's in the set) and fades over `trail` seconds after it leaves. Keyed by element id.
-    struct Live { int id; float pos; float amp; float age; };
+    struct Live { int id; float pos; float amp; float age; float kick; };   // kick = decaying note-on pop
     std::vector<Live> lives_;
     std::vector<Inst> insts_;   // per-frame instance scratch, reused (cleared each frame)
 
@@ -92,7 +93,7 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         if (bgl_) wgpuBindGroupLayoutRelease(bgl_); if (sh_) wgpuShaderModuleRelease(sh_);
     }
     void collect_params(std::vector<vivid::ParamBase*>& o) override {
-        o.push_back(&size); o.push_back(&spread); o.push_back(&trail); o.push_back(&shape); o.push_back(&sides);
+        o.push_back(&size); o.push_back(&spread); o.push_back(&trail); o.push_back(&shape); o.push_back(&sides); o.push_back(&pulse);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         o.push_back(VIVID_CUSTOM_REF_PORT("signal", VIVID_PORT_INPUT, VividSignal));   // driven by a Notes node (or any signal)
@@ -154,14 +155,24 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
         const float dt = static_cast<float>(c->delta_time);
 
         // --- update the aging set from the incoming signal's ACTIVE set (the driving edge) ---
+        const float kickAmt = pv(5, pulse.value);
         const VividSignal* sig = vivid::elements::input_signal(c, 0);
-        for (auto& L : lives_) L.age += dt;
+        for (auto& L : lives_) { L.age += dt; L.kick = std::max(0.f, L.kick - dt * 4.f); }   // ~0.25s pop decay
         if (sig && sig->active) {
             for (uint32_t i = 0; i < sig->active_count; ++i) {
                 const VividElement& e = sig->active[i];
                 auto it = std::find_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.id == e.id; });
                 if (it != lives_.end()) { it->age = 0.f; it->amp = e.amp; it->pos = e.pos; }
-                else if (lives_.size() < 64) lives_.push_back({ e.id, e.pos, e.amp, 0.f });
+                else if (lives_.size() < 64) lives_.push_back({ e.id, e.pos, e.amp, 0.f, 1.f });   // new note pops
+            }
+        }
+        // A note-on FIRE re-pops the matching element (matched by pos) — so a re-struck HELD pitch,
+        // which membership alone can't show, visibly kicks again.
+        if (sig && sig->fired) {
+            for (uint32_t i = 0; i < sig->fired_count; ++i) {
+                const float fp = sig->fired[i].pos;
+                auto it = std::find_if(lives_.begin(), lives_.end(), [&](const Live& L){ return std::fabs(L.pos - fp) < 0.006f; });
+                if (it != lives_.end()) it->kick = 1.f;
             }
         }
         lives_.erase(std::remove_if(lives_.begin(), lives_.end(), [&](const Live& L){ return L.age > maxAge; }), lives_.end());
@@ -173,9 +184,10 @@ struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
             const float h = std::clamp(L.pos, 0.f, 1.f);                    // primary axis → hue + x
             const float x = (h - 0.5f) * 2.f * spr;
             const float y = 0.14f * std::sin(static_cast<float>(c->time) * 1.7f + L.pos * 60.f);   // gentle float
-            const float sc = base * (0.45f + L.amp) * (0.5f + 0.5f * alpha);
+            const float k = L.kick * kickAmt;
+            const float sc = base * (0.45f + L.amp) * (0.5f + 0.5f * alpha) * (1.f + 0.8f * k);
             float r, g, b; pitch_colour(h, r, g, b);
-            const float bright = (0.35f + 0.65f * L.amp) * alpha;
+            const float bright = (0.35f + 0.65f * L.amp) * alpha * (1.f + 1.6f * k);
             insts_.push_back({ x, y, sc, r * bright, g * bright, b * bright });
         }
 
