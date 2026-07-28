@@ -33,6 +33,7 @@
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
+#include "operator_api/spectrum_bus.h"   // publish the master spectrum for per-band geometry ops
 #include "audio/vst3_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
@@ -206,8 +207,15 @@ void publish_bridge_sources(App& app, Window& win) {
                              std::min(1.0f, transport.band_high.load(rel) * 12.0f) };
     for (int k = 0; k < 5; ++k)
         graph.publish(H(key(kMaster, 0, 0, k), [k] { return B::master_source(B::kTrackKindSuffixes[k]); }), mvals[k]);
-    if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
+    if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1) {
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
+        // Richer master spectrum for the spectrum bus (visual ops → per-band geometry: 3D equaliser /
+        // spectral ridge). Recomputed at higher band resolution than the 8-band scalar bridge above.
+        constexpr int kBusBands = 48;
+        static float sbands[kBusBands];
+        vivid::audio::spectrum_log_bands(an_buf, nm, 48000.f, sbands, kBusBands, an_re, an_im);
+        vivid_spectrum_bus_publish_master(sbands, kBusBands);
+    }
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)
     for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
         const float lv = vivid::session::session_track_level(app.session, t);
