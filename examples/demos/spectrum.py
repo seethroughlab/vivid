@@ -50,16 +50,23 @@ def build(v: Vivid, save: bool = True):
         v.set_node_param(shape, k, float(val))
 
     spec = v.add_node("AudioSpectrum")          # → 0..1 magnitude per band (the reactive lane)
-    for k, val in dict(bands=NBARS, gain=0.42, tilt=1.4, normalize=0.1, attack=0.02, release=0.16).items():
+    for k, val in dict(bands=NBARS, gain=0.5, tilt=0.6, normalize=0.15, attack=0.02, release=0.16).items():
         v.set_node_param(spec, k, float(val))
 
     ramp = v.add_node("LaneRamp")               # → bar X positions (the layout lane)
     for k, val in dict(count=NBARS, lo=-SPREAD, hi=SPREAD, mode=0).items():
         v.set_node_param(ramp, k, float(val))
 
+    pal = v.add_node("LanePalette")             # → per-band r/g/b gradient (3 lanes from ONE node)
+    for k, val in dict(count=NBARS, palette=0, offset=0.0, spread=1.0).items():
+        v.set_node_param(pal, k, float(val))
+
     lanes = v.add_node("InstancesFromLanes")
-    v.connect(lanes, ramp, 0)                   # pos_x  ← LaneRamp
+    v.connect(lanes, ramp, 0)                   # pos_x   ← LaneRamp
     v.connect(lanes, spec, 4)                   # scale_y ← AudioSpectrum
+    v.connect(lanes, pal, 7, src_port=0)        # color_r ← LanePalette out 0
+    v.connect(lanes, pal, 8, src_port=1)        # color_g ← LanePalette out 1
+    v.connect(lanes, pal, 9, src_port=2)        # color_b ← LanePalette out 2
 
     inst = v.add_node("Instancer3D")
     v.connect(inst, shape, 0)                   # scene (base cube)

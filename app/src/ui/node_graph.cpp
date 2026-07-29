@@ -580,7 +580,15 @@ std::vector<int> NodeGraph::op_inputs_at(int i) const {
     while (!e.empty() && e.back() < 0) e.pop_back();
     return e;
 }
-void NodeGraph::set_op_input_at(int i, int port, int src) { if (vg_) vg_->set_input(i, port, src); }
+void NodeGraph::set_op_input_at(int i, int port, int src, int src_port) { if (vg_) vg_->set_input(i, port, src, src_port); }
+// Source OUTPUT ports parallel to op_inputs_at (trailing 0s trimmed) — persist only when a multi-output
+// producer feeds a specific lane; an all-zero list (every legacy edge) serializes to nothing.
+std::vector<int> NodeGraph::op_in_src_ports_at(int i) const {
+    if (!op_node_valid(vg_, i)) return {};
+    std::vector<int> e = vg_->nodes()[i].in_ports;
+    while (!e.empty() && e.back() == 0) e.pop_back();
+    return e;
+}
 std::string NodeGraph::op_asset_at(int i) const {
     return op_node_valid(vg_, i) ? vg_->nodes()[i].asset : std::string();
 }

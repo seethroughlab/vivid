@@ -322,6 +322,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
         if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // legacy 2-in (read by old vivid)
         if (auto ins = g.op_inputs_at(i); !ins.empty()) jn["ins"] = ins;      // N-input edge array (authority)
+        if (auto sps = g.op_in_src_ports_at(i); !sps.empty()) jn["in_ports"] = sps;  // source-output-port per edge (multi-lane)
         const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
         if (!asset.empty()) jn["asset"] = asset;
         json file_params = json::object();   // FILE/TEXT params (e.g. Image path), by name
@@ -783,8 +784,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 if (ch[i].contains("ins") && ch[i]["ins"].is_array()) {   // N-input array (authority)
                     const json& ins = ch[i]["ins"];
-                    for (int p = 0; p < static_cast<int>(ins.size()); ++p)
-                        g.set_op_input_at(i, p, ins[p].get<int>());
+                    const json* sps = (ch[i].contains("in_ports") && ch[i]["in_ports"].is_array()) ? &ch[i]["in_ports"] : nullptr;
+                    for (int p = 0; p < static_cast<int>(ins.size()); ++p) {
+                        const int sp = (sps && p < static_cast<int>(sps->size())) ? (*sps)[p].get<int>() : 0;
+                        g.set_op_input_at(i, p, ins[p].get<int>(), sp);
+                    }
                 } else {   // legacy: primary + optional second input
                     g.chain_load_set_input(i, ch[i].value("in", -1));
                     g.chain_load_set_input_b(i, ch[i].value("in_b", -1));

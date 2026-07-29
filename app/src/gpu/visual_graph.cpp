@@ -235,10 +235,10 @@ void VisualGraph::remove_node(int i) {
         }
     ensure_resources(nodes_.size());
 }
-void VisualGraph::set_input(int node, int port, int src) {
+void VisualGraph::set_input(int node, int port, int src, int src_port) {
     if (node < 0 || node >= static_cast<int>(nodes_.size()) || port < 0) return;
     if (src == node) return;                          // no self-loops
-    nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1);
+    nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1, std::max(0, src_port));
 }
 int VisualGraph::output_index() const {
     int first = -1;
@@ -355,16 +355,18 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         int in_ord = 0;
         for (const auto& pd : n.inst.ports) {
             if (pd.direction != VIVID_PORT_INPUT) continue;
-            const int e = n.in(in_ord);
+            const int e  = n.in(in_ord);
+            const int sp = n.in_src_port(in_ord);   // which OUTPUT port of the source to read (default 0)
             VividValueView vv{};   // zero (value_count 0) unless this is a wired value lane
             if (is_custom_transport(pd.transport)) {
-                void* v = (e >= 0 && e < nnodes && !published_custom_[e].empty()) ? published_custom_[e][0] : nullptr;
+                void* v = (e >= 0 && e < nnodes && sp >= 0 && sp < static_cast<int>(published_custom_[e].size()))
+                          ? published_custom_[e][sp] : nullptr;
                 custin.push_back(v);
             } else if (is_value_lane(pd)) {
-                // Read the upstream node's first value-lane output buffer (single-output model, like the
-                // custom channel's [0]); a disconnected lane stays an empty view → op falls back per port.
-                if (e >= 0 && e < nnodes && !published_values_[e].empty()) {
-                    const ValueSlot& s = published_values_[e][0];
+                // Read the chosen value-lane output of the upstream node (sp selects among a multi-output
+                // producer's lanes, e.g. LanePalette r/g/b); a disconnected lane stays an empty view.
+                if (e >= 0 && e < nnodes && sp >= 0 && sp < static_cast<int>(published_values_[e].size())) {
+                    const ValueSlot& s = published_values_[e][sp];
                     vv.data = s.count ? s.buf.data() : nullptr;
                     vv.value_count = s.count;
                     vv.value_type = VIVID_VALUE_FLOAT;

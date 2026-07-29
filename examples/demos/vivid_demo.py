@@ -221,8 +221,10 @@ class Vivid:
     def add_node(self, op: str) -> int:
         return self.call("add_node", op=op)["id"]
 
-    def connect(self, node_id: int, input_id: int, port: int = 0):
-        return self.call("connect_nodes", node_id=node_id, input_id=input_id, port=port)
+    def connect(self, node_id: int, input_id: int, port: int = 0, src_port: int = 0):
+        """Wire input_id's OUTPUT `src_port` into node_id's input `port`. src_port selects among a
+        multi-output producer's lanes (e.g. a LanePalette emitting r/g/b); 0 for single-output nodes."""
+        return self.call("connect_nodes", node_id=node_id, input_id=input_id, port=port, src_port=src_port)
 
     # --- instrument presets (generic browse/load) ---
     def list_presets(self, track: int, filter: str = "") -> dict:

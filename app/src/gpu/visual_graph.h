@@ -23,7 +23,10 @@ namespace vivid {
 struct VisualNode {
     std::string op_type;        // registry key — the source of truth
     OpInstance  inst;           // the hosted operator (move-only)
-    std::vector<int> inputs;    // texture input edges by port (-1 = unconnected); inputs[0]=A, [1]=B, ...
+    std::vector<int> inputs;    // input edges by port: source NODE index (-1 = unconnected); inputs[0]=A, [1]=B, ...
+    std::vector<int> in_ports;  // parallel to inputs: which OUTPUT port of the source to read (default 0).
+                                // Lets a multi-output producer (e.g. a LanePalette emitting r/g/b lanes)
+                                // feed different consumer ports from one node. 0 for every legacy edge.
     int   id = 0;               // stable identity (params + mappings + persistence)
     std::vector<float> params;  // resolved param values (collect_params order 0..n-1)
     std::vector<float> base;    // manual base values (inspector); resolved = clamp(base + mod)
@@ -72,10 +75,14 @@ struct VisualNode {
 
     // Port-indexed input-edge access; out-of-range reads return -1 (unconnected).
     int  in(int port) const { return (port >= 0 && port < static_cast<int>(inputs.size())) ? inputs[port] : -1; }
-    void set_in(int port, int src) {
+    // Which OUTPUT port of the source node this input reads (default 0 for a single-output producer).
+    int  in_src_port(int port) const { return (port >= 0 && port < static_cast<int>(in_ports.size())) ? in_ports[port] : 0; }
+    void set_in(int port, int src, int src_port = 0) {
         if (port < 0) return;
         if (port >= static_cast<int>(inputs.size())) inputs.resize(port + 1, -1);
+        if (port >= static_cast<int>(in_ports.size())) in_ports.resize(port + 1, 0);
         inputs[port] = src;
+        in_ports[port] = src_port;
     }
 };
 
@@ -98,7 +105,7 @@ public:
     void remove_node(int i);                   // (Output cannot be removed)
     void clear_nodes() { nodes_.clear(); next_id_ = 0; ensure_resources(0); }
     void reset_to_default();                   // a clean canvas: just the Output sink (no baked-in content)
-    void set_input(int node, int port, int src);   // wire src's output -> node's texture input `port`
+    void set_input(int node, int port, int src, int src_port = 0);   // wire src's OUTPUT port -> node's input `port`
     void set_input(int node, int src)   { set_input(node, 0, src); }   // back-compat: primary input (port A)
     void set_input_b(int node, int src) { set_input(node, 1, src); }   // back-compat: second input (port B)
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
