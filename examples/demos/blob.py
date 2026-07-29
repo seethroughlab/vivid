@@ -1,0 +1,80 @@
+"""Blob — a raymarched SDF3D metaball that swells and melds to the bass (ADR-0041 composable demo).
+
+Two spheres smooth-unioned into one organic blob (SDF3D, GPU raymarch). The master-bus analysis bridge
+drives it: the kick swells its size and pulls the second lobe out, tightens the smooth-union blend so the
+two spheres meld and separate, and flashes its emission; the highs add a metallic shimmer. Every wire is
+an audio→visual mapping with a fast-attack / slow-release envelope (the bridge smoothing), so the blob
+lurches on the hit then glides back — a breathing, liquid-metal feel, no monolithic op.
+
+Run with the app running:  uv run examples/demos/blob.py
+"""
+import os
+from vivid_demo import Vivid, find, save_geo
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PROJECT = os.path.join(HERE, "projects", "blob")
+BREAK = os.path.join(HERE, "media", "break90.wav")
+BPM = 90
+
+
+def build(v: Vivid, save: bool = True):
+    v.reset()
+    v.bpm(BPM)
+
+    # --- Audio: the drum break's kick drives the blob (loads instantly, no CLAP). ---
+    drums = v.add_track(kind="audio")
+    v.import_audio(drums, 0, BREAK, src_bpm=90.0)
+    try:
+        v.warp(drums, 0, mode="beats")
+    except Exception:
+        pass
+
+    out = find(v.graph()["nodes"], "Output")
+
+    # A metaball: sphere A smooth-unioned with sphere B (offset on +x).
+    sdf = v.add_node("SDF3D")
+    for k, val in dict(shape=0, size_x=2.2, size_y=2.2, size_z=2.2, operation=1, shape_b=1,
+                       size_bx=1.4, size_by=1.4, size_bz=1.4, pos_bx=1.6, smooth_k=0.7,
+                       r=0.45, g=0.72, b=1.0, roughness=0.32, metallic=0.2, emission=0.12).items():
+        v.set_node_param(sdf, k, float(val))
+
+    key = v.add_node("Light3D")
+    for k, val in dict(type=0, intensity=2.6, r=1.0, g=0.96, b=0.9,
+                       dir_x=-0.4, dir_y=-0.7, dir_z=-0.5).items():
+        v.set_node_param(key, k, float(val))
+    fill = v.add_node("Light3D")
+    for k, val in dict(type=1, intensity=1.5, r=0.45, g=0.7, b=1.0,
+                       pos_x=-5.0, pos_y=3.0, pos_z=5.0, radius=26.0).items():
+        v.set_node_param(fill, k, float(val))
+
+    merge = v.add_node("SceneMerge")
+    v.connect(merge, sdf,  0)
+    v.connect(merge, key,  1)
+    v.connect(merge, fill, 2)
+
+    render = v.add_node("Render3D")
+    for k, val in dict(cam_x=0, cam_y=1, cam_z=9, target_y=0, fov=45, far=100, near=0.05,
+                       bg_r=0.02, bg_g=0.02, bg_b=0.05).items():
+        v.set_node_param(render, k, float(val))
+    v.connect(render, merge, 0)
+    v.connect(out, render, 0)
+
+    # --- The bridge: bass swells + melds the blob (amount = excursion / param_range), fast attack /
+    #     slow release so it lurches then glides. ---
+    for ax in ("size_x", "size_y", "size_z"):
+        v.map("master.low", sdf, ax, amount=0.11, attack=0.02, release=0.28)   # +1.1 over range 10: swell
+    v.map("master.low",       sdf, "pos_bx",   amount=0.09, attack=0.03, release=0.3)   # +1.8/20: lobe stretch
+    v.map("master.low",       sdf, "smooth_k", amount=0.3,  attack=0.03, release=0.3)   # +0.6/2: meld/separate
+    v.map("master.low",       sdf, "rot_y",    amount=0.03, attack=0.05, release=0.5)   # slow twist on the bass
+    v.map("master.transient", sdf, "emission", amount=0.3,  attack=0.005, release=0.18) # +1.5/5: glow flash
+    v.map("master.high",      sdf, "metallic", amount=0.5,  attack=0.02, release=0.16)  # +0.5/1: hi-hat shimmer
+
+    v.launch_scene(0)
+    v.play()
+    if save:
+        save_geo(v, PROJECT)
+    print("built. an SDF metaball that swells + melds to the kick, shimmers on the hats.")
+
+
+if __name__ == "__main__":
+    build(Vivid())
