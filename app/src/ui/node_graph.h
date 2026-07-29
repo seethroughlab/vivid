@@ -247,7 +247,8 @@ private:
     CardPorts card_ports(int i) const;   // shared card port-row layout (ADR-0023)
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
-    bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
+    bool op_out_port(int i, float& px, float& py) const;  // false if op has no output (= output port 0)
+    bool op_out_port(int i, int port, float& px, float& py) const;  // a specific OUTPUT port (multi-output)
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.

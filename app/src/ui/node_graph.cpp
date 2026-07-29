@@ -80,6 +80,21 @@ static int op_in_exposed_count(const vivid::VisualGraph* vg, int i) {
 static bool op_has_out(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && vg->nodes()[i].inst.output_port_count > 0;
 }
+static int op_out_count(const vivid::VisualGraph* vg, int i) {
+    return (vg && i >= 0 && i < int(vg->nodes().size())) ? vg->nodes()[i].inst.output_port_count : 0;
+}
+// The declared NAME of the p-th OUTPUT port (e.g. "color_r"), or nullptr — labels a multi-output node's
+// stubs (a LanePalette emitting r/g/b) so you can see which output each wire leaves from.
+static const char* op_out_name(const vivid::VisualGraph* vg, int i, int p) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return nullptr;
+    int o = 0;
+    for (const auto& pd : vg->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_OUTPUT) continue;
+        if (o == p) return pd.name;
+        ++o;
+    }
+    return nullptr;
+}
 // Per-node param identity, operator-driven: param count + names come from the
 // node's hosted operator descriptor (inst.param_ptrs), so new ops' params appear
 // automatically.
@@ -230,7 +245,8 @@ CardPorts NodeGraph::card_ports(int i) const {
     const float tw = kCardW - 12.f;
     cp.tail_h   = thumb ? std::clamp(tw / std::max(0.5f, vg_ ? vg_->rt_aspect() : 1.78f), 44.f, 92.f) : 0.f;
     cp.tail_pad = thumb ? 8.f : 6.f;
-    cp.lead_rows = op_in_exposed_count(vg_, i);   // one lead row per EXPOSED input (optional lanes hide till wired)
+    const int nout = op_out_count(vg_, i);   // reserve rows for multi-output stubs on the right, too
+    cp.lead_rows = std::max(op_in_exposed_count(vg_, i), nout > 1 ? nout : 0);
     cp.params    = int(exposed_params(i).size());   // curated subset (pinned ∪ wired), not every param
     return cp;
 }
@@ -257,10 +273,16 @@ bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // in
     int slot = 0; for (int q = 0; q < port; ++q) if (op_in_exposed(vg_, i, q)) ++slot;   // row = position among exposed
     float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = card_ports(i).row_cy(y, slot); return true;
 }
-bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
-    if (!op_has_out(vg_, i)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x + w; py = y + h * 0.5f; return true;
+bool NodeGraph::op_out_port(int i, int port, float& px, float& py) const {
+    const int no = op_out_count(vg_, i);
+    if (port < 0 || port >= no) return false;
+    float x, y, w, h; op_node_rect(i, x, y, w, h);
+    px = x + w;
+    py = (no <= 1) ? (y + h * 0.5f)                  // single output: right-centre (unchanged)
+                   : card_ports(i).row_cy(y, port);  // multi-output: one stub per output row on the right
+    return true;
 }
+bool NodeGraph::op_out_port(int i, float& px, float& py) const { return op_out_port(i, 0, px, py); }
 int NodeGraph::first_node_of(const std::string& op_type) const {
     if (!vg_) return -1;
     for (int i = 0; i < int(vg_->nodes().size()); ++i) if (vg_->nodes()[i].op_type == op_type) return i;
@@ -720,7 +742,14 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
         const char* lbl = (nm && nm[0]) ? nm : "in";
         if (a_port > 0.01f) r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, a_port, 0.7f);
     }
-    if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
+    // output stub(s) on the right — one per output port, labelled when there's more than one (so a
+    // multi-lane producer like LanePalette shows a separate r/g/b stub instead of three wires stacked).
+    for (int op2 = 0, no = op_out_count(vg_, i); op2 < no; ++op2) {
+        if (!op_out_port(i, op2, px, py)) continue;
+        node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
+        if (no > 1) if (const char* nm = op_out_name(vg_, i, op2); nm && nm[0] && a_port > 0.01f)
+            r.draw_text(px - 10.f - r.text_width(nm, 0.7f), py - 5.f, nm, 0.55f, 0.58f, 0.62f, a_port, 0.7f);
+    }
     if (const float ta = canvas_.text_alpha(0.95f); !out && ta > 0.01f)
         r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, ta, 0.95f);
     // thumbnail: the node's live output, drawn to FILL its panel (the panel is sized to the source
@@ -763,8 +792,9 @@ void NodeGraph::draw(Renderer2D& r) {
         const auto& ins = vg_->nodes()[i].inputs;
         for (int p = 0; p < int(ins.size()); ++p) {
             const int src = ins[p];
+            const int sp  = vg_->nodes()[i].in_src_port(p);   // WHICH output of the source (multi-lane)
             float ox, oy, ix, iy;
-            if (src >= 0 && src < n && op_out_port(src, ox, oy) && op_in_port(i, p, ix, iy))
+            if (src >= 0 && src < n && op_out_port(src, sp, ox, oy) && op_in_port(i, p, ix, iy))
                 node_wire(r, ox, oy, ix, iy, 0.50f, 0.60f, 0.68f);  // classic grayish-blue
         }
     }
