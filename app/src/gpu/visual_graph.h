@@ -178,6 +178,7 @@ private:
     uint32_t          rtW_ = 0, rtH_ = 0;
     OpRegistry*       reg_ = nullptr;
     uint64_t          frame_ = 0;
+    float             last_chain_time_ = -1.f;   // for the per-frame delta_time passed to ops (run_chain)
     std::string       asset_dir_;   // project dir for resolving node.asset (CustomShader .glsl)
 
     std::vector<VisualNode>   nodes_;

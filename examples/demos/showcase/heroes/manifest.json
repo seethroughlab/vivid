@@ -1,64 +1,64 @@
 {
-  "note": "Hero images are release artifacts of the ADR-0037 showcase QA harness (examples/demos/showcase). Regenerate: run the harness against the signed app. mirror-bridge.png was re-captured on the dev build after the VectorText Y-flip fix (on main; matches the next signed release); the other four are signed-build captures.",
-  "app_build": "signed",
+  "note": "Hero PNGs + showcase clips from the ADR-0037 showcase QA harness (examples/demos/showcase). These are DEV-BUILD captures of the Phase-D REACTIVE rebuild of all five demos (per-note / beat-synced geometry, not the old self-animating screensavers) — captured with the transport PLAYING (the geometry demos render black when idle). The per-showcase .mp4 clips are the primary showcase now; the hero PNG is the video poster + fallback. The geometry demos are intentionally dark (sparse glowing forms on black). Clips are hosted separately (gitignored; see site showcase_video_base). Regenerate: run `examples/demos/showcase/runner.py --video` against the app. A SIGNED-build re-capture is pending for the next release.",
+  "app_build": "dev",
   "app_version": "0.1.0",
-  "captured_from": "/Applications/vivid.app (signed release, build_type=release, operator_abi=14)",
-  "gate": "pass",
+  "captured_from": "app/build/vivid.app (dev build, operator_abi=14)",
+  "gate": "pass_with_warnings",
   "heroes": [
     {
       "id": "first-project",
       "adr0037_type": 1,
-      "gate": "pass",
+      "gate": "warn",
       "hero": "first-project.png",
+      "video": "first-project.mp4",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2917,
-      "contrast": 0.2873,
-      "hash": "183c3c3c3c3c3c08"
+      "brightness": 0.0565,
+      "contrast": 0.1243
     },
     {
       "id": "pulse-song",
       "adr0037_type": 2,
       "gate": "pass",
       "hero": "pulse-song.png",
+      "video": "pulse-song.mp4",
       "width": 1280,
       "height": 720,
-      "brightness": 0.381,
-      "contrast": 0.2821,
-      "hash": "0818383c3c381800"
+      "brightness": 0.0579,
+      "contrast": 0.2071
     },
     {
       "id": "mirror-bridge",
       "adr0037_type": 3,
       "gate": "pass",
       "hero": "mirror-bridge.png",
+      "video": "mirror-bridge.mp4",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2794,
-      "contrast": 0.1553,
-      "hash": "3c3c7e7e7e7e3c3c"
+      "brightness": 0.0238,
+      "contrast": 0.0950
     },
     {
       "id": "shader-edit",
       "adr0037_type": 4,
-      "gate": "pass",
+      "gate": "warn",
       "hero": "shader-edit.png",
+      "video": "shader-edit.mp4",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2113,
-      "contrast": 0.1987,
-      "hash": "183c3c3c3c3c3c18"
+      "brightness": 0.3081,
+      "contrast": 0.2893
     },
     {
       "id": "neon-song",
       "adr0037_type": 5,
       "gate": "pass",
       "hero": "neon-song.png",
+      "video": "neon-song.mp4",
       "width": 1280,
       "height": 720,
-      "brightness": 0.2105,
-      "contrast": 0.133,
-      "hash": "3c3c3c7e7e3c3c1c"
+      "brightness": 0.0382,
+      "contrast": 0.1504
     }
   ]
 }

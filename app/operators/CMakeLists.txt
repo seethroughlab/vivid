@@ -54,7 +54,9 @@ add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
 add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
+add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
 add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
+add_vivid_operator(vivid_solids packages/core-visuals/solids.cpp)
 add_vivid_operator(vivid_lines packages/core-visuals/lines.cpp)
 add_vivid_operator(vivid_mesh packages/core-visuals/mesh.cpp)
 # Model: a glTF/GLB loader — needs nlohmann/json (stb_image + webgpu come free with add_vivid_operator).
@@ -102,7 +104,7 @@ endif()
 add_vivid_operator(vivid_output packages/core-visuals/output.cpp)
 add_vivid_operator(vivid_customshader packages/core-visuals/customshader.cpp)
 # Text/VectorText need FreeType (the app fetches it) + the bundled font path.
-foreach(_txt text vectortext)
+foreach(_txt text vectortext note_type)
     add_vivid_operator(vivid_${_txt} packages/core-visuals/${_txt}.cpp)
     target_link_libraries(vivid_${_txt} PRIVATE freetype)
     target_compile_definitions(vivid_${_txt} PRIVATE

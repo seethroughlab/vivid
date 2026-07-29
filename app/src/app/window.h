@@ -181,6 +181,10 @@ struct Window {
     float react = 0.f, trHold = 0.f;          // smoothed master level / held transient
     float trkReact[vivid::session::kMaxTracks] = {0}, trkTrHold[vivid::session::kMaxTracks] = {0};
     float trkNoteHold[vivid::session::kMaxTracks] = {0};   // decayed note-on flash (per-track note.gate source)
+    // Transport pulse state for the transport.downbeat/beat_pulse sources: decayed pulses snapped to 1
+    // when the integer beat/bar advances (edge-detected against the last observed beat/bar index).
+    float beatPulse = 0.f, barPulse = 0.f;
+    long long lastBeatIdx = -1, lastBarIdx = -1;
     // ADR-0028: bridge source-id -> interned publish handle, keyed by a cheap integer identity so the
     // frame publisher never rebuilds the constant id STRING. Miss (first frame for a source) builds the
     // string once via bridge_source.h + NodeGraph::source_handle; thereafter it's an integer-keyed lookup.

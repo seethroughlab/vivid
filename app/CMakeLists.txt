@@ -246,6 +246,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/audio_callback.cpp
     src/audio/movie_audio_bus.cpp
     src/audio/note_bus.cpp
+    src/audio/note_event_bus.cpp
     src/audio/audio_op_runtime.cpp
     src/audio/audio_graph.cpp
     src/audio/builtin_audio_ops.cpp

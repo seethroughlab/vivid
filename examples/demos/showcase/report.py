@@ -28,6 +28,12 @@ def showcase_report(result: ShowcaseResult, meta: dict | None = None) -> dict:
             "warm_attempts": result.warm_attempts,
             "analysis": result.image_stats,
         },
+        "video": {
+            "path": result.video_path,
+            "captured": result.video_captured,
+            "frames": result.video_frames,
+            "motion_score": result.video_motion,
+        },
         "verify": {
             "validate_project": {
                 "valid": result.valid,
