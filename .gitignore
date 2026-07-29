@@ -88,3 +88,10 @@ DerivedData/
 # Codex/local agent scratch
 .codex/
 .agents/
+
+# Showcase demo clips — hosted separately (CDN/release via showcase_video_base), not committed.
+# The hero PNGs ARE committed (posters + fallbacks); only the ~9MB .mp4s are kept out of git.
+examples/demos/showcase/heroes/*.mp4
+
+# Encoded showcase HLS artifacts — uploaded to S3/CloudFront, not committed.
+processed/

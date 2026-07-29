@@ -74,6 +74,15 @@ class Vivid:
     def launch_scene(self, scene: int):
         return self.call("launch_scene", scene=scene)
 
+    # --- video export (realtime AV) ---
+    def export_video(self, path: str, seconds: float, fps: float = 30.0):
+        """Record the live visual output + master audio to an AV-synced clip for `seconds`, then
+        auto-stop server-side. Returns immediately; poll video_export_status until recording:false."""
+        return self.call("export_video", path=path, seconds=seconds, fps=fps)
+
+    def video_export_status(self):
+        return self.call("video_export_status")
+
     def scenes(self, names: list[str]) -> list[int]:
         """Lay out song SECTIONS as named scenes (intro/verse/chorus/bridge/outro). Call right after
         reset() — a fresh session has 1 scene, so this appends the rest and names them all. The song
@@ -158,6 +167,11 @@ class Vivid:
 
     def set_track_gain(self, track: int, gain: float):
         return self.call("set_track_gain", track=track, gain=gain)
+
+    def master_gain(self, gain: float):
+        """Set the master sink gain (session headroom). <1.0 pulls the summed mix below 0 dBFS —
+        use it when several loud tracks sum into clipping (the AV showcase clips need clean audio)."""
+        return self.call("set_master_gain", gain=gain)
 
     # --- clip authoring (notes are {p,s,d,v}: pitch, start-beat, dur-beats, velocity) ---
     def set_clip(self, track: int, scene: int, notes: list[dict], length: float):
@@ -244,6 +258,54 @@ class Vivid:
 
     def set_node_param(self, node_id: int, name: str, value: float):
         return self.call("set_node_param", node_id=node_id, name=name, value=value)
+
+    # --- per-note reactivity palette (ADR: generic VividSignal) ---
+    # A `Notes` node adapts a track's MIDI into a generic signal (an `active` held set + `fired`
+    # note-ons); the consumer ops draw it and never refer to "notes", so the same graph works off a
+    # future Beat/onset source. Each consumer helper adds the op, wires the signal edge, sets params,
+    # and returns the node id. Params are the op's own (see the op source): Instancer size/spread/
+    # trail/shape/sides/pulse; Emitter count/speed/gravity/life/size/spread; Solids shape/size/spread/
+    # spin/trail/wireframe; readout (Type) size/x/y/r/g/b/mode.
+    def _consume(self, op: str, signal_node: int, params: dict) -> int:
+        n = self.add_node(op)
+        self.connect(n, signal_node)              # consumer.signal <- Notes
+        for k, v in params.items():
+            self.set_node_param(n, k, float(v))
+        return n
+
+    def notes(self, track_id: int) -> int:
+        """A Notes source bound to a track's STABLE id → emits a VividSignal (active + fired)."""
+        n = self.add_node("Notes")
+        self.set_node_param(n, "track", float(track_id))
+        return n
+
+    def instancer(self, signal_node: int, **params) -> int:
+        """One glowing instance per active element (dot/ring/polygon/bar via `shape`)."""
+        return self._consume("Instancer", signal_node, params)
+
+    def emitter(self, signal_node: int, **params) -> int:
+        """A particle burst per note-on FIRE (re-struck notes re-burst)."""
+        return self._consume("Emitter", signal_node, params)
+
+    def solids(self, signal_node: int, **params) -> int:
+        """One 3D solid (cube/tetra/octa via `shape`) per active element; `wireframe` for edges."""
+        return self._consume("Solids", signal_node, params)
+
+    def readout(self, signal_node: int, **params) -> int:
+        """A live typographic readout (note names / pitch numbers) of the active set (the Type op)."""
+        return self._consume("Type", signal_node, params)
+
+    def beat_sync(self, src: str, node_id: int, param: str, amount: float = 1.0, **kw):
+        """Map a transport source (beat/bar_phase/downbeat/beat_pulse) to a visual param."""
+        return self.map(f"transport.{src}", node_id, param, amount=amount, **kw)
+
+    def adsr(self, track: int, attack=0.01, decay=0.15, sustain=0.7, release=0.4) -> int:
+        """Add a note-gated ADSR modulator to a track; returns its node id. Its envelope is exposed as
+        the visual source `node_<stable_track_id>_<node_id>.ctl` — map() that to any visual param."""
+        n = self.add_mod(track, "ADSR")
+        for i, v in enumerate((attack, decay, sustain, release)):
+            self.set_audio_node_param(track, n, i, float(v))
+        return n
 
     def swap_generator(self, op: str) -> int:
         """Replace the active generator: add a node of `op` and rewire the first Feedback's
@@ -477,6 +539,38 @@ def warm_capture(v: "Vivid", path: str, tries: int = 10, delay: float = 0.5) -> 
                 return r
         time.sleep(delay)
     return r
+
+
+def capture_video(v: "Vivid", path: str, seconds: float = 6.0, fps: float = 30.0,
+                  scene: int = 0) -> dict:
+    """Play the loaded project and record a short AV-synced clip to `path` (server-side auto-stop
+    after `seconds`). Samples visual motion mid-clip as a liveness cross-check, then pauses transport.
+    The caller must have loaded + warmed the project first (a blank/static output yields a dull clip).
+    Returns {ok, path, status, motion, error?}; ok=False if the export never started or finalized."""
+    call_optional(v, "set_playing", playing=True)
+    call_optional(v, "launch_scene", scene=scene)   # best-effort: start the first section, if any
+    started = call_optional(v, "export_video", path=path, seconds=seconds, fps=fps)
+    if not isinstance(started, dict) or not started.get("ok", True):
+        call_optional(v, "set_playing", playing=False)
+        return {"ok": False, "path": path, "error": "export_video did not start", "status": started}
+
+    # analyze_visual_motion's first call only seeds its window; poll while the clip records.
+    call_optional(v, "analyze_visual_motion", duration_seconds=0.8)
+    status, motion = None, None
+    deadline = seconds + 10.0   # generous margin over the server-side auto-stop
+    waited = 0.0
+    while waited < deadline:
+        time.sleep(0.5)
+        waited += 0.5
+        status = call_optional(v, "video_export_status")
+        m = call_optional(v, "analyze_visual_motion", duration_seconds=0.8)
+        if isinstance(m, dict):
+            motion = m
+        if isinstance(status, dict) and status.get("recording") is False:
+            break
+    call_optional(v, "set_playing", playing=False)
+    ok = isinstance(status, dict) and status.get("recording") is False and status.get("frames", 0) > 0
+    return {"ok": bool(ok), "path": path, "status": status, "motion": motion}
 
 
 # --- Surge XT (a free/open CLAP synth — always audible, unlike the licensed VST3s) ---

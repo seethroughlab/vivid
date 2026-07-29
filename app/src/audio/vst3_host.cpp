@@ -619,8 +619,12 @@ static void run_modulator_step(const vivid::audio::CompiledStep& s, const GNodeB
     float* cout = nullptr;
     if (s.control_out_buf >= 0 && s.control_out_buf < kGraphMaxNodes)
         cout = &b.ctl_pool[b.ctl_base + static_cast<size_t>(s.control_out_buf) * kGraphMaxBlock];
+    // Feed the track's note union to the modulator so a note-gated envelope (ADSR) sees note on/off.
+    // The prepass runs a block before t.nev is reassembled, so this is last block's notes — a few ms
+    // of gate latency, imperceptible for an envelope. The LFO ignores notes, so this is a no-op for it.
     vivid::audio_op_process(nb.op, scL, scR, frames, b.sample_rate, b.bpm, b.bpb, b.beats,
-                            nullptr, 0, nullptr, 0, nullptr, ovr, novr, cout, frames);
+                            t.nev.data(), static_cast<uint32_t>(t.nev.size()),
+                            nullptr, 0, nullptr, ovr, novr, cout, frames);
     if (cout && s.out_buf >= 0 && s.out_buf < kGraphMaxNodes)
         t.ctl_pub[s.out_buf].store(cout[0], std::memory_order_relaxed);
 }
@@ -2376,9 +2380,12 @@ bool session_process(Session* s, float* out, uint32_t frames, uint32_t sample_ra
                 }
                 // Polyphonic active-notes: maintain the persistent held set from this block's on/off
                 // events (dedup/replace by note_id on on; swap-remove on off). Published for the instancer.
+                // Also enqueue each as a DISCRETE event (note_id carried) so one-shot visual ops can fire
+                // per note-on — including a re-struck held pitch, which the held set alone can't express.
                 for (const NoteEvent& e : t.nev) {
                     if (e.on) t.held.add(e.note_id, e.pitch, e.vel);
                     else      t.held.remove(e.note_id);
+                    t.note_events.push(e.on ? 1 : 0, e.pitch, e.vel, e.note_id, e.sample_offset);
                 }
             }
             // Event prep only — the graph node renders the source; it reads t.vev / t.nev / t.eev.

@@ -2,10 +2,11 @@
 
 Music : a driving 16th arpeggio (Pigments), an octave root bass on 8ths (Serum), and a
         gated-feel backbeat (kick/snare/hats) over an i-VI-III-VII loop (Am-F-C-G).
-Visual: RETRO-VECTOR — REAL geometry with a Tron glow. Cyan concentric Lines rings (real
-        LineList) + a magenta wireframe Mesh octahedron spinning in the center, added and
-        run through Feedback→Blur for the neon bloom → Output. Bass rolls the rings, kick/
-        snare flash the solid, the highs push the rings, the mids spin the octahedron.
+Visual: RETRO-VECTOR GLOW — per-NOTE 2D geometry, one distinct vector element per instrument,
+        composited ADD over black (the additive geometry IS the glow — no Feedback/Blur haze).
+        The bass pulses a big concentric ring, the arp sweeps small rings (pitch→hue), the
+        drums throw a spark field on every hit; the whole ring field throbs on the beat.
+        Notes drive the picture, not master-bus band energy.
 
 Run with the app running:  uv run examples/demos/neon.py
 """
@@ -59,36 +60,29 @@ def build(v: Vivid, save: bool = True):
         "hat":   "x.x.x.x.x.x.x.x.",
     }, bars=4, vel=0.85)
 
-    # --- visuals : REAL geometry (cyan Lines rings + a magenta wireframe Mesh), added, then run
-    # through our OWN Feedback->Blur for a Tron/neon bloom -> Output. Self-contained: after reset
-    # the graph is just Output, so we author the whole glow chain (don't assume a default chain). ---
+    # --- visuals : RETRO-VECTOR GLOW — per-note 2D geometry, one distinct vector element per
+    # instrument, composited ADD over black. No Feedback/Blur: the additive geometry IS the neon
+    # glow. Each track's Notes source drives its own draw op — the picture reads WHICH notes play,
+    # not just how loud. (Distinct from pulse's 3D Solids: neon is flat vector rings + orbs + sparks.)
     out = find(v.graph()["nodes"], "Output")
-    rings = v.add_node("Lines")                   # real LineList: concentric n-gon rings (the grid)
-    for k, val in dict(mode=0.8, count=0.35, sides=0.75, size=0.8, rotation=0.0,
-                       r=0.2, g=0.85, b=1.0, bg_r=0.02, bg_g=0.01, bg_b=0.06).items():
-        v.set_node_param(rings, k, val)           # cyan rings on near-black
-    sun = v.add_node("Mesh")                      # a magenta wireframe octahedron — the vector "sun"
-    for k, val in dict(shape=0.66, wireframe=1.0, size=0.5, spin=0.25, tilt=0.5,
-                       r=1.0, g=0.2, b=0.75, bg_r=0.0, bg_g=0.0, bg_b=0.0).items():
-        v.set_node_param(sun, k, val)
-    comp = v.add_node("Composite")
-    v.connect(comp, rings, port=0)                # A = the rings
-    v.connect(comp, sun, port=1)                  # B = the octahedron
-    v.set_node_param(comp, "mode", 1.0)          # ADD
-    fb = v.add_node("Feedback")                   # Feedback reads the composite (glow) ...
-    v.set_node_param(fb, "decay", 0.55)           # a modest neon bloom (not a haze)
-    v.connect(fb, comp)
-    blur = v.add_node("Blur")                     # ... -> Blur -> Output
-    v.set_node_param(blur, "radius", 0.05)
-    v.connect(blur, fb)
-    v.connect(out, blur)
+    arp_sig  = v.notes(v.track_id(ARP))
+    bass_sig = v.notes(v.track_id(BASS))
+    drum_sig = v.notes(v.track_id(DRUMS))
 
-    # --- the bridge (smooth params only) ---
-    v.map("master.low",       rings, "rotation", amount=0.3)                # bass rolls the rings
-    v.map("master.transient", sun,   "size", amount=0.5, lo=0.45, hi=0.7)   # kick/snare flash the solid
-    v.map("master.high",      rings, "size", amount=0.25, lo=0.7, hi=0.95)  # hats push the rings
-    v.map("master.mid",       sun,   "spin", amount=0.6, lo=0.15, hi=0.6)   # mids spin the octahedron
+    rings  = v.instancer(arp_sig,  shape=1, size=0.22, spread=0.92, trail=0.55, pulse=0.7)  # arp → small sweeping rings
+    orbs   = v.instancer(bass_sig, shape=1, size=0.62, spread=0.5,  trail=0.5,  pulse=0.9)  # bass → big concentric ring
+    sparks = v.emitter(drum_sig, count=0.5, speed=0.75, gravity=0.35, life=0.4,             # drums → spark bursts
+                       size=0.35, spread=0.85)
+    v.beat_sync("beat_pulse", rings, "size", amount=0.18, lo=0.22, hi=0.4)  # on-beat throb of the ring field
 
+    # Composite ADD, layered: (orbs + rings) then + sparks -> Output.
+    stack = v.add_node("Composite"); v.set_node_param(stack, "mode", 1.0)
+    v.connect(stack, orbs, port=0); v.connect(stack, rings, port=1)
+    top = v.add_node("Composite"); v.set_node_param(top, "mode", 1.0)
+    v.connect(top, stack, port=0); v.connect(top, sparks, port=1)
+    v.connect(out, top)
+
+    v.master_gain(0.6)   # headroom: the arp+bass+drums sum was clipping at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
     if save:

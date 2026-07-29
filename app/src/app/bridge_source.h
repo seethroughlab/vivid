@@ -9,6 +9,7 @@
 //   master.<kind>  |  master.fft.<k>                 — the master bus (kinds 0..4 only; no notes)
 //   track_<stableId>.<kind>  |  track_<id>.fft.<k>   — a track by STABLE id (kinds 0..7; 5/6/7 = note/vel/gate)
 //   node_<stableTrackId>_<nodeId>.<rms|fft.k|ctl>    — one audio-graph node's output
+//   transport.<kind>                                 — the master clock (beat/bar/tempo), no track
 #include <string>
 
 namespace vivid::bridge {
@@ -21,6 +22,15 @@ inline const char* const kTrackKindLabels[kNumTrackKinds] =
 inline const char* const kTrackKindSuffixes[kNumTrackKinds] =
     { "level", "transient", "low", "mid", "high", "note", "velocity", "gate" };
 
+// Transport (master-clock) scalar source kinds. Musically-timed signals so visuals can hit ON the
+// beat/bar rather than only following loudness: `beat`/`bar_phase` are 0..1 phase ramps (sawtooth
+// per beat/bar); `downbeat`/`beat_pulse` are decayed pulses that snap to 1 on each bar/beat edge.
+inline constexpr int kNumTransportKinds = 4;
+inline const char* const kTransportKindLabels[kNumTransportKinds] =
+    { "Beat phase", "Bar phase", "Downbeat", "Beat pulse" };
+inline const char* const kTransportKindSuffixes[kNumTransportKinds] =
+    { "beat", "bar_phase", "downbeat", "beat_pulse" };
+
 // Prefixes (append ".fft.<k>" for a spectrum band, ".rms"/".ctl" for a node).
 inline std::string master_prefix()                     { return "master"; }
 inline std::string track_prefix(int track_id)          { return "track_" + std::to_string(track_id); }
@@ -29,6 +39,8 @@ inline std::string node_prefix(int track_id, int node_id) {
 }
 
 // Full ids.
+inline std::string transport_prefix()                  { return "transport"; }
+inline std::string transport_source(const char* kind)  { return transport_prefix() + "." + kind; }
 inline std::string master_source(const char* kind)    { return master_prefix() + "." + kind; }
 inline std::string track_source(int track_id, const char* kind) { return track_prefix(track_id) + "." + kind; }
 inline std::string track_fft(int track_id, int band)  { return track_prefix(track_id) + ".fft." + std::to_string(band); }

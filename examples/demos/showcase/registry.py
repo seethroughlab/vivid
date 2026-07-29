@@ -57,10 +57,15 @@ class Showcase:
     prereqs: tuple[Prereq, ...] = ()    # capabilities that gate the FULL experience (missing -> WARN)
     wants_audio: bool = False           # eligible for --audio (has audible clips/transport)
     hero: str = ""                      # hero PNG filename (defaults to "<id>.png")
+    video_scene: int = 0                # scene to launch for hero/video capture (multi-section songs)
     notes: str = ""
 
     def hero_name(self) -> str:
         return self.hero or f"{self.id}.png"
+
+    def video_name(self) -> str:
+        """Showcase clip filename (parallel to the hero PNG). The site poster is the hero PNG."""
+        return f"{self.id}.mp4"
 
     def target_path(self) -> Path:
         """Absolute path of the tutorial build.py (TUTORIAL only)."""
@@ -99,6 +104,7 @@ SHOWCASES: list[Showcase] = [
         project_dir=DEMO_PROJECTS / "mirror",
         prereqs=(Prereq.SURGE, Prereq.CASSETTE_DRUMS),
         wants_audio=True,
+        video_scene=2,   # the CHORUS — the full, busiest section (intro/scene-0 is deliberately sparse)
         notes="viz.feedback->cutoff, viz.blur->resonance return leg; makes the bridge inspectable.",
     ),
     Showcase(

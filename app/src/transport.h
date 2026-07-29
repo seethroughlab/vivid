@@ -14,6 +14,7 @@ struct Transport {
     std::atomic<bool>   playing{true};
     std::atomic<double> bpm{124.0};
     std::atomic<double> beats{0.0};   // total beats elapsed (audio thread writes)
+    std::atomic<int>    beats_per_bar{4};   // bar length; the frame thread derives transport.bar_phase/downbeat from it
     std::atomic<float>  level{0.0f};      // output RMS, 0..1 (audio thread writes)
     std::atomic<float>  transient{0.0f};  // onset/transient, 0..1 (audio thread writes)
     std::atomic<float>  band_low{0.0f};   // 3-band energy (one-pole crossover, audio thread)

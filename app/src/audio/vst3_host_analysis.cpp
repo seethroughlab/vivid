@@ -90,4 +90,17 @@ int session_track_active_notes(Session* s, int t, ActiveNote* out, int max) {
     return n;
 }
 
+// DRAINS this frame's queued note on/off events (the frame thread's single consumer of the ring).
+// Call once per frame per track (publish_bridge_sources) — a second call the same frame gets nothing.
+int session_track_note_events(Session* s, int t, NoteEvt* out, int max) {
+    if (!s || t < 0 || t >= static_cast<int>(s->tracks.size()) || !out || max <= 0) return 0;
+    vivid::audio::NoteEventLite tmp[128];
+    const int n = s->tracks[t]->note_events.drain(tmp, std::min(max, 128));
+    for (int i = 0; i < n; ++i) {
+        out[i].kind = tmp[i].kind; out[i].pitch = tmp[i].pitch;
+        out[i].vel = tmp[i].velocity; out[i].note_id = tmp[i].note_id;
+    }
+    return n;
+}
+
 }  // namespace vivid::session

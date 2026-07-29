@@ -2,33 +2,160 @@
   "name": "core-visuals",
   "version": "0.1.0",
   "operators": [
-    { "name": "NoiseTexture", "source": "noise_texture.cpp", "gpu": true },
-    { "name": "Displace", "source": "displace.cpp", "gpu": true },
-    { "name": "Image", "source": "image.cpp", "gpu": true },
-    { "name": "Model", "source": "model.cpp", "gpu": true },
-    { "name": "MeshLoad", "source": "mesh_load.cpp", "gpu": true },
-    { "name": "MeshRender", "source": "mesh_render_op.cpp", "gpu": true },
-    { "name": "MeshDisplace", "source": "mesh_displace.cpp", "gpu": true },
-    { "name": "Switch", "source": "switch.cpp", "gpu": true },
-    { "name": "Webcam", "source": "webcam.cpp", "gpu": true },
-    { "name": "Tint", "source": "tint.cpp", "gpu": true },
-    { "name": "Shape", "source": "shape.cpp", "gpu": true },
-    { "name": "Composite", "source": "composite.cpp", "gpu": true },
-    { "name": "Transform", "source": "transform.cpp", "gpu": true },
-    { "name": "Kaleidoscope", "source": "kaleidoscope.cpp", "gpu": true },
-    { "name": "Gradient", "source": "gradient.cpp", "gpu": true },
-    { "name": "ShapeGrid", "source": "shape_grid.cpp", "gpu": true },
-    { "name": "Notes", "source": "notes_op.cpp", "gpu": true },
-    { "name": "Instancer", "source": "instancer.cpp", "gpu": true },
-    { "name": "Lines", "source": "lines.cpp", "gpu": true },
-    { "name": "Mesh", "source": "mesh.cpp", "gpu": true },
-    { "name": "Plasma", "source": "plasma.cpp", "gpu": true },
-    { "name": "Blur", "source": "blur.cpp", "gpu": true },
-    { "name": "Feedback", "source": "feedback.cpp", "gpu": true },
-    { "name": "Video", "source": "video.cpp", "gpu": true },
-    { "name": "Output", "source": "output.cpp", "gpu": true },
-    { "name": "CustomShader", "source": "customshader.cpp", "gpu": true },
-    { "name": "Text", "source": "text.cpp", "gpu": true },
-    { "name": "VectorText", "source": "vectortext.cpp", "gpu": true }
+    {
+      "name": "NoiseTexture",
+      "source": "noise_texture.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Displace",
+      "source": "displace.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Image",
+      "source": "image.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Model",
+      "source": "model.cpp",
+      "gpu": true
+    },
+    {
+      "name": "MeshLoad",
+      "source": "mesh_load.cpp",
+      "gpu": true
+    },
+    {
+      "name": "MeshRender",
+      "source": "mesh_render_op.cpp",
+      "gpu": true
+    },
+    {
+      "name": "MeshDisplace",
+      "source": "mesh_displace.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Switch",
+      "source": "switch.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Webcam",
+      "source": "webcam.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Tint",
+      "source": "tint.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Shape",
+      "source": "shape.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Composite",
+      "source": "composite.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Transform",
+      "source": "transform.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Kaleidoscope",
+      "source": "kaleidoscope.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Gradient",
+      "source": "gradient.cpp",
+      "gpu": true
+    },
+    {
+      "name": "ShapeGrid",
+      "source": "shape_grid.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Notes",
+      "source": "notes_op.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Emitter",
+      "source": "emitter.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Instancer",
+      "source": "instancer.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Solids",
+      "source": "solids.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Lines",
+      "source": "lines.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Mesh",
+      "source": "mesh.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Plasma",
+      "source": "plasma.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Blur",
+      "source": "blur.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Feedback",
+      "source": "feedback.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Video",
+      "source": "video.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Output",
+      "source": "output.cpp",
+      "gpu": true
+    },
+    {
+      "name": "CustomShader",
+      "source": "customshader.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Text",
+      "source": "text.cpp",
+      "gpu": true
+    },
+    {
+      "name": "VectorText",
+      "source": "vectortext.cpp",
+      "gpu": true
+    },
+    {
+      "name": "Type",
+      "source": "note_type.cpp",
+      "gpu": true
+    }
   ]
 }

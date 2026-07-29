@@ -41,6 +41,11 @@ class ShowcaseResult:
     quality_checks: list[dict] = field(default_factory=list)
     prereqs_missing: list[str] = field(default_factory=list)
     steps: dict = field(default_factory=dict)           # raw step responses (for debugging)
+    # optional AV clip (only when --video ran); WARN-only, never gates the release
+    video_path: str | None = None
+    video_captured: bool = False
+    video_frames: int | None = None
+    video_motion: float | None = None
 
 
 def prereqs_missing(showcase, caps: dict) -> list[str]:
@@ -95,6 +100,21 @@ def evaluate(showcase, steps: dict, caps: dict) -> ShowcaseResult:
         fail.append(f"hero is blank ({analyze.get('blank_reason') or 'near-black/near-uniform'})")
     elif res.warm_attempts and res.warm_attempts >= WARN_WARMUP_ATTEMPTS:
         warn.append(f"hero warmed slowly ({res.warm_attempts} capture attempts)")
+
+    # --- optional AV clip (only when --video ran; WARN-only — the clip is a website nicety, not
+    # part of the ADR-0037 release gate) --------------------------------------------------------
+    video = steps.get("video")
+    if isinstance(video, dict):
+        vstatus = video.get("status") or {}
+        motion = video.get("motion") or {}
+        res.video_captured = bool(video.get("ok"))
+        res.video_path = video.get("path")
+        res.video_frames = vstatus.get("frames")
+        res.video_motion = motion.get("motion_score")
+        if not res.video_captured:
+            warn.append("video clip not captured")
+        elif motion.get("is_moving") is False:
+            warn.append("video clip shows little motion (is_moving=false)")
 
     # --- validate_project (valid AND not degraded) --------------------------------------------
     validate = steps.get("validate")
