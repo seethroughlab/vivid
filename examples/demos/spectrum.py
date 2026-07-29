@@ -15,33 +15,30 @@ Instancer3D draws the base cube once per band. Each stage is a node you can see,
 Run with the app running:  uv run examples/demos/spectrum.py
 """
 import os
-from vivid_demo import Vivid, find, save_geo, surge_preset, surge_drum, hits
+from vivid_demo import Vivid, find, save_geo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "spectrum")
-BPM = 124
+BREAK = os.path.join(HERE, "media", "break90.wav")
+BPM = 90
 
 
 def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(BPM)
 
-    # --- Audio: full-spectrum material so every band has something to show. ---
-    kick = surge_drum(v, "kick", "kick",  prefer="909", gain=1.0)
-    hat  = surge_drum(v, "hat",  "hat",   prefer="closed", gain=0.8)
-    clap = surge_drum(v, "clap", "clap",  prefer="", gain=0.85)
-    bass = v.add_graph_track("bass"); surge_preset(v, bass, "bass", prefer="sub", gain=0.7)
-    lead = v.add_graph_track("lead"); surge_preset(v, lead, "pluck", prefer="bright", gain=0.7)
-
-    hits(v, kick, 0, "x...x...x...x...", 4.0, vel=1.0)
-    hits(v, hat,  0, "..x.x.x...x.x.x.", 4.0, pitch=42, vel=0.7)
-    hits(v, clap, 0, "....x.......x...", 4.0, pitch=39, vel=0.9)
-    v.bassline(bass, 0, [(33, 0.0, 1.5), (33, 2.0, 1.5), (40, 3.0, 1.0)], 4.0, vel=0.95)
-    arp = [69, 72, 76, 79, 81, 79, 76, 72, 69, 72, 76, 79, 81, 84, 81, 76]
-    v.set_clip(lead, 0, [{"p": p, "s": i * 0.25, "d": 0.22, "v": 0.75} for i, p in enumerate(arp)], 4.0)
+    # --- Audio: one sampler track with a broadband drum break — loads instantly (no CLAP), and its
+    #     kick/snare/hats give the spectrum content across low/mid/high. (Swap in your own loop, or a
+    #     Surge kit, for a richer song.) ---
+    drums = v.add_track(kind="audio")
+    v.import_audio(drums, 0, BREAK, src_bpm=90.0)
+    try:
+        v.warp(drums, 0, mode="beats")
+    except Exception:
+        pass
 
     NBARS = 44
-    SPREAD = 22.0   # bar row half-width (bars stay distinct: ~1 unit pitch vs 0.32 thickness)
+    SPREAD = 34.0   # bar row half-width (bars stay distinct: thin bars, ~1.5-unit pitch)
 
     # --- Visual: the composable lane chain. ---
     out = find(v.graph()["nodes"], "Output")
@@ -49,11 +46,11 @@ def build(v: Vivid, save: bool = True):
     # A tall, thin base cube; instance scale_y (from the spectrum) stretches it into a bar.
     shape = v.add_node("Shape3D")
     for k, val in dict(shape=0, detail=1, r=0.25, g=0.8, b=1.0, metallic=0.0, roughness=0.55,
-                       emission=0.4, scale_x=0.32, scale_y=9.0, scale_z=0.32).items():
+                       emission=0.4, scale_x=0.22, scale_y=11.0, scale_z=0.22).items():
         v.set_node_param(shape, k, float(val))
 
     spec = v.add_node("AudioSpectrum")          # → 0..1 magnitude per band (the reactive lane)
-    for k, val in dict(bands=NBARS, gain=1.2, tilt=0.7, normalize=0.6, attack=0.02, release=0.16).items():
+    for k, val in dict(bands=NBARS, gain=0.42, tilt=1.4, normalize=0.1, attack=0.02, release=0.16).items():
         v.set_node_param(spec, k, float(val))
 
     ramp = v.add_node("LaneRamp")               # → bar X positions (the layout lane)
@@ -83,7 +80,7 @@ def build(v: Vivid, save: bool = True):
     v.connect(merge, fill, 2)
 
     render = v.add_node("Render3D")
-    for k, val in dict(cam_x=9, cam_y=7, cam_z=36, target_x=0, target_y=0, target_z=0,
+    for k, val in dict(cam_x=7, cam_y=8, cam_z=50, target_x=0, target_y=0, target_z=0,
                        fov=42, far=200, near=0.1).items():
         v.set_node_param(render, k, float(val))
     v.connect(render, merge, 0)
