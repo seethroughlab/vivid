@@ -225,7 +225,10 @@ CardPorts NodeGraph::card_ports(int i) const {
     CardPorts cp;
     cp.header_h = 30.f; cp.row_h = 18.f;
     const bool thumb = op_has_thumb(vg_, i);
-    cp.tail_h   = thumb ? kThumbH : 0.f;   // fixed thumbnail, or nothing (the output sink)
+    // Size the thumbnail panel to the OUTPUT aspect (full card width / aspect), so the preview fills it
+    // exactly — no letterbox gaps, no crop. Clamped so an extreme aspect can't make a giant/tiny strip.
+    const float tw = kCardW - 12.f;
+    cp.tail_h   = thumb ? std::clamp(tw / std::max(0.5f, vg_ ? vg_->rt_aspect() : 1.78f), 44.f, 92.f) : 0.f;
     cp.tail_pad = thumb ? 8.f : 6.f;
     cp.lead_rows = op_in_exposed_count(vg_, i);   // one lead row per EXPOSED input (optional lanes hide till wired)
     cp.params    = int(exposed_params(i).size());   // curated subset (pinned ∪ wired), not every param
@@ -720,8 +723,8 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
     if (const float ta = canvas_.text_alpha(0.95f); !out && ta > 0.01f)
         r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, ta, 0.95f);
-    // thumbnail: the node's live output, drawn to FILL its panel (cover + centre-crop, clipped) so it
-    // reads as part of the card — not a letterboxed rectangle floating in a wider well.
+    // thumbnail: the node's live output, drawn to FILL its panel (the panel is sized to the source
+    // aspect below, so the fill is exact) — part of the card, not a letterboxed rectangle floating in it.
     if (op_has_thumb(vg_, i)) {
         // Position the thumbnail from the SAME CardPorts layout the card is drawn with (which reflects the
         // collapsed/curated param count via exposed_params) — not the full param count, or it floats below
@@ -731,15 +734,9 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
         const float ty = y + cp.header_h + cp.head_h + cp.rows_reserved() * cp.row_h + 2.f;
         const float tw = w - 12.f, th = cp.tail_h;
         node_preview_panel(r, tx, ty, tw, th);   // shared recessed well (same as the audio-node preview)
-        if (WGPUTextureView v = vg_->node_view(i)) {
-            const float srcA = vg_->rt_aspect(), dstA = tw / th;
-            float fw = tw, fh = th;
-            if (srcA > dstA) fw = th * srcA;   // COVER: fill height, crop the wider dimension
-            else             fh = tw / srcA;   // COVER: fill width, crop the taller dimension
-            r.push_clip_rect(tx, ty, tw, th);  // clip the overflow so the fill stays inside the panel
-            r.draw_texture(tx + (tw - fw) * 0.5f, ty + (th - fh) * 0.5f, fw, fh, v);
-            r.pop_clip_rect();
-        }
+        if (WGPUTextureView v = vg_->node_view(i))
+            r.draw_texture(tx, ty, tw, th, v);    // panel is sized to the source aspect (see card_ports), so
+                                                  // filling it exactly = no letterbox, no distortion, no crop
         // The error goes OVER the thumbnail (the node is still rendering — the last-good pipeline —
         // so the picture alone would say nothing is wrong).
         if (!node_err.empty()) node_error_note(r, tx, ty, tw, th, node_err);
