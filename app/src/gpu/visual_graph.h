@@ -195,6 +195,12 @@ private:
     // downstream op reads its upstream's slot — resolved the same topo-ordered pass. The producer
     // owns the pointed-to value (its wgpu buffers are op members that outlive the frame). See run_chain.
     std::vector<std::vector<void*>> published_custom_;
+    // The FLOAT-MANY value-lane channel (VIVID_PORT_SCALAR + multiplicity MANY): per node, one buffer
+    // per value-lane OUTPUT port. A producer op fills it via ctx.value_outputs[] (resize+commit); a
+    // downstream op reads its upstream's buffer via ctx.values[] — same topo-ordered pass as the custom
+    // channel. Buffers persist for the frame (host-owned) so consumers read after producers commit.
+    struct ValueSlot { std::vector<float> buf; uint32_t count = 0; };
+    std::vector<std::vector<ValueSlot>> published_values_;
     RenderTarget              fallback_;      // black input for disconnected ports
     bool                      fb_cleared_ = false;
 
