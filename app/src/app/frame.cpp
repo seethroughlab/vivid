@@ -746,6 +746,13 @@ void run_frame_loop(App& app, Window& win) {
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
+            // The docked clip editor fills the dock and skips draw_device_dock (which paints the resize
+            // strip), so draw the strip here — otherwise the dock's resize handle vanishes while editing.
+            if (clip_editor.is_open() && clip_editor.is_docked()) {
+                const Rect dr = win.dock_resize_rect();
+                dock_resize_strip(ui, 0.f, win.dock_top(), static_cast<float>(win.win_w),
+                                  hit(dr, mx, my) || win.dock_drag);
+            }
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
@@ -914,12 +921,10 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
         if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
     }
     // Reposition drag: the grabbed node follows the cursor (screen -> world via the shared transform).
-    if (node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+    // A drag in progress (node_drag >= 0) continues regardless of dock focus — the pane is always live.
+    if (node_drag >= 0 && app.session) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        set_source(app.session, tr);
-        const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-        set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        set_selection(win.sel_audio_node);   // keep the instance primed (bounds/selection) for the draw
+        prime(app, win);   // node-canvas bounds (below-session pane) + param bounds + selection
         double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);   // screen -> world via the absolute camera
         S::session_audio_graph_node_set_pos(app.session, tr, node_drag,
                                             static_cast<float>(wxd) - node_dx, static_cast<float>(wyd) - node_dy);

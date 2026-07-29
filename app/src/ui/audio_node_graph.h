@@ -83,6 +83,13 @@ public:
         // the visual editor's — no more per-frame region-relative derivation.)
         if (!view_init_) { canvas_.view().ox = x0_; canvas_.view().oy = y0_; }
     }
+    // The PARAM-strip bounds — the bottom dock. The audio node CANVAS now lives below the session
+    // view (its bounds are x0_..y1_); its selected-node param strip renders in the unified param
+    // dock instead. Separate so param_region() targets the dock while graph_region() is the pane.
+    void set_param_bounds(float x0, float y0, float x1, float y1) { px0_ = x0; py0_ = y0; px1_ = x1; py1_ = y1; }
+    // Prime the instance from the shell (resolve track, set node-canvas + param bounds + selection),
+    // so every draw/hit-test path agrees on geometry. Defined in input_graph.cpp (has full App/Window).
+    void prime(App& app, const Window& win);
     // The pan/zoom camera — an absolute world->screen NodeView, matching the visual editor (ADR-0023).
     // It lives in `canvas_` (ADR-0023 #1: GraphCanvas is the sole owner); the editor reaches it via
     // canvas_.view(). Persisted with the session (ox/oy/scale). set_view marks it user-set so set_bounds
@@ -166,6 +173,9 @@ public:
     // drag is in progress (the wire_from member is set), draw a ghost wire from that node's output
     // port to the cursor (cx, cy).
     void draw(Renderer2D& r, int sel_node, float cx = 0.f, float cy = 0.f) const;
+    // Render ONLY the selected node's param strip, into the param bounds (the bottom dock). The node
+    // canvas is drawn by draw() into the below-session pane; this is the dock half of the old draw().
+    void draw_params(Renderer2D& r, int sel_node, float cx = 0.f, float cy = 0.f) const;
 
 private:
     Rect  param_region() const;   // the selected-node param strip (bottom band)
@@ -189,7 +199,8 @@ private:
     int   track_ = -1;
     double clock_beats_ = 0.0;         // transport position (set per frame), for live generator thumbnails
     int   sel_node_ = -1;
-    float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;
+    float x0_ = 0, y0_ = 0, x1_ = 0, y1_ = 0;      // node-canvas bounds (the below-session pane)
+    float px0_ = 0, py0_ = 0, px1_ = 0, py1_ = 0;  // param-strip bounds (the bottom dock)
     bool     view_init_ = false; // false until a gesture/load sets it; set_bounds seeds the panel origin meanwhile
     GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared draw skeleton AND the owner of the pan/zoom camera (#1)
 

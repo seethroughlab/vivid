@@ -5,6 +5,7 @@
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
 #include "ui/operator_draw_bridge.h"  // v14: Renderer2D -> VividDrawAPI, for live generator thumbnails
+#include "ui/session_view.h"          // draw_clip_preview — the shared clip-cell piano-roll (Clip node thumbnail)
 #include "audio/vst3_host.h"
 #include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
@@ -128,8 +129,10 @@ std::vector<AudioCompoundPreview> AudioNodeGraph::compound_previews() const {
     return out;
 }
 
-Rect AudioNodeGraph::param_region() const { const float b = param_band_h(); return { x0_, y1_ - b, x1_ - x0_, b }; }
-Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); return { x0_, y0_, x1_ - x0_, (y1_ - b) - y0_ }; }
+// The node CANVAS fills its whole (below-session) bounds; the PARAM strip is the separate dock rect
+// (set via set_param_bounds). param_band_h() is retained for reference but no longer sizes a region.
+Rect AudioNodeGraph::param_region() const { return { px0_, py0_, px1_ - px0_, py1_ - py0_ }; }
+Rect AudioNodeGraph::graph_region() const { return { x0_, y0_, x1_ - x0_, y1_ - y0_ }; }
 
 // A plugin node (VST3, i.e. it exposes an IEditController) uses the curated vertical inspector;
 // native ops keep the compound/knob strip. CLAP is treated as native for now (no metadata yet).
@@ -559,6 +562,29 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             tc.accent         = VividColor{ acc[0], acc[1], acc[2], 1.0f };
             tc.time           = clock_beats_;
             P::session_generator_draw_thumbnail(s_, track_, gen_scene, &tc);
+        } else if (kind == 6 && iw > 6.f && ih > 6.f) {
+            // MidiClip ("Clip"): draw the scheduled clip's note pattern — the same mini piano-roll the
+            // session grid draws for the clip cell, keyed to the scene this node gates.
+            const int sc = P::session_track_audio_graph_node_cell_scene(s_, track_, i);
+            if (sc >= 0) draw_clip_preview(r, s_, track_, sc, Rect{ ix, iy, iw, ih }, acc[0], acc[1], acc[2], true);
+        } else if ((kind == 3 || kind == 4 || kind == 7) && iw > 6.f && ih > 6.f) {
+            // MidiIn / NoteFx / Selector ("MIDI In" / Arp / "Notes"): no audio and no clip to preview,
+            // so show the track's LIVE held notes as pitch bars — a "what's playing now" strip that
+            // lights up on input (velocity drives the brightness).
+            P::ActiveNote an[64];
+            const int na = P::session_track_active_notes(s_, track_, an, 64);
+            if (na > 0) {
+                int lo = 127, hi = 0;
+                for (int k = 0; k < na; ++k) { lo = std::min(lo, an[k].pitch); hi = std::max(hi, an[k].pitch); }
+                const int span = std::max(12, hi - lo + 1);
+                const int base = lo - (span - (hi - lo + 1)) / 2;
+                for (int k = 0; k < na; ++k) {
+                    const float ny = iy + ih * (1.f - (static_cast<float>(an[k].pitch - base) + 0.5f) / span);
+                    const float bw = std::max(2.f, iw * 0.05f);
+                    const float bx = ix + iw * (static_cast<float>(k) + 0.5f) / na - bw * 0.5f;
+                    r.draw_rect(bx, ny - 1.5f, bw, 3.f, acc[0], acc[1], acc[2], 0.4f + 0.55f * std::min(1.f, an[k].vel));
+                }
+            }
         } else if (!is_gen) {
             // A Sampler node shows its LOADED SAMPLE (a static peak-bar waveform) so you can see what
             // it will play; every other node shows its live output scope. Fall back to the scope if the
@@ -678,9 +704,17 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     // visuals graph has none either, and Tab-to-add is the established convention for both.
 
     r.pop_clip_rect();   // end graph-area clip (2i)
+    (void)sel_node;      // the selection highlight is driven by sel_node_ (selected_node_id); params: draw_params()
+}
 
-    // Inline param strip for the selected node (drawn unclipped, in its fixed bottom band).
+// The selected node's param strip — the DOCK half of the audio editor (the node canvas is draw()).
+// Rendered screen-space into the param bounds (set_param_bounds), i.e. the unified bottom param dock.
+void AudioNodeGraph::draw_params(Renderer2D& r, int sel_node, float cx, float cy) const {
+    if (!s_ || track_ < 0) return;
+    const Style& sty = style();
     const Rect pr = param_region();
+    if (pr.w < 20.f || pr.h < 10.f) return;
+    if (!P::session_track_audio_graph_ok(s_, track_)) return;
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
 
     // Curated inspector (Phase 2b): a plugin node shows its PINNED params as vertical rows —

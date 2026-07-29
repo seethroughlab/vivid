@@ -32,6 +32,20 @@ namespace {
 using namespace vivid::ui;          // hit, Rect, AudioNodeGraph/Box, dock/audio_graph rects
 namespace S = vivid::session;
 
+// The audio editor now spans two panes: the node CANVAS below the session view, and the selected
+// node's param strip in the bottom dock. A press belongs to the audio editor if it lands in EITHER —
+// used to gate the gesture handlers (they no longer live only in the dock band).
+inline bool ag_pane_hit(const vivid::Window& win, vivid::App& app, double mx, double my) {
+    if (!app.session) return false;
+    const int scenes = S::session_scene_count(app.session);
+    const Rect pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes);
+    // The below-session pane (node canvas + header) is ALWAYS live — it's a persistent pane now, not a
+    // dock drill-in. The bottom dock's param strip only counts as ours when the dock is actually showing
+    // audio params (focus AudioGraph); when the clip editor or a visual node owns the dock, it isn't.
+    const bool in_param_dock = (win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top());
+    return hit(pane, mx, my) || in_param_dock;
+}
+
 // Build the audio node's param-curation menu (Gesture A curate / Gesture B reveal). connect_mode omits
 // already-wired params and switches dispatch to pin+connect; pending_src is the modulator the wire came
 // from. Shared by the audio FSM (AudioNodeGraph::on_down/on_up) and the menu dispatch. `checked` marks a
@@ -145,7 +159,7 @@ void mod_editor_drag(Window& win, App& app, double mx, double /*my*/) {
 }
 
 bool audio_chooser_open_at(Window& win, App& app, double mx, double my) {
-    if (win.focus.kind != vivid::FocusContext::Kind::AudioGraph || my < win.dock_top()) return false;
+    if (!ag_pane_hit(win, app, mx, my)) return false;
     if (audio_graph_track(win, app) < 0) return false;
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     win.audio_chooser_new_track = false;
@@ -383,12 +397,10 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
 // cursor→world hit-test lands on the same boxes the editor draws.
 bool audio_node_rclick(Window& win, App& app, int button, int action, double mx, double my) {
     if (button != GLFW_MOUSE_BUTTON_RIGHT || action != GLFW_PRESS || !app.audio_graph || !app.session) return false;
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top())) return false;
+    if (!ag_pane_hit(win, app, mx, my)) return false;
     AudioNodeGraph* ag = app.audio_graph;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-    ag->set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    ag->set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    ag->prime(app, win);   // node-canvas bounds (below-session pane) + param bounds (dock) + selection
     double wmx, wmy; ag->view().to_world(mx, my, wmx, wmy);
     for (const AudioNodeBox& b : ag->layout()) {
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
@@ -550,23 +562,36 @@ namespace S = vivid::session;
 // node select / remove / double-click-editor + reposition-drag start, edge disconnect, and empty-space
 // double-click-reset / pan-start. Returns true when it consumed the press (always, over the dock). The
 // caller guarantees a left-button press.
-bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top() && app.session))
-        return false;
+// Prime the instance from the shell for a draw or a gesture: resolve the selected track, set the
+// node-canvas bounds (the below-session pane) AND the param bounds (the dock), and the selection.
+// One source of truth so every draw/hit-test path agrees on geometry (ADR-0023: below-session pane).
+void AudioNodeGraph::prime(App& app, const Window& win) {
+    if (!app.session) return;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-    set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
-    // "Re-layout" button → snap the graph back to the tidy auto-arrangement (undo-noted like a drag).
-    if (hit(dock_audio_relayout_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+    const int scenes = S::session_scene_count(app.session);
+    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes));
+    set_bounds(canv.x, canv.y, canv.x + canv.w, canv.y + canv.h);
+    const Rect dp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    set_param_bounds(dp.x, dp.y, dp.x + dp.w, dp.y + dp.h);
+    set_selection(win.sel_audio_node);
+}
+
+bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
+    if (!(app.session && ag_pane_hit(win, app, mx, my)))
+        return false;
+    const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+    prime(app, win);
+    const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
+    // "Re-layout" button (audio-pane header) → snap the graph back to the tidy auto-arrangement.
+    if (hit(audio_pane_relayout_rect(ag_pane), mx, my)) {
         relayout();
         if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
         return true;
     }
-    // "Editor" button in the dock header → open the selected VST3 node's native plugin window.
+    // "Editor" button (audio-pane header) → open the selected VST3 node's native plugin window.
     if (win.sel_audio_node >= 0
-        && hit(dock_audio_editor_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+        && hit(audio_pane_editor_rect(ag_pane), mx, my)) {
         if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
                 S::session_audio_graph_node_controller(app.session, tr, win.sel_audio_node))) {
             int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
@@ -768,9 +793,7 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     param_drag = -1; param_horiz = false; node_drag = -1; key_drag = -1; panning = false;
     if (wire_from < 0 || !app.session) return false;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-    set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    prime(app, win);   // node-canvas bounds (below-session pane) so the rewire ports resolve there
     // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits. A MidiIn
     // (kind 3) / note effect (kind 4) emit notes (NOTE edge); a modulator (kind 5) emits CONTROL to a
     // PARAM port; everything else is audio. (Unambiguous today because no node emits both.)
@@ -834,11 +857,8 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
 // Scroll-wheel zoom of the audio-graph deep view, around the cursor (keeps the world point under the
 // cursor fixed). The zoom clamp ([0.35,4.0]) is the audio graph's own policy.
 void AudioNodeGraph::on_scroll(App& app, Window& win, double yoff, double mx, double my) {
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && app.session)) return;
-    set_source(app.session, win.sel_track);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-    set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
+    if (!app.session) return;
+    prime(app, win);   // node-canvas bounds (below-session pane) for the zoom hit-region
     const Rect gr = graph_region();
     if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
         canvas_.zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));   // ADR-0023 #3d: shared zoom-around-cursor
