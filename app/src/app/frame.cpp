@@ -210,10 +210,21 @@ void publish_bridge_sources(App& app, Window& win) {
     if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1) {
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
         // Richer master spectrum for the spectrum bus (visual ops → per-band geometry: 3D equaliser /
-        // spectral ridge). Recomputed at higher band resolution than the 8-band scalar bridge above.
+        // spectral ridge), at higher band resolution than the 8-band scalar bridge above. Publish the
+        // RAW magnitudes normalised to a slowly-decaying peak — a fixed dB reference (spectrum_log_bands)
+        // saturates every band to 1.0 on a loud mix, giving a flat, static equaliser; normalising to the
+        // running peak keeps the RELATIVE shape (which bands are loud right now) so the bars actually move.
         constexpr int kBusBands = 48;
         static float sbands[kBusBands];
-        vivid::audio::spectrum_log_bands(an_buf, nm, 48000.f, sbands, kBusBands, an_re, an_im);
+        vivid::audio::spectrum_raw_bands(an_buf, nm, 48000.f, sbands, kBusBands, an_re, an_im);
+        // PER-BAND normalisation: each band relative to its OWN slowly-decaying peak. Global-peak
+        // normalisation would let the (much louder) kick crush every other band to ~0; per-band lets a
+        // quiet hat band still use its full 0..1 range, so every bar with real content moves.
+        static float s_band_peak[kBusBands] = {0};
+        for (int k = 0; k < kBusBands; ++k) {
+            s_band_peak[k] = std::max(s_band_peak[k] * 0.992f, sbands[k]);   // rise fast, fall slow (~2s)
+            sbands[k] = (s_band_peak[k] > 1e-5f) ? std::min(1.f, sbands[k] / s_band_peak[k]) : 0.f;
+        }
         vivid_spectrum_bus_publish_master(sbands, kBusBands);
     }
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)

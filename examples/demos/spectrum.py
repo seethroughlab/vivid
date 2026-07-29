@@ -50,7 +50,9 @@ def build(v: Vivid, save: bool = True):
         v.set_node_param(shape, k, float(val))
 
     spec = v.add_node("AudioSpectrum")          # → 0..1 magnitude per band (the reactive lane)
-    for k, val in dict(bands=NBARS, gain=0.5, tilt=0.6, normalize=0.15, attack=0.02, release=0.16).items():
+    # The bus is already per-band-normalized (each band relative to its own peak), so a light AGC
+    # (normalize) + a small high-freq tilt is enough; gain ~1.3 lifts the quieter mid/high bars.
+    for k, val in dict(bands=NBARS, gain=1.3, tilt=0.4, normalize=0.4, attack=0.02, release=0.14).items():
         v.set_node_param(spec, k, float(val))
 
     ramp = v.add_node("LaneRamp")               # → bar X positions (the layout lane)
