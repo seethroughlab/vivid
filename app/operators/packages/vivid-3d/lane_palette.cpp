@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"
+#include "operator_api/lane_thumb.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -60,7 +61,11 @@ struct LanePalette : vivid::OperatorBase, vivid::GpuProcessable {
         publish(ctx, 0, r_);
         publish(ctx, 1, g_);
         publish(ctx, 2, b_);
+        // Node thumbnail: the palette itself, as a horizontal colour gradient.
+        vivid::lanethumb::render_gradient(ctx, thumb_, r_.data(), g_.data(), b_.data(), n);
     }
+
+    ~LanePalette() override { vivid::lanethumb::destroy(thumb_); }
 
 private:
     static void cosine(float t, const float a[3], const float b[3], const float c[3], const float d[3], float out[3]) {
@@ -94,6 +99,7 @@ private:
         }
     }
     std::vector<float> r_, g_, b_;
+    vivid::lanethumb::State thumb_{};
 };
 
 VIVID_REGISTER(LanePalette)

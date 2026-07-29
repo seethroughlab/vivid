@@ -720,8 +720,8 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
     if (const float ta = canvas_.text_alpha(0.95f); !out && ta > 0.01f)
         r.draw_text(x + w - 14.f, y + 5.f, "\xC3\x97", 0.7f, 0.45f, 0.45f, ta, 0.95f);
-    // thumbnail: a recessed panel with the node's live output drawn on top via Renderer2D's
-    // textured-quad path (scales/pans with the view, letterboxed to the source aspect).
+    // thumbnail: the node's live output, drawn to FILL its panel (cover + centre-crop, clipped) so it
+    // reads as part of the card — not a letterboxed rectangle floating in a wider well.
     if (op_has_thumb(vg_, i)) {
         // Position the thumbnail from the SAME CardPorts layout the card is drawn with (which reflects the
         // collapsed/curated param count via exposed_params) — not the full param count, or it floats below
@@ -734,8 +734,11 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
         if (WGPUTextureView v = vg_->node_view(i)) {
             const float srcA = vg_->rt_aspect(), dstA = tw / th;
             float fw = tw, fh = th;
-            if (srcA > dstA) fh = tw / srcA; else fw = th * srcA;   // letterbox
+            if (srcA > dstA) fw = th * srcA;   // COVER: fill height, crop the wider dimension
+            else             fh = tw / srcA;   // COVER: fill width, crop the taller dimension
+            r.push_clip_rect(tx, ty, tw, th);  // clip the overflow so the fill stays inside the panel
             r.draw_texture(tx + (tw - fw) * 0.5f, ty + (th - fh) * 0.5f, fw, fh, v);
+            r.pop_clip_rect();
         }
         // The error goes OVER the thumbnail (the node is still rendering — the last-good pipeline —
         // so the picture alone would say nothing is wrong).

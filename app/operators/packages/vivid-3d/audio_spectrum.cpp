@@ -2,6 +2,7 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/spectrum_bus.h"   // host: vivid_master_spectrum (resolved at dlopen)
 #include "operator_api/value_view.h"     // FLOAT-MANY lane output
+#include "operator_api/lane_thumb.h"     // 2D bar-chart node thumbnail
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -92,10 +93,16 @@ struct AudioSpectrum : vivid::OperatorBase, vivid::GpuProcessable {
                 vivid_value_output_commit(&ctx->value_outputs[0], n);
             }
         }
+        // Node thumbnail: a live mini bar chart of the spectrum.
+        const float col[3] = { 0.4f, 0.75f, 1.0f };
+        vivid::lanethumb::render_bars(ctx, thumb_, out_.data(), n, col);
     }
+
+    ~AudioSpectrum() override { vivid::lanethumb::destroy(thumb_); }
 
 private:
     std::vector<float> out_, smoothed_, peak_;
+    vivid::lanethumb::State thumb_{};
 };
 
 VIVID_REGISTER(AudioSpectrum)

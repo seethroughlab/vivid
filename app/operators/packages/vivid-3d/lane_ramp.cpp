@@ -1,6 +1,7 @@
 #include "operator_api/operator.h"
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"
+#include "operator_api/lane_thumb.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -59,10 +60,21 @@ struct LaneRamp : vivid::OperatorBase, vivid::GpuProcessable {
                 vivid_value_output_commit(&ctx->value_outputs[0], n);
             }
         }
+        // Node thumbnail: the ramp normalised to its own min..max, as bars.
+        float mn = out_[0], mx = out_[0];
+        for (float x : out_) { mn = std::min(mn, x); mx = std::max(mx, x); }
+        const float inv = (mx > mn) ? 1.f / (mx - mn) : 0.f;
+        disp_.resize(n);
+        for (uint32_t i = 0; i < n; ++i) disp_[i] = (out_[i] - mn) * inv;
+        const float col[3] = { 0.6f, 0.7f, 0.85f };
+        vivid::lanethumb::render_bars(ctx, thumb_, disp_.data(), n, col);
     }
 
+    ~LaneRamp() override { vivid::lanethumb::destroy(thumb_); }
+
 private:
-    std::vector<float> out_;
+    std::vector<float> out_, disp_;
+    vivid::lanethumb::State thumb_{};
 };
 
 VIVID_REGISTER(LaneRamp)
