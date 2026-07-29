@@ -76,25 +76,22 @@ inline void spectrum_log_bands(const float* in, int n, float sample_rate,
         const float db = 20.f * std::log10(std::max(out[i], 1e-6f) / kRefMag);   // 0 dB at kRefMag
         out[i] = std::clamp(1.f + db / kRangeDb, 0.f, 1.f);                       // -kRangeDb..0 dB -> 0..1
     }
-    // Fill bands that caught NO FFT bin. At high band counts the log bands are finer than the ~sr/n bin
-    // spacing (≈47 Hz at n=1024), so many bands — especially low ones — are structurally empty and would
-    // sit dead at 0 (a visual equaliser then has bars that never move). Linearly interpolate each empty
-    // run from its filled neighbours, and hold the nearest filled value at the ends. Filled bands
-    // (counts>0) are authoritative and untouched; a coarse spectrum (few bands, all filled) is a no-op.
+    // Fill ONLY the small resolution gaps: at high band counts the log bands are finer than the ~sr/n bin
+    // spacing (≈47 Hz at n=1024), so low bands land BETWEEN bins and read 0 even though energy is there.
+    // Linearly interpolate a SHORT empty run between two filled neighbours. But do NOT bridge a long empty
+    // run or the spectrum edges — those are genuine silence, and holding the nearest value there smears a
+    // pure tone across the whole spectrum (every bar identical). kMaxGap ≈ the widest low-freq bin gap.
+    constexpr int kMaxGap = 6;
     int prev = -1;
     for (int i = 0; i < nbands; ++i) {
         if (counts[i] == 0) continue;
-        if (prev >= 0 && i - prev > 1)
+        if (prev >= 0 && i - prev > 1 && (i - prev - 1) <= kMaxGap)
             for (int j = prev + 1; j < i; ++j) {
                 const float t = static_cast<float>(j - prev) / static_cast<float>(i - prev);
                 out[j] = out[prev] * (1.f - t) + out[i] * t;
             }
-        else if (prev < 0)
-            for (int j = 0; j < i; ++j) out[j] = out[i];   // leading empties: hold the first filled band
-        prev = i;
+        prev = i;   // leading / trailing / long-gap empties stay 0 (real silence), so a tone stays a peak
     }
-    if (prev >= 0)
-        for (int j = prev + 1; j < nbands; ++j) out[j] = out[prev];   // trailing empties: hold the last
 }
 
 }  // namespace vivid::audio
