@@ -45,6 +45,18 @@ static int  uniform_local(int u) { return u <= 3 ? u : 0; }
 static int op_in_count(const vivid::VisualGraph* vg, int i) {
     return (vg && i >= 0 && i < int(vg->nodes().size())) ? vg->nodes()[i].inst.input_port_count : 0;
 }
+// The declared NAME of the p-th INPUT port (e.g. "scene", "pos_x", "scale_y"), or nullptr — so the card
+// labels ports by what they DO instead of a meaningless "A"/"B" (InstancesFromLanes has 11 lane inputs).
+static const char* op_in_name(const vivid::VisualGraph* vg, int i, int p) {
+    if (!vg || i < 0 || i >= int(vg->nodes().size())) return nullptr;
+    int in = 0;
+    for (const auto& pd : vg->nodes()[i].inst.ports) {
+        if (pd.direction != VIVID_PORT_INPUT) continue;
+        if (in == p) return pd.name;
+        ++in;
+    }
+    return nullptr;
+}
 static bool op_has_out(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && vg->nodes()[i].inst.output_port_count > 0;
 }
@@ -664,12 +676,15 @@ void NodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) const {
     if (const float ta = canvas_.text_alpha(0.72f); out && ta > 0.01f)
         r.draw_text(x + w - 56.f, y + 6.f, active_out ? "\xE2\x86\x92 viewer" : "output",
                     active_out ? 0.7f : 0.45f, active_out ? 0.6f : 0.47f, active_out ? 0.4f : 0.5f, ta, 0.72f);
-    const float a_port = canvas_.text_alpha(0.7f);   // port-stub labels ("in" / "A" / "B")
+    const float a_port = canvas_.text_alpha(0.7f);   // port-stub labels (the port's declared name)
     float px, py;
-    for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per texture input port
+    for (int p = 0, np = op_in_count(vg_, i); p < np; ++p) {  // one stub per input port
         if (!op_in_port(i, p, px, py)) continue;
         node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);
-        const char* lbl = (np <= 1) ? "in" : (p == 0 ? "A" : "B");
+        // Label by the port's declared name (scene / pos_x / scale_y / …); fall back to "in" for a lone
+        // unnamed input. Beats the old meaningless "A"/"B" — a multi-lane op now reads what each port is.
+        const char* nm = op_in_name(vg_, i, p);
+        const char* lbl = (nm && nm[0]) ? nm : "in";
         if (a_port > 0.01f) r.draw_text(px + 10.f, py - 5.f, lbl, 0.55f, 0.58f, 0.62f, a_port, 0.7f);
     }
     if (op_out_port(i, px, py)) node_port(r, px, py, 5.f, 0.55f, 0.62f, 0.72f);  // output (right)
