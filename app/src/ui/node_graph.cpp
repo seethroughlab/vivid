@@ -45,17 +45,37 @@ static int  uniform_local(int u) { return u <= 3 ? u : 0; }
 static int op_in_count(const vivid::VisualGraph* vg, int i) {
     return (vg && i >= 0 && i < int(vg->nodes().size())) ? vg->nodes()[i].inst.input_port_count : 0;
 }
-// The declared NAME of the p-th INPUT port (e.g. "scene", "pos_x", "scale_y"), or nullptr — so the card
-// labels ports by what they DO instead of a meaningless "A"/"B" (InstancesFromLanes has 11 lane inputs).
-static const char* op_in_name(const vivid::VisualGraph* vg, int i, int p) {
+// The p-th INPUT port descriptor (nullptr if out of range).
+static const VividPortDescriptor* op_in_desc(const vivid::VisualGraph* vg, int i, int p) {
     if (!vg || i < 0 || i >= int(vg->nodes().size())) return nullptr;
     int in = 0;
     for (const auto& pd : vg->nodes()[i].inst.ports) {
         if (pd.direction != VIVID_PORT_INPUT) continue;
-        if (in == p) return pd.name;
+        if (in == p) return &pd;
         ++in;
     }
     return nullptr;
+}
+// The declared NAME of the p-th INPUT port (e.g. "scene", "pos_x", "scale_y"), or nullptr — so the card
+// labels ports by what they DO instead of a meaningless "A"/"B" (InstancesFromLanes has 11 lane inputs).
+static const char* op_in_name(const vivid::VisualGraph* vg, int i, int p) {
+    const VividPortDescriptor* pd = op_in_desc(vg, i, p);
+    return pd ? pd->name : nullptr;
+}
+// Curation for INPUT ports (parallels exposed_params): a proliferating optional lane input (MANY
+// multiplicity — InstancesFromLanes' 11 pos/scale/colour lanes) shows ONLY when it's wired; primary
+// single inputs (a texture, scene/instances) always show so every node stays wireable. Keeps a
+// lane-heavy node from drowning in empty stubs, the same way params collapse to the curated subset.
+static bool op_in_exposed(const vivid::VisualGraph* vg, int i, int p) {
+    const VividPortDescriptor* pd = op_in_desc(vg, i, p);
+    if (!pd) return false;
+    if (pd->multiplicity != VIVID_MULTIPLICITY_MANY) return true;   // primary inputs always visible
+    return vg->nodes()[i].in(p) >= 0;                               // optional lane: only if wired
+}
+static int op_in_exposed_count(const vivid::VisualGraph* vg, int i) {
+    int n = 0;
+    for (int p = 0, np = op_in_count(vg, i); p < np; ++p) if (op_in_exposed(vg, i, p)) ++n;
+    return n;
 }
 static bool op_has_out(const vivid::VisualGraph* vg, int i) {
     return vg && i >= 0 && i < int(vg->nodes().size()) && vg->nodes()[i].inst.output_port_count > 0;
@@ -207,7 +227,7 @@ CardPorts NodeGraph::card_ports(int i) const {
     const bool thumb = op_has_thumb(vg_, i);
     cp.tail_h   = thumb ? kThumbH : 0.f;   // fixed thumbnail, or nothing (the output sink)
     cp.tail_pad = thumb ? 8.f : 6.f;
-    cp.lead_rows = op_in_count(vg_, i);    // one lead row per texture input port
+    cp.lead_rows = op_in_exposed_count(vg_, i);   // one lead row per EXPOSED input (optional lanes hide till wired)
     cp.params    = int(exposed_params(i).size());   // curated subset (pinned ∪ wired), not every param
     return cp;
 }
@@ -228,9 +248,11 @@ static void op_accent(const vivid::VisualNode& n, float& r, float& g, float& b) 
     else if (n.is_source()) { r = 0.35f; g = 0.55f; b = 0.95f; }   // makes an image: blue
     else                    { r = 0.60f; g = 0.45f; b = 0.85f; }   // transforms one: violet
 }
-bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // texture input `port`: left edge, one row each
+bool NodeGraph::op_in_port(int i, int port, float& px, float& py) const {  // input `port`: left edge, one row per EXPOSED port
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || port < 0 || port >= op_in_count(vg_, i)) return false;
-    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = card_ports(i).row_cy(y, port); return true;
+    if (!op_in_exposed(vg_, i, port)) return false;                 // hidden (unwired optional lane): no row/stub
+    int slot = 0; for (int q = 0; q < port; ++q) if (op_in_exposed(vg_, i, q)) ++slot;   // row = position among exposed
+    float x, y, w, h; op_node_rect(i, x, y, w, h); px = x; py = card_ports(i).row_cy(y, slot); return true;
 }
 bool NodeGraph::op_out_port(int i, float& px, float& py) const {  // output: right, vertical centre
     if (!op_has_out(vg_, i)) return false;
