@@ -30,6 +30,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 REPO = Path(__file__).resolve().parents[2]
 DEMOS = REPO / "examples" / "demos"
@@ -134,30 +135,54 @@ def main():
 
     show = registry.by_id(args.id)
     if show is None:
-        sys.exit(f"unknown showcase id '{args.id}'; known: "
-                 f"{', '.join(s.id for s in registry.SHOWCASES)}")
+        # Not a registered showcase — treat as a bare demo module examples/demos/<id>.py
+        # (the ADR-0041 demos spectrum/blob/crystal/storm live outside the QA registry).
+        if not (DEMOS / f"{args.id}.py").exists():
+            sys.exit(f"unknown id '{args.id}': no registry entry and no examples/demos/{args.id}.py; "
+                     f"registered: {', '.join(s.id for s in registry.SHOWCASES)}")
+        show = SimpleNamespace(id=args.id, kind=registry.Kind.DEMO, target=args.id)
 
     call("get_health", timeout=10)  # fail fast if the app isn't up
     build_demo(show)
-    force_1080p()
-
-    print(f"[capture] warming {args.warm}s …", flush=True)
-    time.sleep(args.warm)
 
     args.out.mkdir(parents=True, exist_ok=True)
     path = args.out / f"{show.id}.mp4"
     if path.exists():
         path.unlink()
 
+    # Foreground the app BEFORE resizing + warming: macOS App-Naps the frame loop while Vivid is
+    # unfocused, so apply_output_settings never runs and the render target stays at its default 720 —
+    # then the export locks that in. Holding focus first lets the RT actually resize to 1080.
     stop = threading.Event()
     holder = threading.Thread(target=foreground, args=(stop,), daemon=True)
     holder.start()
     try:
+        force_1080p()
+        print(f"[capture] warming {args.warm}s …", flush=True)
+        time.sleep(args.warm)          # frames advance now (foregrounded) -> RT resizes to 1080
+        force_1080p()                  # re-assert right before recording (belt-and-suspenders)
+
+        # Perform the song through its sections DURING the record: evenly launch each scene across the
+        # export window so the clip develops (intro -> verse -> chorus). Single-scene demos just play 0.
+        n_scenes = int(call("status").get("scenes", 1))
+        try:
+            call("set_launch_quantize", bars=1)   # switch on the next bar so transitions land cleanly
+        except Exception:
+            pass
+        pending = sorted((i * args.seconds / n_scenes, i) for i in range(1, n_scenes))  # (elapsed_s, scene)
+
+        t0 = time.time()
         r = call("export_video", path=str(path), seconds=args.seconds, fps=args.fps)
-        print(f"[capture] recording {args.seconds}s @ {r.get('width')}x{r.get('height')} …", flush=True)
-        deadline = time.time() + args.seconds + 30
+        extra = f", performing {n_scenes} scenes" if n_scenes > 1 else ""
+        print(f"[capture] recording {args.seconds}s @ {r.get('width')}x{r.get('height')}{extra} …", flush=True)
+        deadline = t0 + args.seconds + 30
         while time.time() < deadline:
-            time.sleep(1.0)
+            time.sleep(0.5)
+            elapsed = time.time() - t0
+            while pending and elapsed >= pending[0][0]:
+                _, sc = pending.pop(0)
+                call("launch_scene", scene=sc)
+                print(f"[capture]   -> scene {sc} at {elapsed:.1f}s", flush=True)
             st = call("video_export_status")
             if not st.get("recording"):
                 print(f"[capture] done: {st.get('frames')} frames, "

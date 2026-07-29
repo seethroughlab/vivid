@@ -10,24 +10,55 @@ nodes, no monolith.
 Run with the app running:  uv run examples/demos/crystal.py
 """
 import os
-from vivid_demo import Vivid, find, save_geo
+from vivid_demo import Vivid, find, save_geo, surge_preset, SURGE_FX, SURGE_FX_TYPE
+import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "crystal")
-BREAK = os.path.join(HERE, "media", "break90.wav")
-BPM = 90
+CASSETTE = "Cassette Drums"       # free VST3 drum machine (BPB)
+BPM = 120
 
 
 def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(BPM)
 
-    drums = v.add_track(kind="audio")
-    v.import_audio(drums, 0, BREAK, src_bpm=90.0)
-    try:
-        v.warp(drums, 0, mode="beats")
-    except Exception:
-        pass
+    # --- Audio: a crystalline SONG in three sections (Surge XT + Cassette Drums) so the facets BUILD —
+    #     intro (kick + a low square bass grows the spikes), verse (driving bass + backbeat), chorus
+    #     (+ a shimmering high arp with Surge FX → the highs sharpen the facets). i-VI-III-VII in C minor. ---
+    S_INTRO, S_VERSE, S_CHORUS = v.scenes(["intro", "verse", "chorus"])
+    prog = ["Cm", "Ab", "Eb", "Bb"]
+    DRUMS = v.add_track(kind="instrument", instrument=CASSETTE)
+    v.set_track_gain(DRUMS, 0.85)
+    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "bass", prefer="Square", gain=0.85)
+    ARP = v.add_graph_track("arp"); surge_preset(v, ARP, "pluck", prefer="Sync", gain=0.6)
+    v.clap_effect(ARP, SURGE_FX)                                    # shimmer/space on the high arp
+    v.node_param(ARP, v.audio_node_id(ARP, "effect"), SURGE_FX_TYPE, 0.05)
+
+    def bass_seq(step):   # roots an octave down, every `step` beats — grows the spikes on the lows
+        s = []
+        for i, c in enumerate(prog):
+            root = theory.chord(c, octave=2)[0]
+            k = 0
+            while k * step < 4.0:
+                s.append((root, i * 4.0 + k * step, step * 0.9)); k += 1
+        return s
+
+    # intro: kick + closed hats, slow square bass
+    v.drums(DRUMS, S_INTRO, {"kick": "x...x...x...x...", "hat": "..x...x...x...x."}, bars=4, vel=0.8)
+    v.bassline(BASS, S_INTRO, bass_seq(2.0), length=16.0, vel=0.85)
+    # verse: full backbeat + driving 8th bass
+    v.drums(DRUMS, S_VERSE, {"kick": "x...x...x...x...", "snare": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}, bars=4, vel=0.85)
+    v.bassline(BASS, S_VERSE, bass_seq(0.5), length=16.0, vel=0.9)
+    # chorus: + crisp open-hats + a bright 16th arp over 2 octaves (the facet-sharpening highs)
+    v.drums(DRUMS, S_CHORUS, {"kick": "x...x...x...x...", "snare": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}, bars=4, vel=0.9)
+    v.euclid(DRUMS, S_CHORUS, "openhat", pulses=7, steps=16, bars=4, vel=0.5)
+    v.bassline(BASS, S_CHORUS, bass_seq(0.5), length=16.0, vel=0.9)
+    arp = []
+    for i, c in enumerate(prog):
+        for n in theory.arpeggiate(theory.chord(c, octave=5), "updown", rate=0.25, octaves=2, length=4.0, vel=0.6):
+            arp.append({"p": n["p"], "s": i * 4.0 + n["s"], "d": n["d"] * 0.9, "v": n["v"]})
+    v.set_clip(ARP, S_CHORUS, arp, 16.0)
 
     out = find(v.graph()["nodes"], "Output")
 
@@ -69,6 +100,7 @@ def build(v: Vivid, save: bool = True):
     v.map("master.high",      defm,  "frequency", amount=0.06, attack=0.03, release=0.2)   # +3/50: finer facets
     v.map("master.transient", shape, "emission",  amount=0.3,  attack=0.005, release=0.18) # +1.5/5: glow flash
 
+    v.master_gain(0.6)   # headroom: bass+arp+drums sum clips at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
     if save:

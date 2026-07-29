@@ -15,27 +15,56 @@ Instancer3D draws the base cube once per band. Each stage is a node you can see,
 Run with the app running:  uv run examples/demos/spectrum.py
 """
 import os
-from vivid_demo import Vivid, find, save_geo
+from vivid_demo import Vivid, find, save_geo, surge_preset
+import theory
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROJECT = os.path.join(HERE, "projects", "spectrum")
-BREAK = os.path.join(HERE, "media", "break90.wav")
-BPM = 90
+CASSETTE = "Cassette Drums"       # free VST3 drum machine (BPB)
+BPM = 122
 
 
 def build(v: Vivid, save: bool = True):
     v.reset()
     v.bpm(BPM)
 
-    # --- Audio: one sampler track with a broadband drum break — loads instantly (no CLAP), and its
-    #     kick/snare/hats give the spectrum content across low/mid/high. (Swap in your own loop, or a
-    #     Surge kit, for a richer song.) ---
-    drums = v.add_track(kind="audio")
-    v.import_audio(drums, 0, BREAK, src_bpm=90.0)
-    try:
-        v.warp(drums, 0, mode="beats")
-    except Exception:
-        pass
+    # --- Audio: a real electronic SONG in three sections (Surge XT + Cassette Drums), so the equaliser
+    #     BUILDS — intro (kick + hats), verse (+ square bass on the lows), chorus (+ a bright 16th arp
+    #     filling the mids/highs). i-VI-III-VII in A minor. The capture performs intro→verse→chorus. ---
+    S_INTRO, S_VERSE, S_CHORUS = v.scenes(["intro", "verse", "chorus"])
+    prog = ["Am", "F", "C", "G"]                                   # 1 bar each, 4-bar sections
+    DRUMS = v.add_track(kind="instrument", instrument=CASSETTE)     # free VST3 drums
+    v.set_track_gain(DRUMS, 0.85)                                  # leave master headroom (kick is hottest)
+    BASS = v.add_graph_track("bass"); surge_preset(v, BASS, "bass", prefer="Square", gain=0.8)
+    LEAD = v.add_graph_track("lead"); surge_preset(v, LEAD, "pluck", prefer="Sync", gain=0.7)
+
+    def bass_seq(step):   # roots an octave down, every `step` beats — anchors the low bands
+        s = []
+        for i, c in enumerate(prog):
+            root = theory.chord(c, octave=2)[0]
+            k = 0
+            while k * step < 4.0:
+                s.append((root, i * 4.0 + k * step, step * 0.9)); k += 1
+        return s
+
+    def arp_notes():      # driving 16th arpeggio up over 2 octaves — spreads energy across bands
+        ns = []
+        for i, c in enumerate(prog):
+            for n in theory.arpeggiate(theory.chord(c, octave=4), "up", rate=0.25, octaves=2, length=4.0, vel=0.72):
+                ns.append({"p": n["p"], "s": i * 4.0 + n["s"], "d": n["d"] * 0.9, "v": n["v"]})
+        return ns
+
+    # intro: kick + closed hats, sparse root bass on half-notes
+    v.drums(DRUMS, S_INTRO, {"kick": "x...x...x...x...", "hat": "..x...x...x...x."}, bars=4, vel=0.8)
+    v.bassline(BASS, S_INTRO, bass_seq(2.0), length=16.0, vel=0.8)
+    # verse: full backbeat + driving 8th bass
+    v.drums(DRUMS, S_VERSE, {"kick": "x...x...x...x...", "clap": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}, bars=4, vel=0.85)
+    v.bassline(BASS, S_VERSE, bass_seq(0.5), length=16.0, vel=0.9)
+    # chorus: full drums + open-hats + bass + the bright arp (peak energy across the whole spectrum)
+    v.drums(DRUMS, S_CHORUS, {"kick": "x...x...x...x...", "clap": "....x.......x...", "hat": "x.x.x.x.x.x.x.x."}, bars=4, vel=0.9)
+    v.euclid(DRUMS, S_CHORUS, "openhat", pulses=5, steps=16, bars=4, vel=0.5)
+    v.bassline(BASS, S_CHORUS, bass_seq(0.5), length=16.0, vel=0.95)
+    v.set_clip(LEAD, S_CHORUS, arp_notes(), 16.0)
 
     NBARS = 44
     SPREAD = 34.0   # bar row half-width (bars stay distinct: thin bars, ~1.5-unit pitch)
@@ -95,6 +124,7 @@ def build(v: Vivid, save: bool = True):
     v.connect(render, merge, 0)
     v.connect(out, render, 0)
 
+    v.master_gain(0.6)   # headroom: arp+bass+drums sum clips at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
     if save:
