@@ -235,8 +235,10 @@ class Vivid:
     def add_node(self, op: str) -> int:
         return self.call("add_node", op=op)["id"]
 
-    def connect(self, node_id: int, input_id: int, port: int = 0):
-        return self.call("connect_nodes", node_id=node_id, input_id=input_id, port=port)
+    def connect(self, node_id: int, input_id: int, port: int = 0, src_port: int = 0):
+        """Wire input_id's OUTPUT `src_port` into node_id's input `port`. src_port selects among a
+        multi-output producer's lanes (e.g. a LanePalette emitting r/g/b); 0 for single-output nodes."""
+        return self.call("connect_nodes", node_id=node_id, input_id=input_id, port=port, src_port=src_port)
 
     # --- instrument presets (generic browse/load) ---
     def list_presets(self, track: int, filter: str = "") -> dict:
@@ -316,9 +318,16 @@ class Vivid:
         return new
 
     # --- the bridge (audio characteristic -> visual param) ---
-    def map(self, src: str, node_id: int, param: str, amount=1.0, curve=0.0, lo=0.0, hi=1.0, invert=False):
+    def map(self, src: str, node_id: int, param: str, amount=1.0, curve=0.0, lo=0.0, hi=1.0, invert=False,
+            attack=0.0, release=0.0):
+        """Wire an audio characteristic to a visual param. `amount` = desired_excursion / param_range
+        (the mapped value is base + mod×range; see reference_visual_mapping_amount_vs_range). `attack`/
+        `release` are envelope-follower time constants in SECONDS — a raw audio envelope is jumpy, so a
+        fast attack + slow release lets the param SNAP up on a hit then glide back instead of jittering
+        (0/0 = instantaneous, the old behaviour)."""
         return self.call("connect_mapping", src=src, dst=f"node:{node_id}.{param}",
-                         amount=amount, curve=curve, lo=lo, hi=hi, invert=invert)
+                         amount=amount, curve=curve, lo=lo, hi=hi, invert=invert,
+                         attack=attack, release=release)
 
     def track_id(self, track: int) -> int:
         """The STABLE id of a track (by index) — the one used in per-track mapping sources. It is NOT

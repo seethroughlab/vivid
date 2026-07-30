@@ -33,8 +33,10 @@
 #include "audio/vst3_host.h"
 #include "audio/mini_fft.h"   // frame-side spectrum for the <src>.fft.k bridge sources
 #include "operator_api/note_bus.h"   // publish each track's held notes for the note-instancer op
+#include "operator_api/spectrum_bus.h"   // publish the master spectrum for per-band geometry ops
 #include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
+#include "audio/clap_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
 #include "cli/control_server.h"
@@ -161,6 +163,10 @@ void reap_plugin_windows(App& app, Window& win) {
         if (win.fx_win[k] && !vst3_plugin_window_is_open(win.fx_win[k])) {
             vst3_plugin_window_close(win.fx_win[k]); win.fx_win[k] = nullptr;
         }
+    for (int k = 0; k < vivid::session::kMaxTracks; ++k)
+        if (win.clap_win[k] && !clap_plugin_window_is_open(win.clap_win[k])) {
+            clap_plugin_window_close(win.clap_win[k]); win.clap_win[k] = nullptr;
+        }
 }
 
 void publish_bridge_sources(App& app, Window& win) {
@@ -228,8 +234,26 @@ void publish_bridge_sources(App& app, Window& win) {
         for (int k = 0; k < B::kNumTransportKinds; ++k)
             graph.publish(H(key(kTransport, 0, 0, k), [k] { return B::transport_source(B::kTransportKindSuffixes[k]); }), tvals[k]);
     }
-    if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1)
+    if (app.session) if (int nm = S::session_master_analysis_copy(app.session, an_buf, S::kAnalysisN); nm > 1) {
         do_fft(nm, [&](int k, float v) { graph.publish(H(key(kMasterFft, 0, 0, k), [k] { return B::master_fft(k); }), v); });
+        // Richer master spectrum for the spectrum bus (visual ops → per-band geometry: 3D equaliser /
+        // spectral ridge), at higher band resolution than the 8-band scalar bridge above. Publish the
+        // RAW magnitudes normalised to a slowly-decaying peak — a fixed dB reference (spectrum_log_bands)
+        // saturates every band to 1.0 on a loud mix, giving a flat, static equaliser; normalising to the
+        // running peak keeps the RELATIVE shape (which bands are loud right now) so the bars actually move.
+        constexpr int kBusBands = 48;
+        static float sbands[kBusBands];
+        vivid::audio::spectrum_raw_bands(an_buf, nm, 48000.f, sbands, kBusBands, an_re, an_im);
+        // PER-BAND normalisation: each band relative to its OWN slowly-decaying peak. Global-peak
+        // normalisation would let the (much louder) kick crush every other band to ~0; per-band lets a
+        // quiet hat band still use its full 0..1 range, so every bar with real content moves.
+        static float s_band_peak[kBusBands] = {0};
+        for (int k = 0; k < kBusBands; ++k) {
+            s_band_peak[k] = std::max(s_band_peak[k] * 0.992f, sbands[k]);   // rise fast, fall slow (~2s)
+            sbands[k] = (s_band_peak[k] > 1e-5f) ? std::min(1.f, sbands[k] / s_band_peak[k]) : 0.f;
+        }
+        vivid_spectrum_bus_publish_master(sbands, kBusBands);
+    }
     int ntracks = 0;   // live tracks published to the note bus this frame (the rest are freed below)
     for (int t = 0; app.session && t < vivid::session::session_track_count(app.session) && t < vivid::session::kMaxTracks; ++t) {
         const float lv = vivid::session::session_track_level(app.session, t);
@@ -305,6 +329,13 @@ void publish_bridge_sources(App& app, Window& win) {
         vivid_note_bus_publish(s, -1, nullptr, 0);
         if (s < VIVID_NOTE_EVENT_TRACKS) vivid_note_event_bus_publish(s, -1, nullptr, 0);
     }
+    // Advance mapping smoothing (envelope followers) once per frame BEFORE resolving params, using a
+    // real wall-clock delta clamped against stalls. Sources are all published above at this point.
+    static double s_prev_bridge_t = glfwGetTime();
+    const double now = glfwGetTime();
+    const float bridge_dt = static_cast<float>(std::clamp(now - s_prev_bridge_t, 0.0, 0.1));
+    s_prev_bridge_t = now;
+    graph.advance_mappings(bridge_dt);
     graph.apply_params();
 }
 
@@ -716,9 +747,17 @@ void run_frame_loop(App& app, Window& win) {
             draw_mod_editor(ui, win.mod_editor, app.session, win.sel_track);   // ADR-0022 shape editor
             draw_popup(ui, win.node_menu);        // ADR-0027: op-node menu (open/fork/clone)
             draw_popup(ui, win.audio_node_menu);  // ADR-0027: audio-graph node "→ visuals"
+            draw_popup(ui, win.param_menu);       // node param-curation menu (show/hide + wire-reveal)
             win.param_chooser.draw(ui);   // Phase 2c: the curated-inspector "+ Add param" palette (modal, on top)
             clip_editor.set_playhead(beats);
             clip_editor.draw(ui);  // editor window on top
+            // The docked clip editor fills the dock and skips draw_device_dock (which paints the resize
+            // strip), so draw the strip here — otherwise the dock's resize handle vanishes while editing.
+            if (clip_editor.is_open() && clip_editor.is_docked()) {
+                const Rect dr = win.dock_resize_rect();
+                dock_resize_strip(ui, 0.f, win.dock_top(), static_cast<float>(win.win_w),
+                                  hit(dr, mx, my) || win.dock_drag);
+            }
             if (win.show_mappings) draw_mapping_overview(ui, app.graph, app.session, win.win_w, win.win_h);
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
@@ -887,12 +926,10 @@ void AudioNodeGraph::on_move(App& app, Window& win, double mx, double my) {
         if (app.edit_gateway) app.edit_gateway->note_edit("Set Param", "ag-param-drag");   // ADR-0017/G3
     }
     // Reposition drag: the grabbed node follows the cursor (screen -> world via the shared transform).
-    if (node_drag >= 0 && app.session && win.focus.kind == vivid::FocusContext::Kind::AudioGraph) {
+    // A drag in progress (node_drag >= 0) continues regardless of dock focus — the pane is always live.
+    if (node_drag >= 0 && app.session) {
         const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-        set_source(app.session, tr);
-        const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-        set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        set_selection(win.sel_audio_node);   // keep the instance primed (bounds/selection) for the draw
+        prime(app, win);   // node-canvas bounds (below-session pane) + param bounds + selection
         double wxd, wyd; canvas_.view().to_world(mx, my, wxd, wyd);   // screen -> world via the absolute camera
         S::session_audio_graph_node_set_pos(app.session, tr, node_drag,
                                             static_cast<float>(wxd) - node_dx, static_cast<float>(wyd) - node_dy);

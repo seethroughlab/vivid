@@ -67,6 +67,20 @@ inline Rect session_panel(float split_x, int win_h, float dock_h) {
 }
 inline float mixer_divider_y(int scenes) { return mixer_y(scenes) - 6.f; }  // rule between grid and mixer
 
+// The AUDIO GRAPH pane: the lower-left column, below the session mixer, down to the dock. Its top
+// clears the mixer's ARM/VIZ button row (mixer_y+48 + 16h) plus a gap. A header strip hosts the
+// track label + Re-layout/Editor buttons; the node canvas fills the rest. The bottom dock is a
+// pure param inspector now, so the audio node graph lives HERE (below the session).
+inline Rect audio_graph_pane(float split_x, int win_h, float dock_h, int scenes) {
+    const float top = mixer_y(scenes) + 48.f + 16.f + 12.f;
+    const float bottom = dock_top(win_h, dock_h) - kPaneMargin;
+    return { kPaneMargin, top, split_x - 2.f * kPaneMargin, std::max(48.f, bottom - top) };
+}
+inline Rect audio_pane_hdr_rect(const Rect& pane)      { return { pane.x, pane.y, pane.w, kPanelHdH }; }
+inline Rect audio_pane_canvas_rect(const Rect& pane)   { return { pane.x, pane.y + kPanelHdH, pane.w, pane.h - kPanelHdH }; }
+inline Rect audio_pane_relayout_rect(const Rect& pane) { return { pane.x + pane.w - 78.f, pane.y + 3.f, 74.f, kPanelHdH - 6.f }; }
+inline Rect audio_pane_editor_rect(const Rect& pane)   { return { pane.x + pane.w - 156.f, pane.y + 3.f, 60.f, kPanelHdH - 6.f }; }
+
 // Sources offered when mapping an audio param (the return path): audio characteristics + visuals state.
 struct MapSrc { const char* label; const char* id; };
 constexpr MapSrc kMapSources[] = {

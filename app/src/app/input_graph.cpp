@@ -15,6 +15,7 @@
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
+#include "audio/clap_plugin_window.h"   // open a CLAP node's plugin editor (clap.gui) from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
 #include "packages/package_manifest.h"  // parse_package_manifest (ADR-0020: watch the fresh clone)
 #include "gpu/shader_library.h"         // ADR-0020: shader entries/tier + fork (fork-to-edit)
@@ -23,6 +24,7 @@
 #include "platform/platform.h"      // open_in_editor
 
 #include <algorithm>
+#include <cstdlib>   // std::atoi (audio param-menu track tag)
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -30,6 +32,58 @@
 namespace {
 using namespace vivid::ui;          // hit, Rect, AudioNodeGraph/Box, dock/audio_graph rects
 namespace S = vivid::session;
+
+// The audio editor now spans two panes: the node CANVAS below the session view, and the selected
+// node's param strip in the bottom dock. A press belongs to the audio editor if it lands in EITHER —
+// used to gate the gesture handlers (they no longer live only in the dock band).
+inline bool ag_pane_hit(const vivid::Window& win, vivid::App& app, double mx, double my) {
+    if (!app.session) return false;
+    const int scenes = S::session_scene_count(app.session);
+    const Rect pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes);
+    // The below-session pane (node canvas + header) is ALWAYS live — it's a persistent pane now, not a
+    // dock drill-in. The bottom dock's param strip only counts as ours when the dock is actually showing
+    // audio params (focus AudioGraph); when the clip editor or a visual node owns the dock, it isn't.
+    const bool in_param_dock = (win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top());
+    return hit(pane, mx, my) || in_param_dock;
+}
+
+// Build the audio node's param-curation menu (Gesture A curate / Gesture B reveal). connect_mode omits
+// already-wired params and switches dispatch to pin+connect; pending_src is the modulator the wire came
+// from. Shared by the audio FSM (AudioNodeGraph::on_down/on_up) and the menu dispatch. `checked` marks a
+// shown param (pinned OR wired); a wired param is disabled in curate mode (disconnect to hide).
+inline vivid::ui::PopupMenu build_audio_param_menu(vivid::App& app, vivid::ui::AudioNodeGraph& ag, int tr,
+                                                   int node_id, float x, float y, bool connect_mode,
+                                                   int pending_src) {
+    std::vector<vivid::ui::PopupItem> items;
+    const int pc = S::session_audio_graph_node_param_count(app.session, tr, node_id);
+    for (int p = 0; p < pc; ++p) {
+        if (S::session_audio_graph_node_param_hint(app.session, tr, node_id, p) == VIVID_DISPLAY_LFO) continue;
+        const bool wired = S::session_audio_graph_node_param_wired(app.session, tr, node_id, p) != 0;
+        if (connect_mode && wired) continue;
+        vivid::ui::PopupItem it;
+        const char* nm = S::session_audio_graph_node_param_name(app.session, tr, node_id, p);
+        it.label = nm ? nm : "";
+        it.id = p;
+        it.checked = wired || ag.is_param_pinned(node_id, p);
+        it.enabled = connect_mode ? true : !wired;
+        items.push_back(std::move(it));
+    }
+    const char* tn = "params";   // header = the node's op type (resolved by id → index)
+    for (int i = 0, n = S::session_track_audio_graph_node_count(app.session, tr); i < n; ++i)
+        if (S::session_track_audio_graph_node_id(app.session, tr, i) == node_id) {
+            const char* t = S::session_track_audio_graph_node_type(app.session, tr, i);
+            if (t && *t) tn = t;
+            break;
+        }
+    return vivid::ui::popup_param_curate(x, y, node_id, tr, connect_mode, pending_src, tn, std::move(items));
+}
+// The audio deep view lives in the bottom dock, so a menu opened at the click would extend off the bottom.
+// Float it UP so its full height sits above the dock (over the graph), clamped below the top bar.
+inline void clamp_audio_menu_onscreen(vivid::Window& win) {
+    vivid::ui::PopupMenu& m = win.param_menu;
+    const float mh = 22.f + static_cast<float>(m.items.size()) * m.row_h;   // header + rows
+    m.y = std::max(30.f, std::min(m.y, win.dock_top() - mh - 8.f));
+}
 }
 
 namespace vivid::input {
@@ -106,7 +160,7 @@ void mod_editor_drag(Window& win, App& app, double mx, double /*my*/) {
 }
 
 bool audio_chooser_open_at(Window& win, App& app, double mx, double my) {
-    if (win.focus.kind != vivid::FocusContext::Kind::AudioGraph || my < win.dock_top()) return false;
+    if (!ag_pane_hit(win, app, mx, my)) return false;
     if (audio_graph_track(win, app) < 0) return false;
     const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
     win.audio_chooser_new_track = false;
@@ -344,12 +398,10 @@ bool graph_node_rclick(Window& win, App& app, int button, int action, double mx,
 // cursor→world hit-test lands on the same boxes the editor draws.
 bool audio_node_rclick(Window& win, App& app, int button, int action, double mx, double my) {
     if (button != GLFW_MOUSE_BUTTON_RIGHT || action != GLFW_PRESS || !app.audio_graph || !app.session) return false;
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top())) return false;
+    if (!ag_pane_hit(win, app, mx, my)) return false;
     AudioNodeGraph* ag = app.audio_graph;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-    ag->set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    ag->set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    ag->prime(app, win);   // node-canvas bounds (below-session pane) + param bounds (dock) + selection
     double wmx, wmy; ag->view().to_world(mx, my, wmx, wmy);
     for (const AudioNodeBox& b : ag->layout()) {
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
@@ -419,6 +471,84 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
     return true;
 }
 
+// Build the param-curation item list for a VISUAL node: every param, checked when currently shown
+// (pinned OR wired), and a wired param disabled (it's shown because of its connection — disconnect to hide).
+static std::vector<vivid::ui::PopupItem> visual_param_items(App& app, int node_i, bool connect_mode) {
+    std::vector<vivid::ui::PopupItem> items;
+    const int pc = app.graph->op_param_count_at(node_i);
+    for (int l = 0; l < pc; ++l) {
+        const bool wired = app.graph->op_param_wired_at(node_i, l);
+        if (connect_mode && wired) continue;   // the reveal menu only offers params you can still connect
+        vivid::ui::PopupItem it;
+        it.label   = app.graph->op_param_label_at(node_i, l);
+        it.id      = l;
+        it.checked = wired || app.graph->is_param_pinned(node_i, l);
+        it.enabled = connect_mode ? true : !wired;
+        items.push_back(std::move(it));
+    }
+    return items;
+}
+
+// Gesture A: left-click a visuals node's header chevron → open its show/hide-params menu.
+bool graph_param_curate_click(Window& win, App& app, int button, int action, double mx, double my) {
+    if (button != GLFW_MOUSE_BUTTON_LEFT || action != GLFW_PRESS || !app.graph || mx < win.split_x) return false;
+    const int i = app.graph->param_curate_hit(mx, my);
+    if (i < 0) return false;
+    win.param_menu = vivid::ui::popup_param_curate(static_cast<float>(mx), static_cast<float>(my), i,
+                                                   /*audio_track*/ -1, /*connect_mode*/ false, /*pending_src*/ -1,
+                                                   app.graph->op_kind_name(i), visual_param_items(app, i, false));
+    win.menu.close(); win.node_menu.close();
+    return true;
+}
+
+// Gesture B: a param wire was dropped on a node body (no visible port) → open the reveal+connect menu.
+bool graph_param_reveal_open(Window& win, App& app) {
+    if (!app.graph) return false;
+    int node_i, src; double sx, sy;
+    if (!app.graph->take_param_menu_request(node_i, src, sx, sy)) return false;
+    auto items = visual_param_items(app, node_i, /*connect_mode*/ true);
+    if (items.empty()) return false;   // nothing left to connect (all params already wired)
+    win.param_menu = vivid::ui::popup_param_curate(static_cast<float>(sx), static_cast<float>(sy), node_i,
+                                                   /*audio_track*/ -1, /*connect_mode*/ true, /*pending_src*/ src,
+                                                   app.graph->op_kind_name(node_i), std::move(items));
+    win.menu.close(); win.node_menu.close();
+    return true;
+}
+
+// Dispatch a click in the param-curation menu: toggle a pin (curate) or pin+connect the parked wire (reveal).
+bool graph_parammenu(Window& win, App& app, double mx, double my) {
+    if (!win.param_menu.open) return false;
+    vivid::ui::PopupMenu& m = win.param_menu;
+    const int row = m.hit_row(static_cast<float>(mx), static_cast<float>(my));
+    if (app.graph && row >= 0 && m.items[row].enabled) {
+        const int node_i = m.a;
+        const int param  = m.items[row].id;
+        const bool audio = m.data.rfind("audio:", 0) == 0;
+        if (!audio) {
+            if (m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect) {
+                app.graph->pin_param(node_i, param);
+                app.graph->connect_data_to_param(m.b, node_i, param);
+            } else {
+                app.graph->toggle_param_pin(node_i, param);
+            }
+        } else if (app.session) {
+            const int tr = std::atoi(m.data.c_str() + 6);   // "audio:<tr>"
+            if (m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect) {
+                S::session_audio_graph_node_param_pin(app.session, tr, node_i, param);
+                S::session_audio_graph_connect_control(app.session, tr, m.b, node_i, param,
+                                                       /*amount*/ 1.f, /*curve*/ 0.f, /*invert*/ 0, /*bipolar*/ 0);
+                if (app.edit_gateway) app.edit_gateway->note_edit("Connect Modulation", "");
+            } else {   // toggle: item.checked (and enabled ⇒ not wired) means currently pinned
+                if (m.items[row].checked) S::session_audio_graph_node_param_unpin(app.session, tr, node_i, param);
+                else                      S::session_audio_graph_node_param_pin(app.session, tr, node_i, param);
+                if (app.edit_gateway) app.edit_gateway->note_edit(m.items[row].checked ? "Unpin Param" : "Pin Param", "");
+            }
+        }
+    }
+    m.close();
+    return true;
+}
+
 }  // namespace vivid::input
 
 // ADR-0023 6d: the audio editor's gesture FSM as methods on AudioNodeGraph (the stateful interaction
@@ -428,33 +558,62 @@ bool graph_nodemenu(Window& win, App& app, double mx, double my) {
 namespace vivid::ui {
 namespace S = vivid::session;
 
+// Open the selected audio-graph node's native plugin editor into a free window slot — VST3 (IPlugView)
+// or CLAP (clap.gui), chosen by the node's binding family. No-op for native / sampler / output nodes.
+static void open_audio_node_editor(vivid::App& app, vivid::Window& win, int tr, int node_id) {
+    if (!app.session || node_id < 0) return;
+    const char* name = S::session_track_name(app.session, tr);
+    switch (S::session_track_audio_graph_node_plugin_kind(app.session, tr, node_id)) {
+        case 1:   // VST3
+            if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                    S::session_audio_graph_node_controller(app.session, tr, node_id)))
+                for (int k = 0; k < S::kMaxTracks; ++k) if (!win.fx_win[k]) { win.fx_win[k] = vst3_plugin_window_open(ctrl, name); break; }
+            break;
+        case 2:   // CLAP
+            if (auto* ch = static_cast<vivid::session::ClapHandle*>(
+                    S::session_audio_graph_node_clap(app.session, tr, node_id)))
+                for (int k = 0; k < S::kMaxTracks; ++k) if (!win.clap_win[k]) { win.clap_win[k] = clap_plugin_window_open(ch, name); break; }
+            break;
+        default: break;
+    }
+}
+
 // Press in the audio-graph deep view: the whole dock interaction — the header "Editor" button, source
 // key-range handles, the plugin pinned-inspector rows, the native knob strip, param-port drag/click,
 // node select / remove / double-click-editor + reposition-drag start, edge disconnect, and empty-space
 // double-click-reset / pan-start. Returns true when it consumed the press (always, over the dock). The
 // caller guarantees a left-button press.
-bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && my >= win.dock_top() && app.session))
-        return false;
+// Prime the instance from the shell for a draw or a gesture: resolve the selected track, set the
+// node-canvas bounds (the below-session pane) AND the param bounds (the dock), and the selection.
+// One source of truth so every draw/hit-test path agrees on geometry (ADR-0023: below-session pane).
+void AudioNodeGraph::prime(App& app, const Window& win) {
+    if (!app.session) return;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
     set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-    set_selection(win.sel_audio_node);   // size the param band as draw does (compound preview)
-    // "Re-layout" button → snap the graph back to the tidy auto-arrangement (undo-noted like a drag).
-    if (hit(dock_audio_relayout_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
+    const int scenes = S::session_scene_count(app.session);
+    const Rect canv = audio_pane_canvas_rect(audio_graph_pane(win.split_x, win.win_h, win.dock_h, scenes));
+    set_bounds(canv.x, canv.y, canv.x + canv.w, canv.y + canv.h);
+    const Rect dp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
+    set_param_bounds(dp.x, dp.y, dp.x + dp.w, dp.y + dp.h);
+    set_selection(win.sel_audio_node);
+}
+
+bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
+    if (!(app.session && ag_pane_hit(win, app, mx, my)))
+        return false;
+    const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
+    prime(app, win);
+    const Rect ag_pane = audio_graph_pane(win.split_x, win.win_h, win.dock_h, S::session_scene_count(app.session));
+    // "Re-layout" button (audio-pane header) → snap the graph back to the tidy auto-arrangement.
+    if (hit(audio_pane_relayout_rect(ag_pane), mx, my)) {
         relayout();
         if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
         return true;
     }
-    // "Editor" button in the dock header → open the selected VST3 node's native plugin window.
+    // "Editor" button (audio-pane header) → open the selected node's native plugin editor (VST3 or CLAP).
     if (win.sel_audio_node >= 0
-        && hit(dock_audio_editor_button_rect(win.win_w, win.win_h, win.dock_h), mx, my)) {
-        if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                S::session_audio_graph_node_controller(app.session, tr, win.sel_audio_node))) {
-            int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
-            if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
-        }
+        && hit(audio_pane_editor_rect(ag_pane), mx, my)) {
+        open_audio_node_editor(app, win, tr, win.sel_audio_node);
         return true;
     }
     if (win.sel_audio_node >= 0 && sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
@@ -546,6 +705,15 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
     // popover placement) stays screen-space and keeps using mx,my.
     double wmx, wmy; canvas_.view().to_world(mx, my, wmx, wmy);
     const auto boxes = layout();
+    // Gesture A: a header chevron opens the show/hide-params menu (before body-select would grab the node).
+    if (const int chev = param_curate_hit(wmx, wmy); chev >= 0) {
+        win.param_menu = build_audio_param_menu(app, *this, tr, chev, static_cast<float>(mx),
+                                                static_cast<float>(my), /*connect_mode*/ false, /*pending_src*/ -1);
+        clamp_audio_menu_onscreen(win);   // the dock is at the bottom → float the menu up over the graph
+        win.menu.close(); win.node_menu.close();
+        win.sel_audio_node = chev;
+        return true;
+    }
     for (const auto& b : boxes) {   // start a rewire drag from an output port (release connects)
         // No user-drawable output on ENGINE-MANAGED nodes: the Output sink (2) and the note-source
         // infrastructure — MIDI In (3), Clip (6), Selector (7), Gen (8). reconcile_note_subgraph owns
@@ -590,14 +758,10 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         }
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
-            // Double-click a VST3 node → open its native plugin editor.
+            // Double-click a plugin node → open its native editor (VST3 or CLAP).
             const double now = glfwGetTime();
             if (last_node == b.node_id && now - last_node_t < 0.35) {
-                if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                        S::session_audio_graph_node_controller(app.session, tr, b.node_id))) {
-                    int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
-                    if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
-                }
+                open_audio_node_editor(app, win, tr, b.node_id);
                 last_node_t = -1;
             } else { last_node = b.node_id; last_node_t = now; }
             node_drag = b.node_id;                                   // start a reposition drag (any node)
@@ -642,9 +806,7 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     param_drag = -1; param_horiz = false; node_drag = -1; key_drag = -1; panning = false;
     if (wire_from < 0 || !app.session) return false;
     const int tr = std::min(std::max(win.sel_track, 0), S::session_track_count(app.session) - 1);
-    set_source(app.session, tr);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
+    prime(app, win);   // node-canvas bounds (below-session pane) so the rewire ports resolve there
     // ADR-0015: what SIGNAL the dragged wire carries follows from what the source node emits. A MidiIn
     // (kind 3) / note effect (kind 4) emit notes (NOTE edge); a modulator (kind 5) emits CONTROL to a
     // PARAM port; everything else is audio. (Unambiguous today because no node emits both.)
@@ -654,6 +816,7 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
     for (const auto& b : layout()) if (b.node_id == wire_from) { from_kind = b.kind; break; }
     const bool note_wire = (from_kind == 3 || from_kind == 4);
     if (from_kind == 5) {   // modulator -> a param PORT (control edge to that exact param, ADR-0022)
+        bool connected = false;
         for (const auto& b : layout()) {
             if (b.node_id == wire_from) continue;
             const int slot = param_port_hit(b, wmx, wmy);
@@ -666,7 +829,21 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
                                                        /*invert*/0, /*bipolar*/0)
                 && app.edit_gateway)
                 app.edit_gateway->note_edit("Connect Modulation", "");
+            connected = true;
             break;
+        }
+        if (!connected) {   // Gesture B: dropped on a node body (no visible port) → reveal+connect menu
+            for (const auto& b : layout()) {
+                if (b.node_id == wire_from || b.kind == 2) continue;
+                if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
+                    win.param_menu = build_audio_param_menu(app, *this, tr, b.node_id, static_cast<float>(mx),
+                                                            static_cast<float>(my), /*connect_mode*/ true,
+                                                            /*pending_src*/ wire_from);
+                    clamp_audio_menu_onscreen(win);
+                    win.menu.close(); win.node_menu.close();
+                    break;
+                }
+            }
         }
         wire_from = -1;
         return true;
@@ -693,11 +870,8 @@ bool AudioNodeGraph::on_up(App& app, Window& win, double mx, double my) {
 // Scroll-wheel zoom of the audio-graph deep view, around the cursor (keeps the world point under the
 // cursor fixed). The zoom clamp ([0.35,4.0]) is the audio graph's own policy.
 void AudioNodeGraph::on_scroll(App& app, Window& win, double yoff, double mx, double my) {
-    if (!(win.focus.kind == vivid::FocusContext::Kind::AudioGraph && app.session)) return;
-    set_source(app.session, win.sel_track);
-    const Rect gp = audio_graph_panel(win.win_w, win.win_h, win.dock_h);
-    set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-    set_selection(win.sel_audio_node);   // match draw's band height for the zoom hit-region
+    if (!app.session) return;
+    prime(app, win);   // node-canvas bounds (below-session pane) for the zoom hit-region
     const Rect gr = graph_region();
     if (mx >= gr.x && mx < gr.x + gr.w && my >= gr.y && my < gr.y + gr.h) {
         canvas_.zoom_at(mx, my, std::pow(1.12f, static_cast<float>(yoff)));   // ADR-0023 #3d: shared zoom-around-cursor

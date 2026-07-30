@@ -110,6 +110,8 @@ def showcase_media_html(s: dict, cfg: dict) -> str:
         f'muted loop playsinline preload="none" aria-label="{title}"></video>'
         f'<button class="showcase-unmute" type="button" aria-label="Unmute" title="Unmute" hidden>'
         f'<span aria-hidden="true">\U0001F507</span></button>'
+        f'<button class="showcase-expand" type="button" aria-label="Enlarge" title="Enlarge" hidden>'
+        f'<span aria-hidden="true">⛶</span></button>'
         f'</div>'
     )
 
@@ -189,6 +191,68 @@ SHOWCASE_PLAYER_JS = """
         video.muted = true; btn.querySelector("span").textContent = ICON_MUTED; btn.setAttribute("aria-label","Unmute"); btn.title = "Unmute";
       }
     });
+  });
+
+  // --- Click-to-enlarge lightbox: one reusable overlay plays the clip large, WITH sound. Grid stays
+  // its normal size; the ⛶ button opens this. Dismiss on close / backdrop / Escape; focus is restored. ---
+  var lb = null, lbVideo = null, lbHls = null, lbTrigger = null;
+  function buildLightbox(){
+    lb = document.createElement("div");
+    lb.className = "showcase-lightbox"; lb.hidden = true;
+    lb.setAttribute("role","dialog"); lb.setAttribute("aria-modal","true"); lb.setAttribute("aria-label","Enlarged clip");
+    lb.innerHTML =
+      '<div class="showcase-lightbox-backdrop"></div>' +
+      '<div class="showcase-lightbox-stage">' +
+        '<video class="showcase-lightbox-video" loop playsinline controls></video>' +
+        '<button class="showcase-lightbox-close" type="button" aria-label="Close" title="Close"><span aria-hidden="true">\\u2715</span></button>' +
+      '</div>';
+    document.body.appendChild(lb);
+    lbVideo = lb.querySelector("video");
+    lb.querySelector(".showcase-lightbox-backdrop").addEventListener("click", closeLightbox);
+    lb.querySelector(".showcase-lightbox-close").addEventListener("click", closeLightbox);
+  }
+  function muteGrid(){
+    document.querySelectorAll(".showcase-player video.showcase-video").forEach(function(v){ v.muted = true; });
+    document.querySelectorAll(".showcase-unmute span").forEach(function(s){ s.textContent = ICON_MUTED; });
+  }
+  function openLightbox(box, trigger){
+    if (!lb) buildLightbox();
+    lbTrigger = trigger || null;
+    var src = box.getAttribute("data-hls-src");
+    var posterEl = box.querySelector("img.showcase-poster");
+    muteGrid();
+    lbVideo.poster = posterEl ? posterEl.src : "";
+    lbVideo.muted = false;
+    lb.hidden = false; document.body.style.overflow = "hidden";
+    if (lbHls) { lbHls.destroy(); lbHls = null; }
+    lbVideo.removeAttribute("src");
+    if (!isHls(src) || nativeHls()) {
+      lbVideo.src = src; lbVideo.play().catch(function(){});
+    } else {
+      loadHls().then(function(Hls){
+        if (Hls && Hls.isSupported()) {
+          lbHls = new Hls({ capLevelToPlayerSize: true });
+          lbHls.loadSource(src); lbHls.attachMedia(lbVideo);
+          lbHls.on(Hls.Events.MANIFEST_PARSED, function(){ lbVideo.play().catch(function(){}); });
+        } else { lbVideo.src = src; lbVideo.play().catch(function(){}); }
+      });
+    }
+    lb.querySelector(".showcase-lightbox-close").focus();
+  }
+  function closeLightbox(){
+    if (!lb || lb.hidden) return;
+    lbVideo.pause();
+    if (lbHls) { lbHls.destroy(); lbHls = null; }
+    lbVideo.removeAttribute("src"); lbVideo.load();
+    lb.hidden = true; document.body.style.overflow = "";
+    if (lbTrigger) { try { lbTrigger.focus(); } catch(e){} lbTrigger = null; }
+  }
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeLightbox(); });
+  document.querySelectorAll(".showcase-player[data-hls-src]").forEach(function(box){
+    var ex = box.querySelector(".showcase-expand");
+    if (!ex) return;
+    ex.hidden = false;
+    ex.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); openLightbox(box, ex); });
   });
 })();
 </script>

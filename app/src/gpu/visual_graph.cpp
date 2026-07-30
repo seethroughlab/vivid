@@ -4,6 +4,7 @@
 #include "gpu/shader_file_op.h"   // ADR-0016: a shader node reports its compile error
 
 #include "operator_api/gpu_operator.h"
+#include "operator_api/value_view.h"   // VividValueView / VividValueOutput (FLOAT-MANY lane transport)
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
@@ -234,10 +235,10 @@ void VisualGraph::remove_node(int i) {
         }
     ensure_resources(nodes_.size());
 }
-void VisualGraph::set_input(int node, int port, int src) {
+void VisualGraph::set_input(int node, int port, int src, int src_port) {
     if (node < 0 || node >= static_cast<int>(nodes_.size()) || port < 0) return;
     if (src == node) return;                          // no self-loops
-    nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1);
+    nodes_[node].set_in(port, (src >= 0 && src < static_cast<int>(nodes_.size())) ? src : -1, std::max(0, src_port));
 }
 int VisualGraph::output_index() const {
     int first = -1;
@@ -320,12 +321,23 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
     auto is_custom_transport = [](VividPortTransport t) {
         return t == VIVID_PORT_TRANSPORT_CUSTOM_REF || t == VIVID_PORT_TRANSPORT_CUSTOM_VALUE;
     };
+    // A FLOAT-MANY value lane: SCALAR payload carried as an array (e.g. an audio spectrum → per-instance
+    // heights for InstancesFromLanes). Routed through ctx.values / ctx.value_outputs, NOT as a texture.
+    auto is_value_lane = [](const VividPortDescriptor& pd) {
+        return pd.type == VIVID_PORT_SCALAR && pd.multiplicity == VIVID_MULTIPLICITY_MANY;
+    };
     published_custom_.assign(nnodes, {});
+    published_values_.resize(nnodes);
     for (int i = 0; i < nnodes; ++i) {
-        int co = 0;
-        for (const auto& pd : nodes_[i].inst.ports)
-            if (pd.direction == VIVID_PORT_OUTPUT && is_custom_transport(pd.transport)) ++co;
+        int co = 0, vo = 0;
+        for (const auto& pd : nodes_[i].inst.ports) {
+            if (pd.direction != VIVID_PORT_OUTPUT) continue;
+            if (is_custom_transport(pd.transport)) ++co;
+            else if (is_value_lane(pd)) ++vo;
+        }
         published_custom_[i].assign(co, nullptr);
+        published_values_[i].resize(vo);                    // keep buffer capacity across frames
+        for (auto& s : published_values_[i]) s.count = 0;   // but reset published length each frame
     }
 
     for (int idx : order) {
@@ -338,21 +350,56 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         // process_gpu call below; the edge `inputs[k]` is indexed by input-PORT ordinal (all inputs).
         std::vector<WGPUTextureView> texv;
         std::vector<void*>           custin;
+        std::vector<VividValueView>  valv;   // one per INPUT port ordinal (ABI: values[input port ordinal])
         int in_ord = 0;
         for (const auto& pd : n.inst.ports) {
             if (pd.direction != VIVID_PORT_INPUT) continue;
-            const int e = n.in(in_ord);
+            const int e  = n.in(in_ord);
+            const int sp = n.in_src_port(in_ord);   // which OUTPUT port of the source to read (default 0)
+            VividValueView vv{};   // zero (value_count 0) unless this is a wired value lane
             if (is_custom_transport(pd.transport)) {
-                void* v = (e >= 0 && e < nnodes && !published_custom_[e].empty()) ? published_custom_[e][0] : nullptr;
+                void* v = (e >= 0 && e < nnodes && sp >= 0 && sp < static_cast<int>(published_custom_[e].size()))
+                          ? published_custom_[e][sp] : nullptr;
                 custin.push_back(v);
+            } else if (is_value_lane(pd)) {
+                // Read the chosen value-lane output of the upstream node (sp selects among a multi-output
+                // producer's lanes, e.g. LanePalette r/g/b); a disconnected lane stays an empty view.
+                if (e >= 0 && e < nnodes && sp >= 0 && sp < static_cast<int>(published_values_[e].size())) {
+                    const ValueSlot& s = published_values_[e][sp];
+                    vv.data = s.count ? s.buf.data() : nullptr;
+                    vv.value_count = s.count;
+                    vv.value_type = VIVID_VALUE_FLOAT;
+                    vv.multiplicity = VIVID_MULTIPLICITY_MANY;
+                }
             } else {
                 WGPUTextureView v = (e >= 0 && e < nnodes) ? rts_[e].view : fallback_.view;
                 texv.push_back(v ? v : fallback_.view);
             }
+            valv.push_back(vv);
             ++in_ord;
         }
         std::vector<void*>& pub = published_custom_[idx];   // this node's custom-ref output slots
         std::fill(pub.begin(), pub.end(), nullptr);
+
+        // This node's value-lane OUTPUT builders: one VividValueOutput per OUTPUT port ordinal, wired to
+        // published_values_[idx][k] for value-lane outputs (resize allocates the host buffer, commit
+        // records the length). Non-value outputs get a zeroed builder.
+        std::vector<VividValueOutput> valout;
+        int vout_ord = 0;
+        for (const auto& pd : n.inst.ports) {
+            if (pd.direction != VIVID_PORT_OUTPUT) continue;
+            VividValueOutput vo{};
+            if (is_value_lane(pd) && vout_ord < static_cast<int>(published_values_[idx].size())) {
+                vo.handle = &published_values_[idx][vout_ord];
+                vo.resize = [](void* h, uint32_t c) -> void* {
+                    auto* s = static_cast<ValueSlot*>(h); s->buf.resize(c);
+                    return s->buf.empty() ? nullptr : static_cast<void*>(s->buf.data());
+                };
+                vo.commit = [](void* h, uint32_t c) { static_cast<ValueSlot*>(h)->count = c; };
+                ++vout_ord;
+            }
+            valout.push_back(vo);
+        }
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = dt; ctx.frame = frame_;
@@ -367,6 +414,8 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
         ctx.custom_input_count = static_cast<uint32_t>(custin.size());
         ctx.custom_outputs = pub.empty() ? nullptr : pub.data();
         ctx.custom_output_count = static_cast<uint32_t>(pub.size());
+        ctx.values = valv.empty() ? nullptr : valv.data();               // FLOAT-MANY lanes in
+        ctx.value_outputs = valout.empty() ? nullptr : valout.data();    // FLOAT-MANY lanes out
 
         // FILE/TEXT params: hand the op a dense array of its file-param strings (in param
         // order), project-resolved for FILE params. Storage lives for the process_gpu call.

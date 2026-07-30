@@ -68,10 +68,19 @@ public:
     void set_shader(float x, float y) { sx_ = x; sy_ = y; }
     const std::vector<vivid::Mapping>& mappings() const { return reg_.mappings(); }
     void add_mapping(const std::string& src, const std::string& dst, float amt,
-                     float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f) {
+                     float curve = 0.f, bool invert = false, float lo = 0.f, float hi = 1.f,
+                     float attack = 0.f, float release = 0.f) {
         reg_.connect(src, dst, amt);
-        if (auto* m = reg_.find(dst)) { m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi; }
+        if (auto* m = reg_.find(dst)) {
+            m->curve = curve; m->invert = invert; m->out_lo = lo; m->out_hi = hi;
+            m->attack = attack; m->release = release; m->primed = false;
+        }
     }
+    // Advance mapping smoothing one frame (dt seconds). Call before apply_params().
+    void advance_mappings(float dt) { reg_.advance(dt); }
+    // Connect a bridge DATA node's source to op node `op_idx`'s param `local` (the same wire the drop path
+    // makes). Records an undo note. Used by the param-reveal menu (Gesture B). False on invalid indices.
+    bool connect_data_to_param(int data_idx, int op_idx, int local);
     // A track (stable id) was deleted: drop the mappings sourced from it.
     int drop_track_sources(int id) { return reg_.drop_track_sources(id); }
     // Mapping shaping edits (from the M overview).
@@ -97,10 +106,12 @@ public:
     void chain_load_set_input_b(int i, int input);   // second input (2-in ops)
     int  op_input_b_at(int i) const;                 // -1 if none
     std::vector<int> op_inputs_at(int i) const;      // all texture input edges (trailing -1 trimmed) — persist
-    void set_op_input_at(int i, int port, int src);  // wire src -> node i's texture input `port`
+    std::vector<int> op_in_src_ports_at(int i) const; // parallel source-output-port array (trailing 0 trimmed) — persist
+    void set_op_input_at(int i, int port, int src, int src_port = 0);  // wire src's out `src_port` -> node i input `port`
     std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
     void        set_op_asset_at(int i, const std::string& asset);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none
+    int         op_at_world(double wx, double wy) const;        // op node under a WORLD point, -1 if none
     std::string op_source_path(int i) const;                    // absolute editable source (CustomShader .glsl), "" if none
     bool        swap_op_type(int i, const std::string& type);   // re-instantiate node i as `type` (id/input/pos kept)
 
@@ -117,6 +128,20 @@ public:
     const char* op_file_param_at(int i, int local) const;         // FILE/TEXT param string ("" if none)
     void  set_op_file_param_at(int i, int local, const std::string& v);
     bool  op_param_wired_at(int i, int local) const;     // a data source drives it
+    // Curated body params (pure UI curation): the ordered param indices SHOWN as rows on node `i`'s card.
+    // = the node's pinned set UNION any wired param (a connection is always shown so a wire never dangles).
+    // A fresh/uncurated node returns empty -> collapsed. Mirrors AudioNodeGraph::exposed_params.
+    std::vector<int> exposed_params(int i) const;
+    bool  is_param_pinned(int i, int local) const;
+    void  pin_param(int i, int local);                   // idempotent; add order
+    void  unpin_param(int i, int local);
+    void  toggle_param_pin(int i, int local);
+    // Gesture A: the node whose header curate-affordance (left chevron) is under (sx,sy), else -1.
+    int   param_curate_hit(double sx, double sy) const;
+    // Gesture B: a wire dropped on a node body (missing every visible port) parks a request here for the
+    // app to open the reveal+connect menu. Returns true and clears when one is pending. node_idx = target
+    // op node, src_data_node = the data node the wire started from, (sx,sy) = the drop screen position.
+    bool  take_param_menu_request(int& node_idx, int& src_data_node, double& sx, double& sy);
     // Param metadata (from the operator descriptor) so the dock can pick a widget.
     int   op_param_type_at(int i, int local) const;         // VividParamType (FLOAT/INT/BOOL/...)
     int   op_param_hint_at(int i, int local) const;         // VividDisplayHint (DEFAULT/KNOB/COLOR/XY/...)
@@ -197,6 +222,9 @@ private:
     int    drag_mode_ = 0;
     int    drag_idx_ = -1;     // dragged node (data for mode 1, op for mode 2)
     int    wire_from_ = -1;    // data node (mode 3) or op node (mode 4) the wire starts at
+    int    pmreq_node_ = -1;   // Gesture B: pending param-reveal-menu request (target op node index)
+    int    pmreq_src_  = -1;   // Gesture B: the data node the dropped wire started from
+    double pmreq_sx_ = 0, pmreq_sy_ = 0;   // Gesture B: the drop SCREEN position (where to open the menu)
     double dx_ = 0, dy_ = 0, cx_ = 0, cy_ = 0;
     int    sel_op_ = -1;     // selected visual node (inspector target), -1 = none
     GraphCanvas canvas_;   // ADR-0023 Layer 2: the shared draw skeleton AND the owner of the pan/zoom camera (#1)
@@ -219,7 +247,8 @@ private:
     CardPorts card_ports(int i) const;   // shared card port-row layout (ADR-0023)
     void op_node_rect(int i, float& x, float& y, float& w, float& h) const;
     bool op_in_port(int i, int port, float& px, float& py) const;  // texture input port `port`; false if out of range
-    bool op_out_port(int i, float& px, float& py) const;  // false if op has no output
+    bool op_out_port(int i, float& px, float& py) const;  // false if op has no output (= output port 0)
+    bool op_out_port(int i, int port, float& px, float& py) const;  // a specific OUTPUT port (multi-output)
     void set_op_input_port(int node, int port, int src);  // wire src -> node's texture input `port` (-1 clears)
     int  first_node_of(const std::string& op_type) const; // -1 if none
     // Per-node param port: position of node_idx's local param row. False if out of range.

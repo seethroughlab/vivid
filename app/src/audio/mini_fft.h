@@ -40,11 +40,35 @@ inline void fft_radix2(float* re, float* im, int n) {
 // Hann-window `in[n]` (n a power of two), FFT it, and reduce the magnitude spectrum to `nbands`
 // log-spaced bands (≈40 Hz .. nyquist), each normalized to a roughly 0..1 visual range. `out[nbands]`.
 // `scratch_re`/`scratch_im` are caller-owned length-n buffers (avoids per-call allocation).
-inline void spectrum_log_bands(const float* in, int n, float sample_rate,
+// Fill ONLY the small resolution gaps in a per-band array. At high band counts the log bands are finer
+// than the ~sr/n bin spacing (≈47 Hz at n=1024), so low bands land BETWEEN bins and read 0 even though
+// energy is there. Linearly interpolate a SHORT empty run (<= kMaxGap) between two filled neighbours; do
+// NOT bridge a long run or the spectrum edges — those are genuine silence, and holding the nearest value
+// there smears a pure tone across the whole spectrum (every bar identical).
+inline void fill_short_gaps(float* out, int nbands, const int* counts) {
+    constexpr int kMaxGap = 6;
+    int prev = -1;
+    for (int i = 0; i < nbands; ++i) {
+        if (counts[i] == 0) continue;
+        if (prev >= 0 && i - prev > 1 && (i - prev - 1) <= kMaxGap)
+            for (int j = prev + 1; j < i; ++j) {
+                const float t = static_cast<float>(j - prev) / static_cast<float>(i - prev);
+                out[j] = out[prev] * (1.f - t) + out[i] * t;
+            }
+        prev = i;
+    }
+}
+
+// Raw per-band average FFT magnitude (log-spaced 40Hz..16kHz), short-gap-filled. NOT normalised — the
+// absolute scale depends on the FFT (unnormalised) and the signal level, so a consumer must scale it
+// (e.g. a per-band AGC, or divide by a running peak). This is the honest spectrum shape; the callers
+// that want a fixed 0..1 visual add their own curve (spectrum_log_bands) or normalisation.
+inline void spectrum_raw_bands(const float* in, int n, float sample_rate,
                                float* out, int nbands,
                                float* scratch_re, float* scratch_im) {
     for (int i = 0; i < nbands; ++i) out[i] = 0.f;
     if (n <= 1 || sample_rate <= 0.f) return;
+    if (nbands > 64) nbands = 64;
     const float twoPiOverN = 6.28318530717958648f / static_cast<float>(n - 1);
     for (int i = 0; i < n; ++i) {
         const float w = 0.5f * (1.f - std::cos(twoPiOverN * i));   // Hann
@@ -55,9 +79,8 @@ inline void spectrum_log_bands(const float* in, int n, float sample_rate,
     const float f_lo = 40.f, f_hi = std::min(nyq, 16000.f);
     const float log_lo = std::log2(f_lo), log_hi = std::log2(std::max(f_hi, f_lo * 2.f));
     const float binHz = sample_rate / static_cast<float>(n);
-    int counts[64] = {0};   // nbands is small (≤ this)
-    if (nbands > 64) nbands = 64;
-    for (int k = 1; k < n / 2; ++k) {          // skip DC; use the positive-frequency half
+    int counts[64] = {0};
+    for (int k = 1; k < n / 2; ++k) {          // skip DC; positive-frequency half
         const float hz = k * binHz;
         if (hz < f_lo || hz > f_hi) continue;
         int band = static_cast<int>((std::log2(hz) - log_lo) / (log_hi - log_lo) * nbands);
@@ -65,16 +88,24 @@ inline void spectrum_log_bands(const float* in, int n, float sample_rate,
         const float mag = std::sqrt(scratch_re[k] * scratch_re[k] + scratch_im[k] * scratch_im[k]);
         out[band] += mag; counts[band]++;
     }
-    // Average per band, then map to a visual 0..1 through a PERCEPTUAL (dB) curve instead of a linear
-    // gain + hard clamp. A flat `*8` pinned every moderately-loud band to 1.0 (no visible variation on
-    // real material); mapping a ~54 dB window above a reference magnitude into 0..1 keeps loud bands off
-    // the ceiling and lets quiet detail register, matching how loudness is actually perceived.
-    constexpr float kRefMag  = 0.12f;    // magnitude that reaches full scale (was the old *8 knee, 1/8)
+    for (int i = 0; i < nbands; ++i) if (counts[i] > 0) out[i] /= static_cast<float>(counts[i]);
+    fill_short_gaps(out, nbands, counts);
+}
+
+// Visual 0..1 spectrum via a fixed PERCEPTUAL (dB) curve above a reference magnitude — used by the
+// 8-band `<src>.fft.k` bridge sources. Keeps quiet detail visible without a hard clamp. NOTE the fixed
+// reference means a much-louder-than-reference mix saturates every band to 1.0; a per-band equaliser
+// should instead read spectrum_raw_bands and normalise (see the spectrum bus).
+inline void spectrum_log_bands(const float* in, int n, float sample_rate,
+                               float* out, int nbands,
+                               float* scratch_re, float* scratch_im) {
+    spectrum_raw_bands(in, n, sample_rate, out, nbands, scratch_re, scratch_im);
+    if (nbands > 64) nbands = 64;
+    constexpr float kRefMag  = 0.12f;    // magnitude that reaches full scale
     constexpr float kRangeDb = 54.f;     // visible dynamic window below the reference
     for (int i = 0; i < nbands; ++i) {
-        if (counts[i] > 0) out[i] /= static_cast<float>(counts[i]);
-        const float db = 20.f * std::log10(std::max(out[i], 1e-6f) / kRefMag);   // 0 dB at kRefMag
-        out[i] = std::clamp(1.f + db / kRangeDb, 0.f, 1.f);                       // -kRangeDb..0 dB -> 0..1
+        const float db = 20.f * std::log10(std::max(out[i], 1e-6f) / kRefMag);
+        out[i] = std::clamp(1.f + db / kRangeDb, 0.f, 1.f);
     }
 }
 

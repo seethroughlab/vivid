@@ -378,34 +378,15 @@ void draw_device_dock(Renderer2D& ui, const Window& w, double beats, double mx, 
     // engine runs (instrument -> FX -> output), drawn as a node graph. Drilled in from the dock
     // "Graph" button; the close x (above) returns to the device chain.
     if (w.focus.kind == FocusContext::Kind::AudioGraph) {
+        // The audio node CANVAS lives below the session view now (drawn by draw_ui); the bottom dock is
+        // the UNIFIED param inspector, so here we render ONLY the selected audio node's param strip.
         const int tr = std::min(std::max(w.focus.track, 0), vivid::session::session_track_count(s) - 1);
-        // Minimal, unobtrusive track label — no boxy "AUDIO GRAPH ·" header (the visuals graph has
-        // none). Just the track name, so you still know which track's graph you're editing.
-        ui.draw_text(12.f, y0 + 7.f, vivid::session::session_track_name(s, tr),
-                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.78f);
-        // "Re-layout" button: snap the graph back to the tidy auto-arrangement (the audio peer of the
-        // visuals graph's Re-layout button). Always available.
-        { const Rect rb = dock_audio_relayout_button_rect(w.win_w, w.win_h, w.dock_h);
-          const bool rh = hit(rb, mx, my);
-          item_box(ui, rb, sty.audio, rh);
-          ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-        // "Editor" button: opens the selected VST3 node's own native plugin window (its full param
-        // surface). Shown only when the node exposes a plugin editor controller. Double-click still works.
-        if (w.sel_audio_node >= 0
-            && vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node)) {
-            const Rect eb = dock_audio_editor_button_rect(w.win_w, w.win_h, w.dock_h);
-            const bool eh = hit(eb, mx, my);
-            item_box(ui, eb, sty.audio, eh);
-            ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);
-        }
+        section_header(ui, 12.f, y0 + 7.f, vivid::session::session_track_name(s, tr), sty.audio);
         AudioNodeGraph& ag = *w.app->audio_graph;   // ADR-0023 step 6: the one persistent instance, re-primed
-        ag.set_source(s, tr);
-        const Rect gp = audio_graph_panel(w.win_w, w.win_h, w.dock_h);
-        ag.set_bounds(gp.x, gp.y, gp.x + gp.w, gp.y + gp.h);
-        ag.set_selection(w.sel_audio_node);   // sizes the param band for a compound preview
-        ag.set_mapping(w.app->graph);         // lights the map dot on any bridge-driven node param
-        ag.set_clock(beats);                  // transport position, for live generator-node thumbnails
-        ag.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
+        ag.prime(*w.app, w);                        // node-canvas bounds + param bounds (dock) + selection
+        ag.set_mapping(w.app->graph);               // lights the map dot on any bridge-driven node param
+        ag.set_clock(beats);                        // transport position, for live generator-node thumbnails
+        ag.draw_params(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
         return;
     }
 
@@ -735,6 +716,33 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         ui.draw_text(gx + 6.f, gy + 2.f, cn, sty.text[0], sty.text[1], sty.text[2], 1.0f, sty.fs_value);
     }
 
+    // --- Audio node graph: the selected track's audio topology, in the left column BELOW the mixer.
+    // (The bottom dock is the unified PARAM inspector now; the node canvas lives here.) A header strip
+    // carries the track name + Re-layout / (VST3) Editor buttons; the node canvas fills the rest. ---
+    if (w.app && s && w.app->audio_graph && vivid::session::session_track_count(s) > 0) {
+        AudioNodeGraph& agr = *w.app->audio_graph;
+        agr.prime(*w.app, w);   // node-canvas bounds (this pane) + param bounds (dock) + selection
+        const int tr = std::min(std::max(w.sel_track, 0), vivid::session::session_track_count(s) - 1);
+        const Rect pane = audio_graph_pane(w.split_x, w.win_h, w.dock_h, scenes);
+        ui.draw_rect(pane.x, pane.y - 6.f, pane.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
+        const Rect hdr = audio_pane_hdr_rect(pane);
+        ui.draw_text(hdr.x + 2.f, hdr.y + 5.f, vivid::session::session_track_name(s, tr),
+                     sty.dim[0], sty.dim[1], sty.dim[2], 1.0f, 0.78f);
+        { const Rect rb = audio_pane_relayout_rect(pane); const bool rh = hit(rb, mx, my);
+          item_box(ui, rb, sty.audio, rh);
+          ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
+        // Show "Editor" for a plugin node with a native GUI — VST3 (has a controller) or CLAP (clap.gui).
+        if (w.sel_audio_node >= 0 &&
+            (vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node) ||
+             vivid::session::session_track_audio_graph_node_plugin_kind(s, tr, w.sel_audio_node) == 2)) {
+            const Rect eb = audio_pane_editor_rect(pane); const bool eh = hit(eb, mx, my);
+            item_box(ui, eb, sty.audio, eh);
+            ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);
+        }
+        agr.set_mapping(w.app->graph);
+        agr.set_clock(beats);
+        agr.draw(ui, w.sel_audio_node, static_cast<float>(w.cur_x), static_cast<float>(w.cur_y));
+    }
 }
 
 // The "map this param from a source" picker (the return path).
@@ -787,11 +795,17 @@ void draw_popup(Renderer2D& ui, const vivid::ui::PopupMenu& m) {
     const int n = static_cast<int>(m.items.size());
     const std::string hdr = fit_text(ui, m.header, m.width - 16.f, sty.fs_label);   // truncate long op names
     overlay_panel(ui, { m.x, m.y - 22.f, m.width, 22.f + n * m.row_h }, hdr.c_str(), acc);
+    const bool curate = m.kind == vivid::ui::PopupMenu::Kind::NodeParamPin
+                     || m.kind == vivid::ui::PopupMenu::Kind::NodeParamConnect;
     for (int j = 0; j < n; ++j) {
         const float iy = m.y + j * m.row_h;
         item_box(ui, { m.x, iy, m.width, m.row_h }, acc);
         const float* c = m.items[j].enabled ? sty.text : sty.dim;
-        ui.draw_text(m.x + 14.f, iy + m.row_h * 0.5f - 7.f, m.items[j].label.c_str(), c[0], c[1], c[2], 1.0f);
+        // Curation menus: a leading ✓ marks a param that is currently shown; the label indents past it.
+        const float tx = m.x + (curate ? 26.f : 14.f);
+        if (curate && m.items[j].checked)
+            ui.draw_text(m.x + 12.f, iy + m.row_h * 0.5f - 7.f, "\xE2\x9C\x93", acc[0], acc[1], acc[2], 1.0f);
+        ui.draw_text(tx, iy + m.row_h * 0.5f - 7.f, m.items[j].label.c_str(), c[0], c[1], c[2], 1.0f);
     }
 }
 

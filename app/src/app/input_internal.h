@@ -41,6 +41,9 @@ void graph_scroll(Window& win, App& app, double yoff, double mx, double my);   /
 bool graph_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click op node
 bool audio_node_rclick(Window& win, App& app, int button, int action, double mx, double my);  // right-click audio node → visuals menu
 bool graph_nodemenu(Window& win, App& app, double mx, double my);                              // node context-menu press
+bool graph_param_curate_click(Window& win, App& app, int button, int action, double mx, double my); // click node chevron → show/hide params menu
+bool graph_param_reveal_open(Window& win, App& app);                                          // a dropped wire parked a reveal request → open connect menu
+bool graph_parammenu(Window& win, App& app, double mx, double my);                            // param-curation menu press (toggle pin / pin+connect)
 bool mod_editor_press(Window& win, App& app, double mx, double my);                            // ADR-0022 shape editor press (modal)
 void mod_editor_drag(Window& win, App& app, double mx, double my);                             // ...its slider drag (frame loop)
 

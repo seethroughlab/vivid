@@ -2827,6 +2827,18 @@ void* session_audio_graph_node_controller(Session* s, int t, int node_id) {
     return (nb.handle && (nb.kind == GNKind::Vst3Inst || nb.kind == GNKind::Vst3Fx)) ? nb.handle->controller : nullptr;
 }
 
+// The CLAP plugin handle (ClapHandle*) behind a graph node (ClapInst / ClapFx), so the audio graph
+// can open the plugin's native clap.gui editor. Null for VST3 / native / sampler / output nodes.
+void* session_audio_graph_node_clap(Session* s, int t, int node_id) {
+    Track* tr = graph_track(s, t);
+    if (!tr) return nullptr;
+    std::lock_guard<std::mutex> lk(tr->gmtx);
+    const int idx = tr->agraph.node_index(node_id);
+    if (idx < 0 || idx >= static_cast<int>(tr->agnodes.size())) return nullptr;
+    const GNodeBind& nb = tr->agnodes[idx];
+    return (nb.clap && (nb.kind == GNKind::ClapInst || nb.kind == GNKind::ClapFx)) ? nb.clap : nullptr;
+}
+
 int session_track_audio_graph_output_id(Session* s, int t) {
     Track* tr = graph_track(s, t);
     if (!tr) return -1;

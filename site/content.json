@@ -7,18 +7,49 @@
   "source_base": "https://github.com/seethroughlab/vivid/tree/main",
   "showcase_video_base": "https://d2at399jej1hdi.cloudfront.net/videos",
   "nav": [
-    {"label": "Start Here", "href": "/start-here/"},
-    {"label": "Tutorials", "href": "/tutorials/"},
-    {"label": "Showcase", "href": "/showcase/"},
-    {"label": "Free Plugins", "href": "/free-plugins/"},
-    {"label": "Reference", "href": "/reference/"},
-    {"label": "GitHub", "href": "https://github.com/seethroughlab/vivid", "external": true}
+    {
+      "label": "Start Here",
+      "href": "/start-here/"
+    },
+    {
+      "label": "Tutorials",
+      "href": "/tutorials/"
+    },
+    {
+      "label": "Showcase",
+      "href": "/showcase/"
+    },
+    {
+      "label": "Free Plugins",
+      "href": "/free-plugins/"
+    },
+    {
+      "label": "Reference",
+      "href": "/reference/"
+    },
+    {
+      "label": "GitHub",
+      "href": "https://github.com/seethroughlab/vivid",
+      "external": true
+    }
   ],
   "supports": [
-    {"title": "Session View", "body": "A DAW-style timeline of tracks, clips, scenes, instruments, effects and a mixer — the musical half of the graph."},
-    {"title": "Visual node graph", "body": "A rewireable graph of visual operators — real geometry, shaders and compositing — that you build and fork like code."},
-    {"title": "The mapping bridge", "body": "A bidirectional bridge: musical and control signals drive visual parameters, and visual state can drive audio back."},
-    {"title": "MCP-native control", "body": "Every operation is exposed over MCP, so agents (and scripts) author, inspect and verify whole projects — not just nudge knobs."}
+    {
+      "title": "Session View",
+      "body": "A DAW-style timeline of tracks, clips, scenes, instruments, effects and a mixer — the musical half of the graph."
+    },
+    {
+      "title": "Visual node graph",
+      "body": "A rewireable graph of visual operators — real geometry, shaders and compositing — that you build and fork like code."
+    },
+    {
+      "title": "The mapping bridge",
+      "body": "A bidirectional bridge: musical and control signals drive visual parameters, and visual state can drive audio back."
+    },
+    {
+      "title": "MCP-native control",
+      "body": "Every operation is exposed over MCP, so agents (and scripts) author, inspect and verify whole projects — not just nudge knobs."
+    }
   ],
   "tutorials": [
     {
@@ -99,6 +130,46 @@
       "hero": "neon-song.png",
       "video": "neon-song.mp4",
       "source": "examples/demos/neon.py"
+    },
+    {
+      "id": "spectrum",
+      "type": 3,
+      "title": "Spectrum",
+      "mechanism": "Composable value-lane graph",
+      "blurb": "A live 3D FFT equaliser assembled from separate lane nodes — an AudioSpectrum node feeds per-band bar heights, a LanePalette node the colour gradient, through the new value-lane transport. Each bar is one frequency of the sound Vivid is making.",
+      "source": "examples/demos/spectrum.py",
+      "hero": "spectrum.png",
+      "video": "spectrum.mp4"
+    },
+    {
+      "id": "blob",
+      "type": 3,
+      "title": "Blob",
+      "mechanism": "SDF raymarch, bass-driven",
+      "blurb": "A raymarched SDF metaball that swells, melds and glows to the kick — the bass drives its size, its smooth-union blend and its emission through the audio→visual bridge, fast-attack then glide.",
+      "source": "examples/demos/blob.py",
+      "hero": "blob.png",
+      "video": "blob.mp4"
+    },
+    {
+      "id": "crystal",
+      "type": 3,
+      "title": "Crystal",
+      "mechanism": "Animated audio deformer",
+      "blurb": "A sphere churned by an animated noise deformer into shifting crystalline spikes — the kick grows the spikes and swells the form, the hats sharpen the facets.",
+      "source": "examples/demos/crystal.py",
+      "hero": "crystal.png",
+      "video": "crystal.mp4"
+    },
+    {
+      "id": "storm",
+      "type": 3,
+      "title": "Storm",
+      "mechanism": "GPU curl-noise particles",
+      "blurb": "A GPU curl-noise particle storm — transients burst new embers into the field, the kick churns the turbulence and swells the particles.",
+      "source": "examples/demos/storm.py",
+      "hero": "storm.png",
+      "video": "storm.mp4"
     }
   ]
 }

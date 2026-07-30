@@ -308,7 +308,8 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
     json maps = json::array();
     for (const auto& m : g.mappings())
         maps.push_back({ {"src", m.source}, {"dst", m.dest}, {"amt", m.amount},
-                         {"curve", m.curve}, {"inv", m.invert}, {"lo", m.out_lo}, {"hi", m.out_hi} });
+                         {"curve", m.curve}, {"inv", m.invert}, {"lo", m.out_lo}, {"hi", m.out_hi},
+                         {"attack", m.attack}, {"release", m.release} });
     jg["mappings"] = maps;
     json chain = json::array();
     for (int i = 0; i < g.op_count(); ++i) {
@@ -321,6 +322,7 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                     {"base", { base[0], base[1], base[2], base[3] }}, {"params", params} };
         if (const int inb = g.op_input_b_at(i); inb >= 0) jn["in_b"] = inb;   // legacy 2-in (read by old vivid)
         if (auto ins = g.op_inputs_at(i); !ins.empty()) jn["ins"] = ins;      // N-input edge array (authority)
+        if (auto sps = g.op_in_src_ports_at(i); !sps.empty()) jn["in_ports"] = sps;  // source-output-port per edge (multi-lane)
         const std::string asset = g.op_asset_at(i);   // CustomShader .glsl (project-relative)
         if (!asset.empty()) jn["asset"] = asset;
         json file_params = json::object();   // FILE/TEXT params (e.g. Image path), by name
@@ -328,6 +330,10 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
             if (const char* fv = g.op_file_param_at(i, p); fv && fv[0])
                 file_params[g.op_param_label_at(i, p)] = fv;
         if (!file_params.empty()) jn["file_params"] = file_params;
+        json pinned = json::array();   // curated body params (by NAME, robust to param reorder); absent = collapsed
+        for (int p = 0; p < g.op_param_count_at(i); ++p)
+            if (g.is_param_pinned(i, p)) pinned.push_back(g.op_param_label_at(i, p));
+        if (!pinned.empty()) jn["pinned"] = pinned;
         chain.push_back(jn);
     }
     jg["chain"] = chain;
@@ -778,8 +784,11 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             for (int i = 0; i < static_cast<int>(ch.size()); ++i) {
                 if (ch[i].contains("ins") && ch[i]["ins"].is_array()) {   // N-input array (authority)
                     const json& ins = ch[i]["ins"];
-                    for (int p = 0; p < static_cast<int>(ins.size()); ++p)
-                        g.set_op_input_at(i, p, ins[p].get<int>());
+                    const json* sps = (ch[i].contains("in_ports") && ch[i]["in_ports"].is_array()) ? &ch[i]["in_ports"] : nullptr;
+                    for (int p = 0; p < static_cast<int>(ins.size()); ++p) {
+                        const int sp = (sps && p < static_cast<int>(sps->size())) ? (*sps)[p].get<int>() : 0;
+                        g.set_op_input_at(i, p, ins[p].get<int>(), sp);
+                    }
                 } else {   // legacy: primary + optional second input
                     g.chain_load_set_input(i, ch[i].value("in", -1));
                     g.chain_load_set_input_b(i, ch[i].value("in_b", -1));
@@ -791,6 +800,12 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         const char* name = g.op_param_label_at(i, l);
                         if (ch[i]["file_params"].contains(name))
                             g.set_op_file_param_at(i, l, ch[i]["file_params"][name].get<std::string>());
+                    }
+                if (ch[i].contains("pinned") && ch[i]["pinned"].is_array())   // curated body params (by name)
+                    for (int l = 0; l < g.op_param_count_at(i); ++l) {
+                        const char* name = g.op_param_label_at(i, l);
+                        for (const auto& pn : ch[i]["pinned"])
+                            if (pn.is_string() && pn.get<std::string>() == name) { g.pin_param(i, l); break; }
                     }
                 if (ch[i].contains("params") && ch[i]["params"].is_object()) {
                     const std::string op_type = ch[i].value("op_type", std::string());
@@ -829,7 +844,8 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
             for (const auto& jm : jg["mappings"])
                 g.add_mapping(jm.value("src", std::string()), jm.value("dst", std::string()),
                               jm.value("amt", 1.0f), jm.value("curve", 0.0f), jm.value("inv", false),
-                              jm.value("lo", 0.0f), jm.value("hi", 1.0f));
+                              jm.value("lo", 0.0f), jm.value("hi", 1.0f),
+                              jm.value("attack", 0.0f), jm.value("release", 0.0f));
     }
     return true;
 }

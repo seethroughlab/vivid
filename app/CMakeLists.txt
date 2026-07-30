@@ -246,6 +246,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/audio_callback.cpp
     src/audio/movie_audio_bus.cpp
     src/audio/note_bus.cpp
+    src/audio/spectrum_bus.cpp
     src/audio/note_event_bus.cpp
     src/audio/audio_op_runtime.cpp
     src/audio/audio_graph.cpp
@@ -253,6 +254,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/audio/glitch/glitch_ops.cpp
     src/audio/audio_clip.cpp
     src/audio/vst3_plugin_window_stub.cpp
+    src/audio/clap_plugin_window_stub.cpp
     src/platform/platform.cpp
     src/platform/frame_loop_generic.cpp
     src/platform/app_nap_stub.cpp
@@ -316,6 +318,7 @@ add_executable(vivid MACOSX_BUNDLE
 if(APPLE)
     target_sources(vivid PRIVATE
         src/audio/vst3_plugin_window.mm
+        src/audio/clap_plugin_window.mm
         src/platform/macos_frame_timer.cpp
         src/platform/macos_app_nap.mm
         src/platform/file_dialog.mm
@@ -483,6 +486,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/audio/builtin_audio_ops.cpp
         src/audio/movie_audio_bus.cpp
         src/audio/note_bus.cpp
+        src/audio/spectrum_bus.cpp
         src/audio/glitch/glitch_ops.cpp
         src/audio/audio_clip.cpp
         src/audio/audio_graph.cpp
@@ -490,6 +494,7 @@ if(VIVID_BUILD_TESTS AND APPLE)
         src/gpu/op_runtime.cpp
         src/operator_api/operator_descriptor_validation.cpp
         src/audio/vst3_plugin_window_stub.cpp
+        src/audio/clap_plugin_window_stub.cpp
         src/miniaudio_impl.c)
     set(_audio_engine_libs
         signalsmith_stretch vst3_iids clap_headers miniaudio nlohmann_json::nlohmann_json Threads::Threads z

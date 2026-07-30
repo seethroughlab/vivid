@@ -62,7 +62,8 @@ void register_visuals_handlers(Handlers& handlers_) {
         const bool output_primary = c.vgraph->nodes()[idx].is_output() && port == 0;
         if (port < 0 || (!output_primary && port >= nports))
             return err(code::kOutOfRange, "port " + std::to_string(port) + " out of range [0," + std::to_string(nports) + ")");
-        c.vgraph->set_input(idx, port, in_idx);   // N-input: wire src -> node's texture input `port`
+        const int src_port = b.value("src_port", 0);   // which OUTPUT of the source (multi-lane producers)
+        c.vgraph->set_input(idx, port, in_idx, src_port);   // N-input: wire src's out `src_port` -> node's input `port`
         tidy_layout(c);                            // re-tidy: node positions depend on the edges
         return ok();
     };

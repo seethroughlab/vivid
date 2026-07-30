@@ -206,6 +206,34 @@ main {
 }
 .showcase-unmute:hover { background: rgba(0,0,0,.8); border-color: rgba(255,255,255,.7); }
 .showcase-unmute:active { transform: scale(.92); }
+/* Enlarge (⛶) button — mirrors the unmute button, on the opposite (left) corner. */
+.showcase-expand {
+  position: absolute; bottom: .55rem; left: .55rem; z-index: 2;
+  width: 2.1rem; height: 2.1rem; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,.35); border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,.55); color: #fff; font-size: 1rem; line-height: 1;
+  backdrop-filter: blur(4px); transition: background .2s, border-color .2s, transform .1s;
+}
+.showcase-expand:hover { background: rgba(0,0,0,.8); border-color: rgba(255,255,255,.7); }
+.showcase-expand:active { transform: scale(.92); }
+/* Click-to-enlarge lightbox: a full-viewport overlay with the clip played large. */
+.showcase-lightbox { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; }
+.showcase-lightbox[hidden] { display: none; }
+.showcase-lightbox-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.82); backdrop-filter: blur(6px); }
+.showcase-lightbox-stage {
+  position: relative; z-index: 1; width: min(1200px, 92vw); max-height: 88vh; aspect-ratio: 16 / 9;
+  background: #000; border-radius: var(--radius); overflow: hidden; box-shadow: 0 12px 48px rgba(0,0,0,.6);
+}
+.showcase-lightbox-video { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+.showcase-lightbox-close {
+  position: absolute; top: .6rem; right: .6rem; z-index: 2;
+  width: 2.3rem; height: 2.3rem; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255,255,255,.4); border-radius: 999px; cursor: pointer;
+  background: rgba(0,0,0,.6); color: #fff; font-size: 1.05rem; line-height: 1;
+  transition: background .2s, transform .1s;
+}
+.showcase-lightbox-close:hover { background: rgba(0,0,0,.92); }
+.showcase-lightbox-close:active { transform: scale(.92); }
 @media (prefers-reduced-motion: reduce) { .showcase-player .showcase-video { transition: none; } }
 .showcase-body, .tutorial-body { padding: 16px 18px 18px; }
 .tag {

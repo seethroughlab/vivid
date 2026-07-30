@@ -595,8 +595,11 @@ struct Session {
     std::thread              clap_worker;
     std::mutex               clap_load_mtx;      // guards clap_reqs / clap_done / clap_worker_stop
     std::condition_variable  clap_load_cv;
-    std::deque<ClapLoadReq>  clap_reqs;
+    std::deque<ClapLoadReq>  clap_reqs;      // incoming loads; the poll ROUTES them (first -> main, rest -> bg)
+    std::deque<ClapLoadReq>  clap_bg_reqs;   // routed to the async worker (only after JUCE is pinned to main)
     std::deque<ClapLoadDone> clap_done;
+    std::atomic<bool>        clap_juce_pinned{false};   // true once the 1st CLAP was built on the MAIN thread
+                                                        // (JUCE's message thread is bound to main — editors work)
     std::atomic<int>         clap_pending{0};    // requested-but-not-yet-applied loads
     bool                     clap_worker_stop = false;
     std::string              clap_last_error;    // main-thread only (last failed async load)

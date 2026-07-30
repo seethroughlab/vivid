@@ -5,6 +5,7 @@
 #include "ui/compound_widget.h"   // UI-4a: ADSR / LFO compound-widget previews
 #include "ui/param_widget.h"      // Phase 2b: node_widget_kind (type/hint/enum -> widget)
 #include "ui/operator_draw_bridge.h"  // v14: Renderer2D -> VividDrawAPI, for live generator thumbnails
+#include "ui/session_view.h"          // draw_clip_preview — the shared clip-cell piano-roll (Clip node thumbnail)
 #include "audio/vst3_host.h"
 #include "audio/audio_graph.h"    // ADR-0022: control_resolve — the UI resolves the same combine
 
@@ -128,8 +129,10 @@ std::vector<AudioCompoundPreview> AudioNodeGraph::compound_previews() const {
     return out;
 }
 
-Rect AudioNodeGraph::param_region() const { const float b = param_band_h(); return { x0_, y1_ - b, x1_ - x0_, b }; }
-Rect AudioNodeGraph::graph_region() const { const float b = param_band_h(); return { x0_, y0_, x1_ - x0_, (y1_ - b) - y0_ }; }
+// The node CANVAS fills its whole (below-session) bounds; the PARAM strip is the separate dock rect
+// (set via set_param_bounds). param_band_h() is retained for reference but no longer sizes a region.
+Rect AudioNodeGraph::param_region() const { return { px0_, py0_, px1_ - px0_, py1_ - py0_ }; }
+Rect AudioNodeGraph::graph_region() const { return { x0_, y0_, x1_ - x0_, y1_ - y0_ }; }
 
 // A plugin node (VST3, i.e. it exposes an IEditController) uses the curated vertical inspector;
 // native ops keep the compound/knob strip. CLAP is treated as native for now (no metadata yet).
@@ -249,24 +252,45 @@ Rect AudioNodeGraph::in_port_rect(const AudioNodeBox& b) const {
     return { b.x - 6.f, cp.row_cy(b.y, 0) - 6.f, 12.f, 12.f };        // top-left row
 }
 
-// A native op exposes every param; a plugin exposes only its pinned/curated subset. The LFO
+// Curated body params: the param indices shown as rows, in index order. Every node (native OR plugin)
+// starts COLLAPSED and shows a param iff it is PINNED or WIRED — a control edge is always visible so its
+// port never dangles (the same invariant as the visuals graph, NodeGraph::exposed_params). The LFO
 // waveform enum (a compound-widget leader) is skipped so the port list reads cleanly.
 std::vector<int> AudioNodeGraph::exposed_params(int node_id) const {
     std::vector<int> out;
     if (!s_ || node_id < 0) return out;
-    if (P::session_audio_graph_node_is_plugin(s_, track_, node_id)) {
-        const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
-        for (int k = 0; k < np; ++k) {
-            const int p = P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k);
-            if (p >= 0) out.push_back(p);
-        }
-    } else {
-        const int pc = P::session_audio_graph_node_param_count(s_, track_, node_id);
-        for (int p = 0; p < pc; ++p)
-            if (P::session_audio_graph_node_param_hint(s_, track_, node_id, p) != VIVID_DISPLAY_LFO)
-                out.push_back(p);
+    // pinned set (small) — collect once so the per-param test is cheap.
+    const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
+    const int pc = P::session_audio_graph_node_param_count(s_, track_, node_id);
+    for (int p = 0; p < pc; ++p) {
+        if (P::session_audio_graph_node_param_hint(s_, track_, node_id, p) == VIVID_DISPLAY_LFO) continue;
+        bool pinned = false;
+        for (int k = 0; k < np && !pinned; ++k)
+            if (P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k) == p) pinned = true;
+        if (pinned || P::session_audio_graph_node_param_wired(s_, track_, node_id, p) != 0)
+            out.push_back(p);
     }
     return out;
+}
+// Whether param p is currently in node_id's pinned set (for the curate menu's checkmarks).
+bool AudioNodeGraph::is_param_pinned(int node_id, int p) const {
+    if (!s_ || node_id < 0) return false;
+    const int np = P::session_audio_graph_node_param_pinned_count(s_, track_, node_id);
+    for (int k = 0; k < np; ++k)
+        if (P::session_audio_graph_node_param_pinned_at(s_, track_, node_id, k) == p) return true;
+    return false;
+}
+// Gesture A affordance: the node whose header curate chevron (left of the header) is under (wmx,wmy) in
+// WORLD coords, else -1. Skips engine-managed nodes with no user-curatable params (Output).
+int AudioNodeGraph::param_curate_hit(double wmx, double wmy) const {
+    // The chevron gutter runs from the card's left edge to just before the title (which starts ~22 world
+    // in). Using that full width keeps the affordance comfortably clickable at the default (zoomed-out)
+    // audio-view scale, and never overlaps the title text.
+    for (const AudioNodeBox& b : layout()) {
+        if (b.kind == 2) continue;   // the Output sink has no params
+        if (wmx >= b.x && wmx < b.x + 22.f && wmy >= b.y && wmy < b.y + kCardHeaderH) return b.node_id;
+    }
+    return -1;
 }
 
 // Card kind for a node id (small linear scan; n <= kGraphMaxNodes).
@@ -459,9 +483,16 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
     // ADR-0023 LOD: fade the card text out as the camera zooms out (illegible when small). The cards,
     // accents, port dots and the waveform preview stay; the title fades last (larger fs), the small
     // tag/port/param labels first. text_alpha() returns 0 below the fade floor, so those draws no-op.
-    if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f)
-        r.draw_text(b.x + 10.f + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
+    // Gesture A affordance: a disclosure chevron at the header-left on curatable nodes (anything but the
+    // Output sink). Clicking its zone (param_curate_hit) opens the show/hide-params menu; the title shifts.
+    const bool curatable = b.kind != 2;
+    const float chev_w = curatable ? 12.f : 0.f;
+    if (const float ta = canvas_.text_alpha(sty.fs_label); ta > 0.01f) {
+        if (curatable)
+            r.draw_text(b.x + 6.f, b.y + 6.f, "\xE2\x80\xBA", sty.dim[0], sty.dim[1], sty.dim[2], ta, sty.fs_label);   // ›
+        r.draw_text(b.x + 10.f + chev_w + (node_err ? node_error_label_shift : 0.f), b.y + 6.f, a.title.c_str(),
                     sty.text[0], sty.text[1], sty.text[2], ta, sty.fs_label);
+    }
     const float a_small = canvas_.text_alpha(0.6f);   // kind tag, lead-row label, "+ param"
     const char* tag = b.kind == 0 ? "inst"
                     : (b.kind == 1 ? "fx"
@@ -531,6 +562,29 @@ void AudioNodeGraph::after_card(Renderer2D& r, const AdapterNode& a, int i) cons
             tc.accent         = VividColor{ acc[0], acc[1], acc[2], 1.0f };
             tc.time           = clock_beats_;
             P::session_generator_draw_thumbnail(s_, track_, gen_scene, &tc);
+        } else if (kind == 6 && iw > 6.f && ih > 6.f) {
+            // MidiClip ("Clip"): draw the scheduled clip's note pattern — the same mini piano-roll the
+            // session grid draws for the clip cell, keyed to the scene this node gates.
+            const int sc = P::session_track_audio_graph_node_cell_scene(s_, track_, i);
+            if (sc >= 0) draw_clip_preview(r, s_, track_, sc, Rect{ ix, iy, iw, ih }, acc[0], acc[1], acc[2], true);
+        } else if ((kind == 3 || kind == 4 || kind == 7) && iw > 6.f && ih > 6.f) {
+            // MidiIn / NoteFx / Selector ("MIDI In" / Arp / "Notes"): no audio and no clip to preview,
+            // so show the track's LIVE held notes as pitch bars — a "what's playing now" strip that
+            // lights up on input (velocity drives the brightness).
+            P::ActiveNote an[64];
+            const int na = P::session_track_active_notes(s_, track_, an, 64);
+            if (na > 0) {
+                int lo = 127, hi = 0;
+                for (int k = 0; k < na; ++k) { lo = std::min(lo, an[k].pitch); hi = std::max(hi, an[k].pitch); }
+                const int span = std::max(12, hi - lo + 1);
+                const int base = lo - (span - (hi - lo + 1)) / 2;
+                for (int k = 0; k < na; ++k) {
+                    const float ny = iy + ih * (1.f - (static_cast<float>(an[k].pitch - base) + 0.5f) / span);
+                    const float bw = std::max(2.f, iw * 0.05f);
+                    const float bx = ix + iw * (static_cast<float>(k) + 0.5f) / na - bw * 0.5f;
+                    r.draw_rect(bx, ny - 1.5f, bw, 3.f, acc[0], acc[1], acc[2], 0.4f + 0.55f * std::min(1.f, an[k].vel));
+                }
+            }
         } else if (!is_gen) {
             // A Sampler node shows its LOADED SAMPLE (a static peak-bar waveform) so you can see what
             // it will play; every other node shows its live output scope. Fall back to the scope if the
@@ -650,9 +704,17 @@ void AudioNodeGraph::draw(Renderer2D& r, int sel_node, float cx, float cy) const
     // visuals graph has none either, and Tab-to-add is the established convention for both.
 
     r.pop_clip_rect();   // end graph-area clip (2i)
+    (void)sel_node;      // the selection highlight is driven by sel_node_ (selected_node_id); params: draw_params()
+}
 
-    // Inline param strip for the selected node (drawn unclipped, in its fixed bottom band).
+// The selected node's param strip — the DOCK half of the audio editor (the node canvas is draw()).
+// Rendered screen-space into the param bounds (set_param_bounds), i.e. the unified bottom param dock.
+void AudioNodeGraph::draw_params(Renderer2D& r, int sel_node, float cx, float cy) const {
+    if (!s_ || track_ < 0) return;
+    const Style& sty = style();
     const Rect pr = param_region();
+    if (pr.w < 20.f || pr.h < 10.f) return;
+    if (!P::session_track_audio_graph_ok(s_, track_)) return;
     r.draw_rect(pr.x, pr.y, pr.w, 1.f, sty.border_soft[0], sty.border_soft[1], sty.border_soft[2], 1.0f);
 
     // Curated inspector (Phase 2b): a plugin node shows its PINNED params as vertical rows —

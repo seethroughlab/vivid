@@ -298,6 +298,20 @@ inline void toolbar_button(Renderer2D& r, Rect b, bool hot = false, bool selecte
     item_box(r, b, nullptr, hot || selected, selected, AccentEdge::None);
 }
 
+// The dock's top-edge resize strip + centered grip (the "drag me" mark). detail_dock draws this inline
+// for the param/audio views; it's exposed standalone so the docked clip editor — which paints its own
+// chrome and skips detail_dock — can draw it too, keeping the dock resizable in every mode.
+inline void dock_resize_strip(Renderer2D& r, float bx, float by, float bw, bool resize_hot) {
+    const Style& s = style();
+    const float* rc = resize_hot ? s.gpu : s.border_soft;
+    r.draw_rect(bx, by - 1.f, bw, 2.f, rc[0], rc[1], rc[2], 1.0f);
+    const float gw = 28.f, gx = bx + bw * 0.5f - gw * 0.5f;
+    const float* gc = resize_hot ? s.gpu : s.border;
+    r.draw_rect(gx, by - 2.f, gw, 4.f, s.recess[0], s.recess[1], s.recess[2], 1.0f);   // recessed well
+    for (int i = 0; i < 3; ++i)   // three hard rules = the grip
+        r.draw_rect(gx + gw * 0.5f - 5.f + i * 5.f, by - 2.f, 1.f, 4.f, gc[0], gc[1], gc[2], 1.0f);
+}
+
 // Full-width focused detail region, used by the bottom dock/editor area.
 inline Rect detail_dock(Renderer2D& r, Rect b, const float* accent, bool resize_hot = false) {
     const Style& s = style();

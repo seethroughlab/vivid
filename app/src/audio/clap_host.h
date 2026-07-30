@@ -16,6 +16,7 @@
 #include <clap/ext/audio-ports.h>
 #include <clap/ext/note-ports.h>
 #include <clap/ext/preset-load.h>
+#include <clap/ext/gui.h>
 #include <clap/factory/preset-discovery.h>
 
 #include "audio/base64.h"
@@ -142,8 +143,10 @@ struct ClapHandle {
     const clap_plugin_audio_ports_t* ext_audio_ports = nullptr;
     const clap_plugin_note_ports_t*  ext_note_ports = nullptr;
     const clap_plugin_preset_load_t* ext_preset_load = nullptr;
+    const clap_plugin_gui_t*         ext_gui = nullptr;   // clap.gui — the native plugin editor (main-thread)
 
     bool   activated = false, processing = false, has_note_in = false, has_note_out = false;
+    bool   inited = false;   // init()+activate() deferred to the MAIN thread (clap_init_plugin) — JUCE binds there
     uint32_t audio_in = 0, audio_out = 2, max_block = 0;
     double sample_rate = 48000.0;
     std::string name;
@@ -299,8 +302,29 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     h->host.request_callback = &clap_host_request_callback;
 
     h->plugin = factory->create_plugin(factory, &h->host, desc->id);   // SLOW (unlocked, loader thread)
-    if (!h->plugin || !h->plugin->init(h->plugin)) { delete h; return nullptr; }   // destroy() releases the claim
-    // (the DSO reference was already claimed above, before create_plugin)
+    if (!h->plugin) { delete h; return nullptr; }   // create_plugin failed (~ClapHandle releases the DSO claim)
+    // Defer init()/activate() to the MAIN thread — see clap_init_plugin(), run from
+    // session_poll_plugin_loads(). JUCE-based CLAP plugins (Surge) bind their message thread to
+    // whatever thread calls init(), so doing it here on the loader thread makes their editor
+    // (clap.gui) deadlock on the MessageManagerLock. Only the SLOW ctor (create_plugin, above) has to
+    // be off the main thread; init/extension-query/activate are cheap. Stash what init needs.
+    h->max_block = max_frames;
+    return h;
+#else
+    (void)path; (void)sample_rate; (void)max_frames; return nullptr;
+#endif
+}
+
+// MAIN-THREAD init: call once, on the main thread, before the handle is used (from
+// session_poll_plugin_loads). Runs plugin->init(), queries extensions, and activates. Deferred here
+// (not in clap_load_plugin's loader thread) because JUCE CLAP plugins bind their message thread to the
+// init thread — running it on the main thread is what lets their editor open without deadlocking.
+// Returns false if the plugin refused init/activate (the caller then discards the handle).
+inline bool clap_init_plugin(ClapHandle* h) {
+#ifdef __APPLE__
+    if (!h || !h->plugin) return false;
+    if (h->inited) return true;
+    if (!h->plugin->init(h->plugin)) return false;
 
     h->ext_params      = static_cast<const clap_plugin_params_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PARAMS));
     h->ext_state       = static_cast<const clap_plugin_state_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_STATE));
@@ -309,6 +333,7 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
     h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD));
     if (!h->ext_preset_load)
         h->ext_preset_load = static_cast<const clap_plugin_preset_load_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_PRESET_LOAD_COMPAT));
+    h->ext_gui = static_cast<const clap_plugin_gui_t*>(h->plugin->get_extension(h->plugin, CLAP_EXT_GUI));
 
     if (h->ext_note_ports) {
         h->has_note_in  = h->ext_note_ports->count(h->plugin, /*is_input*/ true) > 0;
@@ -338,14 +363,14 @@ inline ClapHandle* clap_load_plugin(const std::string& path, double sample_rate,
         h->base_size_to_params();   // ADR-0030: host base cache is index-aligned with params
     }
 
-    h->max_block = max_frames;
-    h->silence.assign(static_cast<size_t>(max_frames) * 2, 0.f);
-    if (!h->plugin->activate(h->plugin, sample_rate, 1, max_frames)) { delete h; return nullptr; }
-    h->activated = true;
+    h->silence.assign(static_cast<size_t>(h->max_block) * 2, 0.f);
+    if (!h->plugin->activate(h->plugin, h->sample_rate, 1, h->max_block)) return false;
+    h->activated  = true;
     h->processing = h->plugin->start_processing(h->plugin);
-    return h;
+    h->inited     = true;
+    return true;
 #else
-    (void)path; (void)sample_rate; (void)max_frames; return nullptr;
+    (void)h; return false;
 #endif
 }
 
