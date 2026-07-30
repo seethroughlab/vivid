@@ -45,7 +45,11 @@ struct Params {
     shape: u32,
     learning_mode: u32, // 0=Advanced, 1=Beginner
     bounds: f32,
-    _pad0: f32,
+    attract_strength: f32,
+    attractor_count: u32,
+    repel_strength: f32,
+    emit_radius: f32,
+    color_jitter: f32,
 }
 
 struct InstanceData {
@@ -59,6 +63,7 @@ struct InstanceData {
 @group(0) @binding(2) var<storage, read_write>  instances_out: array<InstanceData>;
 @group(0) @binding(3) var<uniform>              params: Params;
 @group(0) @binding(4) var<storage, read_write>  counter: atomic<u32>;
+@group(0) @binding(5) var<storage, read>        attractors: array<vec4<f32>>;  // xyz=point, w=weight
 
 // --- Noise functions for curl noise ---
 
@@ -206,12 +211,24 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
             let cos_theta = cos_theta_min + rand_float(s1) * (1.0 - cos_theta_min);
             let sin_theta = sqrt(1.0 - cos_theta * cos_theta);
 
-            let vx = sin_theta * cos(phi) * params.speed;
-            let vy = cos_theta * params.speed;
-            let vz = sin_theta * sin(phi) * params.speed;
-
-            p.position = vec3f(0.0, 0.0, 0.0);
-            p.velocity = vec3f(vx, vy, vz);
+            if (params.emit_radius > 0.0) {
+                // VOLUMETRIC emission: spawn at a uniform random point in a sphere of emit_radius (a full-
+                // sphere direction × cbrt(u) radius), with only a small outward drift — the curl field then
+                // churns the filled volume, so there's no single-point convergence into one solid colour.
+                let s3 = pcg_hash(s2);
+                let s4 = pcg_hash(s3 + idx * 7u);
+                let ct = 2.0 * rand_float(s3) - 1.0;               // uniform cos over the FULL sphere
+                let st = sqrt(max(0.0, 1.0 - ct * ct));
+                let sdir = vec3f(st * cos(phi), ct, st * sin(phi));
+                let rr = params.emit_radius * pow(rand_float(s4), 0.3333333);
+                p.position = sdir * rr;
+                p.velocity = sdir * (params.speed * 0.03);   // near-still on spawn → the CURL sets the flow direction (swirls, even), not a radial burst
+            } else {
+                // Single-point origin emission (default): a directed cone from the origin.
+                let dir = vec3f(sin_theta * cos(phi), cos_theta, sin_theta * sin(phi));
+                p.position = vec3f(0.0, 0.0, 0.0);
+                p.velocity = dir * params.speed;
+            }
             p.age = 0.0;
             p.lifetime = params.lifetime * (0.8 + 0.4 * rand_float(s2));
         } else {
@@ -232,6 +249,21 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
         // Drag
         if (params.drag > 0.0) {
             p.velocity *= 1.0 - params.drag * params.dt;
+        }
+
+        // Per-point forces. attractors[ai].w carries the point's VOID RADIUS.
+        //  - Attraction: spring-like pull toward the point, capped so particles orbit rather than collapse.
+        //  - Repulsion: within the radius R, push particles OUTWARD to the surface (strongest at centre,
+        //    zero at R) so a clean sphere-shaped VOID opens up around the point.
+        for (var ai = 0u; ai < params.attractor_count; ai = ai + 1u) {
+            let to = attractors[ai].xyz - p.position;
+            let d = length(to) + 1e-3;
+            let dir = to / d;
+            let R = attractors[ai].w;
+            p.velocity += dir * params.attract_strength * min(d, 6.0) * 0.15 * params.dt;
+            if (d < R) {
+                p.velocity += (-dir) * params.repel_strength * (1.0 - d / R) * params.dt;
+            }
         }
 
         p.position += p.velocity * params.dt;
@@ -269,11 +301,23 @@ fn cs_main(@builtin(global_invocation_id) gid: vec3u) {
             inst.pos_rot = vec4f(p.position, yaw);
             inst.scale_pad = vec4f(sz, sz, sz * params.elongation, pitch);
         } else {
-            // Billboard: uniform scale, no rotation
-            inst.pos_rot = vec4f(p.position, 0.0);
-            inst.scale_pad = vec4f(sz, sz, sz, 0.0);
+            // Billboard: camera-facing quad. When elongation>1, stretch it into a motion-streak along the
+            // (normalized) velocity direction — packed into the otherwise-unused slots for vs_billboard:
+            // pos_rot.w=vdir.x, scale_pad.y=elongation, scale_pad.z=vdir.y, scale_pad.w=vdir.z.
+            let vel_len = length(p.velocity);
+            if (params.elongation > 1.0 && vel_len > 1e-4) {
+                let vdir = p.velocity / vel_len;
+                inst.pos_rot = vec4f(p.position, vdir.x);
+                inst.scale_pad = vec4f(sz, params.elongation, vdir.y, vdir.z);
+            } else {
+                // Round billboard (scale_pad.y = 1.0 → vs_billboard treats it as unstretched).
+                inst.pos_rot = vec4f(p.position, 0.0);
+                inst.scale_pad = vec4f(sz, 1.0, 0.0, 0.0);
+            }
         }
-        inst.color = vec4f(params.color.rgb, params.color.a * alpha_factor);
+        // Per-particle brightness jitter (stable per particle via idx) breaks up a flat single colour.
+        let jitter = 1.0 - params.color_jitter * rand_float(pcg_hash(idx * 2654435761u));
+        inst.color = vec4f(params.color.rgb * jitter, params.color.a * alpha_factor);
     } else {
         // Dead: zero-scale far away
         inst.pos_rot = vec4f(99999.0, 99999.0, 99999.0, 0.0);
@@ -309,9 +353,13 @@ struct ParamsData {
     uint32_t shape;           // 80
     uint32_t learning_mode;   // 84
     float    bounds;          // 88
-    float    _pad0;           // 92
+    float    attract_strength;// 92
+    uint32_t attractor_count; // 96
+    float    repel_strength;  // 100
+    float    emit_radius;     // 104
+    float    color_jitter;    // 108
 };
-static_assert(sizeof(ParamsData) == 96, "ParamsData must be 96 bytes");
+static_assert(sizeof(ParamsData) == 112, "ParamsData must be 112 bytes");
 
 // =============================================================================
 // Particles3D Operator
@@ -338,12 +386,15 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<int>   count         {"count",         1000, 1, 100000};
     vivid::Param<float> emission_rate {"emission_rate", 100.0f, 0.0f, 10000.0f};
     vivid::Param<float> lifetime      {"lifetime",      2.0f, 0.1f, 30.0f};
+    vivid::Param<float> emit_radius   {"emit_radius",   0.0f, 0.0f, 30.0f};   // 0: emit from origin; >0: fill a sphere of this radius
 
     // Physics
     vivid::Param<float> speed   {"speed",   2.0f, 0.0f, 20.0f};
     vivid::Param<float> gravity {"gravity", -2.0f, -20.0f, 20.0f};
     vivid::Param<float> spread  {"spread",  45.0f, 0.0f, 360.0f};
     vivid::Param<float> drag    {"drag",    0.0f, 0.0f, 10.0f};
+    vivid::Param<float> attract_strength {"attract_strength", 0.0f, 0.0f, 40.0f};  // pull toward the `attractors` points
+    vivid::Param<float> repel_strength   {"repel_strength",   0.0f, 0.0f, 60.0f};  // push particles OUT of each point's radius (voids)
 
     // Curl Noise
     vivid::Param<float> curl_strength  {"curl_strength",  0.0f, 0.0f, 20.0f};
@@ -366,6 +417,7 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
     // Material
     vivid::Param<float> emission {"emission", 0.5f, 0.0f, 5.0f};
     vivid::Param<int>   unlit    {"unlit",    1, {"Off", "On"}};
+    vivid::Param<float> color_jitter {"color_jitter", 0.0f, 0.0f, 1.0f};  // per-particle brightness variation (breaks up a flat single colour)
 
     // Learning mode
     vivid::Param<int> learning_mode {"learning_mode", 0, {"Advanced", "Beginner"}};
@@ -392,11 +444,14 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::param_group(count, "Emission");
         vivid::param_group(emission_rate, "Emission");
         vivid::param_group(lifetime, "Emission");
+        vivid::param_group(emit_radius, "Emission");
 
         vivid::param_group(speed, "Physics");
         vivid::param_group(gravity, "Physics");
         vivid::param_group(spread, "Physics");
         vivid::param_group(drag, "Physics");
+        vivid::param_group(attract_strength, "Physics");
+        vivid::param_group(repel_strength, "Physics");
 
         vivid::param_group(curl_strength, "Curl Noise");
         vivid::param_group(noise_scale, "Curl Noise");
@@ -418,14 +473,18 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
 
         vivid::param_group(emission, "Material");
         vivid::param_group(unlit, "Material");
+        vivid::param_group(color_jitter, "Material");
 
         out.push_back(&count);
         out.push_back(&emission_rate);
         out.push_back(&lifetime);
+        out.push_back(&emit_radius);
         out.push_back(&speed);
         out.push_back(&gravity);
         out.push_back(&spread);
         out.push_back(&drag);
+        out.push_back(&attract_strength);
+        out.push_back(&repel_strength);
         out.push_back(&curl_strength);
         out.push_back(&noise_scale);
         out.push_back(&noise_speed);
@@ -440,11 +499,13 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
         out.push_back(&a);
         out.push_back(&emission);
         out.push_back(&unlit);
+        out.push_back(&color_jitter);
         out.push_back(&learning_mode);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
-        out.push_back(vivid::gpu::scene_port("scene", VIVID_PORT_INPUT));
+        out.push_back(vivid::gpu::scene_port("scene", VIVID_PORT_INPUT));                                    // custom_inputs[0]
+        out.push_back(VIVID_CUSTOM_REF_PORT("attractors", VIVID_PORT_INPUT, vivid::gpu::InstanceArray3D));   // custom_inputs[1]
         out.push_back(vivid::gpu::scene_port("scene", VIVID_PORT_OUTPUT));
     }
 
@@ -495,6 +556,32 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
         params.shape          = beginner ? 0u : static_cast<uint32_t>(shape.int_value());
         params.learning_mode  = beginner ? 1u : 0u;
         params.bounds         = bounds.value;
+
+        // Attractors (optional custom_inputs[1]): note-driven points the particles interact with. Copy up
+        // to 32 as vec4 (xyz=pos, w=VOID RADIUS from the instance's scale.x). count 0 => shader skips.
+        uint32_t attractor_count = 0;
+        if (ctx->custom_input_count > 1 && ctx->custom_inputs && ctx->custom_inputs[1]) {
+            const auto* arr = static_cast<const vivid::gpu::InstanceArray3D*>(ctx->custom_inputs[1]);
+            if (arr && arr->data && arr->count > 0) {
+                uint32_t n = arr->count > 32u ? 32u : arr->count;
+                float vec4s[32 * 4] = {0};
+                for (uint32_t i = 0; i < n; ++i) {
+                    vec4s[i * 4 + 0] = arr->data[i].position[0];
+                    vec4s[i * 4 + 1] = arr->data[i].position[1];
+                    vec4s[i * 4 + 2] = arr->data[i].position[2];
+                    float radius = arr->data[i].scale[0];   // per-point void radius = the instance's size
+                    vec4s[i * 4 + 3] = radius > 0.2f ? radius : 0.2f;
+                }
+                wgpuQueueWriteBuffer(ctx->queue, attractor_buf_, 0, vec4s, n * 16);
+                attractor_count = n;
+            }
+        }
+        params.attract_strength = beginner ? 0.0f : attract_strength.value;
+        params.repel_strength   = beginner ? 0.0f : repel_strength.value;
+        params.attractor_count  = attractor_count;
+        params.emit_radius      = emit_radius.value;   // 0 = single-point origin emission (default)
+        params.color_jitter     = beginner ? 0.0f : color_jitter.value;
+
         wgpuQueueWriteBuffer(ctx->queue, params_ubo_, 0, &params, sizeof(params));
 
         // Reset atomic counter to 0
@@ -583,6 +670,7 @@ struct Particles3D : vivid::OperatorBase, vivid::GpuProcessable {
         vivid::gpu::release(instance_buf_);
         vivid::gpu::release(params_ubo_);
         vivid::gpu::release(counter_buf_);
+        vivid::gpu::release(attractor_buf_);
         vivid::gpu::release(quad_vb_);
         vivid::gpu::release(quad_ib_);
         vivid::gpu::release(box_vb_);
@@ -609,6 +697,7 @@ private:
     WGPUBuffer instance_buf_   = nullptr;
     WGPUBuffer params_ubo_     = nullptr;
     WGPUBuffer counter_buf_    = nullptr;
+    WGPUBuffer attractor_buf_  = nullptr;   // up to 32 vec4 attractor points (binding 5)
 
     // Billboard quad
     WGPUBuffer quad_vb_ = nullptr;
@@ -637,6 +726,7 @@ private:
         vivid::gpu::release(instance_buf_);
         vivid::gpu::release(params_ubo_);
         vivid::gpu::release(counter_buf_);
+        vivid::gpu::release(attractor_buf_);
         vivid::gpu::release(quad_vb_);
         vivid::gpu::release(quad_ib_);
         vivid::gpu::release(box_vb_);
@@ -676,6 +766,10 @@ private:
         // Counter buffer (atomic<u32>)
         counter_buf_ = make_storage_buf("Particles3D Counter", 4);
 
+        // Attractor buffer — up to 32 vec4 points (binding 5). Persists even when nothing is connected
+        // (attractor_count=0 then, so the shader never reads it).
+        attractor_buf_ = make_storage_buf("Particles3D Attractors", 32 * 16);
+
         // --- Billboard quad mesh ---
         create_billboard_quad(gpu);
 
@@ -691,7 +785,7 @@ private:
         }
 
         // --- Bind group layout ---
-        WGPUBindGroupLayoutEntry entries[5]{};
+        WGPUBindGroupLayoutEntry entries[6]{};
 
         // binding 0: particles_in (read-only storage)
         entries[0].binding = 0;
@@ -723,9 +817,15 @@ private:
         entries[4].buffer.type = WGPUBufferBindingType_Storage;
         entries[4].buffer.minBindingSize = 4;
 
+        // binding 5: attractors (read-only storage)
+        entries[5].binding = 5;
+        entries[5].visibility = WGPUShaderStage_Compute;
+        entries[5].buffer.type = WGPUBufferBindingType_ReadOnlyStorage;
+        entries[5].buffer.minBindingSize = 0;
+
         WGPUBindGroupLayoutDescriptor bgl_desc{};
         bgl_desc.label = vivid_sv("Particles3D BGL");
-        bgl_desc.entryCount = 5;
+        bgl_desc.entryCount = 6;
         bgl_desc.entries = entries;
         compute_bgl_ = wgpuDeviceCreateBindGroupLayout(gpu->device, &bgl_desc);
 
@@ -764,7 +864,7 @@ private:
         uint64_t instance_buf_size = static_cast<uint64_t>(current_count_) * sizeof(vivid::gpu::InstanceData3D);
         if (instance_buf_size < 48) instance_buf_size = 48;
 
-        WGPUBindGroupEntry entries[5]{};
+        WGPUBindGroupEntry entries[6]{};
         entries[0].binding = 0;
         entries[0].buffer  = read_buf;
         entries[0].offset  = 0;
@@ -790,10 +890,15 @@ private:
         entries[4].offset  = 0;
         entries[4].size    = 4;
 
+        entries[5].binding = 5;
+        entries[5].buffer  = attractor_buf_;
+        entries[5].offset  = 0;
+        entries[5].size    = 32 * 16;
+
         WGPUBindGroupDescriptor desc{};
         desc.label      = vivid_sv(label);
         desc.layout     = compute_bgl_;
-        desc.entryCount = 5;
+        desc.entryCount = 6;
         desc.entries    = entries;
         *out_bg = wgpuDeviceCreateBindGroup(gpu->device, &desc);
     }

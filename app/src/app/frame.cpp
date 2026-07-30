@@ -152,6 +152,42 @@ void draw_gemini_key_modal(Renderer2D& ui, Window& win) {
                  s.dim[0], s.dim[1], s.dim[2], 1.0f, 0.72f);
 }
 
+// A tiny always-on performance read-out — smoothed FPS + frame time — pinned to the
+// top-right corner over the node graph. Frame time is the wall-clock delta between
+// successive calls (once per drawn frame), smoothed by an EMA (~30-frame time
+// constant) so the digits don't jitter. The string is only re-formatted a few times a
+// second, snprintf'd into a static buffer, so the draw path allocates nothing. The text
+// tints green / gold / red as the frame rate drops, an at-a-glance load hint.
+void draw_perf_hud(Renderer2D& ui, const Window& win) {
+    static double last_t = glfwGetTime();
+    static double ema_ms = 1000.0 / 60.0;   // smoothed frame time (ms), seeded at 60 fps
+    static double refresh_acc = 0.25;       // seconds since the string was last formatted (force 1st)
+    static char   buf[48] = "-- fps";
+    const double now = glfwGetTime();
+    double dt = now - last_t;
+    last_t = now;
+    dt = std::clamp(dt, 1e-4, 0.25);        // ignore stalls (resize / breakpoint / first frame)
+    const double ms = dt * 1000.0;
+    ema_ms += (ms - ema_ms) * 0.1;          // exponential moving average (alpha 0.1 ~= 30-frame mean)
+    const double fps = ema_ms > 1e-4 ? 1000.0 / ema_ms : 0.0;
+    refresh_acc += dt;
+    if (refresh_acc >= 0.25) {              // re-format ~4x/sec so the digits read steadily
+        refresh_acc = 0.0;
+        std::snprintf(buf, sizeof buf, "%.0f fps \xC2\xB7 %.1f ms", fps, ema_ms);
+    }
+    const Style& s = style();
+    const float scale = s.fs_value;         // small numeric read-out (0.70x)
+    const float tw = ui.text_width(buf, scale);
+    const float pad = 6.f, bh = 16.f;
+    const float bw = tw + pad * 2.f;
+    const float x = static_cast<float>(win.win_w) - bw - 8.f;
+    const float y = 8.f;
+    ui.draw_rect(x, y, bw, bh, s.recess[0], s.recess[1], s.recess[2], 0.60f);                         // semi-transparent chip
+    ui.draw_rect_outline(x, y, bw, bh, 1.f, s.border_soft[0], s.border_soft[1], s.border_soft[2], 0.5f);
+    const float* c = fps >= 55.0 ? s.green : (fps >= 30.0 ? s.gold : s.red);                          // load hint
+    ui.draw_text(x + pad, y + 3.f, buf, c[0], c[1], c[2], 0.95f, scale);
+}
+
 }  // namespace
 
 void reap_plugin_windows(App& app, Window& win) {
@@ -765,6 +801,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
+            draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
             ui.flush(frame.encoder, frame.view, win.win_w, win.win_h, win.fb_w, win.fb_h);
             gpu.end_frame(frame);
             // Video export (realtime): this frame's Output RT is now submitted to the queue, so

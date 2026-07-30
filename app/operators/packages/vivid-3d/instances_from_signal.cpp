@@ -36,11 +36,15 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> persist{"persist", 0.f, 0.f, 1.f};      // 0: pop-and-vanish; 1: trail HOLDS a standing shape
     vivid::Param<float> pos_lo {"pos_lo", 0.f, 0.f, 1.f};       // frame the signal's pos window (e.g. its pitch range)
     vivid::Param<float> pos_hi {"pos_hi", 1.f, 0.f, 1.f};       // …stretched across the full layout + palette
+    vivid::Param<float> center_x{"center_x", 0.f, -30.f, 30.f}; // offset the whole layout in space (place it off-origin)
+    vivid::Param<float> center_y{"center_y", 0.f, -30.f, 30.f};
+    vivid::Param<float> center_z{"center_z", 0.f, -30.f, 30.f};
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&size); out.push_back(&radius); out.push_back(&layout);
         out.push_back(&spin); out.push_back(&trail); out.push_back(&pulse); out.push_back(&palette);
         out.push_back(&persist); out.push_back(&pos_lo); out.push_back(&pos_hi);
+        out.push_back(&center_x); out.push_back(&center_y); out.push_back(&center_z);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -62,6 +66,9 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
         const float persistAmt = std::clamp(pv(7, persist.value), 0.f, 1.f);
         const float posLo    = pv(8, pos_lo.value);
         const float posSpan  = pv(9, pos_hi.value) - posLo;
+        const float cx       = pv(10, center_x.value);
+        const float cy       = pv(11, center_y.value);
+        const float cz       = pv(12, center_z.value);
         const float dt       = static_cast<float>(ctx->delta_time);
         const float t        = static_cast<float>(ctx->time);
 
@@ -113,7 +120,7 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
                 place(lay, h, rad, t, pos);
 
                 auto& d = instances_[i];
-                d.position[0] = pos[0]; d.position[1] = pos[1]; d.position[2] = pos[2];
+                d.position[0] = pos[0] + cx; d.position[1] = pos[1] + cy; d.position[2] = pos[2] + cz;
                 const float sc = baseSize * (0.4f + 0.6f * L.amp) * (1.f + pulse_pop(k)) * (0.15f + 0.85f * vis);
                 d.scale[0] = d.scale[1] = d.scale[2] = sc;
                 d.rotation_y = spinAmt * L.age * 6.2831853f;
