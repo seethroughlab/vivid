@@ -2,9 +2,11 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/value_view.h"
 #include "operator_api/metronome_sync.h"
+#include "operator_api/lane_thumb.h"   // 2D thumbnail: a live clock face
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 // =============================================================================
 // Clock — a transport-synced TIMING SOURCE for the visual graph
@@ -77,15 +79,65 @@ struct Clock : vivid::OperatorBase, vivid::GpuProcessable {
         emit(ctx, 0, static_cast<float>(stepd));
         emit(ctx, 1, phase);
         emit(ctx, 2, gate);
+
+        // Live clock face: a dim disc + a pie wedge that fills with `phase` each tick and flashes on the
+        // gate, so the node thumbnail visibly TICKS in the graph (and you can read the tempo at a glance).
+        draw_face(ctx, phase, gate, static_cast<float>(stepd));
     }
 
+    ~Clock() override { vivid::lanethumb::destroy(thumb_); }
+
 private:
+    vivid::lanethumb::State thumb_{};
+
     static void emit(const VividGpuContext* ctx, int port, float v) {
         if (!ctx->value_outputs) return;
         if (float* buf = vivid_value_output_floats(&ctx->value_outputs[port], 1)) {
             buf[0] = v;
             vivid_value_output_commit(&ctx->value_outputs[port], 1);
         }
+    }
+
+    // Append a clockwise pie fan (fraction f0..f1 of a full turn, from 12 o'clock) to `v`.
+    static void pie(std::vector<vivid::lanethumb::Vtx>& v, float R, float sx, float sy,
+                    const float col[3], float f0, float f1) {
+        const int seg = std::max(1, static_cast<int>(std::ceil((f1 - f0) * 48.f)));
+        const float TAU = 6.2831853f;
+        for (int i = 0; i < seg; ++i) {
+            const float a0 = (f0 + (f1 - f0) * (static_cast<float>(i)     / seg)) * TAU;
+            const float a1 = (f0 + (f1 - f0) * (static_cast<float>(i + 1) / seg)) * TAU;
+            const vivid::lanethumb::Vtx c  {{0.f, 0.f},                       {col[0], col[1], col[2]}};
+            const vivid::lanethumb::Vtx p0 {{std::sin(a0) * R * sx, std::cos(a0) * R * sy}, {col[0], col[1], col[2]}};
+            const vivid::lanethumb::Vtx p1 {{std::sin(a1) * R * sx, std::cos(a1) * R * sy}, {col[0], col[1], col[2]}};
+            v.push_back(c); v.push_back(p0); v.push_back(p1);
+        }
+    }
+
+    void draw_face(const VividGpuContext* ctx, float phase, float gate, float step) {
+        if (!vivid::lanethumb::ok(ctx)) return;
+        const float aspect = (ctx->output_height > 0)
+                           ? static_cast<float>(ctx->output_width) / static_cast<float>(ctx->output_height) : 1.f;
+        const float sx = aspect > 1.f ? 1.f / aspect : 1.f;    // keep the face circular whatever the aspect
+        const float sy = aspect < 1.f ? aspect : 1.f;
+        const float R  = 0.82f;
+
+        std::vector<vivid::lanethumb::Vtx> v;
+        const float dim[3] = { 0.16f, 0.18f, 0.24f };
+        pie(v, R, sx, sy, dim, 0.f, 1.f);                       // full dim disc (the clock face)
+
+        // Elapsed wedge: a cool accent that whitens on the gate pulse (the tick). Hue drifts a touch per
+        // step so successive ticks read as counting.
+        const float g   = std::clamp(gate, 0.f, 1.f);
+        const float hue = 0.55f + 0.06f * std::sin(step * 1.3f);
+        const float acc[3] = { std::clamp(0.25f + 0.75f * g + 0.15f * hue, 0.f, 1.f),
+                               std::clamp(0.60f + 0.40f * g,               0.f, 1.f),
+                               std::clamp(0.95f - 0.10f * hue + 0.05f * g, 0.f, 1.f) };
+        pie(v, R * 0.94f, sx, sy, acc, 0.f, std::max(0.015f, phase));   // filling wedge = phase
+
+        const float hub[3] = { 0.9f, 0.95f, 1.0f };             // bright hub so 12 o'clock reads
+        pie(v, R * 0.14f, sx, sy, hub, 0.f, 1.f);
+
+        vivid::lanethumb::draw(ctx, thumb_, v);
     }
 };
 
