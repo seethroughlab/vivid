@@ -61,30 +61,77 @@ def build(v: Vivid, save: bool = True):
     v.set_clip(ARP, S_CHORUS, arp, 16.0)
 
     out = find(v.graph()["nodes"], "Output")
+    arp_sig = v.notes(v.track_id(ARP))   # the melody carves the spike crown (per-note, shared by every look)
 
-    shape = v.add_node("Shape3D")   # a subdivided sphere for the Deformer to churn
-    for k, val in dict(shape=1, detail=56, r=0.4, g=0.68, b=1.0, roughness=0.4, metallic=0.15,
-                       emission=0.12, scale_x=2.2, scale_y=2.2, scale_z=2.2).items():
-        v.set_node_param(shape, k, float(val))
+    # --- One crystal LOOK = a deformed sphere core (churns to the bass) + a radial spike crown (each ARP
+    #     note erupts a shard outward via orb layout + orient=radial). We build THREE looks that differ in
+    #     core colour, spike shape, and palette, then let a Clock + Switch3D cut between whole looks every 4
+    #     bars — composable: timing lives in the Clock, selection in the Switch, the look is just a subgraph. ---
+    def make_look(core_rgb, spike_shape, palette, spike_rgb):
+        cr, cg, cb = core_rgb
+        core = v.add_node("Shape3D")            # subdivided sphere for the Deformer to churn
+        for k, val in dict(shape=1, detail=56, r=cr, g=cg, b=cb, roughness=0.4, metallic=0.15,
+                           emission=0.13, scale_x=2.2, scale_y=2.2, scale_z=2.2).items():
+            v.set_node_param(core, k, float(val))
+        defm = v.add_node("Deformer")           # animated noise displacement along the surface normals
+        for k, val in dict(mode=0, axis=0, amplitude=0.3, frequency=3.0, speed=0.8).items():
+            v.set_node_param(defm, k, float(val))
+        v.connect(defm, core, 0)
 
-    defm = v.add_node("Deformer")   # animated noise displacement along the surface normals
-    for k, val in dict(mode=0, axis=0, amplitude=0.3, frequency=3.0, speed=0.8).items():
-        v.set_node_param(defm, k, float(val))
-    v.connect(defm, shape, 0)
+        crown_sig = v.add_node("InstancesFromSignal")   # orb + radial spikes: each note = a shard shooting out
+        for k, val in dict(size=0.5, radius=1.2, layout=2, orient=1, elongate=5.0, spin=0.0,
+                           trail=0.45, pulse=1.0, palette=palette, persist=0.22).items():
+            v.set_node_param(crown_sig, k, float(val))
+        v.connect(crown_sig, arp_sig)
+        sr, sg, sb = spike_rgb
+        spike = v.add_node("Shape3D")           # base spike (Cone/Pyramid/Cylinder); elongate stretches it
+        for k, val in dict(shape=spike_shape, detail=6, r=sr, g=sg, b=sb, roughness=0.3, metallic=0.4,
+                           emission=1.1).items():
+            v.set_node_param(spike, k, float(val))
+        crown = v.add_node("Instancer3D")
+        v.connect(crown, spike, 0)
+        v.connect(crown, crown_sig, 1)
+
+        look = v.add_node("SceneMerge")         # ONE Scene3D per look: core + its crown
+        v.connect(look, defm,  0)
+        v.connect(look, crown, 1)
+        # bridge each look's reactivity so whichever look is showing still PUNCHES on the beat
+        v.map("master.low",       defm,     "amplitude", amount=0.16, attack=0.008, release=0.13)
+        v.map("master.low",       crown_sig,"elongate",  amount=0.14, attack=0.006, release=0.12)
+        v.map("master.high",      defm,     "frequency", amount=0.06, attack=0.03,  release=0.2)
+        v.map("master.transient", core,     "emission",  amount=0.3,  attack=0.005, release=0.16)
+        return look
+
+    looks = [
+        make_look((0.35, 0.55, 0.90), 5, 3, (0.60, 0.85, 1.00)),   # Ice cones,     cool-blue core
+        make_look((0.90, 0.42, 0.20), 6, 2, (1.00, 0.60, 0.25)),   # Fire pyramids, warm core
+        make_look((0.30, 0.75, 0.52), 4, 4, (0.55, 1.00, 0.62)),   # Viridis rods,  green core
+    ]
+
+    # The composable cut: a metronome-locked Clock ticks every 4 bars; Switch3D forwards the look at that
+    # step (sequential) — so the whole crystal cuts to a new shape + colour scheme on the bar, in time.
+    clock = v.add_node("Clock")
+    for k, val in dict(sync=1, unit=1, period=4.0, steps=0, gate_width=0.08).items():   # metronome, 4 bars
+        v.set_node_param(clock, k, float(val))
+    switch = v.add_node("Switch3D")
+    v.set_node_param(switch, "order", 0.0)      # sequential
+    v.connect(switch, clock, 0, src_port=0)     # clock `step` (out 0) → Switch `clock` (in port 0)
+    for i, look in enumerate(looks):
+        v.connect(switch, look, 1 + i)          # → scene_a / scene_b / scene_c
 
     key = v.add_node("Light3D")
     for k, val in dict(type=0, intensity=2.6, r=1.0, g=0.96, b=0.9,
                        dir_x=-0.4, dir_y=-0.6, dir_z=-0.5).items():
         v.set_node_param(key, k, float(val))
     fill = v.add_node("Light3D")
-    for k, val in dict(type=1, intensity=1.5, r=0.45, g=0.7, b=1.0,
+    for k, val in dict(type=1, intensity=1.5, r=0.55, g=0.7, b=1.0,
                        pos_x=-5.0, pos_y=3.0, pos_z=5.0, radius=26.0).items():
         v.set_node_param(fill, k, float(val))
 
     merge = v.add_node("SceneMerge")
-    v.connect(merge, defm, 0)
-    v.connect(merge, key,  1)
-    v.connect(merge, fill, 2)
+    v.connect(merge, switch, 0)         # the currently-selected look
+    v.connect(merge, key,    1)
+    v.connect(merge, fill,   2)
 
     render = v.add_node("Render3D")
     for k, val in dict(cam_x=0, cam_y=0.5, cam_z=7, target_y=0, fov=48, far=100, near=0.05,
@@ -93,19 +140,13 @@ def build(v: Vivid, save: bool = True):
     v.connect(render, merge, 0)
     v.connect(out, render, 0)
 
-    # --- The bridge: bass grows the spikes + swells the form, highs sharpen the facets, transients flash. ---
-    v.map("master.low",       defm,  "amplitude", amount=0.13, attack=0.02, release=0.26)  # +0.65/5: spike growth
-    for ax in ("scale_x", "scale_y", "scale_z"):
-        v.map("master.low", shape, ax, amount=0.012, attack=0.02, release=0.28)            # gentle whole-form swell
-    v.map("master.high",      defm,  "frequency", amount=0.06, attack=0.03, release=0.2)   # +3/50: finer facets
-    v.map("master.transient", shape, "emission",  amount=0.3,  attack=0.005, release=0.18) # +1.5/5: glow flash
-
     v.master_gain(0.6)   # headroom: bass+arp+drums sum clips at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
     v.play()
     if save:
         save_geo(v, PROJECT)
-    print("built. a crystal that grows spikes + swells on the kick, sharpens facets on the hats.")
+    print("built. a crystal that cuts between 3 shape/colour looks every 4 bars (Clock → Switch3D),")
+    print("       each churning + erupting note-spikes to the music.")
 
 
 if __name__ == "__main__":
