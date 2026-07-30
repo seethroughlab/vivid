@@ -63,30 +63,33 @@ def build(v: Vivid, save: bool = True):
     out = find(v.graph()["nodes"], "Output")
     arp_sig = v.notes(v.track_id(ARP))   # the melody carves the spike crown (per-note, shared by every look)
 
-    # --- One crystal LOOK = a deformed sphere core (churns to the bass) + a radial spike crown (each ARP
-    #     note erupts a shard outward via orb layout + orient=radial). We build THREE looks that differ in
-    #     core colour, spike shape, and palette, then let a Clock + Switch3D cut between whole looks every 4
-    #     bars — composable: timing lives in the Clock, selection in the Switch, the look is just a subgraph. ---
-    def make_look(core_rgb, spike_shape, palette, spike_rgb):
-        cr, cg, cb = core_rgb
-        core = v.add_node("Shape3D")            # subdivided sphere for the Deformer to churn
-        for k, val in dict(shape=1, detail=56, r=cr, g=cg, b=cb, roughness=0.4, metallic=0.15,
-                           emission=0.13, scale_x=2.2, scale_y=2.2, scale_z=2.2).items():
+    # --- Each LOOK is a genuinely different GEOMETRY (so the 4-bar cut is unmistakable from any angle, not
+    #     just a recolour): a SPIKY crystal (deformed sphere + a dense arp-driven spike crown), a SMOOTH
+    #     churning BLOB (big gently-deformed orb, crown suppressed), and a TORUS RING (a donut faced at the
+    #     camera). Composable: timing lives in the Clock, selection in the Switch, each look is a subgraph. ---
+    def make_look(cfg):
+        cr, cg, cb = cfg["core_rgb"]
+        core = v.add_node("Shape3D")            # the persistent form; the Deformer churns it to the bass
+        for k, val in dict(shape=cfg["core_shape"], detail=48, r=cr, g=cg, b=cb, roughness=0.4,
+                           metallic=0.15, emission=cfg["core_emission"], rot_x=cfg["core_rot_x"],
+                           scale_x=cfg["core_scale"], scale_y=cfg["core_scale"], scale_z=cfg["core_scale"]).items():
             v.set_node_param(core, k, float(val))
         defm = v.add_node("Deformer")           # animated noise displacement along the surface normals
-        for k, val in dict(mode=0, axis=0, amplitude=0.3, frequency=3.0, speed=0.8).items():
+        for k, val in dict(mode=0, axis=0, amplitude=cfg["deform_amp"], frequency=cfg["deform_freq"],
+                           speed=cfg["deform_speed"]).items():
             v.set_node_param(defm, k, float(val))
         v.connect(defm, core, 0)
 
-        crown_sig = v.add_node("InstancesFromSignal")   # orb + radial spikes: each note = a shard shooting out
-        for k, val in dict(size=0.5, radius=1.2, layout=2, orient=1, elongate=5.0, spin=0.0,
-                           trail=0.45, pulse=1.0, palette=palette, persist=0.22).items():
+        crown_sig = v.add_node("InstancesFromSignal")   # arp-driven radial crown (suppressed to ~0 on non-spiky looks)
+        for k, val in dict(size=cfg["size"], radius=cfg["radius"], layout=cfg["layout"], orient=1,
+                           elongate=cfg["elongate"], spin=0.0, trail=cfg["trail"], pulse=1.0,
+                           palette=cfg["palette"], persist=cfg["persist"]).items():
             v.set_node_param(crown_sig, k, float(val))
         v.connect(crown_sig, arp_sig)
-        sr, sg, sb = spike_rgb
-        spike = v.add_node("Shape3D")           # base spike (Cone/Pyramid/Cylinder); elongate stretches it
-        for k, val in dict(shape=spike_shape, detail=6, r=sr, g=sg, b=sb, roughness=0.3, metallic=0.4,
-                           emission=1.1).items():
+        sr, sg, sb = cfg["spike_rgb"]
+        spike = v.add_node("Shape3D")           # base shard (Cone); elongate stretches it radially into a spike
+        for k, val in dict(shape=cfg["spike_shape"], detail=6, r=sr, g=sg, b=sb, roughness=0.3,
+                           metallic=0.4, emission=1.1).items():
             v.set_node_param(spike, k, float(val))
         crown = v.add_node("Instancer3D")
         v.connect(crown, spike, 0)
@@ -95,18 +98,31 @@ def build(v: Vivid, save: bool = True):
         look = v.add_node("SceneMerge")         # ONE Scene3D per look: core + its crown
         v.connect(look, defm,  0)
         v.connect(look, crown, 1)
-        # bridge each look's reactivity so whichever look is showing still PUNCHES on the beat
-        v.map("master.low",       defm,     "amplitude", amount=0.16, attack=0.008, release=0.13)
-        v.map("master.low",       crown_sig,"elongate",  amount=0.14, attack=0.006, release=0.12)
+        # bridge each look's reactivity: bass churns the core + stabs the crown, highs add detail, transients glow
+        v.map("master.low",       defm,     "amplitude", amount=cfg["amp_react"], attack=0.008, release=0.13)
+        v.map("master.low",       crown_sig,"elongate",  amount=0.12, attack=0.006, release=0.12)
         v.map("master.high",      defm,     "frequency", amount=0.06, attack=0.03,  release=0.2)
         v.map("master.transient", core,     "emission",  amount=0.3,  attack=0.005, release=0.16)
         return look
 
-    looks = [
-        make_look((0.35, 0.55, 0.90), 5, 3, (0.60, 0.85, 1.00)),   # Ice cones,     cool-blue core
-        make_look((0.90, 0.42, 0.20), 6, 2, (1.00, 0.60, 0.25)),   # Fire pyramids, warm core
-        make_look((0.30, 0.75, 0.52), 4, 4, (0.55, 1.00, 0.62)),   # Viridis rods,  green core
-    ]
+    # Three DIFFERENT geometries — a spiky ball, a smooth orb, a ring — so each cut reads at a glance.
+    looks = [make_look(c) for c in [
+        # SPIKY CRYSTAL — small core, prominent arp-driven spike crown (Cone, orb), icy blue
+        dict(core_shape=1, core_scale=0.85, core_rgb=(0.35, 0.55, 0.95), core_emission=0.13, core_rot_x=0.0,
+             deform_amp=0.30, deform_freq=3.0, deform_speed=0.8, amp_react=0.16,
+             spike_shape=5, palette=3, spike_rgb=(0.60, 0.85, 1.00),
+             layout=2, radius=1.00, size=0.42, elongate=8.0, trail=0.60, persist=0.35),
+        # SMOOTH BLOB — a big, gently-churning organic orb (crown suppressed), green
+        dict(core_shape=1, core_scale=2.60, core_rgb=(0.30, 0.75, 0.55), core_emission=0.45, core_rot_x=0.0,
+             deform_amp=0.08, deform_freq=1.4, deform_speed=0.6, amp_react=0.05,
+             spike_shape=5, palette=4, spike_rgb=(0.55, 1.00, 0.62),
+             layout=2, radius=2.50, size=0.05, elongate=2.0, trail=0.60, persist=0.35),
+        # TORUS RING — a donut turned to FACE the camera (rot_x), a clear hole; crown suppressed, fiery orange
+        dict(core_shape=2, core_scale=2.60, core_rgb=(0.95, 0.45, 0.20), core_emission=0.30, core_rot_x=1.5708,
+             deform_amp=0.08, deform_freq=2.0, deform_speed=0.7, amp_react=0.05,
+             spike_shape=5, palette=2, spike_rgb=(1.00, 0.60, 0.25),
+             layout=2, radius=1.60, size=0.05, elongate=3.0, trail=0.60, persist=0.35),
+    ]]
 
     # The composable cut: a metronome-locked Clock ticks every 4 bars; Switch3D forwards the look at that
     # step (sequential) — so the whole crystal cuts to a new shape + colour scheme on the bar, in time.
