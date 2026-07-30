@@ -54,6 +54,8 @@ add_vivid_operator(vivid_switch packages/core-visuals/switch.cpp)
 # P8 migration: built-ins moved out of builtin_ops.cpp into packages (Bucket A).
 add_vivid_operator(vivid_shape_grid packages/core-visuals/shape_grid.cpp)
 add_vivid_operator(vivid_notes packages/core-visuals/notes_op.cpp)
+# Notes draws a live signal thumbnail via the shared 2D lane-thumb raster (header-only, in vivid-3d).
+target_include_directories(vivid_notes PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
 add_vivid_operator(vivid_emitter packages/core-visuals/emitter.cpp)
 add_vivid_operator(vivid_instancer packages/core-visuals/instancer.cpp)
 add_vivid_operator(vivid_solids packages/core-visuals/solids.cpp)
@@ -128,7 +130,7 @@ endif()
 # (gpu_3d.h, port_type_registry.h shim, instance_algorithms.h) + linmath.h, so the package dir goes
 # on the include path alongside the ../src default from add_vivid_operator.
 foreach(_v3d render_3d scene_merge shape3d light3d
-             instancer3d instances_from_lanes instance_grid instance_noise deformer
+             instancer3d instances_from_lanes instances_from_signal instance_grid instance_noise deformer
              particles3d sdf3d audio_spectrum lane_ramp lane_palette)
     add_vivid_operator(vivid_${_v3d} packages/vivid-3d/${_v3d}.cpp)
     target_include_directories(vivid_${_v3d} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/packages/vivid-3d)
