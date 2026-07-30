@@ -1624,6 +1624,14 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
             }
         }
 
+        // Rotate the instanced bind-group pools: release the set retired last frame (its command buffer has
+        // been submitted and consumed), then queue the previous frame's set for release next frame. The
+        // one-frame delay guarantees a bind group outlives the pass that referenced it.
+        for (auto bg : retire_inst_bgs_) vivid::gpu::release(bg);
+        retire_inst_bgs_.clear();
+        for (auto& kv : frame_inst_bgs_) retire_inst_bgs_.push_back(kv.second);
+        frame_inst_bgs_.clear();
+
         // One render pass with multiple draws using dynamic offsets
         WGPURenderPassEncoder pass = vivid::gpu::begin_3d_pass(
             ctx->command_encoder, ctx->output_texture_view, depth_view_,
@@ -1679,10 +1687,13 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, bind_group_, 2, dynamic_offsets);
 
             if (instanced) {
-                if (dc.instance_buffer != cached_inst_buf_) {
-                    rebuild_instanced_bind_group(ctx, dc.instance_buffer);
-                }
-                wgpuRenderPassEncoderSetBindGroup(pass, 1, inst_bind_group_, 0, nullptr);
+                // Per-draw instanced bind group, retired a frame later (see rotation before the pass).
+                // The instance storage buffer is reallocated whenever an instancer's count changes, so a
+                // single cached bind group would (a) go stale as the buffer grows and (b) be released while
+                // last frame's submitted pass may still reference it — dropping instances. Pooling per draw
+                // and deferring the release fixes both, and lets multiple instanced draws share one pass.
+                WGPUBindGroup ibg = frame_instanced_bind_group(ctx, dc.instance_buffer);
+                wgpuRenderPassEncoderSetBindGroup(pass, 1, ibg, 0, nullptr);
             } else if (is_textured) {
                 // Phase 6c: bind PBR textures at group 1
                 const auto* tex_src = dc.material_override ? dc.material_override : dc.frag;
@@ -1727,7 +1738,8 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
         for (auto& [f, p] : pipeline_cache_)
             vivid::gpu::release(p);
         vivid::gpu::release(bind_group_);
-        vivid::gpu::release(inst_bind_group_);
+        for (auto& kv : frame_inst_bgs_)  vivid::gpu::release(kv.second);
+        for (auto bg : retire_inst_bgs_)  vivid::gpu::release(bg);
         vivid::gpu::release(bind_layout_);
         vivid::gpu::release(inst_bind_layout_);
         vivid::gpu::release(camera_ubo_);
@@ -1855,10 +1867,12 @@ private:
     WGPUBuffer          material_ubo_ = nullptr;
     WGPUBuffer          lights_ubo_   = nullptr;
 
-    // Instanced bind group (group 1): storage buffer
-    WGPUBindGroup       inst_bind_group_   = nullptr;
+    // Instanced bind group (group 1): storage buffer. One bind group per instanced draw, pooled per frame
+    // (frame_inst_bgs_) and retired a frame later (retire_inst_bgs_) so multiple instanced draws coexist
+    // and a bind group is never released while an in-flight pass still references it.
     WGPUBindGroupLayout inst_bind_layout_  = nullptr;
-    WGPUBuffer          cached_inst_buf_   = nullptr;  // track for cache invalidation
+    std::vector<std::pair<WGPUBuffer, WGPUBindGroup>> frame_inst_bgs_;   // created this frame (buffer → bind group)
+    std::vector<WGPUBindGroup>                        retire_inst_bgs_;  // previous frame's, released next frame
     WGPUDevice          cached_device_     = nullptr;
 
     WGPUTexture         depth_tex_    = nullptr;
@@ -1926,11 +1940,13 @@ private:
         depth_blit_bg_dirty_ = false;
     }
 
-    void rebuild_instanced_bind_group(const VividGpuContext* ctx, WGPUBuffer inst_buf) {
-        vivid::gpu::release(inst_bind_group_);
-        cached_inst_buf_ = inst_buf;
+    // A per-frame instanced bind group for `inst_buf`, reused within the frame if the same buffer recurs.
+    // Created bind groups are retired one frame later (see the rotation before the pass), so any number of
+    // instanced draws can coexist in a single render pass — each references its own still-live bind group.
+    WGPUBindGroup frame_instanced_bind_group(const VividGpuContext* ctx, WGPUBuffer inst_buf) {
+        for (auto& kv : frame_inst_bgs_)
+            if (kv.first == inst_buf) return kv.second;
 
-        // Query buffer size
         uint64_t buf_size = wgpuBufferGetSize(inst_buf);
 
         WGPUBindGroupEntry entry{};
@@ -1944,7 +1960,9 @@ private:
         desc.layout     = inst_bind_layout_;
         desc.entryCount = 1;
         desc.entries    = &entry;
-        inst_bind_group_ = wgpuDeviceCreateBindGroup(ctx->device, &desc);
+        WGPUBindGroup bg = wgpuDeviceCreateBindGroup(ctx->device, &desc);
+        frame_inst_bgs_.push_back({ inst_buf, bg });
+        return bg;
     }
 
     // Phase 6f: rebuild IBL bind group with environment's texture views
