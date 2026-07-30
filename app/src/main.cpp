@@ -280,6 +280,14 @@ int main(int argc, char** argv) {
     cfg.sampleRate = 0;  // device default
     cfg.dataCallback = audio_callback;
     cfg.pUserData = &app;   // the audio thread sees the shared App, never a Window
+    // Give the RT callback real headroom. The callback hosts several plugin synths (Surge/CLAP + VST3)
+    // whose per-block cost SPIKES on dense passages (e.g. a 16th-note arp stacking voices) even though
+    // average CPU is low — with miniaudio's tiny low-latency default period those spikes overrun a single
+    // callback's deadline and crackle. A ~23 ms period (1024 frames @ 44.1k) absorbs the spikes; the extra
+    // latency is imperceptible for playback and audio-reactive visuals. Bump higher if a heavier session
+    // still crackles.
+    cfg.periodSizeInFrames = 1024;
+    cfg.performanceProfile = ma_performance_profile_conservative;
 
     ma_device device;
     bool audio_ok = (ma_device_init(nullptr, &cfg, &device) == MA_SUCCESS);
