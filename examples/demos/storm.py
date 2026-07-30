@@ -1,9 +1,10 @@
 """Storm — a GPU curl-noise particle storm that churns and bursts to the beat (ADR-0041 composable demo).
 
-Particles3D advects ~60k GPU particles through a curl-noise field — a flowing, ember-warm cloud that
-lives on its own (noise_speed), driven by the master-bus bridge: transients BURST new particles
-(emission_rate), the kick churns the field harder (curl_strength) and swells the particle size, the highs
-speed up the turbulence. Particles3D + audio mappings — one op, all reactivity from the composable bridge.
+Particles3D advects a DENSE cloud of GPU particles through a strong curl-noise field — a glowing,
+ember-warm mass churned into visible swirling filaments, alive on its own (noise_speed) and driven hard by
+the master-bus bridge: transients BURST a wall of particles (emission_rate) and puff their size, the kick
+churns the field, swells the particles and FLASHES the whole storm brighter (emission), the highs whip the
+turbulence. Particles3D + audio mappings — one op, all reactivity from the composable bridge.
 
 Run with the app running:  uv run examples/demos/storm.py
 """
@@ -59,24 +60,31 @@ def build(v: Vivid, save: bool = True):
 
     out = find(v.graph()["nodes"], "Output")
 
+    # A DENSE ember storm: ~4x the live-particle count, bigger + brighter billboards, and a tighter core
+    # so it churns as a solid glowing mass (not loose dots). A strong curl field + moderate noise scale
+    # pulls the particles into visible swirling FILAMENTS — that's the structure, alive on its own (speed).
     parts = v.add_node("Particles3D")   # emissive billboards through a curl-noise field
-    for k, val in dict(count=60000, emission_rate=4000, lifetime=2.6, speed=1.0, gravity=0.0,
-                       curl_strength=1.8, noise_scale=0.4, noise_speed=0.45, size=0.05, spread=90.0,
-                       bounds=18.0, shape=0, r=1.0, g=0.55, b=0.22, a=1.0, emission=1.9, unlit=1).items():
+    for k, val in dict(count=90000, emission_rate=16000, lifetime=2.0, speed=1.0, gravity=0.0,
+                       curl_strength=2.4, noise_scale=0.5, noise_speed=0.5, size=0.11, spread=52.0,
+                       bounds=13.0, shape=0, r=1.0, g=0.5, b=0.18, a=1.0, emission=2.6, unlit=1).items():
         v.set_node_param(parts, k, float(val))
 
     render = v.add_node("Render3D")
-    for k, val in dict(cam_x=0, cam_y=0, cam_z=16, target_y=0, fov=52, far=120, near=0.05,
-                       bg_r=0.02, bg_g=0.015, bg_b=0.03).items():
+    for k, val in dict(cam_x=0, cam_y=0, cam_z=14, target_y=0, fov=54, far=120, near=0.05,
+                       bg_r=0.02, bg_g=0.012, bg_b=0.025).items():
         v.set_node_param(render, k, float(val))
     v.connect(render, parts, 0)
     v.connect(out, render, 0)
 
-    # --- The bridge: transients BURST particles, the kick churns + swells, highs stir the turbulence. ---
-    v.map("master.transient", parts, "emission_rate", amount=0.65, attack=0.004, release=0.2)  # +6500/10000
-    v.map("master.low",       parts, "curl_strength", amount=0.16, attack=0.02, release=0.3)   # +3.2/20: churn
-    v.map("master.low",       parts, "size",          amount=0.035, attack=0.02, release=0.26) # +0.07/2: swell
-    v.map("master.high",      parts, "noise_speed",   amount=0.22, attack=0.02, release=0.18)  # +1.1/5: turbulence
+    # --- The bridge, PUNCHED UP: transients BURST a wall of particles, the kick churns the field hard +
+    #     swells + FLASHES the whole storm brighter (a visible pulse of light), the highs whip the
+    #     turbulence. Bigger excursions than before so the storm visibly SLAMS on each hit. ---
+    v.map("master.transient", parts, "emission_rate", amount=0.75, attack=0.003, release=0.18)  # +11250/15000: burst wall
+    v.map("master.transient", parts, "size",          amount=0.05, attack=0.003, release=0.16)  # a puff on each hit
+    v.map("master.low",       parts, "curl_strength", amount=0.24, attack=0.015, release=0.28)  # +4.8/20: hard churn
+    v.map("master.low",       parts, "size",          amount=0.05, attack=0.02,  release=0.26)  # +0.1/2: swell
+    v.map("master.low",       parts, "emission",      amount=0.18, attack=0.008, release=0.22)  # +0.9/5: kick flash
+    v.map("master.high",      parts, "noise_speed",   amount=0.30, attack=0.02,  release=0.16)  # +1.5/5: turbulence
 
     v.master_gain(0.6)   # headroom: bass+arp+drums sum clips at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
