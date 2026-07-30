@@ -74,14 +74,17 @@ def build(v: Vivid, save: bool = True):
 
     # A tall, thin base cube; instance scale_y (from the spectrum) stretches it into a bar.
     shape = v.add_node("Shape3D")
+    # A thick, TALL base bar (scale_y sets the max height) — the instance scale_y (from the spectrum)
+    # stretches it, and since the cube is centred at y=0 it grows symmetrically up+down (a mirrored EQ).
     for k, val in dict(shape=0, detail=1, r=0.25, g=0.8, b=1.0, metallic=0.0, roughness=0.55,
-                       emission=0.4, scale_x=0.22, scale_y=11.0, scale_z=0.22).items():
+                       emission=0.4, scale_x=0.5, scale_y=24.0, scale_z=0.5).items():
         v.set_node_param(shape, k, float(val))
 
     spec = v.add_node("AudioSpectrum")          # → 0..1 magnitude per band (the reactive lane)
-    # The bus is already per-band-normalized (each band relative to its own peak), so a light AGC
-    # (normalize) + a small high-freq tilt is enough; gain ~1.3 lifts the quieter mid/high bars.
-    for k, val in dict(bands=NBARS, gain=1.3, tilt=0.4, normalize=0.4, attack=0.02, release=0.14).items():
+    # Full per-band AGC (normalize=1.0) lifts the quiet MID bands so the wall reads FULL across the
+    # whole width instead of pinching to a bowtie (this song is bass- + treble-heavy); a slow release
+    # keeps the amplified quiet bands from jittering.
+    for k, val in dict(bands=NBARS, gain=1.5, tilt=0.4, normalize=1.0, attack=0.02, release=0.22).items():
         v.set_node_param(spec, k, float(val))
 
     ramp = v.add_node("LaneRamp")               # → bar X positions (the layout lane)
@@ -118,7 +121,9 @@ def build(v: Vivid, save: bool = True):
     v.connect(merge, fill, 2)
 
     render = v.add_node("Render3D")
-    for k, val in dict(cam_x=7, cam_y=8, cam_z=50, target_x=0, target_y=0, target_z=0,
+    # Head-on + centred (cam_y=target_y=0) so the mirrored bars fill the frame vertically; pulled in to
+    # cam_z=46 so the ±SPREAD row fills most of the width without clipping the edge bands.
+    for k, val in dict(cam_x=0, cam_y=0, cam_z=46, target_x=0, target_y=0, target_z=0,
                        fov=42, far=200, near=0.1).items():
         v.set_node_param(render, k, float(val))
     v.connect(render, merge, 0)
