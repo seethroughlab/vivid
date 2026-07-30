@@ -36,6 +36,7 @@
 #include "operator_api/spectrum_bus.h"   // publish the master spectrum for per-band geometry ops
 #include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
+#include "audio/clap_plugin_window.h"
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
 #include "cli/control_server.h"
@@ -161,6 +162,10 @@ void reap_plugin_windows(App& app, Window& win) {
     for (int k = 0; k < vivid::session::kMaxTracks; ++k)
         if (win.fx_win[k] && !vst3_plugin_window_is_open(win.fx_win[k])) {
             vst3_plugin_window_close(win.fx_win[k]); win.fx_win[k] = nullptr;
+        }
+    for (int k = 0; k < vivid::session::kMaxTracks; ++k)
+        if (win.clap_win[k] && !clap_plugin_window_is_open(win.clap_win[k])) {
+            clap_plugin_window_close(win.clap_win[k]); win.clap_win[k] = nullptr;
         }
 }
 

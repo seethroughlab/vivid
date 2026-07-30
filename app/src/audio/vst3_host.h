@@ -365,6 +365,7 @@ int         session_track_audio_graph_node_scope(Session*, int track, int i, flo
 // The VST3 IEditController behind a graph node (by node id), for opening its plugin editor; null if
 // the node is native/sampler/output. Returns void* (cast to IEditController* at the call site).
 void*       session_audio_graph_node_controller(Session*, int track, int node_id);
+void*       session_audio_graph_node_clap(Session*, int track, int node_id);   // ClapHandle* for a CLAP node (clap.gui)
 int         session_track_audio_graph_edge_count(Session*, int track);
 void        session_track_audio_graph_node_note_ports(Session*, int track, int i, int* note_in, int* note_out);
 int         session_track_audio_graph_edge_kind(Session*, int track, int e);   // 0 audio / 1 note / 2 control

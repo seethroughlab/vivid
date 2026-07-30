@@ -49,6 +49,7 @@
 #include "persist.h"
 #include "gpu/shader_op.h"
 #include "audio/vst3_plugin_window.h"
+#include "audio/clap_plugin_window.h"
 #include "platform/app_nap.h"
 #include "gpu/effect_op.h"
 #include "gpu/render_target.h"
@@ -458,6 +459,7 @@ int main(int argc, char** argv) {
     if (audio_ok) ma_device_uninit(&device);  // stops the callback first
     for (int t = 0; t < 8; ++t) if (win.track_win[t]) vst3_plugin_window_close(win.track_win[t]);
     for (int k = 0; k < 8; ++k) if (win.fx_win[k]) vst3_plugin_window_close(win.fx_win[k]);
+    for (int k = 0; k < 8; ++k) if (win.clap_win[k]) clap_plugin_window_close(win.clap_win[k]);
     vivid::session::plugin_scan_stop();   // join the classifier worker before anything it touches dies
     if (app.session) vivid::session::session_destroy(app.session);
     vgraph.shutdown();

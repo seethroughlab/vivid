@@ -12,19 +12,28 @@ namespace vivid::session {
 // plugin ctor must never run on the main thread.) The old synchronous session_set_track_clap_*
 // entry points were removed once persist + the control server both moved to the async path.
 
-// --- Async CLAP loading (see the Session members). The worker instantiates plugins off the
-// main thread; the main thread applies completions via session_poll_plugin_loads(). ---
+// --- CLAP loading — HYBRID, to satisfy a hard JUCE invariant WITHOUT a per-load main-thread freeze.
+// JUCE binds its message thread to the thread that FIRST initializes JUCE (i.e. constructs the first
+// JUCE plugin); that thread must be the MAIN thread or the plugin's editor (clap.gui) deadlocks on the
+// MessageManagerLock. But once bound, every LATER plugin can be built on ANY thread — they reuse the
+// same main-bound MessageManager singleton. So: session_poll_plugin_loads() builds the FIRST CLAP of
+// the session on the MAIN thread (a one-time block) and sets clap_juce_pinned; every subsequent load it
+// hands to this background worker (async, no main-thread freeze), whose editors still work. ---
 static void clap_worker_main(Session* s) {
     for (;;) {
         Session::ClapLoadReq req;
         {
             std::unique_lock<std::mutex> lk(s->clap_load_mtx);
-            s->clap_load_cv.wait(lk, [s]{ return s->clap_worker_stop || !s->clap_reqs.empty(); });
+            s->clap_load_cv.wait(lk, [s]{ return s->clap_worker_stop || !s->clap_bg_reqs.empty(); });
             if (s->clap_worker_stop) return;                 // dying: drop any queued requests
-            req = std::move(s->clap_reqs.front());
-            s->clap_reqs.pop_front();
+            req = std::move(s->clap_bg_reqs.front());
+            s->clap_bg_reqs.pop_front();
         }
+        // Only PINNED loads ever reach clap_bg_reqs (the poll routes them here after JUCE is bound to
+        // main), so constructing off the main thread is safe: the plugin reuses the main-bound
+        // MessageManager, and its editor still opens.
         ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // SLOW — off the main thread
+        if (h) clap_init_plugin(h);
         {
             std::lock_guard<std::mutex> lk(s->clap_load_mtx);
             s->clap_done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state), req.slot });
@@ -36,16 +45,14 @@ static void ensure_clap_worker(Session* s) {
 }
 int enqueue_clap_load(Session* s, int t, bool is_instrument, const char* clap_path,
                       const char* state, int slot) {   // default slot=-1 is on the decl in vst3_host_internal.h
-    ensure_clap_worker(s);
     const double sr = s->sample_rate > 0 ? s->sample_rate : 48000;
     const int tid = s->tracks[t]->id;   // capture the STABLE id (callers validated t in range)
     {
         std::lock_guard<std::mutex> lk(s->clap_load_mtx);
         s->clap_last_error.clear();
-        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "", slot });
+        s->clap_reqs.push_back({ tid, is_instrument, clap_path, sr, state ? state : "", slot });   // poll routes it
     }
     s->clap_pending.fetch_add(1, std::memory_order_release);
-    s->clap_load_cv.notify_one();
     return 1;
 }
 // Async instrument assign, optionally restoring a saved patch `state` once the (off-thread) load
@@ -82,13 +89,41 @@ int session_request_track_clap_effect(Session* s, int t, const char* clap_path) 
 void session_poll_plugin_loads(Session* s) {
     if (!s) return;
     std::deque<Session::ClapLoadDone> done;
+    // 1) Route/construct ONE queued request per poll. The FIRST CLAP load of the session is built on
+    //    THIS (main) thread, which pins JUCE's message thread to main — required so every plugin's
+    //    editor (clap.gui) can open. That one construction blocks the loop (Surge scans its wavetables;
+    //    mostly a first-load cost). Once pinned, every subsequent load is handed to the background
+    //    worker (no main-thread freeze); those plugins reuse the main-bound JUCE singleton, so their
+    //    editors work too.
+    {
+        Session::ClapLoadReq req; bool have = false;
+        {
+            std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+            if (!s->clap_reqs.empty()) { req = std::move(s->clap_reqs.front()); s->clap_reqs.pop_front(); have = true; }
+        }
+        if (have) {
+            if (!s->clap_juce_pinned.load(std::memory_order_acquire)) {
+                ClapHandle* h = clap_load_plugin(req.path, req.sr, kGraphMaxBlock);   // MAIN-thread create (SLOW, once)
+                if (h && !clap_init_plugin(h)) { delete h; h = nullptr; }
+                s->clap_juce_pinned.store(true, std::memory_order_release);
+                s->clap_load_cv.notify_all();                                          // release the worker
+                done.push_back({ req.track_id, req.is_instrument, req.path, h, std::move(req.state), req.slot });
+            } else {
+                std::lock_guard<std::mutex> lk(s->clap_load_mtx);
+                ensure_clap_worker(s);
+                s->clap_bg_reqs.push_back(std::move(req));
+                s->clap_load_cv.notify_one();
+            }
+        }
+    }
+    // 2) Collect any async (background-worker) completions to bind this frame.
     {
         std::lock_guard<std::mutex> lk(s->clap_load_mtx);
-        if (s->clap_done.empty()) return;
-        done.swap(s->clap_done);
+        while (!s->clap_done.empty()) { done.push_back(std::move(s->clap_done.front())); s->clap_done.pop_front(); }
     }
+    // 3) Bind everything (the main-thread pin result + async completions) into their tracks/slots.
     for (auto& d : done) {
-        ClapHandle* h = d.handle;
+        ClapHandle* h = d.handle;   // already constructed + init'd (on the main thread, or on the worker)
         Track* trp = nullptr;                                // resolve the STABLE id to the current slot
         for (auto& tp : s->tracks) if (tp->id == d.track_id) { trp = tp.get(); break; }
         // A2: a slot-addressed load — a CLAP the user spawned as a graph NODE. Bind it into its

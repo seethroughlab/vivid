@@ -15,6 +15,7 @@
 #include "gpu/visual_graph.h"
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // open a VST3 node's plugin editor from the graph
+#include "audio/clap_plugin_window.h"   // open a CLAP node's plugin editor (clap.gui) from the graph
 #include "app/operator_clone.h"     // clone_operator / operator_has_clone_template / CloneResult
 #include "packages/package_manifest.h"  // parse_package_manifest (ADR-0020: watch the fresh clone)
 #include "gpu/shader_library.h"         // ADR-0020: shader entries/tier + fork (fork-to-edit)
@@ -557,6 +558,26 @@ bool graph_parammenu(Window& win, App& app, double mx, double my) {
 namespace vivid::ui {
 namespace S = vivid::session;
 
+// Open the selected audio-graph node's native plugin editor into a free window slot — VST3 (IPlugView)
+// or CLAP (clap.gui), chosen by the node's binding family. No-op for native / sampler / output nodes.
+static void open_audio_node_editor(vivid::App& app, vivid::Window& win, int tr, int node_id) {
+    if (!app.session || node_id < 0) return;
+    const char* name = S::session_track_name(app.session, tr);
+    switch (S::session_track_audio_graph_node_plugin_kind(app.session, tr, node_id)) {
+        case 1:   // VST3
+            if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
+                    S::session_audio_graph_node_controller(app.session, tr, node_id)))
+                for (int k = 0; k < S::kMaxTracks; ++k) if (!win.fx_win[k]) { win.fx_win[k] = vst3_plugin_window_open(ctrl, name); break; }
+            break;
+        case 2:   // CLAP
+            if (auto* ch = static_cast<vivid::session::ClapHandle*>(
+                    S::session_audio_graph_node_clap(app.session, tr, node_id)))
+                for (int k = 0; k < S::kMaxTracks; ++k) if (!win.clap_win[k]) { win.clap_win[k] = clap_plugin_window_open(ch, name); break; }
+            break;
+        default: break;
+    }
+}
+
 // Press in the audio-graph deep view: the whole dock interaction — the header "Editor" button, source
 // key-range handles, the plugin pinned-inspector rows, the native knob strip, param-port drag/click,
 // node select / remove / double-click-editor + reposition-drag start, edge disconnect, and empty-space
@@ -589,14 +610,10 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         if (app.edit_gateway) app.edit_gateway->note_edit("Auto-Layout", "ag-relayout");   // ADR-0017
         return true;
     }
-    // "Editor" button (audio-pane header) → open the selected VST3 node's native plugin window.
+    // "Editor" button (audio-pane header) → open the selected node's native plugin editor (VST3 or CLAP).
     if (win.sel_audio_node >= 0
         && hit(audio_pane_editor_rect(ag_pane), mx, my)) {
-        if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                S::session_audio_graph_node_controller(app.session, tr, win.sel_audio_node))) {
-            int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
-            if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
-        }
+        open_audio_node_editor(app, win, tr, win.sel_audio_node);
         return true;
     }
     if (win.sel_audio_node >= 0 && sel_is_source(win.sel_audio_node)) {   // key-range drag handles (source node)
@@ -741,14 +758,10 @@ bool AudioNodeGraph::on_down(App& app, Window& win, double mx, double my) {
         }
         if (wmx >= b.x && wmx < b.x + b.w && wmy >= b.y && wmy < b.y + b.h) {
             win.sel_audio_node = (b.kind == 2) ? vivid::Window::kNoAudioNode : b.node_id;   // output has no params
-            // Double-click a VST3 node → open its native plugin editor.
+            // Double-click a plugin node → open its native editor (VST3 or CLAP).
             const double now = glfwGetTime();
             if (last_node == b.node_id && now - last_node_t < 0.35) {
-                if (auto* ctrl = static_cast<Steinberg::Vst::IEditController*>(
-                        S::session_audio_graph_node_controller(app.session, tr, b.node_id))) {
-                    int slot = -1; for (int k = 0; k < vivid::session::kMaxTracks; ++k) if (!win.fx_win[k]) { slot = k; break; }
-                    if (slot >= 0) win.fx_win[slot] = vst3_plugin_window_open(ctrl, S::session_track_name(app.session, tr));
-                }
+                open_audio_node_editor(app, win, tr, b.node_id);
                 last_node_t = -1;
             } else { last_node = b.node_id; last_node_t = now; }
             node_drag = b.node_id;                                   // start a reposition drag (any node)

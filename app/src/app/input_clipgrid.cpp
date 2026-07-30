@@ -11,6 +11,7 @@
 #include "ui/node_graph.h"       // drop_track_sources / select_op
 #include "audio/vst3_host.h"
 #include "audio/vst3_plugin_window.h"   // vst3_plugin_window_close (track removal shifts indices)
+#include "audio/clap_plugin_window.h"   // clap_plugin_window_close (a removed track destroys its ClapHandle)
 
 #include <algorithm>
 #include <cstdio>
@@ -142,6 +143,10 @@ bool clipgrid_track_header(Window& win, App& app, double mx, double my, int trac
             // per-track window pool would otherwise misalign (they reopen on demand).
             for (int k = 0; k < S::kMaxTracks; ++k)
                 if (win.track_win[k]) { vst3_plugin_window_close(win.track_win[k]); win.track_win[k] = nullptr; }
+            // Same for CLAP editors: the ClapHandle is owned by the track we're about to remove, so a
+            // lingering window would dangle the plugin pointer. Close them BEFORE session_remove_track.
+            for (int k = 0; k < S::kMaxTracks; ++k)
+                if (win.clap_win[k]) { clap_plugin_window_close(win.clap_win[k]); win.clap_win[k] = nullptr; }
             const int rid = S::session_track_id(app.session, t);   // capture before removal
             if (S::session_remove_track(app.session, t)) {
                 if (app.graph) app.graph->drop_track_sources(rid);   // drop this track's mappings (id-based)

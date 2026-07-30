@@ -731,7 +731,10 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
         { const Rect rb = audio_pane_relayout_rect(pane); const bool rh = hit(rb, mx, my);
           item_box(ui, rb, sty.audio, rh);
           ui.draw_text(rb.x + 8.f, rb.y + 2.f, "Re-layout", sty.body[0], sty.body[1], sty.body[2], 1.0f, sty.fs_label); }
-        if (w.sel_audio_node >= 0 && vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node)) {
+        // Show "Editor" for a plugin node with a native GUI — VST3 (has a controller) or CLAP (clap.gui).
+        if (w.sel_audio_node >= 0 &&
+            (vivid::session::session_audio_graph_node_controller(s, tr, w.sel_audio_node) ||
+             vivid::session::session_track_audio_graph_node_plugin_kind(s, tr, w.sel_audio_node) == 2)) {
             const Rect eb = audio_pane_editor_rect(pane); const bool eh = hit(eb, mx, my);
             item_box(ui, eb, sty.audio, eh);
             ui.draw_text(eb.x + 7.f, eb.y + 2.f, "Editor", sty.audio[0], sty.audio[1], sty.audio[2], eh ? 1.0f : 0.85f, sty.fs_label);

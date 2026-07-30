@@ -14,6 +14,7 @@
 
 struct GLFWwindow;
 struct Vst3PluginWindow;
+struct ClapPluginWindow;
 namespace vivid {
 struct App;
 class EditorWindow;   // UI-5: floated operator-editor window (app/editor_window.h)
@@ -171,6 +172,7 @@ struct Window {
     double  plugin_drag_x0 = 0.0, plugin_drag_y0 = 0.0;
     Vst3PluginWindow* track_win[vivid::session::kMaxTracks] = {};  // open instrument editor windows, per track
     Vst3PluginWindow* fx_win[vivid::session::kMaxTracks] = {};     // open effect editor windows (pool)
+    ClapPluginWindow* clap_win[vivid::session::kMaxTracks] = {};   // open CLAP plugin editor windows (pool)
     double  last_clip_t = -1; int last_clip_track = -1, last_clip_scene = -1;
     // Clip drag/drop in the session grid: source cell + press pos; drags past a
     // threshold, then a drop on another cell moves (or Option = copies) the clip.
