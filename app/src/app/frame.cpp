@@ -713,6 +713,8 @@ void run_frame_loop(App& app, Window& win) {
             // current), but do NOT present yet — the output is blitted over the graph further down,
             // because the preview floats above the canvas.
             clear_pass(frame.encoder, frame.view, 0.045f, 0.05f, 0.06f);  // static dark backdrop
+            vgraph.set_metronome(static_cast<float>(transport.bpm.load(std::memory_order_relaxed)),
+                                 transport.beats_per_bar.load(std::memory_order_relaxed), beats);
             vgraph.run_chain(frame.encoder, tsec);
             win.preview.out_aspect = vgraph.rt_aspect();   // cache: drives the preview's height + hit-rects
             win.preview.clamp(win.visuals_panel());        // ...so a new aspect can resize it out of bounds
