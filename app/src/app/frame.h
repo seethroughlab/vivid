@@ -9,6 +9,7 @@ struct Window;
 // mappings, and renders the window each tick until it closes. Blocks until exit.
 void run_frame_loop(App& app, Window& win);
 void reap_plugin_windows(App& app, Window& win);
+void close_plugin_editor_windows(Window& win);   // Ph4 P1-01: unconditionally close+null all editor pools
 void publish_bridge_sources(App& app, Window& win);
 void apply_audio_param_mappings(App& app);
 void update_drag_continuations(App& app, Window& win, double mx, double my);

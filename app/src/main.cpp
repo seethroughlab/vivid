@@ -414,6 +414,9 @@ int main(int argc, char** argv) {
     vivid::EditGateway gateway(app);
     app.edit_gateway = &gateway;
     graph.set_edit_gateway(&gateway);   // ADR-0017/G2: capture UI graph edits
+    // Ph4 P1-01: before a Full-tier undo/redo frees plugin instances, close this window's floated
+    // plugin-editor windows so their raw handles can't dangle into freed memory (UAF).
+    app.before_audio_rebuild = [&win] { vivid::close_plugin_editor_windows(win); };
 
     // ADR-0018 (R4): offer to recover autosaved unsaved work left by a prior crash / kill. On accept,
     // load the autosave session, re-point the project so Save targets it, and mark it dirty once the

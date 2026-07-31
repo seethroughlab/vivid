@@ -1,4 +1,5 @@
 #pragma once
+#include <functional>
 #include <memory>
 #include <set>
 #include <string>
@@ -41,6 +42,10 @@ struct App {
     Transport*          transport = nullptr;   // master clock
     ControlServer*      control   = nullptr;   // MCP loopback server
     EditGateway*        edit_gateway = nullptr; // ADR-0017 undo/redo command sink (a main.cpp local)
+    // Ph4 P1-01: fired right before a Full-tier undo/redo restore rebuilds the audio topology (which
+    // frees plugin instances). A view installs this to drop raw handles it holds into those instances
+    // — chiefly floated plugin-editor windows — so they can't dangle. Null when no view registered.
+    std::function<void()> before_audio_rebuild;
     CrashRecovery*      crash_recovery = nullptr; // ADR-0018 warm-snapshot writer (a main.cpp local)
     VideoRecorder*      recorder    = nullptr;   // realtime AV video export (a main.cpp local)
     OpRegistry          op_registry;           // built-in + loaded operators

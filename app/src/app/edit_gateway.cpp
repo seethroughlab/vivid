@@ -134,6 +134,11 @@ void EditGateway::restore(const nlohmann::json& target) {
     const RestoreAudio tier = audio_block_equal(target, current)    ? RestoreAudio::Skip
                             : audio_topology_equal(target, current) ? RestoreAudio::ParamsOnly
                                                                     : RestoreAudio::Full;
+    // Ph4 P1-01: a Full restore rebuilds the audio topology, freeing every plugin instance. Let the
+    // view drop raw handles into those instances (floated plugin-editor windows) BEFORE the teardown,
+    // exactly as the manual track-removal path does — otherwise a still-open editor dangles → UAF.
+    if (tier == RestoreAudio::Full && app_.before_audio_rebuild)
+        app_.before_audio_rebuild();
     int ww = 0, wh = 0; float sx = 0.f, dh = 0.f;
     session_from_json_scoped(target, app_.session, *app_.graph, ww, wh, sx, dh, tier);
     cached_ = target;

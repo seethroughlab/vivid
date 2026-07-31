@@ -38,6 +38,7 @@
 #include "operator_api/note_events.h"   // publish each track's discrete note on/off events for one-shot ops
 #include "audio/vst3_plugin_window.h"
 #include "audio/clap_plugin_window.h"
+#include "app/plugin_editor_pool.h"   // Ph4 P1-01: close-all-and-null the editor pools
 #include "audio/plugin_scan.h"   // plugin_scan_poll — drain background classifications
 #include "gpu/visual_graph.h"
 #include "cli/control_server.h"
@@ -206,6 +207,16 @@ void reap_plugin_windows(App& app, Window& win) {
         if (win.clap_win[k] && !clap_plugin_window_is_open(win.clap_win[k])) {
             clap_plugin_window_close(win.clap_win[k]); win.clap_win[k] = nullptr;
         }
+}
+
+// Ph4 P1-01: close EVERY open plugin-editor window and null its slot — unconditionally, unlike
+// reap_plugin_windows (which only closes windows already self-reporting closed). Installed as
+// App::before_audio_rebuild so a Full-tier undo/redo drops these raw handles into the plugin
+// instances it is about to free, mirroring the manual track-removal path (input_clipgrid.cpp).
+void close_plugin_editor_windows(Window& win) {
+    close_editor_pool(win.track_win, [](Vst3PluginWindow* w) { vst3_plugin_window_close(w); });
+    close_editor_pool(win.fx_win,    [](Vst3PluginWindow* w) { vst3_plugin_window_close(w); });
+    close_editor_pool(win.clap_win,  [](ClapPluginWindow* w) { clap_plugin_window_close(w); });
 }
 
 void publish_bridge_sources(App& app, Window& win) {
