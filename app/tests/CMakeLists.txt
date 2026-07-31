@@ -168,6 +168,10 @@ target_sources(test_op_registry PRIVATE
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
 
+# Ph4 P1-02: missing-operator params survive a save/load round-trip (persist_orphan.h, pure JSON).
+vivid_add_test(test_persist_orphan)
+target_link_libraries(test_persist_orphan PRIVATE nlohmann_json::nlohmann_json)
+
 # Visuals executor topological order + cycle handling (gpu/graph_topo.h; header-only, wgpu-free).
 vivid_add_test(test_graph_topo)
 
