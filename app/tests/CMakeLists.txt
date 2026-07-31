@@ -385,6 +385,9 @@ target_sources(test_crash_recovery PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/crash_recovery.cpp)
 target_link_libraries(test_crash_recovery PRIVATE nlohmann_json::nlohmann_json)
 
+# ADR-0045 P0-01: a hosted plugin crash on the RT thread is attributed (plugin_crash_name + CrashGuard).
+vivid_add_test(test_plugin_crash_attrib)
+
 # ADR-0018 R3: stateless 3-in-24h quarantine + un-quarantine, from the crash history (App-free).
 vivid_add_test(test_quarantine)
 target_sources(test_quarantine PRIVATE
