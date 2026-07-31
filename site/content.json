@@ -155,8 +155,8 @@
       "id": "crystal",
       "type": 3,
       "title": "Crystal",
-      "mechanism": "Animated audio deformer",
-      "blurb": "A sphere churned by an animated noise deformer into shifting crystalline spikes — the kick grows the spikes and swells the form, the hats sharpen the facets.",
+      "mechanism": "Beat-locked scene cuts",
+      "blurb": "Three different forms — a spiky crystal, a smooth churning orb, a torus ring — that a bar-locked Clock cuts between every 4 bars via a Switch3D node. Each churns to the bass and erupts note-spikes to the arp.",
       "source": "examples/demos/crystal.py",
       "hero": "crystal.png",
       "video": "crystal.mp4"
