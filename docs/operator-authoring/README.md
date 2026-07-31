@@ -113,6 +113,54 @@ Discovery is automatic once registered:
 Rich `kSummary` + `kKeywords` + semantic param metadata make an operator far easier for an agent to
 find and wire correctly.
 
+## Node thumbnails (two mechanisms)
+
+Every operator should have a **rich, dynamic node-card thumbnail** (ADR-0042). There are **two paths**,
+and knowing which one applies to your op avoids the "my `draw_thumbnail` is empty — is my thumbnail
+missing?" confusion:
+
+- **Path A — `draw_thumbnail(const VividThumbnailContext*)`** (CPU 2D vector API). Override this virtual
+  and draw with `ctx->draw` (a `VividDrawAPI`: `draw_rect`/`draw_line`/`draw_circle`/`draw_text`/…),
+  reading **only** the read-only `ctx->param_values` snapshot (never your live `Param<>` members — the
+  call is UI-thread + read-only), and `ctx->time` for subtle animation. `VIVID_REGISTER` auto-emits the
+  `vivid_draw_thumbnail` export. In the audio domain this is used specifically for **scene-cell note
+  generators** (kind 8): `Euclid` (Euclidean ring + orbiting playhead), `Chord`, `RandMelody` in
+  `app/src/audio/builtin_audio_ops.cpp` — their thumbnail shows in the session-grid clip cell and the
+  generator card's preview strip. Visual ops rarely need Path A (see Path B).
+
+- **Path B — render into your own `output_texture_view` during `process_gpu`.** A visual op's node card
+  simply blits its output texture. Ops that already produce a texture (Image, CustomShader, …) get a
+  correct thumbnail **for free** — leave `draw_thumbnail` empty. Ops that emit a `Scene3D` fragment or
+  value lanes (Shape3D, Deformer, LaneRamp, Clock, Switch3D, …) produce **no** texture, so their card
+  would be blank; they render a small animated preview into their output texture via the header-only
+  helpers `vivid::thumb3d::` (3D — `render`, `render_instances_cpu`, `render_proxy_sphere`, …) or
+  `vivid::lanethumb::` (flat 2D bars/cells). For these, **a stubbed `draw_thumbnail` is fine** — the
+  thumbnail is the Path-B render.
+
+**So:** a stubbed `draw_thumbnail` + a `thumb3d`/`lanethumb` call in `process_gpu` = a working thumbnail.
+A stubbed `draw_thumbnail` + no Path-B render = a genuinely **blank** card (the audit will flag it).
+
+### Audio nodes have their own preview mechanisms
+
+Beyond Path A, the audio node-graph card gives most audio ops a meaningful preview **without**
+`draw_thumbnail`, so "no `draw_thumbnail`" does **not** mean "name-only":
+
+- **Modulators** (LFO, ADSR — kind 5): a **compound-widget** shape preview (the LFO waveform / the ADSR
+  envelope) drawn from the params when the node is selected (`ui/compound_widget.h`,
+  `AudioNodeGraph::compound_previews`), **plus** a live **output scope** in the node body (the actual
+  control signal — flat only while the modulator is unwired/idle).
+- **Instruments / effects**: a live **output scope** of the node's audio.
+- **Note generators** (kind 8): Path-A `draw_thumbnail` (above).
+- **Note effects** (Arp) / MidiIn / Selector: minimal — no audio and no clip to preview.
+- **Pure DSP effects** (Bitcrush, Filter, the glitch pack): a name-only cell is acceptable — nothing
+  static to draw.
+
+So the ADR-0042 "definition of done" thumbnail bar for an audio op is met by *any* of these — a scope, a
+compound preview, or a Path-A drawing. The audit's per-op `list_operators` view can't see the scope /
+compound-widget paths, so it lists audio ops as `expected-manual` / `exempt-effect` for a human to eyeball.
+
+Run `tools/operator_audit/audit.py` (ADR-0042) to check a visual operator's thumbnail + render + params.
+
 ## Not yet: custom inspectors & editors
 
 Operators can't yet ship a **custom inspector** (a compound-widget param panel) or a **custom editor**

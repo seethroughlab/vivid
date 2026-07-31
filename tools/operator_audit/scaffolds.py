@@ -109,12 +109,15 @@ def build_scaffold(v, op, sources: Sources):
         mr = v.add_node("MeshRender"); v.connect(mr, op_node, 0, 0)
         return op_node, mr
     if ok == "scene":
-        # Merge the op's scene with a Shape3D (geometry, so a Light3D has something to light) + a Light3D
-        # (so geometry is lit) — otherwise a lone light renders black and a lone unlit shape is flat.
+        # A scene needs geometry AND a light to render. If the op IS a light, add a Shape3D to light;
+        # otherwise the op is the geometry, so just add a light — adding a SECOND shape would dilute a
+        # geometry op's own param effects (half the frame wouldn't change when you sweep its params).
         merge = v.add_node("SceneMerge")
         v.connect(merge, op_node, 0, 0)                 # scene_a <- op under test
-        v.connect(merge, shape, 1, 0)                   # scene_b <- a Shape3D
-        v.connect(merge, v.add_node("Light3D"), 2, 0)   # scene_c <- a light
+        if op["name"] == "Light3D":
+            v.connect(merge, shape, 1, 0)               # geometry for the light to reveal
+        else:
+            v.connect(merge, v.add_node("Light3D"), 1, 0)   # a light so the op's geometry is lit
         r = v.add_node("Render3D"); v.connect(r, merge, 0, 0)
         return op_node, r
     if ok == "instances":
