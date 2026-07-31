@@ -122,5 +122,39 @@ int main() {
       d.port_count = 1; d.ports = &pt;
       CHECK(has_code(validate_descriptor(&d), vc::kAudioNonStereoChannels)); }
 
+    // ---- Ph5 P2-01: numeric-range + type sanity ----
+    // param_invalid_range (min > max)
+    { VividOperatorDescriptor d = base_desc();
+      VividParamDescriptor p{}; p.name = "gain"; p.type = VIVID_PARAM_FLOAT;
+      p.min_value = 1.f; p.max_value = 0.f; p.default_value = 0.5f;
+      d.param_count = 1; d.params = &p;
+      CHECK(has_code(validate_descriptor(&d), vc::kParamInvalidRange)); }
+
+    // param_default_out_of_range (default above max)
+    { VividOperatorDescriptor d = base_desc();
+      VividParamDescriptor p{}; p.name = "gain"; p.type = VIVID_PARAM_INT;
+      p.min_value = 0.f; p.max_value = 10.f; p.default_value = 99.f;
+      d.param_count = 1; d.params = &p;
+      CHECK(has_code(validate_descriptor(&d), vc::kParamDefaultOutOfRange)); }
+
+    // param_invalid_type (a type integer the host doesn't know)
+    { VividOperatorDescriptor d = base_desc();
+      VividParamDescriptor p{}; p.name = "x"; p.type = static_cast<VividParamType>(99);
+      d.param_count = 1; d.params = &p;
+      CHECK(has_code(validate_descriptor(&d), vc::kParamInvalidType)); }
+
+    // No false positives: bool/file params carry no numeric range, so a nonzero "default" with
+    // min==max==0 is NOT flagged; and a well-formed int range is clean.
+    { VividOperatorDescriptor d = base_desc();
+      VividParamDescriptor p{}; p.name = "on"; p.type = VIVID_PARAM_BOOL; p.default_value = 1.f;
+      d.param_count = 1; d.params = &p;
+      const auto iss = validate_descriptor(&d);
+      CHECK(!has_code(iss, vc::kParamDefaultOutOfRange) && !has_code(iss, vc::kParamInvalidRange)); }
+    { VividOperatorDescriptor d = base_desc();
+      VividParamDescriptor p{}; p.name = "cutoff"; p.type = VIVID_PARAM_INT;
+      p.min_value = 20.f; p.max_value = 20000.f; p.default_value = 1000.f;
+      d.param_count = 1; d.params = &p;
+      CHECK(validate_descriptor(&d).empty()); }
+
     return vivid::test::summary("test_descriptor_validation");
 }
