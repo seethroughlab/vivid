@@ -236,8 +236,11 @@ int main(int argc, char** argv) {
     app.hot_reload.start(&app.op_registry, &vgraph, &app.log);
     { namespace fs = std::filesystem;
       const std::string clones = (fs::path(vivid::platform::user_data_dir()) / "clones").string();
-      for (const auto& mf : vivid::discover_packages(clones))                      app.hot_reload.watch_manifest(app.op_loaders, mf);
-      for (const auto& mf : vivid::discover_packages(vivid::user_operators_dir())) app.hot_reload.watch_manifest(app.op_loaders, mf);
+      std::vector<vivid::PackageManifest> pkg_errors;   // Ph5 P2-02: don't drop a malformed package silently
+      for (const auto& mf : vivid::discover_packages(clones, &pkg_errors))                      app.hot_reload.watch_manifest(app.op_loaders, mf);
+      for (const auto& mf : vivid::discover_packages(vivid::user_operators_dir(), &pkg_errors)) app.hot_reload.watch_manifest(app.op_loaders, mf);
+      for (const auto& e : pkg_errors)   // ADR-0019: a bad operator package is surfaced, not silently ignored
+          VLOG_ERR(app, "operator package '%s' ignored: %s", e.dir.c_str(), e.error.c_str());
     }
     if (const char* wp = std::getenv("VIVID_WATCH_PACKAGE")) {
         const std::string pkg = wp;

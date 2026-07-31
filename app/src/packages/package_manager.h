@@ -31,6 +31,10 @@ PackageInstallResult install_package(const std::string& package_dir,
                                      const std::string& out_dir = std::string());
 
 // List the package manifests under a directory of package subdirectories.
-std::vector<PackageManifest> discover_packages(const std::string& scope_dir);
+// Discover valid packages under `scope_dir`. If `out_errors` is non-null, a subdir that DOES have a
+// vivid-package.json but fails to parse is appended there (so a malformed package is surfaced, not
+// silently dropped — Ph5 P2-02); a subdir with no manifest is simply not a package and is ignored.
+std::vector<PackageManifest> discover_packages(const std::string& scope_dir,
+                                               std::vector<PackageManifest>* out_errors = nullptr);
 
 }  // namespace vivid
