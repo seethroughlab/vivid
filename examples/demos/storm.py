@@ -1,11 +1,9 @@
 """Storm — a GPU curl-noise particle storm that churns and bursts to the beat (ADR-0041 composable demo).
 
-Particles3D fills a VOLUME with GPU embers (volumetric emission, so they never converge into one solid
-colour) churned by a curl-noise field, and the arp drives glowing orbs arranged around the PERIMETER (a
-camera-facing wheel). Each orb REPELS the particles near it — carving clean voids at the edges while the
-field flows free in the middle — and the master-bus bridge pumps the orb voids on the kick, puffs the field
-on transients, and whips the curl on the highs. Particles3D (with `emit_radius`/`repel_strength`) +
-InstancesFromSignal orbs — the interaction happens where the notes are.
+Particles3D advects ~60k GPU particles through a curl-noise field — a flowing, ember-warm cloud that
+lives on its own (noise_speed), driven by the master-bus bridge: transients BURST new particles
+(emission_rate), the kick churns the field harder (curl_strength) and swells the particle size, the highs
+speed up the turbulence. Particles3D + audio mappings — one op, all reactivity from the composable bridge.
 
 Run with the app running:  uv run examples/demos/storm.py
 """
@@ -53,73 +51,32 @@ def build(v: Vivid, save: bool = True):
     v.drums(DRUMS, S_CHORUS, {"kick": "x...x...x...x...", "snare": "....x.......x...",
                               "clap": "..x..x....x..x..", "hat": "xxxxxxxxxxxxxxxx"}, bars=4, vel=0.9)
     v.bassline(BASS, S_CHORUS, bass_seq(0.5), length=16.0, vel=0.9)
-
-    def arp(octaves, vel):   # rising 16th arp — each note is an ATTRACTOR the storm swarms toward
-        ns = []
-        for i, c in enumerate(prog):
-            for n in theory.arpeggiate(theory.chord(c, octave=4), "updown", rate=0.25, octaves=octaves, length=4.0, vel=vel):
-                ns.append({"p": n["p"], "s": i * 4.0 + n["s"], "d": n["d"] * 0.85, "v": n["v"]})
-        return ns
-    v.set_clip(LEAD, S_VERSE,  arp(octaves=1, vel=0.6), 16.0)   # verse: a one-octave arp — the storm starts reaching
-    v.set_clip(LEAD, S_CHORUS, arp(octaves=2, vel=0.68), 16.0)  # chorus: two octaves — a full swarm of note-points
+    arp = []
+    for i, c in enumerate(prog):
+        for n in theory.arpeggiate(theory.chord(c, octave=4), "up", rate=0.25, octaves=2, length=4.0, vel=0.65):
+            arp.append({"p": n["p"], "s": i * 4.0 + n["s"], "d": n["d"] * 0.85, "v": n["v"]})
+    v.set_clip(LEAD, S_CHORUS, arp, 16.0)
 
     out = find(v.graph()["nodes"], "Output")
 
-    # An ember field that FILLS the volume (volumetric emission — no single-point convergence into one solid
-    # colour), with the arp driving glowing orbs arranged around the PERIMETER (a camera-facing wheel). Each
-    # orb REPELS the particles near it (Particles3D `repel_strength` + the orb's radius), so the field is
-    # shoved into clean voids at the edges while it flows free in the middle — interaction where the notes are.
-    lead_sig = v.notes(v.track_id(LEAD))
-    orbs = v.add_node("InstancesFromSignal")   # arp notes → orbs around a camera-facing ring near the edges
-    for k, val in dict(size=2.2, radius=6.0, layout=3, spin=0.0, trail=0.7, pulse=1.0,
-                       palette=3, persist=0.6, pos_lo=0.46, pos_hi=0.72).items():   # wheel layout, Fire palette
-        v.set_node_param(orbs, k, float(val))
-    v.connect(orbs, lead_sig)                  # signal (port 0) ← Notes
-
-    ball = v.add_node("Shape3D")               # the visible orb (smaller than its void → a clear hole around it)
-    for k, val in dict(shape=1, detail=32, r=0.55, g=0.8, b=1.0, roughness=0.4, metallic=0.3,
-                       emission=0.9, scale_x=1.0, scale_y=1.0, scale_z=1.0).items():
-        v.set_node_param(ball, k, float(val))
-    balls = v.add_node("Instancer3D")
-    v.connect(balls, ball, 0)
-    v.connect(balls, orbs, 1)
-
-    # The ember field: VOLUMETRIC emission fills a sphere (emit_radius) so it never converges to one bright
-    # solid-colour point; color_jitter varies per-particle brightness. Repelled by the perimeter orbs.
-    parts = v.add_node("Particles3D")
-    for k, val in dict(count=4500, emission_rate=2100, lifetime=3.6, emit_radius=8.5, speed=0.9,
-                       gravity=0.0, drag=0.2, curl_strength=4.8, noise_scale=0.4, noise_speed=0.5,
-                       size=0.13, bounds=12.0, shape=0, elongation=7.0, r=1.0, g=0.5, b=0.16, a=0.45, emission=0.8,
-                       unlit=1, color_jitter=0.5, repel_strength=54.0).items():
+    parts = v.add_node("Particles3D")   # emissive billboards through a curl-noise field
+    for k, val in dict(count=60000, emission_rate=4000, lifetime=2.6, speed=1.0, gravity=0.0,
+                       curl_strength=1.8, noise_scale=0.4, noise_speed=0.45, size=0.05, spread=90.0,
+                       bounds=18.0, shape=0, r=1.0, g=0.55, b=0.22, a=1.0, emission=1.9, unlit=1).items():
         v.set_node_param(parts, k, float(val))
-    v.connect(parts, orbs, 1)                  # repeller points (port 1) ← the SAME perimeter orbs
-
-    key = v.add_node("Light3D")                # key from upper-left → a bright side + a shadowed side (3D form)
-    for k, val in dict(type=0, intensity=1.9, r=1.0, g=0.92, b=0.82, dir_x=-0.5, dir_y=-0.7, dir_z=-0.5).items():
-        v.set_node_param(key, k, float(val))
-    fill = v.add_node("Light3D")               # cool fill from the other side so the dark side isn't black
-    for k, val in dict(type=0, intensity=0.7, r=0.45, g=0.6, b=1.0, dir_x=0.6, dir_y=0.2, dir_z=0.4).items():
-        v.set_node_param(fill, k, float(val))
-
-    merge = v.add_node("SceneMerge")
-    v.connect(merge, parts, 0)                 # the volumetric ember field
-    v.connect(merge, balls, 1)                 # the pulsing perimeter orbs
-    v.connect(merge, key,   2)
-    v.connect(merge, fill,  3)
 
     render = v.add_node("Render3D")
-    for k, val in dict(cam_x=0, cam_y=0, cam_z=13.5, target_y=0, fov=56, far=120, near=0.05,
-                       bg_r=0.02, bg_g=0.012, bg_b=0.025).items():
+    for k, val in dict(cam_x=0, cam_y=0, cam_z=16, target_y=0, fov=52, far=120, near=0.05,
+                       bg_r=0.02, bg_g=0.015, bg_b=0.03).items():
         v.set_node_param(render, k, float(val))
-    v.connect(render, merge, 0)
+    v.connect(render, parts, 0)
     v.connect(out, render, 0)
 
-    # --- Reactivity: each arp note lights an orb around the perimeter (signal edge); the kick PUMPS the orb
-    #     size so the perimeter voids breathe; transients puff the field; highs whip the curl. ---
-    v.map("master.low",       orbs,  "size",         amount=0.22, attack=0.005, release=0.2)   # perimeter voids pump on the kick
-    v.map("master.low",       parts, "emission",     amount=0.28, attack=0.005, release=0.2)   # field flashes on the kick
-    v.map("master.transient", parts, "emission_rate", amount=0.4, attack=0.003, release=0.14)  # puff on snare/clap/hat
-    v.map("master.high",      parts, "noise_speed",  amount=0.12, attack=0.02,  release=0.16)  # hats whip the curl
+    # --- The bridge: transients BURST particles, the kick churns + swells, highs stir the turbulence. ---
+    v.map("master.transient", parts, "emission_rate", amount=0.65, attack=0.004, release=0.2)  # +6500/10000
+    v.map("master.low",       parts, "curl_strength", amount=0.16, attack=0.02, release=0.3)   # +3.2/20: churn
+    v.map("master.low",       parts, "size",          amount=0.035, attack=0.02, release=0.26) # +0.07/2: swell
+    v.map("master.high",      parts, "noise_speed",   amount=0.22, attack=0.02, release=0.18)  # +1.1/5: turbulence
 
     v.master_gain(0.6)   # headroom: bass+arp+drums sum clips at 0 dBFS (AV clip needs clean audio)
     v.launch_scene(0)
