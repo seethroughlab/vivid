@@ -2,10 +2,11 @@
 #include "operator_api/gpu_operator.h"
 #include "operator_api/gpu_3d.h"
 #include "operator_api/value_view.h"
-#include "operator_api/thumbnail_3d.h"
+#include "operator_api/lane_thumb.h"   // 2D node thumbnail: a row of input slots, the selected one lit
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 // =============================================================================
 // Switch3D — forward ONE of several Scene3D inputs, chosen by a Clock's `step`
@@ -57,7 +58,6 @@ struct Switch3D : vivid::OperatorBase, vivid::GpuProcessable {
         for (uint32_t i = 0; i < ctx->custom_input_count && n < 6; ++i) {
             if (auto* s = vivid::gpu::scene_input(ctx, i)) ins[n++] = s;
         }
-        if (n == 0) return;
 
         // Clock step from value input port 0 (0 if unwired → static, forwards the first input).
         float stepf = 0.f;
@@ -67,21 +67,47 @@ struct Switch3D : vivid::OperatorBase, vivid::GpuProcessable {
         long step = static_cast<long>(std::floor(static_cast<double>(stepf)));
         if (step < 0) step = 0;
 
-        int idx;
-        const int ord = order.int_value();
-        if (ord == 1 && n > 1) {                       // pingpong: 0,1,..,n-1,n-2,..,1, repeat
-            const int span = 2 * (n - 1);
-            const int m = static_cast<int>(step % span);
-            idx = (m < n) ? m : (span - m);
-        } else if (ord == 2) {                         // random: stable per-tick hash (no gaps, reproducible)
-            uint32_t h = static_cast<uint32_t>(step) * 2654435761u + 1013904223u;
-            h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
-            idx = static_cast<int>(h % static_cast<uint32_t>(n));
-        } else {                                       // sequential
-            idx = static_cast<int>(step % n);
+        int idx = 0;
+        if (n > 0) {
+            const int ord = order.int_value();
+            if (ord == 1 && n > 1) {                   // pingpong: 0,1,..,n-1,n-2,..,1, repeat
+                const int span = 2 * (n - 1);
+                const int m = static_cast<int>(step % span);
+                idx = (m < n) ? m : (span - m);
+            } else if (ord == 2) {                     // random: stable per-tick hash (no gaps, reproducible)
+                uint32_t h = static_cast<uint32_t>(step) * 2654435761u + 1013904223u;
+                h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
+                idx = static_cast<int>(h % static_cast<uint32_t>(n));
+            } else {                                   // sequential
+                idx = static_cast<int>(step % n);
+            }
+            ctx->custom_outputs[0] = ins[idx];         // forward the selected fragment unchanged
         }
 
-        ctx->custom_outputs[0] = ins[idx];             // forward the selected fragment unchanged
+        render_thumb(ctx, n, idx);                     // a row of input slots, the live selection lit
+    }
+
+    ~Switch3D() override { vivid::lanethumb::destroy(thumb_); }
+
+private:
+    vivid::lanethumb::State thumb_{};
+
+    // Node-card thumbnail: a row of slots (one per connected input, ≥3 when idle) with the currently
+    // selected slot lit — so the card visibly shows what the Switch is doing as the clock advances.
+    void render_thumb(const VividGpuContext* ctx, int n, int idx) {
+        if (!vivid::lanethumb::ok(ctx)) return;
+        const int cells = std::max(3, n);
+        const float pad = 0.10f, span = 2.f - 2.f * pad;
+        const float gap = span / cells * 0.22f, w = span / cells - gap;
+        const float on[3]  = { 0.35f, 0.68f, 1.00f };   // selected slot
+        const float off[3] = { 0.18f, 0.20f, 0.26f };   // idle slot
+        std::vector<vivid::lanethumb::Vtx> v;
+        for (int i = 0; i < cells; ++i) {
+            const float x0 = -1.f + pad + i * (span / cells);
+            const float* c = (n > 0 && i == idx) ? on : off;
+            vivid::lanethumb::quad(v, x0, -0.55f, x0 + w, 0.55f, c);
+        }
+        vivid::lanethumb::draw(ctx, thumb_, v);
     }
 };
 

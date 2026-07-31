@@ -75,6 +75,15 @@ def analyze(v) -> dict:
     return v.call("analyze_frame").get("analysis", {})
 
 
+def rendered(a: dict) -> bool:
+    """Non-blank in the audit sense: ANY real signal. analyze_rgba flags uniform SOLID fills as blank
+    (contrast < 0.01), but a solid colour IS output — so accept brightness / colour-spread too."""
+    return (not a.get("is_blank", True)
+            or a.get("brightness", 0.0) > 0.02
+            or a.get("contrast", 0.0) > 0.01
+            or a.get("color_spread", 0.0) > 0.02)
+
+
 def frame_ms(v) -> float:
     return float(v.call("get_perf").get("frame_ms", 0.0))
 
@@ -153,10 +162,10 @@ def audit_op(v, op: dict, baseline_ms: float) -> dict:
     time.sleep(SETTLE)
     base = analyze(v)
     for _ in range(2):                              # a blank frame usually means Vivid lost foreground
-        if not base.get("is_blank", True):
+        if rendered(base):
             break
         foreground(); time.sleep(SETTLE + 0.2); base = analyze(v)
-    rec["render"] = "pass" if not base.get("is_blank", True) else ("needs-input" if needs_input(op) else "fail")
+    rec["render"] = "pass" if rendered(base) else ("needs-input" if needs_input(op) else "fail")
     rec["render_detail"] = {k: round(base.get(k, 0.0), 4) for k in ("brightness", "contrast", "activity")}
 
     params = [check_param(v, op_node, p) for p in op.get("params", [])]
@@ -175,7 +184,7 @@ def audit_op(v, op: dict, baseline_ms: float) -> dict:
     try:
         v.connect(out, op_node, 0, 0); time.sleep(SETTLE)
         th = analyze(v)
-        rec["thumbnail"] = "pass" if not th.get("is_blank", True) else ("needs-input" if needs_input(op) else "fail")
+        rec["thumbnail"] = "pass" if rendered(th) else ("needs-input" if needs_input(op) else "fail")
     except Exception:
         rec["thumbnail"] = "unknown"
 
