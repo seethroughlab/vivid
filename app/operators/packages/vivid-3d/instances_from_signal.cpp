@@ -36,11 +36,18 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
     vivid::Param<float> persist{"persist", 0.f, 0.f, 1.f};      // 0: pop-and-vanish; 1: trail HOLDS a standing shape
     vivid::Param<float> pos_lo {"pos_lo", 0.f, 0.f, 1.f};       // frame the signal's pos window (e.g. its pitch range)
     vivid::Param<float> pos_hi {"pos_hi", 1.f, 0.f, 1.f};       // …stretched across the full layout + palette
+    vivid::Param<float> center_x{"center_x", 0.f, -30.f, 30.f}; // offset the whole layout in space (place it off-origin)
+    vivid::Param<float> center_y{"center_y", 0.f, -30.f, 30.f};
+    vivid::Param<float> center_z{"center_z", 0.f, -30.f, 30.f};
+    vivid::Param<int>   orient {"orient", 0, {"spin", "radial"}}; // radial: point each instance's local +Y OUTWARD (spikes/shards)
+    vivid::Param<float> elongate{"elongate", 1.f, 1.f, 12.f};     // stretch along the instance's local +Y — spike length (needs orient=radial)
 
     void collect_params(std::vector<vivid::ParamBase*>& out) override {
         out.push_back(&size); out.push_back(&radius); out.push_back(&layout);
         out.push_back(&spin); out.push_back(&trail); out.push_back(&pulse); out.push_back(&palette);
         out.push_back(&persist); out.push_back(&pos_lo); out.push_back(&pos_hi);
+        out.push_back(&center_x); out.push_back(&center_y); out.push_back(&center_z);
+        out.push_back(&orient); out.push_back(&elongate);
     }
 
     void collect_ports(std::vector<VividPortDescriptor>& out) override {
@@ -62,6 +69,11 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
         const float persistAmt = std::clamp(pv(7, persist.value), 0.f, 1.f);
         const float posLo    = pv(8, pos_lo.value);
         const float posSpan  = pv(9, pos_hi.value) - posLo;
+        const float cx       = pv(10, center_x.value);
+        const float cy       = pv(11, center_y.value);
+        const float cz       = pv(12, center_z.value);
+        const int   ori      = static_cast<int>(std::round(pv(13, static_cast<float>(orient.int_value()))));
+        const float elong    = std::max(1.f, pv(14, elongate.value));
         const float dt       = static_cast<float>(ctx->delta_time);
         const float t        = static_cast<float>(ctx->time);
 
@@ -113,11 +125,27 @@ struct InstancesFromSignal : vivid::OperatorBase, vivid::GpuProcessable {
                 place(lay, h, rad, t, pos);
 
                 auto& d = instances_[i];
-                d.position[0] = pos[0]; d.position[1] = pos[1]; d.position[2] = pos[2];
+                d.position[0] = pos[0] + cx; d.position[1] = pos[1] + cy; d.position[2] = pos[2] + cz;
                 const float sc = baseSize * (0.4f + 0.6f * L.amp) * (1.f + pulse_pop(k)) * (0.15f + 0.85f * vis);
-                d.scale[0] = d.scale[1] = d.scale[2] = sc;
-                d.rotation_y = spinAmt * L.age * 6.2831853f;
-                d.rotation_x = 0.f;
+                if (ori == 1) {
+                    // radial: aim each instance's local +Y axis OUTWARD from the layout centre, so a Cone/
+                    // Pyramid base becomes a spike growing off the core. The instanced shader applies
+                    // Ry(rot_y)*Rx(rot_x) to the base +Y axis → (sin(rx)sin(ry), cos(rx), sin(rx)cos(ry)),
+                    // so pitch = acos(dir.y), yaw = atan2(dir.x, dir.z) points +Y at `dir`. Elongate is a
+                    // LOCAL-space (pre-rotation) stretch on +Y, so the spike stays thin and lengthens.
+                    const float len = std::sqrt(pos[0]*pos[0] + pos[1]*pos[1] + pos[2]*pos[2]);
+                    const float dx = len > 1e-4f ? pos[0]/len : 0.f;
+                    const float dy = len > 1e-4f ? pos[1]/len : 1.f;
+                    const float dz = len > 1e-4f ? pos[2]/len : 0.f;
+                    d.rotation_x = std::acos(std::clamp(dy, -1.f, 1.f));
+                    d.rotation_y = std::atan2(dx, dz);
+                    d.scale[0] = d.scale[2] = sc;
+                    d.scale[1] = sc * elong;
+                } else {
+                    d.scale[0] = d.scale[1] = d.scale[2] = sc;
+                    d.rotation_y = spinAmt * L.age * 6.2831853f;
+                    d.rotation_x = 0.f;
+                }
                 float c[3]; eval(pal, h, c);
                 const float bright = 1.f + 1.4f * k;                 // note-on flash
                 d.color[0] = std::clamp(c[0] * bright, 0.f, 1.f);

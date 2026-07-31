@@ -445,6 +445,8 @@ fn vs_billboard(@location(0) pos: vec3f,
     let inst = instances[iid];
     let inst_position = inst.pos_rot.xyz;
     let billboard_size = inst.scale_pad.x;  // uniform size for billboards
+    let elong = inst.scale_pad.y;           // >1 → stretch into a streak (1 = round)
+    let vdir = vec3f(inst.pos_rot.w, inst.scale_pad.z, inst.scale_pad.w);  // velocity dir (when stretched)
     let inst_pos = (camera.model * vec4f(inst_position, 1.0)).xyz;
 
     // Camera-facing basis vectors
@@ -457,8 +459,20 @@ fn vs_billboard(@location(0) pos: vec3f,
     }
     let up = cross(to_camera, right);
 
-    // Offset from instance position along billboard axes
-    let offset = right * pos.x * billboard_size + up * pos.y * billboard_size;
+    // Offset from instance position along billboard axes. When elongated, stretch the quad along the
+    // velocity direction projected onto the billboard plane (a screen-aligned motion-streak).
+    var offset = right * pos.x * billboard_size + up * pos.y * billboard_size;
+    let vr = dot(vdir, right);
+    let vu = dot(vdir, up);
+    let vlen = length(vec2f(vr, vu));
+    if (elong > 1.0 && vlen > 1e-4) {
+        let sdir = vec2f(vr, vu) / vlen;
+        let perp = vec2f(-sdir.y, sdir.x);
+        let along = dot(pos.xy, sdir) * elong;
+        let across = dot(pos.xy, perp);
+        let q = sdir * along + perp * across;
+        offset = (right * q.x + up * q.y) * billboard_size;
+    }
     let world = inst_pos + offset;
 
     var out: BillboardOutput;
@@ -1654,7 +1668,11 @@ struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
                 continue;
             }
 
-            bool instanced = dc.instance_count > 1 && dc.instance_buffer;
+            // >= 1 (not > 1): a draw with a SINGLE instance must still go through the instanced path so its
+            // per-instance transform (position/scale/colour from the instance buffer) is applied — otherwise
+            // a one-instance Instancer3D/Particles3D draw renders at the base shape's origin, ignoring the
+            // instance's position (e.g. a lone note-orb snapping to the centre).
+            bool instanced = dc.instance_count >= 1 && dc.instance_buffer;
             bool is_billboard = instanced && dc.frag->billboard;
 
             uint32_t dynamic_offsets[2] = {
@@ -2216,7 +2234,7 @@ private:
                                                  WGPUIndexFormat_Uint32, 0,
                                                  static_cast<uint64_t>(dc.frag->index_count) * sizeof(uint32_t));
 
-            uint32_t inst_count = (dc.instance_count > 1 && dc.instance_buffer) ? dc.instance_count : 1;
+            uint32_t inst_count = (dc.instance_count >= 1 && dc.instance_buffer) ? dc.instance_count : 1;
             wgpuRenderPassEncoderDrawIndexed(pass, dc.frag->index_count, inst_count, 0, 0, 0);
         }
 

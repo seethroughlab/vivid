@@ -10,6 +10,7 @@
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -403,6 +404,17 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
 
         VividGpuContext ctx{};
         ctx.time = time; ctx.delta_time = dt; ctx.frame = frame_;
+        // Master transport → every op's context (Clock and anything using metronome_transport(ctx)).
+        ctx.metronome_bpm           = metro_bpm_;
+        ctx.metronome_beats_per_bar = static_cast<uint32_t>(metro_bpb_ > 0 ? metro_bpb_ : 4);
+        ctx.metronome_beats_elapsed = metro_beats_;
+        ctx.metronome_beat_phase    = static_cast<float>(metro_beats_ - std::floor(metro_beats_));
+        {
+            const double bars = ctx.metronome_beats_per_bar > 0
+                              ? metro_beats_ / static_cast<double>(ctx.metronome_beats_per_bar) : metro_beats_;
+            ctx.metronome_bar_phase = static_cast<float>(bars - std::floor(bars));
+        }
+        ctx.metronome_beat_ms = metro_bpm_ > 0.f ? 60000.f / metro_bpm_ : 500.f;
         ctx.param_values = n.params.empty() ? nullptr : n.params.data();
         ctx.device = dev_; ctx.queue = q_; ctx.command_encoder = enc;
         ctx.output_texture = rts_[idx].tex;

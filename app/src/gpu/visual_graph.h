@@ -143,6 +143,11 @@ public:
     // screen — presenting is a separate step (ADR-0014), so the caller can draw the node graph
     // first and blit the output OVER it (the floating preview sits above the canvas).
     void run_chain(WGPUCommandEncoder enc, float time);
+    // Publish the master transport so time-driven visual ops (Clock, and anything reading
+    // metronome_transport(ctx)) lock to the musical clock. Call each frame BEFORE run_chain.
+    void set_metronome(float bpm, int beats_per_bar, double beats_elapsed) {
+        metro_bpm_ = bpm; metro_bpb_ = beats_per_bar > 0 ? beats_per_bar : 4; metro_beats_ = beats_elapsed;
+    }
     // Blit the already-rendered output FBO (from the last run_chain()) into a view at a rect —
     // the floating preview, or a pop-out window's surface. Letterboxes per the Output node's fit
     // mode, so every surface shows the output's true aspect. Does NOT re-run the graph.
@@ -194,6 +199,9 @@ private:
     std::string       asset_dir_;   // project dir for resolving node.asset (CustomShader .glsl)
 
     std::vector<VisualNode>   nodes_;
+    float                     metro_bpm_   = 120.f;   // master transport, published into each op's ctx
+    int                       metro_bpb_   = 4;
+    double                    metro_beats_ = 0.0;
     int                       next_id_ = 0;
     int                       active_output_id_ = -1;
     std::vector<RenderTarget> rts_;          // node output (parallel to nodes_)
