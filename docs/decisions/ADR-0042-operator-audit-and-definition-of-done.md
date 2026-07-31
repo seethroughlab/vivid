@@ -131,16 +131,33 @@ the catalog against it, run first as an **advisory report**.
 
 ### Implementation phases
 
-- **Phase 1 (this pass).** Write this ADR; add the `get_perf` endpoint (+ MCP parity); build
-  `tools/operator_audit/` (`scaffolds.py`, `audit.py`, `reports/`); run the **baseline** across the whole
-  catalog and commit the report. No operator fixes yet.
-- **Phase 2 — fixes, prioritized by the report.** `Switch3D` thumbnail (path B render into its output
-  texture); any dead/mis-wired params the param check surfaces; audio generator/modulator thumbnails drawn
-  from the param snapshot; document the dual mechanism + effect-exemption list.
-- **Phase 3 — perf depth.** If the A/B frame-time is too coarse, add per-node GPU timestamp queries in
-  `run_chain`; set explicit per-operator budgets.
-- **Phase 4 — enforcement.** Promote the render + param-affects-output + thumbnail checks into
-  `production-gate-pr.yml` once the catalog passes reliably.
+- **Phase 1 — DONE.** ADR + `get_perf` endpoint (+ MCP parity) + `tools/operator_audit/` + baseline.
+- **Phase 2 — DONE.** `Switch3D` got a Path-B thumbnail (a `lanethumb` slot-row with the live selection
+  lit). The dual mechanism is documented in `docs/operator-authoring/README.md`. Two findings reshaped the
+  rest:
+  - **`SpikeSolid` was a harness false-positive, not an op bug** (a valid solid fill flagged blank);
+    fixed `rendered()` to accept solid colour. Two more accuracy fixes followed from spot-checking the
+    param results: the sweep now **anchors on the default** and compares to both extremes (a pure
+    min↔max sweep landed on two degenerate frames — e.g. Render3D `cam_z` ±50 are both blank), and the
+    scene scaffold **doesn't add a second Shape3D** for geometry ops (it diluted their param signal).
+  - **Audio "name-only" was overstated.** The audit keys on `draw_thumbnail`, but audio modulators (LFO,
+    ADSR) already show a **compound-widget** shape preview + a **live output scope**, and instruments/
+    effects show scopes — so no `draw_thumbnail` code was needed for them (an initial attempt was
+    reverted as dead code). Genuine audio thumbnail work is limited to note-effects (Arp) and is low
+    priority. Documented in the authoring guide.
+  - **No genuine dead params found.** The remaining `no-visible-change` params are inherent limits of
+    single-static-frame analysis: symmetric/periodic extremes (a cube at ±180°, `SpikeSolid` hue 0≡1),
+    conditional params (fog/shadow toggles + dependents, SDF `shape_b`/`operation`), and subtle material
+    params (roughness/alpha/toon on a small object) — flagged for human review, not defects.
+- **Phase 3 — perf: DEFERRED (not needed now).** The baseline flagged **zero** ops over the frame-time
+  budget, so per-node GPU timestamp queries aren't warranted yet. Revisit if a hotspot (e.g. a heavy
+  `SDF3D` config) appears.
+- **Phase 4 — enforcement: STAYS ADVISORY.** The render/param/thumbnail checks need a **live, windowed,
+  foregrounded GPU app** (macOS pauses an occluded/asleep render loop), which the headless CI can't
+  provide. The structural checks that *can* run headless (descriptor validation, semantic vocab) are
+  already gated (`test_descriptor_validation`, `test_semantic_metadata`). So the audit remains an
+  on-demand developer/agent tool; promoting it to a hard gate would require a dedicated GPU runner and is
+  not pursued.
 
 ## References
 

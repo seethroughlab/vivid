@@ -117,16 +117,22 @@ def check_param(v, op_node: int, p: dict) -> dict:
     if lo == hi:
         return {"name": name, "verdict": "skip", "reason": "flat range"}
     try:
-        v.set_node_param(op_node, name, float(lo)); time.sleep(PARAM_SETTLE)
-        s0 = _sig(analyze(v))
+        # Anchor on the DEFAULT (a meaningful value) and compare to BOTH extremes — a pure min<->max sweep
+        # can land on two degenerate frames (e.g. Render3D cam_z -50 and +50 are both ~blank) and miss the
+        # param's real effect around its default.
+        v.set_node_param(op_node, name, float(dflt)); time.sleep(PARAM_SETTLE)
+        sd = _sig(analyze(v))
         time.sleep(PARAM_SETTLE)
-        s1 = _sig(analyze(v))                      # animation noise floor at the SAME param value
+        sd2 = _sig(analyze(v))                      # animation noise floor at the SAME (default) value
+        v.set_node_param(op_node, name, float(lo)); time.sleep(PARAM_SETTLE)
+        smin = _sig(analyze(v))
         v.set_node_param(op_node, name, float(hi)); time.sleep(PARAM_SETTLE)
-        s2 = _sig(analyze(v))
+        smax = _sig(analyze(v))
         v.set_node_param(op_node, name, float(dflt))
     except Exception as e:
         return {"name": name, "verdict": "error", "reason": str(e)[:80]}
-    noise, effect = _dist(s0, s1), _dist(s0, s2)
+    noise = _dist(sd, sd2)
+    effect = max(_dist(sd, smin), _dist(sd, smax))
     verdict = "affects" if effect > 2.0 * noise + 0.006 else "no-effect"
     return {"name": name, "verdict": verdict, "noise": round(noise, 4), "effect": round(effect, 4)}
 
