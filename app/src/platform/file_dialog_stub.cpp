@@ -12,6 +12,7 @@ std::string open_file_dialog(const std::string&, const std::vector<std::string>&
 // No native modal off macOS — proceed (Discard) rather than block a headless build.
 DiscardChoice confirm_discard_changes() { return DiscardChoice::Discard; }
 bool confirm_recover_autosave(const std::string&) { return false; }
+void show_alert(const std::string&, const std::string&) {}   // no native modal off macOS
 
 }  // namespace vivid::platform
 
