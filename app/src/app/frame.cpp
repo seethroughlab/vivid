@@ -1,4 +1,5 @@
 #include "app/frame.h"
+#include "app/perf_stats.h"   // ADR-0042: publish frame_ms/fps for the get_perf endpoint
 
 #include "app/app.h"
 #include "app/edit_gateway.h"   // ADR-0017 end_frame_audit
@@ -170,6 +171,8 @@ void draw_perf_hud(Renderer2D& ui, const Window& win) {
     const double ms = dt * 1000.0;
     ema_ms += (ms - ema_ms) * 0.1;          // exponential moving average (alpha 0.1 ~= 30-frame mean)
     const double fps = ema_ms > 1e-4 ? 1000.0 / ema_ms : 0.0;
+    vivid::perf::g_frame_ms.store(ema_ms, std::memory_order_relaxed);   // publish for the `get_perf` endpoint (ADR-0042)
+    vivid::perf::g_fps.store(fps, std::memory_order_relaxed);
     refresh_acc += dt;
     if (refresh_acc >= 0.25) {              // re-format ~4x/sec so the digits read steadily
         refresh_acc = 0.0;
