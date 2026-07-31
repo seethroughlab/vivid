@@ -33,27 +33,9 @@
 #include <vector>
 #include <memory>
 
-namespace vivid::session {
+#include "audio/clap_param_queue.h"   // ClapParamMsg + ClapParamQueue (SPSC, full->drop; Ph2 P2-01)
 
-// --- UI->audio parameter changes (SPSC ring; plain values, CLAP is by param id) ---
-struct ClapParamMsg { clap_id id; double value; };
-struct ClapParamQueue {
-    static constexpr int N = 2048;
-    ClapParamMsg buf[N];
-    std::atomic<uint32_t> w{0}, r{0};
-    void push(clap_id id, double v) {
-        uint32_t wi = w.load(std::memory_order_relaxed);
-        buf[wi % N] = { id, v };
-        w.store(wi + 1, std::memory_order_release);
-    }
-    bool pop(ClapParamMsg& m) {
-        uint32_t ri = r.load(std::memory_order_relaxed);
-        if (ri == w.load(std::memory_order_acquire)) return false;
-        m = buf[ri % N];
-        r.store(ri + 1, std::memory_order_release);
-        return true;
-    }
-};
+namespace vivid::session {
 
 // --- RT event scratch: builds a CLAP input-event list per block (no alloc on the audio
 // thread). note + param_value are the only core events we emit; both start with the header

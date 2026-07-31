@@ -123,6 +123,9 @@ set_tests_properties(test_node_ring_bank PROPERTIES LABELS "HEADLESS_SMOKE;THREA
 vivid_add_test(test_held_note_set)   # ADR-0029 phase 2: atomic-slot held-note set, concurrent TSan target
 target_link_libraries(test_held_note_set PRIVATE Threads::Threads)
 set_tests_properties(test_held_note_set PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
+vivid_add_test(test_clap_param_queue)  # Ph2 P2-01: CLAP UI->audio param queue drop-on-full, concurrent TSan target
+target_link_libraries(test_clap_param_queue PRIVATE Threads::Threads)
+set_tests_properties(test_clap_param_queue PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_popup_menu)     # ADR-0027: PopupMenu builders + draw/hit-test geometry invariant
 vivid_add_test(test_control_parse)
 
