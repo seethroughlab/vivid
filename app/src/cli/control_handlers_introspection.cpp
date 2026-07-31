@@ -6,6 +6,7 @@
 #include "cli/audio_analysis_tools.h"   // ADR-0024 Phase 8: analyze_pcm / copy_live_capture (proof checks)
 #include "cli/image_analysis_tools.h"   // ADR-0024 Phase 8: analyze_rgba (proof checks)
 #include "gpu/visual_graph.h"           // op registry / descriptors + read_output_pixels
+#include "app/perf_stats.h"             // ADR-0042: get_perf frame_ms/fps read-out
 #include "ui/node_graph.h"              // graph queries + mappings
 #include "gpu/operator_scan.h"          // load_and_register_operator (live install)
 #include "gpu/shader_library.h"         // ADR-0016: the shader library (list/reload/fork)
@@ -443,6 +444,14 @@ std::string signal_flow_text(const ControlCtx& c) {
 void register_introspection_handlers(Handlers& handlers_) {
     using vivid::session::Session;
     namespace P = vivid::session;
+    // ADR-0042: whole-frame perf read-out (EMA-smoothed), published by the FPS HUD each frame. The
+    // operator-audit harness reads this to time per-operator frame cost via an A/B (with/without op) delta.
+    handlers_["get_perf"] = [](const ControlCtx&, const json&) {
+        json r = ok();
+        r["frame_ms"] = vivid::perf::g_frame_ms.load(std::memory_order_relaxed);
+        r["fps"]      = vivid::perf::g_fps.load(std::memory_order_relaxed);
+        return r;
+    };
     handlers_["status"] = [](const ControlCtx& c, const json&) {
         json r = ok();
         if (c.session) { r["tracks"] = P::session_track_count(c.session); r["scenes"] = P::session_scene_count(c.session); }

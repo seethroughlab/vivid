@@ -36,6 +36,13 @@ def status() -> dict:
 
 
 @mcp.tool
+def get_perf() -> dict:
+    """Whole-frame performance read-out (EMA-smoothed): {frame_ms, fps}. Used by the operator-audit
+    harness to time per-operator frame cost via an A/B (with/without the op) delta."""
+    return _post("get_perf")
+
+
+@mcp.tool
 def inspect_session_overview(detail: str = "summary") -> dict:
     """Summary-first project/session inspection for agents. Aggregates transport, project,
     tracks, visual graph, mappings count, and warnings in one call. detail='summary' keeps clips
