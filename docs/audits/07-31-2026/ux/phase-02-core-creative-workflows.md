@@ -235,7 +235,16 @@ fine, but the silent-default on an unrecognized arg is a robustness gap (folded 
   `add_track {instrument:"Atoms"}` (VST3) → ok. Matcher at `vst3_host.cpp:3865`.
 - Smallest acceptable fix: make `add_track`/`load_instrument_spec` resolve native and CLAP
   instruments by their `list_instruments` name; minimally, error with format-specific guidance that
-  names the correct command. Owner/status: Unassigned | P2.
+  names the correct command. Owner/status: **fixed** | P2.
+- **RESOLVED** (branch `fix-p2-newproject-and-instrument-add`): `add_track` now resolves the
+  instrument name against the full `list_instruments` catalog — a native op → `session_add_graph_track`
+  (the instrument-shaped shell) + `session_set_track_audio_instrument`; a CLAP → the shell +
+  `session_request_track_clap_instrument` (async); a VST3 name/`.vst3` path → the existing
+  synchronous loader — mirroring how the project loader builds each. Verified live: `TestTone`,
+  `Sampler` (native) and `Surge XT` (CLAP) all create `kind=instrument` tracks; the native TestTone
+  track is **audible** (master peak 0.10, crest factor √2 = a pure sine; track level 0.071); an
+  unknown name now errors pointing to `list_instruments` (native/CLAP/VST3). The response reports the
+  resolved `format`.
 
 #### F3 (P2): "New Project" is an asymmetric partial reset (keeps track lanes + instruments)
 
@@ -252,7 +261,14 @@ fine, but the silent-default on an unrecognized arg is a robustness gap (folded 
   tracks).
 - Smallest acceptable fix: make New consistent — either fully reset (remove tracks too) or explicitly
   scope/label it ("clear content, keep instruments") so the retained lanes are intentional and
-  visible. Owner/status: Unassigned | P2.
+  visible. Owner/status: **fixed** | P2.
+- **RESOLVED** (branch `fix-p2-newproject-and-instrument-add`): chose the full reset — New now removes
+  every track (`session_remove_track` loop) for a truly blank session, symmetric with the visual-graph
+  reset. The GUI path (`file_actions::new_project`, now taking `Window&`) closes floated
+  plugin-editor windows first (Ph4 P1-01 guard); the MCP path relies on `session_remove_track`
+  *retiring* the instance (kept alive until `session_destroy`, so no free/UAF on this thread — it has
+  no `Window` to close editors, matching the #193 limitation). Verified live: New goes from 3 tracks →
+  **0 tracks, 1 node (Output), 0 mappings**. Matches the first-run empty state.
 
 #### F4 (P3): `load_project` silently accepts a parseable-but-unrecognized project (empty, no warning)
 

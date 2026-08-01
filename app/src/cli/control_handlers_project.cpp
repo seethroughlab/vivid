@@ -399,14 +399,15 @@ void register_project_handlers(Handlers& handlers_) {
     };
 
     // ---------------- project workflow (thin layer over session JSON) ----------------
-    // Fresh start: empty every clip, reset the visuals to the default chain, drop mappings +
-    // data nodes, and clear the current-project pointer. Keeps the loaded instruments + tracks.
+    // Fresh start: a BLANK session — remove every track (Phase-2 F3: it used to only empty clips and
+    // keep the loaded instruments/tracks, an asymmetric reset vs. the full visual reset), reset the
+    // visuals to the default chain, drop mappings + data nodes, and clear the current-project pointer.
     handlers_["new_project"] = [](const ControlCtx& c, const json&) {
         if (!c.session || !c.graph) return err(code::kNoSession, "no session");
-        const int nt = P::session_track_count(c.session), ns = P::session_scene_count(c.session);
-        for (int t = 0; t < nt; ++t)
-            for (int sc = 0; sc < ns; ++sc)
-                P::session_set_clip(c.session, t, sc, nullptr, 0, 4.0);
+        // session_remove_track RETIRES the track (instance kept alive until session_destroy), so no
+        // plugin is freed on this thread — no UAF even if an editor window is floated (which the
+        // control surface has no Window handle to close; the GUI New path closes them — Ph4 P1-01).
+        while (P::session_track_count(c.session) > 0) P::session_remove_track(c.session, 0);
         c.graph->reset_nodes();                        // data nodes + mappings
         if (c.vgraph) { c.vgraph->reset_to_default(); c.vgraph->set_asset_dir(""); }  // clean canvas: just Output
         if (c.app) {
@@ -417,7 +418,7 @@ void register_project_handlers(Handlers& handlers_) {
             c.app->project.missing_media.clear();
             c.app->reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1: New resets the undo history
         }
-        json r = ok(); r["tracks"] = nt; return r;
+        json r = ok(); r["tracks"] = 0; return r;   // blank session
     };
     handlers_["get_project_status"] = [](const ControlCtx& c, const json&) {
         if (!c.app) return err(code::kInternal, "no app context");

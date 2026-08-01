@@ -14,7 +14,7 @@ struct Window;
 // UI/main thread and refresh the Open Recent submenu after a successful load/save.
 namespace file_actions {
 
-void new_project(App& app);                                   // fresh slate (no dialog)
+void new_project(App& app, Window& win);                      // fresh slate (no dialog): blank session
 void open(GLFWwindow* w, Window& win, App& app);              // Open… → dialog → load
 void save(GLFWwindow* w, Window& win, App& app);             // Save (current path, else Save As)
 void save_as(GLFWwindow* w, Window& win, App& app);          // Save As… → dialog → save

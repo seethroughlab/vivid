@@ -52,13 +52,15 @@ void save_path(Window& win, App& app, const std::string& path) {
 
 }  // namespace
 
-void new_project(App& app) {
+void new_project(App& app, Window& win) {
     if (!app.session || !app.graph) return;
-    const int nt = session::session_track_count(app.session);
-    const int ns = session::session_scene_count(app.session);
-    for (int t = 0; t < nt; ++t)
-        for (int sc = 0; sc < ns; ++sc)
-            session::session_set_clip(app.session, t, sc, nullptr, 0, 4.0);
+    // Full reset (Phase-2 F3): New gives a BLANK session — remove every track, not just clear its
+    // clips, so it matches the visual-graph reset below instead of leaving the previous song's
+    // instrument lanes (and their loaded plugins) behind. Close floated plugin-editor windows first
+    // so a still-open editor can't outlive its track's removal (same guard as Open — Ph4 P1-01).
+    close_plugin_editor_windows(win);
+    while (session::session_track_count(app.session) > 0)
+        session::session_remove_track(app.session, 0);
     app.graph->reset_nodes();
     if (app.vgraph) { app.vgraph->reset_to_default(); app.vgraph->set_asset_dir(""); }
     project_io::retire_project_operators(app);          // drop project-scoped C++ ops
