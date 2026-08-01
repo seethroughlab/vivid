@@ -123,6 +123,9 @@ set_tests_properties(test_node_ring_bank PROPERTIES LABELS "HEADLESS_SMOKE;THREA
 vivid_add_test(test_held_note_set)   # ADR-0029 phase 2: atomic-slot held-note set, concurrent TSan target
 target_link_libraries(test_held_note_set PRIVATE Threads::Threads)
 set_tests_properties(test_held_note_set PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
+vivid_add_test(test_clap_param_queue)  # Ph2 P2-01: CLAP UI->audio param queue drop-on-full, concurrent TSan target
+target_link_libraries(test_clap_param_queue PRIVATE Threads::Threads)
+set_tests_properties(test_clap_param_queue PROPERTIES LABELS "HEADLESS_SMOKE;THREAD")
 vivid_add_test(test_popup_menu)     # ADR-0027: PopupMenu builders + draw/hit-test geometry invariant
 vivid_add_test(test_control_parse)
 
@@ -164,9 +167,16 @@ target_sources(test_op_registry PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/gpu/op_runtime.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/operator_api/operator_descriptor_validation.cpp)
 
+# Ph5 P2-05: a plugin's authored param base follows its stable id across a re-cache (pure helper).
+vivid_add_test(test_authored_base)
+
 # Pre-P1 session migration (legacy VOp-int -> op-name). persist.h pulls nlohmann.
 vivid_add_test(test_persist_chain_migration)
 target_link_libraries(test_persist_chain_migration PRIVATE nlohmann_json::nlohmann_json)
+
+# Ph4 P1-02: missing-operator params survive a save/load round-trip (persist_orphan.h, pure JSON).
+vivid_add_test(test_persist_orphan)
+target_link_libraries(test_persist_orphan PRIVATE nlohmann_json::nlohmann_json)
 
 # Visuals executor topological order + cycle handling (gpu/graph_topo.h; header-only, wgpu-free).
 vivid_add_test(test_graph_topo)
@@ -181,6 +191,12 @@ target_link_libraries(test_window_prefs PRIVATE nlohmann_json::nlohmann_json)
 # P4.1: session-version load guard (classify_session_version is a pure header fn).
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)
+
+# Ph6 P1-02: the release signer fails loud on missing notarization creds (portable shell test —
+# the guard runs before any macOS-only codesign/notarytool step, so it runs on Linux CI too).
+add_test(NAME test_notarize_guard
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/release/test_notarize_guard.sh)
+set_tests_properties(test_notarize_guard PROPERTIES LABELS "HEADLESS_SMOKE")
 
 # Dynamic tracks: stable-id drop-on-delete of mappings (mapping.h is header-only -> headless).
 vivid_add_test(test_track_drop_mappings)
@@ -385,6 +401,8 @@ target_sources(test_crash_recovery PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/crash_recovery.cpp)
 target_link_libraries(test_crash_recovery PRIVATE nlohmann_json::nlohmann_json)
 
+# ADR-0045 P0-01: a hosted plugin crash on the RT thread is attributed (plugin_crash_name + CrashGuard).
+vivid_add_test(test_plugin_crash_attrib)
 # Ph4 P1-01: close-all-and-null the plugin-editor pools before a Full-tier undo frees the instances.
 vivid_add_test(test_plugin_editor_pool)
 

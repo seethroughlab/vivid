@@ -7,6 +7,7 @@
 #include "midi/note_json.h"
 #include "ui/node_graph.h"
 #include "gpu/shader_uniforms.h"
+#include "persist_orphan.h"   // Ph4 P1-02: preserve a missing op's params across save/load
 
 #include <nlohmann/json.hpp>
 #include <fstream>
@@ -334,6 +335,12 @@ json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
         for (int p = 0; p < g.op_param_count_at(i); ++p)
             if (g.is_param_pinned(i, p)) pinned.push_back(g.op_param_label_at(i, p));
         if (!pinned.empty()) jn["pinned"] = pinned;
+        // Ph4 P1-02: a missing op has no live params, so the loops above wrote empty; splice back the
+        // values we preserved at load so a save of a degraded project doesn't drop the user's work.
+        if (g.op_missing_at(i)) {
+            const std::string orphan = g.op_orphan(i);
+            if (!orphan.empty()) apply_orphan_payload(jn, json::parse(orphan, nullptr, false));
+        }
         chain.push_back(jn);
     }
     jg["chain"] = chain;
@@ -822,6 +829,13 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                     for (int l = 0; l < 4 && l < static_cast<int>(jb.size()); ++l)
                         if (!ch[i].contains("params"))
                             g.set_op_param_base_at(i, l, jb[l].get<float>());
+                }
+                // Ph4 P1-02: the op type isn't registered, so the params/file_params/pinned above had
+                // nowhere to land. Stash them verbatim on the node so a later save round-trips them
+                // (and a reload after the package is installed restores them by name).
+                if (g.op_missing_at(i)) {
+                    const json orphan = capture_orphan_payload(ch[i]);
+                    if (!orphan.empty()) g.set_op_orphan(i, orphan.dump());
                 }
             }
         }

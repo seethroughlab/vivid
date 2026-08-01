@@ -6,6 +6,8 @@
 // fixed-capacity scratch, no heap, no locks. Pure code move — behaviour unchanged. Only possible now
 // that PR-A gave the host types (Vst3Handle/Vst3EventList/...) external linkage.
 #include "audio/vst3_host_internal.h"                 // Track, NoteEvent/ExprEvent, Vst3/ClapHandle, kGraphMaxNotes, Steinberg using-directives
+#include "audio/plugin_crash_name.h"                  // plugin_crash_name (ADR-0045 P0-01)
+#include "app/crash_guard.h"                          // ADR-0018: attribute a plugin crash (RT-safe pointer store)
 #include "pluginterfaces/vst/ivstnoteexpression.h"    // kTuningTypeID / kBrightnessTypeID (note-expression axes)
 
 #include <vector>
@@ -108,7 +110,8 @@ void render_vst3_instrument(Track& t, Vst3Handle* h, Vst3EventList& events,
     // put the notes it makes. Before this the host never assigned data.outputEvents at all, so every
     // note such a plugin produced was silently discarded.
     if (h->has_note_out) { h->out_events.clear(); data.outputEvents = &h->out_events; }
-    h->processor->process(data);
+    { vivid::CrashGuard cg(plugin_crash_name(h->plugin_name, h->vendor, "VST3 plugin"));  // ADR-0045 P0-01
+      h->processor->process(data); }
 }
 
 // Drain the notes a VST3 plugin GENERATED this block into `out` (ADR-0015 / M3). RT-safe: fixed
@@ -151,7 +154,8 @@ void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
     fd.numInputs = 1; fd.inputs = &ib;
     fd.numOutputs = 1; fd.outputs = &fob;
     fd.inputEvents = nullptr; fd.inputParameterChanges = &fpc; fd.processContext = &fpctx;
-    fx->processor->process(fd);
+    { vivid::CrashGuard cg(plugin_crash_name(fx->plugin_name, fx->vendor, "VST3 plugin"));  // ADR-0045 P0-01
+      fx->processor->process(fd); }
     std::memcpy(L, oL, frames * sizeof(float));
     std::memcpy(R, oR, frames * sizeof(float));
 }
@@ -172,7 +176,8 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
         h->events.add_note(ne.on, ne.pitch, ne.vel, ne.note_id, ne.sample_offset);
     float* out[2] = { L, R };
     float* in[2]  = { h->silence.data(), h->silence.data() + h->max_block };
-    clap_run(h, static_cast<int64_t>(t.steady), frames, h->audio_in > 0 ? in : nullptr, 2, out, 2);
+    { vivid::CrashGuard cg(plugin_crash_name(h->name, h->bundle_path, "CLAP plugin"));  // ADR-0045 P0-01
+      clap_run(h, static_cast<int64_t>(t.steady), frames, h->audio_in > 0 ? in : nullptr, 2, out, 2); }
 }
 
 // CLAP effect. Transforms L/R in place via the track's fx scratch (t.fxl/t.fxr), like the VST3
@@ -185,7 +190,8 @@ void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, floa
     for (uint32_t k = 0; k < mod_n; ++k) h->events.add_param(mod[k].id, mod[k].value);   // ADR-0034: modulation wins
     float* in[2]  = { L, R };
     float* out[2] = { t.fxl.data(), t.fxr.data() };
-    clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2);
+    { vivid::CrashGuard cg(plugin_crash_name(h->name, h->bundle_path, "CLAP plugin"));  // ADR-0045 P0-01
+      clap_run(h, static_cast<int64_t>(t.steady), frames, in, 2, out, 2); }
     std::memcpy(L, out[0], frames * sizeof(float));
     std::memcpy(R, out[1], frames * sizeof(float));
 }

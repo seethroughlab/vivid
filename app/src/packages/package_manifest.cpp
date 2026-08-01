@@ -14,6 +14,7 @@ PackageManifest parse_package_manifest(const std::string& package_dir) {
     const fs::path mf = fs::path(package_dir) / "vivid-package.json";
     std::ifstream f(mf);
     if (!f) { m.error = "no vivid-package.json in " + package_dir; return m; }
+    m.manifest_present = true;   // Ph5 P2-02: the file exists, so any error below is a REAL bad package
 
     nlohmann::json j;
     try { f >> j; } catch (const std::exception& e) {

@@ -70,7 +70,7 @@ when you add a channel (ADR-0029).
 |---|---|---|---|
 | Transport scalars (`beats`/`bpm`/`level`/bands/`transient`) | audio → frame | `std::atomic`, relaxed per field | single writer + reader per field; no cross-field consistency needed |
 | Plugin param queue (per VST3/CLAP handle) | UI → audio | lock-free SPSC ring | producer `push`, consumer `pop` at top of `process`; full → drop (never blocks audio) |
-| Structural edits (MIDI clips, FX chain, graph binds) | UI → audio | generation counter + `try_lock` copy | edit under the mutex, then `gen.fetch_add(release)`; audio `acquire`-loads `gen`, `try_lock`-copies or retries next block |
+| Structural edits — four independent per-`Track` mirrors: MIDI clips (`edit_gen`/`edit_mtx`), VST3 FX chain (`fx_gen`/`fx_mtx`, retired→`fx_retired`), native-op FX chain (`op_fx_gen`/`op_fx_mtx`), graph plan/binds (`ggen`/`gmtx`) | UI → audio | generation counter + `try_lock` copy | edit under the mutex, then `gen.fetch_add(release)`; audio `acquire`-loads `gen`, `try_lock`-copies or retries next block |
 | Live MIDI ring (`LiveMidi`) | UI + CoreMIDI → audio | SPSC ring; producers serialize on `push_mtx`, consumer lock-free | `head`/`tail` release/acquire; full → drop |
 | Node-analyze mask (gated per-node FFT) | UI → audio | `std::atomic<uint64_t>`, release/acquire | ring allocated on the UI thread **before** the release-store; audio `acquire`-loads the mask, then reads the now-stable ring |
 | Active-notes bus (`note_bus`) | frame → render-thread op | atomic note slots + `count`/`track_id` release/acquire | `track_id` published **last** gates `count`+notes; each note is one atomic word, so a torn snapshot mixes whole notes (well-defined — ADR-0029) |
@@ -80,6 +80,11 @@ when you add a channel (ADR-0029).
 | Control-server work | server thread → UI | enqueue + `std::promise`, applied on the main loop | **all** session/graph mutation happens on the UI thread |
 | Per-node scope / FFT ring bank (`node_scope`, `node_an`) | audio → frame | `NodeRingBank` — atomic-float slots + release/acquire per-node head | lapped slot tears benignly, well-defined (ADR-0029) |
 | Held-note set (`held`) | audio → frame | `HeldNoteSet` — atomic packed {pitch,vel} slots + release/acquire `count` | swap-remove rewrites a slot; a torn snapshot mixes whole notes (ADR-0029) |
+| Note-event ring + bus (`note_event_ring.h` → `note_event_bus.cpp`) | audio → frame → render op | SPSC `NoteEventRing` drained on the frame, republished into a **double-buffered** `EvChannel` | ring `w`/`r` release/acquire, full → drop-newest; bus writes buf+`count` then flips `active` (release) then `track_id` **last** — reader gates on `track_id`+`count` (ADR-0029) |
+| Master spectrum band bus (`spectrum_bus.cpp`) | frame → render-thread op | `std::atomic<uint32_t>` band slots (float-bits) + `count` release/acquire | bands written (relaxed) then `count` (release); reader loads `count` (acquire) then bands — distinct from the audio→frame `an_ring` |
+| Movie audio bus (`movie_audio_bus.cpp`) | render → **audio** | SPSC stereo ring + `epoch` reset guard | the only inbound-to-audio channel; `write_pos`/`read_pos` release/acquire; `read()` re-checks `epoch` to drop a block if a reset raced |
+| Recording tap ring (`Transport::rec_ring_`) | audio → main | SPSC ring + `rec_active_` gate | ring allocated **before** the `rec_active_` release-store; `rec_write_`/`rec_read_` release/acquire; full → drop (once-per-session `stderr` overrun log — RT hygiene TODO) |
+| Live output capture (`Transport::capture_l_/capture_r_`) | audio ↔ main | `capture_enabled_` gate + `capture_mtx_` **`try_lock`** | audio thread `try_lock`s to fill the buffer (skips if UI holds it — never blocks); main reads under `lock_guard` |
 
 ### Benign torn reads — and hardening them
 

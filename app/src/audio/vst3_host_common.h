@@ -32,6 +32,7 @@
 #include <functional>
 #include <memory>
 #include <zlib.h>
+#include "audio/authored_base.h"   // Ph5 P2-05: authored base survives a param re-cache (by id)
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #endif
@@ -553,6 +554,10 @@ struct Vst3Handle {
     // plugin modulation. Normalized 0..1, matching the param setter. Main/UI thread only.
     std::vector<float>   host_base;
     std::vector<uint8_t> has_base;
+    // Ph5 P2-05: the authored base keyed by STABLE param id. host_base/has_base are index-aligned and
+    // rebuilt on every re-cache (params are compacted + reordered), so this durable map is the source
+    // of truth that re-applies authored values by id after a rescan — otherwise they'd be lost.
+    std::unordered_map<ParamID, float> authored_by_id;
     // ADR-0034: an audio-thread-readable MIRROR of the authored base (normalized), so the render
     // thread can resolve control-edge modulation against a plugin param's base. Fixed-size, allocated
     // once with the param table (never resized while the audio thread runs — mirrors native `pvals`).
@@ -566,13 +571,18 @@ struct Vst3Handle {
     std::unique_ptr<std::atomic<uint8_t>[]> abr_on;
     int abase_n = 0;
     void base_size_to_params() {
-        host_base.assign(params.size(), 0.f); has_base.assign(params.size(), 0u);
+        // Ph5 P2-05: re-apply authored values BY ID for the new (possibly reordered/compacted) param
+        // table, so a rescan/restartComponent preserves what the user authored instead of resetting it.
+        std::vector<ParamID> ids; ids.reserve(params.size());
+        for (const auto& p : params) ids.push_back(p.id);
+        reapply_authored_base(authored_by_id, ids, host_base, has_base);
         abase_n = static_cast<int>(params.size());
         abase.reset(new std::atomic<float>[params.size()]);
         ahas.reset(new std::atomic<uint8_t>[params.size()]);
         abridge.reset(new std::atomic<float>[params.size()]);
         abr_on.reset(new std::atomic<uint8_t>[params.size()]);
-        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.f, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(has_base[i] ? host_base[i] : 0.f, std::memory_order_relaxed);
+                                            ahas[i].store(has_base[i], std::memory_order_relaxed);
                                             abridge[i].store(0.f, std::memory_order_relaxed); abr_on[i].store(0u, std::memory_order_relaxed); }
     }
     int  base_index_of(ParamID pid) const {
@@ -583,12 +593,14 @@ struct Vst3Handle {
         if (i < 0 || i >= static_cast<int>(params.size())) return;
         if (host_base.size() != params.size()) base_size_to_params();
         host_base[static_cast<size_t>(i)] = norm; has_base[static_cast<size_t>(i)] = 1u;
+        authored_by_id[params[static_cast<size_t>(i)].id] = norm;   // Ph5 P2-05: durable, survives re-cache
         if (i < abase_n) { abase[i].store(norm, std::memory_order_relaxed); ahas[i].store(1u, std::memory_order_release); }
     }
     // A preset/state load replaces the authored patch wholesale: forget every cached base so the
     // reader falls back to the plugin's (newly loaded) values until the user authors again.
     void base_forget_all() {
         has_base.assign(params.size(), 0u);
+        authored_by_id.clear();   // Ph5 P2-05: a wholesale preset replace forgets the id-keyed store too
         for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
     }
     // ADR-0034 Phase 3: bridge delivery sets/clears the effective base modulation resolves against.

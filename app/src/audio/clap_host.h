@@ -20,6 +20,7 @@
 #include <clap/factory/preset-discovery.h>
 
 #include "audio/base64.h"
+#include "audio/authored_base.h"   // Ph5 P2-05: authored base survives a param re-cache (by id)
 
 #include <atomic>
 #include <cctype>
@@ -33,27 +34,9 @@
 #include <vector>
 #include <memory>
 
-namespace vivid::session {
+#include "audio/clap_param_queue.h"   // ClapParamMsg + ClapParamQueue (SPSC, full->drop; Ph2 P2-01)
 
-// --- UI->audio parameter changes (SPSC ring; plain values, CLAP is by param id) ---
-struct ClapParamMsg { clap_id id; double value; };
-struct ClapParamQueue {
-    static constexpr int N = 2048;
-    ClapParamMsg buf[N];
-    std::atomic<uint32_t> w{0}, r{0};
-    void push(clap_id id, double v) {
-        uint32_t wi = w.load(std::memory_order_relaxed);
-        buf[wi % N] = { id, v };
-        w.store(wi + 1, std::memory_order_release);
-    }
-    bool pop(ClapParamMsg& m) {
-        uint32_t ri = r.load(std::memory_order_relaxed);
-        if (ri == w.load(std::memory_order_acquire)) return false;
-        m = buf[ri % N];
-        r.store(ri + 1, std::memory_order_release);
-        return true;
-    }
-};
+namespace vivid::session {
 
 // --- RT event scratch: builds a CLAP input-event list per block (no alloc on the audio
 // thread). note + param_value are the only core events we emit; both start with the header
@@ -164,6 +147,9 @@ struct ClapHandle {
     // the new base). Main/UI thread only. See the Vst3Handle twin for the rationale.
     std::vector<double>  host_base;
     std::vector<uint8_t> has_base;
+    // Ph5 P2-05: authored base keyed by STABLE param id (the durable source re-applied on re-cache;
+    // host_base/has_base are index-aligned and rebuilt whenever the param table is re-read).
+    std::unordered_map<clap_id, double> authored_by_id;
     // ADR-0034: an audio-thread-readable MIRROR of the authored base (plain units), so the render
     // thread can resolve control-edge modulation against a plugin param's base. Fixed-size, allocated
     // once with the param table (never resized while the audio thread runs — mirrors native `pvals`).
@@ -178,23 +164,30 @@ struct ClapHandle {
     std::unique_ptr<std::atomic<uint8_t>[]> abr_on;
     int abase_n = 0;
     void base_size_to_params() {
-        host_base.assign(params.size(), 0.0); has_base.assign(params.size(), 0u);
+        // Ph5 P2-05: re-apply authored values BY ID for the new param table, so a param re-cache
+        // preserves what the user authored instead of resetting it to "not authored".
+        std::vector<clap_id> ids; ids.reserve(params.size());
+        for (const auto& p : params) ids.push_back(p.id);
+        reapply_authored_base(authored_by_id, ids, host_base, has_base);
         abase_n = static_cast<int>(params.size());
         abase.reset(new std::atomic<double>[params.size()]);
         ahas.reset(new std::atomic<uint8_t>[params.size()]);
         abridge.reset(new std::atomic<double>[params.size()]);
         abr_on.reset(new std::atomic<uint8_t>[params.size()]);
-        for (int i = 0; i < abase_n; ++i) { abase[i].store(0.0, std::memory_order_relaxed); ahas[i].store(0u, std::memory_order_relaxed);
+        for (int i = 0; i < abase_n; ++i) { abase[i].store(has_base[i] ? host_base[i] : 0.0, std::memory_order_relaxed);
+                                            ahas[i].store(has_base[i], std::memory_order_relaxed);
                                             abridge[i].store(0.0, std::memory_order_relaxed); abr_on[i].store(0u, std::memory_order_relaxed); }
     }
     void base_author(int i, double val) {
         if (i < 0 || i >= static_cast<int>(params.size())) return;
         if (host_base.size() != params.size()) base_size_to_params();
         host_base[static_cast<size_t>(i)] = val; has_base[static_cast<size_t>(i)] = 1u;
+        authored_by_id[params[static_cast<size_t>(i)].id] = val;   // Ph5 P2-05: durable, survives re-cache
         if (i < abase_n) { abase[i].store(val, std::memory_order_relaxed); ahas[i].store(1u, std::memory_order_release); }
     }
     void base_forget_all() {
         has_base.assign(params.size(), 0u);
+        authored_by_id.clear();   // Ph5 P2-05: a wholesale preset replace forgets the id-keyed store too
         for (int i = 0; i < abase_n; ++i) ahas[i].store(0u, std::memory_order_relaxed);
     }
     // ADR-0034 Phase 3: bridge delivery sets/clears the effective base modulation resolves against.

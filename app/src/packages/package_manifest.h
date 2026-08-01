@@ -30,6 +30,8 @@ struct PackageOperator {
 
 struct PackageManifest {
     bool        ok = false;
+    bool        manifest_present = false;   // a vivid-package.json exists here (so !ok is a REAL error,
+                                            // not just "this dir isn't a package") — Ph5 P2-02
     std::string error;       // parse error message when !ok
     std::string dir;         // absolute package root
     std::string name;

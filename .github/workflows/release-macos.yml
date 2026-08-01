@@ -21,6 +21,11 @@ jobs:
     runs-on: [self-hosted, macOS]
     env:
       APPLE_CODESIGN_IDENTITY: ${{ secrets.APPLE_CODESIGN_IDENTITY }}
+      # Ph6 P1-02: on a real tag build (which PUBLISHES), require notarization — sign_and_notarize.sh
+      # then fails loud on missing credentials instead of silently shipping an un-notarized DMG.
+      # Empty on workflow_dispatch validation runs (they don't publish), so the signing path can still
+      # be exercised without an app-specific password.
+      REQUIRE_NOTARIZE: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
       # Notarization: either a notarytool keychain profile (NOTARY_PROFILE) on the runner,
       # or the explicit-credential fallback below.
       NOTARY_PROFILE: ${{ secrets.NOTARY_PROFILE }}
@@ -48,6 +53,12 @@ jobs:
 
       - name: Production gate (core) must pass before shipping
         run: VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core
+
+      # Ph6 P1-01: the gate core (HEADLESS_SMOKE) does not exercise the realtime-safety paths. Re-run
+      # the sanitizer + audio-engine legs on THIS commit before signing, so a directly-pushed tag (or a
+      # squash-merge SHA that no longer carries the PR checks) can never ship unverified for the RT paths.
+      - name: Release verification (sanitizers + audio engine)
+        run: scripts/run_release_verification.sh
 
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
