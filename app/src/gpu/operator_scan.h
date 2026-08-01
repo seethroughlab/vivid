@@ -39,9 +39,12 @@ std::string load_and_register_operator(const std::string& dylib_path, OpRegistry
                                        const std::set<std::string>* quarantined = nullptr);
 
 // Scan `dir` for *.dylib operators and load_and_register_operator each. Returns the
-// number newly registered.
+// number newly registered. If `out_errors` is non-null, each dylib that FAILED to load
+// (a genuine loader error — not a benign shadow/quarantine skip) is appended so the caller
+// can surface it in-app instead of leaving it stderr-only (ADR-0019 / Ph3 audit P2-02).
 int scan_operator_dir(const std::string& dir, OpRegistry& reg,
                       std::vector<std::unique_ptr<OperatorLoader>>& loaders,
-                      const std::set<std::string>* quarantined = nullptr);
+                      const std::set<std::string>* quarantined = nullptr,
+                      std::vector<RegisterResult>* out_errors = nullptr);
 
 }  // namespace vivid
