@@ -31,7 +31,8 @@ PackageInstallResult install_package(const std::string& package_dir, const std::
     return r;
 }
 
-std::vector<PackageManifest> discover_packages(const std::string& scope_dir) {
+std::vector<PackageManifest> discover_packages(const std::string& scope_dir,
+                                               std::vector<PackageManifest>* out_errors) {
     namespace fs = std::filesystem;
     std::vector<PackageManifest> out;
     std::error_code ec;
@@ -41,6 +42,9 @@ std::vector<PackageManifest> discover_packages(const std::string& scope_dir) {
         if (!e.is_directory()) continue;
         PackageManifest m = parse_package_manifest(e.path().string());
         if (m.ok) out.push_back(std::move(m));
+        // Ph5 P2-02: a dir with a vivid-package.json that WON'T parse is a real bad package — surface
+        // it. (A dir with no manifest just isn't a package; manifest_present tells them apart.)
+        else if (out_errors && m.manifest_present) out_errors->push_back(std::move(m));
     }
     return out;
 }

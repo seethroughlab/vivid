@@ -159,7 +159,10 @@ int main(int argc, char** argv) {
           dirs.push_back((exe_dir / "PlugIns").lexically_normal().string());          // non-bundle (Linux/Windows)
       }
       int loaded = 0;
-      for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders, &disabled_ops);
+      std::vector<vivid::RegisterResult> scan_errors;   // Ph3 P2-02: surface load failures in-app, not stderr-only
+      for (const auto& d : dirs) loaded += vivid::scan_operator_dir(d, app.op_registry, app.op_loaders, &disabled_ops, &scan_errors);
+      for (const auto& e : scan_errors)   // ADR-0019: a package that failed to load at launch is not silent
+          VLOG_ERR(app, "operator package failed to load (%s): %s", e.error_key.c_str(), e.error_msg.c_str());
       app.file_drops.rebuild(app.op_loaders);   // ADR-0021/P3: index drop handlers of the loaded ops
 
       // ADR-0016: a shader FILE is an operator. Each .wgsl/.glsl in the library declares its
@@ -168,7 +171,11 @@ int main(int argc, char** argv) {
       // compiled op, with no separate machinery.
       const int shaders = app.shader_library.scan(app.op_registry);
       int shader_errors = 0;
-      for (const auto& e : app.shader_library.entries()) if (!e.error.empty()) ++shader_errors;
+      for (const auto& e : app.shader_library.entries())
+          if (!e.error.empty()) {   // Ph3 P2-02: a shader that won't parse/compile at launch is not silent (ADR-0019)
+              ++shader_errors;
+              VLOG_ERR(app, "shader operator '%s' failed to load: %s", e.name.c_str(), e.error.c_str());
+          }
       std::fprintf(stderr, "[vivid] %d shader ops (%zu files scanned%s)\n", shaders,
                    app.shader_library.entries().size(),
                    shader_errors ? ", SOME WITH ERRORS" : "");
@@ -236,8 +243,11 @@ int main(int argc, char** argv) {
     app.hot_reload.start(&app.op_registry, &vgraph, &app.log);
     { namespace fs = std::filesystem;
       const std::string clones = (fs::path(vivid::platform::user_data_dir()) / "clones").string();
-      for (const auto& mf : vivid::discover_packages(clones))                      app.hot_reload.watch_manifest(app.op_loaders, mf);
-      for (const auto& mf : vivid::discover_packages(vivid::user_operators_dir())) app.hot_reload.watch_manifest(app.op_loaders, mf);
+      std::vector<vivid::PackageManifest> pkg_errors;   // Ph5 P2-02: don't drop a malformed package silently
+      for (const auto& mf : vivid::discover_packages(clones, &pkg_errors))                      app.hot_reload.watch_manifest(app.op_loaders, mf);
+      for (const auto& mf : vivid::discover_packages(vivid::user_operators_dir(), &pkg_errors)) app.hot_reload.watch_manifest(app.op_loaders, mf);
+      for (const auto& e : pkg_errors)   // ADR-0019: a bad operator package is surfaced, not silently ignored
+          VLOG_ERR(app, "operator package '%s' ignored: %s", e.dir.c_str(), e.error.c_str());
     }
     if (const char* wp = std::getenv("VIVID_WATCH_PACKAGE")) {
         const std::string pkg = wp;

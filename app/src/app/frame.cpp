@@ -702,6 +702,19 @@ void run_frame_loop(App& app, Window& win) {
 
         reap_plugin_windows(app, win);
         win.health = collect_health(app);   // ADR-0019: one snapshot/frame; the dot + panel both read it
+        // Ph3 P2-01: WGPU device loss is contained (the loop keeps running) but renders nothing — the
+        // window just freezes. Surface it ONCE with a NATIVE alert; a GPU-rendered toast can't show
+        // with a dead device, so without this the user stares at a frozen window with no explanation.
+        if (app.gpu && app.gpu->device_lost()) {
+            static bool device_loss_notified = false;
+            if (!device_loss_notified) {
+                device_loss_notified = true;
+                VLOG_ERR(app, "GPU device lost — rendering has stopped. Please quit and reopen Vivid.");
+                vivid::platform::show_alert("GPU device lost",
+                    "Vivid's graphics device was lost and rendering has stopped. Please quit and reopen "
+                    "Vivid. Your work is autosaved.");
+            }
+        }
         const double beats = transport.beats.load(std::memory_order_relaxed);
         publish_bridge_sources(app, win);
         apply_audio_param_mappings(app);
