@@ -69,7 +69,8 @@ std::string load_and_register_operator(const std::string& dylib_path, OpRegistry
 
 int scan_operator_dir(const std::string& dir, OpRegistry& reg,
                       std::vector<std::unique_ptr<OperatorLoader>>& loaders,
-                      const std::set<std::string>* quarantined) {
+                      const std::set<std::string>* quarantined,
+                      std::vector<RegisterResult>* out_errors) {
     namespace fs = std::filesystem;
     std::error_code ec;
     if (dir.empty() || !fs::is_directory(dir, ec)) return 0;
@@ -78,7 +79,10 @@ int scan_operator_dir(const std::string& dir, OpRegistry& reg,
     for (const auto& entry : fs::directory_iterator(dir, ec)) {
         if (ec) break;
         if (!entry.is_regular_file() || entry.path().extension() != platform::plugin_suffix()) continue;
-        if (!load_and_register_operator(entry.path().string(), reg, loaders, quarantined).empty()) ++count;
+        const RegisterResult r = load_and_register_operator_ex(entry.path().string(), reg, loaders, quarantined);
+        if (r.ok) ++count;
+        else if (out_errors && !r.error_key.empty())   // a genuine load failure (not a shadow/quarantine skip)
+            out_errors->push_back(r);
     }
     return count;
 }

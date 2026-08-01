@@ -620,6 +620,15 @@ std::string NodeGraph::op_asset_at(int i) const {
 void NodeGraph::set_op_asset_at(int i, const std::string& asset) {
     if (op_node_valid(vg_, i)) vg_->nodes()[i].asset = asset;
 }
+bool NodeGraph::op_missing_at(int i) const {
+    return op_node_valid(vg_, i) && vg_->nodes()[i].op_missing();
+}
+std::string NodeGraph::op_orphan(int i) const {
+    return op_node_valid(vg_, i) ? vg_->nodes()[i].orphan_params : std::string();
+}
+void NodeGraph::set_op_orphan(int i, const std::string& json) {
+    if (op_node_valid(vg_, i)) vg_->nodes()[i].orphan_params = json;
+}
 int NodeGraph::op_at_world(double wx, double wy) const {
     if (!vg_) return -1;
     for (int i = 0; i < int(vg_->nodes().size()); ++i) {

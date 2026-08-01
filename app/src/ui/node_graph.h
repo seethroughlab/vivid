@@ -110,6 +110,9 @@ public:
     void set_op_input_at(int i, int port, int src, int src_port = 0);  // wire src's out `src_port` -> node i input `port`
     std::string op_asset_at(int i) const;                       // node's data asset (CustomShader .glsl), "" if none
     void        set_op_asset_at(int i, const std::string& asset);
+    bool        op_missing_at(int i) const;                     // node's op type never resolved (Ph4 P1-02)
+    std::string op_orphan(int i) const;                         // preserved params JSON for a missing op, "" if none
+    void        set_op_orphan(int i, const std::string& json);
     int         op_at(double sx, double sy) const;              // op node under a screen cursor, -1 if none
     int         op_at_world(double wx, double wy) const;        // op node under a WORLD point, -1 if none
     std::string op_source_path(int i) const;                    // absolute editable source (CustomShader .glsl), "" if none

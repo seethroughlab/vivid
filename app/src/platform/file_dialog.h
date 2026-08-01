@@ -32,4 +32,9 @@ DiscardChoice confirm_discard_changes();
 // Returns true to recover, false to discard. Off macOS the stub returns false.
 bool confirm_recover_autosave(const std::string& detail);
 
+// Ph3 P2-01: a native (non-GPU) informational alert with a single OK button. Used to explain a
+// state the GPU-rendered UI cannot show — chiefly a lost graphics device, where an in-app toast
+// would never render. Modal — UI/main thread only. Off macOS the stub is a no-op.
+void show_alert(const std::string& title, const std::string& message);
+
 }  // namespace vivid::platform
