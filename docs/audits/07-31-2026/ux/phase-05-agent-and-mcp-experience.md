@@ -179,7 +179,11 @@ not raw ids. Two small notes:
 - Smallest acceptable fix: add a release-status note to `mcp/README.md` — mark the core
   inspect/explain/edit/analyze/project loop as the first-release promise and the music-eval cluster
   **experimental (requires a Gemini API key)**; align the GUI "Eval" menu label (Phase-1 F5).
-  Owner/status: Unassigned | P3.
+  Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-first-run-polish`): added a **"Release status"** section to
+  `mcp/README.md` (core loop = first-release promise; music-eval = experimental, key-gated,
+  fail-closed) and relabelled the GUI menu **"Eval (Experimental)"** with "Evaluate Output (needs
+  Gemini key)" (`menu_bar.mm`) — this also resolves **Phase-1 F5**.
 
 #### F2 (P3): `inspect_bindings` is a vocabulary straggler vs the "mapping" convention
 

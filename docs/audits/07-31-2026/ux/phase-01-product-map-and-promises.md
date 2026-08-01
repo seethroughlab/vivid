@@ -253,7 +253,10 @@ or Help; "Eval" holds "Set Gemini Key…" and "Evaluate Output". (→ F5)
 - Evidence: `menu_bar.mm` menu labels (File/Edit/Eval); no in-app copy explaining Eval or the key.
 - Fix: decide the first-release status of Eval — demote it (behind a settings/dev toggle) or add a
   one-line explanation + "coming soon"/"experimental" label; reconcile with Phase 5's public/private
-  MCP-surface call. Owner/status: Unassigned | P3.
+  MCP-surface call. Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-first-run-polish`, with Phase-5 F1): the GUI menu is relabelled
+  **"Eval (Experimental)"** / "Evaluate Output (needs Gemini key)" and `mcp/README.md` marks the
+  music-eval cluster experimental — so it no longer reads as a finished headline feature.
 
 ### F. Draft first-release promise (≤1 paragraph)
 

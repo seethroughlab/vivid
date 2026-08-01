@@ -31,3 +31,10 @@ all saved as one portable project you can reload, inspect over MCP, and fork.
 
 > Every tutorial project doubles as a regression case: if the product can't support a step, that's a
 > bug to fix, not a paragraph to soften.
+
+## Photosensitivity note
+
+Vivid renders **audio-reactive visuals** that can flash, strobe, or move rapidly — especially on
+loud or percussive material. If you or anyone viewing your work is sensitive to flashing lights,
+keep the output window small, lower reactive intensity, or avoid fast-flashing looks. Vivid does not
+yet limit flash rate.

@@ -21,12 +21,16 @@ inline const float* severity_color(Severity sev) {
 }
 
 // Panel geometry — shared by the draw and the modal hit-test in input.cpp (like shader_view_geom).
-struct DiagGeom { float px, py, w, h, rowh, hdr; int scalar_rows, missing_rows; };
-inline DiagGeom diag_geom(int missing_count, int win_w) {
+// Quarantined-op rows (Ph4 F2) sit AFTER the missing-op rows, so the missing-row rects are unchanged.
+struct DiagGeom { float px, py, w, h, rowh, hdr; int scalar_rows, missing_rows, quarantine_rows; };
+inline DiagGeom diag_geom(int missing_count, int win_w, int quarantine_count = 0) {
     DiagGeom o;
     o.w = 460.f; o.rowh = 22.f; o.hdr = 40.f; o.scalar_rows = 8;
     o.missing_rows = missing_count;
-    const int body_rows = o.scalar_rows + (missing_count > 0 ? 1 + missing_count : 0);   // +1 subheader
+    o.quarantine_rows = quarantine_count;
+    const int body_rows = o.scalar_rows
+                        + (missing_count > 0    ? 1 + missing_count    : 0)    // +1 subheader
+                        + (quarantine_count > 0 ? 1 + quarantine_count : 0);   // +1 subheader
     o.h = o.hdr + body_rows * o.rowh + 16.f;
     o.px = (win_w - o.w) * 0.5f; o.py = 84.f;
     return o;
@@ -43,5 +47,9 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
 // ADR-0019 (E4): the in-app log view — the last N leveled entries, coloured by level. The same
 // events that go to stderr, now visible in the app (toggle: J).
 void draw_log_view(Renderer2D& ui, const Logger& log, int win_w, int win_h);
+
+// UX Ph4 F3: a keyboard-shortcut cheat-sheet overlay so the single-key shortcuts are discoverable
+// (toggle: ?). Pure static list — no app state.
+void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h);
 
 }  // namespace vivid::ui

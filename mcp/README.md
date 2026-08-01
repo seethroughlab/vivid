@@ -7,6 +7,18 @@ app's loopback control server (`control_server.cpp`, default `http://127.0.0.1:9
 Claude / Claude Code ──stdio MCP──▶ vivid_mcp.py ──HTTP POST /<method>──▶ app control server
 ```
 
+## Release status (UX Ph5 F1)
+
+The **first-release promise** is the MCP-native creative loop (ADR-0040): **inspect / explain / edit
+/ analyze / transport / mapping / project** — inspect the session, explain what drives what, author
+graph + project-local code, connect mappings, capture + verify, save, and reload. These tools use
+product vocabulary and their edits enter the same undo history as UI edits.
+
+**Experimental:** the **music-eval** tools (`configure_music_eval_backend`,
+`evaluate_audio_musically`, `music_eval_status`, `music_eval_result`) require a Google **Gemini** API
+key and an external backend, and **fail closed** (no verdict without a key). Treat them as
+experimental, not part of the day-one promise. Video export is release but secondary.
+
 ## Run
 
 1. Launch the app (`app/build/vivid.app/Contents/MacOS/vivid`) — it logs
