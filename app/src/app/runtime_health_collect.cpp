@@ -31,6 +31,8 @@ HealthSnapshot collect_health(const App& app) {
     // authority (it excludes the Output/Video host contracts, which carry no operator yet are not
     // "missing" — counting them here made severity() spuriously Error in every session).
     if (app.vgraph) s.missing_ops = app.vgraph->missing_op_count();
+    // Structural blank-vs-empty signal (P2-03): does a producer feed the active Output?
+    if (app.vgraph) s.output_fed = app.vgraph->output_has_feed();
 
     s.control_running = app.control && app.control->running();
     return s;

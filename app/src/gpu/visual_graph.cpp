@@ -7,6 +7,7 @@
 #include "operator_api/value_view.h"   // VividValueView / VividValueOutput (FLOAT-MANY lane transport)
 #include "gpu/asset_shader.h"   // AssetShader (CustomShader .glsl push)
 #include "gpu/graph_topo.h"     // topo_order (shared, headless-testable DFS)
+#include "gpu/output_feed.h"    // output_is_fed (structural "Output has a feed" predicate, P2-03)
 #include "gpu/gpu_util.h"   // kMsaaSamples (present blit draws into the frame MSAA target)
 
 #include <algorithm>
@@ -248,6 +249,11 @@ int VisualGraph::output_index() const {
         if (nodes_[i].id == active_output_id_) return i;
     }
     return first;
+}
+bool VisualGraph::output_has_feed() const {
+    const int oi = output_index();
+    const int feed = (oi >= 0) ? nodes_[oi].in(0) : -1;   // the node whose RT becomes the final image
+    return output_is_fed(oi, feed, static_cast<int>(nodes_.size()));
 }
 void VisualGraph::set_active_output(int idx) {
     if (idx >= 0 && idx < static_cast<int>(nodes_.size()) && nodes_[idx].is_output())

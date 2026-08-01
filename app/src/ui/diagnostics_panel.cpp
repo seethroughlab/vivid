@@ -44,6 +44,9 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
     line("Graph", buf, sty.body);
     std::snprintf(buf, sizeof buf, "%d", h.missing_ops);
     line("Missing operators", buf, h.missing_ops ? sty.red : sty.green);
+    // Blank-vs-empty (P2-03): an unfed Output is empty-by-design (benign, neutral colour), not a fault.
+    line("Output", h.output_fed ? "feeding Output" : "no feed \xE2\x80\x94 empty by design",
+         h.output_fed ? sty.body : sty.dim);
     std::snprintf(buf, sizeof buf, "%d dylib(s)", h.packages_loaded);
     line("Packages loaded", buf, sty.body);
     std::snprintf(buf, sizeof buf, "%s   \xC2\xB7   v%s", h.control_running ? "control server up" : "control server DOWN",

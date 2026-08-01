@@ -185,6 +185,15 @@ in-header. One micro-drift only (→ P3-03).
 - Smallest acceptable fix: a `HealthSnapshot`/diagnostics signal that distinguishes "Output
   has no feed" (structural) from "Output feed rendered but is blank" (heuristic), and treat
   empty-by-design as OK not `fail`.
+- **RESOLVED** (branch `fix-p2-blank-vs-empty-health`): added the structural predicate
+  `output_is_fed()` (pure, `gpu/output_feed.h`) behind `VisualGraph::output_has_feed()`;
+  surfaced it as `HealthSnapshot::output_fed` (emitted at `get_health.graph.output_fed`, shown
+  as an "Output" row in the diagnostics panel) — kept *out* of `severity()` so an unfed Output
+  reads OK, not a fault. The MCP `nonblank_visual_output` check is now three-way: nothing fed →
+  `warn` ("empty by design", was `fail`); fed-but-blank → `fail` ("Output is fed but …"); fed +
+  content → `pass`. Verified live on all four states (unfed `warn`/`output_fed:false`;
+  fed+flat `fail`; fed+Plasma `pass`; severity stays `ok` when unfed). Tests: `test_output_feed`
+  (pure predicate) + extended `test_runtime_health` (field + severity-invariance).
 
 #### P3-01: Diagnostics panel + `get_health` omit shader/reload errors
 
