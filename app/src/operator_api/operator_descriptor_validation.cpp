@@ -75,6 +75,32 @@ std::vector<DescriptorValidationIssue> validate_descriptor(
                     "param '" + name + "' is file/text but default_string is null"
                 });
             }
+            // Ph5 P2-01: a type integer the host doesn't know is a corrupt descriptor.
+            if (param.type > VIVID_PARAM_TEXT) {
+                issues.push_back({
+                    vc::kParamInvalidType,
+                    "param '" + name + "' has an unknown type (" + std::to_string(param.type) + ")"
+                });
+            } else if (param.type == VIVID_PARAM_FLOAT || param.type == VIVID_PARAM_INT) {
+                // Numeric-range sanity: only float/int carry a meaningful [min,max] (bool/file/text
+                // don't; choice is bounded by choice_count). An inverted range or an out-of-range
+                // default is a descriptor bug the UI/persistence would clamp unpredictably.
+                if (param.min_value > param.max_value) {
+                    issues.push_back({
+                        vc::kParamInvalidRange,
+                        "param '" + name + "' has min_value (" + std::to_string(param.min_value) +
+                        ") > max_value (" + std::to_string(param.max_value) + ")"
+                    });
+                } else if (param.min_value < param.max_value &&   // a GENUINE range (min==max => unbounded/unset: skip)
+                           (param.default_value < param.min_value || param.default_value > param.max_value)) {
+                    issues.push_back({
+                        vc::kParamDefaultOutOfRange,
+                        "param '" + name + "' default_value (" + std::to_string(param.default_value) +
+                        ") is outside [" + std::to_string(param.min_value) + ", " +
+                        std::to_string(param.max_value) + "]"
+                    });
+                }
+            }
         }
     }
 
