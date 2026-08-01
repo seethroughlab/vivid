@@ -1,23 +1,26 @@
 # Release runbook (P4.5)
 
-The release pipeline for the macOS app. **Status: scaffolded, partly unverified.** The
-credential-free pieces are tested and run anywhere; the signing/notarization/CI pieces are
-encoded but need infrastructure this repo's dev/CI environment doesn't have (an Apple
-Developer ID + a self-hosted macOS runner). They're written so a maintainer with those can
-run them, and clearly marked as not-yet-exercised.
+The release pipeline for the macOS app. **Status: exercised end-to-end; auto-update
+deferred.** Per [ADR-0040](../decisions/ADR-0040-mcp-native-creative-coding-is-the-public-promise.md)
+the release CI has produced a **signed + notarized** DMG on the self-hosted macOS runner
+(`spctl --assess` → "accepted, Notarized Developer ID"; ticket stapled), and the PR gate
+runs on every PR. The one piece that is **not** wired is the Sparkle auto-updater — it is a
+no-op stub, deferred to a post-first-release step. Signing/notarization still require a
+maintainer's Apple Developer ID to run.
 
-## What's verified vs. scaffolded
+## What's verified vs. deferred
 
 | Piece | File | State |
 |-------|------|-------|
-| Production gate | `scripts/run_production_gate.sh`, `tools/production_gate_*` | **verified** (runs locally) |
+| Production gate | `scripts/run_production_gate.sh`, `tools/production_gate_*` | **verified** (runs locally + on every PR) |
 | Version guard | `tools/check_version.py` | **verified** |
 | Appcast generator | `scripts/release/generate_appcast.py` | **verified** (`--selftest`) |
 | PR-comment formatter | `tools/format_pr_comment.py` | **verified** (`--selftest`) |
-| Sign + notarize + DMG | `scripts/release/sign_and_notarize.sh` | scaffold — needs Apple Developer ID |
-| PR-gate CI | `.github/workflows/production-gate-pr.yml` | scaffold — needs a self-hosted macOS runner |
-| Release CI | `.github/workflows/release-macos.yml` | scaffold — needs runner + Apple secrets |
-| Auto-update bridge | `app/src/platform/sparkle_bridge.h` (+ stub) | stub — real Sparkle wired at release time |
+| Sign + notarize + DMG | `scripts/release/sign_and_notarize.sh` | **exercised** (ADR-0040); tag builds **require** notarization (`REQUIRE_NOTARIZE`) |
+| Release verification | `scripts/run_release_verification.sh` | **verified** — the release re-runs the sanitizer + audio legs before signing |
+| PR-gate CI | `.github/workflows/production-gate-pr.yml` | **active** — runs on every PR (self-hosted macOS runner) |
+| Release CI | `.github/workflows/release-macos.yml` | **exercised** (ADR-0040) — sign/notarize/DMG/appcast on a tag |
+| Auto-update bridge | `app/src/platform/sparkle_bridge.h` (+ stub) | **stub — deferred**, not wired for first release |
 
 ## Versioning
 
@@ -29,9 +32,26 @@ asserts the tag matches.
 ## Cutting a release (when infra is present)
 
 1. Bump `project(... VERSION X.Y.Z)`, commit, `git tag vX.Y.Z && git push --tags`.
-2. `release-macos.yml` fires on the tag: version-guard → build → **production gate must
-   pass** → `sign_and_notarize.sh` → `generate_appcast.py` → upload the DMG + appcast.
+2. `release-macos.yml` fires on the tag: version-guard → build → **production gate** →
+   **release verification** (`run_release_verification.sh`: ASan/UBSan + ThreadSanitizer +
+   audio-engine + audio-thread-sanitizer must pass) → `sign_and_notarize.sh` (notarization
+   **required** on a tag) → `generate_appcast.py` → upload the DMG + appcast.
 3. Attach the DMG to the GitHub release; publish `appcast.xml` to the update feed.
+
+## Reproducing the CI test legs locally
+
+The PR gate and the release build run these legs; reproduce them locally:
+
+- `VIVID_BUILD_DIR=app/build scripts/run_production_gate.sh core` — the `HEADLESS_SMOKE`
+  gate with its min-test guard (build `app/build` with `-DVIVID_BUILD_APP=OFF` first).
+- `scripts/run_release_verification.sh` — the release-critical legs run before signing:
+  headless **ASan/UBSan**, **ThreadSanitizer** (`ctest -L THREAD`), **audio-engine**
+  (`ctest -L AUDIO_ENGINE`), and **audio-thread-sanitizer** (`ctest -L AUDIO_THREAD`). It
+  builds into `app/build-verify-*` dirs and fails on any red.
+
+Build-dir naming (so local matches CI): the PR gate uses `app/build` (app-OFF),
+`app/build-audio` (audio-engine, app-ON), `app/build-tsan-audio` (audio TSan); the portable
+headless CI job uses top-level `build` / `build-tsan`.
 
 ### Signing + notarization credentials
 

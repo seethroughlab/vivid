@@ -1,7 +1,9 @@
-# macOS release (P4.5) — UNVERIFIED SCAFFOLD: needs a self-hosted macOS runner + Apple
-# Developer ID secrets. On a vX.Y.Z tag, builds the app, signs+notarizes+DMGs it, and
-# generates the Sparkle appcast. The credential-free steps (version-guard, the gate, the
-# appcast generator) are verified; the sign/notarize step is not (no cert here).
+# macOS release (P4.5). On a vX.Y.Z tag, on the self-hosted macOS runner: build the app, run
+# the production gate + the sanitizer/audio release-verification legs, then sign + notarize +
+# DMG it and generate the Sparkle appcast. Per ADR-0040 this has been exercised end-to-end
+# (produces a signed + notarized DMG). Requires Apple Developer ID secrets; notarization is
+# REQUIRED on a tag build (sign_and_notarize.sh fails loudly without it). The Sparkle
+# auto-updater is still a stub (deferred) — see docs/release/README.md.
 name: release-macos
 
 on:
