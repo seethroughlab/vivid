@@ -204,8 +204,22 @@ fine, but the silent-default on an unrecognized arg is a robustness gap (folded 
 - Smallest acceptable fix: on project load (both `file_actions::load_path` and the
   `load_project`/`load_session` handlers), **clear the undo/redo history and seed a fresh baseline
   snapshot of the loaded project**, so a freshly-opened project starts with an empty, correctly-based
-  undo stack. Mirrors the code-audit Phase 4 persistence/undo work. Owner/status: Unassigned | P1
-  (candidate-P0 — user's blocking call).
+  undo stack. Mirrors the code-audit Phase 4 persistence/undo work. Owner/status: **fixed** | P1.
+- **RESOLVED** (branch `fix-p1-undo-baseline-on-load`): every load/new site now sets
+  `App::reseed_undo_baseline` (`project_io::load` covers GUI open + MCP `load_project`; plus
+  `file_actions::new_project`, MCP `load_session`, MCP `new_project`), and the frame loop re-seeds
+  the undo baseline via `EditGateway::reseed_baseline_if_settling()` (clears history + installs the
+  loaded doc as entry 0). The lock waits until the project has **fully settled** — no async CLAP
+  loads still pending (`session_plugin_loads_pending() == 0`) **and** the projection is stable —
+  because a track whose instrument is mid-load projects as a bare audio lane, so a baseline captured
+  then would drop the instrument on undo (this bit hard on neon's two Surge-XT CLAP tracks: undo
+  turned `bass` `kind=instrument` into `kind=audio, devices=[]`). Verified live on the fixed build:
+  Repro A reflex undo after open is a **no-op** and neon stays intact (9 nodes, 1 mapping, Cassette
+  Drums/arp/bass); Repro B undo reverts only the visual edit; the Surge instrument tracks survive
+  (`bass` stays `kind=instrument devices=['bass']`); a VST3 (Atoms) track round-trips clean; normal
+  in-session undo/redo stays exact. Regression guard: `test_undo_manager` gains a cross-document case
+  (`clear()` + new baseline makes prior-project history unreachable). Smoke 68/68.
+  `evidence/phase-02/03-fixed-undo-after-open-intact.png` (neon intact after open+edit+undo).
 
 #### F2 (P2): Native and CLAP instruments listed by `list_instruments` can't be added via `add_track`
 

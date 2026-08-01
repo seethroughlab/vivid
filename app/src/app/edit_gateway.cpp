@@ -21,8 +21,8 @@ nlohmann::json EditGateway::canonical_projection_now() const {
     return canonical_document_projection(session_to_json(app_.session, *app_.graph, 0, 0, 0.f, 0.f, /*include_plugin_state*/false));
 }
 
-void EditGateway::reset_baseline() {
-    cached_ = canonical_projection_now();
+void EditGateway::seed_baseline(const nlohmann::json& proj) {
+    cached_ = proj;
     undo_.clear();
     undo_.push(cached_.dump(), false, {});   // entry 0 — the pre-edit baseline
     edited_this_frame_ = true;                // this frame's document change is intentional
@@ -31,6 +31,20 @@ void EditGateway::reset_baseline() {
     group_depth_ = 0; group_dirty_ = false; group_label_.clear();
     pending_ = false;
     ++revision_;
+}
+
+void EditGateway::reset_baseline() { seed_baseline(canonical_projection_now()); }
+
+bool EditGateway::reseed_baseline_if_settling() {
+    // After an open, the audio topology settles over a few frames (async plugin rebind). Re-seed the
+    // baseline to the current document until it stops changing, so undo restores the FULLY-loaded
+    // project — a baseline captured mid-rebind would restore a half-built session (the tracks would
+    // rebuild as generic audio lanes). Returns true once stable (only the baseline is present and it
+    // matches the current doc) so the caller can stop watching.
+    nlohmann::json now = canonical_projection_now();
+    if (undo_.size() == 1 && now == cached_) return true;   // settled
+    seed_baseline(now);
+    return false;
 }
 
 void EditGateway::push_snapshot(const json& proj, bool replace_top, const std::string& label) {

@@ -67,6 +67,7 @@ void new_project(App& app) {
     app.project.media_root.clear();
     app.project.missing_media.clear();
     if (app.edit_gateway) app.edit_gateway->mark_saved();   // ADR-0018: a new doc starts clean
+    app.reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1: New resets the undo history (no reach-back)
 }
 
 void open(GLFWwindow* w, Window& win, App& app) { load_path(w, win, app, platform::open_project_dialog()); }

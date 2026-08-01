@@ -384,8 +384,9 @@ void register_project_handlers(Handlers& handlers_) {
         if (!c.session || !c.graph || !c.app || !c.app->audio_graph) return err(code::kNoSession, "no session");
         int ww = *c.win_w, wh = *c.win_h;   // don't resize the window via MCP
         if (b.contains("session")) {        // inline JSON
-            return session_from_json(b["session"], c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h)
-                       ? ok() : err(code::kBadArg, "load failed");
+            const bool ok_in = session_from_json(b["session"], c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h);
+            if (ok_in) c.app->reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1
+            return ok_in ? ok() : err(code::kBadArg, "load failed");
         }
         const std::string path = b.value("path", std::string());
         if (path.empty()) return err(code::kBadArg, "need path or session");
@@ -393,6 +394,7 @@ void register_project_handlers(Handlers& handlers_) {
         float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
         const bool okr = load_session(path, c.session, *c.graph, ww, wh, *c.split_x, *c.dock_h, aox, aoy, ascale);
         if (okr && ascale > 0.f) ag->set_view({ aox, aoy, ascale });   // restore the persisted camera (ADR-0023)
+        if (okr) c.app->reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1: loading resets undo history
         return okr ? ok() : err(code::kIoError, "read failed");
     };
 
@@ -413,6 +415,7 @@ void register_project_handlers(Handlers& handlers_) {
             c.app->project.current_project_path.clear();
             c.app->project.media_root.clear();
             c.app->project.missing_media.clear();
+            c.app->reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1: New resets the undo history
         }
         json r = ok(); r["tracks"] = nt; return r;
     };

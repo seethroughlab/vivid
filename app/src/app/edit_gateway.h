@@ -25,6 +25,12 @@ public:
     // load / new session and at startup. Clears any prior history (undo dies with the document).
     void reset_baseline();
 
+    // Like reset_baseline(), but for the post-open settle: re-seeds the baseline to the current
+    // document only while it is still changing frame-to-frame (async plugin rebind after an open),
+    // and returns true once it has stabilized. The frame loop calls this each frame after a
+    // load/new until it returns true, so undo can't restore a half-built session (Phase-2 F1).
+    bool reseed_baseline_if_settling();
+
     // The sink hook: record that a logical edit just happened. `label` describes it ("Delete Node");
     // `coalesce_key` (e.g. "param:<node>/<name>") merges a rapid run of the SAME key into one entry
     // (the MCP-automation fallback) — empty means a structural edit that never coalesces. Inside an
@@ -74,6 +80,7 @@ public:
 
 private:
     nlohmann::json canonical_projection_now() const;   // session_to_json(0-dims) -> canonical
+    void seed_baseline(const nlohmann::json& proj);    // clear history + install proj as entry 0
     void force_close_group();
     void push_snapshot(const nlohmann::json& proj, bool replace_top, const std::string& label);
     void restore(const nlohmann::json& target);        // apply a snapshot with the smart audio tier

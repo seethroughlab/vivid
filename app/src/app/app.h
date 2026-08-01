@@ -68,6 +68,9 @@ struct App {
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
+    // ADR-0017: a document load/new happened — the frame loop re-seeds the undo baseline (clearing the
+    // prior project's history) at the end of the next laid-out tick, so undo can't reach across a load.
+    bool reseed_undo_baseline = false;
     std::set<std::string> quarantined_ops;   // ADR-0018: ops disabled this launch (repeat crashers / safe mode)
     // ADR-0030 Phase 2: audio-graph param dests ("gnode:T:NID:I") the frame bridge drove last frame.
     // A dest that drops out (mapping disconnected) is cleared once so the node returns to its authored

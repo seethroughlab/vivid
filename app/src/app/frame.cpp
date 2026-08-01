@@ -618,6 +618,7 @@ void run_frame_loop(App& app, Window& win) {
         return !glfwWindowShouldClose(window);
     };
     bool undo_baseline_seeded = false;   // ADR-0017: seed the baseline after the first laid-out frame
+    int  reseed_settle_frames = 0;       // Phase-2 F1: frames spent waiting for a post-open reseed to settle
     unsigned last_undo_rev = ~0u;        // ADR-0017/G4: refresh Edit-menu labels when history changes
     int  last_dirty = -1;                // ADR-0018: push the macOS edited-dot when dirty state flips
     int  last_export_rec = -1;           // flip the File > Export Video menu label with recording state
@@ -909,6 +910,21 @@ void run_frame_loop(App& app, Window& win) {
                 app.edit_gateway->reset_baseline(); undo_baseline_seeded = true;
                 // ADR-0018: a recovered autosave is the baseline but differs from disk — start dirty.
                 if (app.recovered_unsaved) { app.edit_gateway->mark_dirty(); app.recovered_unsaved = false; }
+            } else if (app.reseed_undo_baseline) {
+                // A document load/new landed: re-seed the baseline so the freshly opened project is
+                // undo entry 0 and the prior project's history is gone (ADR-0017; UX Phase-2 F1 — undo
+                // could otherwise reach across a load and clobber the opened project). LOCK the baseline
+                // only once the project has fully settled: no async plugin (CLAP) loads are still in
+                // flight AND the projection is stable frame-to-frame. Until then a track whose
+                // instrument is mid-load projects as a bare audio lane, so a baseline captured then
+                // would drop the instrument on undo. `reseed_baseline_if_settling()` keeps the baseline
+                // tracking the current doc meanwhile (can_undo stays false, so no undo can hit it). The
+                // large frame cap is a safety net against a plugin that never resolves.
+                const bool loads_done = !app.session || session_plugin_loads_pending(app.session) == 0;
+                const bool stable = app.edit_gateway->reseed_baseline_if_settling();
+                if ((loads_done && stable) || ++reseed_settle_frames > 1800) {
+                    app.reseed_undo_baseline = false; reseed_settle_frames = 0;
+                }
             }
             // Watchdog: recover a gesture group leaked by a lost release (release delivered to another
             // window / consumed by an early handler). Safe — a normal drag holds the button down.
