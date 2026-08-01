@@ -31,7 +31,8 @@ jobs:
         # Cap parallelism for the sanitizer build; the plain build keeps full -j.
         run: cmake --build build ${{ matrix.sanitize == 'ON' && '-j 2' || '-j' }}
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        # --no-tests=error (Ph6 P2-01): guard against a build that silently produced no tests.
+        run: ctest --test-dir build --no-tests=error --output-on-failure
 
   # ADR-0029: the concurrency tests under ThreadSanitizer — a separate job because TSan uses a different
   # (mutually exclusive) flag than the ASan/UBSan matrix above. Runs only the THREAD-labelled tests
@@ -57,6 +58,7 @@ jobs:
         # parallelism so the RAM-limited hosted runner doesn't OOM-kill cc1plus.
         run: cmake --build build-tsan -j 2
       - name: Test
-        run: ctest --test-dir build-tsan -L THREAD --output-on-failure
+        # --no-tests=error (Ph6 P2-01): the THREAD label must match at least one test.
+        run: ctest --test-dir build-tsan -L THREAD --no-tests=error --output-on-failure
         env:
           TSAN_OPTIONS: halt_on_error=1
