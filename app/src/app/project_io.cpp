@@ -99,6 +99,7 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
     // file's directory (the project folder, or a .json's parent dir).
     if (app.vgraph) app.vgraph->set_asset_dir(fs::path(jpath).parent_path().string());
     app.remember_project_path(path);
+    app.reseed_undo_baseline = true;   // ADR-0017 / Phase-2 F1: opening a project resets the undo history
     r.ok = true;
     return r;
 }

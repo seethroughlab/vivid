@@ -71,6 +71,27 @@ void test_depth_cap_evicts_front() {
     CHECK(!u.can_undo());           // S0 is gone; S1 is the new floor
 }
 
+// UX Phase-2 F1: opening a project re-seeds the baseline (EditGateway::reset_baseline() =
+// clear() + push(new baseline)). After a reseed the PRIOR document's history must be unreachable —
+// an undo right after Open must not cross the load back into the previous project. This guards the
+// primitive the load-path fix leans on (frame.cpp reseed → reset_baseline on project load/new).
+void test_reseed_clears_cross_document_history() {
+    UndoManager u; std::string out;
+    // Project A: baseline + two edits (a dirty session, as before opening another project).
+    u.push("A0", false, ""); u.push("A1", false, "Edit A1"); u.push("A2", false, "Edit A2");
+    CHECK(u.can_undo());
+    // Open project B → reseed: clear the history, seed B as the new baseline (entry 0).
+    u.clear();
+    u.push("B0", false, "");
+    CHECK(u.size() == 1);
+    CHECK(!u.can_undo());                 // a freshly opened project has nothing to undo...
+    CHECK(!u.can_redo());                 // ...and no stale redo tail from project A
+    // An edit in B undoes to B's baseline, never to any project-A snapshot.
+    u.push("B1", false, "Edit B1");
+    CHECK(u.undo(out) && out == "B0");    // back to B's baseline — not "A2"/"A1"/"A0"
+    CHECK(!u.can_undo());
+}
+
 }  // namespace
 
 int main() {
@@ -78,5 +99,6 @@ int main() {
     test_push_after_undo_truncates_redo();
     test_replace_top_coalesces();
     test_depth_cap_evicts_front();
+    test_reseed_clears_cross_document_history();
     return vivid::test::summary("undo_manager");
 }
