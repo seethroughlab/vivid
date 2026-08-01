@@ -971,6 +971,12 @@ void register_introspection_handlers(Handlers& handlers_) {
     };
     handlers_["list_params"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
+        // UX Phase-2 F5: list_params is scoped to an AUDIO track's device (track/device), not the
+        // visual graph. Reject a stray node_id instead of silently ignoring it and returning track 0's
+        // plugin params (which reads as wrong-but-plausible data). Visual node params come from get_graph.
+        if (b.contains("node_id"))
+            return err(code::kBadArg, "list_params is for an audio track device (track/device); "
+                                      "for a visual node's params use get_graph");
         Session* s = c.session;
         const int track = b.value("track", 0), device = b.value("device", 0);
         json e; if (!need_track(s, track, e)) return e;

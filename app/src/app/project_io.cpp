@@ -10,6 +10,9 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <nlohmann/json.hpp>
 
 namespace vivid::project_io {
 namespace fs = std::filesystem;
@@ -54,6 +57,22 @@ SaveResult save(App& app, ui::NodeGraph& graph, int win_w, int win_h, float spli
 LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& split_x, float& dock_h,
                 const std::string& path) {
     LoadResult r;
+    // UX Phase-2 F4/F5: validate the file is a readable Vivid project BEFORE tearing down the current
+    // one — a missing, unparseable, or foreign JSON should give a clear reason and leave the loaded
+    // project intact, not silently replace it with an empty session (a real risk given PRD §7's
+    // hand-editable project text). Every real project serializes a "graph" and "tracks" key.
+    {
+        const std::string vpath = session_json_path(path);
+        std::error_code ec;
+        if (!fs::exists(vpath, ec)) { r.error = "no project file at " + vpath; return r; }
+        std::ifstream in(vpath, std::ios::binary);
+        const std::string txt((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const nlohmann::json doc = nlohmann::json::parse(txt, nullptr, /*allow_exceptions*/false);
+        if (doc.is_discarded()) { r.error = "project file is not valid JSON: " + vpath; return r; }
+        if (!doc.is_object() || (!doc.contains("graph") && !doc.contains("tracks"))) {
+            r.error = "not a Vivid project (missing \"graph\"/\"tracks\"): " + vpath; return r;
+        }
+    }
     // Drop the old visual graph before unregistering old project-local C++ operators; node
     // instances may own code from the dylibs we are about to retire.
     graph.reset_nodes();
@@ -88,7 +107,7 @@ LoadResult load(App& app, ui::NodeGraph& graph, int& win_w, int& win_h, float& s
     app.shader_library.set_project(app.op_registry, fs::path(jpath).parent_path().string());
     float aox = 0.f, aoy = 0.f, ascale = 0.f;   // scale 0 = sentinel: no camera in the file
     if (!load_session(jpath, app.session, graph, win_w, win_h, split_x, dock_h, aox, aoy, ascale)) {
-        r.error = "read failed";
+        r.error = "failed to load project: " + jpath;
         graph.chain_load_begin();
         if (app.vgraph) app.vgraph->reset_to_default();
         retire_project_operators(app);

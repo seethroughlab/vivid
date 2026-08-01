@@ -18,10 +18,11 @@ one geometry source — independently confirmed CLEAN in the code audit (Phase 3
 
 Findings are **3×P3**, all layout/visual-polish: the window has **no enforced minimum size** so it
 can be dragged into a broken layout (top bar overlaps, session grid clips —
-`06-resize-minimum.png`); two neutral-gray popups (the shader library and the add-node chooser)
-**carry no domain-identity colour** despite being visual/context surfaces; and the shader-library
-description column **truncates mid-word without an ellipsis**. None block release. At normal desktop
-sizes (≥~1000px) the layout is stable (`05-resize-narrow-1000.png`).
+`06-resize-minimum.png`); the mapping-overview (bridge) modal wears the **visual cyan** accent
+instead of the **bridge teal** (a domain-colour misassignment — corrected on closer code inspection
+from an earlier misread that the popups were un-accented; see F2); and the shader-library description
+column **truncates mid-word without an ellipsis**. None block release. At normal desktop sizes
+(≥~1000px) the layout is stable (`05-resize-narrow-1000.png`).
 
 ## Purpose
 
@@ -114,8 +115,8 @@ Phase-1/2 shots cover the session view, both graphs, and the mapping bridge. Aud
 | Mapping overview ("MAPPINGS") | bridge **teal** | modal/popup | `ui/mapping_overview` | `m`; SOURCE→DEST + POL/AMT/CURVE/LO/HI |
 | Diagnostics panel | severity (green/gold/red) | modal/diagnostic | `ui/diagnostics_panel` | `h`; incl. the P2-03 "Output feeding" row |
 | Log view | neutral | modal/diagnostic | `ui/diagnostics_panel` (`draw_log_view`) | `j`; leveled entries coloured by level |
-| Shader library | **gray** (neutral) | modal / content browser (visual) | `ui/shader_library_view` | `l`; NAME/TIER/SUMMARY + open/fork (→ F2/F3) |
-| Add-node chooser | **gray** (neutral) | popup (context: audio *or* visual) | `ui/chooser` | `Tab`; filter + name/op/description (→ F2) |
+| Shader library | visual **cyan** (`sty.gpu` accent) | modal / content browser (visual) | `ui/shader_library_view` | `l`; NAME/TIER/SUMMARY + open/fork (→ F3) |
+| Add-node chooser | selection **blue** frame + per-entry domain accents | popup (context: audio *or* visual) | `ui/chooser` | `Tab`; filter + name/op/description |
 | Preset popover | gray | popup (params) | `ui/preset_popover` | per-node preset save/load |
 | Params dock (inspector) | per-domain | inspector strip | params-only dock | curated params, not a rich editor |
 
@@ -123,7 +124,7 @@ Phase-1/2 shots cover the session view, both graphs, and the mapping bridge. Aud
 
 | Principle (`ui-principles.md`) | Verdict | Evidence / gap |
 |---|---|---|
-| **Strict domain zones** (amber/cyan/teal/gray identity) | **PASS** | persistent zones + mapping + diagnostics all colour- and position-distinct. Gap: neutral-gray popups (shader library, chooser) carry no domain identity (→ F2) |
+| **Strict domain zones** (amber/cyan/teal/gray identity) | **PASS** | persistent zones + all overlays carry a domain/severity accent bar (`overlay_panel`); shader library = cyan (visual), diagnostics = severity, chooser = focus-blue + per-entry accents. Gap: the mapping overview (bridge) wore cyan not teal (→ F2) |
 | **One focused editor at a time** (focus ≠ selection) | **PASS** | the bottom detail region hosts the audio graph *or* the clip editor, never both (evidence 07) |
 | **Hard-edged style** (90°, 1px rules, dark steel, no chrome) | **PASS** | consistent across every panel/modal captured |
 | **Content-forward** (no decorative chrome) | **PASS** | minimal chrome. Gap: shader-library descriptions truncate mid-word (→ F3) |
@@ -167,22 +168,28 @@ hidden-only selection state was observed on the release-visible surfaces.
   `05-resize-narrow-1000.png` (1000px, clean); `grep glfwSetWindowSizeLimits app/src` → no match.
 - Smallest acceptable fix: call `glfwSetWindowSizeLimits` with a sensible floor (e.g. ~960×640, below
   which the top bar first overlaps) so the window can't be sized into the broken zone.
-  Owner/status: Unassigned | P3.
+  Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-polish-batch`): `glfwSetWindowSizeLimits(window, 960, 640, …)` after
+  window creation in `main.cpp` — the window can no longer be sized into the overlapping zone.
 
-#### F2 (P3): Neutral-gray popups (shader library, add-node chooser) carry no domain identity
+#### F2 (P3): The mapping-overview (bridge) modal wore the visual accent instead of the bridge accent
 
-- Surface: `ui/shader_library_view`, `ui/chooser` vs the `Domain`/`domain_color` system in
-  `ui/ui_style.h`.
-- Impact: ui-principles makes domain colour the zone's *identity*. The mapping overview is teal and
-  diagnostics is severity-coloured, but the shader library — a **visual** content browser — and the
-  add-node chooser render neutral gray. The chooser compounds this: `Tab` opens the **audio** *or*
-  **visual** operator list depending on hidden focus (evidence 04 opened the audio list), with no
-  domain cue on the popup, so which world you're adding to isn't self-evident (touches the failure
-  mode "a view changes meaning based only on hidden selection state").
-- Evidence: `03-shader-library.png` (gray, visual content), `04-add-node-chooser.png` (gray, audio
-  ops from a visual-graph `Tab`).
-- Smallest acceptable fix: give the shader library a visual (cyan) edge-accent, and give the chooser
-  the edge-accent of the domain it is adding into. Owner/status: Unassigned | P3.
+- Surface: `ui/mapping_overview.cpp` vs the `Domain`/`domain_color` system in `ui/ui_style.h`.
+- Correction: an earlier reading of the screenshots called the shader library and add-node chooser
+  "neutral gray with no domain identity" — that was a **misread** of the thin `overlay_panel` top
+  accent bar. In code every overlay carries an accent: the shader library uses `sty.gpu` (**cyan =
+  visual**, correct for a visual content browser), the chooser uses `sty.sel` (**blue** = the focused
+  popup) with per-entry domain accents, and diagnostics uses the severity palette. The real
+  inconsistency is the opposite: the **mapping overview** — the audio↔visual **bridge** surface —
+  also used `sty.gpu` (cyan/visual) rather than `sty.teal` (**bridge**), so the bridge modal wore the
+  wrong domain colour.
+- Impact: minor — the bridge's most prominent surface didn't carry the bridge identity colour, softly
+  undercutting the strict-domain-zone principle.
+- Evidence: `mapping_overview.cpp:49` (`sty.gpu`), `shader_library_view.cpp:19` (`sty.gpu`),
+  `chooser.cpp:89` (`sty.sel`); colour values in `ui_style.h:32-38` + `domain_color` at `:62-69`.
+- Smallest acceptable fix: accent the mapping overview with `sty.teal`. Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-polish-batch`): mapping overview now passes `sty.teal` to
+  `overlay_panel`. The shader library / chooser were left as-is (already correctly accented).
 
 #### F3 (P3): Shader-library description column truncates mid-word without an ellipsis
 
@@ -191,16 +198,17 @@ hidden-only selection state was observed on the release-visible surfaces.
   base, B over): nor") with no ellipsis, so it reads as clipped rather than intentionally shortened —
   a small content-forward wart on an otherwise clean browser.
 - Evidence: `03-shader-library.png`.
-- Smallest acceptable fix: clip with a trailing "…", or widen/wrap the column. Owner/status:
-  Unassigned | P3.
+- Smallest acceptable fix: clip with a trailing "…". Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-polish-batch`): a description longer than 38 chars is now clipped to 37
+  + "…" (`shader_library_view.cpp`).
 
 ## Open Questions
 
 *(answered)*
 
-- **What is the minimum supported app window size for the first release?** Currently **none is
-  enforced** (F1), which is itself the finding. Recommend defining and enforcing a floor around
-  **960×640** — the top transport bar overlaps below roughly 800px, so a ~960px floor keeps a margin.
+- **What is the minimum supported app window size for the first release?** It was **unenforced**
+  (F1); the first release now floors it at **960×640** via `glfwSetWindowSizeLimits` — the top
+  transport bar overlaps below roughly 800px, so 960px keeps a margin.
 - **Which diagnostics are user-facing vs development-only?** The diagnostics panel (`h`) and the log
   view (`j`) are **user-facing** and appropriate: severity + GPU + graph/op counts + the P2-03
   "Output feeding" signal, and a leveled, colour-coded log — no developer-only internals leak into
@@ -211,10 +219,8 @@ hidden-only selection state was observed on the release-visible surfaces.
 
 ## Follow-Up Plans
 
-- **F1** — add `glfwSetWindowSizeLimits` (a one-line, self-contained fix); good candidate to batch
-  with other small polish.
-- **F2/F3** — shader-library + chooser domain-accent and the description-truncation ellipsis, both in
-  `ui/` (self-contained, no behavior change).
+- **F1/F2/F3 all fixed** in `fix-p3-polish-batch` (min-size floor; mapping-overview teal accent;
+  shader-library ellipsis) — see the RESOLVED notes above.
 - **Cross-refs:** this phase discharges the Phase-2 "every primary command has a discoverable **UI**
   path" hand-off in part — the overlays (mappings/diagnostics/log/shader-library/chooser) are all
   keybind-reachable, but discoverability of those keybinds (no in-app shortcut list; the ☰ button is

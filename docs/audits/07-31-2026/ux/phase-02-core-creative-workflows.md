@@ -281,7 +281,12 @@ fine, but the silent-default on an unrecognized arg is a robustness gap (folded 
   `op_nodes:0`, empty `get_graph`. Real schema top-level keys: `graph`, `tracks`, `scenes`, `master`,
   `pool`, …
 - Smallest acceptable fix: on load, warn (toast/log) when a parsed project yields no `graph`/`tracks`,
-  or auto-run `validate_project` and surface its warnings. Owner/status: Unassigned | P3.
+  or auto-run `validate_project` and surface its warnings. Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-polish-batch`): `project_io::load` now validates the file **before**
+  tearing down the current project — a missing file, invalid JSON, or a JSON object lacking both
+  `graph` and `tracks` returns a clear error and **leaves the loaded project intact** (rather than
+  silently replacing it with an empty session). So a hand-edit typo (PRD §7) fails loudly with the
+  offending path.
 
 #### F5 (P3): A few failure messages are weak / silently mis-default
 
@@ -291,7 +296,12 @@ fine, but the silent-default on an unrecognized arg is a robustness gap (folded 
   leave the user guessing — the failed path/reason is omitted, two distinct failures are conflated,
   and an unrecognized arg returns wrong-but-plausible data instead of erroring.
 - Smallest acceptable fix: include the path + reason in load errors; split the `add_track` failure
-  modes; have `list_params` reject or warn on an unknown `node_id`. Owner/status: Unassigned | P3.
+  modes; have `list_params` reject or warn on an unknown `node_id`. Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-polish-batch`): load errors now name the path and reason ("no project
+  file at …" / "not valid JSON: …" / "not a Vivid project …" / "failed to load project: …");
+  `list_params` now rejects a stray `node_id` with a message pointing to `get_graph` for visual node
+  params; and the `add_track` conflation was already resolved by F2 (the resolver errors point to
+  `list_instruments`, and kMaxTracks is a separate `kInternal` message).
 
 ## Workflow Scorecard
 

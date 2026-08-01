@@ -51,9 +51,11 @@ void draw_shader_library_view(Renderer2D& ui, const ShaderLibrary& lib, int win_
         ui.draw_text(px + 210.f, ry + 6.f, tier, 0.6f, 0.63f, 0.68f, 1.0f, 0.78f);
 
         // Summary for a good row; the parse/shadow error for a bad one (mirrors disabled_note).
-        const std::string& detail = broken ? e.error : e.summary;
-        char dt[40]; std::snprintf(dt, sizeof dt, "%.38s", detail.c_str());
-        ui.draw_text(px + 274.f, ry + 6.f, dt,
+        // UX Phase-3 F3: mark truncation with an ellipsis so a clipped description reads as shortened,
+        // not broken.
+        std::string detail = broken ? e.error : e.summary;
+        if (detail.size() > 38) detail = detail.substr(0, 37) + "\xE2\x80\xA6";   // … (UTF-8)
+        ui.draw_text(px + 274.f, ry + 6.f, detail.c_str(),
                      broken ? 0.80f : 0.70f, broken ? 0.45f : 0.72f, broken ? 0.42f : 0.75f, 1.0f, 0.80f);
 
         const ShaderViewRow rc = shader_view_row(px, w, ry);
