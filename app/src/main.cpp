@@ -86,6 +86,9 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);  // WebGPU owns the surface
     GLFWwindow* window = glfwCreateWindow(1280, 800, "Vivid", nullptr, nullptr);
     if (!window) { std::fprintf(stderr, "glfwCreateWindow failed\n"); glfwTerminate(); return 1; }
+    // UX Phase-3 F1: floor the window size so it can't be dragged into a broken layout — below ~800px
+    // wide the top transport bar overlaps and the session grid clips. 960×640 keeps a margin.
+    glfwSetWindowSizeLimits(window, 960, 640, GLFW_DONT_CARE, GLFW_DONT_CARE);
 
     // Size the window to a fraction of the current monitor (capped, centered) on first
     // launch; restore the remembered size/position after that (see app/window_prefs.h).

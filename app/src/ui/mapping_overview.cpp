@@ -46,7 +46,9 @@ void draw_mapping_overview(Renderer2D& ui, NodeGraph* g, vivid::session::Session
     const float px = o.px, py = o.py, w = o.w, rowh = o.rowh, hdr = o.hdr;
     const Style& sty = style();
     char title[48]; std::snprintf(title, sizeof title, "MAPPINGS  (%d)", n);
-    overlay_panel(ui, { px, py, w, o.h }, nullptr, sty.gpu, true,
+    // UX Phase-3 F2: the mapping overview is the BRIDGE surface — accent it with the bridge colour
+    // (teal), not the visual cyan (sty.gpu), so its domain identity matches the audio↔visual bridge.
+    overlay_panel(ui, { px, py, w, o.h }, nullptr, sty.teal, true,
                   { 0.f, 40.f, static_cast<float>(win_w), static_cast<float>(win_h) - 40.f });
     ui.draw_text(px + 16.f, py + 12.f, title, 0.9f, 0.92f, 0.95f, 1.0f, 1.0f);
     ui.draw_text(px + w - 150.f, py + 14.f, "M or Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.78f);
