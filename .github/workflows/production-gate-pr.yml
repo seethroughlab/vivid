@@ -71,7 +71,8 @@ jobs:
             test_session_executor test_plugin_param_base test_bridge_undo_stability \
             test_clap_plugin_roundtrip test_clap_modulation
       - name: Run the audio-engine tests (native ops + real in-tree CLAP plugin)
-        run: ctest --test-dir app/build-audio -L AUDIO_ENGINE -E test_session_concurrency --output-on-failure
+        # --no-tests=error (Ph6 P2-01): a label that matches nothing is a FAILURE, not a silent pass.
+        run: ctest --test-dir app/build-audio -L AUDIO_ENGINE -E test_session_concurrency --no-tests=error --output-on-failure
 
   # ADR-0029 phase 2: the audio↔UI concurrency harness under ThreadSanitizer. Races a render thread
   # (session_process) against a UI/mutator thread over the real gen-counter/try_lock/SPSC/atomic-ring
@@ -89,6 +90,7 @@ jobs:
                 -DVIVID_SANITIZE_THREAD=ON -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build app/build-tsan-audio --target test_session_concurrency -j
       - name: Run the audio↔UI harness under ThreadSanitizer
-        run: ctest --test-dir app/build-tsan-audio -L AUDIO_THREAD --output-on-failure
+        # --no-tests=error (Ph6 P2-01): the AUDIO_THREAD label must match at least one test.
+        run: ctest --test-dir app/build-tsan-audio -L AUDIO_THREAD --no-tests=error --output-on-failure
         env:
           TSAN_OPTIONS: halt_on_error=1

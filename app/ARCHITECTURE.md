@@ -48,7 +48,7 @@ on it, and render it in the loop. No engine changes — that's the point of the 
 ## 3. Module layering
 
 ```
-            main.cpp            (init + wiring + teardown only, ~150 LOC)
+            main.cpp            (init + wiring + teardown only)
                │ constructs
         App ───┴─── Window
          │            │
