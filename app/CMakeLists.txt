@@ -372,11 +372,22 @@ else()
     set(_examples_dest "$<TARGET_FILE_DIR:vivid>/examples")
 endif()
 set(_examples_src "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects")
+# UX Phase-6 F1: these demos reference absolute developer/personal paths (a stale git worktree,
+# dev-repo media that isn't bundled — examples/demos/media/ is a sibling of projects/ and is NOT
+# copied — and a personal, non-redistributable Ableton sample library), so they break on any clean
+# machine and must NOT ship in File > Open Example. Copy the whole tree, then prune the known-broken
+# demos. Remove a name from this list once its demo is repaired to bundle-relative media.
+set(_examples_exclude bloom chop drift grid mirror signal)
 if(EXISTS "${_examples_src}")
+    set(_examples_prune "")
+    foreach(_ex IN LISTS _examples_exclude)
+        list(APPEND _examples_prune COMMAND ${CMAKE_COMMAND} -E rm -rf "${_examples_dest}/${_ex}")
+    endforeach()
     add_custom_target(vivid_examples ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${_examples_src}" "${_examples_dest}"
-        COMMENT "Copying the bundled example projects into the app"
+        ${_examples_prune}
+        COMMENT "Copying the bundled example projects into the app (excluding dev-path demos, Ph6 F1)"
         VERBATIM)
 else()
     add_custom_target(vivid_examples ALL
