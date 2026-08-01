@@ -3,16 +3,23 @@
 #include "ui/renderer_2d.h"
 #include "app/app.h"
 #include "app/log.h"
+#include "app/quarantine.h"       // Ph4 F2: surface auto-disabled (quarantined) operators
+#include "app/crash_recovery.h"   // App::crash_recovery->crash_dir()
 #include "gpu/visual_graph.h"
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 namespace vivid::ui {
 
 void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& app, int win_w, int win_h) {
     const std::vector<int> missing = app.vgraph ? app.vgraph->missing_op_node_indices() : std::vector<int>{};
-    const DiagGeom o = diag_geom(static_cast<int>(missing.size()), win_w);
+    // Ph4 F2: quarantined operators (repeat-crashers auto-disabled this launch) — scanned only while
+    // the panel is open. Was MCP-only; now the user can see WHY an op stopped working.
+    const std::vector<QuarantineEntry> quar =
+        app.crash_recovery ? scan_quarantine(app.crash_recovery->crash_dir()) : std::vector<QuarantineEntry>{};
+    const DiagGeom o = diag_geom(static_cast<int>(missing.size()), win_w, static_cast<int>(quar.size()));
     const Style& sty = style();
     const Severity sev = severity(h);
 
@@ -68,6 +75,57 @@ void draw_diagnostics_panel(Renderer2D& ui, const HealthSnapshot& h, const App& 
             char lbl[64]; std::snprintf(lbl, sizeof lbl, "node %d  \xE2\x80\x94  '%.40s' not registered", idx, type.c_str());
             ui.draw_text(rr.x + 8.f, rr.y + 5.f, lbl, 0.86f, 0.6f, 0.58f, 1.0f, 0.80f);
         }
+    }
+
+    // Quarantined-operator rows (Ph4 F2) — sit after the missing-op section. Informational: an
+    // unquarantine needs a restart, so these are not clickable.
+    if (!quar.empty()) {
+        const int base_row = o.scalar_rows + (missing.empty() ? 0 : 1 + static_cast<int>(missing.size()));
+        const float ry = o.py + o.hdr + base_row * o.rowh;
+        ui.draw_text(o.px + 14.f, ry + 4.f, "QUARANTINED OPERATORS  (auto-disabled; restart to re-enable)",
+                     sty.gold[0], sty.gold[1], sty.gold[2], 1.0f, 0.72f);
+        for (int i = 0; i < static_cast<int>(quar.size()); ++i) {
+            const Rect rr = { o.px + 10.f, ry + (1 + i) * o.rowh, o.w - 20.f, o.rowh };
+            item_box(ui, rr, nullptr, false, false, AccentEdge::None);
+            char lbl[80]; std::snprintf(lbl, sizeof lbl, "'%.40s'  \xE2\x80\x94  %d crash(es)",
+                                        quar[i].type_name.c_str(), quar[i].crash_count);
+            ui.draw_text(rr.x + 8.f, rr.y + 5.f, lbl, sty.gold[0], sty.gold[1], sty.gold[2], 1.0f, 0.80f);
+        }
+    }
+}
+
+// UX Ph4 F3: the keyboard-shortcut cheat-sheet (toggle: ?). A static list so the single-key
+// shortcuts are discoverable in-app rather than only in the docs.
+void draw_shortcuts_overlay(Renderer2D& ui, int win_w, int win_h) {
+    const Style& sty = style();
+    struct Row { const char* key; const char* desc; };
+    static const Row rows[] = {
+        {"Space",                    "Play / Stop"},
+        {"R",                        "Record (arm)"},
+        {"Tab",                      "Add a node (audio or visual, by cursor)"},
+        {"`",                        "Musical typing (play the armed track)"},
+        {"1 \xE2\x80\x93 9",         "Launch scene 1\xE2\x80\x93" "9"},
+        {"M",                        "Mappings (the audio\xE2\x86\x94visual bridge)"},
+        {"H",                        "Diagnostics"},
+        {"J",                        "Log"},
+        {"L",                        "Shader library"},
+        {"\xE2\x8C\x98Z / \xE2\x87\xA7\xE2\x8C\x98Z", "Undo / Redo"},
+        {"\xE2\x8C\x98N / O / S",     "New / Open / Save project"},
+        {"?",                        "This shortcut list"},
+        {"Esc",                      "Close an overlay / chooser"},
+    };
+    const int n = static_cast<int>(sizeof(rows) / sizeof(rows[0]));
+    const float w = 460.f, rowh = 22.f, hdr = 40.f;
+    const float h = hdr + n * rowh + 16.f;
+    const float px = (win_w - w) * 0.5f, py = 84.f;
+    overlay_panel(ui, { px, py, w, h }, nullptr, sty.control, true,
+                  { 0.f, 40.f, static_cast<float>(win_w), static_cast<float>(win_h) - 40.f });
+    ui.draw_text(px + 16.f, py + 12.f, "KEYBOARD SHORTCUTS", 0.9f, 0.92f, 0.95f, 1.0f, 0.94f);
+    ui.draw_text(px + w - 96.f, py + 14.f, "Esc to close", 0.5f, 0.52f, 0.56f, 1.0f, 0.76f);
+    for (int i = 0; i < n; ++i) {
+        const float ry = py + hdr + i * rowh;
+        ui.draw_text(px + 18.f, ry + 4.f, rows[i].key, sty.text[0], sty.text[1], sty.text[2], 1.0f, 0.82f);
+        ui.draw_text(px + 168.f, ry + 4.f, rows[i].desc, sty.body[0], sty.body[1], sty.body[2], 1.0f, 0.82f);
     }
 }
 

@@ -111,13 +111,15 @@ void install_menu_bar(const MenuActions& actions) {
 
         // Eval menu (ADR-0026). "Set Gemini Key…" opens the in-app key modal; "Evaluate Output" runs
         // a one-shot Gemini evaluation of the live master and toasts the verdict. No key-equivalents.
-        NSMenu* evalMenu = [[NSMenu alloc] initWithTitle:@"Eval"];
+        // UX Ph5 F1 / Ph1 F5: this is an EXPERIMENTAL feature (needs a Google Gemini API key; fails
+        // closed with no result if unset) — labelled so it doesn't read as a finished headline.
+        NSMenu* evalMenu = [[NSMenu alloc] initWithTitle:@"Eval (Experimental)"];
         [evalMenu setAutoenablesItems:NO];
         it = [[NSMenuItem alloc] initWithTitle:@"Set Gemini Key…" action:@selector(setGeminiKey:) keyEquivalent:@""];
         [it setTarget:g_target]; [evalMenu addItem:it]; [it release];
-        it = [[NSMenuItem alloc] initWithTitle:@"Evaluate Output" action:@selector(evaluateOutput:) keyEquivalent:@""];
+        it = [[NSMenuItem alloc] initWithTitle:@"Evaluate Output (needs Gemini key)" action:@selector(evaluateOutput:) keyEquivalent:@""];
         [it setTarget:g_target]; [evalMenu addItem:it]; [it release];
-        NSMenuItem* evalItem = [[NSMenuItem alloc] initWithTitle:@"Eval" action:nil keyEquivalent:@""];
+        NSMenuItem* evalItem = [[NSMenuItem alloc] initWithTitle:@"Eval (Experimental)" action:nil keyEquivalent:@""];
         [evalItem setSubmenu:evalMenu];
         [mainMenu insertItem:evalItem atIndex:insertAt + 2];   // right after Edit
         [evalItem release]; [evalMenu release];   // retained by mainMenu

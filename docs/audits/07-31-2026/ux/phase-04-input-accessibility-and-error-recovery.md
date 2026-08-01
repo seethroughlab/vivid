@@ -158,7 +158,11 @@ quarantine (F2).
   fully user-/agent-authored with no rate cap.
 - Smallest acceptable fix: a **photosensitivity note** in the first-run copy / release notes (a
   reduce-motion / flash-limit toggle is a larger follow-up). This is the phase's accessibility-bar
-  Open Question — flagged for a product decision. Owner/status: Unassigned | P3.
+  Open Question — flagged for a product decision. Owner/status: **fixed (note)** | P3.
+- **RESOLVED** (branch `fix-p3-first-run-polish`): added a **Photosensitivity note** to the first-run
+  guide (`site/content/start-here.md`) — warns that audio-reactive visuals can flash/strobe, suggests
+  a smaller output window / lower intensity, and states Vivid does not yet flash-limit. A reduce-motion
+  toggle remains the larger follow-up.
 
 #### F2 (P3): Quarantined operators have no in-app surface
 
@@ -172,7 +176,11 @@ quarantine (F2).
 - Evidence: no `quarantin*` reference in any `ui/*.cpp` draw path; `run_quality_check
   no_quarantined_operators` is the only surface.
 - Smallest acceptable fix: add a "quarantined operators" row/section to the diagnostics panel (and
-  `get_health`), naming the op + crash count + the unquarantine path. Owner/status: Unassigned | P3.
+  `get_health`), naming the op + crash count + the unquarantine path. Owner/status: **fixed** | P3.
+- **RESOLVED** (branch `fix-p3-first-run-polish`): the diagnostics panel (`ui/diagnostics_panel.cpp`)
+  now scans `scan_quarantine(crash_dir)` while open and draws a **"QUARANTINED OPERATORS (auto-disabled;
+  restart to re-enable)"** section listing each op + crash count (gold). `diag_geom` grows for the
+  section. So a user whose op silently stopped now sees why in-app, not only over MCP.
 
 #### F3 (P3): Single-key shortcuts are undiscoverable; keyboard-only editing is partial
 
@@ -187,7 +195,12 @@ quarantine (F2).
   overlay.
 - Smallest acceptable fix: an in-app shortcut cheat-sheet (e.g. a `?` overlay) + list the shortcuts
   in the docs; full keyboard navigation is a larger, post-release follow-up. Owner/status:
-  Unassigned | P3.
+  **fixed (cheat-sheet)** | P3.
+- **RESOLVED** (branch `fix-p3-first-run-polish`): a **`?` keyboard-shortcut cheat-sheet** overlay
+  (`draw_shortcuts_overlay`, toggle `?` / Esc) lists the official set (Space/R, Tab, `` ` ``, 1–9,
+  M/H/J/L, ⌘Z/⌘⇧Z, ⌘N/O/S, ?, Esc) — verified live (`evidence/phase-04/03-shortcuts-cheatsheet.png`).
+  Full keyboard-only *editing* (node navigation) and the musical-typing `M` micro-conflict remain the
+  larger post-release follow-up.
 
 ## Open Questions
 

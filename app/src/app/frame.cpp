@@ -828,6 +828,7 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_shader_library) draw_shader_library_view(ui, app.shader_library, win.win_w, win.win_h);
             if (win.show_diagnostics) draw_diagnostics_panel(ui, win.health, app, win.win_w, win.win_h);
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
+            if (win.show_shortcuts) draw_shortcuts_overlay(ui, win.win_w, win.win_h);   // Ph4 F3
             if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);

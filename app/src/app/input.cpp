@@ -113,6 +113,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
     if (key == GLFW_KEY_ESCAPE && win->show_diagnostics) { win->show_diagnostics = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_log) { win->show_log = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_presets) { win->show_presets = false; return; }
+    if (key == GLFW_KEY_ESCAPE && win->show_shortcuts) { win->show_shortcuts = false; return; }
+    if (key == GLFW_KEY_SLASH && (mods & GLFW_MOD_SHIFT)) { win->show_shortcuts = !win->show_shortcuts; return; }  // ? cheat-sheet (Ph4 F3)
     if (key == GLFW_KEY_M) { win->show_mappings = !win->show_mappings; return; }  // mapping overview
     if (key == GLFW_KEY_L) { win->show_shader_library = !win->show_shader_library; return; }  // shader library (ADR-0021)
     if (key == GLFW_KEY_H) { win->show_diagnostics = !win->show_diagnostics; return; }  // diagnostics (ADR-0019)
