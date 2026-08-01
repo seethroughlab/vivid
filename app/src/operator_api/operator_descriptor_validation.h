@@ -27,6 +27,11 @@ inline constexpr const char* kParamMissingName             = "param_missing_name
 inline constexpr const char* kDuplicateParamName           = "duplicate_param_name";
 inline constexpr const char* kParamMissingChoiceLabels     = "param_missing_choice_labels";
 inline constexpr const char* kParamMissingDefaultString    = "param_missing_default_string";
+// Ph5 audit P2-01: numeric-range + type sanity (previously unchecked — an inverted range, an
+// out-of-range default, or a garbage type integer passed validation clean).
+inline constexpr const char* kParamInvalidType             = "param_invalid_type";
+inline constexpr const char* kParamInvalidRange            = "param_invalid_range";
+inline constexpr const char* kParamDefaultOutOfRange       = "param_default_out_of_range";
 inline constexpr const char* kPortMissingName              = "port_missing_name";
 inline constexpr const char* kDuplicatePortName            = "duplicate_port_name";
 inline constexpr const char* kCustomPortMissingTypeName    = "custom_port_missing_type_name";

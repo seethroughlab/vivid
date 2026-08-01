@@ -185,6 +185,12 @@ target_link_libraries(test_window_prefs PRIVATE nlohmann_json::nlohmann_json)
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)
 
+# Ph6 P1-02: the release signer fails loud on missing notarization creds (portable shell test —
+# the guard runs before any macOS-only codesign/notarytool step, so it runs on Linux CI too).
+add_test(NAME test_notarize_guard
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/release/test_notarize_guard.sh)
+set_tests_properties(test_notarize_guard PROPERTIES LABELS "HEADLESS_SMOKE")
+
 # Dynamic tracks: stable-id drop-on-delete of mappings (mapping.h is header-only -> headless).
 vivid_add_test(test_track_drop_mappings)
 

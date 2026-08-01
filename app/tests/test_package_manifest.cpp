@@ -69,5 +69,26 @@ int main() {
         CHECK(m.error.find("unknown \"kind\"") != std::string::npos);
     }
 
+    // Ph5 P2-02: manifest_present distinguishes a REAL bad package (a present-but-unparseable
+    // vivid-package.json — discovery must surface it) from a dir that simply isn't a package.
+    {   // malformed JSON in a present manifest -> !ok AND present
+        const fs::path dir = fs::temp_directory_path() / "vivid_manifest_test_malformed";
+        fs::create_directories(dir);
+        std::ofstream(dir / "vivid-package.json") << "{ not valid json ";
+        PackageManifest m = parse_package_manifest(dir.string());
+        CHECK(!m.ok && m.manifest_present);
+    }
+    {   // no manifest at all -> !ok and NOT present (just not a package; must not be surfaced)
+        const fs::path dir = fs::temp_directory_path() / "vivid_manifest_test_none";
+        fs::create_directories(dir);
+        fs::remove(dir / "vivid-package.json");
+        PackageManifest m = parse_package_manifest(dir.string());
+        CHECK(!m.ok && !m.manifest_present);
+    }
+    {   // a valid manifest -> ok and present
+        PackageManifest m = parse_with("present_ok", R"([{"name":"G","source":"g.cpp","kind":"gpu_visual"}])");
+        CHECK(m.ok && m.manifest_present);
+    }
+
     return vivid::test::summary("test_package_manifest");
 }
