@@ -5,6 +5,7 @@
 #include "app/edit_gateway.h"        // ADR-0018: mark_saved() on save/load/new
 #include "app/autosave.h"            // ADR-0018: clear the autosave slot on a real save
 #include "app/project_io.h"          // folder-aware save/load (+ project-local ops)
+#include "app/frame.h"               // Ph4 P1-01: close_plugin_editor_windows before a reload teardown
 #include "platform/file_dialog.h"    // native open/save panels
 #include "platform/menu_bar.h"       // set_recent_projects (refresh Open Recent)
 #include "gpu/visual_graph.h"        // reset_to_default / set_asset_dir
@@ -23,6 +24,9 @@ void refresh_recents(App& app) { platform::set_recent_projects(app.project.recen
 
 void load_path(GLFWwindow* w, Window& win, App& app, const std::string& path) {
     if (path.empty() || !app.session || !app.graph) return;
+    // Ph4 P1-01: opening a project tears down the current tracks (freeing plugin instances), same as a
+    // Full-tier undo. Close floated plugin-editor windows first so their raw handles can't dangle → UAF.
+    close_plugin_editor_windows(win);
     int ww = win.win_w, wh = win.win_h; float sxx = win.split_x, dh = win.dock_h;
     auto lr = project_io::load(app, *app.graph, ww, wh, sxx, dh, path);
     // Restore the per-project internal layout (splitter/dock) but NOT the window size —
