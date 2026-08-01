@@ -341,7 +341,7 @@ int main(int argc, char** argv) {
             }
             return true;
         };
-        ma.new_project     = [&] { if (ok_to_discard()) vivid::file_actions::new_project(app); };
+        ma.new_project     = [&] { if (ok_to_discard()) vivid::file_actions::new_project(app, win); };
         ma.open_project    = [&] { if (ok_to_discard()) vivid::file_actions::open(window, win, app); };
         ma.save_project    = [&] { vivid::file_actions::save(window, win, app); };
         ma.save_project_as = [&] { vivid::file_actions::save_as(window, win, app); };

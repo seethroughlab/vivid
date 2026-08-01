@@ -41,22 +41,59 @@ void register_audio_catalog_handlers(Handlers& handlers_) {
         }
         json r = ok(); r["instruments"] = arr; return r;
     };
-    // Create a track. kind "instrument" (default) needs an "instrument" (catalog label or a
-    // .vst3 path); kind "audio" makes a sampler track. Returns the new track index.
+    // Create a track. kind "instrument" (default) needs an "instrument" — ANY name from
+    // list_instruments (native / CLAP / VST3) or a .vst3 path; kind "audio" makes a sampler track.
+    // Returns the new track index. (Phase-2 F2: `add_track` used to resolve VST3 only, so the native
+    // and CLAP instruments list_instruments advertises — incl. the no-plugin-install ones — could
+    // not begin a track. It now creates the instrument-shaped shell (session_add_graph_track) and
+    // slots the right instrument in, matching how the project loader builds these tracks.)
     handlers_["add_track"] = [](const ControlCtx& c, const json& b) {
         if (!c.session) return err(code::kNoSession, "no session");
         const std::string kind = b.value("kind", std::string("instrument"));
-        int idx = -1;
         if (kind == "audio") {
-            idx = P::session_add_audio_track(c.session);
-        } else {
-            const std::string inst = b.value("instrument", std::string());
-            if (inst.empty()) return err(code::kBadArg, "instrument track needs \"instrument\" (a catalog label or .vst3 path)");
-            idx = P::session_add_instrument_track(c.session, inst.c_str());
-            if (idx < 0) return err(code::kNotFound, "no instrument matched '" + inst + "' (or kMaxTracks reached)");
+            const int idx = P::session_add_audio_track(c.session);
+            if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
+            json r = ok(); r["track"] = idx; return r;
         }
-        if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
-        json r = ok(); r["track"] = idx; return r;
+        const std::string inst = b.value("instrument", std::string());
+        if (inst.empty())
+            return err(code::kBadArg, "instrument track needs \"instrument\" (a list_instruments name or a .vst3 path)");
+
+        // 1) A native instrument op (e.g. TestTone / Sampler): a graph-track shell + the native op.
+        for (int k = 0, n = P::session_available_audio_op_count(c.session, 1); k < n; ++k) {
+            if (inst != P::session_available_audio_op_name(c.session, 1, k)) continue;
+            const int idx = P::session_add_graph_track(c.session, inst.c_str());
+            if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
+            if (!P::session_set_track_audio_instrument(c.session, idx, inst.c_str())) {
+                P::session_remove_track(c.session, idx);
+                return err(code::kBadArg, "could not set native instrument '" + inst + "'");
+            }
+            json r = ok(); r["track"] = idx; r["format"] = "native"; return r;
+        }
+        // 2) A CLAP instrument by name (async load) — a graph-track shell + the queued CLAP.
+        const bool is_vst3_path = inst.size() > 5 && inst.compare(inst.size() - 5, 5, ".vst3") == 0;
+        if (!is_vst3_path) {
+            for (int i = 0, n = P::plugin_count(); i < n; ++i) {
+                const auto& p = P::plugin_at(i);
+                if (p.cls != P::kClassInstrument || inst != p.name) continue;
+                if (p.format == P::kFmtCLAP) {
+                    const int idx = P::session_add_graph_track(c.session, inst.c_str());
+                    if (idx < 0) return err(code::kInternal, "add_track failed (kMaxTracks reached?)");
+                    if (!P::session_request_track_clap_instrument(c.session, idx, p.path.c_str())) {
+                        P::session_remove_track(c.session, idx);
+                        return err(code::kBadArg, "could not queue CLAP instrument '" + inst + "'");
+                    }
+                    json r = ok(); r["track"] = idx; r["format"] = "CLAP"; r["loading"] = true; return r;
+                }
+                break;   // a VST3 catalog match: fall through to the synchronous VST3 loader below
+            }
+        }
+        // 3) VST3 (a catalog name or a .vst3 path): synchronous full instrument track.
+        const int idx = P::session_add_instrument_track(c.session, inst.c_str());
+        if (idx < 0)
+            return err(code::kNotFound, "no instrument matched '" + inst +
+                       "' — see list_instruments for valid names (native / CLAP / VST3), or pass a .vst3 path");
+        json r = ok(); r["track"] = idx; r["format"] = "VST3"; return r;
     };
     // Append a scene (grid row): grows every track by one empty clip slot. Returns the new
     // scene index. Fails once the session reaches kMaxScenes.
