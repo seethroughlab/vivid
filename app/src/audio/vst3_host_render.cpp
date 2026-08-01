@@ -12,6 +12,7 @@
 
 #include <vector>
 #include <cstring>
+#include <cassert>
 #include <algorithm>
 
 namespace vivid::session {
@@ -139,7 +140,7 @@ void drain_vst3_notes(Vst3Handle* h, std::vector<NoteEvent>& out) {
 void render_vst3_effect(Track& t, Vst3Handle* fx, const VividAudioContext& ctx,
                         uint32_t frames, float* L, float* R,
                         const ParamMsg* mod, uint32_t mod_n) {
-    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    assert(frames <= t.fxl.size() && frames <= t.fxr.size());   // Ph2 P3-02: pre-sized in reserve_track_graph; no alloc on the hot path
     float* oL = t.fxl.data(); float* oR = t.fxr.data();
     float* inCh[2] = { L, R }; float* outCh[2] = { oL, oR };
     AudioBusBuffers ib{}; ib.channelBuffers32 = inCh;  ib.numChannels = 2; ib.silenceFlags = 0;
@@ -184,7 +185,7 @@ void render_clap_instrument(Track& t, ClapHandle* h, const std::vector<NoteEvent
 // effect path. Caller guards `clap && clap->processing`.
 void render_clap_effect(Track& t, ClapHandle* h, uint32_t frames, float* L, float* R,
                         const ClapParamMsg* mod, uint32_t mod_n) {
-    if (t.fxl.size() < frames) { t.fxl.resize(frames); t.fxr.resize(frames); }
+    assert(frames <= t.fxl.size() && frames <= t.fxr.size());   // Ph2 P3-02: pre-sized in reserve_track_graph; no alloc on the hot path
     h->events.clear();
     clap_flush_params(h);
     for (uint32_t k = 0; k < mod_n; ++k) h->events.add_param(mod[k].id, mod[k].value);   // ADR-0034: modulation wins

@@ -102,11 +102,14 @@ struct Transport {
         if (rec_ring_.size() != kRecRingSize) rec_ring_.assign(kRecRingSize, 0.f);
         rec_write_.store(0, std::memory_order_relaxed);
         rec_read_.store(0, std::memory_order_relaxed);
-        rec_overrun_ = 0;
+        rec_overrun_.store(0, std::memory_order_relaxed);
         rec_active_.store(true, std::memory_order_release);
     }
     void stop_recording_tap() { rec_active_.store(false, std::memory_order_release); }
     bool recording_tap_active() const { return rec_active_.load(std::memory_order_acquire); }
+    // Ph2 P3-01: how many times the tap ring overran (blocks dropped). Read on the main thread when
+    // recording stops so the overrun can be surfaced off the audio thread. 0 = a clean capture.
+    uint64_t recording_tap_overruns() const { return rec_overrun_.load(std::memory_order_relaxed); }
 
     // Audio thread: append `frames` interleaved stereo samples. Lock-free; no-op when inactive.
     // The active check is ACQUIRE so that seeing active==true also makes the ring allocation done
@@ -117,9 +120,10 @@ struct Transport {
         const uint64_t n = static_cast<uint64_t>(frames) * 2;
         const uint64_t wp = rec_write_.load(std::memory_order_relaxed);
         const uint64_t rp = rec_read_.load(std::memory_order_acquire);
-        if (kRecRingSize - (wp - rp) < n) {   // ring full → drop this block (log once)
-            if (rec_overrun_++ == 0)
-                std::fprintf(stderr, "[vivid] recording tap overrun — samples dropped\n");
+        if (kRecRingSize - (wp - rp) < n) {   // ring full → drop this block
+            // Ph2 P3-01: count the overrun with an atomic (RT-safe); the main thread reads it via
+            // recording_tap_overruns() and logs off-thread. (Was a std::fprintf on the audio thread.)
+            rec_overrun_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         for (uint64_t i = 0; i < n; ++i) rec_ring_[(wp + i) % kRecRingSize] = interleaved[i];
@@ -170,5 +174,5 @@ private:
     std::atomic<uint64_t> rec_write_{0};   // audio thread advances
     std::atomic<uint64_t> rec_read_{0};    // main thread advances
     std::vector<float>    rec_ring_;       // allocated to kRecRingSize on first start_recording_tap()
-    uint64_t              rec_overrun_ = 0;
+    std::atomic<uint64_t> rec_overrun_{0}; // audio thread counts ring overruns; main thread reads (P3-01)
 };
