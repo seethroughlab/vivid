@@ -33,6 +33,10 @@ struct VisualNode {
     std::vector<std::string> file_params;  // FILE/TEXT param string values (parallel to params; non-file slots empty)
     uint64_t file_param_generation = 0;    // host-triggered same-path reload signal for FILE/TEXT consumers
     std::string asset;          // optional project-relative asset (a .glsl for CustomShader)
+    // Ph4 P1-02: when op_missing(), the params/file_params/pinned loaded from JSON have no live slots
+    // to land in; this holds that raw JSON fragment verbatim so a save round-trips the user's tuned
+    // values instead of dropping them. Empty when the node has a live op (the live values are truth).
+    std::string orphan_params;
     // Curated body params (pure UI curation, persisted): the param indices the user chose to SHOW as
     // rows/ports on this node's card, in add order. Mirrors AudioGraphNode::pinned_params. A node starts
     // COLLAPSED (empty) and reveals params via the curate menu or a dropped wire; a param that carries a
