@@ -99,6 +99,10 @@ static void reserve_track_graph(Track* t) {
     t->npool.resize(kGraphMaxNodes);
     for (auto& nb : t->npool) nb.reserve(kGraphMaxNotes);
     t->nmerge.reserve(kGraphMaxNotes);
+    // Ph2 P3-02: pre-size the VST3/CLAP effect I/O scratch to the worst-case block up front, so the
+    // per-block effect render never resizes (allocates) on the audio hot path. session_process bails
+    // on frames > kGraphMaxBlock, so this is always large enough.
+    t->fxl.assign(kGraphMaxBlock, 0.f);   t->fxr.assign(kGraphMaxBlock, 0.f);
     // ADR-0022 P2a.1: the control pool is now session-owned (Session::ctl_pool, per-track regions),
     // sized once at session init — no per-track allocation here. `ctl_pub` (the UI live-dot atomics)
     // stays per-track.

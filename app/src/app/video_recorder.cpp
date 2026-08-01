@@ -120,7 +120,13 @@ VideoExportStatus VideoRecorder::stop() {
     last_.height = h_;
 
     exporter_->finish();
-    if (tr_) tr_->stop_recording_tap();
+    if (tr_) {
+        // Ph2 P3-01: report tap overruns here (main thread) instead of on the audio thread.
+        if (const uint64_t ov = tr_->recording_tap_overruns(); ov > 0)
+            std::fprintf(stderr, "[vivid] recording tap overran %llu time(s) — some audio was dropped during export\n",
+                         static_cast<unsigned long long>(ov));
+        tr_->stop_recording_tap();
+    }
     tr_ = nullptr;
     stopping_ = false;
     return last_;
