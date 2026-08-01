@@ -180,6 +180,7 @@ target_link_libraries(test_persist_orphan PRIVATE nlohmann_json::nlohmann_json)
 
 # Visuals executor topological order + cycle handling (gpu/graph_topo.h; header-only, wgpu-free).
 vivid_add_test(test_graph_topo)
+vivid_add_test(test_output_feed)   # P2-03: structural "Output has a feed" predicate (gpu/output_feed.h)
 
 # Launch window sizing policy: compute_launch_rect (pure) + a prefs save/load round-trip.
 vivid_add_test(test_window_prefs)

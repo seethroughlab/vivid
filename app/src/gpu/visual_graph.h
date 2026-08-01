@@ -113,6 +113,11 @@ public:
     void set_input(int node, int src)   { set_input(node, 0, src); }   // back-compat: primary input (port A)
     void set_input_b(int node, int src) { set_input(node, 1, src); }   // back-compat: second input (port B)
     int  output_index() const;                 // index of the ACTIVE Output node, or -1
+    // Is the active Output node fed by a real producer? False = an intentionally-empty canvas
+    // ("empty by design", benign); true = something feeds Output (its result may still be blank,
+    // which is a separate heuristic question). The structural half of the P2-03 blank-vs-empty
+    // signal — pure topology, no GPU (see gpu/output_feed.h).
+    bool output_has_feed() const;
     void set_active_output(int idx);
     int  active_output_id() const { return active_output_id_; }
 

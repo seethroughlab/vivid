@@ -26,6 +26,11 @@ struct HealthSnapshot {
     int         op_types = 0;                    // registered operator types (built-in + loaded)
     int         missing_ops = 0;                 // chain nodes whose op type isn't registered (BROKEN)
     int         packages_loaded = 0;             // dlopen'd operator dylibs
+    // Structural blank-vs-empty signal (P2-03): true = a producer feeds the active Output; false =
+    // nothing is wired to Output ("empty by design"). A benign, intended state — NOT a failure — so
+    // it does not raise severity(); it only lets the diagnostics panel / MCP tell an intentionally-
+    // empty canvas apart from a fed-but-blank render (the latter is the heuristic candidate-failure).
+    bool        output_fed = true;
 
     // control / process
     bool        control_running = false;         // MCP control server bound + listening

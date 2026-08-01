@@ -11,6 +11,8 @@ Severity severity(const HealthSnapshot& s) {
     // Recoverable-but-noteworthy: the GPU reported (and survived) errors, or the agent
     // control surface isn't up.
     if (s.gpu_errors > 0 || !s.control_running) return Severity::Warning;
+    // NOTE: output_fed is intentionally NOT a severity input — an unfed Output is an
+    // empty-by-design canvas (benign), not a fault (P2-03).
     return Severity::Ok;
 }
 
@@ -30,7 +32,7 @@ nlohmann::json to_json(const HealthSnapshot& s) {
     j["gpu"]     = { {"ok", s.gpu_ok}, {"errors", s.gpu_errors} };
     if (!s.gpu_last_error.empty()) j["gpu"]["last_error"] = s.gpu_last_error;
     j["graph"]   = { {"op_nodes", s.op_nodes}, {"op_types", s.op_types},
-                     {"missing_ops", s.missing_ops} };
+                     {"missing_ops", s.missing_ops}, {"output_fed", s.output_fed} };
     j["packages"] = { {"loaded", s.packages_loaded} };
     j["control"]  = { {"running", s.control_running} };
     return j;

@@ -709,7 +709,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         json r = ok();
         r["checks"] = json::array({
             {{"name", "no_audio_clipping"},      {"description", "recent master audio is not clipping (no clipped samples, peak < 0dBFS)"}},
-            {{"name", "nonblank_visual_output"}, {"description", "the active visual output is rendering something (not a blank / empty canvas)"}},
+            {{"name", "nonblank_visual_output"}, {"description", "the active visual output is rendering something (fed-but-blank = fail; nothing wired to Output = warn, empty by design)"}},
             {{"name", "mappings_resolve"},       {"description", "every audio→visual mapping's source and destination still resolve"}},
             {{"name", "no_quarantined_operators"},{"description", "no operators were quarantined this launch (repeat crashers, auto-disabled)"}},
         });
@@ -728,12 +728,20 @@ void register_introspection_handlers(Handlers& handlers_) {
                     status = (clips == 0 && peak < 0.999) ? "pass" : (clips < 50 ? "warn" : "fail");
                     if (status != "pass") suggestion = "lower a track or master gain, or add limiting"; }
             } else if (name == "nonblank_visual_output") {
+                // Three-way, distinguishing STRUCTURE from HEURISTIC (P2-03):
+                //  - nothing feeds Output      → empty-by-design (benign) → warn, NOT fail
+                //  - fed but readback fails     → a real fault            → fail
+                //  - fed and rendered blank     → candidate failure        → fail
+                //  - fed and rendered content   → pass
                 if (!c.vgraph) { status = "fail"; suggestion = "no visual graph"; }
+                else if (!c.vgraph->output_has_feed()) { status = "warn";
+                    ev = { {"output_fed", false}, {"reason", "nothing feeds the Output node (empty by design)"} };
+                    suggestion = "wire a source op to Output to render an image"; }
                 else { std::vector<uint8_t> px; uint32_t w = 0, h = 0;
-                    if (!c.vgraph->read_output_pixels(px, w, h)) { status = "fail"; ev = { {"reason", "no output (nothing feeds the Output node)"} }; suggestion = "add a source op and wire it to Output"; }
+                    if (!c.vgraph->read_output_pixels(px, w, h)) { status = "fail"; ev = { {"output_fed", true}, {"reason", "Output is fed but the GPU readback failed"} }; suggestion = "check the GPU device / output render target"; }
                     else { const json a = analyze_rgba(px.data(), w, h); const bool blank = a.value("is_blank", false);
-                        ev = { {"is_blank", blank}, {"brightness", a.value("brightness", 0.0)}, {"contrast", a.value("contrast", 0.0)} };
-                        status = blank ? "fail" : "pass"; if (blank) suggestion = "output is " + a.value("blank_reason", std::string()) + " — check the source op / its params"; } }
+                        ev = { {"output_fed", true}, {"is_blank", blank}, {"brightness", a.value("brightness", 0.0)}, {"contrast", a.value("contrast", 0.0)} };
+                        status = blank ? "fail" : "pass"; if (blank) suggestion = "Output is fed but " + a.value("blank_reason", std::string()) + " — check the source op / its params"; } }
             } else if (name == "mappings_resolve") {
                 json unresolved = json::array(); int total = 0;
                 if (c.graph) for (const auto& m : c.graph->mappings()) { ++total;

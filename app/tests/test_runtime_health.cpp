@@ -41,6 +41,15 @@ int main() {
     both.gpu_errors = 5; both.missing_ops = 2;
     CHECK(severity(both) == Severity::Error);
 
+    // An unfed Output is empty-by-design (benign): it must NOT change severity (P2-03).
+    HealthSnapshot unfed = ok;
+    unfed.output_fed = false;
+    CHECK(severity(unfed) == Severity::Ok);
+    // ...and it doesn't rescue a real fault either.
+    HealthSnapshot unfed_broken = err2;   // missing_ops == 1
+    unfed_broken.output_fed = false;
+    CHECK(severity(unfed_broken) == Severity::Error);
+
     // JSON shape: severity string + the dimension objects.
     ok.app_version = "9.9.9"; ok.gpu_last_error = "";
     auto j = to_json(ok);
@@ -48,6 +57,8 @@ int main() {
     CHECK(j["app_version"] == "9.9.9");
     CHECK(j["graph"]["op_nodes"] == 3);
     CHECK(j["graph"]["missing_ops"] == 0);
+    CHECK(j["graph"]["output_fed"] == true);   // default (fed)
+    CHECK(to_json(unfed)["graph"]["output_fed"] == false);
     CHECK(j["gpu"]["ok"] == true);
     CHECK(j["control"]["running"] == true);
     CHECK(!j["gpu"].contains("last_error"));   // omitted when empty
