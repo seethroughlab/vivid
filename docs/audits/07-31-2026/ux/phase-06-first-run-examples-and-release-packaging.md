@@ -4,7 +4,9 @@ Status: done (audited 2026-08-01)
 
 ## Verdict
 
-**FAIL — 1×P2 (release-facing), no P0/P1.** The packaging *mechanics* and *honesty* are in good
+**FAIL at audit; P2 now RESOLVED — no P0/P1.** *(Update: F1 fixed in `fix-p2-curate-bundled-examples`
+— the bundle now ships only the 12 clean demos; see F1's RESOLVED note.)* The packaging *mechanics*
+and *honesty* are in good
 shape: the release pipeline produces a **signed + notarized** DMG (exercised end-to-end, ADR-0040),
 and the one unfinished piece — the Sparkle **auto-updater** — is a no-op stub that the runbook
 **discloses honestly** (`docs/release/README.md`). The clean example subset works: neon, blob, pulse,
@@ -174,7 +176,15 @@ The 12 clean demos load and render (six spot-verified `nonblank=pass`). The tuto
 - Smallest acceptable fix: **curate the bundled/Open-Example set for release** — exclude the six
   broken demos (or repair them: rewrite their media refs to bundle-relative paths, bundle the media,
   and replace the personal Ableton samples with royalty-free loops). The clean 12 + neon are already
-  release-suitable. Owner/status: Unassigned | P2.
+  release-suitable. Owner/status: **fixed** | P2.
+- **RESOLVED** (branch `fix-p2-curate-bundled-examples`): the example-bundling target
+  (`app/CMakeLists.txt`) now copies the full `projects/` tree and then **prunes a denylist**
+  (`_examples_exclude = bloom chop drift grid mirror signal`), so File ▸ Open Example ships only the
+  **12 clean demos** (verified: `Resources/examples/` = blob, constellation, crystal,
+  generative-fields, geometry, lattice, neon, prism, pulse, spectrum, storm, surge-lead — the six
+  dev-path demos are gone). New clean demos still ship by default; a maintainer removes a name from
+  the denylist once its demo is repaired to bundle-relative media. Follow-up (not release-gating):
+  repair or relocate the six in-repo and replace the non-redistributable samples.
 
 #### F2 (P3): Demos depend on plugins beyond the documented "one free plugin", with no in-app cue
 
