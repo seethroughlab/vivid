@@ -46,6 +46,18 @@ fi
 echo "==> identity: $APPLE_CODESIGN_IDENTITY"
 echo "==> notarization: $NOTARIZE"
 
+# Ph6 audit P1-02: a build that will be PUBLISHED must be notarized — otherwise Gatekeeper blocks it
+# on every other Mac and the "signed + notarized" promise is broken. When REQUIRE_NOTARIZE is set
+# (the release workflow sets it on real tag builds), missing/absent notarization credentials are a
+# HARD ERROR here — fail loud, before producing any artifact — instead of silently shipping a
+# signed-but-un-notarized DMG that later skips the Gatekeeper checks below.
+if [ -n "${REQUIRE_NOTARIZE:-}" ] && [ "$NOTARIZE" = "none" ]; then
+  echo "error: REQUIRE_NOTARIZE is set but notarization is not configured." >&2
+  echo "       Provide NOTARY_PROFILE, or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_PASSWORD," >&2
+  echo "       and do not set SKIP_NOTARIZE. Refusing to ship an un-notarized build." >&2
+  exit 1
+fi
+
 # Entitlements for the hardened runtime — applied to the MAIN executable so the app can dlopen its
 # runtime-compiled (unsigned/other-team) operator dylibs. Overridable via VIVID_ENTITLEMENTS.
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

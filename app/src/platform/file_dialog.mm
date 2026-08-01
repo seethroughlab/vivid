@@ -92,6 +92,17 @@ bool confirm_recover_autosave(const std::string& detail) {
     }
 }
 
+void show_alert(const std::string& title, const std::string& message) {
+    @autoreleasepool {
+        NSAlert* a = [[NSAlert alloc] init];
+        [a setMessageText:[NSString stringWithUTF8String:title.c_str()]];
+        [a setInformativeText:[NSString stringWithUTF8String:message.c_str()]];
+        [a setAlertStyle:NSAlertStyleCritical];
+        [a addButtonWithTitle:@"OK"];
+        [a runModal];
+    }
+}
+
 }  // namespace vivid::platform
 
 #endif  // __APPLE__
