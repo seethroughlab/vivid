@@ -62,6 +62,13 @@ jobs:
       - name: Release verification (sanitizers + audio engine)
         run: scripts/run_release_verification.sh
 
+      # Audit Ph4 P1-03: a golden save/load round-trip through the just-built app — build a project,
+      # snapshot get_session (session_to_json), save_project → load_project (session_from_json), snapshot
+      # again, assert the document is identical. Skips cleanly if this runner can't launch the GUI app
+      # (no window server / GPU); fails on a real round-trip diff or an app crash.
+      - name: Persistence round-trip (save/load is lossless)
+        run: VIVID_APP="$PWD/app/build/vivid.app/Contents/MacOS/vivid" uv run mcp/tests/test_persist_roundtrip.py
+
       # Import the Developer ID cert into a dedicated temporary keychain so codesign can reach the
       # private key non-interactively (a locked/service-context login keychain gives
       # errSecInternalComponent on a self-hosted runner). Cleaned up below regardless of outcome.

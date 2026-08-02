@@ -48,6 +48,10 @@ The PR gate and the release build run these legs; reproduce them locally:
   headless **ASan/UBSan**, **ThreadSanitizer** (`ctest -L THREAD`), **audio-engine**
   (`ctest -L AUDIO_ENGINE`), and **audio-thread-sanitizer** (`ctest -L AUDIO_THREAD`). It
   builds into `app/build-verify-*` dirs and fails on any red.
+- `VIVID_APP=app/build/vivid.app/Contents/MacOS/vivid uv run mcp/tests/test_persist_roundtrip.py`
+  — the **save/load golden round-trip** (audit Ph4 P1-03): launches the built app, builds a project,
+  and asserts `get_session` is byte-identical across a `save_project`/`load_project` cycle. Needs the
+  GUI app + a GPU (skips cleanly without them); wired into `release-macos.yml`.
 
 Build-dir naming (so local matches CI): the PR gate uses `app/build` (app-OFF),
 `app/build-audio` (audio-engine, app-ON), `app/build-tsan-audio` (audio TSan); the portable
