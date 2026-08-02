@@ -76,8 +76,12 @@ inline float migrate_param_value(int file_ver, const std::string& op_type, const
 nlohmann::json session_to_json(vivid::session::Session* s, vivid::ui::NodeGraph& g,
                                int win_w, int win_h, float split_x, float dock_h,
                                bool include_plugin_state = true);
+// `base_dir` (the project folder) resolves project-RELATIVE audio media (`src_path`) at load — the
+// audio peer of the visuals' asset_dir. Empty (the default, e.g. undo snapshots whose paths are
+// already absolute) leaves paths untouched. Bundle-relative example media relies on it.
 bool session_from_json(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                       int& win_w, int& win_h, float& split_x, float& dock_h);
+                       int& win_w, int& win_h, float& split_x, float& dock_h,
+                       const std::string& base_dir = "");
 
 // ADR-0017 — how much of the audio session a restore rebuilds. Undo/redo restore the visual graph +
 // mappings + pool unconditionally (cheap), but tier the expensive track/plugin work:
@@ -86,7 +90,8 @@ bool session_from_json(const nlohmann::json& j, vivid::session::Session* s, vivi
 //   Full       — track topology differs; the full rebuild_tracks_from_doc path (the default).
 enum class RestoreAudio { Skip, ParamsOnly, Full };
 bool session_from_json_scoped(const nlohmann::json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                              int& win_w, int& win_h, float& split_x, float& dock_h, RestoreAudio audio);
+                              int& win_w, int& win_h, float& split_x, float& dock_h, RestoreAudio audio,
+                              const std::string& base_dir = "");
 
 // File wrappers over the above. The audio-graph view (ADR-0023 step 6b) rides only on the file
 // path — like the visual view it is UI/view state, kept out of the MCP document and undo (the

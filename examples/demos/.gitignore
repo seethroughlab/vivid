@@ -5,6 +5,8 @@ projects/*
 !projects/geometry/
 !projects/surge-lead/
 !projects/bloom/
+!projects/drift/
+!projects/grid/
 # ...but never the compiled operator dylib — it's rebuilt from petals.cpp on project open.
 projects/bloom/*.dylib
 __pycache__/
