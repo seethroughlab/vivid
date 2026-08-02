@@ -15,8 +15,9 @@ install path Vivid expects. Nothing else is required to start.
 
 ## 3. Build your first project
 
-Open Vivid and work through the [First MCP-native project](https://github.com/seethroughlab/vivid/tree/main/examples/tutorials/mcp-native-first-project)
-tutorial. In about ten minutes you'll have:
+Launch Vivid, then run the [First MCP-native project](https://github.com/seethroughlab/vivid/tree/main/examples/tutorials/mcp-native-first-project)
+builder — a short `uv run build.py` script that drives the running app over MCP to author the project
+for you. In about ten minutes you'll have:
 
 - a **Surge XT track** with a short MIDI clip,
 - a **project-local shader** wired into the visual graph, and

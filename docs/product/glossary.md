@@ -34,15 +34,15 @@ attached or none. See ADR-0008, Agent Adapter.
 
 ### Audio-Visual Binding
 
-A first-class relationship between a source signal and a destination behavior, such as
-`kick_onset -> particle_burst` or `bass_envelope -> particle_size`. In the current implementation,
-bindings are represented by the Mapping Bridge.
+An older name for a **Mapping** — a source→destination relationship such as
+`kick_onset -> particle_burst` or `bass_envelope -> particle_size`. Vivid's single user-facing term
+for this is **Mapping**; see below.
 
-### Bridge
+### Bridge _(internal)_
 
-The first-class relationship layer between the DAW surface and the visuals graph. The bridge lets
-audio characteristics drive visual node parameters and lets visual state drive audio/plugin
-parameters.
+Internal/architectural name for the layer that carries the mappings between the DAW surface and the
+visuals graph. It is **not** a user-facing noun: in the product, both that layer and the wires in it
+are called **Mappings** (see below). "Bridge" survives only in code and older design docs.
 
 ### Clip
 
@@ -73,9 +73,16 @@ quantization.
 
 ### Mapping
 
-One bridge wire from a named source to a named destination, plus shaping values such as amount,
-curve, polarity, and output range. Examples: `track_12.transient -> node:7.warp` and
-`viz.warp -> param:1:0:42`.
+Vivid's single user-facing term for an audio↔visual relationship, at both scales:
+
+- **A mapping** — one wire from a named source to a named destination, plus shaping values such as
+  amount, curve, polarity, and output range. Examples: `track_12.transient -> node:7.warp` and
+  `viz.warp -> param:1:0:42`.
+- **Mappings** — the surface/layer that holds them (the "MAPPINGS" panel), which lets audio
+  characteristics drive visual node parameters and lets visual state drive audio/plugin parameters.
+
+The MCP tools use this noun too (`inspect_mappings`). The layer's internal/architectural name is the
+"bridge" (see Bridge), but that word is not surfaced to users.
 
 ### Project-Local Code
 
@@ -89,7 +96,7 @@ Verse, Chorus, Drop, Breakdown, or Reset.
 
 ### Session
 
-The top-level authoring and performance state: transport, tracks, clips, scenes, bindings, selected
+The top-level authoring and performance state: transport, tracks, clips, scenes, mappings, selected
 state, queued launches, and related agent-readable context.
 
 ### Session View
@@ -106,12 +113,15 @@ holding onto) or *branched* (copied to mutate). See Clip, Live Take, Variation W
 
 ### Track
 
-A role or responsibility in the session. A track may be an instrument, audio lane, visual layer,
-mapping lane, or hybrid behavior lane.
+An audio lane in the session — either an **instrument** track (a plugin/native instrument plus its
+note clips, macros, and effects) or an **audio** track (audio clips, looping, file playback, and
+effects). Visuals and mappings are **not** track kinds in the shipped product: they live on their own
+surfaces — the visuals **Graph** and the **Mappings** surface. A track can drive and be driven by
+those surfaces through mappings, but the track itself is an audio/instrument lane.
 
 ### Variation _(planned)_
 
-An alternative clip, scene, binding, or parameter behavior generated or edited while preserving its
+An alternative clip, scene, mapping, or parameter behavior generated or edited while preserving its
 musical/visual role and compatibility with the surrounding session.
 
 ### Variation Well _(planned)_
