@@ -36,10 +36,13 @@ inline Mat4 rot_x(float a) { Mat4 m = identity(); const float c = std::cos(a), s
 inline Mat4 rot_y(float a) { Mat4 m = identity(); const float c = std::cos(a), s = std::sin(a); m[0]=c; m[8]=s; m[2]=-s; m[10]=c; return m; }
 inline Mat4 translate(float x, float y, float z) { Mat4 m = identity(); m[12]=x; m[13]=y; m[14]=z; return m; }
 inline Mat4 scale3(float s) { Mat4 m = identity(); m[0]=m[5]=m[10]=s; return m; }
-// WebGPU perspective (clip z in [0,1]); y is negated to compensate the NDC y-flip.
+// WebGPU perspective (clip z in [0,1]). Matches vivid-3d's perspective_wgpu (Render3D): world +Y maps
+// to clip +Y so the render lands upright in the canonical top-down texture convention (see
+// fullscreenTriangle in gpu_common.h). Previously m[5] was negated to cancel the per-pass Y flip that
+// the old fullscreen convention introduced; that flip is gone, so the negate is too.
 inline Mat4 perspective(float fovy, float aspect, float znear, float zfar) {
     Mat4 m{}; const float f = 1.f / std::tan(fovy * 0.5f);
-    m[0] = f / aspect; m[5] = -f;
+    m[0] = f / aspect; m[5] = f;
     m[10] = zfar / (znear - zfar); m[11] = -1.f;
     m[14] = (znear * zfar) / (znear - zfar);
     return m;

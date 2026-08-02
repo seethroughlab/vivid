@@ -28,10 +28,10 @@ const char* kWGSL = R"(
 struct U { res: vec2f, time: f32, size: f32, posx: f32, posy: f32, pad0: f32, pad1: f32, fill: vec4f };
 @group(0) @binding(0) var<uniform> u: U;
 @vertex fn vs_fan(@location(0) p: vec2f) -> @builtin(position) vec4f {
-    // FreeType glyph outlines are Y-up; the composited output is Y-flipped, so negate glyph Y here
-    // to render text upright through Composite (about its own centre — position/posy is unaffected).
-    // Matches VectorText's #178 fix. NOTE: this makes Type upside-down when fed DIRECTLY to Output.
-    var q = vec2f(p.x, -p.y) * (u.size * 1.6);       // glyph space → NDC (upright through Composite)
+    // FreeType glyph outlines are Y-up and so is clip space, so pass glyph Y straight through — the
+    // pipeline no longer inverts Y per pass (see fullscreenTriangle in gpu_common.h), so text is now
+    // upright at any depth: direct to Output OR through Composite (position/posy unaffected).
+    var q = vec2f(p.x, p.y) * (u.size * 1.6);        // glyph space → NDC (upright, parity-independent)
     q.x = q.x * (u.res.y / max(u.res.x, 1.0));
     q = q + vec2f((u.posx - 0.5) * 2.0, (u.posy - 0.5) * 2.0);
     return vec4f(q, 0.0, 1.0);

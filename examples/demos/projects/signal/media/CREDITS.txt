@@ -1,0 +1,19 @@
+signal — media credits
+=======================
+
+All bundled media is public-domain or CC0: credit is not required, commercial use is allowed.
+
+3D STATUES (4)  —  CC0-1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+  SMK – National Gallery of Denmark, Royal Cast Collection (https://sketchfab.com/smkmuseum)
+  - Venus de Milo (Aphrodite of Milos)
+  - Apollo Belvedere
+  - Discobolus (The Discus Thrower)
+  - Doryphoros (The Spear Bearer)
+  (per-model source URLs + license in each statues/<name>/license.txt)
+
+VIDEO LOOPS (3)  —  Public Domain
+  - science_lab.mp4  — "Of Science and Scientists" (1957, NET / Harvard), Public Domain Mark.
+        Source: https://archive.org/details/of-science-and-scientists
+  - iss_tunnel.mp4, microgravity.mp4 — NASA (US-government work = public domain).
+        Source: https://archive.org/details/NASA-Ultra-High-Definition
+  Clips were trimmed to ~9 s, scaled to 640x360, and had their audio stripped.

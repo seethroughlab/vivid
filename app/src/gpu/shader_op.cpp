@@ -8,12 +8,14 @@ namespace vivid {
 // std140: res@0, time@8, then kNumPlasmaUniforms floats @12.. ; padded to 16.
 struct Uniforms { float res[2]; float time; float u[kNumPlasmaUniforms]; float _pad; };
 
-// Fullscreen triangle — no vertex buffers; emits a vec2 uv in [0,1].
+// Fullscreen triangle — no vertex buffers; emits a vec2 uv in [0,1]. uv.y is flipped vs clip-space y
+// so sampling an input at `uv` is an identity passthrough (canonical top-down texture convention; see
+// fullscreenTriangle in operator_api/gpu_common.h and EffectOp).
 static const char* kVertGLSL = R"(#version 450
 layout(location = 0) out vec2 v_uv;
 void main() {
     vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
-    v_uv = p;
+    v_uv = vec2(p.x, 1.0 - p.y);
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";
