@@ -33,6 +33,7 @@ namespace vivid { namespace platform { static MenuActions g_actions; } }
 - (void)setGeminiKey:(id)sender   { (void)sender; if (vivid::platform::g_actions.set_gemini_key)  vivid::platform::g_actions.set_gemini_key(); }
 - (void)evaluateOutput:(id)sender { (void)sender; if (vivid::platform::g_actions.evaluate_output) vivid::platform::g_actions.evaluate_output(); }
 - (void)exportVideo:(id)sender    { (void)sender; if (vivid::platform::g_actions.export_video)    vivid::platform::g_actions.export_video(); }
+- (void)toggleReduceMotion:(id)sender { (void)sender; if (vivid::platform::g_actions.toggle_reduce_motion) vivid::platform::g_actions.toggle_reduce_motion(); }
 @end
 
 static VividMenuTarget* g_target = nil;      // kept alive for the app lifetime (intentional)
@@ -41,6 +42,7 @@ static NSMenu*          g_exampleMenu = nil; // the Open Example submenu (retain
 static NSMenuItem*      g_undoItem = nil;    // Edit > Undo (title updated by set_edit_labels)
 static NSMenuItem*      g_redoItem = nil;    // Edit > Redo
 static NSMenuItem*      g_exportVideoItem = nil;  // File > Export Video (title flips via set_export_video_recording)
+static NSMenuItem*      g_reduceMotionItem = nil; // View > Reduce Motion (checkmark via set_reduce_motion_checked)
 
 namespace vivid { namespace platform {
 
@@ -123,6 +125,26 @@ void install_menu_bar(const MenuActions& actions) {
         [evalItem setSubmenu:evalMenu];
         [mainMenu insertItem:evalItem atIndex:insertAt + 2];   // right after Edit
         [evalItem release]; [evalMenu release];   // retained by mainMenu
+
+        // View menu — accessibility toggles. "Reduce Motion" (UX Ph4 F1) temporally low-passes the
+        // visual output so rapid full-frame flashing is damped; it carries a checkmark reflecting the
+        // persisted app setting (set_reduce_motion_checked).
+        NSMenu* viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+        [viewMenu setAutoenablesItems:NO];
+        g_reduceMotionItem = [[NSMenuItem alloc] initWithTitle:@"Reduce Motion (flash limit)"
+                                                        action:@selector(toggleReduceMotion:) keyEquivalent:@""];
+        [g_reduceMotionItem setTarget:g_target]; [viewMenu addItem:g_reduceMotionItem]; [g_reduceMotionItem release];
+        NSMenuItem* viewItem = [[NSMenuItem alloc] initWithTitle:@"View" action:nil keyEquivalent:@""];
+        [viewItem setSubmenu:viewMenu];
+        [mainMenu insertItem:viewItem atIndex:insertAt + 3];   // right after Eval
+        [viewItem release]; [viewMenu release];   // retained by mainMenu
+    }
+}
+
+void set_reduce_motion_checked(bool checked) {
+    @autoreleasepool {
+        if (g_reduceMotionItem)
+            [g_reduceMotionItem setState:(checked ? NSControlStateValueOn : NSControlStateValueOff)];
     }
 }
 

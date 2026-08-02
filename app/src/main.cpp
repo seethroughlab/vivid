@@ -36,6 +36,7 @@
 #include "platform/file_dialog.h"  // ADR-0018 confirm_discard_changes (New/Open save-confirm)
 #include "app/examples.h"          // bundled example projects (ADR-0021/P2)
 #include "app/window_prefs.h"       // launch sizing + remembered window size/pos
+#include "app/app_settings.h"       // UX Ph4 F1: persisted app-level settings (reduce motion)
 #include "app/video_recorder.h"     // realtime AV video export (File > Export Video / MCP)
 #include "platform/menu_bar.h"     // install_menu_bar
 #include "audio/builtin_audio_ops.h"   // AO-1: native audio operators
@@ -236,6 +237,10 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "[vivid] visual graph init failed (viewer disabled)\n");
     app.vgraph = &vgraph;
 
+    // UX Ph4 F1: restore the persisted reduce-motion / flash-limit setting and apply it to the pipeline.
+    app.reduce_motion = vivid::load_app_settings(vivid::app_settings_path()).reduce_motion;
+    vgraph.set_reduce_motion(app.reduce_motion);
+
     // ADR-0020: the operator hot-reload watcher is ON BY DEFAULT (like the shader watcher). At
     // startup we discover package sources in the standard user locations — anything the user cloned
     // to edit ("Clone & Edit" scaffolds into ~/.../clones) or installed — and watch each already-
@@ -398,7 +403,19 @@ int main(int argc, char** argv) {
                     "Export failed: " + err, glfwGetTime(), 8.0);
             }
         };
+        // UX Ph4 F1: View > Reduce Motion. Flip the app setting, push it to the pipeline, persist it,
+        // sync the menu checkmark, and toast the new state so the change is legible.
+        ma.toggle_reduce_motion = [&] {
+            app.reduce_motion = !app.reduce_motion;
+            if (app.vgraph) app.vgraph->set_reduce_motion(app.reduce_motion);
+            vivid::save_app_settings({ app.reduce_motion }, vivid::app_settings_path());
+            vivid::platform::set_reduce_motion_checked(app.reduce_motion);
+            vivid::ui::push_toast(win.toasts, vivid::LogLevel::Info,
+                app.reduce_motion ? "Reduce Motion on \xE2\x80\x94 output flashing is damped"
+                                  : "Reduce Motion off", glfwGetTime());
+        };
         vivid::platform::install_menu_bar(ma);
+        vivid::platform::set_reduce_motion_checked(app.reduce_motion);   // reflect the persisted state
         vivid::platform::set_recent_projects(app.project.recent_project_paths);
         // File > Open Example — the bundled demos (ADR-0021/P2). Discovered once at startup.
         std::vector<vivid::platform::MenuItemEntry> examples;

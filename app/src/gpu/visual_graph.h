@@ -157,6 +157,13 @@ public:
     void set_metronome(float bpm, int beats_per_bar, double beats_elapsed) {
         metro_bpm_ = bpm; metro_bpb_ = beats_per_bar > 0 ? beats_per_bar : 4; metro_beats_ = beats_elapsed;
     }
+    // Reduce-motion / flash-limit (UX Ph4 F1). When on, run_chain temporally low-passes the final
+    // output RT (out = mix(prev_output, current, blend)) so rapid full-frame luminance swings — the
+    // photosensitivity risk — are damped. App-level accessibility setting; off by default. Toggling
+    // off re-seeds cleanly (no stale trail on re-enable). Applies to preview, pop-out, and export
+    // uniformly (all read the same output RT).
+    void set_reduce_motion(bool on) { reduce_motion_ = on; }
+    bool reduce_motion() const { return reduce_motion_; }
     // Blit the already-rendered output FBO (from the last run_chain()) into a view at a rect —
     // the floating preview, or a pop-out window's surface. Letterboxes per the Output node's fit
     // mode, so every surface shows the output's true aspect. Does NOT re-run the graph.
@@ -196,6 +203,10 @@ private:
     // Pull the output's format (size + fit) off the ACTIVE Output node's params. Run once per
     // frame, first thing in run_chain().
     void apply_output_settings();
+    // UX Ph4 F1: temporally low-pass the output RT (rts_[feed]) in place, once per frame at the end of
+    // run_chain, when reduce_motion_ is on. Lazily allocates its history/scratch targets sized to the
+    // current RT (mirrors FeedbackOp::ensure_hist). No-op (and re-seeds) when off.
+    void apply_output_smoothing(WGPUCommandEncoder enc, int feed, float time);
     FitMode fit_ = FitMode::Fit;   // derived from the Output node's `fit` param — never a param slot
 
     WGPUDevice        dev_ = nullptr;
@@ -229,6 +240,15 @@ private:
     bool                      fb_cleared_ = false;
 
     EffectOp blit_;   // final present (node-feeding-Output RT -> viewer)
+
+    // Reduce-motion / flash-limit state (UX Ph4 F1; see set_reduce_motion). rm_hist_ holds the
+    // previously-smoothed output; rm_scratch_ is the blend pass target. Both are lazily allocated on
+    // first use, sized to rtW_/rtH_. rm_valid_ is false on the first frame / after a resize, so that
+    // frame seeds history and passes through untouched.
+    bool         reduce_motion_ = false;
+    bool         rm_valid_      = false;
+    EffectOp     rm_blend_;               // 2-input temporal blend: mix(prev, current, blend)
+    RenderTarget rm_hist_, rm_scratch_;
 };
 
 }  // namespace vivid

@@ -220,6 +220,7 @@ add_executable(vivid MACOSX_BUNDLE
     src/app/node_presets.cpp
     src/app/node_presets_graph.cpp
     src/app/window_prefs.cpp
+    src/app/app_settings.cpp
     src/app/video_recorder.cpp
     src/app/operator_clone.cpp
     src/app/runtime_health.cpp
