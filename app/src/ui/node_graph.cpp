@@ -434,6 +434,18 @@ void NodeGraph::get_node(int i, float& x, float& y, std::string& source, std::st
 void NodeGraph::reset_nodes() { data_.clear(); reg_.clear_mappings(); ++data_gen_; }   // ADR-0028: drop cached indices
 
 int NodeGraph::op_count() const { return vg_ ? int(vg_->nodes().size()) : 0; }
+// UX Ph4 F3: keyboard delete — mirrors the mouse ×-button path (node_graph.cpp on_down) but keeps a
+// selection on a neighbour so the keyboard flow can continue. Output is never removable.
+bool NodeGraph::delete_op(int i) {
+    if (!vg_ || i < 0 || i >= int(vg_->nodes().size()) || vg_->nodes()[i].is_output()) return false;
+    vg_->remove_node(i);
+    sync_op_pos();
+    const int n = int(vg_->nodes().size());
+    sel_op_ = (n > 0) ? std::min(i, n - 1) : -1;   // stay in the visual graph on a neighbour (or deselect)
+    note_edit_("Delete Node");
+    return true;
+}
+int NodeGraph::op_input_port_count(int i) const { return vg_ ? op_in_count(vg_, i) : 0; }
 void NodeGraph::get_op(int i, int& input, int& id, float& x, float& y) const {
     if (!vg_ || i < 0 || i >= int(vg_->nodes().size())) return;
     input = vg_->nodes()[i].in(0);

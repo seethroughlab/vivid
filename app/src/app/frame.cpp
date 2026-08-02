@@ -850,6 +850,11 @@ void run_frame_loop(App& app, Window& win) {
             if (win.show_log) draw_log_view(ui, app.log, win.win_w, win.win_h);
             if (win.show_shortcuts) draw_shortcuts_overlay(ui, win.win_w, win.win_h);   // Ph4 F3
             if (win.show_gemini_key) draw_gemini_key_modal(ui, win);   // ADR-0026 key entry (on top)
+            // UX Ph4 F3: a keyboard wire is pending — remind the user how to commit / cancel it.
+            if (win.kbd_wire_dom)
+                ui.draw_text(16.f, static_cast<float>(win.win_h) - 30.f,
+                             "Wiring \xE2\x80\x94 select a target node, then W to connect  (Esc cancels)",
+                             0.98f, 0.80f, 0.30f, 1.0f, 0.82f);
             draw_toasts(ui, win.toasts, glfwGetTime(), win.win_w, win.win_h);
             if (win.show_presets) draw_preset_popover(ui, app, win.presets_node, win.win_w, win.win_h);
             draw_perf_hud(ui, win);   // always-on FPS / frame-time read-out, drawn last (on top)
