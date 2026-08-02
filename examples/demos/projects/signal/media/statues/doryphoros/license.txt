@@ -1,0 +1,8 @@
+Model Information:
+* title:	Doryphoros (The Spear Bearer)
+* source:	https://sketchfab.com/3d-models/doryphoros-the-spear-bearer-2b213f98afa742a5880af130b4d4eddc
+* author:	SMK – National Gallery of Denmark (https://sketchfab.com/smkmuseum)
+
+Model License:
+* license type:	CC0-1.0 (http://creativecommons.org/publicdomain/zero/1.0/)
+* requirements:	Credit is not mandatory. Commercial use is allowed.

@@ -1,0 +1,8 @@
+Model Information:
+* title:	Discobolus (The Discus Thrower)
+* source:	https://sketchfab.com/3d-models/discobolus-the-discus-thrower-50f50abf45414ad8a658325df7a5fcb3
+* author:	SMK – National Gallery of Denmark (https://sketchfab.com/smkmuseum)
+
+Model License:
+* license type:	CC0-1.0 (http://creativecommons.org/publicdomain/zero/1.0/)
+* requirements:	Credit is not mandatory. Commercial use is allowed.
