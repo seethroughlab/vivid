@@ -24,7 +24,7 @@ extern "C" {
    can declare itself a generator / note-effect / modulator. Purely additive — both are OPTIONAL
    dlsym'd exports (absent => opt out) and the descriptor field is appended at the END, so an older
    dylib is unaffected and the host never reads the field out of an older dylib's struct. */
-#define VIVID_OPERATOR_ABI_VERSION 14u
+#define VIVID_OPERATOR_ABI_VERSION 15u
 
 /* The OLDEST operator ABI this runtime can still load.
    An operator built at an older ABI is safe to run iff every change since then was purely
@@ -101,6 +101,8 @@ typedef uint32_t VividPortTransport;
 #define VIVID_PORT_TRANSPORT_TEXTURE        5u  // GPU texture/view routing
 #define VIVID_PORT_TRANSPORT_CUSTOM_VALUE   6u  // memcpy-by-value snapshot
 #define VIVID_PORT_TRANSPORT_CUSTOM_REF     7u  // opaque shared-handle/reference
+#define VIVID_PORT_TRANSPORT_NOTE_STREAM    8u  // ADR-0047: a note-event stream (routed as EdgeKind::Note)
+#define VIVID_PORT_TRANSPORT_CONTROL_SIGNAL 9u  // ADR-0047: a 0..1 control signal (routed as EdgeKind::Control)
 
 // GPU texture format for a TEXTURE output port. DEFAULT inherits the node's
 // primary/offscreen format (RGBA16Float). Other values let an operator declare
