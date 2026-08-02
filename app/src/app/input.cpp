@@ -108,6 +108,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (app->edit_gateway) app->edit_gateway->redo();
         return;
     }
+    // Esc cancels a pending keyboard wire (Ph4 F3) before it falls through to the overlay closers.
+    if (key == GLFW_KEY_ESCAPE && win->kbd_wire_dom) { win->kbd_wire_dom = 0; win->kbd_wire_from = -1; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_mappings) { win->show_mappings = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_shader_library) { win->show_shader_library = false; return; }
     if (key == GLFW_KEY_ESCAPE && win->show_diagnostics) { win->show_diagnostics = false; return; }
@@ -124,20 +126,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (key == GLFW_KEY_L) { win->show_shader_library = !win->show_shader_library; return; }  // shader library (ADR-0021)
         if (key == GLFW_KEY_H) { win->show_diagnostics = !win->show_diagnostics; return; }  // diagnostics (ADR-0019)
         if (key == GLFW_KEY_J) { win->show_log = !win->show_log; return; }  // log view (ADR-0019)
-        // Keyboard node navigation (Ph4 F3): [ and ] step the visual-graph selection prev/next. The
-        // frame loop derives the focus + inspector from the selected op, so this walks the inspector
-        // across every node — including Output — without a mouse. (Node CREATION stays Tab; deletion
-        // stays mouse to avoid a stray Delete removing a node from another context.)
-        if ((key == GLFW_KEY_RIGHT_BRACKET || key == GLFW_KEY_LEFT_BRACKET) && app->graph && app->vgraph) {
-            const int n = static_cast<int>(app->vgraph->nodes().size());
-            if (n > 0) {
-                const int dir = (key == GLFW_KEY_RIGHT_BRACKET) ? 1 : -1;
-                const int cur = app->graph->selected_op();
-                const int nxt = (cur < 0) ? (dir > 0 ? 0 : n - 1) : ((cur + dir) % n + n) % n;
-                app->graph->select_op(nxt);
-            }
-            return;
-        }
+        // Keyboard editing (Ph4 F3): [ ] cycle selection · arrows spatial-select · \ switch visual↔audio
+        // pane · Delete/Backspace delete · W start/commit wire · , / . target port · Shift+Backspace
+        // disconnect. Acts on the focused graph (selected visual op → visual, else the track's audio
+        // graph). The frame loop derives the inspector from the selection, so nav walks it mouse-free.
+        if (vivid::input::kbd_edit_key(*win, *app, key, mods)) return;
     }
     if (vivid::input::transport_key(*win, *app, key)) return;   // Space (play/stop) / R (record)
     // Tab -> open the chooser at the cursor. It is the ONE way to add a node, in BOTH graphs:

@@ -122,6 +122,12 @@ public:
     // base param values (the resolved value = clamp(base + live modulation)).
     int  selected_op() const { return sel_op_; }
     void select_op(int i) { sel_op_ = i; }
+    // Keyboard editing (UX Ph4 F3): guarded delete of op `i` (Output is never removable) + how many
+    // input ports op `i` accepts (for keyboard wiring's target-port cycling). delete_op folds the edit
+    // into undo and moves the selection to a neighbour (staying in the visual graph). Returns false if
+    // `i` is out of range or is the Output sink.
+    bool delete_op(int i);
+    int  op_input_port_count(int i) const;
     const char* op_kind_name(int i) const;               // "Plasma" / "Feedback" / ...
     int  op_param_count_at(int i) const;
     const char* op_param_label_at(int i, int local) const;

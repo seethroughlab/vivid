@@ -196,6 +196,10 @@ target_sources(test_app_settings PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
 target_link_libraries(test_app_settings PRIVATE nlohmann_json::nlohmann_json)
 
+# UX Ph4 F3: pure keyboard-editing decision logic (audio wire-kind inference + spatial nearest).
+# Header-only (app/kbd_edit_logic.h), so no app/GLFW link.
+vivid_add_test(test_kbd_edit_logic)
+
 # P4.1: session-version load guard (classify_session_version is a pure header fn).
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)

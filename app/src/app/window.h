@@ -132,6 +132,11 @@ struct Window {
     // node of a rewired/non-linear graph.) Plus the param knob index being dragged.
     static constexpr int kNoAudioNode = -100;
     int     sel_audio_node = kNoAudioNode;
+    // Keyboard editing (UX Ph4 F3 follow-on, input_kbd_edit.cpp): a pending wire started with `W` from a
+    // node's output, awaiting a `W`-on-target commit. dom disambiguates `from` (which graph + id space).
+    int     kbd_wire_dom  = 0;    // 0 none · 1 visual (from = op INDEX) · 2 audio (from = node ID)
+    int     kbd_wire_from = -1;
+    int     kbd_wire_port = 0;    // target input port to commit to (cycled with , / . ; visual multi-input)
     int     mod_ed_drag    = -1;   // ADR-0022: the mod-editor slider being dragged (0 amount / 1 curve / -1 none)
     double  cur_x = 0, cur_y = 0;   // latest cursor pos (updated each frame; for ghost-wire draw)
     // The audio-graph view transform AND the in-flight gesture state (param/key/wire/node/pan drags,

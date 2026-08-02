@@ -22,6 +22,13 @@ bool typing_key(Window& win, App& app, int key, int action);
 bool transport_mouse(Window& win, App& app, int button, int action, double mx, double my);
 bool transport_key(Window& win, App& app, int key);   // Space / R
 
+// ---- keyboard editing of the node graphs (input_kbd_edit.cpp, UX Ph4 F3) ----
+// [ / ] cycle · arrows spatial-select · \ switch visual<->audio pane · Delete/Backspace delete ·
+// W start/commit wire · , / . target port · Esc cancel wire · Shift+Backspace disconnect. Acts on the
+// FOCUSED graph (a selected visual op => visual, else the current track's audio graph). Returns true
+// when it consumed the key. Caller gates it to PRESS/REPEAT and !win.typing.
+bool kbd_edit_key(Window& win, App& app, int key, int mods);
+
 // ---- plugin browser drag/drop (input_plugins.cpp) ----
 // A3: the audio graph's Tab chooser (the ONE way to add an audio node — native op / VST3 / CLAP).
 // All return true when they consumed the event.
