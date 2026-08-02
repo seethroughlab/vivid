@@ -21,7 +21,7 @@ explicitly (an ADR), not to quietly violate it.
 - **Content-forward, no decorative chrome.** The content and layout communicate; no ornamentation.
   *(PRD, and vivid-classic's "content is the star".)*
 - **Experimentation-first.** Cheap to audition, inspect, keep, branch, compare. *(PRD)*
-- **The bridge is a first-class, visible object.** Audio↔visual mappings are an editable product
+- **Mappings are a first-class, visible object.** Audio↔visual mappings are an editable product
   object, not a hidden implementation detail. *(ADR-0009)*
 - **Text is the source of truth; the GUI is a view.** The UI never becomes a second store.
   *(ADR-0006)*
@@ -44,8 +44,9 @@ explicitly (an ADR), not to quietly violate it.
 
 3. **Strict domain zones.** Audio and visual controls never share a rectangle. Every region has a
    domain identity, made obvious by position and the domain color system (audio **amber** ·
-   visual **cyan** · bridge **teal** · shared **gray** — `Domain` / `domain_color` in
-   `ui_style.h`). You always know which world you're in by where you're looking.
+   visual **cyan** · mapping **teal** · shared **gray** — the `Domain` / `domain_color` enum in
+   `ui_style.h` still spells this domain `bridge` internally). You always know which world you're in
+   by where you're looking.
 
 4. **Editors ≠ inspectors.** A *rich editor* is a per-object canvas (a clip's piano-roll, a
    track's audio graph, a drum grid, an envelope) that gets its own space and can float out. An
@@ -80,7 +81,7 @@ keep new UI on those so the restyle stays coherent.
   `border`. Flat fills — no gradients; the only shadow is `draw_shadow` (a lo-fi 2-layer offset)
   behind popups/menus.
 - **Domain color = identity; blue = selection.** The domain accents (audio **amber** · visual
-  **cyan** · bridge **teal**) are the strict-zone identity, shown as a thin **edge accent bar**.
+  **cyan** · mapping **teal**) are the strict-zone identity, shown as a thin **edge accent bar**.
   Selection/focus is the classic blue `sel` (`#5A8CD9`) as a 1px border or 2px edge — never a
   separate rounded ring. `gold` is reserved for queued/warn state.
 - **Framed, highlighted boxes.** Interactive items are flat boxes with a hard 1px frame; the frame
