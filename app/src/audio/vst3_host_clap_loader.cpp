@@ -6,7 +6,17 @@
 // rebuild_track_graph() (shared via vst3_host_internal.h). Pure code move; behaviour unchanged.
 #include "audio/vst3_host_internal.h"   // Session/Track, ClapHandle, clap_load_plugin/_state, GNKind, the C API decls + rebuild_track_graph
 
+#include <algorithm>
+#include <filesystem>
+
 namespace vivid::session {
+
+// UX Ph6 F2: a CLAP instrument load only knows its .clap PATH, but the user needs the plugin NAME to
+// install. Derive it from the file stem ("/Library/Audio/Plug-Ins/CLAP/Surge XT.clap" -> "Surge XT").
+static std::string clap_display_name(const std::string& path) {
+    std::string stem = std::filesystem::path(path).stem().string();
+    return stem.empty() ? path : stem;
+}
 
 // CLAP instrument/effect assignment is ASYNC — see session_request_track_clap_* below. (A slow
 // plugin ctor must never run on the main thread.) The old synchronous session_set_track_clap_*
@@ -154,7 +164,11 @@ void session_poll_plugin_loads(Session* s) {
             }
             if (!bound) {
                 delete h;                                    // node deleted, track gone, or load failed
-                if (!h) s->clap_last_error = d.path + ": failed to load CLAP plugin";
+                if (!h) {
+                    s->clap_last_error = d.path + ": failed to load CLAP plugin";
+                    if (d.is_instrument)                     // an authoritative-graph CLAP instrument source
+                        session_note_unresolved_instrument(s, clap_display_name(d.path).c_str());
+                }
                 if (trp) {                                   // mark the slot failed so the UI stops waiting
                     std::lock_guard<std::mutex> lk(trp->gmtx);
                     const size_t si = static_cast<size_t>(d.slot);
@@ -176,7 +190,10 @@ void session_poll_plugin_loads(Session* s) {
                     tr.clap_inst = h;
                     if (!d.state.empty()) clap_load_state(h, d.state);   // restore the saved patch (persist)
                     rebuild_track_graph(&tr);
-                } else if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
+                } else {
+                    if (s->clap_last_error.empty()) s->clap_last_error = d.path + ": failed to load CLAP instrument";
+                    session_note_unresolved_instrument(s, clap_display_name(d.path).c_str());   // UX Ph6 F2 cue
+                }
             } else {
                 if (h) {
                     tr.clap_effects.push_back(h);
@@ -193,6 +210,25 @@ void session_poll_plugin_loads(Session* s) {
 int session_plugin_loads_pending(Session* s) { return s ? s->clap_pending.load(std::memory_order_acquire) : 0; }
 const char* session_last_plugin_load_error(Session* s) {
     return (s && !s->clap_last_error.empty()) ? s->clap_last_error.c_str() : "";
+}
+
+// UX Ph6 F2 — the missing-instrument accumulator. Both the synchronous placeholder fallback (persist's
+// rebuild_tracks_from_doc, a catalog miss) and the async CLAP failure above feed the SAME list, so a
+// demo that needs both Cassette Drums (catalog) and Surge XT (CLAP) surfaces as ONE cue. Dedup'd by
+// name — bloom points three tracks at Surge XT but the user only needs to hear it once. Main-thread only.
+void session_note_unresolved_instrument(Session* s, const char* display_name) {
+    if (!s || !display_name || !*display_name) return;
+    if (std::find(s->unresolved_instruments.begin(), s->unresolved_instruments.end(), display_name)
+        != s->unresolved_instruments.end()) return;
+    s->unresolved_instruments.emplace_back(display_name);
+}
+void session_clear_unresolved_instruments(Session* s) { if (s) s->unresolved_instruments.clear(); }
+int session_unresolved_instrument_count(Session* s) {
+    return s ? static_cast<int>(s->unresolved_instruments.size()) : 0;
+}
+const char* session_unresolved_instrument_name(Session* s, int i) {
+    return (s && i >= 0 && i < static_cast<int>(s->unresolved_instruments.size()))
+        ? s->unresolved_instruments[i].c_str() : "";
 }
 // Stop + join the loader thread and free any completions that were never applied. Call before
 // tearing down the tracks (a handle in `clap_done` still owns a DSO ref).
