@@ -467,9 +467,12 @@ struct ArpOp : OperatorBase, AudioProcessable {
         o.push_back(&rate); o.push_back(&mode); o.push_back(&octaves); o.push_back(&gate);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        VividPortDescriptor p{};   // no AUDIO ports: this op is a pure note transform
+        // ADR-0047: the graph still routes this port as an audio buffer, but the real stream is a note
+        // stream (emitted via note_out) — declare that truth in semantic_shape so the catalog is honest.
+        VividPortDescriptor p{};
         p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER; p.direction = VIVID_PORT_OUTPUT;
         p.value_type = VIVID_VALUE_FLOAT; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        p.semantic_shape = "note_stream";
         o.push_back(p);
     }
 
@@ -618,8 +621,10 @@ struct LfoOp : OperatorBase, AudioProcessable {
         o.push_back(&waveform); o.push_back(&sync); o.push_back(&rate); o.push_back(&division);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        o.push_back(aud_out());   // no audio INPUT — like Arp. It writes nothing here; the signal
-                                  // leaves via control_out, so an Audio wire off an LFO is silence.
+        // ADR-0047: no audio — the real stream leaves via control_out. The port stays an audio buffer
+        // for graph routing, but semantic_shape declares the truth (an Audio wire off an LFO is silence).
+        auto out = aud_out(); out.semantic_shape = "control_signal";
+        o.push_back(out);
     }
 
     static float beats_per_cycle(int d) {
@@ -697,7 +702,9 @@ struct AdsrOp : OperatorBase, AudioProcessable {
         o.push_back(&attack); o.push_back(&decay); o.push_back(&sustain); o.push_back(&release);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        o.push_back(aud_out());   // no audio input — the signal leaves via control_out (like the LFO)
+        // ADR-0047: emits a control signal via control_out, not audio (like the LFO).
+        auto out = aud_out(); out.semantic_shape = "control_signal";
+        o.push_back(out);
     }
 
     void process_audio(const VividAudioContext* c) override {
@@ -847,7 +854,9 @@ struct EuclidOp : NoteGenBase {
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
-        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
     double gate_frac()  const override { return gate.value; }
@@ -916,7 +925,9 @@ struct ChordOp : NoteGenBase {
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
-        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
     double gate_frac()  const override { return gate.value; }
@@ -974,7 +985,9 @@ struct RandMelodyOp : NoteGenBase {
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
-        p.multiplicity = VIVID_MULTIPLICITY_SCALAR; o.push_back(p);
+        p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
+        p.semantic_shape = "note_stream";   // ADR-0047: real stream is notes (via note_out), not audio
+        o.push_back(p);
     }
     double step_beats() const override { return rate_beats(rate.int_value()); }
     double gate_frac()  const override { return gate.value; }
