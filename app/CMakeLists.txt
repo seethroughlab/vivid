@@ -373,22 +373,18 @@ else()
     set(_examples_dest "$<TARGET_FILE_DIR:vivid>/examples")
 endif()
 set(_examples_src "${CMAKE_CURRENT_SOURCE_DIR}/../examples/demos/projects")
-# UX Phase-6 F1: these demos reference absolute developer/personal paths (a stale git worktree,
-# dev-repo media that isn't bundled — examples/demos/media/ is a sibling of projects/ and is NOT
-# copied — and a personal, non-redistributable Ableton sample library), so they break on any clean
-# machine and must NOT ship in File > Open Example. Copy the whole tree, then prune the known-broken
-# demos. Remove a name from this list once its demo is repaired to bundle-relative media.
-set(_examples_exclude bloom chop drift grid mirror signal)
+# UX Phase-6 F1: examples/demos/projects/ now holds ONLY curated, self-contained demos — every media
+# reference is project-relative, so the whole tree bundles cleanly. The dev-path demos that referenced
+# absolute/personal/non-redistributable media were relocated to examples/demos/wip/ (see its README),
+# which is NOT copied here — so no per-demo denylist is needed. Keep projects/ clean: a new demo must
+# be self-contained (project-relative media, properly licensed) before it lands here.
 if(EXISTS "${_examples_src}")
-    set(_examples_prune "")
-    foreach(_ex IN LISTS _examples_exclude)
-        list(APPEND _examples_prune COMMAND ${CMAKE_COMMAND} -E rm -rf "${_examples_dest}/${_ex}")
-    endforeach()
+    # rm the destination first so it faithfully MIRRORS projects/ — copy_directory only merges, so a
+    # demo removed from the source (e.g. relocated to wip/) would otherwise linger in the bundle.
     add_custom_target(vivid_examples ALL
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_examples_dest}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${_examples_dest}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${_examples_src}" "${_examples_dest}"
-        ${_examples_prune}
-        COMMENT "Copying the bundled example projects into the app (excluding dev-path demos, Ph6 F1)"
+        COMMENT "Copying the bundled example projects into the app"
         VERBATIM)
 else()
     add_custom_target(vivid_examples ALL
