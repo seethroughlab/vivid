@@ -393,6 +393,20 @@ json unified_operator_catalog(const ControlCtx& c, const std::string& domain, co
                 arr.push_back(jo);
             }
         }
+        // ADR-0047: note generators (Euclid/Chord/RandMelody) were enumerated by name only via
+        // list_generators, with no port descriptors exposed. Emit their full descriptors here — same
+        // pattern as note_effect/modulator — so their ports (note_stream output) + params are visible.
+        if (accept("audio", "generator")) {
+            for (int i = 0; i < P::session_available_generator_count(c.session); ++i) {
+                const char* nm = P::session_available_generator_name(c.session, i);
+                const VividOperatorDescriptor* d = reg->descriptor_for(nm ? nm : "");
+                json jo = d ? control_json::operator_to_json(*d, "generator")
+                            : json({ {"name", nm ? nm : ""}, {"kind", "generator"} });
+                jo["domain"] = "audio"; jo["format"] = "native";
+                jo["spawn"] = { {"tool", "place_generator"}, {"op_arg", nm ? nm : ""} };
+                arr.push_back(jo);
+            }
+        }
     }
     if (accept("audio", "plugin") || accept("audio", "instrument") || accept("audio", "audio_effect") || accept("audio", "note_effect")) {
         for (int i = 0; i < P::plugin_count(); ++i) {
