@@ -7,6 +7,11 @@ Status: draft
 Vivid 4 treats vocabulary as architecture. This glossary defines product terms before they become
 schemas, APIs, UI labels, MCP tools, or implementation assumptions.
 
+> First-release note (UX Ph1 F1): terms marked **_(planned)_** name the experimentation-loop model
+> that is **not in the first release** — there is no UI or data model for them yet. They are defined
+> here ahead of implementation, on purpose; treat them as the roadmap vocabulary, not shipped
+> features.
+
 ## Terms
 
 ### Agent
@@ -44,7 +49,7 @@ parameters.
 A behavior capsule launched from a track in a scene. A clip may contain MIDI notes, a theory pattern,
 plugin state, automation, visual state, mapping behavior, or another session-level behavior.
 
-### Cue Path
+### Cue Path _(planned)_
 
 A performance progression through scenes. Cue paths may wait, loop, branch, or advance on musical
 conditions, but they are not a linear arrangement timeline.
@@ -55,7 +60,7 @@ The primary visuals authoring surface. It contains visual operators, texture edg
 nodes, Output nodes, and live visual state. It is paired with Session View rather than hidden beneath
 it.
 
-### Live Take
+### Live Take _(planned)_
 
 The take currently active in a variation well — the one that plays and drives its cell. Switching
 the live take auditions an alternative against the running loop without discarding the others. See
@@ -93,7 +98,7 @@ The primary DAW-style authoring surface. It presents tracks, clips, scenes, devi
 selection, and performance state. It is one of Vivid's two primary surfaces, paired with the visuals
 Graph.
 
-### Take
+### Take _(planned)_
 
 One candidate clip held in a variation well: a concrete behavior (notes, pattern, plugin state,
 visual state, or mapping) that can become the cell's live clip. A take may be *kept* (marked worth
@@ -104,12 +109,12 @@ holding onto) or *branched* (copied to mutate). See Clip, Live Take, Variation W
 A role or responsibility in the session. A track may be an instrument, audio lane, visual layer,
 mapping lane, or hybrid behavior lane.
 
-### Variation
+### Variation _(planned)_
 
 An alternative clip, scene, binding, or parameter behavior generated or edited while preserving its
 musical/visual role and compatibility with the surrounding session.
 
-### Variation Well
+### Variation Well _(planned)_
 
 The set of takes available for a single track-and-scene cell, with one marked live. The well makes
 the experimentation loop — audition, keep, branch, compare — local to the cell where the work

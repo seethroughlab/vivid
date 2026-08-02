@@ -196,7 +196,11 @@ or Help; "Eval" holds "Set Gemini Key…" and "Evaluate Output". (→ F5)
 - Smallest acceptable fix: reconcile the *docs*, not build the feature — mark these glossary terms
   (and PRD §6's loop) as **planned / not in first release** so the vocabulary contract stops promising
   unshipped objects. Building the Variation Well is a post-1.0 feature, not a release fix. Owner/status:
-  Unassigned | P2.
+  **fixed (docs)** | P2.
+- **RESOLVED** (branch `fix-p3-backlog-reconciliations`): `docs/product/glossary.md` now carries a
+  first-release note and marks the five experimentation-loop terms (Take, Live Take, Variation,
+  Variation Well, Cue Path) **_(planned)_** — so the vocabulary contract no longer reads as promising
+  shipped objects. Building the Variation Well itself remains post-1.0.
 
 #### F3 (P2): No in-app first-run guidance; the designated "front door" is an MCP/CLI builder script
 

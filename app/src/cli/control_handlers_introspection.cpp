@@ -1045,6 +1045,7 @@ void register_introspection_handlers(Handlers& handlers_) {
         ss << bindings.size() << " binding" << (bindings.size() == 1 ? "" : "s");
         r["summary"] = ss.str();
         r["bindings"] = bindings;
+        r["mappings"] = bindings;   // UX Ph5 F2: "mapping" is the product-wide bridge noun; carry both keys
         if (detail != "summary") {
             r["sources"] = json::array({"master.level", "master.transient", "master.low", "master.mid", "master.high"});
             r["destinations"] = { {"visual", visual_mapping_destinations(c)},
@@ -1052,6 +1053,9 @@ void register_introspection_handlers(Handlers& handlers_) {
         }
         return r;
     };
+    // UX Ph5 F2: `inspect_mappings` is the name that matches the "mapping" convention (get_mappings,
+    // connect_mapping, explain_mapping, …); `inspect_bindings` stays as a back-compat alias.
+    handlers_["inspect_mappings"] = handlers_["inspect_bindings"];
     handlers_["explain_mapping"] = [](const ControlCtx& c, const json& b) {
         if (!c.graph) return err(code::kNoGraph, "no graph");
         const std::string src = b.value("src", std::string());

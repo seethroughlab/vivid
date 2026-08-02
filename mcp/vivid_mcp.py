@@ -290,10 +290,18 @@ def list_mapping_destinations(scope: str = "all") -> dict:
 
 
 @mcp.tool
-def inspect_bindings(detail: str = "summary") -> dict:
-    """Inspect the current audio/control bindings as first-class relationships, with readable
+def inspect_mappings(detail: str = "summary") -> dict:
+    """Inspect the current audio->visual mappings as first-class relationships, with readable
     source/destination labels and shaping values. detail='normal' also includes source and
-    destination affordances."""
+    destination affordances. (Matches the 'mapping' convention: get_mappings / connect_mapping /
+    explain_mapping.)"""
+    return _post("inspect_mappings", {"detail": detail})
+
+
+@mcp.tool
+def inspect_bindings(detail: str = "summary") -> dict:
+    """Deprecated alias of inspect_mappings (kept for back-compat) — "mapping" is the product-wide
+    bridge noun. Prefer inspect_mappings. (Routes to the inspect_bindings handler, same result.)"""
     return _post("inspect_bindings", {"detail": detail})
 
 

@@ -194,7 +194,12 @@ not raw ids. Two small notes:
 - Evidence: §D; tool list.
 - Smallest acceptable fix: rename to `inspect_mappings` (keep `inspect_bindings` as a deprecated
   alias), or pick the single bridge noun product-wide alongside the Phase-1 F2 decision.
-  Owner/status: Unassigned | P3.
+  Owner/status: **fixed (alias)** | P3.
+- **RESOLVED** (branch `fix-p3-backlog-reconciliations`): added `inspect_mappings` (primary) — the
+  control handler is registered under both names and its response now carries a `mappings` key
+  alongside `bindings`; `inspect_bindings` stays as a back-compat alias. MCP↔control parity PASS;
+  both verified live. Settling the single bridge noun product-wide (with Ph1 F2) remains the larger
+  follow-up.
 
 ## Open Questions
 
