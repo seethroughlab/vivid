@@ -304,6 +304,15 @@ int         session_request_track_clap_effect_state(Session*, int track, const c
 void        session_poll_plugin_loads(Session*);
 int         session_plugin_loads_pending(Session*);
 const char* session_last_plugin_load_error(Session*);
+// Missing-instrument cue (UX Ph6 F2): a load records the DISPLAY NAME of every instrument that failed
+// to resolve on this machine — a catalog miss that fell back to a silent audio placeholder, or an
+// async CLAP instrument whose load terminally failed. The GUI drains these into a single toast once
+// all async loads settle (pending()==0), so a demo opened without Surge XT / Cassette Drums says so
+// instead of degrading a track silently. Dedup'd by name; main-thread only. clear() at load start.
+void        session_note_unresolved_instrument(Session*, const char* display_name);
+void        session_clear_unresolved_instruments(Session*);
+int         session_unresolved_instrument_count(Session*);
+const char* session_unresolved_instrument_name(Session*, int i);
 // CLAP identity + state for persistence ("" / empty when the track has no CLAP plugin there).
 const char* session_track_clap_instrument_path(Session*, int track);
 int         session_track_clap_effect_count(Session*, int track);

@@ -367,6 +367,7 @@ static bool graph_source_is_vst3(const json& jt) {
 // instrument that won't load on this machine falls back to an audio placeholder, keeping
 // indices aligned with the document.
 static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
+    vivid::session::session_clear_unresolved_instruments(s);   // UX Ph6 F2: start this load's missing-plugin tally fresh
     while (vivid::session::session_track_count(s) > 0)
         vivid::session::session_remove_track(s, vivid::session::session_track_count(s) - 1);
     for (const auto& jt : T) {
@@ -383,6 +384,7 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
             if (added < 0) {   // plugin missing on this machine: keep the topology, source stays silent
                 std::fprintf(stderr, "[vivid] load: VST3 source '%s' unavailable — bare graph track (silent source)\n", inst.c_str());
+                vivid::session::session_note_unresolved_instrument(s, inst.c_str());   // UX Ph6 F2 cue
                 added = vivid::session::session_add_graph_track(s, jt.value("name", std::string()).c_str());
             }
         } else if (jt.contains("audio_graph") || jt.contains("clap_instrument") || jt.contains("audio_instrument")) {
@@ -400,6 +402,7 @@ static void rebuild_tracks_from_doc(vivid::session::Session* s, const json& T) {
             added = vivid::session::session_add_instrument_track(s, inst.c_str());
             if (added < 0) {
                 std::fprintf(stderr, "[vivid] load: instrument '%s' unavailable — placeholder audio track\n", inst.c_str());
+                vivid::session::session_note_unresolved_instrument(s, inst.c_str());   // UX Ph6 F2 cue
                 added = vivid::session::session_add_audio_track(s);
             }
         }

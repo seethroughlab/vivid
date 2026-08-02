@@ -578,4 +578,12 @@ if(VIVID_BUILD_TESTS AND APPLE)
         VIVID_TEST_CLAP_PATH="$<TARGET_BUNDLE_DIR:vivid_test_clap>")
     add_test(NAME test_clap_modulation COMMAND test_clap_modulation)
     set_tests_properties(test_clap_modulation PROPERTIES LABELS "AUDIO_ENGINE")
+
+    # UX Ph6 F2: the missing-instrument accumulator + async CLAP-failure tally (no fixture — it drives a
+    # bogus .clap path that fails to load, exactly a demo whose Surge XT isn't installed).
+    add_executable(test_missing_instrument_cue tests/test_missing_instrument_cue.cpp ${_audio_engine_srcs})
+    target_include_directories(test_missing_instrument_cue PRIVATE src src/audio src/gpu tests)
+    target_link_libraries(test_missing_instrument_cue PRIVATE ${_audio_engine_libs})
+    add_test(NAME test_missing_instrument_cue COMMAND test_missing_instrument_cue)
+    set_tests_properties(test_missing_instrument_cue PROPERTIES LABELS "AUDIO_ENGINE")
 endif()

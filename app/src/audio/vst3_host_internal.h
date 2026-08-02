@@ -603,6 +603,8 @@ struct Session {
     std::atomic<int>         clap_pending{0};    // requested-but-not-yet-applied loads
     bool                     clap_worker_stop = false;
     std::string              clap_last_error;    // main-thread only (last failed async load)
+    std::vector<std::string> unresolved_instruments;  // main-thread only: display-names of instruments that
+                                                       // failed to resolve on load (UX Ph6 F2); drained to a toast
 };
 
 // Resolve a (session, track index) to the Track (or null). Defined in vst3_host.cpp; declared here so

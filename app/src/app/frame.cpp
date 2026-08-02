@@ -639,6 +639,26 @@ void run_frame_loop(App& app, Window& win) {
             }
         }
         if (app.session) vivid::session::session_poll_plugin_loads(app.session);   // apply finished async CLAP loads
+        // UX Ph6 F2: a demo opened without its instrument plugins (Surge XT, Cassette Drums, …) degrades
+        // those tracks to silence — logged only to stderr until now. Once every async CLAP load has
+        // settled (pending()==0), surface ONE consolidated toast naming the missing plugins so the
+        // silence is explained. Draining clears the tally, so it fires exactly once per load.
+        if (app.session && vivid::session::session_plugin_loads_pending(app.session) == 0) {
+            const int nmiss = vivid::session::session_unresolved_instrument_count(app.session);
+            if (nmiss > 0) {
+                std::string names;
+                for (int i = 0; i < nmiss; ++i) {
+                    if (i) names += ", ";
+                    names += vivid::session::session_unresolved_instrument_name(app.session, i);
+                }
+                std::string msg = (nmiss == 1 ? "Missing plugin: " : "Missing plugins: ") + names
+                    + (nmiss == 1 ? " \xE2\x80\x94 its track plays silent. Install it to hear this project."
+                                  : " \xE2\x80\x94 those tracks play silent. Install them to hear this project.");
+                VLOG_WARN(app, "%s", msg.c_str());   // ADR-0019: also lands in the log view + header dot
+                vivid::ui::push_toast(win.toasts, vivid::LogLevel::Warning, msg, glfwGetTime(), 12.0);
+                vivid::session::session_clear_unresolved_instruments(app.session);
+            }
+        }
         vivid::session::plugin_scan_poll();   // apply finished plugin classifications (browser badges)
         app.hot_reload.tick();           // apply any ready operator hot-swaps (main thread)
         apply_shader_reloads(app);       // ADR-0016: pick up edits to shader FILES (main thread)
