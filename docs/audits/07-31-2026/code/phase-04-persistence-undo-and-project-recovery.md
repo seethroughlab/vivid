@@ -202,7 +202,17 @@ Missing/quarantined operators load as `op_missing()` preserving node id/topology
   `session_to_json` → `session_from_json_scoped` into a fresh pair, assert structural
   equality (and, ideally, a short rendered-audio/frame hash) for blank, bundled-example, and
   package-backed projects.
-- Owner/status: Unassigned | P1 | own gated PR
+- Owner/status: **WAIVED 2026-08-02** (maintainer's call — the finding itself flagged this as
+  "your call on whether it blocks the RC"). Rationale: the restore path is **manually verified**
+  end-to-end — UX Ph2 verified twice that a saved project reopens with tracks, clips, visual
+  graph, and mappings intact — and is exercised on every app open + MCP `save_project`/
+  `load_project`. The *automated* golden round-trip is not lightweight: `session_to_json`/
+  `session_from_json` link `node_graph.cpp`, which calls `VisualGraph` methods and so drags in
+  the GPU/wgpu stack (an app-ON target, not a headless unit test — see
+  `test_persist_chain_migration`'s note), and a live `VisualGraph` needs a GPU device. Tracked
+  as a **post-release follow-up** (an AUDIO_ENGINE-tier golden round-trip over the audio document
+  — tracks/clips/scenes/generators/edges — with the visual-topology round-trip a further step).
+  Shipped in v0.1.1 without it.
 
 #### P2-01: Several MCP document-mutating methods miss undo (and one drifts the projection)
 
@@ -270,7 +280,9 @@ Owner/status: Unassigned | P3 (docs).
 - **P1-02 fix PR (candidate RC blocker):** retain an orphan `params`/`file_params`/`pinned`
   payload on missing-op `VisualNode`s and round-trip it verbatim, with a degraded-project
   save/load test.
-- **P1-03:** a golden save/load round-trip test (blank / bundled example / package-backed).
+- **P1-03 — WAIVED 2026-08-02 (post-release follow-up):** the automated golden save/load
+  round-trip test. Behavior manually verified (UX Ph2) + exercised by the app/MCP flows; the test
+  needs an app-ON (GPU-linked) target, so it's tracked, not RC-gating. See the finding above.
 - **P2-01:** add the genuine document-mutating MCP methods to `cli/edit_methods.cpp`.
 - **P2-02:** a headless test that runs `EditGateway` with `VIVID_UNDO_AUDIT` on, so the guard
   actually gates regressions (would have caught P2-01).
