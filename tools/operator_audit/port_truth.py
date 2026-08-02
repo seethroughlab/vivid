@@ -38,7 +38,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "examples", "demos"))
 from vivid_demo import Vivid            # noqa: E402
 
 # The catalog `kind` of an op whose real stream is NOT audio -> the semantic_shape its output should carry.
-KIND_STREAM = {"modulator": "control_signal", "note_effect": "note_stream"}
+KIND_STREAM = {"modulator": "control_signal", "note_effect": "note_stream", "generator": "note_stream"}
 HONEST_SHAPES = {"note_stream", "control_signal"}
 
 # Ops intentionally exposing an audio-buffer output despite a note/control kind (there are none today).
@@ -69,12 +69,14 @@ def main():
                             f"expected semantic_shape '{expected}'")
             flagged.append(rec)
 
-    # Note generators are enumerated by name only; the catalog exposes no port descriptors for them.
+    # Every note generator (list_generators) should now also appear in the catalog with its descriptor,
+    # so its ports are introspectable. Flag any that are still name-only (registered but not catalogued).
+    catalog_names = {op.get("name") for op in ops}
     gens = v.call("list_generators").get("generators", [])
     gen_gap = [{"name": g,
-                "issue": "note generator enumerated by name only (list_generators); its port descriptors "
-                         "are not exposed by list_operator_catalog, so its stream type can't be verified"}
-               for g in gens]
+                "issue": "note generator enumerated by list_generators but absent from "
+                         "list_operator_catalog — its port descriptors are not introspectable"}
+               for g in gens if g not in catalog_names]
 
     # ---- report ----
     print("=== ADR-0047 port-truth inventory ===\n")

@@ -67,7 +67,7 @@ def bucket(entry: dict) -> str:
     if d == "visual":
         return "visual"
     if d == "audio":
-        return "control" if k in ("modulator", "note_effect") else "audio"
+        return "control" if k in ("modulator", "note_effect", "generator") else "audio"
     return d or "other"
 
 
