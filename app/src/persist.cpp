@@ -10,6 +10,7 @@
 #include "persist_orphan.h"   // Ph4 P1-02: preserve a missing op's params across save/load
 
 #include <nlohmann/json.hpp>
+#include <filesystem>
 #include <fstream>
 #include <unordered_map>
 #include <vector>
@@ -521,13 +522,14 @@ static void apply_track_values(vivid::session::Session* s, int t, const json& jt
 }
 
 bool session_from_json(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
-                       int& win_w, int& win_h, float& split_x, float& dock_h) {
-    return session_from_json_scoped(j, s, g, win_w, win_h, split_x, dock_h, RestoreAudio::Full);
+                       int& win_w, int& win_h, float& split_x, float& dock_h,
+                       const std::string& base_dir) {
+    return session_from_json_scoped(j, s, g, win_w, win_h, split_x, dock_h, RestoreAudio::Full, base_dir);
 }
 
 bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::ui::NodeGraph& g,
                               int& win_w, int& win_h, float& split_x, float& dock_h,
-                              RestoreAudio audio) {
+                              RestoreAudio audio, const std::string& base_dir) {
     if (!s) return false;
 
     // Version guard: refuse a session written by a NEWER Vivid rather than silently
@@ -601,8 +603,15 @@ bool session_from_json_scoped(const json& j, vivid::session::Session* s, vivid::
                         // Reload the source loop first (if it was from disk); a missing/empty path
                         // leaves the freshly-created track's generated loop in place.
                         const std::string src = ac.value("src_path", std::string());
-                        if (!src.empty())
-                            vivid::session::session_load_audio_clip(s, t, sc, src.c_str(), ac.value("src_bpm", 0.0));
+                        if (!src.empty()) {
+                            // Resolve a project-RELATIVE media ref against the project folder (bundle-
+                            // relative example media); an absolute path loads as-is. Audio loads eagerly
+                            // here, so — unlike visuals' lazy asset_dir — it must resolve at load time.
+                            std::string full = src;
+                            if (!base_dir.empty() && std::filesystem::path(src).is_relative())
+                                full = (std::filesystem::path(base_dir) / src).lexically_normal().string();
+                            vivid::session::session_load_audio_clip(s, t, sc, full.c_str(), ac.value("src_bpm", 0.0));
+                        }
                         vivid::session::session_set_audio_gain(s, t, sc, ac.value("gain", 1.0f));
                         vivid::session::session_set_audio_pitch(s, t, sc, ac.value("pitch", 0.0f));
                         vivid::session::session_set_audio_reverse(s, t, sc, ac.value("reverse", false) ? 1 : 0);
@@ -895,7 +904,8 @@ bool load_session(const std::string& path, vivid::session::Session* s, vivid::ui
         ag_oy    = av.value("oy",    ag_oy);
         ag_scale = av.value("scale", ag_scale);
     }
-    return session_from_json(j, s, g, win_w, win_h, split_x, dock_h);
+    return session_from_json(j, s, g, win_w, win_h, split_x, dock_h,
+                             std::filesystem::path(path).parent_path().string());   // resolve relative media
 }
 
 }  // namespace vivid

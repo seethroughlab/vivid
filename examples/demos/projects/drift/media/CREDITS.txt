@@ -1,0 +1,9 @@
+Drum loops for this demo — royalty-free, redistributable.
+Replaced the original non-redistributable samples (UX audit Ph6 F1).
+
+Loops:
+  - youth-bouncy-lofi-drum-loop_83bpm.wav
+  - standard-uk-garage-drum-loop_130bpm.wav
+  - amen-break-frenzy-jazzy_174bpm_G#_major.wav
+
+Confirm the exact license/attribution (CC0 = no credit needed; CC-BY = add credit here).
