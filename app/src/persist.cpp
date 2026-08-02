@@ -882,6 +882,27 @@ bool save_session(const std::string& path, vivid::session::Session* s, vivid::ui
     if (!s) return false;
     json j = session_to_json(s, g, win_w, win_h, split_x, dock_h);
     j["audio_view"] = { {"ox", ag_ox}, {"oy", ag_oy}, {"scale", ag_scale} };   // absolute camera (ADR-0023)
+    // Portability: audio clip src_paths are resolved to ABSOLUTE on load (unlike visual file-params,
+    // which stay relative and resolve lazily), so store them back RELATIVE to the project dir — but
+    // only when the media actually lives under it (a bundled demo folder), never rewriting an external
+    // absolute path into a "../.." escape. Mirrors the load-time resolution in load_session.
+    {
+        const std::filesystem::path base = std::filesystem::path(path).parent_path();
+        if (!base.empty() && j.contains("tracks") && j["tracks"].is_array()) {
+            for (auto& jt : j["tracks"]) {
+                if (!jt.contains("audio_clips") || !jt["audio_clips"].is_array()) continue;
+                for (auto& c : jt["audio_clips"]) {
+                    if (!c.contains("src_path") || !c["src_path"].is_string()) continue;
+                    const std::filesystem::path sp(c["src_path"].get<std::string>());
+                    if (!sp.is_absolute()) continue;
+                    std::error_code ec;
+                    const std::filesystem::path rel = std::filesystem::relative(sp, base, ec);
+                    if (!ec && !rel.empty() && *rel.begin() != "..")   // stays inside the project dir
+                        c["src_path"] = rel.generic_string();
+                }
+            }
+        }
+    }
     std::ofstream f(path);
     if (!f) return false;
     f << j.dump(2);
