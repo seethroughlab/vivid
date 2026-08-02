@@ -8,12 +8,15 @@ namespace vivid {
 
 struct EUniforms { float res[2]; float time; float p[4]; float _pad; };  // 32 bytes (std140)
 
-// Fullscreen triangle — same as ShaderOp's; emits a vec2 uv in [0,1].
+// Fullscreen triangle emitting a vec2 uv in [0,1]. uv.y is flipped vs clip-space y so the TOP of the
+// screen samples the TOP of the source (uv.y=0) — an identity present, matching the canonical texture
+// convention (see fullscreenTriangle in operator_api/gpu_common.h). Used only by the final present
+// blit and the reduce-motion blend, both of which sample RTs that are now stored top-down.
 static const char* kVertGLSL = R"(#version 450
 layout(location = 0) out vec2 v_uv;
 void main() {
     vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
-    v_uv = p;
+    v_uv = vec2(p.x, 1.0 - p.y);
     gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 )";

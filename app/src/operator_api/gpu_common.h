@@ -12,7 +12,11 @@ namespace vivid::gpu {
 
 // Fullscreen triangle vertex shader — covers the entire viewport with a single
 // oversized triangle.  No vertex buffer needed; just draw 3 vertices.
-// Provides `FullscreenOutput` with position and UV (top-left origin, Y-flipped).
+// Provides `FullscreenOutput` with position and UV in the canonical image convention: uv (0,0) is the
+// TOP-LEFT of both the sampled texture and the framebuffer, so a fullscreen pass that samples an input
+// at `uv` is IDENTITY — it does not vertically flip. This makes orientation independent of how many
+// op-passes a texture flows through (Switch/Composite/CRT/... no longer each invert Y). `flipY=true`
+// opts into an explicit vertical flip for the rare op that wants one.
 inline constexpr const char* FULLSCREEN_VERTEX_WGSL = R"(
 struct FullscreenOutput {
     @builtin(position) position: vec4f,
@@ -28,7 +32,9 @@ fn fullscreenTriangle(vertexIndex: u32, flipY: bool) -> FullscreenOutput {
     var out: FullscreenOutput;
     let pos = positions[vertexIndex];
     out.position = vec4f(pos, 0.0, 1.0);
-    out.uv = pos * 0.5 + 0.5;
+    // Framebuffer/clip-space y is +up, but texture uv.y is +down — invert so the top of the screen
+    // maps to the top of the texture (uv.y = 0): an identity passthrough, not a flip.
+    out.uv = vec2f(pos.x * 0.5 + 0.5, 0.5 - pos.y * 0.5);
     if (flipY) {
         out.uv.y = 1.0 - out.uv.y;
     }
