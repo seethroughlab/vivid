@@ -189,6 +189,13 @@ target_sources(test_window_prefs PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
 target_link_libraries(test_window_prefs PRIVATE nlohmann_json::nlohmann_json)
 
+# UX Ph4 F1: app-level settings store (reduce-motion) — defaults + save/load round-trip + bad-JSON guard.
+vivid_add_test(test_app_settings)
+target_sources(test_app_settings PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/app/app_settings.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform/platform.cpp)
+target_link_libraries(test_app_settings PRIVATE nlohmann_json::nlohmann_json)
+
 # P4.1: session-version load guard (classify_session_version is a pure header fn).
 vivid_add_test(test_version_guard)
 target_link_libraries(test_version_guard PRIVATE nlohmann_json::nlohmann_json)

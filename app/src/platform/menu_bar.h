@@ -21,6 +21,7 @@ struct MenuActions {
     std::function<void()> set_gemini_key;   // Eval > Set Gemini Key… (ADR-0026)
     std::function<void()> evaluate_output;  // Eval > Evaluate Output
     std::function<void()> export_video;     // File > Export Video (toggles start/stop a realtime AV export)
+    std::function<void()> toggle_reduce_motion;  // View > Reduce Motion (UX Ph4 F1 accessibility toggle)
 };
 
 // A menu entry for the File > Open Example submenu: a display label + the project path to open.
@@ -46,6 +47,10 @@ void set_edit_labels(const std::string& undo_label, const std::string& redo_labe
 // Flip the File > Export Video item label between "Export Video…" and "Stop Export" as recording
 // starts/stops (from any trigger). The frame loop calls this when the recorder state changes.
 void set_export_video_recording(bool recording);
+
+// Set the checkmark on View > Reduce Motion. Call after install_menu_bar with the persisted state, and
+// again whenever the setting toggles, so the menu reflects the live value. (UX Ph4 F1)
+void set_reduce_motion_checked(bool checked);
 
 // ADR-0018: the macOS window "edited" dot (the close-button gets a dot; ⌘-title shows the proxy is
 // modified) — set from the app-level dirty flag. No-op off macOS.

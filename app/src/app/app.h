@@ -68,6 +68,7 @@ struct App {
     MusicEval           music_eval; // ADR-0026: in-app Gemini audio evaluation (async jobs)
 
     bool recovered_unsaved = false;   // ADR-0018: a launch-time autosave recovery ran; mark dirty post-baseline
+    bool reduce_motion = false;       // UX Ph4 F1: app-level accessibility toggle (persisted in settings.json)
     // ADR-0017: a document load/new happened — the frame loop re-seeds the undo baseline (clearing the
     // prior project's history) at the end of the next laid-out tick, so undo can't reach across a load.
     bool reseed_undo_baseline = false;

@@ -39,6 +39,36 @@ void main() {
 }
 )";
 
+// UX Ph4 F1 (reduce motion / flash limit): a temporal low-pass over the final output. u_tex0 = the
+// current frame, u_tex1 = the previously-smoothed frame; the result is mix(prev, cur, u_blend). A
+// small u_blend keeps most of the previous frame, so rapid full-frame luminance swings (the
+// photosensitivity risk) are damped — the faster the flash, the more it is attenuated.
+static const char* kReduceMotionGLSL = R"(#version 450
+layout(location = 0) in vec2 v_uv;
+layout(location = 0) out vec4 o_color;
+layout(set = 0, binding = 0) uniform U { vec2 u_res; float u_time; float u_blend; float p1; float p2; float p3; };
+layout(set = 0, binding = 1) uniform texture2D u_cur;
+layout(set = 0, binding = 2) uniform sampler   u_samp;
+layout(set = 0, binding = 3) uniform texture2D u_prev;
+void main() {
+    vec4 cur  = texture(sampler2D(u_cur,  u_samp), v_uv);
+    vec4 prev = texture(sampler2D(u_prev, u_samp), v_uv);
+    o_color = mix(prev, cur, u_blend);
+}
+)";
+// Fraction of the CURRENT frame in the temporal blend (1 - this = weight of the smoothed history).
+// 0.5 halves each per-frame delta — enough to knock a fast strobe well below the flash threshold
+// without turning steady motion into heavy trails.
+static constexpr float kReduceMotionBlend = 0.5f;
+
+// Copy the full extent of one same-size/-format texture into another (history / result shuffles).
+static void copy_texture(WGPUCommandEncoder enc, WGPUTexture src, WGPUTexture dst, uint32_t w, uint32_t h) {
+    WGPUTexelCopyTextureInfo s{}; s.texture = src;
+    WGPUTexelCopyTextureInfo d{}; d.texture = dst;
+    WGPUExtent3D ext = { w, h, 1 };
+    wgpuCommandEncoderCopyTextureToTexture(enc, &s, &d, &ext);
+}
+
 // Clear `view` to opaque black (one render pass).
 static void clear_target(WGPUCommandEncoder enc, WGPUTextureView view) {
     WGPURenderPassColorAttachment color{};
@@ -471,7 +501,34 @@ void VisualGraph::run_chain(WGPUCommandEncoder enc, float time) {
             g->process_gpu(&ctx);
         }
     }
+    apply_output_smoothing(enc, feed, time);   // UX Ph4 F1: temporally low-pass the output when reduce-motion is on
     ++frame_;
+}
+
+void VisualGraph::apply_output_smoothing(WGPUCommandEncoder enc, int feed, float time) {
+    if (!reduce_motion_) { rm_valid_ = false; return; }   // off: reset so a later re-enable starts fresh
+    if (feed < 0 || feed >= static_cast<int>(rts_.size()) || !rts_[feed].tex) return;
+    if (!rm_blend_.ok() && !rm_blend_.init(dev_, q_, fmt_, kReduceMotionGLSL, 2, 1)) return;
+    // (Re)allocate the history/scratch targets to match the current output size (mirrors the node RTs).
+    if (rm_hist_.w != rtW_ || rm_hist_.h != rtH_ || !rm_hist_.tex) {
+        rm_hist_.release();    rm_hist_.init(dev_, rtW_, rtH_, fmt_);
+        rm_scratch_.release(); rm_scratch_.init(dev_, rtW_, rtH_, fmt_);
+        rm_valid_ = false;
+    }
+    if (!rm_valid_) {   // first frame (or post-resize): seed history from the current output, pass through
+        copy_texture(enc, rts_[feed].tex, rm_hist_.tex, rtW_, rtH_);
+        rm_valid_ = true;
+        return;
+    }
+    // Blend into scratch: mix(prev, current, blend). tex0 = current (rts_[feed]), tex1 = prev (rm_hist_).
+    const float p[4] = { kReduceMotionBlend, 0.f, 0.f, 0.f };
+    const WGPUTextureView ins[2] = { rts_[feed].view, rm_hist_.view };
+    rm_blend_.render(enc, rm_scratch_.view, 0.f, 0.f, static_cast<float>(rtW_), static_cast<float>(rtH_),
+                     /*clear*/true, ins, 2, time, p, 4);
+    // Publish the smoothed frame back onto the output RT (so preview / pop-out / export all see it),
+    // then keep it as next frame's history via a swap (scratch becomes the free buffer).
+    copy_texture(enc, rm_scratch_.tex, rts_[feed].tex, rtW_, rtH_);
+    std::swap(rm_hist_, rm_scratch_);
 }
 
 void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
@@ -502,6 +559,9 @@ void VisualGraph::present_to(WGPUCommandEncoder enc, WGPUTextureView view,
 
 void VisualGraph::shutdown() {
     blit_.shutdown();
+    rm_blend_.shutdown();          // UX Ph4 F1
+    rm_hist_.release();
+    rm_scratch_.release();
     for (auto& r : rts_) r.release();
     rts_.clear();
     fallback_.release();
