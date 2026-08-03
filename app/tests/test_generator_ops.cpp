@@ -175,5 +175,37 @@ int main() {
         }
     }
 
+    // --- 6. ADR-0050: a CATALOG preview renders from DEFAULTS (param_values=null) — the transient path
+    //         the add-generator picker uses. Proves each generator's draw_thumbnail draws without a
+    //         placed instance and never dereferences the absent param array. ---
+    {
+        struct Counter { int draws = 0; };
+        Counter ctr;
+        VividDrawAPI api{};
+        api.opaque      = &ctr;
+        api.draw_rect   = [](void* o, float, float, float, float, VividColor) { static_cast<Counter*>(o)->draws++; };
+        api.draw_circle = [](void* o, float, float, float, float, VividColor) { static_cast<Counter*>(o)->draws++; };
+        api.draw_line   = [](void* o, float, float, float, float, float, VividColor) { static_cast<Counter*>(o)->draws++; };
+        for (const char* nm : { "Euclid", "Chord", "RandMelody" }) {
+            ctr = {};
+            vivid::AudioOp* op = vivid::audio_op_create(reg, nm);
+            CHECK(op != nullptr);
+            if (op) {
+                VividThumbnailContext tc{};
+                tc.surface_width  = 24.f;
+                tc.surface_height = 24.f;
+                tc.draw           = api;
+                tc.param_values   = nullptr;   // no placed instance -> render from the op's own defaults
+                tc.param_count    = 0;
+                tc.accent         = VividColor{ 0.9f, 0.6f, 0.2f, 1.f };
+                tc.time           = 0.5;
+                tc.purpose        = VIVID_PREVIEW_CATALOG;
+                vivid::audio_op_draw_thumbnail(op, &tc);
+                CHECK(ctr.draws > 0);          // it drew its default pattern (no null-param deref, no crash)
+                vivid::audio_op_destroy(op);
+            }
+        }
+    }
+
     return vivid::test::summary("test_generator_ops");
 }

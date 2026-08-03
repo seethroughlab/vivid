@@ -85,6 +85,11 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::audio_chooser_key(*win, *app, key);
         return;
     }
+    // ADR-0050: the add-generator picker owns the keyboard while open.
+    if (win->generator_chooser.open()) {
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::generator_chooser_key(*win, *app, key);
+        return;
+    }
     // Phase 2c: the curated inspector's "+ Add param" palette owns the keyboard while open.
     if (win->param_chooser.open()) {
         if (action == GLFW_PRESS || action == GLFW_REPEAT) vivid::input::param_chooser_key(*win, *app, key);
@@ -177,6 +182,8 @@ void key_callback(GLFWwindow* w, int key, int /*sc*/, int action, int mods) {
             app->graph->chooser_show(mx, my); return;
         }
         if (vivid::input::audio_chooser_open_at(*win, *app, mx, my)) return;
+        // ADR-0050: Tab over a scene cell opens the add-generator picker (with live previews).
+        if (vivid::input::generator_chooser_open_at(*win, *app, mx, my)) return;
     }
 
     // File shortcuts (⌘N/⌘O/⌘S/⇧⌘S) are owned by the native File menu (AppKit intercepts
@@ -201,6 +208,7 @@ void char_callback(GLFWwindow* w, unsigned int cp) {
         return;
     }
     if (vivid::input::audio_chooser_char(*win, cp)) return;    // the audio chooser has the keyboard
+    if (vivid::input::generator_chooser_char(*win, cp)) return;   // ADR-0050 generator picker filter typing
     if (vivid::input::param_chooser_char(*win, cp)) return;    // ...or the "+ Add param" palette (Phase 2c)
     if (win->app->graph && win->app->graph->chooser_open()) win->app->graph->chooser_char(cp);
 }
@@ -238,6 +246,10 @@ void mouse_button_callback(GLFWwindow* w, int button, int action, int mods) {
     // The audio Tab chooser, while open, is modal: it owns the next click (pick a row / dismiss).
     if (win->audio_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
         if (vivid::input::audio_chooser_click(*win, *app, mx, my)) return;
+    }
+    // ADR-0050: the add-generator picker is likewise modal while open.
+    if (win->generator_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        if (vivid::input::generator_chooser_click(*win, *app, mx, my)) return;
     }
     // The "+ Add param" palette is modal the same way (Phase 2c).
     if (win->param_chooser.open() && button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {

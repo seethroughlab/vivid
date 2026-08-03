@@ -10,6 +10,7 @@
 #include "ui/node_graph.h"          // NodeGraph::zoom_at
 #include "ui/audio_node_graph.h"
 #include "ui/audio_catalog.h"       // A3: the unified add catalog (native ops + VST3 + CLAP)
+#include "ui/operator_draw_bridge.h" // ADR-0050: DrawBridge + make_op_draw_api (CATALOG preview swatch)
 #include "ui/compound_widget.h"     // VIVID_DISPLAY_LFO (compound-widget hints)
 #include "ui/param_widget.h"        // Phase 2b: NodeWidget (curated inspector row widgets)
 #include "gpu/visual_graph.h"
@@ -241,6 +242,99 @@ bool audio_chooser_click(Window& win, App& app, double mx, double my) {
     if (!win.audio_chooser.open()) return false;
     bool dismissed = false;
     if (const auto* e = win.audio_chooser.click(mx, my, dismissed)) audio_chooser_spawn(win, app, *e);
+    return true;
+}
+
+// ---- ADR-0050: the add-generator picker (Tab over a scene cell) ----------------------------------
+// Places a note generator (Euclid/Chord/RandMelody) into the target cell, with each row drawing a live
+// CATALOG preview of the generator's default pattern (via session_op_draw_catalog_thumbnail).
+
+static void generator_chooser_spawn(Window& win, App& app, const vivid::ui::Chooser::Entry& e) {
+    if (!app.session || win.gen_pick_track < 0 || win.gen_pick_scene < 0) return;
+    if (S::session_place_generator(app.session, win.gen_pick_track, win.gen_pick_scene, e.spawn.type.c_str())) {
+        if (app.edit_gateway) app.edit_gateway->note_edit("Add Generator", "");   // ADR-0017/G3 undo capture
+    } else {
+        std::fprintf(stderr, "[vivid] could not place generator '%s' at track %d scene %d\n",
+                     e.label.c_str(), win.gen_pick_track, win.gen_pick_scene);
+    }
+    win.gen_pick_track = win.gen_pick_scene = -1;
+}
+
+bool generator_chooser_open_at(Window& win, App& app, double mx, double my) {
+    if (!app.session) return false;
+    // Which scene cell is under the cursor? (the grid is shifted right by the sidebar, per clipgrid).
+    const int tracks = S::session_track_count(app.session);
+    const int scenes = S::session_scene_count(app.session);
+    const double dmx = mx - win.sidebar_w;
+    int pt = -1, ps = -1;
+    for (int t = 0; t < tracks && pt < 0; ++t)
+        for (int sc = 0; sc < scenes; ++sc)
+            if (vivid::ui::hit(vivid::ui::clip_cell_rect(t, sc), dmx, my)) { pt = t; ps = sc; break; }
+    if (pt < 0) return false;
+
+    const int ng = S::session_available_generator_count(app.session);
+    if (ng <= 0) return false;
+    std::vector<vivid::ui::ChooserEntry> entries;
+    for (int i = 0; i < ng; ++i) {
+        const char* nm = S::session_available_generator_name(app.session, i);
+        if (!nm || !*nm) continue;
+        vivid::ui::ChooserEntry e;
+        e.label   = nm;
+        e.summary = "note generator";
+        e.role    = static_cast<VividOperatorRole>(S::session_audio_op_role(app.session, nm));
+        e.accent  = vivid::ui::style().control;
+        e.spawn   = { vivid::ui::Domain::Audio, vivid::ui::SpawnKind::AudioNoteOp, nm };   // type only; placed via gen picker
+        entries.push_back(std::move(e));
+    }
+    if (entries.empty()) return false;
+
+    win.gen_pick_track = pt; win.gen_pick_scene = ps;
+    win.generator_chooser.set_entries(std::move(entries));
+    // Per-row CATALOG preview: draw each generator TYPE from its defaults into the row swatch.
+    vivid::session::Session* s = app.session;
+    win.generator_chooser.set_preview_drawer(
+        [s](vivid::ui::Renderer2D& r, const vivid::ui::ChooserEntry& e, float x, float y, float w, float h) {
+            vivid::ui::DrawBridge db{ &r, x, y, x, y, w, h };
+            VividThumbnailContext tc{};
+            tc.surface_width = w; tc.surface_height = h;
+            tc.draw = vivid::ui::make_op_draw_api(&db);
+            tc.param_values = nullptr; tc.param_count = 0;   // no placed instance → render from defaults
+            const float* a = vivid::ui::style().control;
+            tc.accent  = VividColor{ a[0], a[1], a[2], 1.f };
+            tc.time    = glfwGetTime() * 2.0;                // gentle ~120bpm animation, transport-independent
+            tc.purpose = VIVID_PREVIEW_CATALOG;
+            vivid::session::session_op_draw_catalog_thumbnail(s, e.spawn.type.c_str(), &tc);
+        });
+    const Rect cell = vivid::ui::clip_cell_rect(pt, ps);
+    win.generator_chooser.show(cell.x + win.sidebar_w, cell.y + cell.h,
+                               8.f, vivid::ui::kTopBarH + 8.f,
+                               static_cast<float>(win.win_w) - 8.f, static_cast<float>(win.win_h) - 8.f);
+    return true;
+}
+
+bool generator_chooser_key(Window& win, App& app, int key) {
+    if (!win.generator_chooser.open()) return false;
+    if (key == GLFW_KEY_ESCAPE) { win.generator_chooser.hide(); return true; }
+    if (key == GLFW_KEY_ENTER || key == GLFW_KEY_KP_ENTER) {
+        if (const auto* e = win.generator_chooser.confirm()) generator_chooser_spawn(win, app, *e);
+        return true;
+    }
+    if (key == GLFW_KEY_DOWN || key == GLFW_KEY_TAB) { win.generator_chooser.move(+1); return true; }
+    if (key == GLFW_KEY_UP)        { win.generator_chooser.move(-1); return true; }
+    if (key == GLFW_KEY_BACKSPACE) { win.generator_chooser.backspace(); return true; }
+    return true;   // swallow everything else while it's up
+}
+
+bool generator_chooser_char(Window& win, unsigned int cp) {
+    if (!win.generator_chooser.open()) return false;
+    win.generator_chooser.type(cp);
+    return true;
+}
+
+bool generator_chooser_click(Window& win, App& app, double mx, double my) {
+    if (!win.generator_chooser.open()) return false;
+    bool dismissed = false;
+    if (const auto* e = win.generator_chooser.click(mx, my, dismissed)) generator_chooser_spawn(win, app, *e);
     return true;
 }
 

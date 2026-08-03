@@ -4050,6 +4050,17 @@ int session_generator_draw_thumbnail(Session* s, int track, int scene, const ::V
     return 1;
 }
 
+int session_op_draw_catalog_thumbnail(Session* s, const char* op_name, const ::VividThumbnailContext* ctx) {
+    // ADR-0050 CATALOG preview: no placed instance, so make a transient op from the registry, let it
+    // draw from `ctx` (the op reads only the ctx snapshot — draw API + purpose + params), and drop it.
+    if (!s || !s->op_reg || !op_name || !*op_name || !ctx) return 0;
+    vivid::AudioOp* op = vivid::audio_op_create(*s->op_reg, op_name);
+    if (!op) return 0;
+    vivid::audio_op_draw_thumbnail(op, ctx);
+    vivid::audio_op_destroy(op);
+    return 1;
+}
+
 // Load-time only: set the scene count BEFORE tracks are recreated (rebuild_tracks_from_doc),
 // so each track is born with the right number of clip slots. Clamped to [1, kMaxScenes].
 void session_set_scene_count(Session* s, int scenes) {

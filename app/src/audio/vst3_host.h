@@ -75,6 +75,12 @@ int         session_set_generator_param(Session*, int track, int scene, const ch
 // nothing if the cell is a clip / holds no generator). UI/main thread; the ctx pointer is opaque
 // here and forwarded to the op's draw_thumbnail. See VividThumbnailContext (operator_api/types.h).
 int         session_generator_draw_thumbnail(Session*, int track, int scene, const ::VividThumbnailContext* ctx);
+// ADR-0050: draw a compact CATALOG preview for an operator TYPE that has no placed instance (the
+// add-generator picker). Spins up a transient op from the registry, forwards `ctx` to its
+// draw_thumbnail, and destroys it. The caller sets ctx->purpose = VIVID_PREVIEW_CATALOG and normally
+// passes param_values = null / param_count = 0 so the op renders from its defaults. Returns 0 if the
+// name is not a valid audio op. UI/main thread; no GPU (Path-A previewers only, e.g. note generators).
+int         session_op_draw_catalog_thumbnail(Session*, const char* op_name, const ::VividThumbnailContext* ctx);
 const char* session_track_name(Session*, int track);
 // Stable per-track id (monotonic; survives reorders/deletes). The audio->visual bridge
 // keys mapping sources by this, not the positional index, so deleting a track never

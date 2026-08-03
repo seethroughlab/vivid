@@ -37,6 +37,12 @@ void audio_chooser_open_new_track(Window& win, App& app, double mx, double my); 
 bool audio_chooser_key(Window& win, App& app, int key);
 bool audio_chooser_char(Window& win, unsigned int cp);
 bool audio_chooser_click(Window& win, App& app, double mx, double my);
+// ADR-0050: the add-generator picker (Tab over a scene cell → place a note generator, with a live
+// per-row CATALOG preview). open_at returns false if the cursor isn't over a clip cell.
+bool generator_chooser_open_at(Window& win, App& app, double mx, double my);
+bool generator_chooser_key(Window& win, App& app, int key);
+bool generator_chooser_char(Window& win, unsigned int cp);
+bool generator_chooser_click(Window& win, App& app, double mx, double my);
 // Phase 2c: the curated inspector's "+ Add param" palette (the same chooser, reused for params).
 void param_chooser_open(Window& win, App& app, int node, double mx, double my);
 bool param_chooser_key(Window& win, App& app, int key);
