@@ -122,10 +122,6 @@ static bool descriptor_is_source(const VividOperatorDescriptor* d) {
 static bool role_is_note(const std::string& nm, const VividOperatorDescriptor* d);
 static bool role_is_mod (const std::string& nm, const VividOperatorDescriptor* d);
 static bool role_is_gen (const std::string& nm, const VividOperatorDescriptor* d);
-// ADR-0015: the note-effect set (marked at registration; see audio_op_mark_note_op).
-static std::set<std::string>& note_ops() { static std::set<std::string> s; return s; }
-void audio_op_mark_note_op(const std::string& name) { note_ops().insert(name); }
-bool audio_op_is_note_op(const std::string& name) { return note_ops().count(name) != 0; }
 int audio_note_op_count(OpRegistry& reg) {
     int n = 0;
     for (const auto& nm : reg.type_names()) if (role_is_note(nm, reg.descriptor_for(nm))) ++n;
@@ -144,12 +140,6 @@ const char* audio_note_op_name(OpRegistry& reg, int idx) {
     }
     return "";
 }
-// ADR-0022: the modulator set (marked at registration; see audio_op_mark_mod_op). Same escape
-// hatch as note ops, for the same reason: a modulator has no audio ports at all, so
-// descriptor_is_source() calls it a source and it would be offered as an instrument.
-static std::set<std::string>& mod_ops() { static std::set<std::string> s; return s; }
-void audio_op_mark_mod_op(const std::string& name) { mod_ops().insert(name); }
-bool audio_op_is_mod_op(const std::string& name) { return mod_ops().count(name) != 0; }
 int audio_mod_op_count(OpRegistry& reg) {
     int n = 0;
     for (const auto& nm : reg.type_names()) if (role_is_mod(nm, reg.descriptor_for(nm))) ++n;
@@ -164,12 +154,6 @@ const char* audio_mod_op_name(OpRegistry& reg, int idx) {
     }
     return "";
 }
-// ADR-0022 P3.3: the note-generator set (marked at registration; see audio_op_mark_gen_op). Same
-// escape hatch as note/mod ops — a generator declares an audio OUTPUT so descriptor_is_source()
-// calls it a source; marking excludes it from the instrument list and lists it as a generator.
-static std::set<std::string>& gen_ops() { static std::set<std::string> s; return s; }
-void audio_op_mark_gen_op(const std::string& name) { gen_ops().insert(name); }
-bool audio_op_is_gen_op(const std::string& name) { return gen_ops().count(name) != 0; }
 int audio_gen_op_count(OpRegistry& reg) {
     int n = 0;
     for (const auto& nm : reg.type_names()) if (role_is_gen(nm, reg.descriptor_for(nm))) ++n;
@@ -189,14 +173,16 @@ const char* audio_gen_op_name(OpRegistry& reg, int idx) {
 // audio_role (from vivid_audio_role, recorded in the host descriptor). Honoring EITHER makes a
 // project-shipped audio op first-class: it lands in the same generator / note-fx / modulator lists
 // as a built-in instead of being mis-offered as a plain instrument.
+// ADR-0047: role comes solely from the descriptor's declared audio_role (built-ins now override
+// declared_audio_role(); dylibs export vivid_audio_role) — the audio_op_mark_* name tables are retired.
 static bool role_is_note(const std::string& nm, const VividOperatorDescriptor* d) {
-    return note_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_NOTE_EFFECT);
+    (void)nm; return d && d->audio_role == VIVID_AUDIO_ROLE_NOTE_EFFECT;
 }
 static bool role_is_mod(const std::string& nm, const VividOperatorDescriptor* d) {
-    return mod_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_MODULATOR);
+    (void)nm; return d && d->audio_role == VIVID_AUDIO_ROLE_MODULATOR;
 }
 static bool role_is_gen(const std::string& nm, const VividOperatorDescriptor* d) {
-    return gen_ops().count(nm) != 0 || (d && d->audio_role == VIVID_AUDIO_ROLE_GENERATOR);
+    (void)nm; return d && d->audio_role == VIVID_AUDIO_ROLE_GENERATOR;
 }
 // Registry-aware public overloads (v14): resolve the descriptor so a loaded dylib's declared role
 // counts, not just the built-in name marks.

@@ -458,6 +458,9 @@ struct ArpOp : OperatorBase, AudioProcessable {
     static constexpr const char* kSummary = "Note effect: holds the keys you play and re-issues them as an arpeggio.";
     static constexpr std::array<const char*, 4> kKeywords = {"audio", "note", "arpeggiator", "midi"};
 
+    // ADR-0047: role lives in the descriptor (retires the audio_op_mark_* name table) — notes in, notes out.
+    VividAudioRole declared_audio_role() const override { return VIVID_AUDIO_ROLE_NOTE_EFFECT; }
+
     Param<int>   rate{"rate", 2, {"1/4", "1/8", "1/8T", "1/16", "1/32"}};
     Param<int>   mode{"mode", 0, {"Up", "Down", "UpDown", "Random"}};
     Param<int>   octaves{"octaves", 1, 1, 4};
@@ -470,7 +473,7 @@ struct ArpOp : OperatorBase, AudioProcessable {
         // ADR-0047: the graph still routes this port as an audio buffer, but the real stream is a note
         // stream (emitted via note_out) — declare that truth in semantic_shape so the catalog is honest.
         VividPortDescriptor p{};
-        p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER; p.direction = VIVID_PORT_OUTPUT;
+        p.name = "output"; p.type = VIVID_PORT_SCALAR; p.direction = VIVID_PORT_OUTPUT;   // ADR-0047: transport (below) is the real type
         p.value_type = VIVID_VALUE_FLOAT; p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
         p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;
         o.push_back(p);
@@ -603,6 +606,9 @@ struct LfoOp : OperatorBase, AudioProcessable {
     static constexpr const char* kSummary = "Modulator: a low-frequency oscillator that drives any param through a control wire.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "lfo" };
 
+    // ADR-0047: role lives in the descriptor (retires the audio_op_mark_* name table) — emits control.
+    VividAudioRole declared_audio_role() const override { return VIVID_AUDIO_ROLE_MODULATOR; }
+
     Param<int>   waveform{ "waveform", 0, { "Sine", "Triangle", "Saw", "Square", "Random" } };
     Param<int>   sync{ "sync", 0, { "Free", "Sync" } };
     Param<float> rate{ "rate", 1.f, 0.01f, 20.f };                              // Hz (Free)
@@ -623,7 +629,8 @@ struct LfoOp : OperatorBase, AudioProcessable {
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         // ADR-0047: no audio — the real stream leaves via control_out. The port stays an audio buffer
         // for graph routing, but semantic_shape declares the truth (an Audio wire off an LFO is silence).
-        auto out = aud_out(); out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
+        auto out = aud_out(); out.type = VIVID_PORT_SCALAR;   // ADR-0047: not audio
+        out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
         o.push_back(out);
     }
 
@@ -685,6 +692,9 @@ struct AdsrOp : OperatorBase, AudioProcessable {
     static constexpr const char* kSummary = "Modulator: a note-gated attack/decay/sustain/release envelope that drives any param through a control wire.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "control", "modulation", "envelope" };
 
+    // ADR-0047: role lives in the descriptor (retires the audio_op_mark_* name table) — emits control.
+    VividAudioRole declared_audio_role() const override { return VIVID_AUDIO_ROLE_MODULATOR; }
+
     Param<float> attack{ "attack", 0.01f, 0.001f, 3.f };    // seconds: 0 -> 1 on note-on
     Param<float> decay{ "decay", 0.15f, 0.001f, 3.f };      // seconds: 1 -> sustain
     Param<float> sustain{ "sustain", 0.7f, 0.f, 1.f };      // held level while a note is down
@@ -703,7 +713,8 @@ struct AdsrOp : OperatorBase, AudioProcessable {
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
         // ADR-0047: emits a control signal via control_out, not audio (like the LFO).
-        auto out = aud_out(); out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
+        auto out = aud_out(); out.type = VIVID_PORT_SCALAR;   // ADR-0047: not audio
+        out.semantic_shape = "control_signal"; out.transport = VIVID_PORT_TRANSPORT_CONTROL_SIGNAL;
         o.push_back(out);
     }
 
@@ -852,7 +863,7 @@ struct EuclidOp : NoteGenBase {
         o.push_back(&rate); o.push_back(&gate); o.push_back(&vel);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_SCALAR;   // ADR-0047: transport is the real type
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
         p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
@@ -923,7 +934,7 @@ struct ChordOp : NoteGenBase {
         o.push_back(&root); o.push_back(&quality); o.push_back(&rate); o.push_back(&gate); o.push_back(&vel);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_SCALAR;   // ADR-0047: transport is the real type
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
         p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
@@ -983,7 +994,7 @@ struct RandMelodyOp : NoteGenBase {
         o.push_back(&density); o.push_back(&gate); o.push_back(&seed);
     }
     void collect_ports(std::vector<VividPortDescriptor>& o) override {
-        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_AUDIO_BUFFER;
+        VividPortDescriptor p{}; p.name = "output"; p.type = VIVID_PORT_SCALAR;   // ADR-0047: transport is the real type
         p.direction = VIVID_PORT_OUTPUT; p.value_type = VIVID_VALUE_FLOAT;
         p.multiplicity = VIVID_MULTIPLICITY_SCALAR;
         p.semantic_shape = "note_stream"; p.transport = VIVID_PORT_TRANSPORT_NOTE_STREAM;   // ADR-0047: real stream = notes
@@ -1056,18 +1067,14 @@ void register_builtin_audio_ops(OpRegistry& reg) {
     register_op<TestToneOp>(reg, "TestTone");
     register_op<MovieAudioOp>(reg, "MovieAudio");   // audio track of a Video movie (drains the movie-audio bus)
     register_op<SamplerOp>(reg, "Sampler");
-    register_op<ArpOp>(reg, "Arp");   // ADR-0015: the first note effect
-    audio_op_mark_note_op("Arp");     // ...it is NOT an instrument: notes in -> notes out
-    register_op<LfoOp>(reg, "LFO");   // ADR-0022: the first modulator
-    audio_op_mark_mod_op("LFO");      // ...nor is it: no audio at all, it emits a control signal
-    register_op<AdsrOp>(reg, "ADSR"); // a note-gated envelope modulator (control_out -> node_<t>_<n>.ctl)
-    audio_op_mark_mod_op("ADSR");
-    register_op<EuclidOp>(reg, "Euclid");           // ADR-0022 P3.3: note generators (sources, not instruments)
-    audio_op_mark_gen_op("Euclid");
+    // ADR-0047: note/control roles now come from each op's declared_audio_role() (in its descriptor),
+    // not a host-side name table — so built-in and loaded-dylib ops classify through the identical path.
+    register_op<ArpOp>(reg, "Arp");         // ADR-0015: the first note effect (notes in -> notes out)
+    register_op<LfoOp>(reg, "LFO");         // ADR-0022: the first modulator (emits a control signal)
+    register_op<AdsrOp>(reg, "ADSR");       // a note-gated envelope modulator (control_out -> node_<t>_<n>.ctl)
+    register_op<EuclidOp>(reg, "Euclid");   // ADR-0022 P3.3: note generators (sources, not instruments)
     register_op<ChordOp>(reg, "Chord");
-    audio_op_mark_gen_op("Chord");
     register_op<RandMelodyOp>(reg, "RandMelody");
-    audio_op_mark_gen_op("RandMelody");
     register_glitch_ops(reg);
 }
 
