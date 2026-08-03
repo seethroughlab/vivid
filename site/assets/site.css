@@ -366,6 +366,11 @@ main {
 .op-card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
 .op-card-header h3 { font-size: 15px; margin: 0; }
 .op-card p { color: var(--muted); font-size: 12.5px; margin: 0; }
+/* ADR-0050: rendered operator preview thumbnails. */
+.op-thumb { display: block; margin: -14px -16px 12px; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; }
+.op-thumb img { display: block; width: 100%; aspect-ratio: 1 / 1; height: auto; object-fit: cover; background: #0d0f13; }
+.detail-preview { padding: 0; overflow: hidden; }
+.detail-preview img { display: block; width: 100%; max-width: 320px; aspect-ratio: 1 / 1; height: auto; object-fit: cover; border-radius: var(--radius); background: #0d0f13; }
 
 /* domain badges */
 .badge { display: inline-block; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;

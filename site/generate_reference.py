@@ -78,6 +78,9 @@ def is_core(entry: dict) -> bool:
     return tier in (None, "bundled")  # drop stale user/project-tier ops
 
 
+PREVIEW_DIR = HERE / "assets" / "reference"   # ADR-0050: per-op preview PNGs (tools/operator_audit/capture_previews.py)
+
+
 def transform(catalog: list[dict]) -> list[dict]:
     ops = []
     seen = set()
@@ -88,10 +91,11 @@ def transform(catalog: list[dict]) -> list[dict]:
         if not name or name in seen:
             continue
         seen.add(name)
-        ops.append({
+        slug = slugify(name)
+        rec = {
             "name": name,
             "display_name": e.get("display_name") or name,
-            "slug": slugify(name),
+            "slug": slug,
             "domain": bucket(e),
             "kind": e.get("kind", ""),
             "role": e.get("role", ""),  # ADR-0046: composable-primitive vs recipe classification
@@ -100,7 +104,11 @@ def transform(catalog: list[dict]) -> list[dict]:
             "params": e.get("params", []),
             "ports": e.get("ports", []),
             "source": e.get("source"),
-        })
+        }
+        # ADR-0050: a preview image, only when the committed PNG exists (keeps reference.json honest).
+        if (PREVIEW_DIR / f"{slug}.png").exists():
+            rec["preview"] = f"{slug}.png"
+        ops.append(rec)
     ops.sort(key=lambda o: o["name"].lower())
     return ops
 

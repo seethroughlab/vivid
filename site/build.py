@@ -353,9 +353,15 @@ def render_reference_cards(ops: list[dict]) -> str:
         cards = []
         for o in items:
             search = " ".join([o["name"], o.get("summary", ""), dom, *o.get("keywords", [])]).lower()
+            # ADR-0050: a rendered preview thumbnail, when one was captured for this op.
+            prev = o.get("preview")
+            thumb = (f'          <a class="op-thumb" href="/reference/{o["slug"]}/">'
+                     f'<img src="/assets/reference/{esc(prev)}" alt="{esc(o["name"])} preview" '
+                     f'loading="lazy" width="256" height="256"></a>\n') if prev else ""
             cards.append(
                 f'        <article class="op-card operator-card" data-domain="{dom}" '
                 f'data-search="{esc(search)}">\n'
+                f'{thumb}'
                 f'          <div class="op-card-header"><h3><a href="/reference/{o["slug"]}/">'
                 f'{esc(o["name"])}</a></h3><span class="badge {dom}">{DOMAIN_LABEL[dom]}</span></div>\n'
                 f'          <p>{esc(o.get("summary") or "No description yet.")}</p>\n'
@@ -383,10 +389,15 @@ def render_reference_detail_content(op: dict) -> dict:
         source_html = (f'      <section class="detail-panel"><p class="source-note">Backed by a '
                        f'{esc(src.get("tier", "bundled"))} shader file: '
                        f'<code>{esc(_os.path.basename(src["path"]))}</code></p></section>')
+    # ADR-0050: a rendered preview hero, when one was captured for this op.
+    prev = op.get("preview")
+    preview_html = (f'      <section class="detail-panel detail-preview">'
+                    f'<img src="/assets/reference/{esc(prev)}" alt="{esc(op["name"])} preview" '
+                    f'width="256" height="256"></section>') if prev else ""
     return {"name": esc(op["name"]), "domain": op["domain"], "domain_label": DOMAIN_LABEL[op["domain"]],
             "kind": esc(op.get("kind", "")), "summary": esc(op.get("summary") or "No description yet."),
             "keywords_html": keywords_html, "params_html": params_html, "ports_html": ports_html,
-            "source_html": source_html}
+            "source_html": source_html, "preview_html": preview_html}
 
 
 def render_reference(cfg: dict, emit, site: str) -> None:
