@@ -34,6 +34,7 @@ inline float lfo_sample(int w, double ph) {
 
 struct SineSynthOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "SineSynth";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Sine Synth";
     static constexpr const char* kSummary = "Polyphonic sine instrument (example instrument package operator).";
     static constexpr std::array<const char*, 3> kKeywords = { "audio", "instrument", "synth" };

@@ -54,6 +54,7 @@ std::string note_name(int pitch) {
 
 struct TypeOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Type";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_ADAPTER;   // ADR-0046
     static constexpr const char* kDisplayName = "Type";
     static constexpr const char* kSummary = "A live typographic readout of a signal — the active notes as filled vector text (names or pitch numbers).";
     static constexpr std::array<const char*, 3> kKeywords = {"text", "typography", "readout"};

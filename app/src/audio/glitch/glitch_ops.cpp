@@ -19,6 +19,7 @@ inline VividPortDescriptor aud_out() { return { "output", VIVID_PORT_AUDIO_BUFFE
 
 // --- Stutter: beat-synced slice repeater with envelope shapes -------------------------
 struct StutterOp : OperatorBase, AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Stutter";
     static constexpr const char* kSummary = "Beat-synced slice repeater with envelope shapes (glitch stutter).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "stutter" };
@@ -122,6 +123,7 @@ struct StutterOp : OperatorBase, AudioProcessable {
 
 // --- TapeStop: tape-deck slowdown/restart (varispeed) --------------------------------
 struct TapeStopOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Tape Stop";
     static constexpr const char* kSummary = "Tape-deck slowdown/restart (varispeed stop gesture).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "tape" };
@@ -237,6 +239,7 @@ struct TapeStopOp : vivid::OperatorBase, vivid::AudioProcessable {
 
 // --- BeatRepeat: beat-synced slice repeater with per-repeat decay ---------------------
 struct BeatRepeatOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Beat Repeat";
     static constexpr const char* kSummary = "Beat-synced slice repeater with per-repeat decay.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "repeat" };
@@ -320,6 +323,7 @@ struct BeatRepeatOp : vivid::OperatorBase, vivid::AudioProcessable {
 
 // --- Reverse: beat-synced backward playback with crossfaded edges --------------------
 struct ReverseOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Reverse";
     static constexpr const char* kSummary = "Beat-synced backward playback with crossfaded edges.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "reverse" };
@@ -394,6 +398,7 @@ struct ReverseOp : vivid::OperatorBase, vivid::AudioProcessable {
 
 // --- Scratch: DJ-style varispeed scratch with motion patterns ------------------------
 struct ScratchOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Scratch";
     static constexpr const char* kSummary = "DJ-style varispeed scratch with motion patterns.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "scratch" };
@@ -494,6 +499,7 @@ struct ScratchOp : vivid::OperatorBase, vivid::AudioProcessable {
 
 // --- FreqShift: Bode frequency shifter (Hilbert) with LFO ----------------------------
 struct FreqShiftOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Freq Shift";
     static constexpr const char* kSummary = "Bode frequency shifter (Hilbert) with LFO modulation.";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "frequency" };
@@ -562,6 +568,7 @@ struct FreqShiftOp : vivid::OperatorBase, vivid::AudioProcessable {
 
 // --- Stretch: granular time-stretch (pitch preserved) --------------------------------
 struct StretchOp : vivid::OperatorBase, vivid::AudioProcessable {
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_TRANSFORM; }   // ADR-0046
     static constexpr const char* kDisplayName = "Stretch";
     static constexpr const char* kSummary = "Granular time-stretch (pitch preserved).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "effect", "glitch", "stretch" };

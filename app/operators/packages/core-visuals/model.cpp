@@ -30,6 +30,7 @@ VividPortDescriptor tex_port(const char* name, VividPortDirection dir) {
 
 struct ModelOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Model";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Model";
     static constexpr const char* kSummary = "Load a 3D model (glTF/GLB) from a file and render it textured + lit.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "geometry", "3d"};

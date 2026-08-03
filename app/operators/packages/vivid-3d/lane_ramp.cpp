@@ -19,6 +19,7 @@
 
 struct LaneRamp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName         = "LaneRamp";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr bool kTimeDependent       = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_GENERATE;
 

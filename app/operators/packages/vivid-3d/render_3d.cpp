@@ -1244,6 +1244,7 @@ static void collect_fragments(const vivid::gpu::VividSceneFragment* node,
  */
 struct Render3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Render3D";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RENDERER;   // ADR-0046
     static constexpr bool kTimeDependent = false;
 
     // Camera params

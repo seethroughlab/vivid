@@ -70,6 +70,7 @@ WGPUTextureFormat wgpu_bc_format(VideoCompressedFormat f) {
 
 struct VideoOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Video";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Video";
     static constexpr const char* kSummary = "Play a movie file (AVFoundation + HAP) as a source in the chain.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "video", "movie"};

@@ -35,6 +35,7 @@ struct U { res: vec2f, time: f32, decay: f32, pad: vec4f };
 
 struct FeedbackOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Feedback";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kDisplayName = "Feedback";
     static constexpr const char* kSummary = "Frame feedback / trails: blends the input with a decaying history texture.";
     static constexpr std::array<const char*, 3> kKeywords = {"effect", "feedback", "trails"};

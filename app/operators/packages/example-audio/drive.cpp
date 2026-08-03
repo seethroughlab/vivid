@@ -21,6 +21,7 @@ VividPortDescriptor aud_port(const char* name, VividPortDirection dir) {
 
 struct DriveOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "Drive";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr const char* kDisplayName = "Drive";
     static constexpr const char* kSummary = "Soft-saturation overdrive (example audio-effect package operator).";
     static constexpr std::array<const char*, 3> kKeywords = { "audio", "effect", "drive" };

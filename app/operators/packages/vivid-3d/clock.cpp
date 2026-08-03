@@ -23,6 +23,7 @@
 
 struct Clock : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName        = "Clock";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kSummary =
         "Transport-synced timing source: emits step / phase / gate lanes that advance once per `period` "
         "(e.g. every 4 bars). Wire `step` into Switch3D to cut between looks on the beat.";

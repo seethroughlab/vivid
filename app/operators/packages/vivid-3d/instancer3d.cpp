@@ -33,6 +33,7 @@
  */
 struct Instancer3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Instancer3D";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_TRANSFORM;   // ADR-0046
     static constexpr bool kTimeDependent = false;
     static constexpr VividMultiplicityBehavior kMultiplicityBehavior = VIVID_MULTIPLICITY_KERNEL;
 

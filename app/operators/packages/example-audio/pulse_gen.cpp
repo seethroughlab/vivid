@@ -19,6 +19,7 @@
 
 struct PulseGenOp : vivid::OperatorBase, vivid::AudioProcessable {
     static constexpr const char* kName = "PulseGen";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Pulse Gen";
     static constexpr const char* kSummary = "Generator: one note every `every` beats, locked to the transport (example package operator).";
     static constexpr std::array<const char*, 4> kKeywords = { "audio", "note", "generator", "example" };

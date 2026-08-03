@@ -72,6 +72,7 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) shade: f32 };
 
 struct MeshOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Mesh";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr const char* kDisplayName = "Mesh";
     static constexpr const char* kSummary = "Real 3D geometry: spinning platonic solids (solid flat-lit or wireframe).";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "geometry", "3d"};

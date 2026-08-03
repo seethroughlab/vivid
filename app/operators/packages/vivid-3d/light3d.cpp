@@ -25,6 +25,7 @@
  */
 struct Light3D : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName   = "Light3D";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046
     static constexpr bool kTimeDependent = false;
 
     vivid::Param<int>   type      {"type",      0, {"Directional", "Point", "Spot"}};

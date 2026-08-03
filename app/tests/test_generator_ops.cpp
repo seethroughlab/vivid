@@ -88,6 +88,18 @@ int main() {
         CHECK(reg.descriptor_for("Euclid") && reg.descriptor_for("Euclid")->role == VIVID_OP_ROLE_RECIPE);
         CHECK(reg.descriptor_for("Chord") && reg.descriptor_for("Chord")->role == VIVID_OP_ROLE_RECIPE);
         CHECK(reg.descriptor_for("RandMelody") && reg.descriptor_for("RandMelody")->role == VIVID_OP_ROLE_RECIPE);
+
+        // ADR-0046 slice 2: the composable built-in audio primitives classify by stream type.
+        // audio->audio effects are TRANSFORM; note->note Arp is TRANSFORM; instruments and the
+        // LFO/ADSR control-signal sources are SOURCE. (declared_operator_role() overrides.)
+        auto role = [&](const char* n) { const auto* d = reg.descriptor_for(n); return d ? d->role : VIVID_OP_ROLE_DEFAULT; };
+        CHECK(role("Bitcrush") == VIVID_OP_ROLE_TRANSFORM);
+        CHECK(role("SVFilter") == VIVID_OP_ROLE_TRANSFORM);   // StateVariableFilterOp
+        CHECK(role("Arp")      == VIVID_OP_ROLE_TRANSFORM);   // notes -> notes
+        CHECK(role("TestTone") == VIVID_OP_ROLE_SOURCE);
+        CHECK(role("Sampler")  == VIVID_OP_ROLE_SOURCE);
+        CHECK(role("LFO")      == VIVID_OP_ROLE_SOURCE);      // emits a control_signal
+        CHECK(role("ADSR")     == VIVID_OP_ROLE_SOURCE);
     }
 
     // --- 2. Euclid E(4,16) at 1/16 fires exactly 4 hits per bar, all on the chosen note ---

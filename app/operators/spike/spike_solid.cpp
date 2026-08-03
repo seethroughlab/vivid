@@ -41,6 +41,7 @@ struct U { hue: f32, p0: f32, p1: f32, p2: f32 };
 // namespace so VIVID_REGISTER's extern "C" exports are unmangled.
 struct SpikeSolidOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "SpikeSolid";
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_SOURCE;   // ADR-0046: self-contained texture generator
     static constexpr const char* kDisplayName = "Spike Solid";
     static constexpr const char* kSummary = "Example loadable .dylib operator: a solid hue-coloured fill.";
     static constexpr std::array<const char*, 3> kKeywords = {"generator", "solid", "example"};
