@@ -94,6 +94,7 @@ def transform(catalog: list[dict]) -> list[dict]:
             "slug": slugify(name),
             "domain": bucket(e),
             "kind": e.get("kind", ""),
+            "role": e.get("role", ""),  # ADR-0046: composable-primitive vs recipe classification
             "summary": e.get("summary", ""),
             "keywords": e.get("keywords", []),
             "params": e.get("params", []),

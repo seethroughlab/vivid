@@ -2,6 +2,7 @@
 #include "app/edit_gateway.h"   // ADR-0017: capture UI graph edits
 #include "ui/node_canvas.h"   // shared card/wire/port/grid + NodeView
 #include "ui/ui_style.h"   // design tokens (region colours, borders, type ramp)
+#include "ui/chooser_rank.h"   // ADR-0046: demote recipe ops below primitives
 #include "gpu/visual_graph.h"    // VisualNode / nodes()
 #include "gpu/loaded_operator.h" // UI-4b: reach an op's dylib editor via dynamic_cast
 #include <cmath>
@@ -937,6 +938,17 @@ void NodeGraph::chooser_show(double sx, double sy) {
         e.spawn = { Domain::Bridge, SpawnKind::BridgeNode, "", 0, 0, source };
         e.accent = style().audio;
         entries.push_back(std::move(e));
+    }
+    // ADR-0046: composable primitives first — sink bundled RECIPE ops (Instancer/Emitter/Solids) to
+    // the bottom, preserving order otherwise. Non-op rows (bridge/data sources) carry no descriptor,
+    // so they resolve to DEFAULT and stay above the recipes.
+    if (vg_ && vg_->registry()) {
+        auto* reg = vg_->registry();
+        demote_recipes(entries, [&](const Chooser::Entry& e) -> VividOperatorRole {
+            if (e.spawn.kind != SpawnKind::VisualOp) return VIVID_OP_ROLE_DEFAULT;
+            const auto* d = reg->descriptor_for(e.id);
+            return d ? d->role : VIVID_OP_ROLE_DEFAULT;
+        });
     }
     chooser_.set_entries(std::move(entries));
     chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);

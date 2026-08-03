@@ -81,6 +81,13 @@ int main() {
         const int nsrc = vivid::audio_op_registry_count(reg, /*want_source*/true);
         for (int i = 0; i < nsrc; ++i)
             CHECK(!vivid::audio_op_is_gen_op(reg, vivid::audio_op_registry_name(reg, true, i)));
+
+        // ADR-0046: these three bundle timing + note material + gate + voicing in one node, so they
+        // classify as RECIPES (ranked below composable note/rhythm primitives). Role is orthogonal to
+        // audio_role (still GENERATOR) and flows through the descriptor from declared_operator_role().
+        CHECK(reg.descriptor_for("Euclid") && reg.descriptor_for("Euclid")->role == VIVID_OP_ROLE_RECIPE);
+        CHECK(reg.descriptor_for("Chord") && reg.descriptor_for("Chord")->role == VIVID_OP_ROLE_RECIPE);
+        CHECK(reg.descriptor_for("RandMelody") && reg.descriptor_for("RandMelody")->role == VIVID_OP_ROLE_RECIPE);
     }
 
     // --- 2. Euclid E(4,16) at 1/16 fires exactly 4 hits per bar, all on the chosen note ---

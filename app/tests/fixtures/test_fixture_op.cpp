@@ -15,6 +15,8 @@ VividPortDescriptor out_port(const char* name) {
 
 struct FixtureOp : vivid::OperatorBase, vivid::FrameProcessable {
     static constexpr const char* kName = "FixtureOp";
+    // ADR-0046: exercise the operator-role export path end to end (dylib -> loader -> adapter -> host).
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RECIPE;
     static constexpr const char* kDisplayName = "Fixture Op";
     static constexpr const char* kSummary = "Headless test fixture operator.";
     static constexpr std::array<const char*, 2> kKeywords = {"test", "fixture"};

@@ -23,8 +23,12 @@ extern "C" {
    audio-role hint (vivid_audio_role + VividOperatorDescriptor.audio_role) so a loaded audio dylib
    can declare itself a generator / note-effect / modulator. Purely additive — both are OPTIONAL
    dlsym'd exports (absent => opt out) and the descriptor field is appended at the END, so an older
-   dylib is unaffected and the host never reads the field out of an older dylib's struct. */
-#define VIVID_OPERATOR_ABI_VERSION 15u
+   dylib is unaffected and the host never reads the field out of an older dylib's struct.
+   v16 (ADR-0046): an operator-role hint (vivid_operator_role + VividOperatorDescriptor.role) so an
+   operator can classify itself as a composable primitive (source / transform / adapter / renderer /
+   sink) or a bundled RECIPE that ranks below primitives in pickers. Purely additive, exactly like
+   audio_role — an OPTIONAL dlsym'd export (absent => DEFAULT) plus a field appended at the END. */
+#define VIVID_OPERATOR_ABI_VERSION 16u
 
 /* The OLDEST operator ABI this runtime can still load.
    An operator built at an older ABI is safe to run iff every change since then was purely
@@ -212,6 +216,21 @@ typedef uint32_t VividAudioRole;
 
 typedef uint32_t (*VividAudioRoleFn)(void);   // optional export: an op's declared VividAudioRole
 
+// Operator role classification (v16+, ADR-0046). Mirrors VividAudioRole: a descriptor-level hint that
+// refines how an op is offered in pickers. Composable primitives (SOURCE / TRANSFORM / ADAPTER /
+// RENDERER / SINK) are the preferred catalog surface; RECIPE marks a convenience op that bundles a
+// whole workflow and ranks below primitives. DEFAULT = unclassified (treated as a primitive).
+typedef uint32_t VividOperatorRole;
+#define VIVID_OP_ROLE_DEFAULT   0u
+#define VIVID_OP_ROLE_SOURCE    1u   // introduces one reusable signal / texture / stream / lane
+#define VIVID_OP_ROLE_TRANSFORM 2u   // same-kind stream in -> same-kind stream out
+#define VIVID_OP_ROLE_ADAPTER   3u   // converts between two explicit stream types
+#define VIVID_OP_ROLE_RENDERER  4u   // turns graph data into pixels / audio / an output surface
+#define VIVID_OP_ROLE_SINK      5u   // terminal output / export
+#define VIVID_OP_ROLE_RECIPE    6u   // convenience node bundling several primitives — ranks last
+
+typedef uint32_t (*VividOperatorRoleFn)(void);   // optional export: an op's declared VividOperatorRole
+
 typedef struct VividOperatorDescriptor {
     const char*               name;
     uint32_t                  param_count;
@@ -251,6 +270,11 @@ typedef struct VividOperatorDescriptor {
     // dylibs) or left DEFAULT. The host builds its OWN descriptor and fills this from a virtual, so
     // it is never read out of an older dylib's (shorter) struct — appended last, purely additive.
     VividAudioRole            audio_role;   // 0 = VIVID_AUDIO_ROLE_DEFAULT
+
+    // Operator role (v16+, ADR-0046). Set from the op's optional vivid_operator_role() export (loaded
+    // dylibs) or declared_operator_role() (compiled-in ops); DEFAULT otherwise. Appended last after
+    // audio_role — purely additive; the host never reads it out of an older dylib's (shorter) struct.
+    VividOperatorRole         role;         // 0 = VIVID_OP_ROLE_DEFAULT
 } VividOperatorDescriptor;
 
 typedef struct VividGeneratedUniformMember {

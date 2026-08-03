@@ -32,6 +32,19 @@ inline const char* display_hint_name(uint32_t h) {
     }
 }
 
+// ADR-0046: operator role classification (composable primitive vs bundled recipe).
+inline const char* operator_role_name(VividOperatorRole r) {
+    switch (r) {
+        case VIVID_OP_ROLE_SOURCE:    return "source";
+        case VIVID_OP_ROLE_TRANSFORM: return "transform";
+        case VIVID_OP_ROLE_ADAPTER:   return "adapter";
+        case VIVID_OP_ROLE_RENDERER:  return "renderer";
+        case VIVID_OP_ROLE_SINK:      return "sink";
+        case VIVID_OP_ROLE_RECIPE:    return "recipe";
+        default:                      return "default";
+    }
+}
+
 // A param's full discovery schema. Required fields always present; optional string fields (the
 // semantic metadata, description, group, asset kind) are emitted only when set, keeping the JSON
 // tight. `semantic_*` are the intent hints; `display_hint` names the inspector widget.
@@ -110,6 +123,8 @@ inline nlohmann::json operator_to_json(const VividOperatorDescriptor& d, const c
     if (d.display_name && *d.display_name) jo["display_name"] = d.display_name;
     if (d.summary && *d.summary)           jo["summary"] = d.summary;
     if (kind && *kind)                     jo["kind"] = kind;
+    // ADR-0046: descriptor role hint — emitted only when the op declares one (DEFAULT stays implicit).
+    if (d.role != VIVID_OP_ROLE_DEFAULT)   jo["role"] = operator_role_name(d.role);
     nlohmann::json kws = nlohmann::json::array();
     for (uint32_t i = 0; i < d.keyword_count; ++i)
         if (d.keywords && d.keywords[i]) kws.push_back(d.keywords[i]);

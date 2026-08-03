@@ -86,6 +86,10 @@ public:
     VividAudioRole audio_role() const {
         return audio_role_fn_ ? static_cast<VividAudioRole>(audio_role_fn_()) : VIVID_AUDIO_ROLE_DEFAULT;
     }
+    // v16 (ADR-0046): optional declared operator role (vivid_operator_role, dlsym'd). DEFAULT absent.
+    VividOperatorRole operator_role() const {
+        return operator_role_fn_ ? static_cast<VividOperatorRole>(operator_role_fn_()) : VIVID_OP_ROLE_DEFAULT;
+    }
 
     const std::string& registration_mode() const { return registration_mode_; }
     bool is_loaded() const { return handle_ != nullptr; }
@@ -116,6 +120,7 @@ private:
     VividFileDropDescriptorFn drop_fn_      = nullptr;   // ADR-0021/P3: optional file-drop handlers
     VividDrawThumbnailFn draw_thumbnail_fn_ = nullptr;   // v14: optional cell thumbnail
     VividAudioRoleFn     audio_role_fn_     = nullptr;   // v14: optional declared audio role
+    VividOperatorRoleFn  operator_role_fn_  = nullptr;   // v16: optional declared operator role
     std::string          registration_mode_ = "unknown";
     bool                 reload_required_recompile_ = false;
     LastError            last_error_{};

@@ -762,6 +762,9 @@ struct NoteGenBase : OperatorBase, AudioProcessable, NoteFlushable {
     // v14: built-in generators carry the role in their descriptor too (not only the audio_op_mark_gen_op
     // name table), so built-in and loaded-dylib generators classify through the identical path.
     VividAudioRole declared_audio_role() const override { return VIVID_AUDIO_ROLE_GENERATOR; }
+    // ADR-0046: Euclid/Chord/RandMelody bundle timing + note material + gate + voicing in one node,
+    // so they classify as RECIPES — offered but ranked below composable note/rhythm primitives.
+    VividOperatorRole declared_operator_role() const override { return VIVID_OP_ROLE_RECIPE; }
     static constexpr int kRateN = 6;
     static double rate_beats(int i) {   // 1/1 1/2 1/4 1/8 1/16 1/8T, in beats per step
         static const double b[kRateN] = { 4.0, 2.0, 1.0, 0.5, 0.25, 1.0 / 3.0 };
