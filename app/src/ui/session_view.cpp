@@ -597,6 +597,7 @@ void draw_ui(Renderer2D& ui, const Window& w, double beats, double mx, double my
                 tc.param_count    = static_cast<uint32_t>(pvals.size());
                 tc.accent         = VividColor{ ar, ag, ab, on ? 1.0f : 0.85f };
                 tc.time           = beats;
+                tc.purpose        = VIVID_PREVIEW_SESSION_CELL;   // ADR-0050
                 vivid::session::session_generator_draw_thumbnail(s, t, sc, &tc);
             }
         }

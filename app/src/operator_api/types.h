@@ -27,8 +27,12 @@ extern "C" {
    v16 (ADR-0046): an operator-role hint (vivid_operator_role + VividOperatorDescriptor.role) so an
    operator can classify itself as a composable primitive (source / transform / adapter / renderer /
    sink) or a bundled RECIPE that ranks below primitives in pickers. Purely additive, exactly like
-   audio_role — an OPTIONAL dlsym'd export (absent => DEFAULT) plus a field appended at the END. */
-#define VIVID_OPERATOR_ABI_VERSION 16u
+   audio_role — an OPTIONAL dlsym'd export (absent => DEFAULT) plus a field appended at the END.
+   v17 (ADR-0050): a preview-purpose field on VividThumbnailContext (VividPreviewPurpose purpose) so an
+   operator drawing a compact preview knows WHY (session cell / audio node / catalog / …) and what it may
+   assume. Purely additive — a host→op struct field appended at the END; an older op never reads it, and
+   the host always populates it (DEFAULT=0 via zero-init). No new export. */
+#define VIVID_OPERATOR_ABI_VERSION 17u
 
 /* The OLDEST operator ABI this runtime can still load.
    An operator built at an older ABI is safe to run iff every change since then was purely
@@ -623,6 +627,17 @@ typedef struct VividDrawAPI {
 } VividDrawAPI;
 typedef VividDrawAPI VividInspectorDrawAPI;
 
+// Preview purpose (v17+, ADR-0050) — WHY the host is asking the operator for a compact preview, so the
+// op knows what it may assume. This is NOT layout (aspect/size live in surface_width/height) and NOT
+// operator role (VividOperatorRole/VividAudioRole say what the op IS); it carries the semantic contract,
+// chiefly whether a live instance exists. DEFAULT = 0, so a zero-initialized context yields it for free.
+typedef uint32_t VividPreviewPurpose;
+#define VIVID_PREVIEW_DEFAULT      0u   // compatibility / unspecified — assume the least (like CATALOG)
+#define VIVID_PREVIEW_SESSION_CELL 1u   // musical material in the Session View grid (live instance)
+#define VIVID_PREVIEW_AUDIO_NODE   2u   // device/node preview in the audio graph (live instance)
+#define VIVID_PREVIEW_VISUAL_NODE  3u   // reserved: visual node draws instead of a texture blit — no consumer yet
+#define VIVID_PREVIEW_CATALOG      4u   // reserved: picker/reference preview — NO live instance; render from defaults
+
 // Thumbnail context (v14+) — the surface an operator draws a compact cell preview into (the
 // session grid's generator cells today). Read-only + UI-thread: the op draws PURELY from this
 // snapshot (never its live Param<> members), so the draw touches no audio-thread state. Coordinates
@@ -637,6 +652,9 @@ typedef struct VividThumbnailContext {
     uint32_t           param_count;
     VividColor         accent;   // the cell's track accent — tint the thumbnail to match
     double             time;     // seconds, for optional subtle animation (may be 0)
+    // Why this preview is being drawn (v17+, ADR-0050). Appended last — purely additive; an operator
+    // built before v17 never reads it, and the host always sets it (a zero-init context => DEFAULT).
+    VividPreviewPurpose purpose;   // 0 = VIVID_PREVIEW_DEFAULT
 } VividThumbnailContext;
 
 typedef struct VividInspectorCommandAPI {
