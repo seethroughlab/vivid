@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-27T18:04:14.860415+00:00",
-  "app_version": "0.1.0",
+  "generated_at": "2026-08-03T20:21:32.800421+00:00",
+  "app_version": "0.1.1",
   "build_type": "debug",
-  "operator_abi": 14,
-  "count": 50,
+  "operator_abi": 17,
+  "count": 68,
   "domains": [
     "visual",
     "audio",
@@ -11,11 +11,70 @@
   ],
   "operators": [
     {
+      "name": "ADSR",
+      "display_name": "ADSR",
+      "slug": "adsr",
+      "domain": "control",
+      "kind": "modulator",
+      "role": "source",
+      "summary": "Modulator: a note-gated attack/decay/sustain/release envelope that drives any param through a control wire.",
+      "keywords": [
+        "audio",
+        "control",
+        "modulation",
+        "envelope"
+      ],
+      "params": [
+        {
+          "default": 0.009999999776482582,
+          "max": 3.0,
+          "min": 0.0010000000474974513,
+          "name": "attack",
+          "semantic_intent": "attack time in seconds (rise on note-on)",
+          "type": "float"
+        },
+        {
+          "default": 0.15000000596046448,
+          "max": 3.0,
+          "min": 0.0010000000474974513,
+          "name": "decay",
+          "semantic_intent": "decay time in seconds (fall to the sustain level)",
+          "type": "float"
+        },
+        {
+          "default": 0.699999988079071,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "sustain",
+          "semantic_intent": "sustain level 0..1 held while a note is down",
+          "type": "float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "max": 5.0,
+          "min": 0.0010000000474974513,
+          "name": "release",
+          "semantic_intent": "release time in seconds (fall to 0 after the last note-off)",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "output",
+          "semantic_shape": "control_signal",
+          "stream": "control_signal"
+        }
+      ],
+      "source": null
+    },
+    {
       "name": "Arp",
       "display_name": "Arp",
       "slug": "arp",
       "domain": "control",
       "kind": "note_effect",
+      "role": "transform",
       "summary": "Note effect: holds the keys you play and re-issues them as an arpeggio.",
       "keywords": [
         "audio",
@@ -69,10 +128,81 @@
       "ports": [
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "semantic_shape": "note_stream",
+          "stream": "note_stream"
         }
       ],
       "source": null
+    },
+    {
+      "name": "AudioSpectrum",
+      "display_name": "AudioSpectrum",
+      "slug": "audiospectrum",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 48.0,
+          "group": "Spectrum",
+          "max": 64.0,
+          "min": 1.0,
+          "name": "bands",
+          "type": "int"
+        },
+        {
+          "default": 1.2000000476837158,
+          "group": "Response",
+          "max": 20.0,
+          "min": 0.10000000149011612,
+          "name": "gain",
+          "type": "float"
+        },
+        {
+          "default": 0.699999988079071,
+          "group": "Response",
+          "max": 4.0,
+          "min": 0.0,
+          "name": "tilt",
+          "type": "float"
+        },
+        {
+          "default": 0.6000000238418579,
+          "group": "Response",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "normalize",
+          "type": "float"
+        },
+        {
+          "default": 0.019999999552965164,
+          "group": "Response",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "attack",
+          "type": "float"
+        },
+        {
+          "default": 0.18000000715255737,
+          "group": "Response",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "release",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "spectrum",
+          "semantic_shape": "lane_array"
+        }
+      ],
+      "source": null,
+      "preview": "audiospectrum.png"
     },
     {
       "name": "BeatRepeat",
@@ -80,6 +210,7 @@
       "slug": "beatrepeat",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Beat-synced slice repeater with per-repeat decay.",
       "keywords": [
         "audio",
@@ -165,11 +296,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -180,6 +313,7 @@
       "slug": "bitcrush",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Bit-depth + sample-rate reduction (lo-fi crush).",
       "keywords": [
         "audio",
@@ -217,11 +351,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -232,6 +368,7 @@
       "slug": "blur",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Box blur of the input texture; radius is wire-drivable.",
       "keywords": [
         "effect",
@@ -252,17 +389,177 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/blur.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "blur.png"
+    },
+    {
+      "name": "Chord",
+      "display_name": "Chord",
+      "slug": "chord",
+      "domain": "control",
+      "kind": "generator",
+      "role": "recipe",
+      "summary": "Generator: repeats a chord in time, locked to the transport.",
+      "keywords": [
+        "audio",
+        "note",
+        "generator",
+        "chord"
+      ],
+      "params": [
+        {
+          "default": 48.0,
+          "max": 127.0,
+          "min": 0.0,
+          "name": "root",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Maj",
+            "Min",
+            "Dom7",
+            "Min7",
+            "Sus4"
+          ],
+          "default": 0.0,
+          "max": 4.0,
+          "min": 0.0,
+          "name": "quality",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "1/1",
+            "1/2",
+            "1/4",
+            "1/8",
+            "1/16",
+            "1/8T"
+          ],
+          "default": 2.0,
+          "max": 5.0,
+          "min": 0.0,
+          "name": "rate",
+          "type": "int"
+        },
+        {
+          "default": 0.8500000238418579,
+          "max": 1.0,
+          "min": 0.05000000074505806,
+          "name": "gate",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "velocity",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "output",
+          "semantic_shape": "note_stream",
+          "stream": "note_stream"
+        }
+      ],
+      "source": null
+    },
+    {
+      "name": "Clock",
+      "display_name": "Clock",
+      "slug": "clock",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "Transport-synced timing source: emits step / phase / gate lanes that advance once per `period` (e.g. every 4 bars). Wire `step` into Switch3D to cut between looks on the beat.",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "internal",
+            "metronome"
+          ],
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "sync",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "beats",
+            "bars"
+          ],
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "unit",
+          "type": "int"
+        },
+        {
+          "default": 4.0,
+          "max": 64.0,
+          "min": 0.0625,
+          "name": "period",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 20.0,
+          "min": 0.0010000000474974513,
+          "name": "rate",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 256.0,
+          "min": 0.0,
+          "name": "steps",
+          "type": "int"
+        },
+        {
+          "default": 0.07999999821186066,
+          "max": 1.0,
+          "min": 0.0010000000474974513,
+          "name": "gate_width",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "step",
+          "semantic_shape": "scalar"
+        },
+        {
+          "dir": "out",
+          "name": "phase",
+          "semantic_shape": "scalar"
+        },
+        {
+          "dir": "out",
+          "name": "gate",
+          "semantic_shape": "scalar"
+        }
+      ],
+      "source": null,
+      "preview": "clock.png"
     },
     {
       "name": "Composite",
@@ -270,6 +567,7 @@
       "slug": "composite",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Blend two inputs (A base, B over): normal/add/multiply/screen/overlay.",
       "keywords": [
         "effect",
@@ -305,21 +603,25 @@
       "ports": [
         {
           "dir": "in",
-          "name": "A"
+          "name": "A",
+          "stream": "texture"
         },
         {
           "dir": "in",
-          "name": "B"
+          "name": "B",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/composite.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "composite.png"
     },
     {
       "name": "CRT",
@@ -327,6 +629,7 @@
       "slug": "crt",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Broadcast/CRT treatment: barrel curve, scanlines, RGB shadow-mask, aberration, vignette, roll.",
       "keywords": [
         "effect",
@@ -390,17 +693,20 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/crt.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "crt.png"
     },
     {
       "name": "CustomShader",
@@ -408,6 +714,7 @@
       "slug": "customshader",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Data-driven GLSL generator: renders a project .glsl file (pick it in `file`).",
       "keywords": [
         "generator",
@@ -454,10 +761,92 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
+    },
+    {
+      "name": "Deformer",
+      "display_name": "Deformer",
+      "slug": "deformer",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "Noise",
+            "Sine",
+            "Audio"
+          ],
+          "default": 0.0,
+          "group": "Deformer",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "mode",
+          "type": "int"
+        },
+        {
+          "default": 0.30000001192092896,
+          "group": "Deformer",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "amplitude",
+          "type": "float"
+        },
+        {
+          "default": 3.0,
+          "group": "Deformer",
+          "max": 50.0,
+          "min": 0.009999999776482582,
+          "name": "frequency",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Deformer",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "All",
+            "X",
+            "Y",
+            "Z"
+          ],
+          "default": 0.0,
+          "group": "Deformer",
+          "max": 3.0,
+          "min": 0.0,
+          "name": "axis",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "scene",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "amount"
+        },
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "deformer.png"
     },
     {
       "name": "Displace",
@@ -465,6 +854,7 @@
       "slug": "displace",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Warp a source texture's sampling by a displacement texture (RG-vector or luminance).",
       "keywords": [
         "effect",
@@ -497,21 +887,179 @@
       "ports": [
         {
           "dir": "in",
-          "name": "source"
+          "name": "source",
+          "stream": "texture"
         },
         {
           "dir": "in",
-          "name": "displace"
+          "name": "displace",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/displace.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "displace.png"
+    },
+    {
+      "name": "Emitter",
+      "display_name": "Emitter",
+      "slug": "emitter",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "recipe",
+      "summary": "A one-shot particle burst per fire of an incoming signal (pos->hue, amp->energy). Re-struck notes re-burst; drives off notes, beats or onsets.",
+      "keywords": [
+        "particles",
+        "burst",
+        "emitter"
+      ],
+      "params": [
+        {
+          "default": 0.4000000059604645,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "count",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "default": 0.4000000059604645,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "gravity",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "life",
+          "type": "float"
+        },
+        {
+          "default": 0.4000000059604645,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "spread",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "signal",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
+    },
+    {
+      "name": "Euclid",
+      "display_name": "Euclid",
+      "slug": "euclid",
+      "domain": "control",
+      "kind": "generator",
+      "role": "recipe",
+      "summary": "Generator: a Euclidean rhythm on one note, locked to the transport.",
+      "keywords": [
+        "audio",
+        "note",
+        "generator",
+        "euclidean"
+      ],
+      "params": [
+        {
+          "default": 16.0,
+          "max": 32.0,
+          "min": 1.0,
+          "name": "steps",
+          "type": "int"
+        },
+        {
+          "default": 4.0,
+          "max": 32.0,
+          "min": 0.0,
+          "name": "pulses",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "max": 31.0,
+          "min": 0.0,
+          "name": "rotate",
+          "type": "int"
+        },
+        {
+          "default": 36.0,
+          "max": 127.0,
+          "min": 0.0,
+          "name": "note",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "1/1",
+            "1/2",
+            "1/4",
+            "1/8",
+            "1/16",
+            "1/8T"
+          ],
+          "default": 4.0,
+          "max": 5.0,
+          "min": 0.0,
+          "name": "rate",
+          "type": "int"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.05000000074505806,
+          "name": "gate",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "velocity",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "output",
+          "semantic_shape": "note_stream",
+          "stream": "note_stream"
+        }
+      ],
+      "source": null
     },
     {
       "name": "Feedback",
@@ -519,6 +1067,7 @@
       "slug": "feedback",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "transform",
       "summary": "Frame feedback / trails: blends the input with a decaying history texture.",
       "keywords": [
         "effect",
@@ -537,14 +1086,17 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "feedback.png"
     },
     {
       "name": "Fold",
@@ -552,6 +1104,7 @@
       "slug": "fold",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Crisp axis-aligned mirror reflection of the input \u2014 architectural symmetry, not a busy radial kaleidoscope.",
       "keywords": [
         "effect",
@@ -609,17 +1162,20 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/fold.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "fold.png"
     },
     {
       "name": "FreqShift",
@@ -627,6 +1183,7 @@
       "slug": "freqshift",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Bode frequency shifter (Hilbert) with LFO modulation.",
       "keywords": [
         "audio",
@@ -674,126 +1231,16 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
-    },
-    {
-      "name": "Gradient",
-      "display_name": "Gradient",
-      "slug": "gradient",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "summary": "A clean 2-colour linear/radial gradient (a flat source, not a field).",
-      "keywords": [
-        "generator",
-        "gradient",
-        "color",
-        "shader"
-      ],
-      "params": [
-        {
-          "choices": [
-            "linear",
-            "radial"
-          ],
-          "default": 0.0,
-          "description": "Linear sweep, or radial from the centre",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "mode",
-          "type": "int"
-        },
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "cx",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "cy",
-          "type": "float"
-        },
-        {
-          "default": 0.0,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "angle",
-          "semantic_intent": "sweep angle",
-          "semantic_tag": "phase_01",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "scale",
-          "type": "float"
-        },
-        {
-          "default": 0.10000000149011612,
-          "display_hint": "color",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "ar",
-          "type": "float"
-        },
-        {
-          "default": 0.10000000149011612,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "ag",
-          "type": "float"
-        },
-        {
-          "default": 0.3499999940395355,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "ab",
-          "type": "float"
-        },
-        {
-          "default": 0.8999999761581421,
-          "display_hint": "color",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "br",
-          "type": "float"
-        },
-        {
-          "default": 0.20000000298023224,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "bg",
-          "type": "float"
-        },
-        {
-          "default": 0.6000000238418579,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "bb",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture"
-        }
-      ],
-      "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/gradient.wgsl",
-        "tier": "bundled"
-      }
     },
     {
       "name": "Image",
@@ -801,6 +1248,7 @@
       "slug": "image",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Load a still image (PNG/JPG/\u2026) from a file into the chain.",
       "keywords": [
         "generator",
@@ -820,10 +1268,145 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "image.png"
+    },
+    {
+      "name": "InstanceGrid",
+      "display_name": "InstanceGrid",
+      "slug": "instancegrid",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 16.0,
+          "group": "Layout",
+          "max": 4096.0,
+          "min": 1.0,
+          "name": "count",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Grid",
+            "Circle",
+            "Line",
+            "Grid3D"
+          ],
+          "default": 0.0,
+          "group": "Layout",
+          "max": 3.0,
+          "min": 0.0,
+          "name": "layout",
+          "type": "int"
+        },
+        {
+          "default": 2.0,
+          "group": "Layout",
+          "max": 20.0,
+          "min": 0.10000000149011612,
+          "name": "spacing",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "None",
+            "Warm",
+            "Cool",
+            "Neon"
+          ],
+          "default": 0.0,
+          "group": "Color",
+          "max": 3.0,
+          "min": 0.0,
+          "name": "palette",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "instances",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "instancegrid.png"
+    },
+    {
+      "name": "InstanceNoise",
+      "display_name": "InstanceNoise",
+      "slug": "instancenoise",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 0.0,
+          "group": "Jitter",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "position_jitter",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Jitter",
+          "max": 6.283199787139893,
+          "min": 0.0,
+          "name": "rotation_jitter",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Jitter",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "scale_jitter",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Animation",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "default": 42.0,
+          "group": "Animation",
+          "max": 99999.0,
+          "min": 0.0,
+          "name": "seed",
+          "semantic_shape": "int",
+          "semantic_tag": "seed",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "instances",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "instances",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "instancenoise.png"
     },
     {
       "name": "Instancer",
@@ -831,6 +1414,7 @@
       "slug": "instancer",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "recipe",
       "summary": "Draws one glowing instance per note of an incoming Notes value (pitch->colour, velocity->size); chords bloom, arps trail.",
       "keywords": [
         "notes",
@@ -858,19 +1442,284 @@
           "min": 0.0,
           "name": "trail",
           "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 3.0,
+          "min": 0.0,
+          "name": "shape",
+          "type": "float"
+        },
+        {
+          "default": 6.0,
+          "max": 8.0,
+          "min": 3.0,
+          "name": "sides",
+          "type": "float"
+        },
+        {
+          "default": 0.6000000238418579,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "pulse",
+          "type": "float"
         }
       ],
       "ports": [
         {
           "dir": "in",
-          "name": "notes"
+          "name": "signal",
+          "stream": "custom_ref"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
+    },
+    {
+      "name": "Instancer3D",
+      "display_name": "Instancer3D",
+      "slug": "instancer3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "",
+      "keywords": [],
+      "params": [],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "scene",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "instances",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "instancer3d.png"
+    },
+    {
+      "name": "InstancesFromLanes",
+      "display_name": "InstancesFromLanes",
+      "slug": "instancesfromlanes",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "adapter",
+      "summary": "",
+      "keywords": [],
+      "params": [],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "pos_x"
+        },
+        {
+          "dir": "in",
+          "name": "pos_y"
+        },
+        {
+          "dir": "in",
+          "name": "pos_z"
+        },
+        {
+          "dir": "in",
+          "name": "scale_x"
+        },
+        {
+          "dir": "in",
+          "name": "scale_y"
+        },
+        {
+          "dir": "in",
+          "name": "scale_z"
+        },
+        {
+          "dir": "in",
+          "name": "rot_y"
+        },
+        {
+          "dir": "in",
+          "name": "color_r"
+        },
+        {
+          "dir": "in",
+          "name": "color_g"
+        },
+        {
+          "dir": "in",
+          "name": "color_b"
+        },
+        {
+          "dir": "in",
+          "name": "color_a"
+        },
+        {
+          "dir": "out",
+          "name": "instances",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "instancesfromlanes.png"
+    },
+    {
+      "name": "InstancesFromSignal",
+      "display_name": "Instances From Signal",
+      "slug": "instancesfromsignal",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "adapter",
+      "summary": "Draws one 3D instance per element of an incoming signal (pitch->layout+colour, velocity->size); chords bloom, arps trail. Feed it a Notes node \u2014 or any signal producer.",
+      "keywords": [],
+      "params": [
+        {
+          "default": 0.5,
+          "max": 3.0,
+          "min": 0.05000000074505806,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "default": 4.0,
+          "max": 20.0,
+          "min": 0.5,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "ring",
+            "line",
+            "orb",
+            "wheel"
+          ],
+          "default": 0.0,
+          "max": 3.0,
+          "min": 0.0,
+          "name": "layout",
+          "type": "int"
+        },
+        {
+          "default": 0.15000000596046448,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "spin",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "trail",
+          "type": "float"
+        },
+        {
+          "default": 0.6000000238418579,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "pulse",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Spectrum",
+            "Rainbow",
+            "Fire",
+            "Ice",
+            "Viridis"
+          ],
+          "default": 0.0,
+          "max": 4.0,
+          "min": 0.0,
+          "name": "palette",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "persist",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "pos_lo",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "pos_hi",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 30.0,
+          "min": -30.0,
+          "name": "center_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 30.0,
+          "min": -30.0,
+          "name": "center_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 30.0,
+          "min": -30.0,
+          "name": "center_z",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "spin",
+            "radial"
+          ],
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "orient",
+          "type": "int"
+        },
+        {
+          "default": 1.0,
+          "max": 12.0,
+          "min": 1.0,
+          "name": "elongate",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "signal",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "instances",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "instancesfromsignal.png"
     },
     {
       "name": "Kaleidoscope",
@@ -878,6 +1727,7 @@
       "slug": "kaleidoscope",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Radial mirror-symmetry (kaleidoscope) fold of the input.",
       "keywords": [
         "effect",
@@ -928,17 +1778,147 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/kaleidoscope.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "kaleidoscope.png"
+    },
+    {
+      "name": "LanePalette",
+      "display_name": "LanePalette",
+      "slug": "lanepalette",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 48.0,
+          "group": "Palette",
+          "max": 4096.0,
+          "min": 1.0,
+          "name": "count",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Spectrum",
+            "Rainbow",
+            "Fire",
+            "Ice",
+            "Viridis"
+          ],
+          "default": 0.0,
+          "group": "Palette",
+          "max": 4.0,
+          "min": 0.0,
+          "name": "palette",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "group": "Palette",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "offset",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Palette",
+          "max": 4.0,
+          "min": 0.05000000074505806,
+          "name": "spread",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "color_r",
+          "semantic_shape": "lane_array"
+        },
+        {
+          "dir": "out",
+          "name": "color_g",
+          "semantic_shape": "lane_array"
+        },
+        {
+          "dir": "out",
+          "name": "color_b",
+          "semantic_shape": "lane_array"
+        }
+      ],
+      "source": null,
+      "preview": "lanepalette.png"
+    },
+    {
+      "name": "LaneRamp",
+      "display_name": "LaneRamp",
+      "slug": "laneramp",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 48.0,
+          "group": "Ramp",
+          "max": 4096.0,
+          "min": 1.0,
+          "name": "count",
+          "type": "int"
+        },
+        {
+          "default": -13.0,
+          "group": "Ramp",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "lo",
+          "type": "float"
+        },
+        {
+          "default": 13.0,
+          "group": "Ramp",
+          "max": 1000.0,
+          "min": -1000.0,
+          "name": "hi",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Linear",
+            "Centered"
+          ],
+          "default": 0.0,
+          "group": "Ramp",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "mode",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "values",
+          "semantic_shape": "lane_array"
+        }
+      ],
+      "source": null,
+      "preview": "laneramp.png"
     },
     {
       "name": "LFO",
@@ -946,6 +1926,7 @@
       "slug": "lfo",
       "domain": "control",
       "kind": "modulator",
+      "role": "source",
       "summary": "Modulator: a low-frequency oscillator that drives any param through a control wire.",
       "keywords": [
         "audio",
@@ -1008,10 +1989,153 @@
       "ports": [
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "semantic_shape": "control_signal",
+          "stream": "control_signal"
         }
       ],
       "source": null
+    },
+    {
+      "name": "Light3D",
+      "display_name": "Light3D",
+      "slug": "light3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "Directional",
+            "Point",
+            "Spot"
+          ],
+          "default": 0.0,
+          "group": "Light",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "type",
+          "type": "int"
+        },
+        {
+          "default": 1.0,
+          "group": "Light",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "intensity",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "default": 10.0,
+          "group": "Light",
+          "max": 100.0,
+          "min": 0.10000000149011612,
+          "name": "radius",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "Position",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_x",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Position",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_y",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "group": "Position",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_z",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Direction",
+          "max": 1.0,
+          "min": -1.0,
+          "name": "dir_x",
+          "type": "float"
+        },
+        {
+          "default": -1.0,
+          "group": "Direction",
+          "max": 1.0,
+          "min": -1.0,
+          "name": "dir_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Direction",
+          "max": 1.0,
+          "min": -1.0,
+          "name": "dir_z",
+          "type": "float"
+        },
+        {
+          "default": 45.0,
+          "group": "Spot",
+          "max": 90.0,
+          "min": 5.0,
+          "name": "spot_angle",
+          "type": "float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "group": "Spot",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "spot_blend",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "light3d.png"
     },
     {
       "name": "Lines",
@@ -1019,6 +2143,7 @@
       "slug": "lines",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Real line geometry: a grid / radial burst / concentric rings (wireframe).",
       "keywords": [
         "generator",
@@ -1109,10 +2234,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "lines.png"
     },
     {
       "name": "Mesh",
@@ -1120,6 +2247,7 @@
       "slug": "mesh",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Real 3D geometry: spinning platonic solids (solid flat-lit or wireframe).",
       "keywords": [
         "generator",
@@ -1210,10 +2338,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "mesh.png"
     },
     {
       "name": "MeshDisplace",
@@ -1221,6 +2351,7 @@
       "slug": "meshdisplace",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "transform",
       "summary": "Displace a mesh's vertices by a 2D texture (GPU compute); mesh in + map in, mesh out.",
       "keywords": [
         "geometry",
@@ -1253,15 +2384,18 @@
       "ports": [
         {
           "dir": "in",
-          "name": "mesh"
+          "name": "mesh",
+          "stream": "custom_ref"
         },
         {
           "dir": "in",
-          "name": "map"
+          "name": "map",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "mesh"
+          "name": "mesh",
+          "stream": "custom_ref"
         }
       ],
       "source": null
@@ -1272,6 +2406,7 @@
       "slug": "meshload",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Load a 3D model (glTF/GLB) and output it as a mesh for the geometry pipeline.",
       "keywords": [
         "generator",
@@ -1291,7 +2426,8 @@
       "ports": [
         {
           "dir": "out",
-          "name": "mesh"
+          "name": "mesh",
+          "stream": "custom_ref"
         }
       ],
       "source": null
@@ -1302,6 +2438,7 @@
       "slug": "meshrender",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "renderer",
       "summary": "Render a mesh (from the geometry pipeline) to a textured, lit image.",
       "keywords": [
         "geometry",
@@ -1384,11 +2521,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "mesh"
+          "name": "mesh",
+          "stream": "custom_ref"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
@@ -1399,6 +2538,7 @@
       "slug": "model",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Load a 3D model (glTF/GLB) from a file and render it textured + lit.",
       "keywords": [
         "generator",
@@ -1504,7 +2644,8 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
@@ -1515,6 +2656,7 @@
       "slug": "movieaudio",
       "domain": "audio",
       "kind": "instrument",
+      "role": "source",
       "summary": "Audio track of a Video node's movie, as a graph source (wire through effects).",
       "keywords": [
         "audio",
@@ -1541,7 +2683,8 @@
       "ports": [
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -1552,6 +2695,7 @@
       "slug": "noisefield",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Animated 3D FBm noise (Perlin/Simplex/Worley/Value) \u2014 a reusable displacement / modulation MAP.",
       "keywords": [
         "generator",
@@ -1650,173 +2794,15 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/noise_field.wgsl",
         "tier": "bundled"
-      }
-    },
-    {
-      "name": "NoiseTexture",
-      "display_name": "NoiseTexture",
-      "slug": "noisetexture",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "summary": "3D FBm noise generator (Perlin/Simplex/Worley/Value) animated over time.",
-      "keywords": [
-        "generator",
-        "noise",
-        "fbm",
-        "shader"
-      ],
-      "params": [
-        {
-          "default": 0.3499999940395355,
-          "description": "Zoom level of the noise pattern",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "scale",
-          "type": "float"
-        },
-        {
-          "default": 0.20000000298023224,
-          "description": "Rate of animation through the noise Z axis",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "speed",
-          "semantic_intent": "animation_rate",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "description": "Number of FBm layers; more means finer detail",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "octaves",
-          "type": "float"
-        },
-        {
-          "default": 0.33000001311302185,
-          "description": "Frequency multiplier between successive octaves",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "lacunarity",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "description": "Amplitude falloff between successive octaves",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "persistence",
-          "type": "float"
-        },
-        {
-          "choices": [
-            "Perlin",
-            "Simplex",
-            "Worley",
-            "Value"
-          ],
-          "default": 0.0,
-          "description": "Algorithm: Perlin, Simplex, Worley, or Value",
-          "max": 3.0,
-          "min": 0.0,
-          "name": "noise_type",
-          "type": "int"
-        },
-        {
-          "choices": [
-            "Mono",
-            "2 Channel",
-            "RGB"
-          ],
-          "default": 0.0,
-          "description": "Output channels: Mono grayscale, 2 Channel RG, or full RGB",
-          "max": 2.0,
-          "min": 0.0,
-          "name": "channels",
-          "type": "int"
-        },
-        {
-          "default": 0.5,
-          "description": "Horizontal UV origin the zoom scales about",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "scale_from_x",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "description": "Vertical UV origin the zoom scales about",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "scale_from_y",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture"
-        }
-      ],
-      "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/noise_texture.wgsl",
-        "tier": "bundled"
-      }
-    },
-    {
-      "name": "NoteInstancer",
-      "display_name": "Note Instancer",
-      "slug": "noteinstancer",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "summary": "One glowing instance per live MIDI note of a track (pitch->colour, velocity->size); chords bloom, arps trail.",
-      "keywords": [
-        "notes",
-        "instancer",
-        "geometry"
-      ],
-      "params": [
-        {
-          "default": 0.0,
-          "max": 31.0,
-          "min": 0.0,
-          "name": "track",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "size",
-          "type": "float"
-        },
-        {
-          "default": 0.800000011920929,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "spread",
-          "type": "float"
-        },
-        {
-          "default": 0.3499999940395355,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "trail",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture"
-        }
-      ],
-      "source": null
+      },
+      "preview": "noisefield.png"
     },
     {
       "name": "Notes",
@@ -1824,7 +2810,8 @@
       "slug": "notes",
       "domain": "visual",
       "kind": "gpu_visual",
-      "summary": "A track's live MIDI notes as a value \u2014 drives an Instancer (or any note consumer) through an edge.",
+      "role": "source",
+      "summary": "A track's live MIDI as a generic signal (held notes + note-on fires) \u2014 drives Instancer, Emitter, or any consumer through an edge.",
       "keywords": [
         "notes",
         "midi",
@@ -1842,10 +2829,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "notes"
+          "name": "signal",
+          "stream": "custom_ref"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "notes.png"
     },
     {
       "name": "Output",
@@ -1853,6 +2842,7 @@
       "slug": "output",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "sink",
       "summary": "Chain sink: owns the output's size, aspect and fit; feeds the viewer.",
       "keywords": [
         "output",
@@ -1932,77 +2922,592 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
     },
     {
-      "name": "Plasma",
-      "display_name": "Plasma",
-      "slug": "plasma",
+      "name": "Particles3D",
+      "display_name": "Particles3D",
+      "slug": "particles3d",
       "domain": "visual",
       "kind": "gpu_visual",
-      "summary": "Animated plasma colour-field generator. No input; drives a chain.",
-      "keywords": [
-        "generator",
-        "plasma",
-        "color",
-        "shader"
-      ],
+      "role": "transform",
+      "summary": "",
+      "keywords": [],
       "params": [
         {
-          "default": 0.5,
-          "display_hint": "xy_pad",
-          "max": 1.0,
+          "default": 1000.0,
+          "group": "Emission",
+          "max": 100000.0,
+          "min": 1.0,
+          "name": "count",
+          "type": "int"
+        },
+        {
+          "default": 100.0,
+          "group": "Emission",
+          "max": 10000.0,
           "min": 0.0,
-          "name": "warp",
-          "semantic_intent": "domain warp amount",
+          "name": "emission_rate",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "group": "Emission",
+          "max": 30.0,
+          "min": 0.10000000149011612,
+          "name": "lifetime",
           "type": "float"
         },
         {
           "default": 0.0,
-          "display_hint": "knob",
-          "max": 1.0,
+          "group": "Emission",
+          "max": 30.0,
           "min": 0.0,
-          "name": "hue",
-          "semantic_intent": "color hue",
-          "semantic_tag": "phase_01",
+          "name": "emit_radius",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "group": "Physics",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "speed",
+          "type": "float"
+        },
+        {
+          "default": -2.0,
+          "group": "Physics",
+          "max": 20.0,
+          "min": -20.0,
+          "name": "gravity",
+          "type": "float"
+        },
+        {
+          "default": 45.0,
+          "group": "Physics",
+          "max": 360.0,
+          "min": 0.0,
+          "name": "spread",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Physics",
+          "max": 10.0,
+          "min": 0.0,
+          "name": "drag",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Physics",
+          "max": 40.0,
+          "min": 0.0,
+          "name": "attract_strength",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Physics",
+          "max": 60.0,
+          "min": 0.0,
+          "name": "repel_strength",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Curl Noise",
+          "max": 20.0,
+          "min": 0.0,
+          "name": "curl_strength",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Curl Noise",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "noise_scale",
           "type": "float"
         },
         {
           "default": 0.5,
-          "display_hint": "knob",
+          "group": "Curl Noise",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "noise_speed",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "group": "Curl Noise",
+          "max": 4.0,
+          "min": 1.0,
+          "name": "noise_octaves",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Billboard",
+            "Cuboid"
+          ],
+          "default": 0.0,
+          "group": "Appearance",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "shape",
+          "type": "int"
+        },
+        {
+          "default": 5.0,
+          "group": "Appearance",
+          "max": 20.0,
+          "min": 1.0,
+          "name": "elongation",
+          "type": "float"
+        },
+        {
+          "default": 0.05000000074505806,
+          "group": "Appearance",
+          "max": 2.0,
+          "min": 0.009999999776482582,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "default": 20.0,
+          "group": "Appearance",
+          "max": 200.0,
+          "min": 1.0,
+          "name": "bounds",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "default": 0.6000000238418579,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "default": 0.20000000298023224,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "Material",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "emission",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Off",
+            "On"
+          ],
+          "default": 1.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "unlit",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "color_jitter",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Advanced",
+            "Beginner"
+          ],
+          "default": 0.0,
+          "group": "Learning",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "learning_mode",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "scene",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "attractors",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "particles3d.png"
+    },
+    {
+      "name": "RandMelody",
+      "display_name": "RandMelody",
+      "slug": "randmelody",
+      "domain": "control",
+      "kind": "generator",
+      "role": "recipe",
+      "summary": "Generator: a deterministic in-scale random melody, locked to the transport.",
+      "keywords": [
+        "audio",
+        "note",
+        "generator",
+        "random"
+      ],
+      "params": [
+        {
+          "default": 48.0,
+          "max": 127.0,
+          "min": 0.0,
+          "name": "root",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Major",
+            "Minor",
+            "PentMin",
+            "Dorian"
+          ],
+          "default": 0.0,
+          "max": 3.0,
+          "min": 0.0,
+          "name": "scale",
+          "type": "int"
+        },
+        {
+          "default": 2.0,
+          "max": 4.0,
+          "min": 1.0,
+          "name": "octaves",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "1/1",
+            "1/2",
+            "1/4",
+            "1/8",
+            "1/16",
+            "1/8T"
+          ],
+          "default": 4.0,
+          "max": 5.0,
+          "min": 0.0,
+          "name": "rate",
+          "type": "int"
+        },
+        {
+          "default": 0.699999988079071,
           "max": 1.0,
           "min": 0.0,
           "name": "density",
-          "semantic_intent": "pattern density",
           "type": "float"
         },
         {
-          "default": 0.5,
-          "display_hint": "knob",
+          "default": 0.6000000238418579,
           "max": 1.0,
-          "min": 0.0,
-          "name": "glow",
-          "semantic_intent": "glow intensity",
+          "min": 0.05000000074505806,
+          "name": "gate",
           "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 9999.0,
+          "min": 0.0,
+          "name": "seed",
+          "type": "int"
         }
       ],
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "output",
+          "semantic_shape": "note_stream",
+          "stream": "note_stream"
         }
       ],
-      "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/plasma.wgsl",
-        "tier": "bundled"
-      }
+      "source": null
+    },
+    {
+      "name": "Render3D",
+      "display_name": "Render3D",
+      "slug": "render3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "renderer",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "cam_x",
+          "type": "float"
+        },
+        {
+          "default": 2.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "cam_y",
+          "type": "float"
+        },
+        {
+          "default": 5.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "cam_z",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "target_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "target_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Camera",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "target_z",
+          "type": "float"
+        },
+        {
+          "default": 60.0,
+          "group": "Camera",
+          "max": 170.0,
+          "min": 1.0,
+          "name": "fov",
+          "type": "float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "group": "Camera",
+          "max": 10.0,
+          "min": 0.0010000000474974513,
+          "name": "near",
+          "type": "float"
+        },
+        {
+          "default": 100.0,
+          "group": "Camera",
+          "max": 10000.0,
+          "min": 1.0,
+          "name": "far",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "display_hint": "color",
+          "group": "Background",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_r",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "display_hint": "color",
+          "group": "Background",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_g",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "display_hint": "color",
+          "group": "Background",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_b",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Background",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_a",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Shadows",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "shadow_enabled",
+          "type": "float"
+        },
+        {
+          "default": 1024.0,
+          "group": "Shadows",
+          "max": 4096.0,
+          "min": 256.0,
+          "name": "shadow_resolution",
+          "type": "float"
+        },
+        {
+          "default": 0.004999999888241291,
+          "group": "Shadows",
+          "max": 0.05000000074505806,
+          "min": 0.0,
+          "name": "shadow_bias",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Fog",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fog_enabled",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Linear",
+            "Exp2"
+          ],
+          "default": 0.0,
+          "group": "Fog",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fog_mode",
+          "type": "int"
+        },
+        {
+          "default": 0.11999999731779099,
+          "display_hint": "color",
+          "group": "Fog",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fog_color_r",
+          "type": "float"
+        },
+        {
+          "default": 0.14000000059604645,
+          "display_hint": "color",
+          "group": "Fog",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fog_color_g",
+          "type": "float"
+        },
+        {
+          "default": 0.18000000715255737,
+          "display_hint": "color",
+          "group": "Fog",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "fog_color_b",
+          "type": "float"
+        },
+        {
+          "default": 4.0,
+          "group": "Fog",
+          "max": 1000.0,
+          "min": 0.0,
+          "name": "fog_near",
+          "type": "float"
+        },
+        {
+          "default": 30.0,
+          "group": "Fog",
+          "max": 2000.0,
+          "min": 0.009999999776482582,
+          "name": "fog_far",
+          "type": "float"
+        },
+        {
+          "default": 0.03999999910593033,
+          "group": "Fog",
+          "max": 2.0,
+          "min": 0.0,
+          "name": "fog_density",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "scene",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        },
+        {
+          "dir": "out",
+          "name": "depth",
+          "stream": "texture"
+        }
+      ],
+      "source": null,
+      "preview": "render3d.png"
     },
     {
       "name": "Reverse",
@@ -2010,6 +3515,7 @@
       "slug": "reverse",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Beat-synced backward playback with crossfaded edges.",
       "keywords": [
         "audio",
@@ -2088,116 +3594,16 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
-    },
-    {
-      "name": "Rings",
-      "display_name": "Rings",
-      "slug": "rings",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "summary": "Concentric pulsing rings \u2014 a source you can drive from the beat.",
-      "keywords": [
-        "generator",
-        "rings",
-        "pulse",
-        "circles",
-        "shader"
-      ],
-      "params": [
-        {
-          "default": 8.0,
-          "description": "how many rings fit across the frame",
-          "display_hint": "knob",
-          "max": 40.0,
-          "min": 1.0,
-          "name": "count",
-          "type": "float"
-        },
-        {
-          "default": 0.4000000059604645,
-          "description": "outward drift; negative pulls inward",
-          "display_hint": "knob",
-          "max": 2.0,
-          "min": -2.0,
-          "name": "speed",
-          "type": "float"
-        },
-        {
-          "default": 0.3499999940395355,
-          "description": "thickness of each ring",
-          "display_hint": "knob",
-          "max": 1.0,
-          "min": 0.019999999552965164,
-          "name": "width",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "description": "brightness \u2014 wire this to a kick",
-          "display_hint": "knob",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "glow",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "description": "where the rings radiate from",
-          "display_hint": "xy_pad",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "center_x",
-          "type": "float"
-        },
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "center_y",
-          "type": "float"
-        },
-        {
-          "default": 0.3499999940395355,
-          "description": "ring colour",
-          "display_hint": "color",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "tint_r",
-          "type": "float"
-        },
-        {
-          "default": 0.75,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "tint_g",
-          "type": "float"
-        },
-        {
-          "default": 1.0,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "tint_b",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture"
-        }
-      ],
-      "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/rings.wgsl",
-        "tier": "bundled"
-      }
     },
     {
       "name": "Sampler",
@@ -2205,6 +3611,7 @@
       "slug": "sampler",
       "domain": "audio",
       "kind": "instrument",
+      "role": "source",
       "summary": "Plays pitched PCM per note with ADSR + polyphony (melodic or drum-rack).",
       "keywords": [
         "audio",
@@ -2287,10 +3694,51 @@
       "ports": [
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
+    },
+    {
+      "name": "SceneMerge",
+      "display_name": "SceneMerge",
+      "slug": "scenemerge",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "",
+      "keywords": [],
+      "params": [],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "scene_a",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_b",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_c",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_d",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "scenemerge.png"
     },
     {
       "name": "Scratch",
@@ -2298,6 +3746,7 @@
       "slug": "scratch",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "DJ-style varispeed scratch with motion patterns.",
       "keywords": [
         "audio",
@@ -2376,14 +3825,305 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
+    },
+    {
+      "name": "SDF3D",
+      "display_name": "SDF3D",
+      "slug": "sdf3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "Sphere",
+            "Box",
+            "Torus",
+            "Cylinder",
+            "Cone"
+          ],
+          "default": 0.0,
+          "group": "Shape",
+          "max": 4.0,
+          "min": 0.0,
+          "name": "shape",
+          "type": "int"
+        },
+        {
+          "default": 1.0,
+          "group": "Shape",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_x",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Shape",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_y",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Shape",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_z",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "None",
+            "Smooth Union",
+            "Smooth Subtract",
+            "Smooth Intersect"
+          ],
+          "default": 0.0,
+          "group": "CSG",
+          "max": 3.0,
+          "min": 0.0,
+          "name": "operation",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "None",
+            "Sphere",
+            "Box",
+            "Torus",
+            "Cylinder",
+            "Cone"
+          ],
+          "default": 0.0,
+          "group": "CSG",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "shape_b",
+          "type": "int"
+        },
+        {
+          "default": 0.5,
+          "group": "CSG",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_bx",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "CSG",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_by",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "CSG",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "size_bz",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "CSG",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "pos_bx",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "CSG",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "pos_by",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "CSG",
+          "max": 10.0,
+          "min": -10.0,
+          "name": "pos_bz",
+          "type": "float"
+        },
+        {
+          "default": 0.10000000149011612,
+          "group": "CSG",
+          "max": 2.0,
+          "min": 0.009999999776482582,
+          "name": "smooth_k",
+          "type": "float"
+        },
+        {
+          "default": 0.8999999761581421,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "default": 0.20000000298023224,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "roughness",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "metallic",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Material",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "emission",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Off",
+            "On"
+          ],
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "unlit",
+          "type": "int"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_z",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2831854820251465,
+          "min": -6.2831854820251465,
+          "name": "rot_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2831854820251465,
+          "min": -6.2831854820251465,
+          "name": "rot_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2831854820251465,
+          "min": -6.2831854820251465,
+          "name": "rot_z",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Transform",
+          "max": 10.0,
+          "min": 0.009999999776482582,
+          "name": "scale",
+          "type": "float"
+        },
+        {
+          "default": 128.0,
+          "group": "Raymarching",
+          "max": 256.0,
+          "min": 16.0,
+          "name": "max_steps",
+          "type": "int"
+        },
+        {
+          "default": 0.0010000000474974513,
+          "group": "Raymarching",
+          "max": 0.009999999776482582,
+          "min": 9.999999747378752e-05,
+          "name": "threshold",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "sdf3d.png"
     },
     {
       "name": "Shape",
@@ -2391,6 +4131,7 @@
       "slug": "shape",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "A crisp SDF shape (circle/polygon) drawn over its input. Geometry, not a field.",
       "keywords": [
         "generator",
@@ -2479,17 +4220,229 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shape.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "shape.png"
+    },
+    {
+      "name": "Shape3D",
+      "display_name": "Shape3D",
+      "slug": "shape3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "source",
+      "summary": "",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "Cube",
+            "Sphere",
+            "Torus",
+            "Plane",
+            "Cylinder",
+            "Cone",
+            "Pyramid"
+          ],
+          "default": 0.0,
+          "group": "Shape",
+          "max": 6.0,
+          "min": 0.0,
+          "name": "shape",
+          "type": "int"
+        },
+        {
+          "default": 32.0,
+          "group": "Shape",
+          "max": 128.0,
+          "min": 4.0,
+          "name": "detail",
+          "type": "int"
+        },
+        {
+          "default": 0.800000011920929,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "default": 0.20000000298023224,
+          "display_hint": "color",
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "a",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "roughness",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "metallic",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Material",
+          "max": 5.0,
+          "min": 0.0,
+          "name": "emission",
+          "type": "float"
+        },
+        {
+          "choices": [
+            "Off",
+            "On"
+          ],
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "unlit",
+          "type": "int"
+        },
+        {
+          "choices": [
+            "Default",
+            "Toon"
+          ],
+          "default": 0.0,
+          "group": "Material",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "shading",
+          "type": "int"
+        },
+        {
+          "default": 4.0,
+          "group": "Material",
+          "max": 8.0,
+          "min": 2.0,
+          "name": "toon_levels",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": -50.0,
+          "name": "pos_z",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2829999923706055,
+          "min": -6.2829999923706055,
+          "name": "rot_x",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2829999923706055,
+          "min": -6.2829999923706055,
+          "name": "rot_y",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "group": "Transform",
+          "max": 6.2829999923706055,
+          "min": -6.2829999923706055,
+          "name": "rot_z",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": 0.009999999776482582,
+          "name": "scale_x",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": 0.009999999776482582,
+          "name": "scale_y",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "group": "Transform",
+          "max": 50.0,
+          "min": 0.009999999776482582,
+          "name": "scale_z",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "shape3d.png"
     },
     {
       "name": "ShapeGrid",
@@ -2497,6 +4450,7 @@
       "slug": "shapegrid",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "A grid of filled polygons drawn as REAL vertex geometry (not a shader field).",
       "keywords": [
         "generator",
@@ -2587,10 +4541,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "shapegrid.png"
     },
     {
       "name": "Shatter",
@@ -2598,6 +4554,7 @@
       "slug": "shatter",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "RGB channel-split + blocky glitch displacement \u2014 a hard digital shatter, not a haze.",
       "keywords": [
         "effect",
@@ -2644,17 +4601,91 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/shatter.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "shatter.png"
+    },
+    {
+      "name": "Solids",
+      "display_name": "Solids",
+      "slug": "solids",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "recipe",
+      "summary": "One 3D solid (cube/tetra/octa) per element of a signal; pos->x+hue, amp->size, shared rotation. Depth-tested, flat or wireframe.",
+      "keywords": [
+        "3d",
+        "geometry",
+        "solids"
+      ],
+      "params": [
+        {
+          "default": 0.0,
+          "max": 2.0,
+          "min": 0.0,
+          "name": "shape",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "default": 0.800000011920929,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "spread",
+          "type": "float"
+        },
+        {
+          "default": 0.4000000059604645,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "spin",
+          "type": "float"
+        },
+        {
+          "default": 0.30000001192092896,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "trail",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "wireframe",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "signal",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
     },
     {
       "name": "SpikeSolid",
@@ -2662,6 +4693,7 @@
       "slug": "spikesolid",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Example loadable .dylib operator: a solid hue-coloured fill.",
       "keywords": [
         "generator",
@@ -2680,10 +4712,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "spikesolid.png"
     },
     {
       "name": "StepBars",
@@ -2691,6 +4725,7 @@
       "slug": "stepbars",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Example op with a custom editor: 8 draggable step bars.",
       "keywords": [
         "editor",
@@ -2758,10 +4793,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "stepbars.png"
     },
     {
       "name": "Stretch",
@@ -2769,6 +4806,7 @@
       "slug": "stretch",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Granular time-stretch (pitch preserved).",
       "keywords": [
         "audio",
@@ -2837,11 +4875,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -2852,6 +4892,7 @@
       "slug": "stutter",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Beat-synced slice repeater with envelope shapes (glitch stutter).",
       "keywords": [
         "audio",
@@ -2950,11 +4991,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -2965,6 +5008,7 @@
       "slug": "svfilter",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "State-variable filter (low/high/band-pass) with resonance.",
       "keywords": [
         "audio",
@@ -3003,11 +5047,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -3018,7 +5064,8 @@
       "slug": "switch",
       "domain": "visual",
       "kind": "gpu_visual",
-      "summary": "Pass one of four texture inputs through, chosen by index.",
+      "role": "transform",
+      "summary": "Pass one of four texture inputs through, chosen by `index` \u2014 or wire a Clock's `step` into `clock` to cut between the connected inputs on the beat (the 2D twin of Switch3D).",
       "keywords": [
         "effect",
         "switch",
@@ -3033,7 +5080,7 @@
             "In 3"
           ],
           "default": 0.0,
-          "description": "Which input port is passed to the output",
+          "description": "Which input is passed through when no Clock is wired",
           "max": 3.0,
           "min": 0.0,
           "name": "index",
@@ -3043,26 +5090,105 @@
       "ports": [
         {
           "dir": "in",
-          "name": "in_0"
+          "name": "in_0",
+          "stream": "texture"
         },
         {
           "dir": "in",
-          "name": "in_1"
+          "name": "in_1",
+          "stream": "texture"
         },
         {
           "dir": "in",
-          "name": "in_2"
+          "name": "in_2",
+          "stream": "texture"
         },
         {
           "dir": "in",
-          "name": "in_3"
+          "name": "in_3",
+          "stream": "texture"
+        },
+        {
+          "dir": "in",
+          "name": "clock",
+          "semantic_shape": "scalar"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "switch.png"
+    },
+    {
+      "name": "Switch3D",
+      "display_name": "Switch3D",
+      "slug": "switch3d",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "transform",
+      "summary": "Forwards one of several Scene3D inputs, selected by a Clock's `step` (wire it into `clock`). Cut between whole looks every N bars \u2014 timing comes from the Clock node.",
+      "keywords": [],
+      "params": [
+        {
+          "choices": [
+            "sequential",
+            "pingpong",
+            "random"
+          ],
+          "default": 0.0,
+          "max": 2.0,
+          "min": 0.0,
+          "name": "order",
+          "type": "int"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "clock",
+          "semantic_shape": "scalar"
+        },
+        {
+          "dir": "in",
+          "name": "scene_a",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_b",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_c",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_d",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_e",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "in",
+          "name": "scene_f",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "scene",
+          "stream": "custom_ref"
+        }
+      ],
+      "source": null,
+      "preview": "switch3d.png"
     },
     {
       "name": "TapeStop",
@@ -3070,6 +5196,7 @@
       "slug": "tapestop",
       "domain": "audio",
       "kind": "audio_effect",
+      "role": "transform",
       "summary": "Tape-deck slowdown/restart (varispeed stop gesture).",
       "keywords": [
         "audio",
@@ -3140,11 +5267,13 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "audio_buffer"
         },
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -3155,6 +5284,7 @@
       "slug": "testtone",
       "domain": "audio",
       "kind": "instrument",
+      "role": "source",
       "summary": "Simple sine instrument (native-instrument spike).",
       "keywords": [
         "audio",
@@ -3173,7 +5303,8 @@
       "ports": [
         {
           "dir": "out",
-          "name": "output"
+          "name": "output",
+          "stream": "audio_buffer"
         }
       ],
       "source": null
@@ -3184,6 +5315,7 @@
       "slug": "text",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "transform",
       "summary": "Renders a string (from a .txt file) over its input. Typography.",
       "keywords": [
         "generator",
@@ -3252,71 +5384,17 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
-    },
-    {
-      "name": "Tint",
-      "display_name": "Tint",
-      "slug": "tint",
-      "domain": "visual",
-      "kind": "gpu_visual",
-      "summary": "WGSL example generator: a hue-shifted gradient (shows the WGSL authoring path).",
-      "keywords": [
-        "generator",
-        "tint",
-        "wgsl",
-        "shader"
-      ],
-      "params": [
-        {
-          "default": 0.5,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "hue",
-          "semantic_intent": "colour hue",
-          "semantic_tag": "phase_01",
-          "type": "float"
-        },
-        {
-          "default": 1.0,
-          "display_hint": "color",
-          "max": 1.0,
-          "min": 0.0,
-          "name": "r",
-          "type": "float"
-        },
-        {
-          "default": 1.0,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "g",
-          "type": "float"
-        },
-        {
-          "default": 1.0,
-          "max": 1.0,
-          "min": 0.0,
-          "name": "b",
-          "type": "float"
-        }
-      ],
-      "ports": [
-        {
-          "dir": "out",
-          "name": "texture"
-        }
-      ],
-      "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/tint.wgsl",
-        "tier": "bundled"
-      }
+      "source": null,
+      "preview": "text.png"
     },
     {
       "name": "Transform",
@@ -3324,6 +5402,7 @@
       "slug": "transform",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "",
       "summary": "Zoom / rotate / translate / tile the input (near-identity at defaults).",
       "keywords": [
         "effect",
@@ -3375,17 +5454,121 @@
       "ports": [
         {
           "dir": "in",
-          "name": "input"
+          "name": "input",
+          "stream": "texture"
         },
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": {
-        "path": "/Users/jeff/Developer/vivid/app/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
+        "path": "/Users/jeff/Developer/vivid/build/vivid.app/Contents/Resources/shaders/transform.wgsl",
         "tier": "bundled"
-      }
+      },
+      "preview": "transform.png"
+    },
+    {
+      "name": "Type",
+      "display_name": "Type",
+      "slug": "type",
+      "domain": "visual",
+      "kind": "gpu_visual",
+      "role": "adapter",
+      "summary": "A live typographic readout of a signal \u2014 the active notes as filled vector text (names or pitch numbers).",
+      "keywords": [
+        "text",
+        "typography",
+        "readout"
+      ],
+      "params": [
+        {
+          "default": 0.18000000715255737,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "size",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "x",
+          "type": "float"
+        },
+        {
+          "default": 0.5,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "y",
+          "type": "float"
+        },
+        {
+          "default": 0.9800000190734863,
+          "display_hint": "color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "r",
+          "type": "float"
+        },
+        {
+          "default": 0.9800000190734863,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "g",
+          "type": "float"
+        },
+        {
+          "default": 1.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "b",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "display_hint": "color",
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_r",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_g",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "bg_b",
+          "type": "float"
+        },
+        {
+          "default": 0.0,
+          "max": 1.0,
+          "min": 0.0,
+          "name": "mode",
+          "type": "float"
+        }
+      ],
+      "ports": [
+        {
+          "dir": "in",
+          "name": "signal",
+          "stream": "custom_ref"
+        },
+        {
+          "dir": "out",
+          "name": "texture",
+          "stream": "texture"
+        }
+      ],
+      "source": null
     },
     {
       "name": "VectorText",
@@ -3393,6 +5576,7 @@
       "slug": "vectortext",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Filled text as REAL vertex geometry (glyph outlines -> triangles).",
       "keywords": [
         "generator",
@@ -3476,10 +5660,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "vectortext.png"
     },
     {
       "name": "Video",
@@ -3487,6 +5673,7 @@
       "slug": "video",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Play a movie file (AVFoundation + HAP) as a source in the chain.",
       "keywords": [
         "generator",
@@ -3535,7 +5722,8 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
       "source": null
@@ -3546,6 +5734,7 @@
       "slug": "webcam",
       "domain": "visual",
       "kind": "gpu_visual",
+      "role": "source",
       "summary": "Live camera capture (device / resolution / fps) into the chain.",
       "keywords": [
         "generator",
@@ -3604,10 +5793,12 @@
       "ports": [
         {
           "dir": "out",
-          "name": "texture"
+          "name": "texture",
+          "stream": "texture"
         }
       ],
-      "source": null
+      "source": null,
+      "preview": "webcam.png"
     }
   ],
   "shader_errors": []
