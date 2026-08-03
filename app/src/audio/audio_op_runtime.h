@@ -38,6 +38,9 @@ float       audio_op_sampler_playhead(const AudioOp*);
 // instruments/generators (no audio input), false = effects (has audio input).
 int         audio_op_registry_count(OpRegistry& reg, bool want_source);
 const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx);   // stable registry key
+// ADR-0046: an op's descriptor role (source/transform/…/recipe) as a raw VividOperatorRole value, or 0
+// (VIVID_OP_ROLE_DEFAULT) for an unknown name. Kept opaque so callers avoid an operator_api dependency.
+uint32_t    audio_op_role(OpRegistry& reg, const char* name);
 void        audio_op_destroy(AudioOp*);
 const char* audio_op_type(const AudioOp*);
 bool        audio_op_is_source(const AudioOp*);      // true = instrument/generator (no audio input)

@@ -40,6 +40,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.badge = want_source ? "INS" : "FX";
             e.hay = std::string("native ") + (want_source ? "instrument synth" : "effect");
             e.spawn = { Domain::Audio, want_source ? SpawnKind::AudioNativeSource : SpawnKind::AudioNativeEffect, nm };
+            e.role = static_cast<VividOperatorRole>(S::session_audio_op_role(s, nm));   // ADR-0046 chip
             e.accent = want_source ? sty.audio : sty.fx;
             e.summary = want_source ? "native instrument" : "native effect";
             out.push_back(std::move(e));
@@ -70,6 +71,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.summary = "note effect \xE2\x80\x94 transforms notes, makes no sound";
             e.hay = "note effect arpeggiator midi";
             e.spawn = { Domain::Audio, SpawnKind::AudioNoteOp, nm };
+            e.role = static_cast<VividOperatorRole>(S::session_audio_op_role(s, nm));   // ADR-0046 chip
             e.accent = sty.control;
             out.push_back(std::move(e));
         }
@@ -85,6 +87,7 @@ inline std::vector<ChooserEntry> audio_catalog(vivid::session::Session* s, bool 
             e.summary = "modulator \xE2\x80\x94 drives a param over time, makes no sound";
             e.hay = "modulator lfo envelope control modulation";
             e.spawn = { Domain::Audio, SpawnKind::AudioModOp, nm };
+            e.role = static_cast<VividOperatorRole>(S::session_audio_op_role(s, nm));   // ADR-0046 chip
             e.accent = sty.mod;
             out.push_back(std::move(e));
         }

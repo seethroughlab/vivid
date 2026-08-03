@@ -1,6 +1,7 @@
 #pragma once
 #include "ui/renderer_2d.h"
 #include "ui/graph_catalog.h"   // CatalogSpawn — the typed domain/kind/spawn descriptor (ADR-0023 step 5)
+#include "operator_api/types.h" // VividOperatorRole (ADR-0046 role chip)
 
 #include <string>
 #include <vector>
@@ -32,6 +33,9 @@ struct ChooserEntry {
     const float* accent = nullptr;   // optional badge color (a ui_style token); null = default
     std::string disabled_note;       // why it can't be spawned (drawn instead of the summary)
     CatalogSpawn spawn;              // ADR-0023 step 5: the typed domain/kind/spawn payload (node catalogs)
+    // ADR-0046: composable-primitive vs recipe classification, shown as a right-aligned chip on the
+    // summary line. DEFAULT => no chip (plugins, shaders, bridge/data rows). See ui/chooser_rank.h.
+    VividOperatorRole role = VIVID_OP_ROLE_DEFAULT;
 };
 
 class Chooser {
@@ -62,7 +66,7 @@ public:
     float spawn_y() const { return sy_; }
 
 private:
-    static constexpr float kW = 320.f, kRowH = 30.f, kHdrH = 26.f;
+    static constexpr float kW = 440.f, kRowH = 30.f, kHdrH = 26.f;
     static constexpr int   kMaxRows = 9;
     void  rebuild();
     void  geom(float& px, float& py, float& w, float& h, int& vis, int& first) const;

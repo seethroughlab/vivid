@@ -218,6 +218,12 @@ const char* audio_op_registry_name(OpRegistry& reg, bool want_source, int idx) {
     return "";
 }
 
+uint32_t audio_op_role(OpRegistry& reg, const char* name) {
+    if (!name || !*name) return VIVID_OP_ROLE_DEFAULT;
+    const VividOperatorDescriptor* d = reg.descriptor_for(name);
+    return d ? d->role : VIVID_OP_ROLE_DEFAULT;
+}
+
 const char* audio_op_type(const AudioOp* a)   { return a ? a->type.c_str() : ""; }
 bool audio_op_is_source(const AudioOp* a)     { return a && a->is_source; }
 int  audio_op_param_count(const AudioOp* a)   { return a ? a->nparams : 0; }

@@ -2686,6 +2686,11 @@ int session_available_audio_op_count(Session* s, int want_source) {
 const char* session_available_audio_op_name(Session* s, int want_source, int idx) {
     return (s && s->op_reg) ? vivid::audio_op_registry_name(*s->op_reg, want_source != 0, idx) : "";
 }
+uint32_t session_audio_op_role(Session* s, const char* name) {
+    // Stays behind the opaque audio-op runtime (no operator_api leak into vst3_host); returns
+    // VIVID_OP_ROLE_DEFAULT (0) for a null/unknown name or a non-native op.
+    return (s && s->op_reg && name) ? vivid::audio_op_role(*s->op_reg, name) : 0u;
+}
 
 // AG-1 graph introspection. All read `t->agraph`/`t->agnodes` under the track's graph lock and
 // bounds-check every index (safe defaults on miss). `agnodes` is parallel to `agraph.nodes()`
