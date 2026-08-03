@@ -69,6 +69,9 @@ void LoadedOperator::draw_thumbnail(const VividThumbnailContext* ctx) {
 VividAudioRole LoadedOperator::declared_audio_role() const {
     return loader_ ? loader_->audio_role() : VIVID_AUDIO_ROLE_DEFAULT;
 }
+VividOperatorRole LoadedOperator::declared_operator_role() const {
+    return loader_ ? loader_->operator_role() : VIVID_OP_ROLE_DEFAULT;
+}
 
 const VividOperatorDescriptor* LoadedOperator::host_capability_descriptor() const {
     return loader_ ? loader_->descriptor() : nullptr;

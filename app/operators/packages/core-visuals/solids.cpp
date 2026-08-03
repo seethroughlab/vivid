@@ -94,6 +94,8 @@ fn rotX(p: vec3f, a: f32) -> vec3f { let c=cos(a); let s=sin(a); return vec3f(p.
 
 struct SolidsOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Solids";
+    // ADR-0046: bundles layout + colour + geometry + rendering in one node — a RECIPE.
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RECIPE;
     static constexpr const char* kDisplayName = "Solids";
     static constexpr const char* kSummary = "One 3D solid (cube/tetra/octa) per element of a signal; pos->x+hue, amp->size, shared rotation. Depth-tested, flat or wireframe.";
     static constexpr std::array<const char*, 3> kKeywords = {"3d", "geometry", "solids"};

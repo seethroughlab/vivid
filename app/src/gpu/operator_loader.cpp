@@ -115,6 +115,7 @@ struct OperatorLoader::Resolved {
     VividFileDropDescriptorFn drop_fn         = nullptr;
     VividDrawThumbnailFn      thumbnail_fn    = nullptr;
     VividAudioRoleFn          audio_role_fn   = nullptr;
+    VividOperatorRoleFn       operator_role_fn = nullptr;
     std::string               mode;
     bool                      reload_required_recompile = false;
 };
@@ -193,6 +194,8 @@ bool OperatorLoader::open_and_check(const char* path, Resolved& out) {
     // v14: optional cell thumbnail + declared audio role (both absent => opt out; dlsym-null-safe).
     out.thumbnail_fn  = reinterpret_cast<VividDrawThumbnailFn>(dlsym(h, "vivid_draw_thumbnail"));
     out.audio_role_fn = reinterpret_cast<VividAudioRoleFn>(dlsym(h, "vivid_audio_role"));
+    // v16 (ADR-0046): optional declared operator role (absent => DEFAULT; dlsym-null-safe).
+    out.operator_role_fn = reinterpret_cast<VividOperatorRoleFn>(dlsym(h, "vivid_operator_role"));
     out.mode = (mode_fn && mode_fn() && *mode_fn()) ? mode_fn() : "legacy";
     const VividGeneratedUniformLayout* uniform_layout = uniform_fn ? uniform_fn() : nullptr;
 
@@ -247,6 +250,7 @@ bool OperatorLoader::load(const char* path) {
     drop_fn_           = r.drop_fn;
     draw_thumbnail_fn_ = r.thumbnail_fn;
     audio_role_fn_     = r.audio_role_fn;
+    operator_role_fn_  = r.operator_role_fn;
     registration_mode_ = r.mode;
     reload_required_recompile_ = r.reload_required_recompile;
     return true;

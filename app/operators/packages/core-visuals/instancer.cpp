@@ -65,6 +65,9 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1
 
 struct InstancerOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Instancer";
+    // ADR-0046: bundles lifecycle + layout + colour + geometry + rendering in one node — a RECIPE that
+    // stands in for Signal -> InstancesFromSignal/Lanes -> Instancer3D. Ranked below primitives.
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RECIPE;
     static constexpr const char* kDisplayName = "Instancer";
     static constexpr const char* kSummary = "Draws one glowing instance per note of an incoming Notes value (pitch->colour, velocity->size); chords bloom, arps trail.";
     static constexpr std::array<const char*, 3> kKeywords = {"notes", "instancer", "geometry"};

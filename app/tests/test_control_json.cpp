@@ -73,6 +73,21 @@ int main() {
         CHECK(j["ports"].size() == 2);
         CHECK(j["ports"][0]["dir"] == "in");
         CHECK(j["ports"][1]["dir"] == "out");
+        CHECK(!j.contains("role"));   // ADR-0046: DEFAULT role is implicit (omitted)
+    }
+
+    // ADR-0046: a declared operator role surfaces as a lowercase string; DEFAULT stays omitted.
+    {
+        VividOperatorDescriptor d{};
+        d.name = "Instancer"; d.role = VIVID_OP_ROLE_RECIPE;
+        auto j = cj::operator_to_json(d, "gpu_visual");
+        CHECK(j["role"] == "recipe");
+
+        d.role = VIVID_OP_ROLE_SOURCE;
+        CHECK(cj::operator_to_json(d, "gpu_visual")["role"] == "source");
+
+        d.role = VIVID_OP_ROLE_DEFAULT;
+        CHECK(!cj::operator_to_json(d, "gpu_visual").contains("role"));
     }
 
     return vivid::test::summary("test_control_json");

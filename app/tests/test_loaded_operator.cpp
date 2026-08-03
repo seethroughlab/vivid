@@ -67,5 +67,13 @@ int main() {
     CHECK(built->has_process_frame == 1);
     CHECK(built->has_process_gpu == 0);
 
+    // ADR-0046: the fixture declares kRole = RECIPE. It must travel end to end: the vivid_operator_role
+    // export (dlsym'd by the loader) -> the dylib's own descriptor -> LoadedOperator::declared_operator_role
+    // -> the host-built descriptor. Mirrors the v14 audio_role path.
+    CHECK(L.operator_role() == VIVID_OP_ROLE_RECIPE);            // dlsym'd export
+    CHECK(dyl->role == VIVID_OP_ROLE_RECIPE);                    // dylib's own descriptor (VIVID_REGISTER)
+    CHECK(op.declared_operator_role() == VIVID_OP_ROLE_RECIPE);  // adapter forwards it
+    CHECK(built->role == VIVID_OP_ROLE_RECIPE);                  // host descriptor records it
+
     return vivid::test::summary("test_loaded_operator");
 }

@@ -367,6 +367,11 @@ struct OperatorBase {
     // record it WITHOUT reading an appended field out of the (possibly older) dylib descriptor
     // struct. Built-in audio ops keep using the audio_op_mark_* tables, so they leave this DEFAULT.
     virtual VividAudioRole declared_audio_role() const { return VIVID_AUDIO_ROLE_DEFAULT; }
+    // Operator role (v16+, ADR-0046). Base = DEFAULT (unclassified primitive). Compiled-in ops
+    // override this to declare a role (e.g. a bundled generator returns RECIPE); the loaded-dylib
+    // adapter overrides it to hand back the dylib's vivid_operator_role() export, so build_descriptor
+    // records it WITHOUT reading an appended field out of the (possibly older) dylib descriptor struct.
+    virtual VividOperatorRole declared_operator_role() const { return VIVID_OP_ROLE_DEFAULT; }
     // Host-internal: built-in operators store FILE/TEXT params as concrete Param<FilePath> /
     // Param<TextValue> members, so the host can sync resolved strings directly. Loaded dylib
     // operators mirror params as plain ParamBase descriptors and sync their real params inside the
@@ -491,6 +496,22 @@ constexpr VividAudioRole get_audio_role() {
         return T::kAudioRole;
     else
         return VIVID_AUDIO_ROLE_DEFAULT;
+}
+
+// Operator role (v16+, ADR-0046). If the operator declares a static constexpr kRole, use it;
+// otherwise DEFAULT. Lets an op (esp. a loaded dylib) mark itself a RECIPE / source / adapter / …
+// the same way kAudioRole marks a generator / note-effect / modulator.
+template <typename T, typename = void>
+struct has_operator_role : std::false_type {};
+template <typename T>
+struct has_operator_role<T, std::void_t<decltype(T::kRole)>> : std::true_type {};
+
+template <typename T>
+constexpr VividOperatorRole get_operator_role() {
+    if constexpr (has_operator_role<T>::value)
+        return T::kRole;
+    else
+        return VIVID_OP_ROLE_DEFAULT;
 }
 
 // v3 metadata: display_name, keywords, summary. All optional — operators that
@@ -867,6 +888,8 @@ static const VividOperatorDescriptor* _vivid_get_descriptor() {               \
             vivid::detail::get_time_dependent<ClassName>() ? 1 : 0;           \
         desc.audio_role =                                                     \
             vivid::detail::get_audio_role<ClassName>();                       \
+        desc.role =                                                           \
+            vivid::detail::get_operator_role<ClassName>();                    \
     }                                                                         \
     return &desc;                                                             \
 }                                                                             \
@@ -971,6 +994,10 @@ extern "C" void vivid_draw_thumbnail(void* instance,                          \
 /* v14: optional audio-role hint (generator / note-effect / modulator). */    \
 extern "C" uint32_t vivid_audio_role(void) {                                  \
     return static_cast<uint32_t>(vivid::detail::get_audio_role<ClassName>()); \
+}                                                                             \
+/* v16 (ADR-0046): optional operator-role hint (recipe / source / adapter …).*/\
+extern "C" uint32_t vivid_operator_role(void) {                               \
+    return static_cast<uint32_t>(vivid::detail::get_operator_role<ClassName>());\
 }                                                                             \
 extern "C" void vivid_main_thread_update(void* instance, double time,         \
                                          std::string** file_param_strings,    \

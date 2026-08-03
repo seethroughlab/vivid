@@ -51,6 +51,8 @@ struct VOut { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1
 
 struct EmitterOp : vivid::OperatorBase, vivid::GpuProcessable {
     static constexpr const char* kName = "Emitter";
+    // ADR-0046: bundles particle lifecycle + layout + colour + rendering in one node — a RECIPE.
+    static constexpr VividOperatorRole kRole = VIVID_OP_ROLE_RECIPE;
     static constexpr const char* kDisplayName = "Emitter";
     static constexpr const char* kSummary = "A one-shot particle burst per fire of an incoming signal (pos->hue, amp->energy). Re-struck notes re-burst; drives off notes, beats or onsets.";
     static constexpr std::array<const char*, 3> kKeywords = {"particles", "burst", "emitter"};

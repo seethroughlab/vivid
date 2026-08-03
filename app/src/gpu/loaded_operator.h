@@ -35,6 +35,8 @@ public:
     // operator draws its own cell preview and classifies as a generator/note-fx/modulator.
     void draw_thumbnail(const VividThumbnailContext* ctx) override;
     VividAudioRole declared_audio_role() const override;
+    // v16 (ADR-0046): forward the dylib's optional declared operator role (vivid_operator_role).
+    VividOperatorRole declared_operator_role() const override;
     bool host_syncs_file_params() const override { return false; }
 
     // The dylib's own descriptor — the authority on which process_* stages this op has

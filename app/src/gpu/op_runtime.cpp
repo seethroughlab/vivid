@@ -82,6 +82,11 @@ void build_descriptor(OperatorBase& op, const std::string& type_name,
     // LoadedOperator override); a built-in returns DEFAULT (it is classified by the audio_op_mark_*
     // name tables instead). Sourced from a virtual, never read out of the dylib's descriptor struct.
     d.audio_role = op.declared_audio_role();
+    // v16 (ADR-0046): operator role. A loaded dylib returns its vivid_operator_role() export here (via
+    // the LoadedOperator override); a compiled-in op overrides declared_operator_role() to declare its
+    // role (e.g. a bundled generator returns RECIPE). Sourced from a virtual, never read out of the
+    // dylib's descriptor struct.
+    d.role = op.declared_operator_role();
 }
 
 void sync_params(OpInstance& inst, const float* values, int count,
