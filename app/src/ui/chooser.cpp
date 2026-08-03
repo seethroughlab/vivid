@@ -1,6 +1,7 @@
 #include "ui/chooser.h"
 #include "ui/text_match.h"
 #include "ui/ui_style.h"
+#include "ui/chooser_rank.h"   // role_chip_label (ADR-0046 role chip)
 
 #include <algorithm>
 #include <utility>
@@ -107,14 +108,32 @@ void Chooser::draw(Renderer2D& r) const {
         // A disabled row stays VISIBLE (the catalog must not lie about what you own) but reads as
         // unavailable, and says why in place of its summary.
         const float* nc = e.enabled ? sty.text : sty.dim;
-        r.draw_text(px + 24.f, iy + 3.f, e.label.c_str(), nc[0], nc[1], nc[2], e.enabled ? 1.0f : 0.6f, sty.fs_label);
-        if (!e.badge.empty())
-            r.draw_text(px + w - 48.f, iy + 3.f, e.badge.c_str(), acc[0], acc[1], acc[2],
-                        e.enabled ? 0.9f : 0.4f, sty.fs_kicker);
+        const float tx = px + 24.f;          // left text column (label + summary)
+        const float rx = px + w - 12.f;      // common right margin (badge on top, role chip below)
+        const float gap = 10.f;
+
+        // Top line: badge right-aligned; label clamped so it can't run under the badge.
+        float label_max = rx - tx;
+        if (!e.badge.empty()) {
+            draw_text_r(r, rx, iy + 3.f, e.badge.c_str(), acc, e.enabled ? 0.9f : 0.4f, sty.fs_kicker);
+            label_max -= r.text_width(e.badge.c_str(), sty.fs_kicker) + gap;
+        }
+        r.draw_text(tx, iy + 3.f, fit_text(r, e.label, label_max, sty.fs_label).c_str(),
+                    nc[0], nc[1], nc[2], e.enabled ? 1.0f : 0.6f, sty.fs_label);
+
+        // ADR-0046: bottom line: a right-aligned role chip (SOURCE/TRANSFORM/…/RECIPE) — the "labeled"
+        // half of the ADR decision. Dim (NOT a zone accent) so it reads as a quiet classification, not a
+        // second identity color. The summary is clamped so it never runs under the chip or the panel edge.
+        const char* chip = e.enabled ? role_chip_label(e.role) : nullptr;
+        float sub_max = rx - tx;
+        if (chip) {
+            draw_text_r(r, rx, iy + 16.f, chip, sty.dim, e.enabled ? 0.8f : 0.4f, sty.fs_kicker);
+            sub_max -= r.text_width(chip, sty.fs_kicker) + gap;
+        }
         const std::string& sub = e.enabled ? e.summary : e.disabled_note;
         if (!sub.empty())
-            r.draw_text(px + 24.f, iy + 16.f, sub.c_str(), sty.dim[0], sty.dim[1], sty.dim[2],
-                        e.enabled ? 1.0f : 0.7f, sty.fs_kicker);
+            r.draw_text(tx, iy + 16.f, fit_text(r, sub, sub_max, sty.fs_kicker).c_str(),
+                        sty.dim[0], sty.dim[1], sty.dim[2], e.enabled ? 1.0f : 0.7f, sty.fs_kicker);
     }
 }
 

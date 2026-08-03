@@ -349,6 +349,9 @@ int         session_available_mod_op_count(Session*);               // ADR-0022:
 const char* session_available_mod_op_name(Session*, int idx);
 int         session_available_audio_op_count(Session*, int want_source);
 const char* session_available_audio_op_name(Session*, int want_source, int idx);
+// ADR-0046: an op's role (source/transform/…/recipe) by registry name, for the add-node chooser chip.
+// Returns VIVID_OP_ROLE_DEFAULT for an unknown name or a non-native op (plugins have no descriptor).
+uint32_t    session_audio_op_role(Session*, const char* name);
 
 // Read-only introspection of a track's authoritative audio graph (the persistent
 // per-track topology model behind the compiled RT plan). Reports what the executor actually

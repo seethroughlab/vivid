@@ -909,6 +909,7 @@ void NodeGraph::chooser_show(double sx, double sy) {
                 if (d->summary) e.summary = d->summary;
                 for (uint32_t k = 0; k < d->keyword_count; ++k)
                     if (d->keywords && d->keywords[k]) { e.hay += d->keywords[k]; e.hay += ' '; }
+                e.role = d->role;   // ADR-0046: role chip + recipe demotion
             }
             entries.push_back(std::move(e));
         }
@@ -940,16 +941,9 @@ void NodeGraph::chooser_show(double sx, double sy) {
         entries.push_back(std::move(e));
     }
     // ADR-0046: composable primitives first — sink bundled RECIPE ops (Instancer/Emitter/Solids) to
-    // the bottom, preserving order otherwise. Non-op rows (bridge/data sources) carry no descriptor,
-    // so they resolve to DEFAULT and stay above the recipes.
-    if (vg_ && vg_->registry()) {
-        auto* reg = vg_->registry();
-        demote_recipes(entries, [&](const Chooser::Entry& e) -> VividOperatorRole {
-            if (e.spawn.kind != SpawnKind::VisualOp) return VIVID_OP_ROLE_DEFAULT;
-            const auto* d = reg->descriptor_for(e.id);
-            return d ? d->role : VIVID_OP_ROLE_DEFAULT;
-        });
-    }
+    // the bottom, preserving order otherwise. Each entry carries its own role now (bridge/data rows
+    // stay DEFAULT), so the partition reads it directly.
+    demote_recipes(entries, [](const Chooser::Entry& e) { return e.role; });
     chooser_.set_entries(std::move(entries));
     chooser_.show(sx, sy, bx0_, by0_, bx1_, by1_);
 }

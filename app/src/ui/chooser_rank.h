@@ -28,4 +28,19 @@ void demote_recipes(std::vector<Entry>& entries, RoleOf role_of) {
                           [&](const Entry& e) { return !chooser_role_is_demoted(role_of(e)); });
 }
 
+// The uppercase chip label a chooser row shows for its role, or nullptr for DEFAULT (no chip — plugins,
+// shaders, bridge/data rows). This is the "labeled" half of the ADR decision (recipes are labeled AND
+// ranked); kept here, next to the ranking policy, so both stay unit-testable without a live renderer.
+inline const char* role_chip_label(VividOperatorRole role) {
+    switch (role) {
+        case VIVID_OP_ROLE_SOURCE:    return "SOURCE";
+        case VIVID_OP_ROLE_TRANSFORM: return "TRANSFORM";
+        case VIVID_OP_ROLE_ADAPTER:   return "ADAPTER";
+        case VIVID_OP_ROLE_RENDERER:  return "RENDERER";
+        case VIVID_OP_ROLE_SINK:      return "SINK";
+        case VIVID_OP_ROLE_RECIPE:    return "RECIPE";
+        default:                      return nullptr;   // DEFAULT / unclassified — no chip
+    }
+}
+
 }  // namespace vivid::ui

@@ -53,5 +53,16 @@ int main() {
     demote_recipes(prims, [](const Row& r) { return r.role; });
     CHECK(prims[0].name == "A" && prims[1].name == "B");
 
+    // ADR-0046 slice 3: the role chip label (the "labeled" half of the ADR decision). Every classified
+    // role maps to an uppercase chip; DEFAULT is null (no chip — plugins, shaders, bridge/data rows).
+    using vivid::ui::role_chip_label;
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_SOURCE))    == "SOURCE");
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_TRANSFORM)) == "TRANSFORM");
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_ADAPTER))   == "ADAPTER");
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_RENDERER))  == "RENDERER");
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_SINK))      == "SINK");
+    CHECK(std::string(role_chip_label(VIVID_OP_ROLE_RECIPE))    == "RECIPE");
+    CHECK(role_chip_label(VIVID_OP_ROLE_DEFAULT) == nullptr);
+
     return vivid::test::summary("test_chooser_rank");
 }
